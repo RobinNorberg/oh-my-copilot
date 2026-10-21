@@ -19,9 +19,12 @@
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
  *   verify     tag run green, npm version / latest / provenance, GitHub Release
  *
- * State: `<state root>/release/<version>.json` records each phase result;
- * a run without --from resumes at the first phase not yet ok. Every external
- * command goes through one injectable runner (ReleaseExec).
+ * State: `<state root>/release/<version>.json` records each phase result,
+ * the release branch and commit, and the PR merge commits; a run without
+ * --from resumes at the first phase not yet ok. Before skipping a phase (a
+ * resume or --from) its recorded postconditions are re-checked, and a state
+ * recorded on another branch or an unrelated HEAD is refused unless --from
+ * preflight. Every external command goes through one injectable runner (ReleaseExec).
  */
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
@@ -44,7 +47,12 @@ export interface ReleaseState {
     createdAt: string;
     updatedAt: string;
     phases: Partial<Record<PhaseId, PhaseRecord>>;
+    /** Branch preflight passed on. */
+    branch?: string;
+    /** HEAD after the commit phase; a resume needs HEAD to descend from it. */
+    headSha?: string;
     devPr?: number;
+    devMergeSha?: string;
     mainPr?: number;
     mainMergeSha?: string;
     tagRunId?: number;
@@ -112,7 +120,7 @@ export declare function releaseStatePath(stateRoot: string, version: string): st
 export declare function readReleaseState(stateRoot: string, version: string): ReleaseState | null;
 /** Steps each phase runs, as printed by --dry-run. */
 export declare function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[];
-/** First phase to run: --from, else the first phase not yet ok / skipped in the state. */
+/** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */
 export declare function resumePoint(state: ReleaseState | null, from?: PhaseId): PhaseId | null;
 export declare function runRelease(deps: ReleaseDeps, opts: ReleaseOptions): Promise<ReleaseResult>;
 //# sourceMappingURL=engine.d.ts.map

@@ -68,6 +68,14 @@ describe('version stamps', () => {
     expect(stampVersion('{"version": "1"}\n{"version": "1"}', market, '2.0.0')).toBe('{"version": "2.0.0"}\n{"version": "2.0.0"}');
   });
 
+  it('stamps only the top-level version of a plugin manifest', () => {
+    const manifest = '{\n  "name": "x",\n  "version": "5.12.1",\n  "mcpServers": { "t": { "version": "1.0.0" } }\n}\n';
+    for (const file of ['plugin.json', '.claude-plugin/plugin.json']) {
+      const stamp = VERSION_STAMPS.find((s) => s.file === file)!;
+      expect(stampVersion(manifest, stamp, '5.12.2'), file).toBe(manifest.replace('"version": "5.12.1"', '"version": "5.12.2"'));
+    }
+  });
+
   it('covers every file scripts/sync-version.sh stamps', () => {
     const script = readFileSync(join(REPO, 'scripts', 'sync-version.sh'), 'utf8');
     const files = [...script.matchAll(/="\$ROOT\/([^"]+)"/g)].map((m) => m[1]);

@@ -15,7 +15,10 @@ export declare function compareVersions(a: string, b: string): number;
  * Release body) must mention the version.
  */
 export declare function releaseProseProblems(version: string, changelog: string | null, releaseBody: string | null): string[];
-/** Files and the version pattern each one carries; mirrors scripts/sync-version.sh plus the stamps it does not cover. */
+/**
+ * Files and the version pattern each one carries; mirrors scripts/sync-version.sh plus the stamps it does not cover.
+ * The plugin manifests carry one top-level "version" first, so only the first match is replaced (a nested one stays).
+ */
 export declare const VERSION_STAMPS: ReadonlyArray<{
     file: string;
     pattern: RegExp;

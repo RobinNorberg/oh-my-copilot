@@ -19,12 +19,15 @@
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
  *   verify     tag run green, npm version / latest / provenance, GitHub Release
  *
- * State: `<state root>/release/<version>.json` records each phase result;
- * a run without --from resumes at the first phase not yet ok. Every external
- * command goes through one injectable runner (ReleaseExec).
+ * State: `<state root>/release/<version>.json` records each phase result,
+ * the release branch and commit, and the PR merge commits; a run without
+ * --from resumes at the first phase not yet ok. Before skipping a phase (a
+ * resume or --from) its recorded postconditions are re-checked, and a state
+ * recorded on another branch or an unrelated HEAD is refused unless --from
+ * preflight. Every external command goes through one injectable runner (ReleaseExec).
  */
 import { spawnSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { isAbsolute, join } from 'path';
 import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
@@ -91,6 +94,8 @@ function tail(text, lines = 30) {
     return text.trim().split(/\r?\n/).slice(-lines);
 }
 const FULL_SHA = /^[0-9a-f]{40}$/;
+/** Polls for a rerun's new attempt to appear before giving up (bounded even when the clock does not move). */
+const RERUN_START_POLLS = 40;
 /** Steps each phase runs, as printed by --dry-run. */
 export function phasePlan(id, v, opts) {
     const branch = `release/v${v}`;
@@ -139,25 +144,27 @@ export function phasePlan(id, v, opts) {
             ];
         case 'pr':
             return [
-                `git push origin HEAD:refs/heads/${branch} (plain, never forced)`,
+                `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
                 `gh pr create --base dev --head ${branch} (reused when one exists)`,
-                'wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs',
-                'gh pr merge --admin --merge --match-head-commit <head> when ship.allowAdminMerge and dev is a trusted base, else print it',
+                'wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts',
+                'gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it',
             ];
         case 'promote':
             return [
+                'require the release PR merged into dev (gh pr view); record its merge commit',
                 'gh pr create --base main --head dev (reused when one is open)',
-                'same CI gate and merge as pr; record the main merge commit',
+                'same CI gate and merge as pr; the main merge must contain the dev merge; record it',
             ];
         case 'tag':
             return [
+                `the main merge commit contains the dev merge and its package.json is ${v}`,
                 `confirm (${opts.yes ? '--yes given' : 'interactive; --yes skips'})`,
                 `git tag -a v${v} -m v${v} <main merge sha>; v${v}^{} must equal it and be an annotated tag`,
                 `git push origin refs/tags/v${v}; git ls-remote confirms the peeled sha`,
             ];
         case 'verify':
             return [
-                `find the ci.yml push run with headBranch v${v}; wait; one rerun of failed jobs, failing test titles printed`,
+                `find the ci.yml push run of v${v} on the main merge commit; wait; one rerun of failed jobs unless ${v} is already on npm, failing test titles printed`,
                 `npm view oh-my-copilot@${v} version dist-tags.latest dist.attestations`,
                 `gh release view v${v}: published, not a draft; the Copilot smoke (tier 2) job succeeded`,
             ];
@@ -239,9 +246,10 @@ class Release {
         const v = this.v;
         const problems = [];
         // Untrimmed: the first line's leading status column is significant.
+        // A staged rename reads "orig -> path": clean only when both sides are prose files.
         const dirty = this.must('git', ['status', '--porcelain']).split(/\r?\n/).filter(Boolean)
-            .map((l) => l.slice(3).replace(/^"|"$/g, ''))
-            .filter((p) => !PROSE_FILES.includes(p));
+            .map((l) => l.slice(3))
+            .filter((entry) => !entry.split(' -> ').every((p) => PROSE_FILES.includes(p.replace(/^"|"$/g, ''))));
         if (dirty.length > 0)
             problems.push(`working tree is not clean: ${dirty.join(', ')}`);
         const branch = this.git('rev-parse', '--abbrev-ref', 'HEAD');
@@ -279,6 +287,7 @@ class Release {
             problems.push(`tag v${v} already exists on origin`);
         if (problems.length > 0)
             fail(`${problems.length} preflight problem(s)`, problems);
+        this.save({ branch, headSha: undefined });
         return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}` };
     }
     gitProcesses() {
@@ -364,6 +373,8 @@ class Release {
         if (suite === 'full') {
             const out = join(this.deps.stateRoot, 'release', `${this.v}-vitest.json`);
             mkdirSync(join(this.deps.stateRoot, 'release'), { recursive: true });
+            // A report left by an earlier run must not pass for this one.
+            rmSync(out, { force: true });
             this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
             const r = this.run(this.deps.node, ['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`]);
             if (!existsSync(out))
@@ -413,7 +424,92 @@ class Release {
         const left = this.git('status', '--porcelain');
         if (left)
             fail('working tree is not clean after the release commits', left.split(/\r?\n/));
-        return { status: 'ok', note: notes.length > 0 ? `${notes.join(' + ')} at ${this.git('rev-parse', 'HEAD').slice(0, 12)}` : 'nothing new to commit' };
+        const head = this.git('rev-parse', 'HEAD');
+        this.save({ headSha: head });
+        return { status: 'ok', note: notes.length > 0 ? `${notes.join(' + ')} at ${head.slice(0, 12)}` : 'nothing new to commit' };
+    }
+    isAncestor(ancestor, descendant) {
+        return this.run('git', ['merge-base', '--is-ancestor', ancestor, descendant]).status === 0;
+    }
+    viewPr(pr) {
+        return JSON.parse(this.must('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefOid,url,mergeCommit']));
+    }
+    /** The merge commit of a merged PR, else null. */
+    mergedSha(pr) {
+        const view = this.viewPr(pr);
+        const sha = view.state === 'MERGED' ? view.mergeCommit?.oid : undefined;
+        return sha && FULL_SHA.test(sha) ? sha : null;
+    }
+    /** Why the phases before `start` may not be skipped (empty = they may): the state's checkout, then each phase's postconditions. */
+    skipProblems(start) {
+        const problems = [];
+        const checks = [
+            ['state', () => this.provenanceProblem()],
+            ...PHASES.slice(0, PHASES.indexOf(start)).map((id) => [id, () => this.postconditionProblem(id)]),
+        ];
+        for (const [what, check] of checks) {
+            try {
+                const problem = check();
+                if (problem)
+                    problems.push(`${what}: ${problem}`);
+            }
+            catch (error) {
+                problems.push(`${what}: ${error instanceof PhaseStop ? error.outcome.note : error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        return problems;
+    }
+    /** Why the recorded state does not belong to this checkout (null = it does). */
+    provenanceProblem() {
+        const { branch, headSha } = this.state;
+        if (branch) {
+            const current = this.run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim();
+            if (current !== branch)
+                return `HEAD is ${current || '(unknown)'}, but this release state was recorded on ${branch}`;
+        }
+        if (headSha && !this.isAncestor(headSha, 'HEAD'))
+            return `HEAD does not descend from the recorded release commit ${headSha.slice(0, 12)}`;
+        return null;
+    }
+    /**
+     * Why a phase may not be skipped (null = its recorded result still holds):
+     * it must have passed, and the facts later phases build on are re-checked
+     * cheaply (read-only git / gh).
+     */
+    postconditionProblem(id) {
+        const s = this.state;
+        const status = s.phases[id]?.status;
+        if (status !== 'ok' && status !== 'skipped')
+            return `has not passed (run it: --from ${id})`;
+        switch (id) {
+            case 'bump': {
+                const version = JSON.parse(this.file('package.json') ?? '{}').version;
+                return version === this.v ? null : `package.json version is ${version ?? 'missing'}, not ${this.v} (--from bump)`;
+            }
+            case 'commit':
+                return s.headSha && FULL_SHA.test(s.headSha) ? null : 'no release commit recorded (--from commit)';
+            case 'pr': {
+                if (s.devPr === undefined || !s.devMergeSha)
+                    return 'no merged release PR into dev recorded (--from pr)';
+                const sha = this.mergedSha(s.devPr);
+                return sha === s.devMergeSha ? null : `PR #${s.devPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : 'not merged'}, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+            }
+            case 'promote': {
+                if (s.mainPr === undefined || !s.mainMergeSha || !s.devMergeSha)
+                    return 'no main merge commit recorded (--from promote)';
+                const sha = this.mergedSha(s.mainPr);
+                if (sha !== s.mainMergeSha)
+                    return `PR #${s.mainPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : 'not merged'}, not at the recorded ${s.mainMergeSha.slice(0, 12)} (--from promote)`;
+                this.must('git', ['fetch', 'origin', 'dev', 'main']);
+                return this.isAncestor(s.devMergeSha, s.mainMergeSha) ? null : `the main merge ${s.mainMergeSha.slice(0, 12)} does not contain the dev merge ${s.devMergeSha.slice(0, 12)}`;
+            }
+            case 'tag': {
+                const remote = remoteTagTarget(this.git('ls-remote', '--tags', 'origin', `refs/tags/v${this.v}`, `refs/tags/v${this.v}^{}`), `v${this.v}`);
+                return remote?.annotated && remote.commit === s.mainMergeSha ? null : `v${this.v} on origin does not peel to the main merge commit (--from tag)`;
+            }
+            default:
+                return null;
+        }
     }
     findPr(head, base, states) {
         const out = this.must('gh', ['pr', 'list', '--head', head, '--base', base, '--state', states, '--json', 'number,state', '--limit', '10']);
@@ -429,22 +525,37 @@ class Release {
     }
     async pr() {
         const branch = `release/v${this.v}`;
-        if (this.state.devPr === undefined) {
-            this.git('push', 'origin', `HEAD:refs/heads/${branch}`);
-            const pr = this.findPr(branch, 'dev', 'all') ?? this.createPr('dev', branch, `chore(release): v${this.v}`);
-            this.save({ devPr: pr });
+        // Pushed on every run until merged, so commits added after a failure reach the PR.
+        if (this.state.devPr === undefined || this.viewPr(this.state.devPr).state !== 'MERGED') {
+            const push = this.run('git', ['push', 'origin', `HEAD:refs/heads/${branch}`]);
+            if (push.status !== 0) {
+                blocked(`git push origin HEAD:refs/heads/${branch} was refused; never force: git fetch origin ${branch} && git merge origin/${branch}, then re-run omg release ${this.v} --from pr`, tail(push.stderr, 5));
+            }
+            if (this.state.devPr === undefined) {
+                const pr = this.findPr(branch, 'dev', 'all') ?? this.createPr('dev', branch, `chore(release): v${this.v}`);
+                this.save({ devPr: pr });
+            }
         }
-        const sha = await this.land(this.state.devPr, 'dev', 'pr');
+        const sha = await this.land(this.state.devPr, 'dev', 'pr', this.git('rev-parse', 'HEAD'));
+        this.save({ devMergeSha: sha });
         return { status: 'ok', note: `PR #${this.state.devPr} merged into dev at ${sha.slice(0, 12)}` };
     }
     async promote() {
-        if (this.state.devPr === undefined)
+        const devPr = this.state.devPr;
+        if (devPr === undefined)
             fail('no release PR into dev recorded; run the pr phase first');
+        const devMerge = this.mergedSha(devPr);
+        if (!devMerge)
+            fail(`release PR #${devPr} is not merged into dev; re-run omg release ${this.v} --from pr`);
+        this.save({ devMergeSha: devMerge });
         if (this.state.mainPr === undefined) {
             const pr = this.findPr('dev', 'main', 'open') ?? this.createPr('main', 'dev', `Release v${this.v}`);
             this.save({ mainPr: pr });
         }
         const sha = await this.land(this.state.mainPr, 'main', 'promote');
+        this.must('git', ['fetch', 'origin', 'dev', 'main']);
+        if (!this.isAncestor(devMerge, sha))
+            fail(`PR #${this.state.mainPr} merged into main at ${sha.slice(0, 12)}, which does not contain the dev merge ${devMerge.slice(0, 12)}`);
         this.save({ mainMergeSha: sha });
         return { status: 'ok', note: `PR #${this.state.mainPr} merged into main at ${sha.slice(0, 12)}` };
     }
@@ -452,13 +563,27 @@ class Release {
         count: (id) => this.state.reruns[id] ?? 0,
         record: (id) => this.save({ reruns: { ...this.state.reruns, [id]: (this.state.reruns[id] ?? 0) + 1 } }),
     };
-    /** Rerun each failed run once (budget spent first); true when any rerun was issued. */
-    rerunOnce(runIds) {
+    runAttempt(runId) {
+        return JSON.parse(this.must('gh', ['run', 'view', runId, '--json', 'attempt']) || '{}').attempt ?? 0;
+    }
+    /**
+     * Rerun each failed run once (budget spent first) and wait until its new
+     * attempt exists: right after `gh run rerun` the run still reads as the old
+     * failed attempt. True when any rerun was issued.
+     */
+    async rerunOnce(runIds, phase, pollMs) {
         const ready = runIds.filter((id) => this.rerunBudget.count(id) < 1);
         for (const id of ready) {
+            const before = this.runAttempt(id);
             this.rerunBudget.record(id);
             this.deps.log(`  gh run rerun ${id} --failed (the one automatic rerun)`);
             this.must('gh', ['run', 'rerun', id, '--failed']);
+            for (let polls = 0; this.runAttempt(id) <= before; polls++) {
+                if (polls >= RERUN_START_POLLS || this.deps.now() >= this.deadline) {
+                    blocked(`run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`);
+                }
+                await this.deps.sleep(pollMs);
+            }
         }
         return ready.length > 0;
     }
@@ -480,11 +605,12 @@ class Release {
      * Wait for the PR's checks under the ship merge rule (advisoryChecks never
      * block; config from loadShipConfig: user config + the base's committed
      * config), rerun failed runs once, then admin-merge when the owner allows
-     * it. Returns the merge commit sha.
+     * it; with `expectedHead`, only when the PR head is that commit. Returns
+     * the merge commit sha.
      */
-    async land(pr, base, phase) {
+    async land(pr, base, phase, expectedHead) {
         for (;;) {
-            const view = JSON.parse(this.must('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefOid,url,mergeCommit']));
+            const view = this.viewPr(pr);
             if (view.state === 'MERGED') {
                 const sha = view.mergeCommit?.oid;
                 if (!sha || !FULL_SHA.test(sha))
@@ -515,6 +641,9 @@ class Release {
                 onReport: (r) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
             });
             if (report.verdict === 'green') {
+                if (expectedHead && view.headRefOid !== expectedHead) {
+                    blocked(`PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expectedHead.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`);
+                }
                 const command = ['pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', view.headRefOid];
                 if (!config.allowAdminMerge || !config.trustedBases.includes(base)) {
                     blocked(`PR #${pr} is green; ship.allowAdminMerge is off or ${base} is not a trusted base, so run the merge yourself, then re-run omg release ${this.v} --from ${phase}`, [`gh ${command.join(' ')}`]);
@@ -532,7 +661,7 @@ class Release {
                 await this.deps.sleep(config.pollIntervalSeconds * 1000);
                 continue;
             }
-            if (this.rerunOnce(finished))
+            if (await this.rerunOnce(finished, phase, config.pollIntervalSeconds * 1000))
                 continue;
             fail(`PR #${pr}: CI failed after the one automatic rerun`, this.gateDetails(report));
         }
@@ -549,21 +678,37 @@ class Release {
                 return { status: 'ok', note: `${tag} already on origin at ${sha.slice(0, 12)}` };
             fail(`${tag} exists on origin at ${remote.commit.slice(0, 12)}${remote.annotated ? '' : ' (lightweight)'}, not the main merge commit ${sha.slice(0, 12)}`);
         }
-        this.must('git', ['fetch', 'origin', 'main']);
-        if (this.run('git', ['merge-base', '--is-ancestor', sha, 'refs/remotes/origin/main']).status !== 0)
+        const devMerge = this.state.devMergeSha;
+        if (!devMerge || !FULL_SHA.test(devMerge))
+            fail('no dev merge commit recorded; run the pr phase first');
+        this.must('git', ['fetch', 'origin', 'dev', 'main']);
+        if (!this.isAncestor(sha, 'refs/remotes/origin/main'))
             fail(`${sha.slice(0, 12)} is not on origin/main`);
+        if (!this.isAncestor(devMerge, sha))
+            fail(`the main merge ${sha.slice(0, 12)} does not contain the dev merge ${devMerge.slice(0, 12)}`);
+        const pkg = this.run('git', ['show', `${sha}:package.json`]);
+        let tagged;
+        try {
+            tagged = JSON.parse(pkg.stdout).version;
+        }
+        catch {
+            tagged = undefined;
+        }
+        if (pkg.status !== 0 || tagged !== v)
+            fail(`package.json on the main merge ${sha.slice(0, 12)} is ${tagged ?? 'unreadable'}, not ${v}`);
         const local = this.run('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`]);
         if (local.status === 0) {
             const problem = tagTargetProblem(tag, this.git('cat-file', '-t', `refs/tags/${tag}`), this.git('rev-parse', `refs/tags/${tag}^{}`), sha);
             if (problem)
                 fail(`a local ${tag} already exists and ${problem} (an upstream tag fetched by name?); delete it yourself (git tag -d ${tag}) and re-run`);
         }
-        else {
-            const smoke = this.state.phases.smoke?.status;
-            const warn = smoke === 'ok' ? '' : ` WARNING: the live Tier 2 smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}.`;
-            if (!this.opts.yes && !(await this.deps.confirm(`Create and push annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`))) {
-                blocked(`${tag} not created (confirm, or pass --yes)`);
-            }
+        const smoke = this.state.phases.smoke?.status;
+        const warn = smoke === 'ok' ? '' : ` WARNING: the live Tier 2 smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}.`;
+        const action = local.status === 0 ? 'Push the existing local' : 'Create and push';
+        if (!this.opts.yes && !(await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`))) {
+            blocked(`${tag} not pushed (confirm, or pass --yes)`);
+        }
+        if (local.status !== 0) {
             this.git('tag', '-a', tag, '-m', tag, sha);
             const problem = tagTargetProblem(tag, this.git('cat-file', '-t', `refs/tags/${tag}`), this.git('rev-parse', `refs/tags/${tag}^{}`), sha);
             if (problem)
@@ -578,10 +723,13 @@ class Release {
     async verify() {
         const v = this.v;
         const tag = `v${v}`;
+        const sha = this.state.mainMergeSha;
+        if (!sha || !FULL_SHA.test(sha))
+            fail('no main merge commit recorded; run the promote phase first');
         let run;
         for (;;) {
-            const runs = JSON.parse(this.must('gh', ['run', 'list', '--workflow', 'ci.yml', '--event', 'push', '--json', 'databaseId,headBranch,event,status,conclusion', '--limit', '30']) || '[]');
-            run = runs.filter((r) => r.headBranch === tag && (r.event ?? 'push') === 'push').sort((a, b) => b.databaseId - a.databaseId)[0];
+            const runs = JSON.parse(this.must('gh', ['run', 'list', '--workflow', 'ci.yml', '--event', 'push', '--commit', sha, '--json', 'databaseId,headBranch,headSha,event,status,conclusion', '--limit', '50']) || '[]');
+            run = runs.filter((r) => r.headBranch === tag && r.headSha === sha && (r.event ?? 'push') === 'push').sort((a, b) => b.databaseId - a.databaseId)[0];
             if (run)
                 this.save({ tagRunId: run.databaseId });
             if (run?.status === 'completed') {
@@ -589,10 +737,19 @@ class Release {
                     break;
                 const jobs = JSON.parse(this.must('gh', ['run', 'view', String(run.databaseId), '--json', 'jobs'])).jobs ?? [];
                 const failedJobs = jobs.filter((j) => j.conclusion && !['success', 'skipped'].includes(j.conclusion));
-                if (this.rerunOnce([String(run.databaseId)]))
+                const details = () => failedJobs.flatMap((j) => [`failed job: ${j.name}`, ...this.failingTestsOfJob(String(j.databaseId)).map((t) => `  ${t}`)]);
+                // Rerunning a run that already published would republish over the version and fail (runbook: Release Recovery).
+                if (this.run('npm', ['view', `${this.pkgName}@${v}`, 'version']).stdout.trim() === v) {
+                    fail(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+                        `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
+                        `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+                        `then re-run omg release ${v} --from verify`,
+                        ...details(),
+                    ]);
+                }
+                if (await this.rerunOnce([String(run.databaseId)], 'verify', 30_000))
                     continue;
-                const details = failedJobs.flatMap((j) => [`failed job: ${j.name}`, ...this.failingTestsOfJob(String(j.databaseId)).map((t) => `  ${t}`)]);
-                fail(`tag run ${run.databaseId} ${run.conclusion} after the one automatic rerun`, details);
+                fail(`tag run ${run.databaseId} ${run.conclusion} after the one automatic rerun`, details());
             }
             if (this.deps.now() >= this.deadline)
                 blocked(`tag run for ${tag} ${run ? `still ${run.status}` : 'not found yet'}; re-run omg release ${v} --from verify`);
@@ -630,7 +787,7 @@ class Release {
         return { status: 'ok', note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
     }
 }
-/** First phase to run: --from, else the first phase not yet ok / skipped in the state. */
+/** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */
 export function resumePoint(state, from) {
     if (from)
         return from;
@@ -659,6 +816,16 @@ export async function runRelease(deps, opts) {
     if (selected.length === 0) {
         deps.log(`release ${v}: every selected phase is already ok (state ${statePath}); pass --from <phase> to re-run one`);
         return { ok: true, version: v, dryRun: false, statePath, phases: [] };
+    }
+    // Skipping a phase (resume or --from) needs its recorded result to still hold; --from preflight starts over.
+    const skip = selected[0] === 'preflight' ? [] : release.skipProblems(selected[0]);
+    if (skip.length > 0) {
+        const note = `cannot start at ${selected[0]}: ${skip[0]}${skip.length > 1 ? ` (+${skip.length - 1} more)` : ''}; fix it, or re-run the phase with --from (--from preflight starts over)`;
+        deps.progress({ phase: selected[0], status: 'blocked', note });
+        deps.log(`[${selected[0]}] blocked: ${note}`);
+        for (const d of skip)
+            deps.log(`    ${d}`);
+        return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: 'blocked', note, details: skip }] };
     }
     for (const id of selected) {
         deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);

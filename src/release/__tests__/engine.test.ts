@@ -23,6 +23,7 @@ const BASE = '2'.repeat(40);
 const MERGE = '3'.repeat(40);
 const TAGOBJ = '4'.repeat(40);
 const OTHER = '5'.repeat(40);
+const DEVMERGE = '6'.repeat(40);
 const PR_URL = 'https://github.com/RobinNorberg/oh-my-copilot/pull/301';
 const ok = (stdout = ''): ExecResult => ({ status: 0, stdout, stderr: '' });
 const no = (stderr = 'failed', status = 1): ExecResult => ({ status, stdout: '', stderr });
@@ -70,11 +71,43 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     writeFileSync(join(root, rel), content);
   }
 
-  function seedState(okThrough: string, extra: Partial<ReleaseState> = {}): void {
+  function okPhases(okThrough: string): ReleaseState['phases'] {
     const phases: ReleaseState['phases'] = {};
     for (const id of PHASES.slice(0, PHASES.indexOf(okThrough as never) + 1)) phases[id] = { status: 'ok', note: 'seeded', at: '2026-10-21T11:00:00Z' };
+    return phases;
+  }
+
+  /** A state whose phases through `okThrough` passed, with the facts those phases leave behind (bumped package.json, release commit). */
+  function seedState(okThrough: string, extra: Partial<ReleaseState> = {}): void {
+    const through = PHASES.indexOf(okThrough as never);
+    if (through >= PHASES.indexOf('bump')) write('package.json', JSON.stringify({ name: 'oh-my-copilot', version: V }));
+    const facts = through >= PHASES.indexOf('commit') ? { headSha: HEAD } : {};
     mkdirSync(join(stateRoot, 'release'), { recursive: true });
-    writeFileSync(releaseStatePath(stateRoot, V), JSON.stringify({ version: 1, release: V, createdAt: 'x', updatedAt: 'x', phases, reruns: {}, ...extra }));
+    writeFileSync(releaseStatePath(stateRoot, V), JSON.stringify({ version: 1, release: V, createdAt: 'x', updatedAt: 'x', phases: okPhases(okThrough), reruns: {}, ...facts, ...extra }));
+  }
+
+  const prJson = (number: number, base: string, state: string, merge: string | null, head = HEAD) => JSON.stringify({
+    number, state, isDraft: false, baseRefName: base, baseRefOid: BASE, headRefOid: head, url: PR_URL, mergeCommit: merge ? { oid: merge } : null,
+  });
+
+  /** The release PR merged into dev at DEVMERGE, the promotion into main at MERGE, whose package.json is the release. */
+  const landed: Handler = (key) => {
+    if (key.startsWith('gh pr view 301 --json')) return ok(prJson(301, 'dev', 'MERGED', DEVMERGE));
+    if (key.startsWith('gh pr view 302 --json')) return ok(prJson(302, 'main', 'MERGED', MERGE));
+    if (key === `git show ${MERGE}:package.json`) return ok(`{"version":"${V}"}`);
+    return undefined;
+  };
+  const landedState = { devPr: 301, devMergeSha: DEVMERGE, mainPr: 302, mainMergeSha: MERGE };
+
+  /** Run attempts: `gh run rerun` starts attempt n+1 after `delay` further views. */
+  function attempts(delay = 0): Handler {
+    return (key, args) => {
+      if (!/^gh run view \d+ --json attempt$/.test(key)) return undefined;
+      const rerun = `gh run rerun ${args[2]} --failed`;
+      const reruns = calls.filter((c) => c === rerun).length;
+      const viewsSince = calls.slice(calls.lastIndexOf(rerun) + 1).filter((c) => c === key).length;
+      return ok(JSON.stringify({ attempt: reruns > 0 && viewsSince > delay ? 1 + reruns : Math.max(1, reruns) }));
+    };
   }
 
   /** A preflight that passes: clean tree on release/v5.12.2 over origin/dev 5.12.1. */
@@ -172,6 +205,32 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(calls.some((c) => c.startsWith('git commit'))).toBe(false);
       expect(resumePoint(readReleaseState(stateRoot, V))).toBe('gates');
     });
+
+    it('refuses --from past a phase that never passed', async () => {
+      seedState('gates');
+      const result = await release({ from: 'commit', to: 'commit' });
+      expect(result.phases).toEqual([expect.objectContaining({ id: 'commit', status: 'blocked' })]);
+      expect(result.phases[0].details).toContain('smoke: has not passed (run it: --from smoke)');
+      expect(calls.some((c) => c.startsWith('git commit') || c.startsWith('git add'))).toBe(false);
+    });
+
+    it('refuses a resume on another branch or a HEAD that does not descend from the release commit, unless --from preflight', async () => {
+      seedState('commit', { branch: `release/v${V}` });
+      handlers.push((key) => (key === 'git rev-parse --abbrev-ref HEAD' ? ok('feat/other\n') : undefined));
+      const onOther = await release({ to: 'pr' });
+      expect(onOther.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
+      expect(onOther.phases[0].details).toContain(`state: HEAD is feat/other, but this release state was recorded on release/v${V}`);
+
+      handlers = [(key) => (key === `git merge-base --is-ancestor ${HEAD} HEAD` ? no('', 1) : undefined), preflightOk];
+      const unrelated = await release({ to: 'pr' });
+      expect(unrelated.phases[0].details).toContain('state: HEAD does not descend from the recorded release commit 111111111111');
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr'))).toBe(false);
+
+      const over = await release({ from: 'preflight', to: 'preflight' });
+      expect(over.ok).toBe(true);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ branch: `release/v${V}` });
+      expect(readReleaseState(stateRoot, V)!.headSha).toBeUndefined();
+    });
   });
 
   describe('preflight refusals', () => {
@@ -207,6 +266,12 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     it('treats an unpublished package (E404) as no npm latest', async () => {
       handlers.push((key) => (key === 'npm view oh-my-copilot dist-tags.latest' ? no('npm error code E404') : undefined), preflightOk);
       expect((await release({ to: 'preflight' })).ok).toBe(true);
+    });
+
+    it('accepts a staged rename only when both sides are prose files', async () => {
+      handlers.push((key) => (key === 'git status --porcelain' ? ok('R  README.md -> docs/REFERENCE.md\nR  src/x.ts -> CHANGELOG.md\n') : undefined), preflightOk);
+      const result = await release({ to: 'preflight' });
+      expect(result.phases[0].details).toEqual(['working tree is not clean: src/x.ts -> CHANGELOG.md']);
     });
   });
 
@@ -261,6 +326,17 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
   });
 
+  describe('gates', () => {
+    it('--suite full never reads a stale report left by an earlier run', async () => {
+      seedState('build');
+      const report = join(stateRoot, 'release', `${V}-vitest.json`);
+      mkdirSync(dirname(report), { recursive: true });
+      writeFileSync(report, JSON.stringify({ testResults: [] }));
+      const result = await release({ to: 'gates', suite: 'full' });
+      expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/vitest wrote no JSON report/) });
+    });
+  });
+
   describe('smoke', () => {
     it('is skipped loudly without --live-smoke', async () => {
       seedState('gates');
@@ -296,6 +372,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const order = ['git commit -m chore(release): v5.12.2', 'node scripts/generate-inventory-graph.mjs --write', 'git commit -m chore(release): regenerate inventory for v5.12.2 -- inventory', 'node scripts/generate-inventory-graph.mjs --verify', 'git status --porcelain'];
       expect(order.map((c) => calls.indexOf(c))).toEqual([...order.map((c) => calls.indexOf(c))].sort((a, b) => a - b));
       expect(order.every((c) => calls.includes(c))).toBe(true);
+      expect(readReleaseState(stateRoot, V)!.headSha).toBe(HEAD);
     });
   });
 
@@ -306,21 +383,22 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       { name: 'Authorize generated artifacts from base trust root', state: advisoryState, link: 'https://github.com/o/r/actions/runs/78/job/90' },
     ]);
     let prState: string;
+    let prHead: string;
     let checksJson: string;
 
     beforeEach(() => {
       seedState('commit');
       prState = 'OPEN';
+      prHead = HEAD;
       checksJson = checks('FAILURE');
-      handlers.push((key) => {
+      handlers.push(attempts(), (key) => {
         if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return ok('[]');
         if (key.startsWith('gh pr create --base dev')) return ok(`${PR_URL}\n`);
-        if (key.startsWith('gh pr view 301 --json number,state')) {
-          return ok(JSON.stringify({ number: 301, state: prState, isDraft: false, baseRefName: 'dev', baseRefOid: BASE, headRefOid: HEAD, url: PR_URL, mergeCommit: prState === 'MERGED' ? { oid: MERGE } : null }));
-        }
-        if (key === 'gh pr view 301 --json headRefOid') return ok(JSON.stringify({ headRefOid: HEAD }));
+        if (key.startsWith('gh pr view 301 --json number,state')) return ok(prJson(301, 'dev', prState, prState === 'MERGED' ? MERGE : null, prHead));
+        if (key === 'git rev-parse HEAD') return ok(`${HEAD}\n`);
+        if (key === 'gh pr view 301 --json headRefOid') return ok(JSON.stringify({ headRefOid: prHead }));
         if (key.startsWith('gh pr checks 301')) return ok(checksJson);
-        if (key.startsWith(`gh run list --commit ${HEAD}`)) return ok('[{"databaseId":77,"status":"completed","conclusion":"failure","workflowName":"CI"}]');
+        if (key.startsWith(`gh run list --commit ${prHead}`)) return ok('[{"databaseId":77,"status":"completed","conclusion":"failure","workflowName":"CI"}]');
         if (key.startsWith('gh pr merge 301')) { prState = 'MERGED'; return ok(); }
         if (key === 'gh run view --job 88 --log') return ok('Test\tRun tests\t2026-10-21T12:00:00.000Z  FAIL  src/a.test.ts > suite > breaks\n');
         return undefined;
@@ -332,8 +410,43 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.ok).toBe(true);
       expect(calls).toContain('git push origin HEAD:refs/heads/release/v5.12.2');
       expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
-      expect(readReleaseState(stateRoot, V)!.devPr).toBe(301);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ devPr: 301, devMergeSha: MERGE });
       expect(events.some((e) => e.phase === 'pr' && e.status === 'heartbeat')).toBe(true);
+    });
+
+    it('pushes again on a re-run while the PR is open, and blocks on a refused push without forcing', async () => {
+      seedState('commit', { devPr: 301 });
+      handlers.unshift((key) => (key === 'git push origin HEAD:refs/heads/release/v5.12.2' ? no('! [rejected] HEAD -> release/v5.12.2 (fetch first)') : undefined));
+      const result = await release({ to: 'pr' });
+      expect(calls).toContain('git push origin HEAD:refs/heads/release/v5.12.2');
+      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/never force: git fetch origin release\/v5\.12\.2 && git merge/) });
+      expect(calls.some((c) => c.includes('--force') || c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('refuses to merge a PR whose head is not local HEAD', async () => {
+      prHead = OTHER;
+      const result = await release({ to: 'pr' });
+      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/head is 555555555555, not local HEAD 111111111111/) });
+      expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('waits for the rerun attempt to start before re-reading the checks', async () => {
+      shipBlock = { ...shipBlock, advisoryChecks: [] };
+      handlers.unshift(attempts(2));
+      await release({ to: 'pr' });
+      const rerun = calls.indexOf('gh run rerun 77 --failed');
+      const nextChecks = calls.findIndex((c, i) => i > rerun && c.startsWith('gh pr checks 301'));
+      const views = calls.slice(rerun, nextChecks).filter((c) => c === 'gh run view 77 --json attempt');
+      expect(rerun).toBeGreaterThan(-1);
+      expect(views).toHaveLength(3);
+    });
+
+    it('blocks when a rerun attempt never starts', async () => {
+      shipBlock = { ...shipBlock, advisoryChecks: [] };
+      handlers.unshift((key) => (key === 'gh run view 77 --json attempt' ? ok('{"attempt":1}') : undefined));
+      const result = await release({ to: 'pr' });
+      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/run 77 was rerun but attempt 2 has not started/) });
+      expect(calls.filter((c) => c.startsWith('gh run rerun'))).toEqual(['gh run rerun 77 --failed']);
     });
 
     it('treats the same checks as failures when the config allow-list omits them: one rerun, then the failing titles', async () => {
@@ -371,15 +484,44 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
   });
 
+  describe('promote: only a merged release', () => {
+    beforeEach(() => {
+      seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
+      handlers.push((key) => (key.startsWith('gh pr list --head dev --base main') ? ok('[{"number":302,"state":"OPEN"}]') : undefined), landed);
+    });
+
+    it('records the main merge when it contains the dev merge', async () => {
+      const result = await release({ to: 'promote' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`git merge-base --is-ancestor ${DEVMERGE} ${MERGE}`);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ mainPr: 302, mainMergeSha: MERGE, devMergeSha: DEVMERGE });
+    });
+
+    it('refuses --from promote while the release PR is not merged', async () => {
+      handlers.unshift((key) => (key.startsWith('gh pr view 301 --json') ? ok(prJson(301, 'dev', 'OPEN', null)) : undefined));
+      const result = await release({ from: 'promote', to: 'promote' });
+      expect(result.phases[0]).toMatchObject({ id: 'promote', status: 'blocked' });
+      expect(result.phases[0].details).toContain('pr: PR #301 is not merged, not at the recorded 666666666666 (--from pr)');
+      expect(calls.some((c) => c.startsWith('gh pr create') || c.startsWith('gh pr merge') || c.startsWith('gh pr list'))).toBe(false);
+    });
+
+    it('fails when the main merge does not contain the dev merge', async () => {
+      handlers.unshift((key) => (key === `git merge-base --is-ancestor ${DEVMERGE} ${MERGE}` ? no('', 1) : undefined));
+      const result = await release({ to: 'promote' });
+      expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/does not contain the dev merge 666666666666/) });
+      expect(readReleaseState(stateRoot, V)!.mainMergeSha).toBeUndefined();
+    });
+  });
+
   describe('tag: sha verification and confirmation', () => {
     let pushed: boolean;
     let localTag: { type: string; peeled: string } | null;
 
     beforeEach(() => {
-      seedState('promote', { devPr: 301, mainPr: 302, mainMergeSha: MERGE });
+      seedState('promote', landedState);
       pushed = false;
       localTag = null;
-      handlers.push((key) => {
+      handlers.push(landed, (key) => {
         if (key.startsWith('git ls-remote --tags origin')) return ok(pushed ? `${TAGOBJ}\trefs/tags/v${V}\n${MERGE}\trefs/tags/v${V}^{}\n` : '');
         if (key === `git merge-base --is-ancestor ${MERGE} refs/remotes/origin/main`) return ok();
         if (key === `git rev-parse -q --verify refs/tags/v${V}`) return localTag ? ok(TAGOBJ) : no('', 1);
@@ -399,9 +541,40 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
 
     it('warns in the confirmation when the live smoke was skipped', async () => {
-      seedState('promote', { mainMergeSha: MERGE, phases: { smoke: { status: 'skipped', note: '', at: '' } } });
+      seedState('promote', { ...landedState, phases: { ...okPhases('promote'), smoke: { status: 'skipped', note: '', at: '' } } });
       await release({ from: 'tag', to: 'tag' });
       expect(confirms[0]).toMatch(/WARNING: the live Tier 2 smoke was skipped/);
+    });
+
+    it('asks before pushing a matching local tag too', async () => {
+      localTag = { type: 'tag', peeled: MERGE };
+      const result = await release({ to: 'tag' });
+      expect(result.phases[0].status).toBe('blocked');
+      expect(confirms).toEqual([`Push the existing local annotated tag v${V} on main 333333333333? This publishes oh-my-copilot@${V} to npm.`]);
+      expect(calls.some((c) => c.startsWith('git push'))).toBe(false);
+    });
+
+    it('refuses to tag a main merge whose package.json is not the release version', async () => {
+      handlers.unshift((key) => (key === `git show ${MERGE}:package.json` ? ok('{"version":"5.12.1"}') : undefined));
+      const result = await release({ to: 'tag', yes: true });
+      expect(result.phases[0]).toMatchObject({ status: 'fail', note: `package.json on the main merge 333333333333 is 5.12.1, not ${V}` });
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+    });
+
+    it('refuses to tag a main merge that does not contain the dev merge', async () => {
+      handlers.unshift((key) => (key === `git merge-base --is-ancestor ${DEVMERGE} ${MERGE}` ? no('', 1) : undefined));
+      const result = await release({ from: 'tag', to: 'tag', yes: true });
+      expect(result.phases[0].status).not.toBe('ok');
+      expect(JSON.stringify(result.phases[0])).toMatch(/does not contain the dev merge 666666666666/);
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+    });
+
+    it('re-verifies the promotion before --from tag: a main PR merged elsewhere is refused', async () => {
+      handlers.unshift((key) => (key.startsWith('gh pr view 302 --json') ? ok(prJson(302, 'main', 'MERGED', OTHER)) : undefined));
+      const result = await release({ from: 'tag', to: 'tag', yes: true });
+      expect(result.phases[0]).toMatchObject({ id: 'tag', status: 'blocked' });
+      expect(result.phases[0].details).toContain('promote: PR #302 is merged at 555555555555, not at the recorded 333333333333 (--from promote)');
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
     });
 
     it('creates the annotated tag on the main merge commit, verifies it, pushes it and checks the remote', async () => {
@@ -428,22 +601,30 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
 
     it('needs the promote phase merge commit', async () => {
-      seedState('promote');
+      seedState('promote', { devPr: 301, devMergeSha: DEVMERGE });
       const result = await release({ to: 'tag', yes: true });
       expect(result.phases[0].note).toMatch(/no main merge commit recorded/);
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
     });
   });
 
   describe('verify', () => {
     let conclusion: string;
+    let published: boolean;
 
     beforeEach(() => {
-      seedState('tag', { mainMergeSha: MERGE });
+      seedState('tag', landedState);
       conclusion = 'failure';
-      handlers.push((key) => {
-        if (key.startsWith('gh run list --workflow ci.yml --event push')) {
-          return ok(JSON.stringify([{ databaseId: 900, headBranch: 'dev', event: 'push', status: 'completed', conclusion: 'success' }, { databaseId: 901, headBranch: `v${V}`, event: 'push', status: 'completed', conclusion }]));
+      published = false;
+      handlers.push(landed, attempts(), (key) => {
+        if (key.startsWith('git ls-remote --tags origin')) return ok(`${TAGOBJ}\trefs/tags/v${V}\n${MERGE}\trefs/tags/v${V}^{}\n`);
+        if (key.startsWith(`gh run list --workflow ci.yml --event push --commit ${MERGE}`)) {
+          return ok(JSON.stringify([
+            { databaseId: 900, headBranch: 'dev', headSha: MERGE, event: 'push', status: 'completed', conclusion: 'success' },
+            { databaseId: 901, headBranch: `v${V}`, headSha: MERGE, event: 'push', status: 'completed', conclusion },
+          ]));
         }
+        if (key === `npm view oh-my-copilot@${V} version`) return published ? ok(`${V}\n`) : no('npm error code E404');
         if (key === 'gh run rerun 901 --failed') { conclusion = 'success'; return ok(); }
         if (key === 'gh run view 901 --json jobs') {
           return ok(JSON.stringify({ jobs: [{ databaseId: 5, name: 'Create GitHub Release', conclusion }, { databaseId: 6, name: 'Copilot smoke (tier 2)', conclusion: 'success' }] }));
@@ -477,6 +658,28 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       handlers.unshift((key) => (key.startsWith(`npm view oh-my-copilot@${V}`) ? ok(JSON.stringify({ version: V, 'dist-tags.latest': '5.12.1' })) : undefined));
       const result = await release({ to: 'verify' });
       expect(result.phases[0].details).toEqual(['npm dist-tags.latest is "5.12.1", not 5.12.2', 'npm reports no dist.attestations (SLSA provenance)']);
+    });
+
+    it('does not rerun a failed tag run whose version is already on npm, and points at Release Recovery', async () => {
+      published = true;
+      const result = await release({ to: 'verify' });
+      expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/oh-my-copilot@5\.12\.2 is already on npm: not rerun/) });
+      expect(result.phases[0].details!.join('\n')).toMatch(/Release Recovery workflow \(release\.yml/);
+      expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+    });
+
+    it('takes the tag run of the main merge commit, not another run on the tag name', async () => {
+      conclusion = 'success';
+      handlers.unshift((key) => (key.startsWith('gh run list --workflow ci.yml')
+        ? ok(JSON.stringify([
+          { databaseId: 902, headBranch: `v${V}`, headSha: OTHER, event: 'push', status: 'completed', conclusion: 'failure' },
+          { databaseId: 901, headBranch: `v${V}`, headSha: MERGE, event: 'push', status: 'completed', conclusion: 'success' },
+        ]))
+        : undefined));
+      const result = await release({ to: 'verify' });
+      expect(result.ok).toBe(true);
+      expect(readReleaseState(stateRoot, V)!.tagRunId).toBe(901);
+      expect(calls.find((c) => c.startsWith('gh run list'))).toContain(`--commit ${MERGE}`);
     });
   });
 });

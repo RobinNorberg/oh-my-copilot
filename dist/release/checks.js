@@ -44,10 +44,13 @@ export function releaseProseProblems(version, changelog, releaseBody) {
         problems.push(`.github/release-body.md does not mention ${version}`);
     return problems;
 }
-/** Files and the version pattern each one carries; mirrors scripts/sync-version.sh plus the stamps it does not cover. */
+/**
+ * Files and the version pattern each one carries; mirrors scripts/sync-version.sh plus the stamps it does not cover.
+ * The plugin manifests carry one top-level "version" first, so only the first match is replaced (a nested one stays).
+ */
 export const VERSION_STAMPS = [
-    { file: '.claude-plugin/plugin.json', pattern: /"version": "[^"]*"/g, replace: (v) => `"version": "${v}"` },
-    { file: 'plugin.json', pattern: /"version": "[^"]*"/g, replace: (v) => `"version": "${v}"` },
+    { file: '.claude-plugin/plugin.json', pattern: /"version": "[^"]*"/, replace: (v) => `"version": "${v}"` },
+    { file: 'plugin.json', pattern: /"version": "[^"]*"/, replace: (v) => `"version": "${v}"` },
     { file: '.claude-plugin/marketplace.json', pattern: /"version": "[^"]*"/g, replace: (v) => `"version": "${v}"` },
     { file: 'docs/CLAUDE.md', pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
     { file: 'CLAUDE.md', pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
