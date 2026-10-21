@@ -19,12 +19,13 @@
  * (`RuntimeConnection.forStdio({ path })`), never the SDK's bundled runtime.
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
+import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { excerpt } from './copilot-session-eval.js';
-import { chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
 // ---------------------------------------------------------------------------
 // Loading
@@ -287,6 +288,68 @@ export function prepareSdkProject(spawnSync, projectDir, remoteDir, env) {
             return `git ${args.join(' ')}: ${excerpt(`${res.stderr ?? ''}${res.error?.message ?? ''}`, 200) || `exit ${res.status}`}`;
     }
     return null;
+}
+/**
+ * filetools: the fixture under the sandbox project (notes.txt, a README.md
+ * carrying a fresh nonce) and a probe plugin under the home whose hook entries
+ * ({@link probeHooksJson}) append their stdin payloads to `probe.jsonl`.
+ */
+export function prepareFiletools(projectDir, home, node = process.execPath) {
+    const nonce = `omg-dirctx-${randomBytes(6).toString('hex')}`;
+    const writeNonce = `omg-dirctx-${randomBytes(6).toString('hex')}`;
+    mkdirSync(join(projectDir, dirname(FILETOOLS_FILES.writeContext)), { recursive: true });
+    writeFileSync(join(projectDir, FILETOOLS_FILES.notes), 'status: draft\n');
+    writeFileSync(join(projectDir, FILETOOLS_FILES.context), `# Filetools fixture\n\n${FILETOOLS_MARKER} ${nonce}\n`);
+    writeFileSync(join(projectDir, FILETOOLS_FILES.writeContext), `# Filetools new files\n\n${FILETOOLS_MARKER} ${writeNonce}\n`);
+    const probeDir = join(home, 'filetools-probe');
+    const probeLog = join(home, 'filetools-probe.jsonl');
+    const script = join(probeDir, 'probe.cjs');
+    mkdirSync(probeDir, { recursive: true });
+    writeFileSync(join(probeDir, 'plugin.json'), `${JSON.stringify({ name: 'omg-smoke-probe', version: '0.0.0', description: 'omg smoke filetools hook probe', hooks: './hooks.json' }, null, 2)}\n`);
+    writeFileSync(join(probeDir, 'hooks.json'), `${JSON.stringify(probeHooksJson(node, script, probeLog), null, 2)}\n`);
+    writeFileSync(script, [
+        "'use strict';",
+        "const fs = require('fs');",
+        'const [label, log] = process.argv.slice(2);',
+        'const chunks = [];',
+        "process.stdin.on('data', (c) => chunks.push(c));",
+        "process.stdin.on('end', () => {",
+        "  const raw = Buffer.concat(chunks).toString('utf8');",
+        '  let payload = null;',
+        '  try { payload = JSON.parse(raw); } catch { /* recorded as null */ }',
+        "  fs.appendFileSync(log, JSON.stringify({ label, payload }) + '\\n');",
+        '});',
+        '',
+    ].join('\n'));
+    return { nonce, writeNonce, probeDir, probeLog };
+}
+/** What the filetools turn left behind: the probe records and the fixture's state. */
+export function collectFiletools(projectDir, probe) {
+    let records = [];
+    try {
+        records = readFileSync(probe.probeLog, 'utf-8').split(/\r?\n/).filter(Boolean).flatMap((line) => {
+            try {
+                return [JSON.parse(line)];
+            }
+            catch {
+                return [];
+            }
+        });
+    }
+    catch { /* no hook ran */ }
+    const read = (rel) => { try {
+        return readFileSync(join(projectDir, rel), 'utf-8');
+    }
+    catch {
+        return null;
+    } };
+    return {
+        nonce: probe.nonce,
+        writeNonce: probe.writeNonce,
+        probe: records,
+        edited: /^status: done\s*$/m.test(read(FILETOOLS_FILES.notes) ?? ''),
+        created: read(FILETOOLS_FILES.created) !== null,
+    };
 }
 function remoteRefs(spawnSync, remoteDir, env) {
     const res = spawnSync('git', ['--git-dir', remoteDir, 'for-each-ref'], { env, encoding: 'utf8', timeout: 30_000, windowsHide: true });
@@ -570,7 +633,10 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     let wedged = false;
     let spent = 0;
     let error;
+    let probe;
     try {
+        if (name === 'filetools')
+            probe = prepareFiletools(input.projectDir, input.home);
         session = await withTimeout(client.createSession({
             onPermissionRequest: (req) => (spec.permit(req, permitCtx) ? { kind: 'approve-once' } : reject(`omg smoke ${name}: ${req.kind ?? 'request'} not permitted`)),
             onEvent: (event) => {
@@ -585,7 +651,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
                     onCap();
                 }
             },
-            pluginDirectories: [input.root],
+            pluginDirectories: probe ? [input.root, probe.probeDir] : [input.root],
             workingDirectory: input.projectDir,
             disabledMcpServers: ['github-mcp-server'],
             excludedTools: scenarioExcludedTools(name, input.mcpServer),
@@ -644,6 +710,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
         timeoutMs: input.timeoutMs,
         ...(error ? { error } : {}),
         ...(name === 'guardrail' ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {}),
+        ...(probe ? { filetools: collectFiletools(input.projectDir, probe) } : {}),
         model: modelLabel,
         maxCredits: input.maxCredits,
         budget,

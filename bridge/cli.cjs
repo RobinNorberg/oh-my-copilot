@@ -91674,6 +91674,11 @@ function permitScopedRead(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder((0, import_path115.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+}
 function evaluateTeam(run) {
   const team = run.team;
   if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : "no team evidence collected" }));
@@ -91806,6 +91811,121 @@ function evaluateChain(run) {
     }
   ];
 }
+function probeHooksJson(node, script, log3) {
+  const hooks = {};
+  for (const e of PROBE_ENTRIES) {
+    (hooks[e.event] ??= []).push({
+      type: "command",
+      ..."matcher" in e ? { matcher: e.matcher } : {},
+      exec: node,
+      args: [script, e.label, log3],
+      timeoutSec: 10
+    });
+  }
+  return { version: 1, hooks };
+}
+function fileToolCalls(events) {
+  const done = new Map(events.filter((e) => e.type === "tool.execution_complete").map((e) => [str2(e.data?.toolCallId), e.data?.success === true]));
+  return events.filter((e) => e.type === "tool.execution_start" && [...FILE_READ_TOOLS, ...FILE_WRITE_TOOLS].includes(str2(e.data?.toolName))).map((e) => ({ id: str2(e.data?.toolCallId), name: str2(e.data?.toolName), args: e.data?.arguments, ok: done.get(str2(e.data?.toolCallId)) === true }));
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function inputPaths(input) {
+  if (typeof input === "string") return [...input.matchAll(PATCH_FILE_LINE)].map((m) => m[1]);
+  const o = asObject(input);
+  const p = o ? str2(o.file_path) || str2(o.path) : "";
+  return p ? [p] : [];
+}
+function probeTool(r) {
+  const p = r.payload ?? {};
+  return { name: str2(p.tool_name) || str2(p.toolName), input: p.tool_input ?? p.toolArgs };
+}
+function inputKey(input) {
+  if (typeof input === "string") return `text:${input}`;
+  const o = asObject(input);
+  return o ? JSON.stringify(o, Object.keys(o).sort()) : "";
+}
+function recordsFor(call, records2, label) {
+  const want = inputKey(call.args);
+  return want ? records2.filter((r) => r.label === label && inputKey(probeTool(r).input) === want) : [];
+}
+function toolResultTexts(events, callId) {
+  const out = [];
+  for (const e of events) {
+    if (str2(e.data?.toolCallId) !== callId) continue;
+    if (e.type === "tool.execution_complete") out.push(str2(asObject(e.data?.result)?.content));
+    if (e.type === "model.tool_execution") out.push(str2(asObject(e.data?.toolResult)?.textResultForLlm));
+  }
+  return out.filter(Boolean);
+}
+function evaluateFiletools(run) {
+  const ft = run.filetools;
+  const ids = scenarioCheckIds("filetools");
+  if (!ft) return ids.slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no filetools evidence: ${excerpt(run.error, 200)}` : "no filetools evidence collected" }));
+  const calls = fileToolCalls(run.events).filter((c) => c.ok);
+  const reads = calls.filter((c) => FILE_READ_TOOLS.includes(c.name));
+  const writes = calls.filter((c) => FILE_WRITE_TOOLS.includes(c.name));
+  const toolsOk = reads.length > 0 && writes.length > 0 && ft.edited && ft.created;
+  const seen = (claudeLabel, nativeLabel) => {
+    const rows = calls.map((c) => ({ c, claude: recordsFor(c, ft.probe, claudeLabel), native: nativeLabel ? recordsFor(c, ft.probe, nativeLabel) : [] }));
+    const ok = calls.length > 0 && rows.every((r) => r.claude.length > 0 && (!nativeLabel || r.native.length > 0));
+    const names = (recs) => [...new Set(recs.map((x) => probeTool(x).name || "?"))].join("/") || "none";
+    const detail = rows.map((r) => `${r.c.name}\u2192${names(r.claude)}${nativeLabel ? ` (native ${names(r.native)})` : ""}`).join(", ") || "no file tool calls";
+    return { ok, detail, rows };
+  };
+  const pre = seen("PreToolUse", "preToolUse");
+  const post = seen("PostToolUse", "postToolUse");
+  const matcher = seen("PostToolUse:matcher");
+  const claudeNames = new Set(FILE_TOOL_MATCHER.split("|"));
+  const payloadRows = [...pre.rows, ...post.rows];
+  const payloadOk = calls.length > 0 && payloadRows.every((r) => r.claude.every((x) => claudeNames.has(probeTool(x).name) && inputPaths(probeTool(x).input).length > 0) && r.native.every((x) => probeTool(x).name === r.c.name));
+  const shape = (recs) => {
+    if (!recs[0]) return "none";
+    const { name, input } = probeTool(recs[0]);
+    return typeof input === "string" ? `${name} "<patch: ${inputPaths(input).map((p) => p.split(/[\\/]/).slice(-2).join("/")).join(", ")}>"` : `${name} {${Object.keys(asObject(input) ?? {}).join(",")}}`;
+  };
+  const contextCall = (c) => inputPaths(c.args).some((p) => /readme\.md$/i.test(p));
+  const injection = (nonce, from) => {
+    const hookOut = run.events.some((e) => e.type === "hook.end" && e.data?.hookType === "postToolUse" && JSON.stringify(e.data?.output ?? "").includes(nonce));
+    const carrier = from.find((c) => !contextCall(c) && toolResultTexts(run.events, c.id).some((t) => t.includes(nonce)));
+    return {
+      ok: hookOut && !!carrier,
+      detail: `nonce ${hookOut ? "in" : "missing from"} a postToolUse hook.end output; ${carrier ? `in the ${carrier.name} tool result sent to the model` : "in no model-facing tool result"}`
+    };
+  };
+  const read = injection(ft.nonce, reads);
+  const write = injection(ft.writeNonce, writes);
+  const echoed = assistantText2(run.events).includes(ft.nonce);
+  return [
+    {
+      id: "scn.filetools.tools",
+      ok: toolsOk,
+      detail: `${calls.map((c) => c.name).join(", ") || "no file tool calls"} completed; notes.txt ${ft.edited ? "edited" : "unchanged"}, created.txt ${ft.created ? "created" : "missing"}`
+    },
+    hookCheck("scn.filetools.hooks", run.events, ["preToolUse", "postToolUse"]),
+    { id: "scn.filetools.pre", ok: pre.ok, detail: `PreToolUse probe: ${pre.detail}` },
+    { id: "scn.filetools.post", ok: post.ok, detail: `PostToolUse probe: ${post.detail}` },
+    { id: "scn.filetools.matcher", ok: matcher.ok, detail: `PostToolUse matcher ${FILE_TOOL_MATCHER}: ${matcher.detail}` },
+    {
+      id: "scn.filetools.payload",
+      ok: payloadOk,
+      detail: post.rows.map((r) => `${r.c.name}: tool_name ${shape(r.claude)}`).join("; ") || "no file tool calls",
+      ...payloadOk ? {} : { evidence: excerpt(JSON.stringify(payloadRows.map((r) => ({ call: r.c.name, claude: r.claude.map(probeTool), native: r.native.map(probeTool) })))) }
+    },
+    {
+      id: "scn.filetools.injected",
+      ok: read.ok,
+      detail: `${FILETOOLS_FILES.context} ${read.detail}; model ${echoed ? "echoed it" : "did not echo it"}`,
+      ...read.ok ? {} : { evidence: excerpt(assistantText2(run.events)) }
+    },
+    {
+      id: "scn.filetools.injected_write",
+      ok: write.ok,
+      detail: `${FILETOOLS_FILES.writeContext} ${write.detail}`
+    }
+  ];
+}
 function scenarioExcludedTools(name, mcpServer) {
   return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
 }
@@ -91815,6 +91935,7 @@ function scenarioCheckIds(name) {
     guardrail: ["denied", "no_push", "hooks"],
     skill: ["invoked"],
     delegate: ["selected", "hooks", "completed"],
+    filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
     chain: ["link1", "spawned", "inherited", "closed", "premium"],
     team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"]
   };
@@ -92111,6 +92232,7 @@ function evaluateScenario(run) {
     guardrail: evaluateGuardrail,
     skill: evaluateSkill,
     delegate: evaluateDelegate,
+    filetools: evaluateFiletools,
     chain: evaluateChain,
     team: evaluateTeam
   }[run.name](run);
@@ -92124,7 +92246,7 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs92, import_path115, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs92, import_path115, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -92132,7 +92254,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path115 = require("path");
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
@@ -92144,6 +92266,21 @@ var init_copilot_sdk_scenarios = __esm({
     NO_WRITE_TOOLS = ["create", "edit"];
     denyAll = () => false;
     GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+    FILETOOLS_DIR = "filetools";
+    FILETOOLS_FILES = {
+      notes: `${FILETOOLS_DIR}/notes.txt`,
+      created: `${FILETOOLS_DIR}/new/created.txt`,
+      /**
+       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+       * README once per session, so the read (view of notes.txt) and the write
+       * (creating created.txt) each get their own.
+       */
+      context: `${FILETOOLS_DIR}/README.md`,
+      writeContext: `${FILETOOLS_DIR}/new/README.md`
+    };
+    FILETOOLS_MARKER = "Context marker:";
+    FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -92172,6 +92309,19 @@ var init_copilot_sdk_scenarios = __esm({
         prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
+      },
+      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+      filetools: {
+        name: "filetools",
+        prompt: [
+          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+          `1. View ${FILETOOLS_FILES.notes}.`,
+          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+        ].join("\n"),
+        excludedTools: ["powershell", "shell"],
+        permit: permitProjectFiles
       },
       // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
       // factory link (copilot-chain-scenario.ts) under the AFK profile.
@@ -92204,6 +92354,16 @@ var init_copilot_sdk_scenarios = __esm({
     CHAIN_LINK2_STAGE = "link-2";
     CHAIN_MAX_PREMIUM_REQUESTS = 2;
     ledgerStr = (ledger, key) => str2(ledger?.[key]);
+    PROBE_ENTRIES = [
+      { event: "PreToolUse", label: "PreToolUse" },
+      { event: "PostToolUse", label: "PostToolUse" },
+      { event: "PostToolUse", label: "PostToolUse:matcher", matcher: FILE_TOOL_MATCHER },
+      { event: "preToolUse", label: "preToolUse" },
+      { event: "postToolUse", label: "postToolUse" }
+    ];
+    FILE_READ_TOOLS = ["view"];
+    FILE_WRITE_TOOLS = ["create", "edit", "str_replace_editor", "apply_patch"];
+    PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
     SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
     RUNTIME_MIN_MAX_CREDITS = 30;
     CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
@@ -92311,9 +92471,11 @@ __export(copilot_sdk_driver_exports, {
   DEFAULT_SCENARIO_TIMEOUT_MS: () => DEFAULT_SCENARIO_TIMEOUT_MS,
   RUNTIME_WEDGED_DETAIL: () => RUNTIME_WEDGED_DETAIL,
   SDK_MIN_VERSION: () => SDK_MIN_VERSION,
+  collectFiletools: () => collectFiletools,
   globalModuleRoots: () => globalModuleRoots,
   importFromDir: () => importFromDir,
   loadCopilotSdk: () => loadCopilotSdk,
+  prepareFiletools: () => prepareFiletools,
   prepareSdkProject: () => prepareSdkProject,
   resolveShimTarget: () => resolveShimTarget,
   runSdkTier: () => runSdkTier,
@@ -92516,6 +92678,70 @@ function prepareSdkProject(spawnSync17, projectDir, remoteDir, env2) {
     if (res.status !== 0) return `git ${args.join(" ")}: ${excerpt(`${res.stderr ?? ""}${res.error?.message ?? ""}`, 200) || `exit ${res.status}`}`;
   }
   return null;
+}
+function prepareFiletools(projectDir, home, node = process.execPath) {
+  const nonce = `omg-dirctx-${(0, import_crypto33.randomBytes)(6).toString("hex")}`;
+  const writeNonce = `omg-dirctx-${(0, import_crypto33.randomBytes)(6).toString("hex")}`;
+  (0, import_fs93.mkdirSync)((0, import_path116.join)(projectDir, (0, import_path116.dirname)(FILETOOLS_FILES.writeContext)), { recursive: true });
+  (0, import_fs93.writeFileSync)((0, import_path116.join)(projectDir, FILETOOLS_FILES.notes), "status: draft\n");
+  (0, import_fs93.writeFileSync)((0, import_path116.join)(projectDir, FILETOOLS_FILES.context), `# Filetools fixture
+
+${FILETOOLS_MARKER} ${nonce}
+`);
+  (0, import_fs93.writeFileSync)((0, import_path116.join)(projectDir, FILETOOLS_FILES.writeContext), `# Filetools new files
+
+${FILETOOLS_MARKER} ${writeNonce}
+`);
+  const probeDir = (0, import_path116.join)(home, "filetools-probe");
+  const probeLog = (0, import_path116.join)(home, "filetools-probe.jsonl");
+  const script = (0, import_path116.join)(probeDir, "probe.cjs");
+  (0, import_fs93.mkdirSync)(probeDir, { recursive: true });
+  (0, import_fs93.writeFileSync)((0, import_path116.join)(probeDir, "plugin.json"), `${JSON.stringify({ name: "omg-smoke-probe", version: "0.0.0", description: "omg smoke filetools hook probe", hooks: "./hooks.json" }, null, 2)}
+`);
+  (0, import_fs93.writeFileSync)((0, import_path116.join)(probeDir, "hooks.json"), `${JSON.stringify(probeHooksJson(node, script, probeLog), null, 2)}
+`);
+  (0, import_fs93.writeFileSync)(script, [
+    "'use strict';",
+    "const fs = require('fs');",
+    "const [label, log] = process.argv.slice(2);",
+    "const chunks = [];",
+    "process.stdin.on('data', (c) => chunks.push(c));",
+    "process.stdin.on('end', () => {",
+    "  const raw = Buffer.concat(chunks).toString('utf8');",
+    "  let payload = null;",
+    "  try { payload = JSON.parse(raw); } catch { /* recorded as null */ }",
+    "  fs.appendFileSync(log, JSON.stringify({ label, payload }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  return { nonce, writeNonce, probeDir, probeLog };
+}
+function collectFiletools(projectDir, probe) {
+  let records2 = [];
+  try {
+    records2 = (0, import_fs93.readFileSync)(probe.probeLog, "utf-8").split(/\r?\n/).filter(Boolean).flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+  }
+  const read = (rel) => {
+    try {
+      return (0, import_fs93.readFileSync)((0, import_path116.join)(projectDir, rel), "utf-8");
+    } catch {
+      return null;
+    }
+  };
+  return {
+    nonce: probe.nonce,
+    writeNonce: probe.writeNonce,
+    probe: records2,
+    edited: /^status: done\s*$/m.test(read(FILETOOLS_FILES.notes) ?? ""),
+    created: read(FILETOOLS_FILES.created) !== null
+  };
 }
 function remoteRefs(spawnSync17, remoteDir, env2) {
   const res = spawnSync17("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
@@ -92765,7 +92991,9 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
   let wedged = false;
   let spent = 0;
   let error2;
+  let probe;
   try {
+    if (name === "filetools") probe = prepareFiletools(input.projectDir, input.home);
     session = await withTimeout(client.createSession({
       onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
       onEvent: (event) => {
@@ -92778,7 +93006,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
           onCap();
         }
       },
-      pluginDirectories: [input.root],
+      pluginDirectories: probe ? [input.root, probe.probeDir] : [input.root],
       workingDirectory: input.projectDir,
       disabledMcpServers: ["github-mcp-server"],
       excludedTools: scenarioExcludedTools(name, input.mcpServer),
@@ -92832,6 +93060,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     timeoutMs: input.timeoutMs,
     ...error2 ? { error: error2 } : {},
     ...name === "guardrail" ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {},
+    ...probe ? { filetools: collectFiletools(input.projectDir, probe) } : {},
     model: modelLabel,
     maxCredits: input.maxCredits,
     budget,
@@ -92839,11 +93068,12 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     wedged
   };
 }
-var import_child_process28, import_fs93, import_module3, import_path116, import_url14, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep6, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process28, import_crypto33, import_fs93, import_module3, import_path116, import_url14, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep6, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
     import_child_process28 = require("child_process");
+    import_crypto33 = require("crypto");
     import_fs93 = require("fs");
     import_module3 = require("module");
     import_path116 = require("path");
@@ -98763,7 +98993,7 @@ function readOperationFileNoFollow(operations, name) {
 }
 function writeOperationFileAtomically(operations, name, contents) {
   assertSafeContainedFileName(name);
-  const temporary = `${name}.tmp.${(0, import_crypto33.randomBytes)(6).toString("hex")}`;
+  const temporary = `${name}.tmp.${(0, import_crypto34.randomBytes)(6).toString("hex")}`;
   const fd = operations.open(
     temporary,
     import_fs97.constants.O_WRONLY | import_fs97.constants.O_CREAT | import_fs97.constants.O_EXCL | (import_fs97.constants.O_NONBLOCK ?? 0),
@@ -98863,11 +99093,11 @@ function guardedOperations(fd, checkActive) {
     }
   };
 }
-var import_crypto33, import_fs97, import_path121, NO_FOLLOW, UNSAFE_CONTROL, WINDOWS_DEVICE_NAME;
+var import_crypto34, import_fs97, import_path121, NO_FOLLOW, UNSAFE_CONTROL, WINDOWS_DEVICE_NAME;
 var init_safe_fs = __esm({
   "src/graph/runtime/safe-fs.ts"() {
     "use strict";
-    import_crypto33 = require("crypto");
+    import_crypto34 = require("crypto");
     import_fs97 = require("fs");
     import_path121 = require("path");
     init_contained_fd();
@@ -99759,7 +99989,7 @@ function startReplyListener(_config) {
     child.unref();
     const pid = child.pid;
     if (pid) {
-      const generation = (0, import_crypto34.randomUUID)();
+      const generation = (0, import_crypto35.randomUUID)();
       writePidFile({ pid, generation });
       const state = {
         isRunning: true,
@@ -99932,7 +100162,7 @@ function processSlackSocketMessage(rawMessage, connectionState, paneId, config2,
   }
   return { injected: success, validation };
 }
-var import_fs99, import_path123, import_url16, import_child_process29, import_crypto34, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, APPROVAL_APPROVE_WORDS, APPROVAL_DENY_WORDS, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
+var import_fs99, import_path123, import_url16, import_child_process29, import_crypto35, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, APPROVAL_APPROVE_WORDS, APPROVAL_DENY_WORDS, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
 var init_reply_listener = __esm({
   "src/notifications/reply-listener.ts"() {
     "use strict";
@@ -99940,7 +100170,7 @@ var init_reply_listener = __esm({
     import_path123 = require("path");
     import_url16 = require("url");
     import_child_process29 = require("child_process");
-    import_crypto34 = require("crypto");
+    import_crypto35 = require("crypto");
     init_tmux_utils();
     import_https2 = require("https");
     init_daemon_module_path();
@@ -100846,7 +101076,7 @@ function reschedulePendingWorker(payload, job) {
 }
 async function processSessionEndWorker(payload) {
   const deadlineAt = Date.now() + MAX_WORKER_MS;
-  const nonce = (0, import_crypto35.randomUUID)();
+  const nonce = (0, import_crypto36.randomUUID)();
   const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 2500));
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
@@ -100935,12 +101165,12 @@ function reconcileSessionEndJobs(directory, sessionIds) {
     if (ticket.nonce && !spawned) releaseSessionEndDiscoveryTicket(directory, ticket.sessionId, ticket.nonce, false);
   }
 }
-var import_child_process30, import_crypto35, import_url17, WORKER_ARG, MAX_WORKER_MS, COPILOT_PERMISSION_ENV2, workerIndex;
+var import_child_process30, import_crypto36, import_url17, WORKER_ARG, MAX_WORKER_MS, COPILOT_PERMISSION_ENV2, workerIndex;
 var init_worker = __esm({
   "src/hooks/session-end/worker.ts"() {
     "use strict";
     import_child_process30 = require("child_process");
-    import_crypto35 = require("crypto");
+    import_crypto36 = require("crypto");
     import_url17 = require("url");
     init_cleanup_manifest();
     init_action_runner();
@@ -108561,7 +108791,7 @@ function clearRateLimitBackoff(cache, rateLimitIdentity) {
   return Object.keys(backoffs).length > 0 ? backoffs : void 0;
 }
 function hashCredentialIdentity(identity) {
-  return (0, import_crypto39.createHash)("sha256").update(identity).digest("hex");
+  return (0, import_crypto40.createHash)("sha256").update(identity).digest("hex");
 }
 function getOAuthAccountProfileIdentity(credentials) {
   const nestedAccount = credentials.oauthAccount;
@@ -108764,7 +108994,7 @@ function createRateLimitedCacheEntry(source, data, pollIntervalMs, previousCount
 function getKeychainServiceName() {
   const configDir = process.env.COPILOT_HOME;
   if (configDir) {
-    const hash = (0, import_crypto39.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
+    const hash = (0, import_crypto40.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
     return `Claude Code-credentials-${hash}`;
   }
   return "Claude Code-credentials";
@@ -109956,7 +110186,7 @@ async function getUsage(opts) {
     return { rateLimits: null, error: "network" };
   }
 }
-var import_fs130, import_path156, import_child_process38, import_crypto39, import_os25, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, OMC_USAGE_PROFILE_ID_FIELD, OMC_USAGE_PROFILE_TOKEN_HASH_FIELD, DEFAULT_OAUTH_CLIENT_ID, storedCredentialCache, storedCredentialLookupGeneration, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, RATE_LIMIT_PROBE_MODEL, KIMI_FIVE_HOUR_WINDOW_MINUTES;
+var import_fs130, import_path156, import_child_process38, import_crypto40, import_os25, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, OMC_USAGE_PROFILE_ID_FIELD, OMC_USAGE_PROFILE_TOKEN_HASH_FIELD, DEFAULT_OAUTH_CLIENT_ID, storedCredentialCache, storedCredentialLookupGeneration, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, RATE_LIMIT_PROBE_MODEL, KIMI_FIVE_HOUR_WINDOW_MINUTES;
 var init_usage_api = __esm({
   "src/hud/usage-api.ts"() {
     "use strict";
@@ -109964,7 +110194,7 @@ var init_usage_api = __esm({
     init_config_dir();
     import_path156 = require("path");
     import_child_process38 = require("child_process");
-    import_crypto39 = require("crypto");
+    import_crypto40 = require("crypto");
     import_os25 = require("os");
     import_https3 = __toESM(require("https"), 1);
     init_ssrf_guard();
@@ -111056,9 +111286,9 @@ var init_watchdog = __esm({
 function verifySignature(secret, rawBody, signatureHeader) {
   if (!signatureHeader?.startsWith("sha256=")) return false;
   const provided = signatureHeader.slice("sha256=".length);
-  const expected = (0, import_crypto41.createHmac)("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const expected = (0, import_crypto42.createHmac)("sha256", secret).update(rawBody, "utf8").digest("hex");
   if (provided.length !== expected.length) return false;
-  return (0, import_crypto41.timingSafeEqual)(Buffer.from(provided, "utf8"), Buffer.from(expected, "utf8"));
+  return (0, import_crypto42.timingSafeEqual)(Buffer.from(provided, "utf8"), Buffer.from(expected, "utf8"));
 }
 function routeTrackerEvent(event, whitelist, table = INTAKE_ROUTE_TABLE) {
   const repo = event.repository?.full_name;
@@ -111132,7 +111362,7 @@ function spawnChainLink(req) {
     req.audit({ kind: "discarded", reason: `guardrail: ${slot.reason}`, detail: slot.detail, intentId: req.intentId });
     return { status: 204, kind: "discarded", detail: `guardrail ${slot.reason}: ${slot.detail}` };
   }
-  const nextSessionId = (0, import_crypto41.randomUUID)();
+  const nextSessionId = (0, import_crypto42.randomUUID)();
   const includeUserSettings = process.env[AFK_INCLUDE_USER_SETTINGS_ENV] === "1";
   const args = factoryLinkArgv(req.prompt, nextSessionId, [], [], includeUserSettings, req.config.cwd);
   const command = factoryLinkCommand();
@@ -111291,11 +111521,11 @@ async function handleRequest(req, res, config2, deps, startedAt) {
 function hasCheckSuite(event) {
   return event.check_suite !== void 0;
 }
-var import_crypto41, import_http, import_fs137, import_path165, INTAKE_LABEL, INTAKE_ROUTE_TABLE, CI_ROUTE_TABLE, HEAD_BRANCH_PATTERN, ISSUE_URL_PATTERN, MAX_BODY_BYTES;
+var import_crypto42, import_http, import_fs137, import_path165, INTAKE_LABEL, INTAKE_ROUTE_TABLE, CI_ROUTE_TABLE, HEAD_BRANCH_PATTERN, ISSUE_URL_PATTERN, MAX_BODY_BYTES;
 var init_listener = __esm({
   "src/factory/listener.ts"() {
     "use strict";
-    import_crypto41 = require("crypto");
+    import_crypto42 = require("crypto");
     import_http = require("http");
     import_fs137 = require("fs");
     import_path165 = require("path");
@@ -111690,7 +111920,7 @@ async function runChainScenario(input) {
   };
   const prepError = prepareChainProject(input.projectDir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `chain setup: ${prepError}` };
-  const firstLink = (input.randomUUID ?? import_crypto42.randomUUID)();
+  const firstLink = (input.randomUUID ?? import_crypto43.randomUUID)();
   writeChainLinkLedger(factoryStateDir2(input.projectDir), firstLink, "copilot", {
     intentId: CHAIN_INTENT_ID,
     stage: CHAIN_LINK1_STAGE,
@@ -111734,11 +111964,11 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto42, import_child_process44, import_fs139, import_path168, CHAIN_ACK_TOKEN, sleep7;
+var import_crypto43, import_child_process44, import_fs139, import_path168, CHAIN_ACK_TOKEN, sleep7;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
-    import_crypto42 = require("crypto");
+    import_crypto43 = require("crypto");
     import_child_process44 = require("child_process");
     import_fs139 = require("fs");
     import_path168 = require("path");
@@ -112637,7 +112867,7 @@ function shipStatePath(repoRoot3, pr) {
   return (0, import_path172.join)(getOmcRoot(repoRoot3), "state", "ship", `${pr}.json`);
 }
 function computeIntegrity(state) {
-  return (0, import_crypto43.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
+  return (0, import_crypto44.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
 }
 function sealShipState(state) {
   return { ...state, integrity: computeIntegrity(state) };
@@ -112698,11 +112928,11 @@ function updateShipState(repoRoot3, pr, mutate, options = {}) {
     return next;
   }, { timeoutMs: 5e3 });
 }
-var import_crypto43, import_fs143, import_path172, TRANSITIONS, ShipStateError, PHASES, isStr, isCount;
+var import_crypto44, import_fs143, import_path172, TRANSITIONS, ShipStateError, PHASES, isStr, isCount;
 var init_state4 = __esm({
   "src/ship/state.ts"() {
     "use strict";
-    import_crypto43 = require("crypto");
+    import_crypto44 = require("crypto");
     import_fs143 = require("fs");
     import_path172 = require("path");
     init_atomic_write();
@@ -114170,7 +114400,7 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   (0, import_fs144.mkdirSync)(home);
   (0, import_fs144.mkdirSync)(projectDir);
   const logDir = (0, import_path173.join)(home, "logs");
-  const sessionId = (ctx.deps.randomUUID ?? import_crypto44.randomUUID)();
+  const sessionId = (ctx.deps.randomUUID ?? import_crypto45.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env2 = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
@@ -114412,12 +114642,12 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process47, import_crypto44, import_fs144, import_os28, import_path173, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process47, import_crypto45, import_fs144, import_os28, import_path173, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process47 = require("child_process");
-    import_crypto44 = require("crypto");
+    import_crypto45 = require("crypto");
     import_fs144 = require("fs");
     import_os28 = require("os");
     import_path173 = require("path");
@@ -117046,7 +117276,7 @@ var init_scheduler = __esm({
 function computeJournalFingerprint(record2) {
   const unsignedRecord = { ...record2 };
   delete unsignedRecord.journal_fingerprint;
-  return (0, import_crypto47.createHash)("sha256").update(canonicalJson2(unsignedRecord)).digest("hex");
+  return (0, import_crypto48.createHash)("sha256").update(canonicalJson2(unsignedRecord)).digest("hex");
 }
 function envelopeError(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -117070,12 +117300,12 @@ function envelopeError(value) {
   }
   return null;
 }
-var import_fs152, import_crypto47, import_path182, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
+var import_fs152, import_crypto48, import_path182, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
 var init_journal = __esm({
   "src/graph/runtime/journal.ts"() {
     "use strict";
     import_fs152 = require("fs");
-    import_crypto47 = require("crypto");
+    import_crypto48 = require("crypto");
     import_path182 = require("path");
     init_descriptor();
     init_run_dir();
@@ -117268,12 +117498,12 @@ function lstatNoFollow(operations, filePath) {
   }
   return stats;
 }
-var import_fs153, import_crypto48, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
+var import_fs153, import_crypto49, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
 var init_fence = __esm({
   "src/graph/runtime/fence.ts"() {
     "use strict";
     import_fs153 = require("fs");
-    import_crypto48 = require("crypto");
+    import_crypto49 = require("crypto");
     init_atomic_write();
     init_platform();
     init_run_dir();
@@ -117364,7 +117594,7 @@ var init_fence = __esm({
             continue;
           }
           this.beforeTakeoverRename?.();
-          const tombstone = `${lockPath2}.tomb.${(0, import_crypto48.randomBytes)(6).toString("hex")}`;
+          const tombstone = `${lockPath2}.tomb.${(0, import_crypto49.randomBytes)(6).toString("hex")}`;
           try {
             operations.rename(lockPath2, tombstone);
           } catch {
@@ -117432,7 +117662,7 @@ var init_fence = __esm({
           return false;
         }
         this.beforeReleaseRename?.();
-        const tombstone = `${lockPath2}.tomb.${(0, import_crypto48.randomBytes)(6).toString("hex")}`;
+        const tombstone = `${lockPath2}.tomb.${(0, import_crypto49.randomBytes)(6).toString("hex")}`;
         try {
           operations.rename(lockPath2, tombstone);
         } catch (error2) {
@@ -117589,7 +117819,7 @@ var init_fence = __esm({
       /** Remove only a lock inode positively identified as ours after create. */
       cleanupCreatedLock(operations, lockPath2, createdIdentity) {
         if (createdIdentity === null) return;
-        const tombstone = `${lockPath2}.tomb.${(0, import_crypto48.randomBytes)(6).toString("hex")}`;
+        const tombstone = `${lockPath2}.tomb.${(0, import_crypto49.randomBytes)(6).toString("hex")}`;
         try {
           operations.rename(lockPath2, tombstone);
         } catch {
@@ -130307,7 +130537,7 @@ var import_path131 = require("path");
 init_finder2();
 
 // src/hooks/rules-injector/matcher.ts
-var import_crypto36 = require("crypto");
+var import_crypto37 = require("crypto");
 var import_path129 = require("path");
 
 // src/hooks/rules-injector/parser.ts
@@ -130548,7 +130778,7 @@ init_config_dir();
 init_atomic_write();
 
 // src/hooks/learner/auto-learner.ts
-var import_crypto37 = require("crypto");
+var import_crypto38 = require("crypto");
 
 // src/hooks/index.ts
 init_autopilot();
@@ -130561,7 +130791,7 @@ init_pre_compact2();
 // src/hooks/pre-compact/restore.ts
 var import_fs116 = require("fs");
 var import_child_process34 = require("child_process");
-var import_crypto38 = require("crypto");
+var import_crypto39 = require("crypto");
 var import_path141 = require("path");
 var import_url19 = require("url");
 init_worktree_paths();
@@ -134065,7 +134295,7 @@ async function doctorConflictsCommand(options) {
 }
 
 // src/cli/commands/ralph.ts
-var import_crypto40 = require("crypto");
+var import_crypto41 = require("crypto");
 var import_child_process43 = require("child_process");
 var import_fs135 = require("fs");
 var import_path162 = require("path");
@@ -134642,7 +134872,7 @@ var RALPH_AFK_FEEDBACK_ENV = "OMC_RALPH_AFK_FEEDBACK";
 function afkFeedbackCommands(verifyCommands) {
   return verifyCommands.filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command)).slice(0, MAX_VERIFY_COMMANDS);
 }
-function ralphAfkArgv(task, verifyCommands = [], sessionId = (0, import_crypto40.randomUUID)()) {
+function ralphAfkArgv(task, verifyCommands = [], sessionId = (0, import_crypto41.randomUUID)()) {
   const prompt = `/ralph --no-deslop ${task}`;
   const argv = factoryLinkArgv(prompt, sessionId, verifyCommands, RALPH_AFK_READONLY_GIT);
   if (getHostCliType() === "copilot") return [...argv, ...COPILOT_RALPH_AFK_SESSION_FLAGS];
@@ -134699,7 +134929,7 @@ Examples:
     if (materialized?.status === "diverged") {
       console.warn(`warning: ${materialized.path} differs from the bundled ralph skill \u2014 delete it to refresh, or keep it if the divergence is intentional`);
     }
-    const sessionId = (0, import_crypto40.randomUUID)();
+    const sessionId = (0, import_crypto41.randomUUID)();
     process.env.OMC_SESSION_ID = sessionId;
     process.env[RALPH_AFK_FEEDBACK_ENV] = JSON.stringify(afkFeedbackCommands(options.verify ?? []));
     const argv = ralphAfkArgv(task, options.verify ?? [], sessionId);
@@ -134782,7 +135012,7 @@ Examples:
       else console.log(renderMapPlan(plan));
       return;
     }
-    const sessionId = options.session ?? (0, import_crypto40.randomUUID)();
+    const sessionId = options.session ?? (0, import_crypto41.randomUUID)();
     if (options.launch) {
       try {
         validateSessionId(sessionId);
@@ -135224,7 +135454,7 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
 }
 
 // src/cli/commands/capabilities.ts
-var import_crypto45 = require("crypto");
+var import_crypto46 = require("crypto");
 var import_fs145 = require("fs");
 var import_path175 = require("path");
 init_zod();
@@ -135254,7 +135484,7 @@ function sortJson(value) {
   return value;
 }
 function sha2562(value) {
-  return (0, import_crypto45.createHash)("sha256").update(value).digest("hex");
+  return (0, import_crypto46.createHash)("sha256").update(value).digest("hex");
 }
 function resolveLockfilePath(lockfile) {
   return (0, import_path175.resolve)(process.cwd(), lockfile ?? DEFAULT_CAPABILITIES_LOCKFILE);
@@ -140777,7 +141007,7 @@ async function launchCommand(args) {
 
 // src/cli/interop.ts
 var import_child_process50 = require("child_process");
-var import_crypto46 = require("crypto");
+var import_crypto47 = require("crypto");
 init_tmux_utils();
 init_host_detection();
 init_model_contract();
@@ -140837,7 +141067,7 @@ function launchInteropSession(cwd2 = process.cwd()) {
     console.error("Start tmux first: tmux new-session -s myproject");
     process.exit(1);
   }
-  const sessionId = `interop-${(0, import_crypto46.randomUUID)().split("-")[0]}`;
+  const sessionId = `interop-${(0, import_crypto47.randomUUID)().split("-")[0]}`;
   const _config = initInteropSession(sessionId, cwd2, hasCodex ? cwd2 : void 0);
   console.log(`Initializing interop session: ${sessionId}`);
   console.log(`Working directory: ${cwd2}`);
@@ -143991,7 +144221,7 @@ Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.
   process.exit(exitCode);
 });
 var smokeCmd = program2.command("smoke").description("Smoke-test the plugin inside a real host CLI");
-smokeCmd.command("copilot").description("Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session; tier 2: SDK-driven scenarios)").option("--tier <0|1|2>", "Tier 0 = static/load checks only; tier 1 adds one -p session; tier 2 = tier 0 + SDK static checks + scenarios (default 0, or 2 with --scenario/--sdk-static)").option("--plugin-root <dir>", "Plugin directory to load via --plugin-dir (default: this omg package root)").option("--model <id>", "Tiers 1-2 model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)").option("--max-credits <n>", "Tiers 1-2 AI credit cap (default and minimum 30): tier 1 passes --max-ai-credits; tier 2 also aborts a scenario and skips the rest once the run passes it").option("--timeout <ms>", "Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s").option("--keep-home", "Keep the throwaway COPILOT_HOME and project dir for debugging").option("--delegate", "Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected").option("--scenario <list|all>", "Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); chain and team (opt-in, never in all) run a real two-link factory chain and a real 2-worker sdk team").option("--sdk-static", "Tier 2 with no scenarios: SDK static checks only, zero model calls").option("--json", "Print the full SmokeReport as JSON (always, also for option errors)").addHelpText("after", `
+smokeCmd.command("copilot").description("Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session; tier 2: SDK-driven scenarios)").option("--tier <0|1|2>", "Tier 0 = static/load checks only; tier 1 adds one -p session; tier 2 = tier 0 + SDK static checks + scenarios (default 0, or 2 with --scenario/--sdk-static)").option("--plugin-root <dir>", "Plugin directory to load via --plugin-dir (default: this omg package root)").option("--model <id>", "Tiers 1-2 model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)").option("--max-credits <n>", "Tiers 1-2 AI credit cap (default and minimum 30): tier 1 passes --max-ai-credits; tier 2 also aborts a scenario and skips the rest once the run passes it").option("--timeout <ms>", "Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s").option("--keep-home", "Keep the throwaway COPILOT_HOME and project dir for debugging").option("--delegate", "Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected").option("--scenario <list|all>", "Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain and team (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain and a real 2-worker sdk team").option("--sdk-static", "Tier 2 with no scenarios: SDK static checks only, zero model calls").option("--json", "Print the full SmokeReport as JSON (always, also for option errors)").addHelpText("after", `
 Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary or
 @github/copilot-sdk not found, no other failure).
 

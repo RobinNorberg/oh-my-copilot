@@ -81,6 +81,7 @@ omg smoke copilot --tier 2                    # smoke + guardrail, about 2 premi
 omg smoke copilot --tier 2 --scenario all     # adds skill + delegate
 omg smoke copilot --tier 2 --scenario chain   # opt-in: real two-link factory chain, about 2 premium requests
 omg smoke copilot --tier 2 --scenario team    # opt-in: real 2-worker sdk team, about 2 premium requests
+omg smoke copilot --tier 2 --scenario filetools  # opt-in: pre/postToolUse hooks on view/edit/create, 1 premium request
 ```
 
 **Install.** The SDK is an optional peer dependency, so `npm i -g oh-my-copilot` never installs it. Install it next to `omg` with the command above. `--ignore-scripts` is required on Windows with `--omit=optional`, because koffi's install script otherwise falls back to a source build that needs CMake. Without the SDK every `sdk.*` check fails with that install hint and the run exits `2`.

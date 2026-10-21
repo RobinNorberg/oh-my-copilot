@@ -10,12 +10,14 @@ import { assistantText, BENIGN_ADAPTER_NOTES, collectHookRuns, excerpt, SMOKE_TO
 /** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
 /**
- * Named explicitly only, never in `all` or the default: `chain` spawns two
- * real headless `copilot -p` factory links (about 2 premium requests) outside
- * the SDK runtime's credit cap; `team` starts a real 2-worker `omg team` with
- * sdk workers (about 2 premium requests, one per worker).
+ * Named explicitly only, never in `all` or the default: `filetools` (one
+ * premium request) lets the model write files and loads a second, probe
+ * plugin; `chain` spawns two real headless `copilot -p` factory links (about
+ * 2 premium requests) outside the SDK runtime's credit cap; `team` starts a
+ * real 2-worker `omg team` with sdk workers (about 2 premium requests, one per
+ * worker).
  */
-export const OPT_IN_SCENARIOS = ['chain', 'team'];
+export const OPT_IN_SCENARIOS = ['filetools', 'chain', 'team'];
 export const KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
 /** About 2 premium requests (one per scenario). */
 export const DEFAULT_SCENARIOS = ['smoke', 'guardrail'];
@@ -78,6 +80,29 @@ export function permitScopedRead(req, ctx) {
     const platform = ctx.platform ?? process.platform;
     return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+/** filetools fixture, relative to the sandbox project (forward slashes, as the model is told). */
+export const FILETOOLS_DIR = 'filetools';
+export const FILETOOLS_FILES = {
+    notes: `${FILETOOLS_DIR}/notes.txt`,
+    created: `${FILETOOLS_DIR}/new/created.txt`,
+    /**
+     * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+     * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+     * README once per session, so the read (view of notes.txt) and the write
+     * (creating created.txt) each get their own.
+     */
+    context: `${FILETOOLS_DIR}/README.md`,
+    writeContext: `${FILETOOLS_DIR}/new/README.md`,
+};
+export const FILETOOLS_MARKER = 'Context marker:';
+/** The PostToolUse matcher of our rules + directory-context injector entry in copilot/hooks.json. */
+export const FILE_TOOL_MATCHER = 'Read|Write|Edit|MultiEdit';
+/** File reads and writes, only under the sandbox project. */
+export function permitProjectFiles(req, ctx) {
+    const platform = ctx.platform ?? process.platform;
+    const target = req.kind === 'read' ? req.path : req.kind === 'write' ? (req.resolvedPath ?? req.fileName) : undefined;
+    return typeof target === 'string' && !!target && isUnder(resolve(ctx.projectDir, target), ctx.projectDir, platform);
+}
 export const SCENARIOS = {
     smoke: {
         name: 'smoke',
@@ -105,6 +130,19 @@ export const SCENARIOS = {
         prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead,
+    },
+    // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+    filetools: {
+        name: 'filetools',
+        prompt: [
+            `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+            `1. View ${FILETOOLS_FILES.notes}.`,
+            `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+            `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+            `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`,
+        ].join('\n'),
+        excludedTools: ['powershell', 'shell'],
+        permit: permitProjectFiles,
     },
     // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
     // factory link (copilot-chain-scenario.ts) under the AFK profile.
@@ -317,6 +355,170 @@ function evaluateChain(run) {
         },
     ];
 }
+// ---------------------------------------------------------------------------
+// Filetools scenario (pre/postToolUse hooks on Copilot's file tools)
+// ---------------------------------------------------------------------------
+/**
+ * Probe plugin entries, loaded next to ours: each records its stdin payload.
+ * PascalCase entries get the Claude-format payload (tool_name, tool_input);
+ * camelCase entries the native one (toolName, toolArgs).
+ */
+export const PROBE_ENTRIES = [
+    { event: 'PreToolUse', label: 'PreToolUse' },
+    { event: 'PostToolUse', label: 'PostToolUse' },
+    { event: 'PostToolUse', label: 'PostToolUse:matcher', matcher: FILE_TOOL_MATCHER },
+    { event: 'preToolUse', label: 'preToolUse' },
+    { event: 'postToolUse', label: 'postToolUse' },
+];
+/** The probe plugin's hooks.json: `node <script> <label> <log>` per {@link PROBE_ENTRIES} entry. */
+export function probeHooksJson(node, script, log) {
+    const hooks = {};
+    for (const e of PROBE_ENTRIES) {
+        (hooks[e.event] ??= []).push({
+            type: 'command',
+            ...('matcher' in e ? { matcher: e.matcher } : {}),
+            exec: node,
+            args: [script, e.label, log],
+            timeoutSec: 10,
+        });
+    }
+    return { version: 1, hooks };
+}
+/** Copilot's built-in file tools: read and write side. */
+export const FILE_READ_TOOLS = ['view'];
+export const FILE_WRITE_TOOLS = ['create', 'edit', 'str_replace_editor', 'apply_patch'];
+function fileToolCalls(events) {
+    const done = new Map(events.filter((e) => e.type === 'tool.execution_complete').map((e) => [str(e.data?.toolCallId), e.data?.success === true]));
+    return events.filter((e) => e.type === 'tool.execution_start' && [...FILE_READ_TOOLS, ...FILE_WRITE_TOOLS].includes(str(e.data?.toolName)))
+        .map((e) => ({ id: str(e.data?.toolCallId), name: str(e.data?.toolName), args: e.data?.arguments, ok: done.get(str(e.data?.toolCallId)) === true }));
+}
+function asObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+/** Same rule as scripts/lib/tool-input-paths.mjs: apply_patch names its files in these lines. */
+const PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
+/** The paths a file-tool input names: Claude `file_path`, Copilot `path`, or apply_patch's file lines. */
+function inputPaths(input) {
+    if (typeof input === 'string')
+        return [...input.matchAll(PATCH_FILE_LINE)].map((m) => m[1]);
+    const o = asObject(input);
+    const p = o ? str(o.file_path) || str(o.path) : '';
+    return p ? [p] : [];
+}
+/**
+ * Tool name and input of a probe payload: Claude format (`tool_name`,
+ * `tool_input`) for PascalCase entries, native (`toolName`, `toolArgs`) for
+ * camelCase ones (Copilot CLI 1.0.91).
+ */
+export function probeTool(r) {
+    const p = r.payload ?? {};
+    return { name: str(p.tool_name) || str(p.toolName), input: p.tool_input ?? p.toolArgs };
+}
+/** Identity of a tool input: the text itself, or the object's JSON with sorted keys. */
+function inputKey(input) {
+    if (typeof input === 'string')
+        return `text:${input}`;
+    const o = asObject(input);
+    return o ? JSON.stringify(o, Object.keys(o).sort()) : '';
+}
+/**
+ * Probe records of one label for one tool call. Neither payload carries the
+ * tool call id (1.0.91), so a record belongs to the call whose arguments its
+ * input equals.
+ */
+function recordsFor(call, records, label) {
+    const want = inputKey(call.args);
+    return want ? records.filter((r) => r.label === label && inputKey(probeTool(r).input) === want) : [];
+}
+/** Model-facing text of a tool result: the completion's content, or what the runtime sent the model. */
+function toolResultTexts(events, callId) {
+    const out = [];
+    for (const e of events) {
+        if (str(e.data?.toolCallId) !== callId)
+            continue;
+        if (e.type === 'tool.execution_complete')
+            out.push(str(asObject(e.data?.result)?.content));
+        if (e.type === 'model.tool_execution')
+            out.push(str(asObject(e.data?.toolResult)?.textResultForLlm));
+    }
+    return out.filter(Boolean);
+}
+function evaluateFiletools(run) {
+    const ft = run.filetools;
+    const ids = scenarioCheckIds('filetools');
+    if (!ft)
+        return ids.slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no filetools evidence: ${excerpt(run.error, 200)}` : 'no filetools evidence collected' }));
+    const calls = fileToolCalls(run.events).filter((c) => c.ok);
+    const reads = calls.filter((c) => FILE_READ_TOOLS.includes(c.name));
+    const writes = calls.filter((c) => FILE_WRITE_TOOLS.includes(c.name));
+    const toolsOk = reads.length > 0 && writes.length > 0 && ft.edited && ft.created;
+    // Each completed file tool call against the probe records of each label (Claude and native entries).
+    const seen = (claudeLabel, nativeLabel) => {
+        const rows = calls.map((c) => ({ c, claude: recordsFor(c, ft.probe, claudeLabel), native: nativeLabel ? recordsFor(c, ft.probe, nativeLabel) : [] }));
+        const ok = calls.length > 0 && rows.every((r) => r.claude.length > 0 && (!nativeLabel || r.native.length > 0));
+        const names = (recs) => [...new Set(recs.map((x) => probeTool(x).name || '?'))].join('/') || 'none';
+        const detail = rows.map((r) => `${r.c.name}→${names(r.claude)}${nativeLabel ? ` (native ${names(r.native)})` : ''}`).join(', ') || 'no file tool calls';
+        return { ok, detail, rows };
+    };
+    const pre = seen('PreToolUse', 'preToolUse');
+    const post = seen('PostToolUse', 'postToolUse');
+    const matcher = seen('PostToolUse:matcher');
+    // Claude-format records name the tool by a name our matcher lists and carry its path(s); native ones keep the native name.
+    const claudeNames = new Set(FILE_TOOL_MATCHER.split('|'));
+    const payloadRows = [...pre.rows, ...post.rows];
+    const payloadOk = calls.length > 0 && payloadRows.every((r) => r.claude.every((x) => claudeNames.has(probeTool(x).name) && inputPaths(probeTool(x).input).length > 0)
+        && r.native.every((x) => probeTool(x).name === r.c.name));
+    const shape = (recs) => {
+        if (!recs[0])
+            return 'none';
+        const { name, input } = probeTool(recs[0]);
+        return typeof input === 'string' ? `${name} "<patch: ${inputPaths(input).map((p) => p.split(/[\\/]/).slice(-2).join('/')).join(', ')}>"` : `${name} {${Object.keys(asObject(input) ?? {}).join(',')}}`;
+    };
+    // A direct view of a fixture README.md would put its nonce in its own result: only other calls count.
+    const contextCall = (c) => inputPaths(c.args).some((p) => /readme\.md$/i.test(p));
+    // Prove the path, not the wording: our injector's output at the hook, then in a model-facing tool result.
+    const injection = (nonce, from) => {
+        const hookOut = run.events.some((e) => e.type === 'hook.end' && e.data?.hookType === 'postToolUse'
+            && JSON.stringify(e.data?.output ?? '').includes(nonce));
+        const carrier = from.find((c) => !contextCall(c) && toolResultTexts(run.events, c.id).some((t) => t.includes(nonce)));
+        return {
+            ok: hookOut && !!carrier,
+            detail: `nonce ${hookOut ? 'in' : 'missing from'} a postToolUse hook.end output; `
+                + `${carrier ? `in the ${carrier.name} tool result sent to the model` : 'in no model-facing tool result'}`,
+        };
+    };
+    const read = injection(ft.nonce, reads);
+    const write = injection(ft.writeNonce, writes);
+    const echoed = assistantText(run.events).includes(ft.nonce);
+    return [
+        {
+            id: 'scn.filetools.tools',
+            ok: toolsOk,
+            detail: `${calls.map((c) => c.name).join(', ') || 'no file tool calls'} completed; notes.txt ${ft.edited ? 'edited' : 'unchanged'}, created.txt ${ft.created ? 'created' : 'missing'}`,
+        },
+        hookCheck('scn.filetools.hooks', run.events, ['preToolUse', 'postToolUse']),
+        { id: 'scn.filetools.pre', ok: pre.ok, detail: `PreToolUse probe: ${pre.detail}` },
+        { id: 'scn.filetools.post', ok: post.ok, detail: `PostToolUse probe: ${post.detail}` },
+        { id: 'scn.filetools.matcher', ok: matcher.ok, detail: `PostToolUse matcher ${FILE_TOOL_MATCHER}: ${matcher.detail}` },
+        {
+            id: 'scn.filetools.payload',
+            ok: payloadOk,
+            detail: post.rows.map((r) => `${r.c.name}: tool_name ${shape(r.claude)}`).join('; ') || 'no file tool calls',
+            ...(payloadOk ? {} : { evidence: excerpt(JSON.stringify(payloadRows.map((r) => ({ call: r.c.name, claude: r.claude.map(probeTool), native: r.native.map(probeTool) })))) }),
+        },
+        {
+            id: 'scn.filetools.injected',
+            ok: read.ok,
+            detail: `${FILETOOLS_FILES.context} ${read.detail}; model ${echoed ? 'echoed it' : 'did not echo it'}`,
+            ...(read.ok ? {} : { evidence: excerpt(assistantText(run.events)) }),
+        },
+        {
+            id: 'scn.filetools.injected_write',
+            ok: write.ok,
+            detail: `${FILETOOLS_FILES.writeContext} ${write.detail}`,
+        },
+    ];
+}
 /** The session's excludedTools for a scenario: its built-ins plus our host_smoke tool. */
 export function scenarioExcludedTools(name, mcpServer) {
     return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
@@ -328,6 +530,7 @@ export function scenarioCheckIds(name) {
         guardrail: ['denied', 'no_push', 'hooks'],
         skill: ['invoked'],
         delegate: ['selected', 'hooks', 'completed'],
+        filetools: ['tools', 'hooks', 'pre', 'post', 'matcher', 'payload', 'injected', 'injected_write'],
         chain: ['link1', 'spawned', 'inherited', 'closed', 'premium'],
         team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'premium'],
     };
@@ -714,6 +917,7 @@ export function evaluateScenario(run) {
         guardrail: evaluateGuardrail,
         skill: evaluateSkill,
         delegate: evaluateDelegate,
+        filetools: evaluateFiletools,
         chain: evaluateChain,
         team: evaluateTeam,
     }[run.name](run);

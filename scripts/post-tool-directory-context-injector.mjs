@@ -21,6 +21,7 @@
 import { isAbsolute, join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { readStdin } from './lib/stdin.mjs';
+import { toolInputPaths } from './lib/tool-input-paths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -39,16 +40,6 @@ try {
   createDirectoryReadmeInjectorHook = mod.createDirectoryReadmeInjectorHook;
 } catch {
   // dist not available — skip directory context injection silently
-}
-
-/**
- * Extract the primary file path from tool input.
- * All tracked tools (read, write, edit, multiedit) expose file_path at the
- * top level of tool_input.
- */
-function extractFilePath(toolInput) {
-  if (!toolInput) return null;
-  return toolInput.file_path || toolInput.path || null;
 }
 
 async function main() {
@@ -84,16 +75,18 @@ async function main() {
     const sessionId = data.session_id || data.sessionId || 'unknown';
     const cwd = data.cwd || process.cwd();
 
-    const rawPath = extractFilePath(toolInput);
-    if (!rawPath) {
+    // One path for Read/Write/Edit/MultiEdit; every patched file for Copilot's apply_patch.
+    const rawPaths = toolInputPaths(toolInput);
+    if (rawPaths.length === 0) {
       console.log(JSON.stringify({ continue: true }));
       return;
     }
 
-    const filePath = isAbsolute(rawPath) ? rawPath : join(cwd, rawPath);
-
     const hook = createDirectoryReadmeInjectorHook(cwd);
-    const contextText = hook.processToolExecution(toolName, filePath, sessionId);
+    const contextText = rawPaths
+      .map((rawPath) => hook.processToolExecution(toolName, isAbsolute(rawPath) ? rawPath : join(cwd, rawPath), sessionId))
+      .filter(Boolean)
+      .join('\n\n');
 
     if (contextText) {
       console.log(JSON.stringify({

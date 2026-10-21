@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-    "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+    "head": "ba80b7fdeb1aded77042c479b01a5caf8e5474a2",
+    "sourceSha256": "0802652755f3939763a3de38b23079f7653accf44b7af80b3ba84e63849e72ee",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-  "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+  "head": "ba80b7fdeb1aded77042c479b01a5caf8e5474a2",
+  "sourceSha256": "0802652755f3939763a3de38b23079f7653accf44b7af80b3ba84e63849e72ee",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 67,
       "libFiles": 48,
       "templateHooks": 24,
-      "srcFiles": 1596,
-      "total": 1620
+      "srcFiles": 1601,
+      "total": 1625
     },
     "generated": {
       "distFiles": 6139,
@@ -886,6 +886,7 @@
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
       "scripts/lib/stdin.mjs",
+      "scripts/lib/tool-input-paths.mjs",
       "scripts/lib/utf8-bom.d.mts",
       "scripts/lib/utf8-bom.mjs",
       "scripts/lib/workflow-profile-runtime.mjs",
@@ -40636,6 +40637,11 @@
         "path": "scripts/lib/stdin.mjs"
       },
       {
+        "id": "scripts/lib/tool-input-paths.mjs",
+        "kind": "script",
+        "path": "scripts/lib/tool-input-paths.mjs"
+      },
+      {
         "id": "scripts/lib/utf8-bom.d.mts",
         "kind": "script",
         "path": "scripts/lib/utf8-bom.d.mts"
@@ -41749,6 +41755,11 @@
         "id": "src/__tests__/copilot-config-dir-alias.test.ts",
         "kind": "src",
         "path": "src/__tests__/copilot-config-dir-alias.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-file-tool-injection.test.ts"
       },
       {
         "id": "src/__tests__/copilot-hook-adapter.test.ts",
@@ -47831,6 +47842,26 @@
         "path": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-patch-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-patch-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-patch-probe.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-patch-probe.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-probe.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-probe.jsonl"
+      },
+      {
         "id": "src/smoke/__tests__/fixtures/tier2-guardrail-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier2-guardrail-events.jsonl"
@@ -51898,6 +51929,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/post-tool-directory-context-injector.mjs",
+        "to": "scripts/lib/tool-input-paths.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/post-tool-rules-injector.mjs",
         "to": "external:path",
         "kind": "imports"
@@ -51910,6 +51946,11 @@
       {
         "from": "scripts/post-tool-rules-injector.mjs",
         "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/post-tool-rules-injector.mjs",
+        "to": "scripts/lib/tool-input-paths.mjs",
         "kind": "imports"
       },
       {
@@ -54250,6 +54291,36 @@
       {
         "from": "src/__tests__/copilot-config-dir-alias.test.ts",
         "to": "src/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "scripts/lib/tool-input-paths.mjs",
         "kind": "imports"
       },
       {
@@ -83984,6 +84055,11 @@
       },
       {
         "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "to": "external:events",
         "kind": "imports"
       },
@@ -84330,6 +84406,11 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:crypto",
         "kind": "imports"
       },
       {
@@ -96969,12 +97050,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8465,
-      "edgeCount": 9390,
-      "importEdgeCount": 7816,
+      "nodeCount": 8471,
+      "edgeCount": 9400,
+      "importEdgeCount": 7826,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "a344cca106ba85e916990d619c299dc12521cea004ddcc242e41d0a6cd4996cb"
+  "inventorySha256": "bfc3a171b25f7acf95f1045303f1367ef799511711d68e5594a4491c7ebccef7",
+  "manifestSha256": "a2a6587649e0a7b43fd1ab774dad8c85909f4b4bfcf87db85f4491d924a5f83a"
 }

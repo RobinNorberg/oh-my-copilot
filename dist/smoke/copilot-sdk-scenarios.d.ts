@@ -5,14 +5,16 @@
  * event streams through the same functions the live driver uses.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'chain' | 'team';
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team';
 /** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export declare const ALL_SCENARIOS: readonly Scenario[];
 /**
- * Named explicitly only, never in `all` or the default: `chain` spawns two
- * real headless `copilot -p` factory links (about 2 premium requests) outside
- * the SDK runtime's credit cap; `team` starts a real 2-worker `omg team` with
- * sdk workers (about 2 premium requests, one per worker).
+ * Named explicitly only, never in `all` or the default: `filetools` (one
+ * premium request) lets the model write files and loads a second, probe
+ * plugin; `chain` spawns two real headless `copilot -p` factory links (about
+ * 2 premium requests) outside the SDK runtime's credit cap; `team` starts a
+ * real 2-worker `omg team` with sdk workers (about 2 premium requests, one per
+ * worker).
  */
 export declare const OPT_IN_SCENARIOS: readonly Scenario[];
 export declare const KNOWN_SCENARIOS: readonly Scenario[];
@@ -60,6 +62,25 @@ export declare const GUARDRAIL_COMMAND: RegExp;
 export declare function permitGuardrailPush(req: PermissionRequestLike, ctx: PermitContext): boolean;
 /** Reads only; when the request carries a path it must be under the plugin root or the sandbox project. */
 export declare function permitScopedRead(req: PermissionRequestLike, ctx: PermitContext): boolean;
+/** filetools fixture, relative to the sandbox project (forward slashes, as the model is told). */
+export declare const FILETOOLS_DIR = "filetools";
+export declare const FILETOOLS_FILES: {
+    readonly notes: "filetools/notes.txt";
+    readonly created: "filetools/new/created.txt";
+    /**
+     * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+     * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+     * README once per session, so the read (view of notes.txt) and the write
+     * (creating created.txt) each get their own.
+     */
+    readonly context: "filetools/README.md";
+    readonly writeContext: "filetools/new/README.md";
+};
+export declare const FILETOOLS_MARKER = "Context marker:";
+/** The PostToolUse matcher of our rules + directory-context injector entry in copilot/hooks.json. */
+export declare const FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
+/** File reads and writes, only under the sandbox project. */
+export declare function permitProjectFiles(req: PermissionRequestLike, ctx: PermitContext): boolean;
 export declare const SCENARIOS: Record<Scenario, ScenarioSpec>;
 /** The file each task commits; a task's subject names its file. */
 export declare const TEAM_FILES: readonly string[];
@@ -149,6 +170,57 @@ export interface ChainEvidence {
 export declare function chainCost(chain: ChainEvidence): ScenarioCost & {
     source: string;
 };
+/**
+ * Probe plugin entries, loaded next to ours: each records its stdin payload.
+ * PascalCase entries get the Claude-format payload (tool_name, tool_input);
+ * camelCase entries the native one (toolName, toolArgs).
+ */
+export declare const PROBE_ENTRIES: readonly [{
+    readonly event: "PreToolUse";
+    readonly label: "PreToolUse";
+}, {
+    readonly event: "PostToolUse";
+    readonly label: "PostToolUse";
+}, {
+    readonly event: "PostToolUse";
+    readonly label: "PostToolUse:matcher";
+    readonly matcher: "Read|Write|Edit|MultiEdit";
+}, {
+    readonly event: "preToolUse";
+    readonly label: "preToolUse";
+}, {
+    readonly event: "postToolUse";
+    readonly label: "postToolUse";
+}];
+export type ProbeLabel = typeof PROBE_ENTRIES[number]['label'];
+/** The probe plugin's hooks.json: `node <script> <label> <log>` per {@link PROBE_ENTRIES} entry. */
+export declare function probeHooksJson(node: string, script: string, log: string): Record<string, unknown>;
+/** One probe hook run: its entry label and the payload it read on stdin (null: not JSON). */
+export interface ProbeRecord {
+    label: string;
+    payload: Record<string, unknown> | null;
+}
+export interface FiletoolsEvidence {
+    /** Random tokens in the fixture's two README.md files (read side, write side), never in the prompt. */
+    nonce: string;
+    writeNonce: string;
+    probe: ProbeRecord[];
+    /** notes.txt reads `status: done`; created.txt exists. */
+    edited: boolean;
+    created: boolean;
+}
+/** Copilot's built-in file tools: read and write side. */
+export declare const FILE_READ_TOOLS: readonly string[];
+export declare const FILE_WRITE_TOOLS: readonly string[];
+/**
+ * Tool name and input of a probe payload: Claude format (`tool_name`,
+ * `tool_input`) for PascalCase entries, native (`toolName`, `toolArgs`) for
+ * camelCase ones (Copilot CLI 1.0.91).
+ */
+export declare function probeTool(r: ProbeRecord): {
+    name: string;
+    input: unknown;
+};
 /** The session's excludedTools for a scenario: its built-ins plus our host_smoke tool. */
 export declare function scenarioExcludedTools(name: Scenario, mcpServer: string): string[];
 /** Check ids a scenario yields, in report order (stable; Lane B's docs list them). */
@@ -217,6 +289,8 @@ export interface ScenarioRun {
     chain?: ChainEvidence;
     /** team: start, status, tasks, commits and shutdown evidence of the 2-worker sdk team. */
     team?: TeamEvidence;
+    /** filetools: the probe plugin's hook records and the fixture's state after the turn. */
+    filetools?: FiletoolsEvidence;
 }
 /** What one scenario run cost: chain and team span several sessions with their own totals. */
 export declare function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): ScenarioCost & {
