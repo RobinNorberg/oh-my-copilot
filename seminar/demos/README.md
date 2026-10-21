@@ -57,7 +57,7 @@ echo "HUD should display in your terminal prompt"
 5. **Demo 5: Ralph** - "For mission-critical tasks - never gives up until verified complete"
 
 ### Closing (1 min)
-"OMC transforms how you work with Claude - from manual coding to orchestrating specialized agents. All open source at github.com/Yeachan-Heo/oh-my-copilot."
+"OMC transforms how you work with Claude - from manual coding to orchestrating specialized agents. All open source at github.com/RobinNorberg/oh-my-copilot."
 
 ## Tips for Presenters
 

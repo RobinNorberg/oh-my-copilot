@@ -345,12 +345,16 @@ function writeMarker(cwd, range, date) {
   writeFileSync(join(cwd, MARKER_PATH), `${JSON.stringify(marker, null, 2)}\n`);
 }
 
-/** Lines mentioning oh-my-claudecode outside the protected forms. */
+/**
+ * Lines mentioning oh-my-claudecode outside the protected forms, plus
+ * `Yeachan-Heo/oh-my-copilot`: a half-renamed link to a repo that does not exist
+ * (the fork's own repo is RobinNorberg/oh-my-copilot).
+ */
 function leakLines(text) {
   return text.replace(/\r/g, '').split('\n').filter((line) => {
     let t = line;
     for (const re of PROTECTED) t = t.replace(re, '');
-    return /oh-my-claudecode/i.test(t);
+    return /oh-my-claudecode|Yeachan-Heo\/oh-my-copilot/i.test(t);
   });
 }
 
@@ -432,7 +436,7 @@ export function renderMarkdown(report) {
   }
   out.push('### package.json delta', '');
   out.push(report.package_json_delta ? ['```diff', report.package_json_delta.slice(0, 10000), '```'].join('\n') : 'none');
-  out.push('', '### Leak scan (`oh-my-claudecode` in src/ agents/ skills/ hooks/)', '');
+  out.push('', '### Leak scan (`oh-my-claudecode`, `Yeachan-Heo/oh-my-copilot` in src/ agents/ skills/ hooks/)', '');
   out.push(report.leaks.length ? capped(report.leaks, (l) => `- ${l.path}:${l.line} ${codeSpan(l.text.slice(0, 160))}`) : 'clean');
   const body = `${out.join('\n')}\n`;
   return body.length > MAX_BODY ? `${body.slice(0, MAX_BODY)}\n\n_(truncated; run \`--report\` locally for the full list)_\n` : body;

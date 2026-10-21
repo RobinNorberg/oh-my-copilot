@@ -92,6 +92,7 @@ Apply these substitutions when porting upstream code:
 | Upstream | Fork |
 |----------|------|
 | `oh-my-claudecode` | `oh-my-copilot` |
+| `Yeachan-Heo/oh-my-claudecode` URL meaning the fork's own repo (install, star, raw docs, psm alias) | `RobinNorberg/oh-my-copilot`, never `Yeachan-Heo/oh-my-copilot` (that repo does not exist; the drift leak scan flags it). Links to upstream issues/PRs stay `Yeachan-Heo/oh-my-claudecode` |
 | `CLAUDE_CONFIG_DIR` | `COPILOT_HOME` (except Claude-host-specific reads: `src/hooks/permission-handler/index.ts` `CLAUDE_CONFIG_DIR`, `skills/omc-setup/phases/04-welcome.md`) |
 | `CLAUDE_FAMILY_DEFAULTS` | `COPILOT_FAMILY_DEFAULTS` |
 | `isNonClaudeProvider` | `isNonCopilotProvider` |

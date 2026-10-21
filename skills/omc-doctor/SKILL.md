@@ -250,7 +250,7 @@ Skip this fix unless Step 4 printed `CLAUDE.md management enabled`: skip it when
 
 Fetch latest from GitHub and write to `${COPILOT_HOME:-~/.copilot}/CLAUDE.md`:
 ```
-WebFetch(url: "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/CLAUDE.md", prompt: "Return the complete raw markdown content exactly as-is")
+WebFetch(url: "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/CLAUDE.md", prompt: "Return the complete raw markdown content exactly as-is")
 ```
 
 ### Fix: Legacy Curl-Installed Content

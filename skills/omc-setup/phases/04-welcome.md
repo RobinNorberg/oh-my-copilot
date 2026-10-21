@@ -148,7 +148,7 @@ gh auth status &>/dev/null
 **Before prompting, check if the repository is already starred:**
 
 ```bash
-gh api user/starred/Yeachan-Heo/oh-my-copilot &>/dev/null
+gh api user/starred/RobinNorberg/oh-my-copilot &>/dev/null
 ```
 
 **If already starred (exit code 0):**
@@ -169,7 +169,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','user/starred/Yeachan-Heo/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','user/starred/RobinNorberg/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
@@ -179,7 +179,7 @@ node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',[
 ```bash
 echo ""
 echo "If you enjoy oh-my-copilot, consider starring the repo:"
-echo "  https://github.com/Yeachan-Heo/oh-my-copilot"
+echo "  https://github.com/RobinNorberg/oh-my-copilot"
 echo ""
 ```
 
