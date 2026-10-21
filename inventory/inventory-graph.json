@@ -5,14 +5,14 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2fa5813fee953d63c7b0c3aaaa1616934925e71a",
+    "head": "3dfe54d4ff076295e80b478f3c62dc8b15138b50",
     "sourceSha256": "1e94ed163f7887e963604c1d8b83694aeaa7890a9a7293d664cf2f45832820f9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2fa5813fee953d63c7b0c3aaaa1616934925e71a",
+  "head": "3dfe54d4ff076295e80b478f3c62dc8b15138b50",
   "sourceSha256": "1e94ed163f7887e963604c1d8b83694aeaa7890a9a7293d664cf2f45832820f9",
   "counts": {
     "public": {
@@ -32,9 +32,9 @@
       "total": 1623
     },
     "generated": {
-      "distFiles": 6147,
+      "distFiles": 6151,
       "bridgeFiles": 9,
-      "total": 6156
+      "total": 6160
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -6246,6 +6246,10 @@
       "dist/team/__tests__/team-name.test.d.ts.map",
       "dist/team/__tests__/team-name.test.js",
       "dist/team/__tests__/team-name.test.js.map",
+      "dist/team/__tests__/team-ops-write-atomic.test.d.ts",
+      "dist/team/__tests__/team-ops-write-atomic.test.d.ts.map",
+      "dist/team/__tests__/team-ops-write-atomic.test.js",
+      "dist/team/__tests__/team-ops-write-atomic.test.js.map",
       "dist/team/__tests__/team-owner-epoch.test.d.ts",
       "dist/team/__tests__/team-owner-epoch.test.d.ts.map",
       "dist/team/__tests__/team-owner-epoch.test.js",
@@ -35217,6 +35221,26 @@
         "id": "dist/team/__tests__/team-name.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/team-name.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-ops-write-atomic.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-ops-write-atomic.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/team-ops-write-atomic.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-ops-write-atomic.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-ops-write-atomic.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-ops-write-atomic.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/team-ops-write-atomic.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-ops-write-atomic.test.js.map"
       },
       {
         "id": "dist/team/__tests__/team-owner-epoch.test.d.ts",
@@ -97242,12 +97266,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8477,
+      "nodeCount": 8481,
       "edgeCount": 9431,
       "importEdgeCount": 7856,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "215b28efeaaf928c3ff20f4584b5dd249107168c0546f774bdf7a468ab30d255",
-  "manifestSha256": "70de16027226ace3b49bb883e28eda033c02ba47fa04952173f96ff4d1ba2288"
+  "manifestSha256": "3c191a0bdecbb29ddd85660de539d319fc9096962d35467636ed827f2ded01c2"
 }
