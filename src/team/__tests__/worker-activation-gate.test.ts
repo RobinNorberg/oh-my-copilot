@@ -14,6 +14,7 @@ import {
   runWorkerLaunchBootstrap,
 } from '../worker-launch-ack.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
+import { IS_WIN, posixOnly } from '../../__tests__/helpers/platform.js';
 
 
 let cwd: string;
@@ -64,7 +65,7 @@ describe('worker recovery activation gate', () => {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
   });
-  it('spawns the provider only after matching activate and run records and publishes launched evidence', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('spawns the provider only after matching activate and run records and publishes launched evidence', async () => {
     const readyPath = join(cwd, 'ready.json');
     const activatePath = join(cwd, 'activate.json');
     const runPath = join(cwd, 'run.json');
@@ -189,7 +190,7 @@ describe('worker recovery activation gate', () => {
     }
   });
 
-  it.each([0, 7])('does not publish launched evidence for a provider that exits immediately with code %s', async exitCode => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn')).each([0, 7])('does not publish launched evidence for a provider that exits immediately with code %s', async exitCode => {
     const readyPath = join(cwd, 'early-exit-ready.json');
     const activatePath = join(cwd, 'early-exit-activate.json');
     const runPath = join(cwd, 'early-exit-run.json');
@@ -208,7 +209,7 @@ describe('worker recovery activation gate', () => {
     expect(existsSync(`${runPath}.launched`)).toBe(false);
     expect(JSON.parse(readFileSync(`${runPath}.terminal`, 'utf8'))).toMatchObject({ outcome: 'exit', exit_code: exitCode });
   });
-  it('kills recovery provider descendants when the root exits immediately', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('kills recovery provider descendants when the root exits immediately', async () => {
     const readyPath = join(cwd, 'early-child-ready.json');
     const activatePath = join(cwd, 'early-child-activate.json');
     const runPath = join(cwd, 'early-child-run.json');
@@ -237,7 +238,7 @@ describe('worker recovery activation gate', () => {
     expect(existsSync(`${runPath}.launched`)).toBe(false);
   });
 
-  it('does not publish launched evidence when the provider executable cannot spawn', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('does not publish launched evidence when the provider executable cannot spawn', async () => {
     const readyPath = join(cwd, 'failed-ready.json');
     const activatePath = join(cwd, 'failed-activate.json');
     const runPath = join(cwd, 'failed-run.json');
@@ -256,7 +257,7 @@ describe('worker recovery activation gate', () => {
     expect(existsSync(`${runPath}.launched`)).toBe(false);
     expect(JSON.parse(readFileSync(`${runPath}.terminal`, 'utf8'))).toMatchObject({ outcome: 'exit', exit_code: 127, cleanup_verified: true });
   });
-  it('kills the provider when durable launched evidence cannot be published', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('kills the provider when durable launched evidence cannot be published', async () => {
     const readyPath = join(cwd, 'marker-failure-ready.json');
     const activatePath = join(cwd, 'marker-failure-activate.json');
     const runPath = join(cwd, 'marker-failure-run.json');
@@ -299,6 +300,7 @@ describe('worker recovery activation gate', () => {
     writeFileSync(activatePath, JSON.stringify(record));
     writeFileSync(runPath, JSON.stringify(record));
 
+    // win32 fails closed before reading markers (see the first test); the provider must not run either way.
     await expect(runWorkerActivationGate({
       recoveryId: 'recovery-exact', workerName: 'worker-1', replacementGeneration: 8, paneAttemptId: 'attempt-exact',
       readyPath, activatePath, runPath,
@@ -307,7 +309,7 @@ describe('worker recovery activation gate', () => {
       cwd,
       timeoutMs: 50,
       pollIntervalMs: 5,
-    })).resolves.toEqual({ outcome: 'activation_timeout' });
+    })).resolves.toEqual({ outcome: IS_WIN ? 'provider_cleanup_unverified' : 'activation_timeout' });
     expect(existsSync(providerMarker)).toBe(false);
     expect(existsSync(`${runPath}.launched`)).toBe(false);
   });
@@ -337,7 +339,7 @@ describe('worker recovery activation gate', () => {
     expect(existsSync(`${runPath}.launched`)).toBe(false);
   });
 
-  it('blocks a gate superseded after activation but before provider spawn', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('blocks a gate superseded after activation but before provider spawn', async () => {
     const readyPath = join(cwd, 'superseded-ready.json');
     const activatePath = join(cwd, 'superseded-activate.json');
     const runPath = join(cwd, 'superseded-run.json');

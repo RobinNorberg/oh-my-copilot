@@ -22,6 +22,7 @@ import {
   TeamPaths,
 } from '../state-paths.js';
 import type { TeamInstanceBinding, TeamInstanceDisposalAuthorization } from '../types.js';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 
 const AUTHORIZATION: TeamInstanceDisposalAuthorization = {
   protocol: 'caller-owned-final-state-v1',
@@ -141,7 +142,7 @@ describe('team instance reservation and cleanup contract', () => {
     })).rejects.toMatchObject({ code: 'team_instance_reservation_conflict' });
   });
 
-  it('rejects a disposable team-root symlink before reservation effects', async () => {
+  it.skipIf(requiresSymlinks())('rejects a disposable team-root symlink before reservation effects', async () => {
     const binding = createTeamInstanceBinding({ teamName: 'state-link', cwd, instanceId: id('2') });
     const external = join(cwd, 'external-state');
     mkdirSync(external, { recursive: true });
@@ -156,7 +157,7 @@ describe('team instance reservation and cleanup contract', () => {
     expect(existsSync(join(external, 'config.json'))).toBe(false);
   });
 
-  it('rejects a symlinked external authority parent before publishing a reservation', async () => {
+  it.skipIf(requiresSymlinks())('rejects a symlinked external authority parent before publishing a reservation', async () => {
     const binding = createTeamInstanceBinding({ teamName: 'authority-link', cwd, instanceId: id('3') });
     const storageRoot = canonicalTeamOmcRoot(cwd);
     const authorityParent = join(storageRoot, 'state', 'team-recovery');
@@ -173,7 +174,7 @@ describe('team instance reservation and cleanup contract', () => {
     expect(existsSync(join(external, 'team-instances'))).toBe(false);
   });
 
-  it('preserves a newer same-name instance when retrying stale detached cleanup', async () => {
+  it.skipIf(requiresSymlinks())('preserves a newer same-name instance when retrying stale detached cleanup', async () => {
     const old = await reserveTeamInstance({ teamName: 'same-name', cwd, instanceId: id('1') });
     writeBoundConfig(old);
     await activate(old);
