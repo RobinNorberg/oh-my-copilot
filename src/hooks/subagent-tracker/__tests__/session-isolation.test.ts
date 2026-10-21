@@ -5,7 +5,7 @@
  * independently and can be read back in isolation without cross-contamination.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -22,9 +22,14 @@ describe("session isolation", () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `subagent-isolation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(join(testDir, ".omg", "state"), { recursive: true });
+    // A non-git temp dir anchors state at the home dir; point home at testDir so state from
+    // earlier runs in the real ~/.omg cannot leak into the legacy read.
+    vi.stubEnv("HOME", testDir);
+    vi.stubEnv("USERPROFILE", testDir);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     flushPendingWrites();
     rmSync(testDir, { recursive: true, force: true });
   });

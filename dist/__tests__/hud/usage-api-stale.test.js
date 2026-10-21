@@ -6,6 +6,7 @@
  * - After 15 minutes from lastSuccessAt, stale data is discarded
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { toPosix } from '../helpers/platform.js';
 import { EventEmitter } from 'events';
 const COPILOT_HOME = '/tmp/test-claude';
 const CACHE_PATH = `${COPILOT_HOME}/plugins/oh-my-copilot/.usage-cache-zai.json`;
@@ -13,24 +14,24 @@ const CACHE_DIR = `${COPILOT_HOME}/plugins/oh-my-copilot`;
 function createFsMock(initialFiles) {
     const files = new Map(Object.entries(initialFiles));
     const directories = new Set([COPILOT_HOME, CACHE_DIR]);
-    const existsSync = vi.fn((path) => files.has(String(path)) || directories.has(String(path)));
+    const existsSync = vi.fn((path) => files.has(toPosix(String(path))) || directories.has(toPosix(String(path))));
     const readFileSync = vi.fn((path) => {
-        const content = files.get(String(path));
+        const content = files.get(toPosix(String(path)));
         if (content == null)
             throw new Error(`ENOENT: ${path}`);
         return content;
     });
     const writeFileSync = vi.fn((path, content) => {
-        files.set(String(path), String(content));
+        files.set(toPosix(String(path)), String(content));
     });
     const mkdirSync = vi.fn((path) => {
-        directories.add(String(path));
+        directories.add(toPosix(String(path)));
     });
     const unlinkSync = vi.fn((path) => {
-        files.delete(String(path));
+        files.delete(toPosix(String(path)));
     });
     const openSync = vi.fn((path) => {
-        const normalized = String(path);
+        const normalized = toPosix(String(path));
         if (files.has(normalized)) {
             const err = new Error(`EEXIST: ${normalized}`);
             err.code = 'EEXIST';
@@ -40,7 +41,7 @@ function createFsMock(initialFiles) {
         return 1;
     });
     const statSync = vi.fn((path) => {
-        if (!files.has(String(path)))
+        if (!files.has(toPosix(String(path))))
             throw new Error(`ENOENT: ${path}`);
         return { mtimeMs: Date.now() };
     });

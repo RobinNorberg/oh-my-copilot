@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
-import { join, dirname } from 'path';
+import { delimiter, join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { parseAskArgs, resolveAskAdvisorScriptPath } from '../ask.js';
+import { toPosix } from '../../__tests__/helpers/platform.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
@@ -76,12 +77,32 @@ function writeAdvisorStub(dir) {
     chmodSync(stubPath, 0o755);
     return stubPath;
 }
+// Windows cannot exec a shebang script and the advisor spawns through cmd.exe there,
+// so a fake provider gets a .cmd shim that runs its source with node.
+function writeFakeExecutable(binDir, name, source) {
+    if (process.platform === 'win32') {
+        writeFileSync(join(binDir, `${name}.js`), source, 'utf8');
+        writeFileSync(join(binDir, `${name}.cmd`), `@"${process.execPath}" "%~dp0${name}.js" %*\r\n`, 'utf8');
+        return;
+    }
+    writeFileSync(join(binDir, name), `#!${process.execPath}\n${source}`, { encoding: 'utf8', mode: 0o755 });
+}
 function writeFakeProviderBinary(dir, provider) {
     const binDir = join(dir, 'bin');
     mkdirSync(binDir, { recursive: true });
-    const binPath = join(binDir, provider);
-    writeFileSync(binPath, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fake"; exit 0; fi\nif [ "$1" = "-p" ]; then echo "FAKE_PROVIDER_OK:$2"; exit 0; fi\necho "unexpected" 1>&2\nexit 9\n', 'utf8');
-    chmodSync(binPath, 0o755);
+    // `-p <prompt>` echoes the prompt; a stdin-piped prompt (`-p` alone or gemini `--yolo`) is read from stdin.
+    writeFakeExecutable(binDir, provider, [
+        'const args = process.argv.slice(2);',
+        "if (args[0] === '--version') { console.log('fake'); process.exit(0); }",
+        "if (args[0] === '-p' && args[1] !== undefined) { console.log(`FAKE_PROVIDER_OK:${args[1]}`); process.exit(0); }",
+        "if (args.join(' ') === '-p' || args.join(' ') === '--yolo') {",
+        "  console.log(`FAKE_PROVIDER_OK:${require('node:fs').readFileSync(0, 'utf8')}`);",
+        '  process.exit(0);',
+        '}',
+        "console.error('unexpected');",
+        'process.exit(9);',
+        '',
+    ].join('\n'));
     return binDir;
 }
 function writeSpawnSyncCapturePrelude(dir) {
@@ -154,7 +175,8 @@ function writeSpawnSyncCapturePreludeNative(dir) {
         "import { writeFileSync } from 'node:fs';",
         "import { syncBuiltinESMExports } from 'node:module';",
         '',
-        '// No platform override — tests native (non-Windows) behavior',
+        '// Pins the non-Windows branch so these cases mean the same on a Windows host.',
+        "Object.defineProperty(process, 'platform', { value: 'linux' });",
         'const capturePath = process.env.SPAWN_CAPTURE_PATH;',
         "const mode = process.env.SPAWN_CAPTURE_MODE || 'success';",
         'const calls = [];',
@@ -201,20 +223,19 @@ function writeSpawnSyncCapturePreludeNative(dir) {
 function writeFakeCodexBinary(dir) {
     const binDir = join(dir, 'bin');
     mkdirSync(binDir, { recursive: true });
-    const binPath = join(binDir, 'codex');
-    writeFileSync(binPath, `#!/bin/sh
-if [ "$1" = "--version" ]; then echo "fake"; exit 0; fi
-if [ "$1" = "exec" ]; then
-  echo "CODEX_OK"
-  if [ -n "\${RUST_LOG:-}" ] || [ -n "\${RUST_BACKTRACE:-}" ]; then
-    echo "RUST_LEAK:\${RUST_LOG:-}:\${RUST_BACKTRACE:-}" 1>&2
-  fi
-  exit 0
-fi
-echo "unexpected" 1>&2
-exit 9
-`, 'utf8');
-    chmodSync(binPath, 0o755);
+    writeFakeExecutable(binDir, 'codex', [
+        'const args = process.argv.slice(2);',
+        "if (args[0] === '--version') { console.log('fake'); process.exit(0); }",
+        "if (args[0] === 'exec') {",
+        "  console.log('CODEX_OK');",
+        '  const { RUST_LOG, RUST_BACKTRACE } = process.env;',
+        "  if (RUST_LOG || RUST_BACKTRACE) console.error(`RUST_LEAK:${RUST_LOG ?? ''}:${RUST_BACKTRACE ?? ''}`);",
+        '  process.exit(0);',
+        '}',
+        "console.error('unexpected');",
+        'process.exit(9);',
+        '',
+    ].join('\n'));
     return binDir;
 }
 describe('private provider prompt files', () => {
@@ -224,11 +245,9 @@ describe('private provider prompt files', () => {
         // Given a real executable that consumes the provider prompt-file contract.
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-file-child-'));
         try {
-            const bin = join(wd, provider);
             const capture = join(wd, 'received.json');
             const prompt = '---\nname: critic\n---\n한국어 café & | > "quoted" $HOME `echo unsafe`';
-            writeFileSync(bin, `#!${process.execPath}
-const fs = require('node:fs');
+            writeFakeExecutable(wd, provider, `const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
 if (args[0] === '--version') process.exit(0);
@@ -242,11 +261,11 @@ fs.writeFileSync(process.env.ASK_CAPTURE, JSON.stringify({
 process.stdout.write('CHILD_OUTPUT');
 process.stderr.write('CHILD_DIAGNOSTIC');
 process.exit(Number(process.env.ASK_EXIT));
-`, { mode: 0o755 });
+`);
             // When the real advisor launches the executable.
             const result = runAdvisorScript([provider, '--prompt', prompt], wd, {
-                PATH: `${wd}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}`,
-                ASK_CAPTURE: capture, ASK_EXIT: String(exitCode), TMPDIR: wd,
+                PATH: `${wd}${delimiter}${process.env.PATH}`,
+                ASK_CAPTURE: capture, ASK_EXIT: String(exitCode), TMPDIR: wd, TEMP: wd, TMP: wd,
                 OMC_STATE_DIR: join(wd, 'state'),
             });
             // Then the child sees exact bytes, private permissions, and closed stdin;
@@ -255,8 +274,11 @@ process.exit(Number(process.env.ASK_EXIT));
             const received = JSON.parse(readFileSync(capture, 'utf8'));
             expect(received.contents).toBe(prompt);
             expect(received.stdin).toBe('');
-            expect(received.mode).toBe(0o600);
-            expect(received.dirMode).toBe(0o700);
+            if (process.platform !== 'win32') {
+                // NTFS has no POSIX mode bits.
+                expect(received.mode).toBe(0o600);
+                expect(received.dirMode).toBe(0o700);
+            }
             expect(received.args).toEqual(provider === 'muse'
                 ? ['exec', '--prompt-file', received.file, '--approval-mode', 'never', '--user-input-auto-resolve']
                 : ['--prompt-file', received.file, '--always-approve']);
@@ -273,13 +295,18 @@ process.exit(Number(process.env.ASK_EXIT));
     it.each(['muse', 'grok'])('cleans up and records failure when the %s executable disappears after probing', (provider) => {
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-file-enoent-'));
         try {
-            const bin = join(wd, provider);
-            writeFileSync(bin, `#!${process.execPath}\nrequire('node:fs').unlinkSync(__filename);\n`, { mode: 0o755 });
+            writeFakeExecutable(wd, provider, "require('node:fs').unlinkSync(__filename);\n");
             const result = runAdvisorScript([provider, '---\nrole: critic'], wd, {
-                PATH: wd, TMPDIR: wd, OMC_STATE_DIR: join(wd, 'state'),
+                PATH: wd, TMPDIR: wd, TEMP: wd, TMP: wd, OMC_STATE_DIR: join(wd, 'state'),
             });
             expect(result.status).toBe(1);
-            expect(result.stderr).toContain('ENOENT');
+            if (process.platform === 'win32') {
+                // cmd.exe still finds the .cmd shim; node reports the vanished script in the child output.
+                expect(readFileSync(result.stdout.trim(), 'utf8')).toContain('Cannot find module');
+            }
+            else {
+                expect(result.stderr).toContain('ENOENT');
+            }
             expect(readFileSync(result.stdout.trim(), 'utf8')).toContain('- Exit code: 1');
             expect(readdirSync(wd).filter((name) => name.startsWith('omc-ask-'))).toEqual([]);
         }
@@ -510,7 +537,7 @@ describe('run-provider-advisor script contract', () => {
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-artifact-'));
         try {
             const binDir = writeFakeProviderBinary(wd, 'claude');
-            const result = runAdvisorScript(['claude', '--print', 'artifact path contract'], wd, { PATH: `${binDir}:${process.env.PATH || ''}` });
+            const result = runAdvisorScript(['claude', '--print', 'artifact path contract'], wd, { PATH: `${binDir}${delimiter}${process.env.PATH || ''}` });
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(0);
             const artifactPath = result.stdout.trim();
@@ -528,7 +555,7 @@ describe('run-provider-advisor script contract', () => {
         try {
             const binDir = writeFakeProviderBinary(wd, 'gemini');
             const result = runAdvisorScript(['gemini', '--prompt', 'fallback task'], wd, {
-                PATH: `${binDir}:${process.env.PATH || ''}`,
+                PATH: `${binDir}${delimiter}${process.env.PATH || ''}`,
                 OMX_ASK_ORIGINAL_TASK: 'legacy original task',
             });
             expect(result.error).toBeUndefined();
@@ -648,14 +675,15 @@ describe('run-provider-advisor script contract', () => {
         try {
             const binDir = writeFakeCodexBinary(wd);
             const result = runAdvisorScript(['codex', '--prompt', 'keep artifact small'], wd, {
-                PATH: `${binDir}:${process.env.PATH || ''}`,
+                PATH: `${binDir}${delimiter}${process.env.PATH || ''}`,
                 RUST_LOG: 'trace',
                 RUST_BACKTRACE: '1',
             });
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(0);
-            // Only the one-line bypass notice; no Rust logs leak to stderr.
-            expect(result.stderr).toBe('[ask-codex] runs with --dangerously-bypass-approvals-and-sandbox; host --deny-tool / permissions.workerDenyTools are not applied\n');
+            // Only the one-line bypass notice; no Rust logs leak to stderr. (Node's DEP0190
+            // warning for the win32 shell spawn is the advisor's own, not provider output.)
+            expect(result.stderr.replace(/^\(node:\d+\) \[DEP0190\].*\n(?:\(Use `node --trace-deprecation.*\n)?/m, '')).toBe('[ask-codex] runs with --dangerously-bypass-approvals-and-sandbox; host --deny-tool / permissions.workerDenyTools are not applied\n');
             const artifactPath = result.stdout.trim();
             const artifact = readFileSync(artifactPath, 'utf8');
             expect(artifact).toContain('CODEX_OK');
@@ -784,6 +812,27 @@ describe('run-provider-advisor script contract', () => {
                 command: 'gemini',
                 args: ['--yolo'],
                 options: { shell: true, encoding: 'utf8', stdio: null, input: longPrompt },
+            });
+        }
+        finally {
+            rmSync(wd, { recursive: true, force: true });
+        }
+    });
+    it('pipes short claude prompts over stdin on Windows so cmd.exe cannot split or run them', () => {
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-claude-win-stdin-'));
+        const prompt = 'review this & that | more';
+        try {
+            const capturePath = join(wd, 'spawn-sync-calls.json');
+            const preludePath = writeSpawnSyncCapturePrelude(wd); // sets process.platform = win32
+            const result = runAdvisorScriptWithPrelude(preludePath, ['claude', '--prompt', prompt], wd, { SPAWN_CAPTURE_PATH: capturePath });
+            expect(result.error).toBeUndefined();
+            expect(result.status).toBe(0);
+            const calls = JSON.parse(readFileSync(capturePath, 'utf8'));
+            expect(calls).toHaveLength(2);
+            expect(calls[1]).toMatchObject({
+                command: 'claude',
+                args: ['-p'],
+                options: { shell: true, input: prompt },
             });
         }
         finally {
@@ -1066,7 +1115,7 @@ describe('run-provider-advisor script contract', () => {
 describe('resolveAskAdvisorScriptPath', () => {
     it('resolves canonical env and supports package-root relative paths', () => {
         const packageRoot = '/tmp/pkg-root';
-        expect(resolveAskAdvisorScriptPath(packageRoot, { OMC_ASK_ADVISOR_SCRIPT: 'scripts/custom.js' }))
+        expect(toPosix(resolveAskAdvisorScriptPath(packageRoot, { OMC_ASK_ADVISOR_SCRIPT: 'scripts/custom.js' })))
             .toBe('/tmp/pkg-root/scripts/custom.js');
         expect(resolveAskAdvisorScriptPath(packageRoot, { OMC_ASK_ADVISOR_SCRIPT: '/opt/custom.js' }))
             .toBe('/opt/custom.js');

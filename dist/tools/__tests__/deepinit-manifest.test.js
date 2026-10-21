@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { scanDirectories, loadManifest, computeDiff, isExcluded, deepinitManifestTool, } from '../deepinit-manifest.js';
@@ -20,7 +20,7 @@ function createTestDir() {
 }
 function createFile(relativePath, content = '') {
     const fullPath = join(TEST_DIR, relativePath);
-    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    const dir = dirname(fullPath);
     mkdirSync(dir, { recursive: true });
     writeFileSync(fullPath, content);
 }

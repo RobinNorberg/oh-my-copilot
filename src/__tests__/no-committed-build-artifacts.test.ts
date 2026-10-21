@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { posixOnly } from './helpers/platform.js';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const CLASSIFIER = join(REPO_ROOT, 'scripts', 'ci', 'check-no-committed-build-artifacts.mjs');
@@ -64,7 +65,7 @@ describe('no committed build artifacts candidate classifier', () => {
     expect(run(root, base, head).status).toBe(0);
   });
 
-  it('holds candidate generated deltas with a control-safe path diagnostic', () => {
+  it.skipIf(posixOnly('NTFS file names cannot contain a newline'))('holds candidate generated deltas with a control-safe path diagnostic', () => {
     const root = fixture();
     const base = git(root, ['rev-parse', 'HEAD']).trim();
     mkdirSync(join(root, 'bridge'), { recursive: true });

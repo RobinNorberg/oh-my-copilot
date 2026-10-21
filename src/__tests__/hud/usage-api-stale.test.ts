@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { toPosix } from '../helpers/platform.js';
 import { EventEmitter } from 'events';
 
 const COPILOT_HOME = '/tmp/test-claude';
@@ -17,23 +18,23 @@ function createFsMock(initialFiles: Record<string, string>) {
   const files = new Map(Object.entries(initialFiles));
   const directories = new Set<string>([COPILOT_HOME, CACHE_DIR]);
 
-  const existsSync = vi.fn((path: string) => files.has(String(path)) || directories.has(String(path)));
+  const existsSync = vi.fn((path: string) => files.has(toPosix(String(path))) || directories.has(toPosix(String(path))));
   const readFileSync = vi.fn((path: string) => {
-    const content = files.get(String(path));
+    const content = files.get(toPosix(String(path)));
     if (content == null) throw new Error(`ENOENT: ${path}`);
     return content;
   });
   const writeFileSync = vi.fn((path: string, content: string) => {
-    files.set(String(path), String(content));
+    files.set(toPosix(String(path)), String(content));
   });
   const mkdirSync = vi.fn((path: string) => {
-    directories.add(String(path));
+    directories.add(toPosix(String(path)));
   });
   const unlinkSync = vi.fn((path: string) => {
-    files.delete(String(path));
+    files.delete(toPosix(String(path)));
   });
   const openSync = vi.fn((path: string) => {
-    const normalized = String(path);
+    const normalized = toPosix(String(path));
     if (files.has(normalized)) {
       const err = new Error(`EEXIST: ${normalized}`) as NodeJS.ErrnoException;
       err.code = 'EEXIST';
@@ -43,7 +44,7 @@ function createFsMock(initialFiles: Record<string, string>) {
     return 1;
   });
   const statSync = vi.fn((path: string) => {
-    if (!files.has(String(path))) throw new Error(`ENOENT: ${path}`);
+    if (!files.has(toPosix(String(path)))) throw new Error(`ENOENT: ${path}`);
     return { mtimeMs: Date.now() };
   });
 

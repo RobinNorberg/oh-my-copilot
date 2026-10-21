@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { readAutopilotStateForHud } from '../omc-state.js';
 import { renderAutopilot } from '../elements/autopilot.js';
 import { redactAutopilotPublicState } from '../../tools/state-tools.js';
@@ -28,7 +28,8 @@ const profileHash = createHash('sha256').update(canonicalJson({
 })).digest('hex');
 function workflowState(overrides = {}) {
     const sessionId = '11111111-1111-4111-8111-111111111111';
-    const transcriptRoot = '/tmp/omc-autopilot-profile-transcripts';
+    // The validator requires canonical absolute paths (resolve(p) === p), which a POSIX literal is not on win32.
+    const transcriptRoot = resolve('/tmp/omc-autopilot-profile-transcripts');
     const initialIdentity = {
         device: 0,
         inode: 0,
@@ -39,7 +40,7 @@ function workflowState(overrides = {}) {
     };
     const stableIdentity = { ...initialIdentity, size: 1, contentSha256: '1'.repeat(64) };
     const activationBoundary = {
-        transcriptPath: `${transcriptRoot}/${sessionId}.jsonl`,
+        transcriptPath: join(transcriptRoot, `${sessionId}.jsonl`),
         transcriptRoot,
         transcriptBasename: `${sessionId}.jsonl`,
         sessionId,

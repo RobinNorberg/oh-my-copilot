@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { detectApiKeySource, renderApiKeySource } from '../hud/elements/api-key-source.js';
 import type { ApiKeySource } from '../hud/elements/api-key-source.js';
+import { toPosix } from './helpers/platform.js';
 
 // Mock fs module
 vi.mock('fs', () => ({
@@ -43,7 +44,7 @@ describe('API Key Source Element', () => {
   describe('detectApiKeySource', () => {
     it('should return "project" when key is in project settings', () => {
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/my/project/.copilot/settings.local.json'
+        toPosix(String(path)) === '/my/project/.copilot/settings.local.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })
@@ -54,7 +55,7 @@ describe('API Key Source Element', () => {
 
     it('should return "global" when key is in global settings', () => {
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.claude/settings.json'
+        toPosix(String(path)) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })
@@ -88,7 +89,7 @@ describe('API Key Source Element', () => {
     it('should prioritize global over env', () => {
       process.env.ANTHROPIC_API_KEY = 'sk-ant-xxx';
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.claude/settings.json'
+        toPosix(String(path)) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })
@@ -114,7 +115,7 @@ describe('API Key Source Element', () => {
 
     it('should handle null cwd', () => {
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.claude/settings.json'
+        toPosix(String(path)) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })

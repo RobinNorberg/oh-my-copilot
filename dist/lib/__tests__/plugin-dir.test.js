@@ -6,7 +6,7 @@ import { resolve } from 'path';
 import { resolvePluginDirArg } from '../plugin-dir.js';
 describe('resolvePluginDirArg', () => {
     it('returns an absolute path unchanged', () => {
-        expect(resolvePluginDirArg('/tmp/foo')).toBe(resolve('/tmp/foo'));
+        expect(resolvePluginDirArg('/tmp/foo')).toBe('/tmp/foo');
     });
     it('resolves a relative path to absolute', () => {
         expect(resolvePluginDirArg('./rel/path')).toBe(resolve('./rel/path'));

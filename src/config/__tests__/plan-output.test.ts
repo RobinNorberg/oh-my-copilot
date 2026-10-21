@@ -10,6 +10,7 @@ import {
   resolvePlanOutputFilename,
   resolvePlanOutputPath,
 } from "../plan-output.js";
+import { toPosix } from "../../__tests__/helpers/platform.js";
 
 describe("plan output helpers", () => {
   it("uses default directory and filename template", () => {
@@ -62,7 +63,7 @@ describe("plan output helpers", () => {
     };
 
     expect(
-      resolvePlanOutputAbsolutePath("/repo", "autopilot-impl", config),
+      toPosix(resolvePlanOutputAbsolutePath("/repo", "autopilot-impl", config)),
     ).toBe("/repo/docs/plans/autopilot-impl.plan.md");
   });
 });

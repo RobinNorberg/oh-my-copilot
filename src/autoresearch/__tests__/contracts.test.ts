@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { toPosix } from '../../__tests__/helpers/platform.js';
 import {
   loadAutoresearchMissionContract,
   parseEvaluatorResult,
@@ -120,7 +121,7 @@ Stay in bounds.
       );
 
       const contract = await loadAutoresearchMissionContract(missionDir);
-      expect(contract.repoRoot).toBe(repo);
+      expect(toPosix(contract.repoRoot)).toBe(toPosix(repo));
       expect(contract.missionRelativeDir.replace(/\\/g, '/')).toBe('missions/demo');
       expect(contract.missionSlug).toBe('missions-demo');
       expect(contract.sandbox.evaluator.command).toBe('node scripts/eval.js');

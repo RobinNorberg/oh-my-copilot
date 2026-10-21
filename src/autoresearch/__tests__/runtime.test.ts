@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AutoresearchMissionContract } from '../contracts.js';
 import {
@@ -91,13 +91,32 @@ describe('autoresearch runtime', () => {
     }
   });
 
+  it('keeps a CRLF checkout of the mission files reset-safe under core.autocrlf=true', async () => {
+    const repo = await initRepo();
+    try {
+      const contract = await makeContract(repo);
+      // Git for Windows defaults to autocrlf=true: checkout writes CRLF, and an LF rewrite reads as modified.
+      execFileSync('git', ['config', 'core.autocrlf', 'true'], { cwd: repo, stdio: 'ignore' });
+      const worktreePath = join(repo, '..', `${basename(repo)}.omc-worktrees`, 'autoresearch-missions-demo-crlf');
+      execFileSync('git', ['worktree', 'add', '-b', 'autoresearch/missions-demo/crlf', worktreePath, 'HEAD'], { cwd: repo, stdio: 'ignore' });
+      expect(await readFile(join(worktreePath, 'missions', 'demo', 'mission.md'), 'utf-8')).toContain('\r\n');
+
+      await materializeAutoresearchMissionToWorktree(contract, worktreePath);
+
+      expect(() => assertResetSafeWorktree(worktreePath)).not.toThrow();
+    } finally {
+      await rm(join(repo, '..', `${basename(repo)}.omc-worktrees`), { recursive: true, force: true });
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   it('prepares runtime artifacts and persists autoresearch mode state', async () => {
     const repo = await initRepo();
     try {
       const contract = await makeContract(repo);
       await mkdir(join(repo, 'node_modules', 'fixture-dep'), { recursive: true });
       await writeFile(join(repo, 'node_modules', 'fixture-dep', 'index.js'), 'export default 1;\n', 'utf-8');
-      const worktreePath = join(repo, '..', `${repo.split('/').pop()}.omc-worktrees`, 'autoresearch-missions-demo-20260314t000000z');
+      const worktreePath = join(repo, '..', `${basename(repo)}.omc-worktrees`, 'autoresearch-missions-demo-20260314t000000z');
       execFileSync('git', ['worktree', 'add', '-b', 'autoresearch/missions-demo/20260314t000000z', worktreePath, 'HEAD'], {
         cwd: repo,
         stdio: 'ignore',
@@ -166,7 +185,7 @@ describe('autoresearch runtime', () => {
     const repo = await initRepo();
     try {
       const contract = await makeContract(repo);
-      const worktreePath = join(repo, '..', `${repo.split('/').pop()}.omc-worktrees`, 'autoresearch-missions-demo-20260314t000500z');
+      const worktreePath = join(repo, '..', `${basename(repo)}.omc-worktrees`, 'autoresearch-missions-demo-20260314t000500z');
       execFileSync('git', ['worktree', 'add', '-b', 'autoresearch/missions-demo/20260314t000500z', worktreePath, 'HEAD'], {
         cwd: repo,
         stdio: 'ignore',
@@ -203,7 +222,7 @@ describe('autoresearch parity decisions', () => {
     const repo = await initRepo();
     try {
       const contract = await makeContract(repo);
-      const worktreePath = join(repo, '..', `${repo.split('/').pop()}.omc-worktrees`, 'autoresearch-missions-demo-20260314t010000z');
+      const worktreePath = join(repo, '..', `${basename(repo)}.omc-worktrees`, 'autoresearch-missions-demo-20260314t010000z');
       execFileSync('git', ['worktree', 'add', '-b', 'autoresearch/missions-demo/20260314t010000z', worktreePath, 'HEAD'], {
         cwd: repo,
         stdio: 'ignore',

@@ -37,6 +37,7 @@ Shared helpers live in `src/__tests__/helpers/platform.ts`. Import them; do not 
 | `requiresExecutable(name)` / `hasExecutable(name)` | PATH + PATHEXT lookup without a shell. The WindowsApps `python`/`python3` Store stub counts as absent. |
 | `toFileUrl(p)` | `pathToFileURL(p).href` for ESM imports of temp files. |
 | `toPosix(p)` | Separator-agnostic path assertions. |
+| `scaleTiming(ms)` / `TIMING_SCALE` | Wall-clock ceilings tuned on Linux (`toBeLessThan(scaleTiming(500))`). 4x on win32, identity elsewhere. Keep a ceiling that guards a known stall (a 500ms spin) below that stall instead. |
 
 The skip helpers return true when the test must skip, and the reason sits in the call or the test
 title. A gate must not hide a Linux run: check that the condition is false on Linux, because CI

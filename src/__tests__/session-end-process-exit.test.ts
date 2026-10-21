@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { pathToFileURL } from 'node:url';
+import { IS_WIN, scaleTiming } from './helpers/platform.js';
 
 const REPO_ROOT = process.cwd();
 const RUN_CJS = join(REPO_ROOT, 'scripts', 'run.cjs');
@@ -15,13 +16,22 @@ const SESSION_END_SCRIPTS = [
 const IS_CI = process.env.CI === 'true' || process.env.CI === '1';
 // Keep the strict local regression ceiling while allowing bounded GitHub-hosted
 // process startup contention during the full parallel suite.
-const COMMAND_CEILING_MS = IS_CI ? 1_500 : 500;
-const SEQUENTIAL_CEILING_MS = IS_CI ? 3_000 : 1_000;
+const COMMAND_CEILING_MS = scaleTiming(IS_CI ? 1_500 : 500);
+const SEQUENTIAL_CEILING_MS = scaleTiming(IS_CI ? 3_000 : 1_000);
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js'));
 const TEST_PRODUCER_GRACE_MS = '25';
 // The worker's required actions have a 9s budget; allow that bounded contract
 // plus process-startup/runner contention under the full suite.
-const DETACHED_WORKER_CEILING_MS = IS_CI ? 25_000 : 5_000;
+const DETACHED_WORKER_CEILING_MS = IS_CI ? 25_000 : scaleTiming(5_000);
+const WIN_REAPER = [
+  "const { rmSync } = require('node:fs');",
+  'const deadline = Date.now() + 180_000;',
+  'const attempt = () => {',
+  '  try { rmSync(process.argv[1], { recursive: true, force: true }); }',
+  '  catch { if (Date.now() < deadline) setTimeout(attempt, 2_000); }',
+  '};',
+  'attempt();',
+].join('\n');
 
 interface ExitResult {
   elapsedMs: number;
@@ -156,7 +166,14 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
 
   afterEach(() => {
     for (const directory of tempDirs.splice(0)) {
-      rmSync(directory, { recursive: true, force: true, maxRetries: 40, retryDelay: 25 });
+      try {
+        rmSync(directory, { recursive: true, force: true, maxRetries: 40, retryDelay: 25 });
+      } catch (error) {
+        // Windows cannot delete a directory that the detached SessionEnd worker still uses as
+        // its cwd (it outlives the test by its producer grace), so a detached reaper retries.
+        if (!IS_WIN) throw error;
+        spawn(process.execPath, ['-e', WIN_REAPER, directory], { cwd: tmpdir(), detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      }
     }
     vi.unstubAllEnvs();
   });
@@ -212,7 +229,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
 
     if (_name === 'session-end') {
       const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', `${sessionId}.json`);
-      const deadline = Date.now() + (IS_CI ? 1_000 : 250);
+      const deadline = Date.now() + scaleTiming(IS_CI ? 1_000 : 250);
       while (!existsSync(manifestPath) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
@@ -241,7 +258,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
     ));
 
     await waitForTerminalCallback(cwd, sessionId);
-  });
+  }, IS_WIN ? 60_000 : undefined);
 
   it.skipIf(!HAS_GENERATED_DIST)('uses the generated dist closure: the shipped worker imports and can execute', async () => {
     const distWorker = join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js');
@@ -288,7 +305,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
     );
     expectPromptExit(result);
     const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', 'configured-network-routing.json');
-    const publicationDeadline = Date.now() + 2_000;
+    const publicationDeadline = Date.now() + scaleTiming(2_000);
     while (!existsSync(manifestPath) && Date.now() < publicationDeadline) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
