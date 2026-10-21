@@ -19,7 +19,7 @@
  * (`RuntimeConnection.forStdio({ path })`), never the SDK's bundled runtime.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-import { type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
@@ -137,6 +137,23 @@ export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
 /** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */
 export declare function runtimePid(client: SdkClientLike): number | undefined;
 export declare function prepareSdkProject(spawnSync: SpawnSyncFn, projectDir: string, remoteDir: string, env: NodeJS.ProcessEnv): string | null;
+/**
+ * filetools: the fixture under the sandbox project (notes.txt, a README.md
+ * carrying a fresh nonce) and a probe plugin under the home whose hook entries
+ * ({@link probeHooksJson}) append their stdin payloads to `probe.jsonl`.
+ */
+export declare function prepareFiletools(projectDir: string, home: string, node?: string): {
+    nonce: string;
+    writeNonce: string;
+    probeDir: string;
+    probeLog: string;
+};
+/** What the filetools turn left behind: the probe records and the fixture's state. */
+export declare function collectFiletools(projectDir: string, probe: {
+    nonce: string;
+    writeNonce: string;
+    probeLog: string;
+}): FiletoolsEvidence;
 export interface SdkTierInput {
     root: string;
     bin: string;

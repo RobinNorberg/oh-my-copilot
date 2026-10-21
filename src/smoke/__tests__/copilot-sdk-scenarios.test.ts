@@ -18,10 +18,15 @@ import {
   evaluateSdkRuntime,
   evaluateSdkSkills,
   evaluateSdkToolsExcluded,
+  FILE_TOOL_MATCHER,
   hookScriptNames,
   hostSmokeToolName,
+  OPT_IN_SCENARIOS,
   permitGuardrailPush,
+  permitProjectFiles,
   permitScopedRead,
+  probeHooksJson,
+  probeTool,
   SCENARIOS,
   scenarioCheckIds,
   scenarioCost,
@@ -29,6 +34,8 @@ import {
   skippedScenarioChecks,
   sliceLogByTime,
   usageCredits,
+  type FiletoolsEvidence,
+  type ProbeRecord,
   type Scenario,
   type ScenarioRun,
 } from '../copilot-sdk-scenarios.js';
@@ -434,5 +441,119 @@ describe('chain scenario (live capture, Copilot CLI 1.0.91, 2026-10-06)', () => 
     const { checks } = evaluateScenario(chainRun({ chain: undefined, idle: false, error: 'chain setup: boom' }));
     expect(checks.map((c) => c.id)).toEqual(scenarioCheckIds('chain'));
     expect(checks.filter((c) => c.ok).map((c) => c.id)).toEqual(['scn.chain.adapter_errors', 'scn.chain.cost']);
+  });
+});
+
+describe('filetools scenario (Copilot CLI 1.0.91 capture)', () => {
+  const probeFixture = (name: string): ProbeRecord[] => readFileSync(join(FIXTURES, `tier2-${name}-probe.jsonl`), 'utf-8').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l) as ProbeRecord);
+  // view, edit, create (mai-code-1.1-flash), in an earlier layout without filetools/new/README.md.
+  const NONCE = 'omg-dirctx-334f8708d0bc';
+  const PROBE = probeFixture('filetools');
+  const evidence = (over: Partial<FiletoolsEvidence> = {}): FiletoolsEvidence => ({ nonce: NONCE, writeNonce: 'omg-dirctx-unset', probe: PROBE, edited: true, created: true, ...over });
+  const ftRun = (over: Partial<ScenarioRun> = {}) => run('filetools', { filetools: evidence(), ...over });
+  const own = scenarioCheckIds('filetools').slice(0, 8);
+  // view, apply_patch (notes.txt + new/created.txt), view (gpt-6-luna), with the apply_patch-aware injector.
+  const patchRun = (over: Partial<FiletoolsEvidence> = {}) => run('filetools', {
+    events: parseJsonl(readFileSync(join(FIXTURES, 'tier2-filetools-patch-events.jsonl'), 'utf-8')).events,
+    filetools: { nonce: 'omg-dirctx-11e9834dc45b', writeNonce: 'omg-dirctx-397636e54ea0', probe: probeFixture('filetools-patch'), edited: true, created: true, ...over },
+  });
+
+  it('apply_patch capture passes: Edit with the patch text as tool_input, the write-side README injected through it', () => {
+    const { checks, cost } = evaluateScenario(patchRun());
+    expect(checks.filter((c) => !c.ok)).toEqual([]);
+    expect(cost.premiumRequests).toBe(1);
+    const c = byId(checks);
+    expect(c['scn.filetools.pre'].detail).toBe('PreToolUse probe: view→Read (native view), apply_patch→Edit (native apply_patch), view→Read (native view)');
+    expect(c['scn.filetools.matcher'].detail).toBe(`PostToolUse matcher ${FILE_TOOL_MATCHER}: view→Read, apply_patch→Edit, view→Read`);
+    expect(c['scn.filetools.payload'].detail).toBe('view: tool_name Read {path}; apply_patch: tool_name Edit "<patch: filetools/notes.txt, new/created.txt>"; view: tool_name Read {path}');
+    expect(c['scn.filetools.injected_write'].detail).toBe('filetools/new/README.md nonce in a postToolUse hook.end output; in the apply_patch tool result sent to the model');
+  });
+
+  it('edit/create capture: pre and post hooks per file tool, Claude names in the payload, the injection in the view result', () => {
+    const { checks, cost } = evaluateScenario(ftRun());
+    expect(checks.map((c) => c.id)).toEqual(scenarioCheckIds('filetools'));
+    // That layout had no README.md for the written file alone, so no write-side injection.
+    expect(checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(['scn.filetools.injected_write']);
+    expect(cost.premiumRequests).toBe(1);
+    const c = byId(checks);
+    expect(c['scn.filetools.injected_write'].detail).toBe('filetools/new/README.md nonce missing from a postToolUse hook.end output; in no model-facing tool result');
+    expect(c['scn.filetools.tools'].detail).toBe('view, edit, create completed; notes.txt edited, created.txt created');
+    expect(c['scn.filetools.pre'].detail).toBe('PreToolUse probe: view→Read (native view), edit→Edit (native edit), create→Write (native create)');
+    expect(c['scn.filetools.post'].detail).toBe('PostToolUse probe: view→Read (native view), edit→Edit (native edit), create→Write (native create)');
+    expect(c['scn.filetools.matcher'].detail).toBe(`PostToolUse matcher ${FILE_TOOL_MATCHER}: view→Read, edit→Edit, create→Write`);
+    // tool_input keeps Copilot's argument names; no Claude file_path/old_string/new_string/content.
+    expect(c['scn.filetools.payload'].detail).toBe('view: tool_name Read {path}; edit: tool_name Edit {path,old_str,new_str}; create: tool_name Write {path,file_text}');
+    expect(c['scn.filetools.injected'].detail).toBe('filetools/README.md nonce in a postToolUse hook.end output; in the view tool result sent to the model; model echoed it');
+  });
+
+  it('the Claude payload carries no tool call id and has tool_result, not tool_response', () => {
+    const post = PROBE.find((r) => r.label === 'PostToolUse')!.payload!;
+    expect(Object.keys(post).sort()).toEqual(['cwd', 'hook_event_name', 'session_id', 'timestamp', 'tool_input', 'tool_name', 'tool_result']);
+    expect(PROBE.every((r) => probeTool(r).name !== '')).toBe(true);
+  });
+
+  it('fails matcher when the Read|Write|Edit|MultiEdit entry never ran', () => {
+    const c = byId(evaluateScenario(ftRun({ filetools: evidence({ probe: PROBE.filter((r) => r.label !== 'PostToolUse:matcher') }) })).checks);
+    expect(c['scn.filetools.matcher']).toMatchObject({ ok: false, detail: expect.stringContaining('view→none') });
+    expect(c['scn.filetools.post'].ok).toBe(true);
+  });
+
+  it('fails pre when the PreToolUse entries never ran', () => {
+    const c = byId(evaluateScenario(ftRun({ filetools: evidence({ probe: PROBE.filter((r) => r.label.toLowerCase() !== 'pretooluse') }) })).checks);
+    expect(c['scn.filetools.pre']).toMatchObject({ ok: false, detail: expect.stringContaining('view→none (native none)') });
+  });
+
+  it('fails payload when the Claude-format entry sees native tool names', () => {
+    const native = new Map(PROBE.filter((r) => r.label === 'postToolUse').map((r) => [JSON.stringify(probeTool(r).input), probeTool(r).name]));
+    const unmapped = PROBE.map((r) => (r.label === 'PostToolUse' ? { ...r, payload: { ...r.payload, tool_name: native.get(JSON.stringify(probeTool(r).input)) } } : r));
+    const c = byId(evaluateScenario(ftRun({ filetools: evidence({ probe: unmapped }) })).checks);
+    expect(c['scn.filetools.payload']).toMatchObject({ ok: false, detail: expect.stringContaining('view: tool_name view {path}') });
+  });
+
+  it('fails injected when the nonce reached the hook but no model-facing tool result', () => {
+    const stripped = events('filetools').filter((e) => e.type !== 'tool.execution_complete' && e.type !== 'model.tool_execution');
+    const c = byId(evaluateScenario(ftRun({ events: stripped })).checks);
+    expect(c['scn.filetools.injected']).toMatchObject({ ok: false, detail: expect.stringMatching(/in a postToolUse hook\.end output; in no model-facing tool result/) });
+  });
+
+  it("fails injected for another run's nonce; a direct view of README.md does not count", () => {
+    expect(byId(evaluateScenario(ftRun({ filetools: evidence({ nonce: 'omg-dirctx-000000000000' }) })).checks)['scn.filetools.injected'].ok).toBe(false);
+    const readme = events('filetools').map((e) => (e.type === 'tool.execution_start' && e.data?.toolName === 'view'
+      ? { ...e, data: { ...e.data, arguments: { path: 'filetools/README.md' } } } : e));
+    expect(byId(evaluateScenario(ftRun({ events: readme })).checks)['scn.filetools.injected'].ok).toBe(false);
+  });
+
+  it('fails tools when the edit did not land, and every own check without evidence', () => {
+    expect(byId(evaluateScenario(ftRun({ filetools: evidence({ edited: false }) })).checks)['scn.filetools.tools'].ok).toBe(false);
+    const { checks } = evaluateScenario(run('filetools', { error: 'createSession() timed out' }));
+    expect(checks.filter((c) => own.includes(c.id)).every((c) => !c.ok && c.detail.startsWith('no filetools evidence'))).toBe(true);
+  });
+
+  it('is opt-in, without a shell, and permits file access only under the sandbox project', () => {
+    expect(OPT_IN_SCENARIOS).toContain('filetools');
+    expect(ALL_SCENARIOS).not.toContain('filetools');
+    expect(DEFAULT_SCENARIOS).not.toContain('filetools');
+    expect(SCENARIOS.filetools.excludedTools).toEqual(['powershell', 'shell']);
+    expect(SCENARIOS.filetools.prompt).not.toMatch(/omg-dirctx/);
+    const ctx = { projectDir: join(FIXTURES, 'project'), pluginRoot: join(FIXTURES, 'plugin') };
+    expect(permitProjectFiles({ kind: 'read', path: join(ctx.projectDir, 'filetools', 'notes.txt') }, ctx)).toBe(true);
+    expect(permitProjectFiles({ kind: 'write', fileName: join(ctx.projectDir, 'filetools', 'created.txt') }, ctx)).toBe(true);
+    expect(permitProjectFiles({ kind: 'write', fileName: 'filetools/created.txt' }, ctx)).toBe(true);
+    expect(permitProjectFiles({ kind: 'write', fileName: join(ctx.projectDir, '..', 'x.txt') }, ctx)).toBe(false);
+    expect(permitProjectFiles({ kind: 'write', fileName: join(ctx.projectDir, 'x'), resolvedPath: join(ctx.pluginRoot, 'x') }, ctx)).toBe(false);
+    expect(permitProjectFiles({ kind: 'read', path: join(ctx.pluginRoot, 'skills', 'x') }, ctx)).toBe(false);
+    expect(permitProjectFiles({ kind: 'read' }, ctx)).toBe(false);
+    expect(permitProjectFiles({ kind: 'shell', fullCommandText: 'ls' }, ctx)).toBe(false);
+  });
+
+  it('the probe hooks mirror our generated PostToolUse matcher, one command entry per label', () => {
+    const ours = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'copilot', 'hooks.json'), 'utf-8')) as { hooks: Record<string, Array<{ matcher?: string; args: string[] }>> };
+    const injector = ours.hooks.PostToolUse.find((h) => h.args.some((a) => a.endsWith('post-tool-directory-context-injector.mjs')));
+    expect(injector?.matcher).toBe(FILE_TOOL_MATCHER);
+    const probe = probeHooksJson('node', '/p/probe.cjs', '/p/log.jsonl') as { version: number; hooks: Record<string, Array<Record<string, unknown>>> };
+    expect(probe.version).toBe(1);
+    expect(Object.keys(probe.hooks)).toEqual(['PreToolUse', 'PostToolUse', 'preToolUse', 'postToolUse']);
+    expect(probe.hooks.PostToolUse.map((h) => h.matcher)).toEqual([undefined, FILE_TOOL_MATCHER]);
+    expect(probe.hooks.PostToolUse[1]).toMatchObject({ type: 'command', exec: 'node', args: ['/p/probe.cjs', 'PostToolUse:matcher', '/p/log.jsonl'] });
   });
 });

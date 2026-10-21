@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import {
   computeJournalFingerprint,
   FileJournal,
@@ -53,7 +54,7 @@ function makeRecord(seq: number): JournalRecord {
   };
 }
 
-describe("FileJournal", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("FileJournal", () => {
   const tempDirs: string[] = [];
 
   function makeRunsRoot(): string {

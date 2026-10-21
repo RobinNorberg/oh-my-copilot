@@ -12070,18 +12070,41 @@ function detectExistingPythonEnv(projectRoot) {
   }
   return null;
 }
+async function resolveSystemPython(platform = process.platform, probe = runPythonProbe) {
+  const useCache = platform === process.platform && probe === runPythonProbe;
+  if (useCache && systemPythonCache !== void 0) return systemPythonCache;
+  const resolved = await probeSystemPython(platform, probe);
+  if (useCache) systemPythonCache = resolved;
+  return resolved;
+}
+async function probeSystemPython(platform, probe) {
+  const candidates = platform === "win32" ? [["python3"], ["python"], ["py", "-3"]] : [["python3"]];
+  for (const [command, ...args] of candidates) {
+    try {
+      const stdout = await probe(command, [
+        ...args,
+        "-c",
+        "import sys; assert sys.version_info >= (3,); print(sys.executable)"
+      ]);
+      const executable = stdout.trim();
+      if (executable) return executable;
+    } catch {
+    }
+  }
+  return null;
+}
 async function ensurePythonEnvironment(projectRoot) {
   const existing = detectExistingPythonEnv(projectRoot);
   if (existing) {
     return existing;
   }
-  try {
-    await execFileAsync2("python3", ["--version"]);
-    return { pythonPath: "python3", type: "venv" };
-  } catch {
+  const systemPython = await resolveSystemPython();
+  if (systemPython) {
+    return { pythonPath: systemPython, type: "venv" };
   }
   throw new Error(
-    "No Python environment found. Create a virtual environment first:\n  python -m venv .venv"
+    `No Python environment found (probed: ${process.platform === "win32" ? "python3, python, py -3" : "python3"}). Create a virtual environment first:
+  python -m venv .venv`
   );
 }
 async function verifyProcessIdentity(meta) {
@@ -12433,7 +12456,7 @@ async function removeFileIfExists(filePath) {
 function sleep(ms) {
   return new Promise((resolve33) => setTimeout(resolve33, ms));
 }
-var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
+var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
   "src/tools/python-repl/bridge-manager.ts"() {
     "use strict";
@@ -12453,6 +12476,7 @@ var init_bridge_manager = __esm({
     DEFAULT_GRACE_PERIOD_MS = 5e3;
     SIGTERM_GRACE_MS = 2500;
     ownedBridgeSessionIds = /* @__PURE__ */ new Set();
+    runPythonProbe = async (command, args) => (await execFileAsync2(command, args, { timeout: 1e4, windowsHide: true })).stdout;
     USE_TCP_FALLBACK = process.platform === "win32";
   }
 });
@@ -12537,7 +12561,12 @@ function containerUriToHostUri(uri, context) {
   if (!context || !uri.startsWith("file://")) {
     return uri;
   }
-  return (0, import_url2.pathToFileURL)(containerPathToHostPath((0, import_url2.fileURLToPath)(uri), context)).href;
+  const url = new URL(uri);
+  if (url.host !== "" || /%2f/i.test(url.pathname)) {
+    throw new TypeError(`Invalid container file URI: ${uri}`);
+  }
+  const containerPath = decodeURIComponent(url.pathname);
+  return (0, import_url2.pathToFileURL)(containerPathToHostPath(containerPath, context)).href;
 }
 function resolveDevContainerConfigPath(workspaceRoot) {
   let dir = workspaceRoot;
@@ -29179,6 +29208,11 @@ function permitScopedRead(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder((0, import_path58.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+}
 function evaluateTeam(run) {
   const team = run.team;
   if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : "no team evidence collected" }));
@@ -29311,6 +29345,121 @@ function evaluateChain(run) {
     }
   ];
 }
+function probeHooksJson(node, script, log) {
+  const hooks = {};
+  for (const e of PROBE_ENTRIES) {
+    (hooks[e.event] ??= []).push({
+      type: "command",
+      ..."matcher" in e ? { matcher: e.matcher } : {},
+      exec: node,
+      args: [script, e.label, log],
+      timeoutSec: 10
+    });
+  }
+  return { version: 1, hooks };
+}
+function fileToolCalls(events) {
+  const done = new Map(events.filter((e) => e.type === "tool.execution_complete").map((e) => [str2(e.data?.toolCallId), e.data?.success === true]));
+  return events.filter((e) => e.type === "tool.execution_start" && [...FILE_READ_TOOLS, ...FILE_WRITE_TOOLS].includes(str2(e.data?.toolName))).map((e) => ({ id: str2(e.data?.toolCallId), name: str2(e.data?.toolName), args: e.data?.arguments, ok: done.get(str2(e.data?.toolCallId)) === true }));
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function inputPaths(input) {
+  if (typeof input === "string") return [...input.matchAll(PATCH_FILE_LINE)].map((m) => m[1]);
+  const o = asObject(input);
+  const p = o ? str2(o.file_path) || str2(o.path) : "";
+  return p ? [p] : [];
+}
+function probeTool(r) {
+  const p = r.payload ?? {};
+  return { name: str2(p.tool_name) || str2(p.toolName), input: p.tool_input ?? p.toolArgs };
+}
+function inputKey(input) {
+  if (typeof input === "string") return `text:${input}`;
+  const o = asObject(input);
+  return o ? JSON.stringify(o, Object.keys(o).sort()) : "";
+}
+function recordsFor(call, records2, label) {
+  const want = inputKey(call.args);
+  return want ? records2.filter((r) => r.label === label && inputKey(probeTool(r).input) === want) : [];
+}
+function toolResultTexts(events, callId) {
+  const out = [];
+  for (const e of events) {
+    if (str2(e.data?.toolCallId) !== callId) continue;
+    if (e.type === "tool.execution_complete") out.push(str2(asObject(e.data?.result)?.content));
+    if (e.type === "model.tool_execution") out.push(str2(asObject(e.data?.toolResult)?.textResultForLlm));
+  }
+  return out.filter(Boolean);
+}
+function evaluateFiletools(run) {
+  const ft = run.filetools;
+  const ids = scenarioCheckIds("filetools");
+  if (!ft) return ids.slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no filetools evidence: ${excerpt(run.error, 200)}` : "no filetools evidence collected" }));
+  const calls = fileToolCalls(run.events).filter((c) => c.ok);
+  const reads = calls.filter((c) => FILE_READ_TOOLS.includes(c.name));
+  const writes = calls.filter((c) => FILE_WRITE_TOOLS.includes(c.name));
+  const toolsOk = reads.length > 0 && writes.length > 0 && ft.edited && ft.created;
+  const seen = (claudeLabel, nativeLabel) => {
+    const rows = calls.map((c) => ({ c, claude: recordsFor(c, ft.probe, claudeLabel), native: nativeLabel ? recordsFor(c, ft.probe, nativeLabel) : [] }));
+    const ok = calls.length > 0 && rows.every((r) => r.claude.length > 0 && (!nativeLabel || r.native.length > 0));
+    const names = (recs) => [...new Set(recs.map((x) => probeTool(x).name || "?"))].join("/") || "none";
+    const detail = rows.map((r) => `${r.c.name}\u2192${names(r.claude)}${nativeLabel ? ` (native ${names(r.native)})` : ""}`).join(", ") || "no file tool calls";
+    return { ok, detail, rows };
+  };
+  const pre = seen("PreToolUse", "preToolUse");
+  const post = seen("PostToolUse", "postToolUse");
+  const matcher = seen("PostToolUse:matcher");
+  const claudeNames = new Set(FILE_TOOL_MATCHER.split("|"));
+  const payloadRows = [...pre.rows, ...post.rows];
+  const payloadOk = calls.length > 0 && payloadRows.every((r) => r.claude.every((x) => claudeNames.has(probeTool(x).name) && inputPaths(probeTool(x).input).length > 0) && r.native.every((x) => probeTool(x).name === r.c.name));
+  const shape = (recs) => {
+    if (!recs[0]) return "none";
+    const { name, input } = probeTool(recs[0]);
+    return typeof input === "string" ? `${name} "<patch: ${inputPaths(input).map((p) => p.split(/[\\/]/).slice(-2).join("/")).join(", ")}>"` : `${name} {${Object.keys(asObject(input) ?? {}).join(",")}}`;
+  };
+  const contextCall = (c) => inputPaths(c.args).some((p) => /readme\.md$/i.test(p));
+  const injection = (nonce, from) => {
+    const hookOut = run.events.some((e) => e.type === "hook.end" && e.data?.hookType === "postToolUse" && JSON.stringify(e.data?.output ?? "").includes(nonce));
+    const carrier = from.find((c) => !contextCall(c) && toolResultTexts(run.events, c.id).some((t) => t.includes(nonce)));
+    return {
+      ok: hookOut && !!carrier,
+      detail: `nonce ${hookOut ? "in" : "missing from"} a postToolUse hook.end output; ${carrier ? `in the ${carrier.name} tool result sent to the model` : "in no model-facing tool result"}`
+    };
+  };
+  const read = injection(ft.nonce, reads);
+  const write = injection(ft.writeNonce, writes);
+  const echoed = assistantText(run.events).includes(ft.nonce);
+  return [
+    {
+      id: "scn.filetools.tools",
+      ok: toolsOk,
+      detail: `${calls.map((c) => c.name).join(", ") || "no file tool calls"} completed; notes.txt ${ft.edited ? "edited" : "unchanged"}, created.txt ${ft.created ? "created" : "missing"}`
+    },
+    hookCheck("scn.filetools.hooks", run.events, ["preToolUse", "postToolUse"]),
+    { id: "scn.filetools.pre", ok: pre.ok, detail: `PreToolUse probe: ${pre.detail}` },
+    { id: "scn.filetools.post", ok: post.ok, detail: `PostToolUse probe: ${post.detail}` },
+    { id: "scn.filetools.matcher", ok: matcher.ok, detail: `PostToolUse matcher ${FILE_TOOL_MATCHER}: ${matcher.detail}` },
+    {
+      id: "scn.filetools.payload",
+      ok: payloadOk,
+      detail: post.rows.map((r) => `${r.c.name}: tool_name ${shape(r.claude)}`).join("; ") || "no file tool calls",
+      ...payloadOk ? {} : { evidence: excerpt(JSON.stringify(payloadRows.map((r) => ({ call: r.c.name, claude: r.claude.map(probeTool), native: r.native.map(probeTool) })))) }
+    },
+    {
+      id: "scn.filetools.injected",
+      ok: read.ok,
+      detail: `${FILETOOLS_FILES.context} ${read.detail}; model ${echoed ? "echoed it" : "did not echo it"}`,
+      ...read.ok ? {} : { evidence: excerpt(assistantText(run.events)) }
+    },
+    {
+      id: "scn.filetools.injected_write",
+      ok: write.ok,
+      detail: `${FILETOOLS_FILES.writeContext} ${write.detail}`
+    }
+  ];
+}
 function scenarioExcludedTools(name, mcpServer) {
   return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
 }
@@ -29320,6 +29469,7 @@ function scenarioCheckIds(name) {
     guardrail: ["denied", "no_push", "hooks"],
     skill: ["invoked"],
     delegate: ["selected", "hooks", "completed"],
+    filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
     chain: ["link1", "spawned", "inherited", "closed", "premium"],
     team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"]
   };
@@ -29616,6 +29766,7 @@ function evaluateScenario(run) {
     guardrail: evaluateGuardrail,
     skill: evaluateSkill,
     delegate: evaluateDelegate,
+    filetools: evaluateFiletools,
     chain: evaluateChain,
     team: evaluateTeam
   }[run.name](run);
@@ -29629,7 +29780,7 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs46, import_path58, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs46, import_path58, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -29637,7 +29788,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path58 = require("path");
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
@@ -29649,6 +29800,21 @@ var init_copilot_sdk_scenarios = __esm({
     NO_WRITE_TOOLS = ["create", "edit"];
     denyAll = () => false;
     GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+    FILETOOLS_DIR = "filetools";
+    FILETOOLS_FILES = {
+      notes: `${FILETOOLS_DIR}/notes.txt`,
+      created: `${FILETOOLS_DIR}/new/created.txt`,
+      /**
+       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+       * README once per session, so the read (view of notes.txt) and the write
+       * (creating created.txt) each get their own.
+       */
+      context: `${FILETOOLS_DIR}/README.md`,
+      writeContext: `${FILETOOLS_DIR}/new/README.md`
+    };
+    FILETOOLS_MARKER = "Context marker:";
+    FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -29677,6 +29843,19 @@ var init_copilot_sdk_scenarios = __esm({
         prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
+      },
+      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+      filetools: {
+        name: "filetools",
+        prompt: [
+          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+          `1. View ${FILETOOLS_FILES.notes}.`,
+          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+        ].join("\n"),
+        excludedTools: ["powershell", "shell"],
+        permit: permitProjectFiles
       },
       // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
       // factory link (copilot-chain-scenario.ts) under the AFK profile.
@@ -29709,6 +29888,16 @@ var init_copilot_sdk_scenarios = __esm({
     CHAIN_LINK2_STAGE = "link-2";
     CHAIN_MAX_PREMIUM_REQUESTS = 2;
     ledgerStr = (ledger, key) => str2(ledger?.[key]);
+    PROBE_ENTRIES = [
+      { event: "PreToolUse", label: "PreToolUse" },
+      { event: "PostToolUse", label: "PostToolUse" },
+      { event: "PostToolUse", label: "PostToolUse:matcher", matcher: FILE_TOOL_MATCHER },
+      { event: "preToolUse", label: "preToolUse" },
+      { event: "postToolUse", label: "postToolUse" }
+    ];
+    FILE_READ_TOOLS = ["view"];
+    FILE_WRITE_TOOLS = ["create", "edit", "str_replace_editor", "apply_patch"];
+    PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
     SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
     RUNTIME_MIN_MAX_CREDITS = 30;
     CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
@@ -29914,6 +30103,70 @@ function prepareSdkProject(spawnSync10, projectDir, remoteDir, env) {
     if (res.status !== 0) return `git ${args.join(" ")}: ${excerpt(`${res.stderr ?? ""}${res.error?.message ?? ""}`, 200) || `exit ${res.status}`}`;
   }
   return null;
+}
+function prepareFiletools(projectDir, home, node = process.execPath) {
+  const nonce = `omg-dirctx-${(0, import_crypto12.randomBytes)(6).toString("hex")}`;
+  const writeNonce = `omg-dirctx-${(0, import_crypto12.randomBytes)(6).toString("hex")}`;
+  (0, import_fs47.mkdirSync)((0, import_path59.join)(projectDir, (0, import_path59.dirname)(FILETOOLS_FILES.writeContext)), { recursive: true });
+  (0, import_fs47.writeFileSync)((0, import_path59.join)(projectDir, FILETOOLS_FILES.notes), "status: draft\n");
+  (0, import_fs47.writeFileSync)((0, import_path59.join)(projectDir, FILETOOLS_FILES.context), `# Filetools fixture
+
+${FILETOOLS_MARKER} ${nonce}
+`);
+  (0, import_fs47.writeFileSync)((0, import_path59.join)(projectDir, FILETOOLS_FILES.writeContext), `# Filetools new files
+
+${FILETOOLS_MARKER} ${writeNonce}
+`);
+  const probeDir = (0, import_path59.join)(home, "filetools-probe");
+  const probeLog = (0, import_path59.join)(home, "filetools-probe.jsonl");
+  const script = (0, import_path59.join)(probeDir, "probe.cjs");
+  (0, import_fs47.mkdirSync)(probeDir, { recursive: true });
+  (0, import_fs47.writeFileSync)((0, import_path59.join)(probeDir, "plugin.json"), `${JSON.stringify({ name: "omg-smoke-probe", version: "0.0.0", description: "omg smoke filetools hook probe", hooks: "./hooks.json" }, null, 2)}
+`);
+  (0, import_fs47.writeFileSync)((0, import_path59.join)(probeDir, "hooks.json"), `${JSON.stringify(probeHooksJson(node, script, probeLog), null, 2)}
+`);
+  (0, import_fs47.writeFileSync)(script, [
+    "'use strict';",
+    "const fs = require('fs');",
+    "const [label, log] = process.argv.slice(2);",
+    "const chunks = [];",
+    "process.stdin.on('data', (c) => chunks.push(c));",
+    "process.stdin.on('end', () => {",
+    "  const raw = Buffer.concat(chunks).toString('utf8');",
+    "  let payload = null;",
+    "  try { payload = JSON.parse(raw); } catch { /* recorded as null */ }",
+    "  fs.appendFileSync(log, JSON.stringify({ label, payload }) + '\\n');",
+    "});",
+    ""
+  ].join("\n"));
+  return { nonce, writeNonce, probeDir, probeLog };
+}
+function collectFiletools(projectDir, probe) {
+  let records2 = [];
+  try {
+    records2 = (0, import_fs47.readFileSync)(probe.probeLog, "utf-8").split(/\r?\n/).filter(Boolean).flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+  }
+  const read = (rel) => {
+    try {
+      return (0, import_fs47.readFileSync)((0, import_path59.join)(projectDir, rel), "utf-8");
+    } catch {
+      return null;
+    }
+  };
+  return {
+    nonce: probe.nonce,
+    writeNonce: probe.writeNonce,
+    probe: records2,
+    edited: /^status: done\s*$/m.test(read(FILETOOLS_FILES.notes) ?? ""),
+    created: read(FILETOOLS_FILES.created) !== null
+  };
 }
 function remoteRefs(spawnSync10, remoteDir, env) {
   const res = spawnSync10("git", ["--git-dir", remoteDir, "for-each-ref"], { env, encoding: "utf8", timeout: 3e4, windowsHide: true });
@@ -30163,7 +30416,9 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
   let wedged = false;
   let spent = 0;
   let error2;
+  let probe;
   try {
+    if (name === "filetools") probe = prepareFiletools(input.projectDir, input.home);
     session = await withTimeout(client.createSession({
       onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
       onEvent: (event) => {
@@ -30176,7 +30431,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
           onCap();
         }
       },
-      pluginDirectories: [input.root],
+      pluginDirectories: probe ? [input.root, probe.probeDir] : [input.root],
       workingDirectory: input.projectDir,
       disabledMcpServers: ["github-mcp-server"],
       excludedTools: scenarioExcludedTools(name, input.mcpServer),
@@ -30230,6 +30485,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     timeoutMs: input.timeoutMs,
     ...error2 ? { error: error2 } : {},
     ...name === "guardrail" ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {},
+    ...probe ? { filetools: collectFiletools(input.projectDir, probe) } : {},
     model: modelLabel,
     maxCredits: input.maxCredits,
     budget,
@@ -30237,11 +30493,12 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     wedged
   };
 }
-var import_child_process16, import_fs47, import_module3, import_path59, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process16, import_crypto12, import_fs47, import_module3, import_path59, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
     import_child_process16 = require("child_process");
+    import_crypto12 = require("crypto");
     import_fs47 = require("fs");
     import_module3 = require("module");
     import_path59 = require("path");
@@ -33391,13 +33648,13 @@ function writeChainLinkLedger(factoryDir, linkId, host, seed) {
   }, null, 2), "utf8");
   return ledgerPath3;
 }
-var fs8, path14, import_crypto12, import_child_process17, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
+var fs8, path14, import_crypto13, import_child_process17, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
 var init_spawn_next = __esm({
   "src/hooks/session-end/spawn-next.ts"() {
     "use strict";
     fs8 = __toESM(require("fs"), 1);
     path14 = __toESM(require("path"), 1);
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
     import_child_process17 = require("child_process");
     init_routing();
     init_worktree_paths();
@@ -33454,11 +33711,11 @@ var init_watchdog = __esm({
 });
 
 // src/factory/listener.ts
-var import_crypto13, import_http, import_fs49, import_path62, INTAKE_ROUTE_TABLE, MAX_BODY_BYTES;
+var import_crypto14, import_http, import_fs49, import_path62, INTAKE_ROUTE_TABLE, MAX_BODY_BYTES;
 var init_listener = __esm({
   "src/factory/listener.ts"() {
     "use strict";
-    import_crypto13 = require("crypto");
+    import_crypto14 = require("crypto");
     import_http = require("http");
     import_fs49 = require("fs");
     import_path62 = require("path");
@@ -33709,7 +33966,7 @@ async function runChainScenario(input) {
   };
   const prepError = prepareChainProject(input.projectDir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `chain setup: ${prepError}` };
-  const firstLink = (input.randomUUID ?? import_crypto14.randomUUID)();
+  const firstLink = (input.randomUUID ?? import_crypto15.randomUUID)();
   writeChainLinkLedger(factoryStateDir(input.projectDir), firstLink, "copilot", {
     intentId: CHAIN_INTENT_ID,
     stage: CHAIN_LINK1_STAGE,
@@ -33753,11 +34010,11 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto14, import_child_process18, import_fs51, import_path67, CHAIN_ACK_TOKEN, sleep5;
+var import_crypto15, import_child_process18, import_fs51, import_path67, CHAIN_ACK_TOKEN, sleep5;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
-    import_crypto14 = require("crypto");
+    import_crypto15 = require("crypto");
     import_child_process18 = require("child_process");
     import_fs51 = require("fs");
     import_path67 = require("path");
@@ -34520,7 +34777,7 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   (0, import_fs54.mkdirSync)(home);
   (0, import_fs54.mkdirSync)(projectDir);
   const logDir = (0, import_path70.join)(home, "logs");
-  const sessionId = (ctx.deps.randomUUID ?? import_crypto15.randomUUID)();
+  const sessionId = (ctx.deps.randomUUID ?? import_crypto16.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
@@ -34762,12 +35019,12 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process20, import_crypto15, import_fs54, import_os8, import_path70, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process20, import_crypto16, import_fs54, import_os8, import_path70, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process20 = require("child_process");
-    import_crypto15 = require("crypto");
+    import_crypto16 = require("crypto");
     import_fs54 = require("fs");
     import_os8 = require("os");
     import_path70 = require("path");
@@ -35292,11 +35549,11 @@ var init_config2 = __esm({
 });
 
 // src/ship/state.ts
-var import_crypto16, import_fs57, import_path73;
+var import_crypto17, import_fs57, import_path73;
 var init_state3 = __esm({
   "src/ship/state.ts"() {
     "use strict";
-    import_crypto16 = require("crypto");
+    import_crypto17 = require("crypto");
     import_fs57 = require("fs");
     import_path73 = require("path");
     init_atomic_write();
@@ -35514,11 +35771,11 @@ var init_worker_launch_ack = __esm({
 });
 
 // src/team/recovery-request-store.ts
-var import_crypto17, import_fs60, import_path76, RETENTION_MS;
+var import_crypto18, import_fs60, import_path76, RETENTION_MS;
 var init_recovery_request_store = __esm({
   "src/team/recovery-request-store.ts"() {
     "use strict";
-    import_crypto17 = require("crypto");
+    import_crypto18 = require("crypto");
     import_fs60 = require("fs");
     import_path76 = require("path");
     init_types9();
@@ -35606,12 +35863,12 @@ function sanitizeName(name) {
   }
   return sanitized.slice(0, 50);
 }
-var import_fs62, import_crypto18, import_child_process22, import_util10, import_path78, import_os11, execFileAsync4;
+var import_fs62, import_crypto19, import_child_process22, import_util10, import_path78, import_os11, execFileAsync4;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
     import_fs62 = require("fs");
-    import_crypto18 = require("crypto");
+    import_crypto19 = require("crypto");
     import_child_process22 = require("child_process");
     import_util10 = require("util");
     import_path78 = require("path");
@@ -37298,7 +37555,7 @@ var init_parser = __esm({
 
 // src/hooks/learner/loader.ts
 function createContentHash(content) {
-  return (0, import_crypto19.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_crypto20.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function loadAllSkills(projectRoot) {
   const candidates = findSkillFiles(projectRoot);
@@ -37336,12 +37593,12 @@ function loadAllSkills(projectRoot) {
   }
   return Array.from(seenIds.values()).sort((a, b) => b.priority - a.priority);
 }
-var import_fs64, import_crypto19, import_path81;
+var import_fs64, import_crypto20, import_path81;
 var init_loader2 = __esm({
   "src/hooks/learner/loader.ts"() {
     "use strict";
     import_fs64 = require("fs");
-    import_crypto19 = require("crypto");
+    import_crypto20 = require("crypto");
     import_path81 = require("path");
     init_finder2();
     init_parser();

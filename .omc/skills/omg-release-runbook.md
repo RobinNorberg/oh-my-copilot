@@ -137,6 +137,11 @@ reference for what each phase asserts.
 
 ## Ship sequence
 
+A lane running this sequence emits one progress event per step
+(`omg progress emit <step> start|ok|fail|blocked`, see
+`agent-progress-events.md`), so the lead's Monitor sees a stuck CI watch as
+`status=stalled` instead of silence.
+
 1. Push the working branch → PR → `dev` → `gh pr merge --admin` (rulesets
    require PRs; direct pushes to dev/main are rejected). **Merge only when
    every check except the two artifact gates is SUCCESS/SKIPPED** — poll with
