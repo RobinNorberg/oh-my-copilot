@@ -229,8 +229,10 @@ export function renderBundledSkillBody(skillName: string, body: string, cliOptio
 
 /**
  * Host probes shared by every skill in one load pass. Each probe spawns a
- * process (`where omg`, `<cli> --version`), which costs seconds per pass on
- * Windows when repeated for every skill.
+ * process, which costs seconds per pass on Windows when repeated per skill.
+ * `where omg` (cliOptions) runs once per pass, eagerly, even when no body
+ * contains an omg invocation. The `<cli> --version` runtime probes are lazy:
+ * they run only when a runtime-guidance skill renders, then are memoized.
  */
 interface SkillRenderContext {
   cliOptions: OmcCliRenderOptions;
@@ -251,7 +253,7 @@ function loadSkillFromFile(skillPath: string, skillName: string, context: SkillR
     const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody, context.cliOptions);
     const template = [
       renderedBody,
-      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability()),
+      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability),
       renderSkillPipelineGuidance(safePrimaryName, pipeline),
       renderSkillResourcesGuidance(skillPath),
     ].filter((section) => section.trim().length > 0).join('\n\n');
