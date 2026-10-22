@@ -43,7 +43,7 @@ import {
 } from '../../platform/process-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getWorkerEnv } from '../model-contract.js';
-import { IS_WIN, posixOnly, requiresSymlinks } from '../../__tests__/helpers/platform.js';
+import { IS_WIN, posixOnly, requiresSymlinks, scaleTiming } from '../../__tests__/helpers/platform.js';
 
 let cwd = '';
 const disposableProviders = new Set<ReturnType<typeof spawn>>();
@@ -626,9 +626,11 @@ describe('worker launch acknowledgement', () => {
         timeoutMs: LAUNCH_WAIT_TIMEOUT_MS,
         pollIntervalMs: 5,
       })).resolves.toEqual({ ok: true });
+      // Start publication waits on the win32 supervisor's ready frame, which
+      // compiles its native helpers first; use the launch bound, not 2s.
       await vi.waitFor(async () => {
         await expect(isWorkerLaunchProviderStarted(launchAttempt)).resolves.toBe(true);
-      }, { timeout: 2_000, interval: 5 });
+      }, { timeout: LAUNCH_WAIT_TIMEOUT_MS, interval: 5 });
       await writeFile(stopPath, 'exit', 'utf8');
       await expect(bootstrap).resolves.toEqual({ outcome: 'ran', exitCode: 0, signal: null });
       await expect(awaitWorkerLaunchProviderStarted(launchAttempt, {
@@ -2738,17 +2740,19 @@ describe('worker launch acknowledgement', () => {
     expect(windowsInvocation).toEqual({
       command: 'C:\\Windows\\System32\\cmd.exe',
       args: ['/d', '/v:off', '/s', '/c'],
-      batchScript: '@echo off\r\nstart "" /b /wait "C:\\Program Files\\Codex\\codex.cmd" "--label=100%% ready" "--home=%%USERPROFILE%%" "--encoded=%%25" "say ""hello"" & continue" "--literal=bang! caret^"\r\n',
+      batchScript: '@echo off\r\nset _OMC_PROVIDER_LINE="C:\\Program Files\\Codex\\codex.cmd" "--label=100%% ready" "--home=%%USERPROFILE%%" "--encoded=%%25" "say ""hello"" & continue" "--literal=bang! caret^"\r\n'
+        + '"C:\\Windows\\System32\\cmd.exe" /d /v:off /s /c "set "_OMC_PROVIDER_LINE=" & %%_OMC_PROVIDER_LINE%%"\r\n',
     });
     const materialized = await materializeProviderSpawnInvocation(windowsInvocation);
-    const wrapperPath = materialized.args[4]!.slice(1, -1);
+    expect(materialized.windowsVerbatimArguments).toBe(true);
+    const wrapperPath = materialized.args[4]!.slice(2, -2);
     await expect(readFile(wrapperPath, 'utf8')).resolves.toBe(windowsInvocation.batchScript);
     await materialized.cleanup();
     await expect(readFile(wrapperPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     const supervised = await materializeProviderSpawnInvocation(windowsInvocation, { superviseWindowsTree: true });
     expect(supervised.completionPath).toBeTruthy();
-    await expect(readFile(supervised.args[4]!.slice(1, -1), 'utf8')).resolves.toContain(':omc_hold');
-    await expect(readFile(supervised.args[4]!.slice(1, -1), 'utf8')).resolves.toContain('provider-exit.txt');
+    await expect(readFile(supervised.args[4]!.slice(2, -2), 'utf8')).resolves.toContain(':omc_hold');
+    await expect(readFile(supervised.args[4]!.slice(2, -2), 'utf8')).resolves.toContain('provider-exit.txt');
     await supervised.cleanup();
     expect(buildProviderSpawnInvocation(providerArgv, 'linux')).toEqual({
       command: providerArgv[0],
@@ -2907,21 +2911,33 @@ describe('worker launch acknowledgement', () => {
     cwd = await createFixture(`worker-launch-native-${extension}-`);
     const providerPath = join(cwd, `provider.${extension}`);
     const outputPath = join(cwd, 'argv.json');
-    await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify(process.argv.slice(2)))" %*\r\n`, 'utf8');
-    const payload = ['100% ready', '%USERPROFILE%', 'bang!', 'caret^', 'say "hello" & continue', 'two words'];
+    const canaryPath = join(cwd, 'injected.txt');
+    // The provider records its argv and whether the wrapper's line variable
+    // leaked into its environment, then exits 7 so the exit code is proven to
+    // propagate through both cmd layers.
+    await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:'_OMC_PROVIDER_LINE' in process.env}));process.exit(7)" %*\r\n`, 'utf8');
+    const injection = `echo pwned>"${canaryPath}"`;
+    const payload = [
+      '100% ready', '%USERPROFILE%', '%PATH:~0,1%', 'bang!', '!PATH!', 'caret^', '^', 'say "hello" & continue', 'two words',
+      `& ${injection}`, `| ${injection}`, `a" & ${injection} & "b`, `a\\" & ${injection} & \\"`, `"" & ${injection}`,
+      '<', '>', '(x)', '"', '""', '', 'trail\\', 'C:\\dir with space\\', 'x\\\\"y',
+    ];
     const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
       [providerPath, outputPath, ...payload],
       'win32',
       { ComSpec: process.env.ComSpec ?? process.env.COMSPEC ?? 'cmd.exe' },
     ));
     const exitCode = await new Promise<number | null>((resolve, reject) => {
-      const child = spawn(invocation.command, invocation.args, { stdio: 'pipe' });
+      const child = spawn(invocation.command, invocation.args, {
+        stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+      });
       child.once('error', reject);
       child.once('exit', code => resolve(code));
     });
-    expect(exitCode).toBe(0);
-    await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual(payload);
-    const wrapperPath = invocation.args[4]!.slice(1, -1);
+    expect(exitCode).toBe(7);
+    await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual({ argv: payload, leaked: false });
+    expect(existsSync(canaryPath)).toBe(false);
+    const wrapperPath = invocation.args[4]!.slice(2, -2);
     await invocation.cleanup();
     await expect(readFile(wrapperPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -2934,15 +2950,24 @@ describe('worker launch acknowledgement', () => {
     const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
       [providerPath], 'win32', { ComSpec: process.env.ComSpec ?? process.env.COMSPEC ?? 'cmd.exe' },
     ), { superviseWindowsTree: true });
-    const supervisor = spawn(invocation.command, invocation.args, { stdio: 'ignore', windowsHide: true });
-    await expect.poll(async () => invocation.completionPath ? await readFile(invocation.completionPath, 'utf8').catch(() => '') : '').toMatch(/0/);
+    const supervisor = spawn(invocation.command, invocation.args, {
+      stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+    });
+    await expect.poll(async () => invocation.completionPath ? await readFile(invocation.completionPath, 'utf8').catch(() => '') : '',
+      { timeout: scaleTiming(5_000), interval: 20 }).toMatch(/0/);
     const childPid = Number(await readFile(childPidPath, 'utf8'));
-    expect(isProcessAlive(childPid)).toBe(true);
+    // The provider has exited; the wrapper root must still be holding.
+    expect(isProcessAlive(supervisor.pid!)).toBe(true);
     const identity = await getProcessStartIdentity(supervisor.pid!);
     expect(identity).toBeTruthy();
     await expect(terminateOwnedProcessTree({ pid: supervisor.pid!, expectedStartIdentity: identity!,
       deadlineAt: new Date(Date.now() + 5_000).toISOString(), force: true })).resolves.toBe('terminated');
-    await expect.poll(() => isProcessAlive(childPid), { timeout: 2_000, interval: 20 }).toBe(false);
+    await expect.poll(() => isProcessAlive(supervisor.pid!), { timeout: scaleTiming(2_000), interval: 20 }).toBe(false);
+    // Node places a non-detached child in a kill-on-close job, so the
+    // provider's descendant ends with the provider rather than being orphaned.
+    // (A detached descendant would be an orphan this parent-PID tree walk
+    // cannot reach; only a Job object around the root could contain it.)
+    await expect.poll(() => isProcessAlive(childPid), { timeout: scaleTiming(2_000), interval: 20 }).toBe(false);
     await invocation.cleanup();
   });
 

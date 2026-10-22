@@ -117,6 +117,7 @@ export async function runWorkerActivationGate(gate: RecoveryActivationGate): Pro
       cwd: gate.cwd,
       env: providerEnv,
       stdio: 'inherit',
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
       // A recovery gate already runs inside the durable worker-launch
       // bootstrap group. Keep the actual provider in that group so teardown's
       // group-absence proof covers the provider rather than only the gate.
