@@ -523,17 +523,134 @@ describe("git top-level memoization", () => {
     expect(secondIdentifier!).not.toBe(firstIdentifier!);
   });
 
-  it("memoizes project identifiers only within an explicit operation scope", () => {
+  it("memoizes project identifiers in an operation scope and re-probes after git remote set-url", () => {
     const repo = join(tempDir, "repo");
     initRepo(repo);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
     const remoteCalls = () => mockedExecFileSync.mock.calls.filter(([command, args]) => command === "git" && Array.isArray(args) && args[0] === "remote" && args[1] === "get-url").length;
+    let first: string;
     withProjectIdentifierScope(() => {
-      getProjectIdentifier(repo);
+      first = getProjectIdentifier(repo);
       getProjectIdentifier(repo);
     });
     expect(remoteCalls()).toBe(1);
     withProjectIdentifierScope(() => getProjectIdentifier(repo));
+    expect(getProjectIdentifier(repo)).toBe(first!);
+    expect(remoteCalls()).toBe(1);
+
+    git(repo, ["remote", "set-url", "origin", "https://example.test/second.git"]);
+    const second = withProjectIdentifierScope(() => getProjectIdentifier(repo));
+    expect(second).not.toBe(first!);
     expect(remoteCalls()).toBe(2);
+  });
+
+  it("re-probes a cached project identifier when the linked worktree common config changes", () => {
+    const repo = join(tempDir, "repo");
+    const linked = join(tempDir, "linked");
+    initRepo(repo);
+    git(repo, ["worktree", "add", "--quiet", "-b", "linked-projid-test", linked]);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
+
+    const first = getProjectIdentifier(linked);
+    expect(getProjectIdentifier(linked)).toBe(first);
+    git(repo, ["remote", "set-url", "origin", "https://example.test/second.git"]);
+    expect(getProjectIdentifier(linked)).not.toBe(first);
+  });
+
+  it("re-probes a cached project identifier when OMC_STATE_DIR or Git environment changes", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    const remoteCalls = () => mockedExecFileSync.mock.calls.filter(([command, args]) => command === "git" && Array.isArray(args) && args[0] === "remote" && args[1] === "get-url").length;
+    const previousStateDir = process.env.OMC_STATE_DIR;
+    const previousGitDir = process.env.GIT_DIR;
+    try {
+      getProjectIdentifier(repo);
+      getProjectIdentifier(repo);
+      expect(remoteCalls()).toBe(1);
+      process.env.OMC_STATE_DIR = join(tempDir, "state");
+      getProjectIdentifier(repo);
+      expect(remoteCalls()).toBe(2);
+      process.env.GIT_DIR = join(repo, ".git");
+      getProjectIdentifier(repo);
+      expect(remoteCalls()).toBe(3);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+      else process.env.OMC_STATE_DIR = previousStateDir;
+      if (previousGitDir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = previousGitDir;
+    }
+  });
+
+  it("bounds the project identifier cache and evicts the least recently used root", () => {
+    const repos = Array.from({ length: 9 }, (_, index) => join(tempDir, `repo-${index}`));
+    for (const repo of repos) initRepo(repo);
+    const remoteCallsFor = (repo: string) => mockedExecFileSync.mock.calls.filter(([command, args, options]) => command === "git" && Array.isArray(args) && args[0] === "remote" && (options as { cwd?: string } | undefined)?.cwd === repo).length;
+
+    for (const repo of repos.slice(0, 8)) getProjectIdentifier(repo);
+    getProjectIdentifier(repos[0]);
+    expect(remoteCallsFor(repos[0])).toBe(1);
+
+    getProjectIdentifier(repos[8]);
+    getProjectIdentifier(repos[0]);
+    getProjectIdentifier(repos[1]);
+    expect(remoteCallsFor(repos[0])).toBe(1);
+    expect(remoteCallsFor(repos[1])).toBe(2);
+  });
+
+  it("does not cache a project identifier derived from a timed-out git probe", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
+    const timeout = Object.assign(new Error("spawnSync git ETIMEDOUT"), { code: "ETIMEDOUT", status: null, signal: "SIGTERM" });
+    mockedExecFileSync.mockImplementationOnce(() => { throw timeout; });
+
+    const fallback = getProjectIdentifier(repo);
+    const recovered = getProjectIdentifier(repo);
+    expect(recovered).not.toBe(fallback);
+    expect(getProjectIdentifier(repo)).toBe(recovered);
+  });
+
+  it("does not cache a project identifier derived from a dubious-ownership refusal", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
+    const refusal = Object.assign(new Error("Command failed: git remote get-url origin"), {
+      status: 128,
+      stderr: "fatal: detected dubious ownership in repository\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /repo\n",
+    });
+    mockedExecFileSync.mockImplementationOnce(() => { throw refusal; });
+
+    const fallback = getProjectIdentifier(repo);
+    const recovered = getProjectIdentifier(repo);
+    expect(recovered).not.toBe(fallback);
+    expect(getProjectIdentifier(repo)).toBe(recovered);
+  });
+
+  it("does not cache project identifiers for a bare repository or when GIT_DIR is set", () => {
+    const bare = join(tempDir, "bare.git");
+    mkdirSync(bare, { recursive: true });
+    git(bare, ["init", "--bare", "--quiet"]);
+    git(bare, ["remote", "add", "origin", "https://example.test/first.git"]);
+    const remoteCallsFor = (cwd: string) => mockedExecFileSync.mock.calls.filter(([command, args, options]) => command === "git" && Array.isArray(args) && args[0] === "remote" && args[1] === "get-url" && (options as { cwd?: string } | undefined)?.cwd === cwd).length;
+
+    const first = getProjectIdentifier(bare);
+    expect(getProjectIdentifier(bare)).toBe(first);
+    expect(remoteCallsFor(bare)).toBe(2);
+    git(bare, ["remote", "set-url", "origin", "https://example.test/second.git"]);
+    expect(getProjectIdentifier(bare)).not.toBe(first);
+
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    const previousGitDir = process.env.GIT_DIR;
+    try {
+      process.env.GIT_DIR = join(repo, ".git");
+      getProjectIdentifier(repo);
+      getProjectIdentifier(repo);
+      expect(remoteCallsFor(repo)).toBe(2);
+    } finally {
+      if (previousGitDir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = previousGitDir;
+    }
   });
 
   it("keeps concurrent render scopes isolated", async () => {

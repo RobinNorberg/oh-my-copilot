@@ -82,6 +82,12 @@ const gitTopLevelCacheMap = new Map<string, GitTopLevelCacheEntry>();
 const gitTopLevelNegativeCacheMap = new Map<string, StateRootCacheEntry>();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map<string, StateRootCacheEntry>();
+/**
+ * Git-derived project identifiers (remote URL + common dir probes), validated by
+ * the .git metadata, topology and environment signatures so `git remote set-url`,
+ * a new worktree layout or a Git/OMC_STATE_DIR environment change re-probes.
+ */
+const projectIdentifierCacheMap = new Map<string, StateRootCacheEntry & { identifier: string }>();
 const canonicalWorkingDirectoryRoots = new WeakMap<object, { providedRoot: string; trustedRoot: string }>();
 
 const GIT_PROBE_ENVIRONMENT_KEYS = [
@@ -112,6 +118,22 @@ function gitProbeEnvironmentSignature(): string {
     .sort()
     .map((key) => JSON.stringify([key, process.env[key] !== undefined, process.env[key] ?? '']));
   return [...fixedEntries, ...dynamicEntries].join('\0');
+}
+
+function projectIdentifierEnvironmentSignature(): string {
+  const stateDir = process.env.OMC_STATE_DIR;
+  return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(['OMC_STATE_DIR', stateDir !== undefined, stateDir ?? ''])}`;
+}
+
+/**
+ * True when a git probe failed with a definitive exit, not a spawn error, a
+ * timeout, or a safe.directory ownership refusal (which a config change lifts).
+ */
+function isDefinitiveGitExit(error: unknown): boolean {
+  const failure = error as { status?: unknown; stderr?: unknown } | null;
+  if (typeof failure?.status !== 'number') return false;
+  const stderr = String(failure.stderr ?? '');
+  return !stderr.includes('dubious ownership') && !stderr.includes('safe.directory');
 }
 
 /**
@@ -854,20 +876,28 @@ function getGitTopologySignature(cwd: string): string {
   return signatures.join('|');
 }
 
-function createStateRootCacheEntry(cwd: string, root: string | null): StateRootCacheEntry {
+function createStateRootCacheEntry(
+  cwd: string,
+  root: string | null,
+  environmentSignature: () => string = gitProbeEnvironmentSignature,
+): StateRootCacheEntry {
   return {
     root,
     metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
     topologySignature: getGitTopologySignature(cwd),
-    environmentSignature: gitProbeEnvironmentSignature(),
+    environmentSignature: environmentSignature(),
   };
 }
 
-function isStateRootCacheEntryValid(cwd: string, entry: StateRootCacheEntry): boolean {
+function isStateRootCacheEntryValid(
+  cwd: string,
+  entry: StateRootCacheEntry,
+  environmentSignature: () => string = gitProbeEnvironmentSignature,
+): boolean {
   return (
     entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) &&
     entry.topologySignature === getGitTopologySignature(cwd) &&
-    entry.environmentSignature === gitProbeEnvironmentSignature()
+    entry.environmentSignature === environmentSignature()
   );
 }
 
@@ -1220,6 +1250,26 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     return identifier;
   }
 
+  const processCacheKey = canonicalizeExistingPath(root) ?? resolve(root);
+  const processCached = projectIdentifierCacheMap.get(processCacheKey);
+  if (processCached) {
+    if (isStateRootCacheEntryValid(root, processCached, projectIdentifierEnvironmentSignature)) {
+      projectIdentifierCacheMap.delete(processCacheKey);
+      projectIdentifierCacheMap.set(processCacheKey, processCached);
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, processCached.identifier);
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, processCached.identifier);
+      return processCached.identifier;
+    }
+    projectIdentifierCacheMap.delete(processCacheKey);
+  }
+  // Signatures are taken before probing so a change made during the probes re-probes next time.
+  // Global gitconfig and [include] files are not tracked (same limitation as the getGitTopLevel cache).
+  const processCacheEntry = createStateRootCacheEntry(root, null, projectIdentifierEnvironmentSignature);
+  // Spawn errors, timeouts and ownership refusals are transient: their fallback identity is not cached.
+  // Without .git metadata at or above the root (bare repo) or with GIT_DIR set, the signatures
+  // cannot see remote changes, so the identity is not cached either.
+  let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === undefined;
+
   let remoteUrl = '';
   try {
     remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
@@ -1229,9 +1279,10 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
       windowsHide: true,
       timeout: 5000,
     }).trim();
-  } catch {
+  } catch (error) {
     // No git remote (local-only repo or not a git repo) — use the normalized
     // repository identity below.
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
 
   // For linked worktrees (created via `git worktree add`), resolve to the
@@ -1261,14 +1312,22 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
         primaryRoot = resolved;
       }
     }
-  } catch {
+  } catch (error) {
     // Not a git repo or command failed — fall back to worktree root
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
 
   const source = remoteUrl || primaryRoot;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
   const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
   const identifier = `${dirName}-${hash}`;
+  if (cacheable) {
+    if (projectIdentifierCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = projectIdentifierCacheMap.keys().next().value;
+      if (oldest !== undefined) projectIdentifierCacheMap.delete(oldest);
+    }
+    projectIdentifierCacheMap.set(processCacheKey, { ...processCacheEntry, identifier });
+  }
   if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
@@ -1528,6 +1587,7 @@ export function clearWorktreeCache(): void {
   gitTopLevelNegativeCacheMap.clear();
   superprojectCacheMap.clear();
   workspaceCacheMap.clear();
+  projectIdentifierCacheMap.clear();
 }
 
 // ============================================================================
