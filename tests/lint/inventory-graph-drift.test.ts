@@ -27,6 +27,7 @@ import { readFileSync, existsSync, readdirSync, unlinkSync, writeFileSync } from
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
 
 const REPO_ROOT = resolve(join(import.meta.dirname, '../..'));
 const BASELINE = join(REPO_ROOT, 'inventory', 'inventory-graph.json');
@@ -307,7 +308,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(m.graph.edges.some((e) => e.from === 'src/features/delegation-categories/index.ts' && e.kind.endsWith('-unresolved'))).toBe(false);
   });
 
-  it('generator is deterministic (two consecutive runs yield identical manifest modulo head/generatedAt)', { timeout: 30_000 }, () => {
+  it('generator is deterministic (two consecutive runs yield identical manifest modulo head/generatedAt)', { timeout: scaleTiming(30_000) }, () => {
     const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
     const r1 = spawnSync('node', [GENERATOR], opts);
     expect(r1.status, r1.stderr || r1.stdout).toBe(0);
@@ -365,7 +366,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(resolveGeneratedTarget(['src/budget/governor.js'], dist, bridge, stable)).toBeUndefined();
   });
 
-  it('verify mode passes when baseline is current (drift closed)', { timeout: 30_000 }, () => {
+  it('verify mode passes when baseline is current (drift closed)', { timeout: scaleTiming(30_000) }, () => {
     const r = spawnSync('node', [GENERATOR, '--verify'], { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 });
     expect(r.status, `verify failed — stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
     expect((r.stdout as unknown as string)).toContain('verify ok');

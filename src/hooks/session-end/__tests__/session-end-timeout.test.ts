@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { execFileSync } from 'node:child_process';
 import * as os from 'os';
 import * as path from 'path';
-import { scaleTiming } from '../../../__tests__/helpers/platform.js';
+import { IS_WIN } from '../../../__tests__/helpers/platform.js';
 
 const workerMocks = vi.hoisted(() => ({
   spawnSessionEndWorker: vi.fn(),
@@ -79,7 +79,11 @@ describe('SessionEnd foreground manifest handoff (issue #1700)', () => {
       reason: 'clear',
     })).resolves.toEqual({ continue: true });
 
-    expect(Date.now() - startedAt).toBeLessThanOrEqual(scaleTiming(500));
+    // The stalls this guards are the 30s producer grace and the 9s required
+    // action budget; the deferred status assertions below pin the deferral
+    // itself. The foreground costs ~0.7s on an idle Windows host and ~2.4s
+    // under the parallel suite, so Windows gets 5s, still below both stalls.
+    expect(Date.now() - startedAt).toBeLessThanOrEqual(IS_WIN ? 5_000 : 500);
     expect(workerMocks.spawnSessionEndWorker).toHaveBeenCalledWith({ directory: repoRoot, sessionId });
 
     const manifest = readSessionEndJob(repoRoot, sessionId);

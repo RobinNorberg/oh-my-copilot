@@ -1851,13 +1851,18 @@ describe("subagent-tracker", () => {
         success: false,
       });
       const elapsedMs = Date.now() - startedAt;
+      // Re-sample the read-only collector after the hook: under parallel load
+      // one sample misses a spawn-latency spike that the hook's own run paid.
+      const evidenceAfterStartedAt = Date.now();
+      collectWorktreeDirtyEvidence(repoDir);
+      const collectorMs = Math.max(evidenceMs, Date.now() - evidenceAfterStartedAt);
 
       expect(output).toEqual({ continue: true, suppressOutput: true });
 
       // (b) Bounded latency: no nested-lock acquisition spin. The 500ms spin
       // cannot hide inside a 300ms allowance over the collector cost.
       // Windows spawns are slower, but the allowance stays under the 500ms spin.
-      expect(elapsedMs).toBeLessThan(evidenceMs + (IS_WIN ? 450 : 300));
+      expect(elapsedMs).toBeLessThan(collectorMs + (IS_WIN ? 450 : 300));
 
       // (a) Durable on DISK with no caller flush — read the file, not the
       // in-memory pending cache that readTrackingState would serve.

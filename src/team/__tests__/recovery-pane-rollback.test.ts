@@ -283,7 +283,7 @@ async function expectRecoveryLockReleased(teamName: string, workerName: string, 
   const followup = await Promise.race([
     executeRecoverDeadWorkerV2Owner({ teamName, cwd, workerName, requestId, instanceId: TEAM_INSTANCE_ID }),
     new Promise<never>((_, reject) => {
-      timeout = setTimeout(() => reject(new Error('recovery lock remained held after terminal failure')), 2_000);
+      timeout = setTimeout(() => reject(new Error('recovery lock remained held after terminal failure')), scaleTiming(2_000));
     }),
   ]);
   if (timeout) clearTimeout(timeout);
@@ -297,6 +297,21 @@ async function expectRecoveryLockReleased(teamName: string, workerName: string, 
   expect(config.active_recovery?.recovery_id).not.toBe(followupRecoveryId);
 }
 
+/**
+ * Provider argv that lives until `stopPath` exists (bounded by a deadline).
+ * The provider-started handoff requires a live provider, and a fixed-lifetime
+ * provider can exit before a loaded host finishes the liveness probe.
+ */
+function stoppableProviderArgv(stopPath: string): string[] {
+  const providerScript = [
+    "const fs=require('node:fs')",
+    `const stopPath=${JSON.stringify(stopPath)}`,
+    `const deadline=Date.now()+${scaleTiming(5000)}`,
+    'const timer=setInterval(()=>{if(fs.existsSync(stopPath)){clearInterval(timer);process.exit(0)}if(Date.now()>deadline){clearInterval(timer);process.exit(2)}},10)',
+  ].join(';');
+  return [process.execPath, '-e', providerScript];
+}
+
 async function attachPersistedPriorLaunch(teamName: string, configPath: string): Promise<void> {
   const config = JSON.parse(readFileSync(configPath, 'utf8'));
   const worker = config.workers[0];
@@ -304,15 +319,9 @@ async function attachPersistedPriorLaunch(teamName: string, configPath: string):
   const attempt = await prepareWorkerLaunchAttempt({ cwd, teamName, workerName: worker.name, paneId: '%1',
     instanceId: TEAM_INSTANCE_ID, provider, runtimeCliPath: '/runtime-cli.cjs', context: { kind: 'initial' } });
   const stopPath = join(cwd, `${teamName}-prior-provider-stop`);
-  const providerScript = [
-    "const fs=require('node:fs')",
-    `const stopPath=${JSON.stringify(stopPath)}`,
-    `const deadline=Date.now()+${scaleTiming(5000)}`,
-    'const timer=setInterval(()=>{if(fs.existsSync(stopPath)){clearInterval(timer);process.exit(0)}if(Date.now()>deadline){clearInterval(timer);process.exit(2)}},10)',
-  ].join(';');
   const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
     attempt,
-    [process.execPath, '-e', providerScript],
+    stoppableProviderArgv(stopPath),
     cwd,
   ));
   let launchCompleted = false;
@@ -489,7 +498,7 @@ describe('recovery pane rollback evidence', () => {
       cwd,
     ));
     try {
-      await awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 });
+      await awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 });
       await expect(awaitWorkerLaunchProviderStarted(launchAttempt, { timeoutMs: 10_000, pollIntervalMs: 5 })).resolves.toBe(true);
       await expect(loadCurrentWorkerLaunchAttempt({
         cwd,
@@ -533,15 +542,17 @@ describe('recovery pane rollback evidence', () => {
       runtimeCliPath: '/runtime-cli.cjs',
       context: { kind: 'initial' },
     });
+    const priorStopPath = join(cwd, 'prior-provider-stop');
     const priorBootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
       priorAttempt,
-      [process.execPath, '-e', 'setTimeout(() => process.exit(0), 500)'],
+      stoppableProviderArgv(priorStopPath),
       cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
       .resolves.toEqual({ ok: true });
-    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
       .resolves.toBe(true);
+    writeFileSync(priorStopPath, 'stop');
     await expect(priorBootstrap).resolves.toMatchObject({ outcome: 'ran' });
     mkdirSync(join(configPath, '..'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
@@ -694,15 +705,17 @@ describe('recovery pane rollback evidence', () => {
       runtimeCliPath: '/runtime-cli.cjs',
       context: { kind: 'initial' },
     });
+    const priorStopPath = join(cwd, 'prior-provider-stop');
     const priorBootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
       priorAttempt,
-      [process.execPath, '-e', 'setTimeout(() => process.exit(0), 500)'],
+      stoppableProviderArgv(priorStopPath),
       cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
       .resolves.toEqual({ ok: true });
-    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
       .resolves.toBe(true);
+    writeFileSync(priorStopPath, 'stop');
     await expect(priorBootstrap).resolves.toMatchObject({ outcome: 'ran' });
     mkdirSync(join(configPath, '..'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
@@ -742,13 +755,15 @@ describe('recovery pane rollback evidence', () => {
     await reservePersistedTeamInstance(teamName, cwd);
     const oldAttempt = await prepareWorkerLaunchAttempt({ cwd, teamName, workerName: 'worker-1', paneId: '%1',
       instanceId: TEAM_INSTANCE_ID, provider: 'claude', runtimeCliPath: '/runtime-cli.cjs', context: { kind: 'initial' } });
+    const oldStopPath = join(cwd, 'old-provider-stop');
     const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
-      oldAttempt, [process.execPath, '-e', 'setTimeout(()=>process.exit(0),500)'], cwd,
+      oldAttempt, stoppableProviderArgv(oldStopPath), cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(oldAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+    await expect(awaitWorkerLaunchAcknowledgement(oldAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
       .resolves.toEqual({ ok: true });
     await expect(awaitWorkerLaunchProviderStarted(oldAttempt, { timeoutMs: 10_000, pollIntervalMs: 5 }))
       .resolves.toBe(true);
+    writeFileSync(oldStopPath, 'stop');
     await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
     const oldPid = JSON.parse(readFileSync(oldAttempt.startedPath, 'utf8')).pid as number;
     const configPath = absPath(cwd, TeamPaths.config(teamName));
@@ -925,7 +940,7 @@ describe('recovery pane rollback evidence', () => {
       const bootstrapSpec = await readAndConsumeWorkerLaunchDescriptor(transport.bootstrapDescriptorPath);
       bootstrapResult = runWorkerLaunchBootstrap(bootstrapSpec);
       const accepted = await awaitWorkerLaunchAcknowledgement(attempt, {
-        timeoutMs: 2_000,
+        timeoutMs: scaleTiming(2_000),
         pollIntervalMs: 5,
       });
       if (!accepted.ok) throw new Error(`launch acknowledgement failed: ${accepted.reason}`);
