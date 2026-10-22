@@ -3821,13 +3821,21 @@ var init_cache_occupancy = __esm({
 function isOmcPluginCacheIdentity(pluginName, marketplace) {
   return OMC_PLUGIN_CACHE_IDENTITIES.has(`${pluginName}@${marketplace}`.toLowerCase());
 }
+function identityPart(value) {
+  if (typeof value === "bigint") return value;
+  return Number.isSafeInteger(value) ? BigInt(value) : void 0;
+}
 function sameFileSystemIdentity(left, right) {
-  return typeof left.dev === "number" && typeof left.ino === "number" && left.ino !== 0 && typeof right.dev === "number" && typeof right.ino === "number" && right.ino !== 0 && left.dev === right.dev && left.ino === right.ino;
+  const leftDev = identityPart(left.dev);
+  const leftIno = identityPart(left.ino);
+  const rightDev = identityPart(right.dev);
+  const rightIno = identityPart(right.ino);
+  return leftDev !== void 0 && leftIno !== void 0 && leftIno !== 0n && rightDev !== void 0 && rightIno !== void 0 && rightIno !== 0n && leftDev === rightDev && leftIno === rightIno;
 }
 function hasAncestorWithIdentity(path30, identity) {
   let currentPath = path30;
   while (true) {
-    if (sameFileSystemIdentity((0, import_fs2.statSync)(currentPath), identity)) return true;
+    if (sameFileSystemIdentity((0, import_fs2.statSync)(currentPath, { bigint: true }), identity)) return true;
     const parentPath = (0, import_path3.dirname)(currentPath);
     if (parentPath === currentPath) return false;
     currentPath = parentPath;
@@ -3840,7 +3848,7 @@ function firstChildBelowDirectoryIdentity(path30, directoryIdentity) {
     const parentPath = (0, import_path3.dirname)(currentPath);
     if (parentPath === currentPath) return void 0;
     try {
-      if (sameFileSystemIdentity((0, import_fs2.statSync)(parentPath), directoryIdentity)) return (0, import_path3.basename)(currentPath);
+      if (sameFileSystemIdentity((0, import_fs2.statSync)(parentPath, { bigint: true }), directoryIdentity)) return (0, import_path3.basename)(currentPath);
     } catch {
     }
     currentPath = parentPath;
@@ -3880,7 +3888,7 @@ function pathTraversesFileSystemIdentity(path30, identity) {
   for (let index = components.length - 1; index >= 0; index--) steps.push(components[index]);
   const activeLinks = /* @__PURE__ */ new Set();
   try {
-    if (sameFileSystemIdentity((0, import_fs2.lstatSync)(currentPath), identity)) return true;
+    if (sameFileSystemIdentity((0, import_fs2.lstatSync)(currentPath, { bigint: true }), identity)) return true;
   } catch {
     return false;
   }
@@ -3898,7 +3906,7 @@ function pathTraversesFileSystemIdentity(path30, identity) {
     const nextPath = (0, import_path3.join)(currentPath, step);
     let nextStats;
     try {
-      nextStats = (0, import_fs2.lstatSync)(nextPath);
+      nextStats = (0, import_fs2.lstatSync)(nextPath, { bigint: true });
     } catch {
       return false;
     }
@@ -3907,7 +3915,7 @@ function pathTraversesFileSystemIdentity(path30, identity) {
       currentPath = nextPath;
       continue;
     }
-    const linkKey = typeof nextStats.dev === "number" && typeof nextStats.ino === "number" && nextStats.ino !== 0 ? `inode:${nextStats.dev}:${nextStats.ino}` : `path:${process.platform === "win32" ? nextPath.toLowerCase() : nextPath}`;
+    const linkKey = nextStats.ino !== 0n ? `inode:${nextStats.dev}:${nextStats.ino}` : `path:${process.platform === "win32" ? nextPath.toLowerCase() : nextPath}`;
     if (activeLinks.has(linkKey)) return false;
     let linkTarget;
     try {
@@ -3991,14 +3999,14 @@ function hasUsableOmcHookTargets(path30, staleVersionIdentity) {
   return true;
 }
 function hasResolvablePluginSymlinks(directory, staleVersionIdentity, ancestors = [], payload) {
-  const directoryStats = (0, import_fs2.statSync)(directory);
+  const directoryStats = (0, import_fs2.statSync)(directory, { bigint: true });
   if (ancestors.some((identity) => sameFileSystemIdentity(directoryStats, identity))) return false;
   const branch = [...ancestors, directoryStats];
   const entries = (0, import_fs2.readdirSync)(directory, { withFileTypes: true });
   for (const entry2 of entries) {
     const entryPath = (0, import_path3.join)(directory, entry2.name);
     if (entry2.isSymbolicLink()) {
-      const entryStats = (0, import_fs2.statSync)(entryPath);
+      const entryStats = (0, import_fs2.statSync)(entryPath, { bigint: true });
       if (pathTraversesFileSystemIdentity(entryPath, staleVersionIdentity)) return false;
       if (entryStats.isDirectory()) {
         if (branch.some((identity) => sameFileSystemIdentity(entryStats, identity))) continue;
@@ -4302,7 +4310,7 @@ function purgeStalePluginCacheVersions(options) {
       const lexicalActiveVersionDirsHere = activePathIdentities.filter((ap) => ap.startsWith(pluginDirNorm + "/")).map((ap) => (0, import_path4.join)(pluginDir, ap.slice(pluginDirNorm.length + 1).split("/")[0]));
       const filesystemActiveVersionDirsHere = [];
       try {
-        const pluginDirStats = (0, import_fs3.statSync)(pluginDir);
+        const pluginDirStats = (0, import_fs3.statSync)(pluginDir, { bigint: true });
         for (const activePath of activePathsArray) {
           const versionName = firstChildBelowDirectoryIdentity(activePath, pluginDirStats);
           if (versionName) filesystemActiveVersionDirsHere.push((0, import_path4.join)(pluginDir, versionName));
@@ -4365,11 +4373,11 @@ function purgeStalePluginCacheVersions(options) {
         if (activeVersionDirsHere.length > 0) {
           const target = pickHighestVersionDir(activeVersionDirsHere);
           try {
-            const targetStats = (0, import_fs3.statSync)(target);
+            const targetStats = (0, import_fs3.statSync)(target, { bigint: true });
             if (!targetStats.isDirectory()) {
               throw new Error("Registered active plugin target is not a directory");
             }
-            const staleVersionStats = (0, import_fs3.statSync)(versionDir);
+            const staleVersionStats = (0, import_fs3.statSync)(versionDir, { bigint: true });
             const resolvedTarget = (0, import_fs3.realpathSync)(target);
             const resolvedStaleVersion = (0, import_fs3.realpathSync)(versionDir);
             const targetPath = comparisonPath(resolvedTarget);
@@ -38107,6 +38115,18 @@ async function atomicWriteJson(filePath, data, hooks) {
     }
   }
 }
+function renameSyncRetryingWin32Sharing(rename8, source, destination) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename8(source, destination);
+      return;
+    } catch (error2) {
+      const code = error2.code;
+      if (process.platform !== "win32" || attempt >= 20 || code !== "EPERM" && code !== "EACCES" && code !== "EBUSY") throw error2;
+      Atomics.wait(RENAME_RETRY_WAIT, 0, 0, Math.min(25, 1 + attempt * 2));
+    }
+  }
+}
 function atomicWriteFileSync(filePath, content, hooks, operations) {
   if (operations && (!filePath || path3.basename(filePath) !== filePath || filePath === "." || filePath === "..")) throw new RangeError("contained atomic write requires a basename");
   const dir = path3.dirname(filePath);
@@ -38123,7 +38143,7 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
     verifyPrivateTempFile(fd, tempPath, "atomic write", operations);
     backupPath = preservePriorTarget(filePath, operations);
     hooks?.beforeRename?.();
-    (operations?.rename ?? fsSync.renameSync)(tempPath, filePath);
+    renameSyncRetryingWin32Sharing(operations?.rename ?? fsSync.renameSync, tempPath, filePath);
     let publishedIdentity = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
@@ -38196,7 +38216,7 @@ async function safeReadJson(filePath) {
     return null;
   }
 }
-var fs3, fsSync, path3, crypto3, ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var fs3, fsSync, path3, crypto3, RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
@@ -38204,6 +38224,7 @@ var init_atomic_write = __esm({
     fsSync = __toESM(require("fs"), 1);
     path3 = __toESM(require("path"), 1);
     crypto3 = __toESM(require("crypto"), 1);
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });
@@ -53297,9 +53318,10 @@ function scanDirectories(projectRoot) {
       return;
     }
     try {
-      const stat2 = (0, import_node_fs4.statSync)(absDir);
-      if (visitedInodes.has(stat2.ino)) return;
-      visitedInodes.add(stat2.ino);
+      const stat2 = (0, import_node_fs4.statSync)(absDir, { bigint: true });
+      const inodeKey = `${stat2.dev}:${stat2.ino}`;
+      if (visitedInodes.has(inodeKey)) return;
+      visitedInodes.add(inodeKey);
     } catch {
       return;
     }
@@ -57671,6 +57693,7 @@ export const isExclusiveStateLockingAvailable = canonical.isExclusiveStateLockin
 export const getStateFileLockDiagnostic = canonical.getStateFileLockDiagnostic;
 export const getStateFileLockFailureMessage = canonical.getStateFileLockFailureMessage;
 export const getStateFileLockFailureKind = canonical.getStateFileLockFailureKind;
+export const getStateFileLockFailureReason = canonical.getStateFileLockFailureReason;
 export const acquireStateFileLockSync = canonical.acquireStateFileLockSync;
 export const acquireStateFileLockAtPathSync = canonical.acquireStateFileLockAtPathSync;
 export const releaseStateFileLockSync = canonical.releaseStateFileLockSync;
@@ -69792,12 +69815,17 @@ function readSessionEndJob(directory, sessionId) {
   }
 }
 function mutateSessionEndJob(directory, sessionId, expectedRevision, mutate) {
+  const result = mutateAtRevision(directory, sessionId, expectedRevision, mutate);
+  return result === REVISION_MISMATCH ? null : result;
+}
+function mutateAtRevision(directory, sessionId, expectedRevision, mutate) {
   let terminal = false;
   try {
     const jobPath = sessionEndJobPath(directory, sessionId);
     const result = withLock(jobPath, () => {
       const current = readPath(jobPath);
-      if (!current || current.revision !== expectedRevision) return null;
+      if (!current) return null;
+      if (current.revision !== expectedRevision) return REVISION_MISMATCH;
       mutate(current);
       const next = { ...current, revision: current.revision + 1, updatedAt: nowIso() };
       if (isManifestTerminal(next) && next.phase !== "complete") {
@@ -69810,7 +69838,7 @@ function mutateSessionEndJob(directory, sessionId, expectedRevision, mutate) {
       terminal = reread.phase === "complete";
       return reread;
     });
-    if (result && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
+    if (result && result !== REVISION_MISMATCH && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
     return result;
   } catch {
     return null;
@@ -69824,12 +69852,12 @@ function updateSessionEndActionPayload(directory, sessionId, authority, actionNa
     for (const name of actionNames) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
   });
 }
-function mutateLatest(directory, sessionId, mutate) {
+function mutateLatest(directory, sessionId, mutate, retryOn = "any-null") {
   for (let i = 0; i < 8; i++) {
     const current = readSessionEndJob(directory, sessionId);
     if (!current) return null;
-    const result = mutateSessionEndJob(directory, sessionId, current.revision, mutate);
-    if (result) return result;
+    const result = mutateAtRevision(directory, sessionId, current.revision, mutate);
+    if (result !== REVISION_MISMATCH && (result || retryOn === "mismatch")) return result;
   }
   return null;
 }
@@ -69957,15 +69985,13 @@ function claimSessionEndJob(directory, sessionId, nonce, identity, deadlineAt) {
   });
 }
 function renewSessionEndLease(directory, sessionId, nonce, generation, deadlineAt) {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     const owner = job.owner;
     if (!owner || owner.nonce !== nonce || owner.leaseGeneration !== generation) throw new Error("lease-conflict");
     owner.leaseGeneration++;
     owner.heartbeatAt = nowIso();
     owner.leaseExpiresAt = new Date(Math.min(Date.now() + 750, deadlineAt)).toISOString();
-  });
+  }, "mismatch");
 }
 function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, expectedGeneration, liveness) {
   const current = readSessionEndJob(directory, sessionId);
@@ -69987,24 +70013,29 @@ function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, expectedG
   });
 }
 function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = "worker-released") {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error("release-conflict");
+    for (const action of Object.values(job.actions)) {
+      if (action.status === "claimed" && action.claimantNonce === nonce && action.runner?.phase === "reserved" && action.runner.attempt === action.attempts) {
+        action.attempts--;
+        action.status = action.attempts > 0 ? "retryable" : "pending";
+        action.claimantNonce = void 0;
+        action.claimedAt = void 0;
+        action.runner = void 0;
+      }
+    }
     job.owner = null;
     if (job.phase !== "complete") {
       job.phase = "recoverable-failure";
       job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce };
     }
-  });
+  }, "mismatch");
 }
 function updateSessionEndJob(directory, sessionId, expectedOwner, mutate) {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     if (job.owner?.nonce !== expectedOwner || job.phase === "complete") throw new Error("owner-conflict");
     mutate(job);
-  });
+  }, "mismatch");
 }
 function claimSessionEndAction(directory, sessionId, ownerNonce, name, deadlineAt) {
   return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => {
@@ -70164,7 +70195,7 @@ function failClosedMissingCoreProducer(directory, sessionId) {
     if (job.phase === "collecting") job.phase = "ready";
   });
 }
-var fs12, path18, import_crypto21, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE;
+var fs12, path18, import_crypto21, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE, REVISION_MISMATCH;
 var init_cleanup_manifest = __esm({
   "src/hooks/session-end/cleanup-manifest.ts"() {
     "use strict";
@@ -70191,6 +70222,7 @@ var init_cleanup_manifest = __esm({
     REQUIRED_ACTION_MAX_ATTEMPTS = 3;
     LOCK_WAIT = new Int32Array(new SharedArrayBuffer(4));
     DISCOVERY_FILE = "discovery.json";
+    REVISION_MISMATCH = /* @__PURE__ */ Symbol("revision-mismatch");
   }
 });
 
@@ -130421,6 +130453,9 @@ async function processHookImpl(hookType, rawInput) {
   }
 }
 async function processHook(hookType, rawInput) {
+  if (process.env.DISABLE_OMC === "1" || process.env.DISABLE_OMC === "true") {
+    return { continue: true };
+  }
   const legacyStarted = performance.now();
   const rawRecord = rawInput && typeof rawInput === "object" ? rawInput : {};
   const inputDirectory = typeof rawRecord.cwd === "string" ? rawRecord.cwd : typeof rawRecord.directory === "string" ? rawRecord.directory : void 0;

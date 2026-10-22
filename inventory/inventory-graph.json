@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
-    "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
+    "head": "f360a02fc461b5212748b10b0897239e957f7e98",
+    "sourceSha256": "a041eb64c32a1ed00373a8ef8536b9868581278c9834cde88570f3e582638df6",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
-  "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
+  "head": "f360a02fc461b5212748b10b0897239e957f7e98",
+  "sourceSha256": "a041eb64c32a1ed00373a8ef8536b9868581278c9834cde88570f3e582638df6",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1618,
-      "total": 1642
+      "srcFiles": 1620,
+      "total": 1644
     },
     "generated": {
-      "distFiles": 6211,
+      "distFiles": 6219,
       "bridgeFiles": 9,
-      "total": 6220
+      "total": 6228
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1528,6 +1528,10 @@
       "dist/__tests__/issue-3867-legacy-l-update.test.d.ts.map",
       "dist/__tests__/issue-3867-legacy-l-update.test.js",
       "dist/__tests__/issue-3867-legacy-l-update.test.js.map",
+      "dist/__tests__/jev-shadow-sweep-lock.test.d.ts",
+      "dist/__tests__/jev-shadow-sweep-lock.test.d.ts.map",
+      "dist/__tests__/jev-shadow-sweep-lock.test.js",
+      "dist/__tests__/jev-shadow-sweep-lock.test.js.map",
       "dist/__tests__/job-management-sqlite.test.d.ts",
       "dist/__tests__/job-management-sqlite.test.d.ts.map",
       "dist/__tests__/job-management-sqlite.test.js",
@@ -7059,6 +7063,10 @@
       "dist/utils/__tests__/paths.test.d.ts.map",
       "dist/utils/__tests__/paths.test.js",
       "dist/utils/__tests__/paths.test.js.map",
+      "dist/utils/__tests__/plugin-cache-validation.test.d.ts",
+      "dist/utils/__tests__/plugin-cache-validation.test.d.ts.map",
+      "dist/utils/__tests__/plugin-cache-validation.test.js",
+      "dist/utils/__tests__/plugin-cache-validation.test.js.map",
       "dist/utils/__tests__/string-width.test.d.ts",
       "dist/utils/__tests__/string-width.test.d.ts.map",
       "dist/utils/__tests__/string-width.test.js",
@@ -11677,6 +11685,26 @@
         "id": "dist/__tests__/issue-3867-legacy-l-update.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/issue-3867-legacy-l-update.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/jev-shadow-sweep-lock.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/jev-shadow-sweep-lock.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/jev-shadow-sweep-lock.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/jev-shadow-sweep-lock.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/jev-shadow-sweep-lock.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/jev-shadow-sweep-lock.test.js"
+      },
+      {
+        "id": "dist/__tests__/jev-shadow-sweep-lock.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/jev-shadow-sweep-lock.test.js.map"
       },
       {
         "id": "dist/__tests__/job-management-sqlite.test.d.ts",
@@ -39334,6 +39362,26 @@
         "path": "dist/utils/__tests__/paths.test.js.map"
       },
       {
+        "id": "dist/utils/__tests__/plugin-cache-validation.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/plugin-cache-validation.test.d.ts"
+      },
+      {
+        "id": "dist/utils/__tests__/plugin-cache-validation.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/plugin-cache-validation.test.d.ts.map"
+      },
+      {
+        "id": "dist/utils/__tests__/plugin-cache-validation.test.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/plugin-cache-validation.test.js"
+      },
+      {
+        "id": "dist/utils/__tests__/plugin-cache-validation.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/__tests__/plugin-cache-validation.test.js.map"
+      },
+      {
         "id": "dist/utils/__tests__/string-width.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/__tests__/string-width.test.d.ts"
@@ -42782,6 +42830,11 @@
         "id": "src/__tests__/jev-resolve-script.test.mjs",
         "kind": "src",
         "path": "src/__tests__/jev-resolve-script.test.mjs"
+      },
+      {
+        "id": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/jev-shadow-sweep-lock.test.ts"
       },
       {
         "id": "src/__tests__/job-management-sqlite.test.ts",
@@ -49954,6 +50007,11 @@
         "path": "src/utils/__tests__/paths.test.ts"
       },
       {
+        "id": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "kind": "src",
+        "path": "src/utils/__tests__/plugin-cache-validation.test.ts"
+      },
+      {
         "id": "src/utils/__tests__/string-width.test.ts",
         "kind": "src",
         "path": "src/utils/__tests__/string-width.test.ts"
@@ -55487,6 +55545,11 @@
       },
       {
         "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -55518,6 +55581,11 @@
       {
         "from": "src/__tests__/helpers/platform.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.ts",
+        "to": "external:fs/promises",
         "kind": "imports"
       },
       {
@@ -57481,6 +57549,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/jev-plugin-hook-wiring.test.mjs",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/jev-resolve-script.test.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -57518,6 +57591,31 @@
       {
         "from": "src/__tests__/jev-resolve-script.test.mjs",
         "to": "scripts/jev-resolve.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-shadow-sweep-lock.test.ts",
+        "to": "scripts/lib/jev-shadow.mjs",
         "kind": "imports"
       },
       {
@@ -60433,6 +60531,11 @@
       {
         "from": "src/__tests__/session-start-context-budget.test.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:fs/promises",
         "kind": "imports"
       },
       {
@@ -81207,6 +81310,11 @@
       },
       {
         "from": "src/lib/__tests__/atomic-write.test.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
@@ -82388,6 +82496,11 @@
       {
         "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -88182,6 +88295,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-cli.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-cli.test.ts",
         "to": "src/team/recovery-request-store.ts",
         "kind": "imports"
       },
@@ -88328,6 +88446,11 @@
       {
         "from": "src/team/__tests__/runtime-owner-client.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-owner-client.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -90013,6 +90136,11 @@
       {
         "from": "src/team/__tests__/teardown-invariant.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/teardown-invariant.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -96361,6 +96489,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/plugin-cache-validation.test.ts",
+        "to": "src/utils/plugin-cache-validation.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/__tests__/string-width.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -98181,6 +98339,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/inventory-graph-drift.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -98577,12 +98740,22 @@
       },
       {
         "from": "vitest.config.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "vitest.config.ts",
         "to": "external:node:url",
         "kind": "imports"
       },
       {
         "from": "vitest.config.ts",
         "to": "external:vitest/config",
+        "kind": "imports"
+      },
+      {
+        "from": "vitest.config.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -98597,12 +98770,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8562,
-      "edgeCount": 9603,
-      "importEdgeCount": 8012,
+      "nodeCount": 8572,
+      "edgeCount": 9626,
+      "importEdgeCount": 8034,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "e0c0bc55ac9bf6daf2ac19932ad81f7cba8e39e8357551a8a76e595d54950d25",
-  "manifestSha256": "3afd86cceabd222e76394fcf9df5c4947d57db5771a76ea55ba5d0811f0f8fbe"
+  "inventorySha256": "68076878dfff1f2ff43b54779f2cf828c6d2ffb2bad198c654200cfd5bd846fc",
+  "manifestSha256": "7eb84d7b56559ca9ec376f92f290c08d105dafd8f00b5260f2fa48db95f0e249"
 }

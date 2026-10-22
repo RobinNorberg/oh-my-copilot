@@ -50,6 +50,21 @@ function createManifest(directories: Record<string, { files: string[] }>): void 
 import * as worktreePaths from '../../lib/worktree-paths.js';
 import { vi } from 'vitest';
 
+const lossyInodes = vi.hoisted(() => ({ enabled: false }));
+
+// NTFS file IDs exceed 2^53, so the Number `ino` of distinct directories can
+// round to the same value. With `enabled`, every Number-valued stat reports one
+// shared inode while bigint stats keep the real, distinct IDs.
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>();
+  const statSync = ((path: Parameters<typeof original.statSync>[0], options?: { bigint?: boolean }) => {
+    const stat = original.statSync(path, options as never);
+    if (!lossyInodes.enabled || options?.bigint || !stat) return stat;
+    return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 2 ** 53 });
+  }) as typeof original.statSync;
+  return { ...original, statSync, default: { ...original, statSync } };
+});
+
 vi.mock('../../lib/worktree-paths.js', async (importOriginal) => {
   const original = await importOriginal<typeof worktreePaths>();
   return {
@@ -107,7 +122,17 @@ describe('scanDirectories', () => {
   });
 
   afterEach(() => {
+    lossyInodes.enabled = false;
     rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('lists every directory when Number inode values collide', () => {
+    createFile('a/index.ts');
+    createFile('b/index.ts');
+    lossyInodes.enabled = true;
+
+    const result = scanDirectories(TEST_DIR);
+    expect(Object.keys(result).sort()).toEqual(['a', 'b']);
   });
 
   it('scans flat directory correctly', () => {

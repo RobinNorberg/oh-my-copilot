@@ -823,6 +823,7 @@ export const isExclusiveStateLockingAvailable = canonical.isExclusiveStateLockin
 export const getStateFileLockDiagnostic = canonical.getStateFileLockDiagnostic;
 export const getStateFileLockFailureMessage = canonical.getStateFileLockFailureMessage;
 export const getStateFileLockFailureKind = canonical.getStateFileLockFailureKind;
+export const getStateFileLockFailureReason = canonical.getStateFileLockFailureReason;
 export const acquireStateFileLockSync = canonical.acquireStateFileLockSync;
 export const acquireStateFileLockAtPathSync = canonical.acquireStateFileLockAtPathSync;
 export const releaseStateFileLockSync = canonical.releaseStateFileLockSync;

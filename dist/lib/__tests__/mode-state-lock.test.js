@@ -348,4 +348,50 @@ describe('generation-bound clear', () => {
         expect(existsSync(statePath)).toBe(true);
     });
 });
+describe('SQLITE_BUSY while opening the lock database (scripts/lib/state-lock.mjs)', () => {
+    // A rollback-journal EXCLUSIVE transaction makes the lock's journal_mode
+    // switch answer SQLITE_BUSY once the busy timeout runs out.
+    function holdLockDatabase(lockPath) {
+        const Database = require('better-sqlite3');
+        const holder = new Database(join(dirname(lockPath), '.state-mutation-locks.db'));
+        holder.pragma('journal_mode = DELETE');
+        holder.exec('BEGIN EXCLUSIVE');
+        return holder;
+    }
+    it('retries a BUSY that came back before the busy timeout elapsed', () => {
+        process.env.NODE_ENV = 'test';
+        const { lockPath } = fixture('mode-state-lock-early-busy-');
+        const holder = holdLockDatabase(lockPath);
+        let clockReads = 0;
+        // A frozen clock makes the first BUSY look early. Reads: probe deadline,
+        // open start, then the post-BUSY check, where the holder lets go.
+        const testHooks = { nowMs: () => { clockReads += 1; if (clockReads === 3 && holder.open)
+                holder.close(); return 1_000; } };
+        const lock = hookLock.acquireStateFileLockAtPathSync(lockPath, 50, true, false, 50, 3000, Infinity, testHooks);
+        try {
+            expect(holder.open).toBe(false);
+            expect(lock).toBeTruthy();
+        }
+        finally {
+            if (lock)
+                hookLock.releaseStateFileLockSync(lock);
+            if (holder.open)
+                holder.close();
+        }
+    });
+    it('still reports contention for a BUSY that outlasted the busy timeout', () => {
+        process.env.NODE_ENV = 'test';
+        const { lockPath } = fixture('mode-state-lock-late-busy-');
+        const holder = holdLockDatabase(lockPath);
+        let now = 1_000;
+        const testHooks = { nowMs: () => (now += 10_000) };
+        try {
+            expect(hookLock.acquireStateFileLockAtPathSync(lockPath, 50, true, false, 50, 3000, Infinity, testHooks)).toBeNull();
+            expect(hookLock.getStateFileLockFailureKind()).toBe('contention');
+        }
+        finally {
+            holder.close();
+        }
+    });
+});
 //# sourceMappingURL=mode-state-lock.test.js.map

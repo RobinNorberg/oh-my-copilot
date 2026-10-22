@@ -185,6 +185,29 @@ describe('run.cjs generic hook timeout supervisor', () => {
     }
   });
 
+  it('counts time spent before the spawn against the inner timeout', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-hung-generic-'));
+    const pidfile = join(directory, 'grandchild.pid');
+    const previousPidfile = process.env.OMC_TEST_PIDFILE;
+    process.env.OMC_TEST_PIDFILE = pidfile;
+    try {
+      const innerMs = 2000;
+      const startedAt = Date.now();
+      // The host's fuse started 1500ms ago, so only 500ms of the inner budget remain.
+      const status = await withWatchdog(
+        runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null, { startedAtMs: startedAt - 1500 }),
+        innerMs,
+      );
+      expect(status).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(1500);
+    } finally {
+      if (previousPidfile === undefined) delete process.env.OMC_TEST_PIDFILE;
+      else process.env.OMC_TEST_PIDFILE = previousPidfile;
+      if (existsSync(pidfile)) killIfAlive(Number(readFileSync(pidfile, 'utf8')));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('propagates numeric exits and fail-opens for signal exits and spawn errors', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-generic-exit-'));
     try {

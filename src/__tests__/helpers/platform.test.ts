@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { spawn } from 'child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { delimiter, join } from 'path';
 import { pathToFileURL } from 'url';
@@ -9,6 +10,7 @@ import {
   canCreateSymlinks,
   hasExecutable,
   posixOnly,
+  removeTempDir,
   requiresExecutable,
   requiresSymlinks,
   scaleTiming,
@@ -55,6 +57,31 @@ describe('platform test helpers', () => {
     const path = join(tmpdir(), 'some file.txt');
     expect(toFileUrl(path)).toBe(pathToFileURL(path).href);
     expect(toFileUrl(path)).toMatch(/^file:\/\/\//);
+  });
+
+  it('removes a temp tree while a child process still has its cwd inside it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omc-platform-helper-'));
+    directories.push(root);
+    const cwd = join(root, 'project');
+    mkdirSync(cwd);
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1000)'], { cwd, stdio: 'ignore' });
+    const exited = new Promise(resolve => child.once('exit', resolve));
+    await new Promise(resolve => child.once('spawn', resolve));
+
+    try {
+      await removeTempDir(root);
+      expect(existsSync(root)).toBe(false);
+    } finally {
+      child.kill();
+      await exited;
+    }
+  });
+
+  it('rejects at once on a non-retryable removal error', async () => {
+    const startedAt = Date.now();
+    await expect(removeTempDir(join(tmpdir(), 'x'.repeat(40_000)))).rejects.toMatchObject({ code: 'ENAMETOOLONG' });
+    // The retry budget (about 5.5 s) applies only to retryable errors such as EPERM.
+    expect(Date.now() - startedAt).toBeLessThan(1000);
   });
 
   it('caches symlink and junction probes', () => {

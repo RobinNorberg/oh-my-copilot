@@ -2697,6 +2697,7 @@ function ensureDirSync(dir) {
     throw err;
   }
 }
+var RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
 var ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
 
 // src/lib/file-lock.ts

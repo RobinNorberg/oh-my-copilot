@@ -378,6 +378,31 @@ export function atomicWriteSync(
   atomicWriteFileSync(filePath, content, hooks);
 }
 
+const RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
+
+/**
+ * win32 refuses to rename over a target that another process holds open for a
+ * moment (a concurrent reader, AV, the indexer) with EPERM/EACCES/EBUSY, so a
+ * reader polling a manifest could fail the writer's publication outright.
+ * Retry that sharing violation within a short bounded budget (~350ms).
+ */
+function renameSyncRetryingWin32Sharing(
+  rename: (source: string, destination: string) => void,
+  source: string,
+  destination: string,
+): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || attempt >= 20 || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")) throw error;
+      Atomics.wait(RENAME_RETRY_WAIT, 0, 0, Math.min(25, 1 + attempt * 2));
+    }
+  }
+}
+
 /**
  * Read and parse JSON file with error handling.
  * Returns null if file doesn't exist or on parse errors.
@@ -429,7 +454,7 @@ export function atomicWriteFileSync(
     hooks?.beforeRename?.();
     // Keep the opened descriptor live through rename so publication can be
     // checked against the inode that was actually written.
-    (operations?.rename ?? fsSync.renameSync)(tempPath, filePath);
+    renameSyncRetryingWin32Sharing(operations?.rename ?? fsSync.renameSync, tempPath, filePath);
     let publishedIdentity: FileIdentity | null = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);

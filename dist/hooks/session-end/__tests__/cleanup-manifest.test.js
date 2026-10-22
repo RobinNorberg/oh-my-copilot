@@ -2,7 +2,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claimSessionEndAction, claimSessionEndJob, finishSessionEndAction, isManifestTerminal, markSessionEndActionRunner, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, reapStaleSessionEndOwner, releaseSessionEndJob, renewSessionEndLease, sealCoreManifest, sealWikiManifest, sessionEndJobsDirectory, takeSessionEndDiscoveryPage, updateSessionEndActionPayload, } from '../cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndJob, finishSessionEndAction, isManifestTerminal, markSessionEndActionRunner, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, reapStaleSessionEndOwner, releaseSessionEndJob, renewSessionEndLease, sealCoreManifest, sealWikiManifest, sessionEndJobsDirectory, takeSessionEndDiscoveryPage, sessionEndJobPath, updateSessionEndActionPayload, updateSessionEndJob, } from '../cleanup-manifest.js';
+// `afterJobRead` runs once, right after the next read of `jobPath` returns, so a
+// foreign write can land between a caller's unlocked revision read and its CAS.
+// `lockOpens` counts manifest lock acquisitions (one per CAS round-trip).
+const fsControl = vi.hoisted(() => ({
+    jobPath: undefined,
+    afterJobRead: undefined,
+    lockOpens: 0,
+    failLockOpens: 0,
+}));
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        readFileSync: ((file, ...rest) => {
+            const content = actual.readFileSync(file, ...rest);
+            if (file === fsControl.jobPath && fsControl.afterJobRead) {
+                const hook = fsControl.afterJobRead;
+                fsControl.afterJobRead = undefined;
+                hook();
+            }
+            return content;
+        }),
+        openSync: ((file, ...rest) => {
+            if (typeof file === 'string' && file === `${fsControl.jobPath}.lock` && rest[0] === 'wx') {
+                fsControl.lockOpens++;
+                if (fsControl.failLockOpens > 0) {
+                    fsControl.failLockOpens--;
+                    throw Object.assign(new Error('EIO: simulated lock failure'), { code: 'EIO' });
+                }
+            }
+            return actual.openSync(file, ...rest);
+        }),
+    };
+});
 const directories = [];
 beforeEach(() => {
     const stateRoot = mkdtempSync(join(tmpdir(), 'omc-cleanup-state-'));
@@ -21,6 +55,10 @@ function preparedAndSealed(directory, sessionId = 'session-a') {
     return sessionId;
 }
 afterEach(() => {
+    fsControl.jobPath = undefined;
+    fsControl.afterJobRead = undefined;
+    fsControl.lockOpens = 0;
+    fsControl.failLockOpens = 0;
     for (const directory of directories.splice(0))
         rmSync(directory, { recursive: true, force: true });
     vi.unstubAllEnvs();
@@ -199,6 +237,82 @@ describe('durable SessionEnd cleanup manifest', () => {
             reason: 'worker-released',
             ownerNonce: 'next-owner',
         });
+    });
+    it('renews and updates through a foreign same-lock write that bumped the revision', () => {
+        const directory = project();
+        const sessionId = preparedAndSealed(directory, 'revision-drift');
+        claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000);
+        fsControl.jobPath = sessionEndJobPath(directory, sessionId);
+        // An action child writing the manifest mid-run, after the owner read its revision.
+        const foreignWrite = (proof) => () => {
+            const latest = readSessionEndJob(directory, sessionId);
+            expect(mutateSessionEndJob(directory, sessionId, latest.revision, (job) => { job.actions.callback.payload = { ...job.actions.callback.payload, proof }; })).not.toBeNull();
+        };
+        fsControl.afterJobRead = foreignWrite('during-renew');
+        const renewed = renewSessionEndLease(directory, sessionId, 'owner', 1, Date.now() + 5_000);
+        expect(fsControl.afterJobRead).toBeUndefined();
+        expect(renewed?.owner?.leaseGeneration).toBe(2);
+        expect(renewed?.actions.callback.payload.proof).toBe('during-renew');
+        fsControl.afterJobRead = foreignWrite('during-update');
+        const updated = updateSessionEndJob(directory, sessionId, 'owner', (job) => { job.actions['team-cleanup'].payload = { ...job.actions['team-cleanup'].payload, owned: true }; });
+        expect(fsControl.afterJobRead).toBeUndefined();
+        expect(updated?.actions['team-cleanup'].payload.owned).toBe(true);
+        expect(updated?.actions.callback.payload.proof).toBe('during-update');
+    });
+    it('undoes a reserved action claim on release so a later worker can run it', () => {
+        const directory = project();
+        const sessionId = preparedAndSealed(directory, 'release-reserved');
+        const owner = claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000);
+        expect(readSessionEndJob(directory, sessionId).actions['team-cleanup']).toMatchObject({ status: 'pending', attempts: 0 });
+        expect(claimSessionEndAction(directory, sessionId, 'owner', 'team-cleanup', Date.now() + 5_000).actions['team-cleanup']).toMatchObject({ status: 'claimed', attempts: 1, runner: { phase: 'reserved' } });
+        const released = releaseSessionEndJob(directory, sessionId, 'owner', owner.owner.leaseGeneration);
+        const action = released.actions['team-cleanup'];
+        expect(action).toMatchObject({ status: 'pending', attempts: 0 });
+        expect(action.claimantNonce).toBeUndefined();
+        expect(action.runner).toBeUndefined();
+        claimSessionEndJob(directory, sessionId, 'next-owner', 'identity', Date.now() + 5_000);
+        expect(claimSessionEndAction(directory, sessionId, 'next-owner', 'team-cleanup', Date.now() + 5_000)?.actions['team-cleanup']).toMatchObject({ status: 'claimed', attempts: 1, claimantNonce: 'next-owner' });
+    });
+    it('keeps an action claim whose runner already started across a release', () => {
+        const directory = project();
+        const sessionId = preparedAndSealed(directory, 'release-started');
+        const owner = claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000);
+        const runner = claimSessionEndAction(directory, sessionId, 'owner', 'team-cleanup', Date.now() + 5_000).actions['team-cleanup'].runner;
+        expect(markSessionEndActionRunner(directory, sessionId, 'owner', 'team-cleanup', runner.runnerNonce, 'started')).not.toBeNull();
+        const released = releaseSessionEndJob(directory, sessionId, 'owner', owner.owner.leaseGeneration);
+        expect(released.actions['team-cleanup']).toMatchObject({ status: 'claimed', attempts: 1, claimantNonce: 'owner', runner: { runnerNonce: runner.runnerNonce, phase: 'started' } });
+    });
+    it('fails a lost lease on the first lock round-trip without retrying', () => {
+        const directory = project();
+        const sessionId = preparedAndSealed(directory, 'lost-lease');
+        const owner = claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000);
+        expect(mutateSessionEndJob(directory, sessionId, owner.revision, (job) => { job.owner = { ...job.owner, nonce: 'other-owner' }; })).not.toBeNull();
+        fsControl.jobPath = sessionEndJobPath(directory, sessionId);
+        for (const attempt of [
+            () => renewSessionEndLease(directory, sessionId, 'owner', 1, Date.now() + 5_000),
+            () => updateSessionEndJob(directory, sessionId, 'owner', () => { }),
+            () => releaseSessionEndJob(directory, sessionId, 'owner', 1),
+        ]) {
+            fsControl.lockOpens = 0;
+            expect(attempt()).toBeNull();
+            expect(fsControl.lockOpens).toBe(1);
+        }
+        expect(readSessionEndJob(directory, sessionId)?.owner?.nonce).toBe('other-owner');
+    });
+    it('keeps retrying a pre-existing caller through a failed lock, unlike the lease path', () => {
+        const directory = project();
+        const sessionId = 'seal-retry';
+        expect(prepareCoreManifest(directory, sessionId, { transcriptPath: '/tmp/transcript' })).not.toBeNull();
+        fsControl.jobPath = sessionEndJobPath(directory, sessionId);
+        fsControl.failLockOpens = 2;
+        expect(sealCoreManifest(directory, sessionId)?.producers.core.state).toBe('sealed');
+        expect(fsControl.lockOpens).toBe(3);
+        sealWikiManifest(directory, sessionId);
+        const owner = claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000);
+        fsControl.lockOpens = 0;
+        fsControl.failLockOpens = 1;
+        expect(renewSessionEndLease(directory, sessionId, 'owner', owner.owner.leaseGeneration, Date.now() + 5_000)).toBeNull();
+        expect(fsControl.lockOpens).toBe(1);
     });
     it('bounds required failures and never retries a failed remote delivery attempt', () => {
         const directory = project();
