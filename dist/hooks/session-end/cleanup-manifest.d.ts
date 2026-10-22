@@ -108,12 +108,16 @@ export declare function completeForegroundCleanupAndSealCore(directory: string, 
 export declare function sealCoreManifest(directory: string, sessionId: string): SessionEndJobV1 | null;
 export declare function sealWikiManifest(directory: string, sessionId: string, payload?: Record<string, unknown>): SessionEndJobV1 | null;
 export declare function claimSessionEndJob(directory: string, sessionId: string, nonce: string, identity: string, deadlineAt: number): SessionEndJobV1 | null;
+/** Owner-fenced writes re-read on revision drift: action children write the same manifest mid-run, so a stale-revision CAS miss is not a lost lease. */
 export declare function renewSessionEndLease(directory: string, sessionId: string, nonce: string, generation: number, deadlineAt: number): SessionEndJobV1 | null;
 /** Reaping is intentionally separate from a new claim. Caller must establish dead or PID-reused identity. */
 export declare function reapStaleSessionEndOwner(directory: string, sessionId: string, expectedNonce: string, expectedGeneration: number, liveness: 'dead' | 'mismatch'): SessionEndJobV1 | null;
 /**
  * Releasing ownership without reaching `complete` is the one path that leaves a
  * job non-terminal, so the caller's reason is persisted with it (issue #4076).
+ * An action this owner claimed whose runner is still `reserved` never started
+ * (a lease renewal failed between claim and start), so the claim is undone;
+ * otherwise its claimant nonce strands it and no later worker can run it.
  */
 export declare function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason?: string): SessionEndJobV1 | null;
 export declare function updateSessionEndJob(directory: string, sessionId: string, expectedOwner: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null;

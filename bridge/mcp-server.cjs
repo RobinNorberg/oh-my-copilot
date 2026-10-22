@@ -11625,6 +11625,18 @@ async function atomicWriteJson(filePath, data, hooks) {
     }
   }
 }
+function renameSyncRetryingWin32Sharing(rename4, source, destination) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename4(source, destination);
+      return;
+    } catch (error2) {
+      const code = error2.code;
+      if (process.platform !== "win32" || attempt >= 20 || code !== "EPERM" && code !== "EACCES" && code !== "EBUSY") throw error2;
+      Atomics.wait(RENAME_RETRY_WAIT, 0, 0, Math.min(25, 1 + attempt * 2));
+    }
+  }
+}
 function atomicWriteFileSync(filePath, content, hooks, operations) {
   if (operations && (!filePath || path2.basename(filePath) !== filePath || filePath === "." || filePath === "..")) throw new RangeError("contained atomic write requires a basename");
   const dir = path2.dirname(filePath);
@@ -11641,7 +11653,7 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
     verifyPrivateTempFile(fd, tempPath, "atomic write", operations);
     backupPath = preservePriorTarget(filePath, operations);
     hooks?.beforeRename?.();
-    (operations?.rename ?? fsSync.renameSync)(tempPath, filePath);
+    renameSyncRetryingWin32Sharing(operations?.rename ?? fsSync.renameSync, tempPath, filePath);
     let publishedIdentity = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
@@ -11714,7 +11726,7 @@ async function safeReadJson(filePath) {
     return null;
   }
 }
-var fs2, fsSync, path2, crypto2, ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var fs2, fsSync, path2, crypto2, RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
@@ -11722,6 +11734,7 @@ var init_atomic_write = __esm({
     fsSync = __toESM(require("fs"), 1);
     path2 = __toESM(require("path"), 1);
     crypto2 = __toESM(require("crypto"), 1);
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });

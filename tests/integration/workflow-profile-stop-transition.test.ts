@@ -668,8 +668,11 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt(change === 'advanced stage' ? 'execution' : 'ralplan') });
   });
 
+  // The hook accepts a request up to 5s in the future (clock skew). Keep the
+  // future-dated case far enough past that allowance that a slow hook spawn
+  // between the write and the check cannot bring it back into range.
   it.each([
-    ['future-dated', 6_000, false],
+    ['future-dated', 20_000, false],
     ['stale', -30_001, false],
     ['fresh', 0, true],
   ])('only honors a %s exact-digest named cancel signal while its request is fresh', (_name, offsetMs, shouldSuppress) => {
