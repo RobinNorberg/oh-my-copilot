@@ -38107,6 +38107,18 @@ async function atomicWriteJson(filePath, data, hooks) {
     }
   }
 }
+function renameSyncRetryingWin32Sharing(rename8, source, destination) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename8(source, destination);
+      return;
+    } catch (error2) {
+      const code = error2.code;
+      if (process.platform !== "win32" || attempt >= 20 || code !== "EPERM" && code !== "EACCES" && code !== "EBUSY") throw error2;
+      Atomics.wait(RENAME_RETRY_WAIT, 0, 0, Math.min(25, 1 + attempt * 2));
+    }
+  }
+}
 function atomicWriteFileSync(filePath, content, hooks, operations) {
   if (operations && (!filePath || path3.basename(filePath) !== filePath || filePath === "." || filePath === "..")) throw new RangeError("contained atomic write requires a basename");
   const dir = path3.dirname(filePath);
@@ -38123,7 +38135,7 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
     verifyPrivateTempFile(fd, tempPath, "atomic write", operations);
     backupPath = preservePriorTarget(filePath, operations);
     hooks?.beforeRename?.();
-    (operations?.rename ?? fsSync.renameSync)(tempPath, filePath);
+    renameSyncRetryingWin32Sharing(operations?.rename ?? fsSync.renameSync, tempPath, filePath);
     let publishedIdentity = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
@@ -38196,7 +38208,7 @@ async function safeReadJson(filePath) {
     return null;
   }
 }
-var fs3, fsSync, path3, crypto3, ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var fs3, fsSync, path3, crypto3, RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
@@ -38204,6 +38216,7 @@ var init_atomic_write = __esm({
     fsSync = __toESM(require("fs"), 1);
     path3 = __toESM(require("path"), 1);
     crypto3 = __toESM(require("crypto"), 1);
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });
@@ -69957,9 +69970,7 @@ function claimSessionEndJob(directory, sessionId, nonce, identity, deadlineAt) {
   });
 }
 function renewSessionEndLease(directory, sessionId, nonce, generation, deadlineAt) {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     const owner = job.owner;
     if (!owner || owner.nonce !== nonce || owner.leaseGeneration !== generation) throw new Error("lease-conflict");
     owner.leaseGeneration++;
@@ -69987,10 +69998,17 @@ function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, expectedG
   });
 }
 function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = "worker-released") {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error("release-conflict");
+    for (const action of Object.values(job.actions)) {
+      if (action.status === "claimed" && action.claimantNonce === nonce && action.runner?.phase === "reserved") {
+        action.attempts--;
+        action.status = action.attempts > 0 ? "retryable" : "pending";
+        action.claimantNonce = void 0;
+        action.claimedAt = void 0;
+        action.runner = void 0;
+      }
+    }
     job.owner = null;
     if (job.phase !== "complete") {
       job.phase = "recoverable-failure";
@@ -69999,9 +70017,7 @@ function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = 
   });
 }
 function updateSessionEndJob(directory, sessionId, expectedOwner, mutate) {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+  return mutateLatest(directory, sessionId, (job) => {
     if (job.owner?.nonce !== expectedOwner || job.phase === "complete") throw new Error("owner-conflict");
     mutate(job);
   });
