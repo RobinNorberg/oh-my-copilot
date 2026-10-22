@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -9,6 +9,35 @@ import { acquireFileLockSync, releaseFileLockSync, lockPathFor, } from "../../..
 import { readMissionBoardState } from "../../../hud/mission-board.js";
 import { readReplayEvents, getReplaySummary } from "../session-replay.js";
 import { IS_WIN, toPosix } from "../../../__tests__/helpers/platform.js";
+// Pass-through probe on the sync lock: records every withFileLockSync
+// acquisition and which lock paths this process currently holds, so a test can
+// assert lock structure (no nested acquisition of a lock already held) instead
+// of inferring it from wall-clock time.
+const lockProbe = vi.hoisted(() => ({
+    held: new Map(),
+    acquisitions: [],
+    nested: [],
+}));
+vi.mock("../../../lib/file-lock.js", async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        withFileLockSync: (lockPath, fn, opts) => {
+            lockProbe.acquisitions.push(lockPath);
+            if ((lockProbe.held.get(lockPath) ?? 0) > 0)
+                lockProbe.nested.push(lockPath);
+            return actual.withFileLockSync(lockPath, () => {
+                lockProbe.held.set(lockPath, (lockProbe.held.get(lockPath) ?? 0) + 1);
+                try {
+                    return fn();
+                }
+                finally {
+                    lockProbe.held.set(lockPath, lockProbe.held.get(lockPath) - 1);
+                }
+            }, opts);
+        },
+    };
+});
 describe("subagent-tracker", () => {
     let testDir;
     const previousStateDir = process.env.OMC_STATE_DIR;
@@ -1617,23 +1646,50 @@ describe("subagent-tracker", () => {
             });
             diskWithPeer.total_spawned += 1;
             writeFileSync(statePath, JSON.stringify(diskWithPeer, null, 2), "utf-8");
-            const startedAt = Date.now();
-            const output = processSubagentStop({
-                session_id: sessionId,
-                transcript_path: join(repoDir, "transcript.jsonl"),
-                cwd: repoDir,
-                permission_mode: "default",
-                hook_event_name: "SubagentStop",
-                agent_id: "ag-r1-stop",
-                output: "Agent terminated early due to an API error",
-                success: false,
+            // The retry loop in acquireFileLockSync waits via Atomics.wait between
+            // attempts; record any wait that starts while the state lock is held.
+            const stateLockPath = lockPathFor(statePath);
+            const waitsUnderStateLock = [];
+            const realWait = Atomics.wait.bind(Atomics);
+            const waitSpy = vi.spyOn(Atomics, "wait").mockImplementation((...args) => {
+                if ((lockProbe.held.get(stateLockPath) ?? 0) > 0) {
+                    waitsUnderStateLock.push(args[3] ?? Infinity);
+                }
+                return realWait(...args);
             });
+            lockProbe.acquisitions.length = 0;
+            lockProbe.nested.length = 0;
+            const startedAt = Date.now();
+            let output;
+            try {
+                output = processSubagentStop({
+                    session_id: sessionId,
+                    transcript_path: join(repoDir, "transcript.jsonl"),
+                    cwd: repoDir,
+                    permission_mode: "default",
+                    hook_event_name: "SubagentStop",
+                    agent_id: "ag-r1-stop",
+                    output: "Agent terminated early due to an API error",
+                    success: false,
+                });
+            }
+            finally {
+                waitSpy.mockRestore();
+            }
             const elapsedMs = Date.now() - startedAt;
             expect(output).toEqual({ continue: true, suppressOutput: true });
-            // (b) Bounded latency: no nested-lock acquisition spin. The 500ms spin
-            // cannot hide inside a 300ms allowance over the collector cost.
-            // Windows spawns are slower, but the allowance stays under the 500ms spin.
-            expect(elapsedMs).toBeLessThan(evidenceMs + (IS_WIN ? 450 : 300));
+            // (b) No nested-lock acquisition spin, asserted structurally: the hook
+            // takes the state lock exactly once, never re-enters it, and never waits
+            // on a lock retry while holding it. Wall clock cannot separate the 500ms
+            // spin from load overhead on Windows, so these are the load-bearing checks.
+            expect(lockProbe.nested).toEqual([]);
+            expect(lockProbe.acquisitions.filter((p) => p === stateLockPath)).toHaveLength(1);
+            expect(waitsUnderStateLock).toEqual([]);
+            // POSIX spawns are fast enough for the latency bound to stay meaningful:
+            // the 500ms spin cannot hide inside a 300ms allowance over the collector.
+            if (!IS_WIN) {
+                expect(elapsedMs).toBeLessThan(evidenceMs + 300);
+            }
             // (a) Durable on DISK with no caller flush — read the file, not the
             // in-memory pending cache that readTrackingState would serve.
             const disk = JSON.parse(readFileSync(statePath, "utf-8"));

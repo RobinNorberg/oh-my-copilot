@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, linkSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, } from 'fs';
+import { chmodSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
@@ -165,6 +165,57 @@ describe('atomicWriteJson', () => {
             Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
         }
         expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
+    });
+    describe('win32 rename sharing violations', () => {
+        // Directory-bound operations over the real filesystem, with a scripted rename.
+        function boundOperations(directory, failures) {
+            let calls = 0;
+            const at = (name) => join(directory, name);
+            return {
+                renames: () => calls,
+                operations: {
+                    open: (name, flags, mode) => openSync(at(name), flags, mode),
+                    lstat: name => lstatSync(at(name)),
+                    rename: (source, destination) => {
+                        const code = failures(++calls);
+                        if (code)
+                            throw Object.assign(new Error(`${code}: simulated sharing violation`), { code });
+                        renameSync(at(source), at(destination));
+                    },
+                    unlink: name => unlinkSync(at(name)),
+                    link: (source, destination) => linkSync(at(source), at(destination)),
+                    sync: () => { },
+                },
+            };
+        }
+        function asWin32(body) {
+            const originalPlatform = process.platform;
+            Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+            try {
+                return body();
+            }
+            finally {
+                Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+            }
+        }
+        it('publishes after a rename that failed with EPERM twice', () => {
+            const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-eperm-'));
+            directories.push(directory);
+            writeFileSync(join(directory, 'state.json'), 'old');
+            const { operations, renames } = boundOperations(directory, call => (call <= 2 ? 'EPERM' : null));
+            asWin32(() => atomicWriteFileSync('state.json', 'new', undefined, operations));
+            expect(renames()).toBe(3);
+            expect(readFileSync(join(directory, 'state.json'), 'utf8')).toBe('new');
+        });
+        it('throws EACCES once the retry budget is spent and keeps the old target', () => {
+            const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-eacces-'));
+            directories.push(directory);
+            writeFileSync(join(directory, 'state.json'), 'old');
+            const { operations, renames } = boundOperations(directory, () => 'EACCES');
+            expect(() => asWin32(() => atomicWriteFileSync('state.json', 'new', undefined, operations))).toThrow(expect.objectContaining({ code: 'EACCES' }));
+            expect(renames()).toBe(21);
+            expect(readFileSync(join(directory, 'state.json'), 'utf8')).toBe('old');
+        });
     });
     // win32 skips the temp mode check by design: NTFS has no POSIX mode bits.
     it.each(['hardlink', 'special', 'replacement', ...(posixOnly('NTFS has no POSIX mode bits') ? [] : ['permissions'])])('rejects an untrusted temporary generation (%s) before rename', async (kind) => {

@@ -9763,10 +9763,11 @@ async function atomicWriteJson2(filePath, data, hooks) {
     }
   }
 }
-var ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });

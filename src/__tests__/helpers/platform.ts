@@ -8,6 +8,7 @@
  * See .omc/skills/windows-test-conventions.md.
  */
 import { accessSync, constants, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs';
+import { rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { delimiter, isAbsolute, join } from 'path';
 import { pathToFileURL } from 'url';
@@ -103,6 +104,16 @@ export const TIMING_SCALE = IS_WIN ? 4 : 1;
 /** Scale a Linux-tuned wall-clock ceiling for the host. Identity on Linux and macOS. */
 export function scaleTiming(ms: number): number {
   return ms * TIMING_SCALE;
+}
+
+/**
+ * Remove a temp tree in teardown. Windows refuses to delete a directory that a
+ * still-exiting or detached child holds as its cwd or has a handle in (EPERM).
+ * Node 25's `rmSync` does not retry EPERM despite `maxRetries`; `fs.promises.rm`
+ * does, with linear backoff (about 5.5 s in total here).
+ */
+export function removeTempDir(path: string): Promise<void> {
+  return rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 /**

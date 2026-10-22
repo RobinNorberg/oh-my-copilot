@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
 import {
   createGitFixture,
@@ -38,7 +39,7 @@ function makeConfig(fixture: GitFixture, overrides: Partial<OrchestratorConfig> 
     leaderBranch: fixture.leaderBranch,
     cwd: fixture.repoRoot,
     pollIntervalMs: 100,
-    drainTimeoutMs: 2000,
+    drainTimeoutMs: scaleTiming(2000),
     ...overrides,
   };
 }
@@ -73,7 +74,7 @@ describe('drainAndStop — clean + conflicting work', () => {
     // Worker-2 writes to a file that CONFLICTS with a file on the leader branch.
     // First, put content on the leader branch by merging worker-1 cleanly.
     const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
-    await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', worker: 'worker-1', timeoutMs: 8000 });
+    await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', worker: 'worker-1', timeoutMs: scaleTiming(8000) });
 
     // Now worker-2 modifies the SAME file that's on leader with incompatible content
     // We need to create a conflict: leader has README.md, worker-2 modifies it
@@ -85,9 +86,12 @@ describe('drainAndStop — clean + conflicting work', () => {
     // Drain and stop
     const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     let result: Awaited<ReturnType<typeof handle.drainAndStop>>;
+    // Capture before restoring: mockRestore() also resets the recorded calls.
+    let stderrOutput = '';
     try {
       result = await handle.drainAndStop();
     } finally {
+      stderrOutput = stderrWrite.mock.calls.map(([chunk]) => String(chunk)).join('');
       stderrWrite.mockRestore();
     }
 
@@ -104,8 +108,8 @@ describe('drainAndStop — clean + conflicting work', () => {
     );
 
     if (result.unmerged.length > 0) {
-      expect(stderrWrite).toHaveBeenCalledWith(
-        expect.stringContaining('[team/merge-orchestrator] WARNING: auto-merge left worker commits unmerged at shutdown:'),
+      expect(stderrOutput).toContain(
+        '[team/merge-orchestrator] WARNING: auto-merge left worker commits unmerged at shutdown:',
       );
       expect(existsSync(auditPath)).toBe(true);
       const auditContent = readFileSync(auditPath, 'utf-8');

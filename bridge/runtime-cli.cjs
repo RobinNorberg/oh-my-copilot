@@ -7889,7 +7889,7 @@ async function atomicWriteJson(filePath, data, hooks) {
     }
   }
 }
-var fs, fsSync, path2, crypto, ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var fs, fsSync, path2, crypto, RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
@@ -7897,6 +7897,7 @@ var init_atomic_write = __esm({
     fsSync = __toESM(require("fs"), 1);
     path2 = __toESM(require("path"), 1);
     crypto = __toESM(require("crypto"), 1);
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });
