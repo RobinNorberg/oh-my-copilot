@@ -125,7 +125,8 @@ export function isExcluded(name: string): boolean {
  */
 export function scanDirectories(projectRoot: string): Record<string, DirectoryEntry> {
   const result: Record<string, DirectoryEntry> = {};
-  const visitedInodes = new Set<number>();
+  // bigint keys: NTFS file IDs exceed 2^53, so Number inodes of distinct dirs can collide
+  const visitedInodes = new Set<string>();
 
   // Resolve the real project root for symlink containment checks
   let realProjectRoot: string;
@@ -153,9 +154,10 @@ export function scanDirectories(projectRoot: string): Record<string, DirectoryEn
 
     // Symlink loop protection via inode tracking
     try {
-      const stat = statSync(absDir);
-      if (visitedInodes.has(stat.ino)) return;
-      visitedInodes.add(stat.ino);
+      const stat = statSync(absDir, { bigint: true });
+      const inodeKey = `${stat.dev}:${stat.ino}`;
+      if (visitedInodes.has(inodeKey)) return;
+      visitedInodes.add(inodeKey);
     } catch {
       return; // Skip inaccessible directories
     }

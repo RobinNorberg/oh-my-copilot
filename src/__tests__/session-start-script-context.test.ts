@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Standalone hook runtime source is intentionally JavaScript-only.
 import { pathIdentity, publishCacheOccupancy } from '../../scripts/lib/cache-occupancy.mjs';
-import { posixOnly } from './helpers/platform.js';
+import { removeTempDir } from './helpers/platform.js';
 
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
@@ -193,8 +193,9 @@ describe('session-start.mjs regression #1386', () => {
     execFileSync('git', ['init', '--quiet', fakeProject], { stdio: 'ignore' });
   });
 
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+  // Detached cleanup helpers can still be exiting with handles in the tree.
+  afterEach(async () => {
+    await removeTempDir(tempDir);
   });
 
   it('does not restore retired ultrawork state', () => {
@@ -873,11 +874,7 @@ describe('session-start.mjs regression #1386', () => {
     }
   });
 
-  // On win32 the owner-liveness probe spawns PowerShell, which needs 1-5 s depending
-  // on host load. Inside the hook's bounded probe budget the holder then reads as
-  // unverifiable rather than contended, and no deferred retry is scheduled, so the
-  // outcome depends on machine load rather than on the code under test.
-  it.skipIf(posixOnly('KNOWN PRODUCT GAP on win32: PowerShell owner probe outlasts the probe budget, holder reads unverifiable, no deferred retry; see windows-test-conventions.md'))('retries deferred cleanup after its own lock wait expires', async () => {
+  it('retries deferred cleanup after its own lock wait expires', async () => {
     const stateDir = join(fakeProject, '.omg', 'state');
     const legacyPath = join(stateDir, 'last-tool-error.json');
     const holder = startPostToolFailureLockHolder(legacyPath);

@@ -806,7 +806,10 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
   });
   sink.install();
   return new Promise(resolve => {
-    const protocolDeadline = Date.now() + timeoutMs;
+    // The host's fuse starts when it spawns the runner, so time spent before this
+    // point (runner start-up, slow on a loaded Windows host) comes out of the budget.
+    const startedAtMs = Number.isFinite(options.startedAtMs) ? Math.min(options.startedAtMs, Date.now()) : Date.now();
+    const protocolDeadline = startedAtMs + timeoutMs;
     let terminal = false;
     let settling = false;
     let timer;
@@ -915,7 +918,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
         }
         finish(hookTimeoutStatus()); // fork: fail-closed contract, see hookTimeoutStatus
       });
-    }, timeoutMs);
+    }, Math.max(1, protocolDeadline - Date.now()));
 
     child.once('exit', (code) => {
       if (terminal) return;
@@ -1195,7 +1198,7 @@ if (require.main === module) {
     if (!resolution) {
       process.exitCode = 0;
     } else {
-      runResolvedHook(resolution, process.argv.slice(3)).then(status => {
+      runResolvedHook(resolution, process.argv.slice(3), { startedAtMs: performance.timeOrigin }).then(status => {
         process.exitCode = status;
       });
     }
@@ -1206,7 +1209,9 @@ if (require.main === module) {
  * Route one resolved hook to its runner and resolve to its exit status.
  * Fork: shared by the CLI entry above and scripts/copilot/dispatch.cjs.
  * `io` ({ input, stdout, stderr, onTimeout }) is passed only by the dispatcher;
- * the CLI entry passes none and keeps process stdin/stdout/stderr. The
+ * the CLI entry passes only `startedAtMs` (its process start, which the
+ * supervised child path counts against the inner timeout) and keeps process
+ * stdin/stdout/stderr. The
  * supervised child path calls `onTimeout()` when the hook times out, so the
  * caller can drop stdout the child streamed before it hung.
  */

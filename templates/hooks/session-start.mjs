@@ -128,6 +128,8 @@ const SESSION_START_HOOK_TIMEOUT_MS = 5000;
 const SESSION_START_OCCUPANCY_PROBE_MAX_MS = 2000;
 const SESSION_START_OUTPUT_RESERVE_MS = 750;
 const POST_TOOL_FAILURE_DEFERRED_WAIT_MS = 30_000;
+// A deferred helper that still cannot purge starts one successor, up to this many in a chain.
+const POST_TOOL_FAILURE_DEFERRED_MAX_ATTEMPTS = 3;
 const POST_TOOL_FAILURE_LOCK_RETRY_MS = 50;
 const DEFERRED_TOOL_FAILURE_CLEANUP_FLAG = '--purge-legacy-tool-failure-state';
 const STABILIZE_TOOL_FAILURE_CLEANUP_FLAG = '--stabilize-legacy-tool-failure-state';
@@ -156,7 +158,10 @@ async function waitForPostToolFailureLock(canonicalPath, deadline) {
       Math.min(POST_TOOL_FAILURE_PROCESS_PROBE_MAX_MS, remaining),
     );
     if (lock) return { lock, timedOut: false };
-    if (getStateFileLockFailureKind() !== 'contention') return { lock: null, timedOut: false };
+    const failureKind = getStateFileLockFailureKind();
+    // On win32 the owner probe spawns PowerShell, which can outlast a bounded probe budget
+    // under load. The holder then reads as unverifiable, which is not proof that it is gone.
+    if (failureKind !== 'contention') return { lock: null, timedOut: false, unverifiable: failureKind === 'unverifiable' };
     const remainingAfterAttempt = deadline - Date.now();
     if (remainingAfterAttempt > 0) {
       await new Promise(resolve => setTimeout(resolve, Math.min(POST_TOOL_FAILURE_LOCK_RETRY_MS, remainingAfterAttempt)));
@@ -182,7 +187,7 @@ function hasToolFailureArtifacts(directory, canonicalFilename) {
   }
 }
 
-async function purgeToolFailureStateDirectory(directory, canonicalFilename, deadline, lifetimeDeadline = Infinity) {
+async function purgeToolFailureStateDirectory(directory, canonicalFilename, deadline, lifetimeDeadline = Infinity, retryUnverifiable = false) {
   if (!hasToolFailureArtifacts(directory, canonicalFilename)) return false;
   const canonicalPath = join(directory, canonicalFilename);
   let postToolFailureLock;
@@ -193,7 +198,7 @@ async function purgeToolFailureStateDirectory(directory, canonicalFilename, dead
     return false;
   }
   postToolFailureLock = lockWait.lock;
-  if (!postToolFailureLock) return lockWait.timedOut;
+  if (!postToolFailureLock) return lockWait.timedOut || (retryUnverifiable && lockWait.unverifiable === true);
   let releaseFailed = false;
   let pastLifetime = false;
   try {
@@ -209,9 +214,9 @@ async function purgeToolFailureStateDirectory(directory, canonicalFilename, dead
   return releaseFailed || pastLifetime;
 }
 
-function deferLegacyToolFailureCleanup(omcRoot, waitMs = POST_TOOL_FAILURE_DEFERRED_WAIT_MS) {
+function deferLegacyToolFailureCleanup(omcRoot, waitMs = POST_TOOL_FAILURE_DEFERRED_WAIT_MS, attempt = 1) {
   try {
-    const child = spawn(process.execPath, [__filename, DEFERRED_TOOL_FAILURE_CLEANUP_FLAG, omcRoot, String(waitMs)], {
+    const child = spawn(process.execPath, [__filename, DEFERRED_TOOL_FAILURE_CLEANUP_FLAG, omcRoot, String(waitMs), String(attempt)], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
@@ -436,7 +441,7 @@ async function stabilizeLegacyToolFailureState(omcRoot, stabilizationMs, maxLife
   }
 }
 
-async function purgeLegacyToolFailureState(omcRoot, waitMs = POST_TOOL_FAILURE_LOCK_WAIT_MS, deferOnTimeout = true, lifetimeDeadline = Infinity) {
+async function purgeLegacyToolFailureState(omcRoot, waitMs = POST_TOOL_FAILURE_LOCK_WAIT_MS, deferOnTimeout = true, lifetimeDeadline = Infinity, deferredAttempt = 0) {
   const deadline = Math.min(Date.now() + waitMs, lifetimeDeadline);
   const stateDir = join(omcRoot, 'state');
   try {
@@ -464,10 +469,11 @@ async function purgeLegacyToolFailureState(omcRoot, waitMs = POST_TOOL_FAILURE_L
   }
 
   const cleanupPending = (await Promise.all(
-    directories.map(([directory, filename]) => purgeToolFailureStateDirectory(directory, filename, deadline, lifetimeDeadline)),
+    directories.map(([directory, filename]) => purgeToolFailureStateDirectory(directory, filename, deadline, lifetimeDeadline, deferOnTimeout)),
   )).some(Boolean);
-  if (cleanupPending && deferOnTimeout && !shouldStabilizeToolFailureCleanup()) {
-    deferLegacyToolFailureCleanup(omcRoot, POST_TOOL_FAILURE_DEFERRED_WAIT_MS);
+  if (cleanupPending && deferOnTimeout && !shouldStabilizeToolFailureCleanup()
+    && deferredAttempt < POST_TOOL_FAILURE_DEFERRED_MAX_ATTEMPTS) {
+    deferLegacyToolFailureCleanup(omcRoot, POST_TOOL_FAILURE_DEFERRED_WAIT_MS, deferredAttempt + 1);
   }
   return cleanupPending;
 }
@@ -1278,7 +1284,11 @@ if (process.argv.includes(REFRESH_UPDATE_CACHE_FLAG)) {
   const waitMs = Number.isFinite(requestedWaitMs) && requestedWaitMs > 0
     ? Math.min(requestedWaitMs, POST_TOOL_FAILURE_DEFERRED_WAIT_MS)
     : POST_TOOL_FAILURE_DEFERRED_WAIT_MS;
-  purgeLegacyToolFailureState(omcRoot, waitMs)
+  const requestedAttempt = Number(process.argv[5]);
+  const deferredAttempt = Number.isInteger(requestedAttempt) && requestedAttempt > 0
+    ? Math.min(requestedAttempt, POST_TOOL_FAILURE_DEFERRED_MAX_ATTEMPTS)
+    : 0;
+  purgeLegacyToolFailureState(omcRoot, waitMs, true, Infinity, deferredAttempt)
     .catch(() => {})
     .finally(() => process.exit(0));
 } else if (process.argv[2] === STABILIZE_TOOL_FAILURE_CLEANUP_FLAG) {

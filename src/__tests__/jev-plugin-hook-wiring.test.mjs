@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { removeTempDir } from './helpers/platform.js';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const NODE = process.execPath;
@@ -90,9 +91,10 @@ function createRalphState(context) {
   return sessionId;
 }
 
-afterEach(() => {
+// The shadow-mode resolver runs detached with its cwd in the project dir and may still be exiting.
+afterEach(async () => {
   for (const path of CLEANUPS.splice(0)) {
-    rmSync(path, { recursive: true, force: true });
+    await removeTempDir(path);
   }
 });
 
