@@ -35732,6 +35732,16 @@ function gitProbeEnvironmentSignature() {
   const dynamicEntries = Object.keys(process.env).filter((key) => /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)).sort().map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
   return [...fixedEntries, ...dynamicEntries].join("\0");
 }
+function projectIdentifierEnvironmentSignature() {
+  const stateDir = process.env.OMC_STATE_DIR;
+  return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(["OMC_STATE_DIR", stateDir !== void 0, stateDir ?? ""])}`;
+}
+function isDefinitiveGitExit(error2) {
+  const failure3 = error2;
+  if (typeof failure3?.status !== "number") return false;
+  const stderr = String(failure3.stderr ?? "");
+  return !stderr.includes("dubious ownership") && !stderr.includes("safe.directory");
+}
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
   const effectiveStart = startDir || process.cwd();
@@ -36308,16 +36318,16 @@ function getGitTopologySignature(cwd2) {
   }
   return signatures.join("|");
 }
-function createStateRootCacheEntry(cwd2, root2) {
+function createStateRootCacheEntry(cwd2, root2, environmentSignature = gitProbeEnvironmentSignature) {
   return {
     root: root2,
     metadataSignature: getGitMetadataSnapshot(cwd2)?.signature ?? null,
     topologySignature: getGitTopologySignature(cwd2),
-    environmentSignature: gitProbeEnvironmentSignature()
+    environmentSignature: environmentSignature()
   };
 }
-function isStateRootCacheEntryValid(cwd2, entry2) {
-  return entry2.metadataSignature === (getGitMetadataSnapshot(cwd2)?.signature ?? null) && entry2.topologySignature === getGitTopologySignature(cwd2) && entry2.environmentSignature === gitProbeEnvironmentSignature();
+function isStateRootCacheEntryValid(cwd2, entry2, environmentSignature = gitProbeEnvironmentSignature) {
+  return entry2.metadataSignature === (getGitMetadataSnapshot(cwd2)?.signature ?? null) && entry2.topologySignature === getGitTopologySignature(cwd2) && entry2.environmentSignature === environmentSignature();
 }
 function isGitTopLevelCacheEntryValid(cwd2, cached2) {
   const current = getGitMetadataSnapshot(cwd2);
@@ -36468,6 +36478,20 @@ function getProjectIdentifier(worktreeRoot) {
     if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
     return identifier2;
   }
+  const processCacheKey = canonicalizeExistingPath(root2) ?? (0, import_path22.resolve)(root2);
+  const processCached = projectIdentifierCacheMap.get(processCacheKey);
+  if (processCached) {
+    if (isStateRootCacheEntryValid(root2, processCached, projectIdentifierEnvironmentSignature)) {
+      projectIdentifierCacheMap.delete(processCacheKey);
+      projectIdentifierCacheMap.set(processCacheKey, processCached);
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, processCached.identifier);
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, processCached.identifier);
+      return processCached.identifier;
+    }
+    projectIdentifierCacheMap.delete(processCacheKey);
+  }
+  const processCacheEntry = createStateRootCacheEntry(root2, null, projectIdentifierEnvironmentSignature);
+  let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === void 0;
   let remoteUrl = "";
   try {
     remoteUrl = (0, import_child_process6.execFileSync)("git", ["remote", "get-url", "origin"], {
@@ -36477,7 +36501,8 @@ function getProjectIdentifier(worktreeRoot) {
       windowsHide: true,
       timeout: 5e3
     }).trim();
-  } catch {
+  } catch (error2) {
+    if (!isDefinitiveGitExit(error2)) cacheable = false;
   }
   let primaryRoot = root2;
   try {
@@ -36496,12 +36521,20 @@ function getProjectIdentifier(worktreeRoot) {
         primaryRoot = resolved;
       }
     }
-  } catch {
+  } catch (error2) {
+    if (!isDefinitiveGitExit(error2)) cacheable = false;
   }
   const source = remoteUrl || primaryRoot;
   const hash = (0, import_crypto5.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path22.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
   const identifier = `${dirName}-${hash}`;
+  if (cacheable) {
+    if (projectIdentifierCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = projectIdentifierCacheMap.keys().next().value;
+      if (oldest !== void 0) projectIdentifierCacheMap.delete(oldest);
+    }
+    projectIdentifierCacheMap.set(processCacheKey, { ...processCacheEntry, identifier });
+  }
   if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
@@ -37035,7 +37068,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   }
   return resolution.root;
 }
-var import_crypto5, import_node_async_hooks, import_child_process6, import_fs17, import_os4, import_path22, import_url6, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
+var import_crypto5, import_node_async_hooks, import_child_process6, import_fs17, import_os4, import_path22, import_url6, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -37071,6 +37104,7 @@ var init_worktree_paths = __esm({
     gitTopLevelCacheMap = /* @__PURE__ */ new Map();
     gitTopLevelNegativeCacheMap = /* @__PURE__ */ new Map();
     superprojectCacheMap = /* @__PURE__ */ new Map();
+    projectIdentifierCacheMap = /* @__PURE__ */ new Map();
     canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
     GIT_PROBE_ENVIRONMENT_KEYS = [
       "PATH",
