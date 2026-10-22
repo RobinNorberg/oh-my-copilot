@@ -1968,6 +1968,7 @@ export function quoteWindowsCreateProcessArgument(value: string): string {
 
 const PROVIDER_LINE_VAR = '_OMC_PROVIDER_LINE';
 
+/** `env` must be trusted, host-derived env: on a win32 host SystemRoot is read from process.env and the caller's env is ignored. */
 export function buildProviderSpawnInvocation(
   providerArgv: readonly string[],
   platform: NodeJS.Platform = process.platform,
@@ -1979,8 +1980,11 @@ export function buildProviderSpawnInvocation(
     // ComSpec is caller-controlled and a bare `cmd.exe` is searched in the cwd
     // first, so cmd is pinned under SystemRoot, as the supervisor pins it under
     // the system directory. Without an absolute SystemRoot the launch fails closed.
+    // On a real win32 host SystemRoot comes from the host process, never the caller's env.
     const systemRootKey = Object.keys(env).find(key => key.toUpperCase() === 'SYSTEMROOT');
-    const systemRoot = systemRootKey === undefined ? undefined : env[systemRootKey];
+    const systemRoot = process.platform === 'win32'
+      ? (process.env.SystemRoot ?? process.env.SYSTEMROOT)
+      : systemRootKey === undefined ? undefined : env[systemRootKey];
     if (!systemRoot || !/^[A-Za-z]:\\[^"%\x00-\x1f]*$/.test(systemRoot)) throw new Error('worker_launch_cmd_authority_missing');
     const comSpec = `${systemRoot.replace(/\\+$/, '')}\\System32\\cmd.exe`;
     // A fresh name per launch: an inherited variable can never stand in for

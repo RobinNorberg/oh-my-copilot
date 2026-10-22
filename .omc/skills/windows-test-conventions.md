@@ -43,6 +43,10 @@ The skip helpers return true when the test must skip, and the reason sits in the
 title. A gate must not hide a Linux run: check that the condition is false on Linux, because CI
 only runs Linux.
 
+An opt-in test is gated on an env var, not a helper: `src/platform/__tests__/process-utils-pid-reuse.windows.test.ts`
+spawns up to 20k processes waiting for Windows to reuse a PID, so it runs only with
+`OMC_TEST_PID_REUSE=1 npx vitest run src/platform/__tests__/process-utils-pid-reuse.windows.test.ts`.
+
 ## Known Windows product gaps
 
 Gated tests below hide a real product gap, not a host limit. Remove the gate when the gap is fixed.

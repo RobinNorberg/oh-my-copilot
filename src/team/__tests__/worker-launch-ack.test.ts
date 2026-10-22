@@ -106,6 +106,7 @@ async function removeFixtureDir(dir: string): Promise<void> {
 
 afterEach(async () => {
   for (const child of [...disposableProviders]) await stopDisposableProvider(child).catch(() => undefined);
+  vi.unstubAllEnvs();
   restoreFixtureEnv();
   if (cwd) await removeFixtureDir(cwd);
   cwd = '';
@@ -2736,6 +2737,7 @@ describe('worker launch acknowledgement', () => {
       '--literal=bang! caret^',
     ];
 
+    vi.stubEnv('SystemRoot', 'C:\\Windows'); // a win32 host reads SystemRoot from process.env
     const windowsInvocation = buildProviderSpawnInvocation(providerArgv, 'win32', { SystemRoot: 'C:\\Windows' });
     const [lineVar] = Object.keys(windowsInvocation.env ?? {});
     expect(lineVar).toMatch(/^_OMC_PL_[0-9A-F]{16}$/);
@@ -2779,13 +2781,20 @@ describe('worker launch acknowledgement', () => {
 
   it('pins the batch wrapper cmd under SystemRoot and ignores ComSpec', () => {
     const argv = ['C:\\Tools\\provider.cmd', 'x'];
-    const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath, SYSTEMROOT: 'D:\\Win\\' });
-    expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
-    expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
-    expect(invocation.batchScript).not.toContain(process.execPath);
-    // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
-    for (const env of [{}, { ComSpec: 'C:\\Windows\\System32\\cmd.exe' }, { SystemRoot: 'Windows' }, { SystemRoot: '\\\\server\\share' }, { SystemRoot: 'C:\\%X%' }]) {
-      expect(() => buildProviderSpawnInvocation(argv, 'win32', env)).toThrow('worker_launch_cmd_authority_missing');
+    // A win32 host reads SystemRoot from process.env, so stub it to exercise the validation path.
+    vi.stubEnv('SystemRoot', 'D:\\Win\\');
+    try {
+      const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath });
+      expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
+      expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
+      expect(invocation.batchScript).not.toContain(process.execPath);
+      // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
+      for (const root of ['', 'Windows', '\\\\server\\share', 'C:\\%X%']) {
+        vi.stubEnv('SystemRoot', root);
+        expect(() => buildProviderSpawnInvocation(argv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe' })).toThrow('worker_launch_cmd_authority_missing');
+      }
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

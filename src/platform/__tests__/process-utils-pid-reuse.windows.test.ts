@@ -1,14 +1,29 @@
-import { describe, expect, it } from 'vitest';
+// Opt-in: this test spawns up to 20k processes while waiting for Windows to reuse a PID, so it is
+// skipped unless OMC_TEST_PID_REUSE=1. Run it with:
+//   OMC_TEST_PID_REUSE=1 npx vitest run src/platform/__tests__/process-utils-pid-reuse.windows.test.ts
+import { afterAll, describe, expect, it } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getProcessStartIdentity, isProcessAlive, terminateOwnedProcessTree } from '../process-utils.js';
 
-const isWindows = process.platform === 'win32';
+const enabled = process.platform === 'win32' && process.env.OMC_TEST_PID_REUSE === '1';
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-describe.skipIf(!isWindows)('terminateOwnedProcessTree parent-PID reuse (Windows)', () => {
+// Every child this file spawns, so none outlives the test even when it aborts.
+const spawned = new Set<ChildProcess>();
+const killSpawned = async () => {
+  const live = [...spawned].filter(child => child.exitCode === null && child.signalCode === null);
+  const exits = live.map(child => new Promise<void>(resolve => child.once('exit', () => resolve())));
+  for (const child of live) { try { child.kill(); } catch { /* already gone */ } }
+  await Promise.race([Promise.all(exits), sleep(10_000)]);
+  spawned.clear();
+};
+
+describe.runIf(enabled)('terminateOwnedProcessTree parent-PID reuse (Windows)', () => {
+  afterAll(killSpawned);
+
   it('spares an older unrelated process whose ParentProcessId names the reused root PID', async (ctx) => {
     const dir = mkdtempSync(join(tmpdir(), 'omc-pid-reuse-'));
     const pidFile = join(dir, 'orphan.pid');
@@ -31,6 +46,7 @@ describe.skipIf(!isWindows)('terminateOwnedProcessTree parent-PID reuse (Windows
       const startedAt = Date.now();
       for (let i = 0; i < 20_000 && Date.now() - startedAt < 90_000; i++) {
         const child = spawn(ping, ['-n', '60', '127.0.0.1'], { stdio: 'ignore', windowsHide: true });
+        spawned.add(child);
         if (child.pid === aPid) { reused = child; break; }
         child.kill();
       }
@@ -51,6 +67,7 @@ describe.skipIf(!isWindows)('terminateOwnedProcessTree parent-PID reuse (Windows
     } finally {
       try { process.kill(orphanPid); } catch { /* already gone */ }
       try { reused?.kill(); } catch { /* already gone */ }
+      await killSpawned();
       rmSync(dir, { recursive: true, force: true });
     }
   }, 180_000);
