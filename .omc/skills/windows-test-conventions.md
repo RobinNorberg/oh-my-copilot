@@ -55,3 +55,15 @@ Gated tests below hide a real product gap, not a host limit. Remove the gate whe
   `src/installer/__tests__/session-start-template.test.ts`.
   Fix options: (1) raise the probe budget on win32 so the PowerShell probe completes;
   (2) schedule the deferred retry when the holder is unverifiable, with a bounded retry count.
+- **An orphaned grandchild escapes `terminateOwnedProcessTree` on win32.** The batch-wrapper
+  supervision path (`materializeProviderSpawnInvocation` with `superviseWindowsTree`, used by the
+  direct recovery gate) has no Job object. When an early-exit provider leaves a descendant that
+  outlives it (`start "" /b` from a `.cmd`, or a `detached` Node child), that descendant is an
+  orphan whose parent PID is dead, so the parent-PID walk from the wrapper root never reaches it.
+  A non-detached Node child does not leak: libuv's kill-on-close job ends it with the provider.
+  Not gated: `holds a supervisor root after an early-exit provider and terminates the root with
+  its live descendants` in `src/team/__tests__/worker-launch-ack.test.ts` asserts what the walk
+  guarantees (the orphan is alive, the root holds, then the root and its hold-loop child are gone)
+  and kills the orphan itself.
+  Fix: put the wrapper root in a kill-on-close Job object, as the PowerShell supervisor already
+  does for the bootstrap path.

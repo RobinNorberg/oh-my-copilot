@@ -56,13 +56,18 @@ export function buildWindowsSupervisorSource(): string {
     // The start identity is read while the provider is still suspended: a
     // short-lived provider can exit before a slow host reaches the ready
     // frame, and Get-Process on an exited PID throws, killing the supervisor.
-    `public static class O { [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public IntPtr lpReserved; public IntPtr lpDesktop; public IntPtr lpTitle; public int dwX; public int dwY; public int dwXSize; public int dwYSize; public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags; public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2; public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError; } [StructLayout(LayoutKind.Sequential)] public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public uint dwProcessId; public uint dwThreadId; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_BASIC_LIMIT_INFORMATION { public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass; } [StructLayout(LayoutKind.Sequential)] public struct IO_COUNTERS { public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount; public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit; public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed; } [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi); [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr CreateJobObjectW(IntPtr a, string n); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr j, int c, IntPtr i, uint l); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AssignProcessToJobObject(IntPtr j, IntPtr p); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint ResumeThread(IntPtr h); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateJobObject(IntPtr j, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateProcess(IntPtr p, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetExitCodeProcess(IntPtr h, out uint code); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetHandleInformation(IntPtr h, uint m, uint f); public static string Quote(string value) { var b = new StringBuilder(); b.Append('\"'); int slashes = 0; foreach (var c in value) { if (c == '\\\\') { slashes++; continue; } if (c == '\"') { b.Append('\\\\', slashes * 2 + 1); b.Append('\"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('\"'); return b.ToString(); } public static string BuildCommandLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(Quote(argv[i])); } return b.ToString(); } }`,
+    `public static class O { [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public IntPtr lpReserved; public IntPtr lpDesktop; public IntPtr lpTitle; public int dwX; public int dwY; public int dwXSize; public int dwYSize; public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags; public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2; public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError; } [StructLayout(LayoutKind.Sequential)] public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public uint dwProcessId; public uint dwThreadId; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_BASIC_LIMIT_INFORMATION { public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass; } [StructLayout(LayoutKind.Sequential)] public struct IO_COUNTERS { public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount; public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit; public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed; } [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi); [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr CreateJobObjectW(IntPtr a, string n); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr j, int c, IntPtr i, uint l); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AssignProcessToJobObject(IntPtr j, IntPtr p); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint ResumeThread(IntPtr h); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateJobObject(IntPtr j, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateProcess(IntPtr p, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetExitCodeProcess(IntPtr h, out uint code); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetHandleInformation(IntPtr h, uint m, uint f); public static string Quote(string value) { var b = new StringBuilder(); b.Append('\"'); int slashes = 0; foreach (var c in value) { if (c == '\\\\') { slashes++; continue; } if (c == '\"') { b.Append('\\\\', slashes * 2 + 1); b.Append('\"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('\"'); return b.ToString(); } public static string BuildCommandLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(Quote(argv[i])); } return b.ToString(); } public static string CmdQuote(string value) { var b = new StringBuilder(); b.Append('\"'); int slashes = 0; foreach (var c in value) { if (c < ' ') throw new ArgumentException("worker_launch_provider_argv_invalid"); if (c == '\\\\') { slashes++; continue; } if (c == '\"') { b.Append('\\\\', slashes * 2); b.Append('\"'); b.Append('\"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('\"'); return b.ToString(); } public static string BuildCmdLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(CmdQuote(argv[i])); } if (b.Length > ${WINDOWS_PROVIDER_LINE_MAX}) throw new ArgumentException("worker_launch_provider_argv_too_long"); return b.ToString(); } }`,
     '"@',
     '$pi = New-Object O+PROCESS_INFORMATION; $job = [IntPtr]::Zero; $envPtr = [IntPtr]::Zero; $cmd = $null; $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero',
     'try {',
-    '  $cmd = [O]::BuildCommandLine([string[]]$payload.provider_argv)',
-    '  $envPairs = @($payload.provider_env.psobject.Properties | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }); $envText = (($envPairs -join [char]0) + [char]0 + [char]0); $envBytes = [Text.Encoding]::Unicode.GetBytes($envText); $envPtr = [Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length); [Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $envPtr, $envBytes.Length)',
-    '  $conIn = [O]::CreateFileW(\'CONIN$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); $conOut = [O]::CreateFileW(\'CONOUT$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); if ($conIn -eq [IntPtr]::Zero -or $conIn -eq [IntPtr]::new(-1) -or $conOut -eq [IntPtr]::Zero -or $conOut -eq [IntPtr]::new(-1)) { $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero; throw "worker_launch_console_unavailable" }; if (-not [O]::SetHandleInformation($conIn, 1, 1) -or -not [O]::SetHandleInformation($conOut, 1, 1)) { throw "worker_launch_console_unavailable" }; $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut; $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW([NullString]::Value, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }',
+    // A .cmd/.bat argv[0] is never handed to CreateProcessW, which would run
+    // it through cmd.exe with the MSVC-quoted line (CVE-2024-27980). cmd.exe
+    // itself is started instead and expands the cmd-quoted line once from
+    // its environment block, clearing the variable before the provider runs.
+    '  $argv = [string[]]$payload.provider_argv; $app = [NullString]::Value; $providerLine = $null',
+    `  if ($argv[0] -match '\\.(cmd|bat)[. ]*$') { $providerLine = [O]::BuildCmdLine($argv); $app = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'; $cmd = '"' + $app + '" /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %${PROVIDER_LINE_VAR}%"' } else { $cmd = [O]::BuildCommandLine($argv) }`,
+    `  $envPairs = @($payload.provider_env.psobject.Properties | Where-Object { $_.Name -ne '${PROVIDER_LINE_VAR}' } | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } }); if ($null -ne $providerLine) { $envPairs += [pscustomobject]@{ Name = '${PROVIDER_LINE_VAR}'; Value = $providerLine } }; $envPairs = @($envPairs | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }); $envText = (($envPairs -join [char]0) + [char]0 + [char]0); $envBytes = [Text.Encoding]::Unicode.GetBytes($envText); $envPtr = [Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length); [Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $envPtr, $envBytes.Length)`,
+    '  $conIn = [O]::CreateFileW(\'CONIN$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); $conOut = [O]::CreateFileW(\'CONOUT$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); if ($conIn -eq [IntPtr]::Zero -or $conIn -eq [IntPtr]::new(-1) -or $conOut -eq [IntPtr]::Zero -or $conOut -eq [IntPtr]::new(-1)) { $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero; throw "worker_launch_console_unavailable" }; if (-not [O]::SetHandleInformation($conIn, 1, 1) -or -not [O]::SetHandleInformation($conOut, 1, 1)) { throw "worker_launch_console_unavailable" }; $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut; $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW($app, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }',
     '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, [NullString]::Value); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; if ([O]::ResumeThread($pi.hThread) -eq [uint32]::MaxValue) { throw "worker_launch_resume_failed" }',
     '  $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
     '  $stdinReader = New-Object IO.StreamReader([Console]::OpenStandardInput()); $readTask = $stdinReader.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = $stdinReader.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.instance_id -ne $payload.identity.instance_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
@@ -211,6 +216,8 @@ export interface ProviderSpawnInvocation {
   command: string;
   args: string[];
   batchScript?: string;
+  /** Variables the spawn environment must carry on top of the provider environment. */
+  env?: Record<string, string>;
 }
 
 export interface MaterializedProviderSpawnInvocation {
@@ -222,6 +229,8 @@ export interface MaterializedProviderSpawnInvocation {
   stdinPayload?: string;
   /** Pass through to spawn(): the args are already quoted for cmd.exe. */
   windowsVerbatimArguments?: boolean;
+  /** Variables the spawn environment must carry on top of the provider environment. */
+  env?: Record<string, string>;
   /** Extra POSIX descriptor used to hold provider execution until ownership is proven. */
   providerGateFd?: number;
 }
@@ -663,6 +672,11 @@ export function buildWorkerLaunchBootstrapSpec(
   options: { releaseAfterSpawn?: boolean; providerEnv?: NodeJS.ProcessEnv | Record<string, string>; platform?: NodeJS.Platform } = {},
 ): WorkerLaunchBootstrapSpec {
   if (!isValidIdentity(attempt)) throw new Error('worker_launch_attempt_identity_invalid');
+  // The Windows supervisor runs a batch provider through cmd.exe; refuse an
+  // argv that cmd could not carry intact before anything is launched.
+  if ((options.platform ?? process.platform) === 'win32' && providerArgv[0] && isWindowsBatchProvider(providerArgv[0])) {
+    buildWindowsBatchProviderLine(providerArgv);
+  }
   const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
   const absoluteCwd = resolve(cwd);
   const containmentNonce = randomUUID();
@@ -1884,15 +1898,18 @@ export function buildWindowsSupervisorInvocation(
   return {
     command: `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
     args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encodePowerShell(buildWindowsSupervisorSource())],
-    stdinPayload: Buffer.from(payload, 'base64').toString('utf8'),
+    // PowerShell 5.1 reads stdin in the OEM code page, so non-ASCII text is
+    // sent as JSON \u escapes; ConvertFrom-Json restores the exact strings.
+    stdinPayload: Buffer.from(payload, 'base64').toString('utf8')
+      .replace(/[\u0080-￿]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`),
     cleanup: async () => {},
   };
 }
 
 /**
- * Quote one argument for a line inside a generated batch file that is later
- * handed to `cmd.exe` and, through a `.cmd`/`.bat` provider's `%*`, to the
- * provider's C runtime argv parser.
+ * Quote one argument for the provider line a child `cmd.exe` expands from
+ * `_OMC_PROVIDER_LINE` and hands, through a `.cmd`/`.bat` provider's `%*`, to
+ * the provider's C runtime argv parser.
  *
  * - Every argument is wrapped in double quotes and an embedded `"` becomes
  *   `""`. cmd.exe toggles its quote state on each `"`, so a doubled quote keeps
@@ -1903,17 +1920,38 @@ export function buildWindowsSupervisorInvocation(
  * - Backslashes that precede a quote (embedded or the closing one) are
  *   doubled, the MSVC rule that keeps a trailing `\` from escaping the closing
  *   quote. cmd.exe gives backslashes no meaning.
- * - `%` becomes `%%`, which a batch file reads as one literal `%`.
+ * - `%` needs nothing: the line reaches cmd through an environment variable,
+ *   and percent expansion never rescans its own result.
  * - `!` needs nothing: every cmd layer runs with `/v:off`.
- * - CR/LF (which end a batch line) and NUL are rejected outright.
+ * - Control characters are rejected outright: CR/LF end a cmd line and Ctrl-Z
+ *   ends one in a batch file.
  */
 function quoteWindowsCmdArgument(value: string): string {
-  if (/[\r\n\0]/.test(value)) throw new Error('worker_launch_provider_argv_invalid');
+  if (/[\x00-\x1f]/.test(value)) throw new Error('worker_launch_provider_argv_invalid');
   const escaped = value
     .replace(/(\\*)"/g, '$1$1""')
-    .replace(/(\\+)$/, '$1$1')
-    .replace(/%/g, '%%');
+    .replace(/(\\+)$/, '$1$1');
   return `"${escaped}"`;
+}
+
+/** The same quoting for a value written into a batch file, whose reader expands `%`. */
+function quoteWindowsBatchFileArgument(value: string): string {
+  return quoteWindowsCmdArgument(value).replace(/%/g, '%%');
+}
+
+/** cmd.exe reads at most 8191 characters per command line; keep headroom for the `/c` prefix. */
+const WINDOWS_PROVIDER_LINE_MAX = 8000;
+
+/** Whether Windows runs this provider through cmd.exe (a trailing `.` or space is ignored). */
+export function isWindowsBatchProvider(command: string): boolean {
+  return /\.(cmd|bat)[. ]*$/i.test(command);
+}
+
+/** The quoted line for a cmd-hosted provider; throws when cmd could not carry it intact. */
+export function buildWindowsBatchProviderLine(providerArgv: readonly string[]): string {
+  const line = providerArgv.map(quoteWindowsCmdArgument).join(' ');
+  if (line.length > WINDOWS_PROVIDER_LINE_MAX) throw new Error('worker_launch_provider_argv_too_long');
+  return line;
 }
 
 export function quoteWindowsCreateProcessArgument(value: string): string {
@@ -1937,25 +1975,31 @@ export function buildProviderSpawnInvocation(
 ): ProviderSpawnInvocation {
   const [command, ...args] = providerArgv;
   if (!command) throw new Error('worker_launch_provider_argv_missing');
-  if (platform === 'win32') {
+  if (platform === 'win32' && !/\.(exe|com)$/i.test(command)) {
     const comSpec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
     // Native .cmd/.bat providers cannot be spawned directly (CVE-2024-27980:
     // CreateProcess routes them through cmd.exe, which reparses the argv).
     // `start` and `call` both mangle a batch target's line (`start` reruns it
     // through `cmd /K` with outer-quote stripping; `call` doubles quoted carets
-    // and expands `%` a second time). Instead the quoted line is stored in a
-    // variable and a child cmd expands it once: percent expansion never
-    // rescans its own result, so a literal `%NAME%` in an argument stays
-    // literal, and the balanced quoting keeps every metacharacter inert. The
-    // child clears the variable before the provider runs so it does not leak
-    // into the provider environment.
+    // and expands `%` a second time). Instead the quoted line travels in the
+    // spawn environment, never in the batch file (whose reader splits long
+    // lines and stops at Ctrl-Z), and a child cmd expands it once: percent
+    // expansion never rescans its own result, so a literal `%NAME%` in an
+    // argument stays literal, and the balanced quoting keeps every
+    // metacharacter inert. The child clears the variable before the provider
+    // runs so it does not leak into the provider environment. A name without
+    // an .exe/.com extension keeps this route, whose PATHEXT search finds it.
     const batchScript = [
       '@echo off',
-      `set ${PROVIDER_LINE_VAR}=${providerArgv.map(quoteWindowsCmdArgument).join(' ')}`,
-      `${quoteWindowsCmdArgument(comSpec)} /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %%${PROVIDER_LINE_VAR}%%"`,
+      `${quoteWindowsBatchFileArgument(comSpec)} /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %%${PROVIDER_LINE_VAR}%%"`,
       '',
     ].join('\r\n');
-    return { command: comSpec, args: ['/d', '/v:off', '/s', '/c'], batchScript };
+    return {
+      command: comSpec,
+      args: ['/d', '/v:off', '/s', '/c'],
+      batchScript,
+      env: { [PROVIDER_LINE_VAR]: buildWindowsBatchProviderLine(providerArgv) },
+    };
   }
   return { command, args };
 }
@@ -2023,13 +2067,14 @@ export async function materializeProviderSpawnInvocation(
         ? completionRecordTemplate(completionBinding, '%_OMC_EXIT%')
         : '%_OMC_EXIT%';
       const completionScript = completionPath
-        ? `set "_OMC_EXIT=%ERRORLEVEL%"\r\n> ${quoteWindowsCmdArgument(completionPath)} echo ${completionPayload}\r\n:omc_hold\r\nping -n 3600 127.0.0.1 >nul\r\ngoto omc_hold\r\n`
+        ? `set "_OMC_EXIT=%ERRORLEVEL%"\r\n> ${quoteWindowsBatchFileArgument(completionPath)} echo ${completionPayload}\r\n:omc_hold\r\nping -n 3600 127.0.0.1 >nul\r\ngoto omc_hold\r\n`
         : '';
       await writeFile(wrapperPath, `${invocation.batchScript}${completionScript}`, { encoding: 'utf8', mode: 0o600 });
       return {
         command: invocation.command,
         args: [...invocation.args, `""${wrapperPath}""`],
         windowsVerbatimArguments: true,
+        ...(invocation.env ? { env: invocation.env } : {}),
         ...(completionPath ? { completionPath } : {}),
         ...(completionBinding ? { completionBinding } : {}),
         cleanup: async () => { await rm(wrapperDir, { recursive: true, force: true }); },
