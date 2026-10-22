@@ -151,12 +151,19 @@ export function readSessionEndJob(directory: string, sessionId: string): Session
 
 /** Locked expected-revision CAS with an exact post-write reread. */
 export function mutateSessionEndJob(directory: string, sessionId: string, expectedRevision: number, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null {
+  const result = mutateAtRevision(directory, sessionId, expectedRevision, mutate);
+  return result === REVISION_MISMATCH ? null : result;
+}
+/** Only a stale expected revision is worth a re-read; a rejected mutation or a lock timeout is final. */
+const REVISION_MISMATCH = Symbol('revision-mismatch');
+function mutateAtRevision(directory: string, sessionId: string, expectedRevision: number, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null | typeof REVISION_MISMATCH {
   let terminal = false;
   try {
     const jobPath = sessionEndJobPath(directory, sessionId);
     const result = withLock(jobPath, () => {
       const current = readPath(jobPath);
-      if (!current || current.revision !== expectedRevision) return null;
+      if (!current) return null;
+      if (current.revision !== expectedRevision) return REVISION_MISMATCH;
       mutate(current);
       const next: SessionEndJobV1 = { ...current, revision: current.revision + 1, updatedAt: nowIso() };
       if (isManifestTerminal(next) && next.phase !== 'complete') { next.phase = 'complete'; next.completion = { completedAt: next.updatedAt, terminalDigest: digest({ producers: next.producers, actions: next.actions }), terminalRevision: next.revision }; }
@@ -166,7 +173,7 @@ export function mutateSessionEndJob(directory: string, sessionId: string, expect
       terminal = reread.phase === 'complete';
       return reread;
     });
-    if (result && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
+    if (result && result !== REVISION_MISMATCH && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
     return result;
   } catch { return null; }
 }
@@ -186,7 +193,7 @@ export function updateSessionEndActionPayload(directory: string, sessionId: stri
     for (const name of actionNames) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
   });
 }
-function mutateLatest(directory: string, sessionId: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null { for (let i = 0; i < 8; i++) { const current = readSessionEndJob(directory, sessionId); if (!current) return null; const result = mutateSessionEndJob(directory, sessionId, current.revision, mutate); if (result) return result; } return null; }
+function mutateLatest(directory: string, sessionId: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null { for (let i = 0; i < 8; i++) { const current = readSessionEndJob(directory, sessionId); if (!current) return null; const result = mutateAtRevision(directory, sessionId, current.revision, mutate); if (result !== REVISION_MISMATCH) return result; } return null; }
 
 export function prepareCoreManifest(directory: string, sessionId: string, payload: Record<string, unknown>): SessionEndJobV1 | null {
   const durablePayload = withOpenClawRouting(payload);
@@ -286,7 +293,7 @@ export function reapStaleSessionEndOwner(directory: string, sessionId: string, e
  * (a lease renewal failed between claim and start), so the claim is undone;
  * otherwise its claimant nonce strands it and no later worker can run it.
  */
-export function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason = 'worker-released'): SessionEndJobV1 | null { return mutateLatest(directory, sessionId, (job) => { if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error('release-conflict'); for (const action of Object.values(job.actions)) { if (action.status === 'claimed' && action.claimantNonce === nonce && action.runner?.phase === 'reserved') { action.attempts--; action.status = action.attempts > 0 ? 'retryable' : 'pending'; action.claimantNonce = undefined; action.claimedAt = undefined; action.runner = undefined; } } job.owner = null; if (job.phase !== 'complete') { job.phase = 'recoverable-failure'; job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce }; } }); }
+export function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason = 'worker-released'): SessionEndJobV1 | null { return mutateLatest(directory, sessionId, (job) => { if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error('release-conflict'); for (const action of Object.values(job.actions)) { if (action.status === 'claimed' && action.claimantNonce === nonce && action.runner?.phase === 'reserved' && action.runner.attempt === action.attempts) { action.attempts--; action.status = action.attempts > 0 ? 'retryable' : 'pending'; action.claimantNonce = undefined; action.claimedAt = undefined; action.runner = undefined; } } job.owner = null; if (job.phase !== 'complete') { job.phase = 'recoverable-failure'; job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce }; } }); }
 export function updateSessionEndJob(directory: string, sessionId: string, expectedOwner: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null { return mutateLatest(directory, sessionId, (job) => { if (job.owner?.nonce !== expectedOwner || job.phase === 'complete') throw new Error('owner-conflict'); mutate(job); }); }
 export function claimSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, deadlineAt: number): SessionEndJobV1 | null { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (!action || !['pending', 'retryable'].includes(action.status) || action.claimantNonce) throw new Error('action-claim-conflict'); if (action.class === 'best-effort' && action.attempts > 0) { action.status = 'expired'; action.lastOutcomeCode = 'delivery-attempted'; return; } if ((action.class === 'required' && (action.attempts >= REQUIRED_ACTION_MAX_ATTEMPTS || Date.now() >= Date.parse(job.bestEffortDeadlineAt))) || (action.class === 'best-effort' && Date.now() >= Date.parse(job.bestEffortDeadlineAt))) { action.status = 'expired'; action.lastOutcomeCode = action.class === 'required' ? action.attempts >= REQUIRED_ACTION_MAX_ATTEMPTS ? 'required-attempt-limit' : 'required-deadline-expired' : 'deadline-expired'; return; } action.status = 'claimed'; action.attempts++; action.claimantNonce = ownerNonce; action.claimedAt = nowIso(); action.runner = { attempt: action.attempts, runnerNonce: randomUUID(), phase: 'reserved', deadlineAt: new Date(deadlineAt).toISOString() }; }); }
 export function markSessionEndActionRunner(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, runnerNonce: string, phase: 'started' | 'armed' | 'result-recorded'): SessionEndJobV1 | null { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (action.status !== 'claimed' || action.runner?.runnerNonce !== runnerNonce) throw new Error('runner-phase-conflict'); action.runner.phase = phase; }); }

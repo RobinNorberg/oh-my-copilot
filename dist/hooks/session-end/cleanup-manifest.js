@@ -174,13 +174,21 @@ catch {
 } }
 /** Locked expected-revision CAS with an exact post-write reread. */
 export function mutateSessionEndJob(directory, sessionId, expectedRevision, mutate) {
+    const result = mutateAtRevision(directory, sessionId, expectedRevision, mutate);
+    return result === REVISION_MISMATCH ? null : result;
+}
+/** Only a stale expected revision is worth a re-read; a rejected mutation or a lock timeout is final. */
+const REVISION_MISMATCH = Symbol('revision-mismatch');
+function mutateAtRevision(directory, sessionId, expectedRevision, mutate) {
     let terminal = false;
     try {
         const jobPath = sessionEndJobPath(directory, sessionId);
         const result = withLock(jobPath, () => {
             const current = readPath(jobPath);
-            if (!current || current.revision !== expectedRevision)
+            if (!current)
                 return null;
+            if (current.revision !== expectedRevision)
+                return REVISION_MISMATCH;
             mutate(current);
             const next = { ...current, revision: current.revision + 1, updatedAt: nowIso() };
             if (isManifestTerminal(next) && next.phase !== 'complete') {
@@ -194,7 +202,7 @@ export function mutateSessionEndJob(directory, sessionId, expectedRevision, muta
             terminal = reread.phase === 'complete';
             return reread;
         });
-        if (result && terminal)
+        if (result && result !== REVISION_MISMATCH && terminal)
             acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
         return result;
     }
@@ -217,8 +225,8 @@ function mutateLatest(directory, sessionId, mutate) { for (let i = 0; i < 8; i++
     const current = readSessionEndJob(directory, sessionId);
     if (!current)
         return null;
-    const result = mutateSessionEndJob(directory, sessionId, current.revision, mutate);
-    if (result)
+    const result = mutateAtRevision(directory, sessionId, current.revision, mutate);
+    if (result !== REVISION_MISMATCH)
         return result;
 } return null; }
 export function prepareCoreManifest(directory, sessionId, payload) {
@@ -394,7 +402,7 @@ export function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, ex
  */
 export function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = 'worker-released') { return mutateLatest(directory, sessionId, (job) => { if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation)
     throw new Error('release-conflict'); for (const action of Object.values(job.actions)) {
-    if (action.status === 'claimed' && action.claimantNonce === nonce && action.runner?.phase === 'reserved') {
+    if (action.status === 'claimed' && action.claimantNonce === nonce && action.runner?.phase === 'reserved' && action.runner.attempt === action.attempts) {
         action.attempts--;
         action.status = action.attempts > 0 ? 'retryable' : 'pending';
         action.claimantNonce = undefined;

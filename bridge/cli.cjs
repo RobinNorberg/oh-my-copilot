@@ -69805,12 +69805,17 @@ function readSessionEndJob(directory, sessionId) {
   }
 }
 function mutateSessionEndJob(directory, sessionId, expectedRevision, mutate) {
+  const result = mutateAtRevision(directory, sessionId, expectedRevision, mutate);
+  return result === REVISION_MISMATCH ? null : result;
+}
+function mutateAtRevision(directory, sessionId, expectedRevision, mutate) {
   let terminal = false;
   try {
     const jobPath = sessionEndJobPath(directory, sessionId);
     const result = withLock(jobPath, () => {
       const current = readPath(jobPath);
-      if (!current || current.revision !== expectedRevision) return null;
+      if (!current) return null;
+      if (current.revision !== expectedRevision) return REVISION_MISMATCH;
       mutate(current);
       const next = { ...current, revision: current.revision + 1, updatedAt: nowIso() };
       if (isManifestTerminal(next) && next.phase !== "complete") {
@@ -69823,7 +69828,7 @@ function mutateSessionEndJob(directory, sessionId, expectedRevision, mutate) {
       terminal = reread.phase === "complete";
       return reread;
     });
-    if (result && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
+    if (result && result !== REVISION_MISMATCH && terminal) acknowledgeSessionEndDiscoveryTicket(directory, sessionId);
     return result;
   } catch {
     return null;
@@ -69841,8 +69846,8 @@ function mutateLatest(directory, sessionId, mutate) {
   for (let i = 0; i < 8; i++) {
     const current = readSessionEndJob(directory, sessionId);
     if (!current) return null;
-    const result = mutateSessionEndJob(directory, sessionId, current.revision, mutate);
-    if (result) return result;
+    const result = mutateAtRevision(directory, sessionId, current.revision, mutate);
+    if (result !== REVISION_MISMATCH) return result;
   }
   return null;
 }
@@ -70001,7 +70006,7 @@ function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = 
   return mutateLatest(directory, sessionId, (job) => {
     if (!job.owner || job.owner.nonce !== nonce || job.owner.leaseGeneration !== generation) throw new Error("release-conflict");
     for (const action of Object.values(job.actions)) {
-      if (action.status === "claimed" && action.claimantNonce === nonce && action.runner?.phase === "reserved") {
+      if (action.status === "claimed" && action.claimantNonce === nonce && action.runner?.phase === "reserved" && action.runner.attempt === action.attempts) {
         action.attempts--;
         action.status = action.attempts > 0 ? "retryable" : "pending";
         action.claimantNonce = void 0;
@@ -70180,7 +70185,7 @@ function failClosedMissingCoreProducer(directory, sessionId) {
     if (job.phase === "collecting") job.phase = "ready";
   });
 }
-var fs12, path18, import_crypto21, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE;
+var fs12, path18, import_crypto21, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE, REVISION_MISMATCH;
 var init_cleanup_manifest = __esm({
   "src/hooks/session-end/cleanup-manifest.ts"() {
     "use strict";
@@ -70207,6 +70212,7 @@ var init_cleanup_manifest = __esm({
     REQUIRED_ACTION_MAX_ATTEMPTS = 3;
     LOCK_WAIT = new Int32Array(new SharedArrayBuffer(4));
     DISCOVERY_FILE = "discovery.json";
+    REVISION_MISMATCH = /* @__PURE__ */ Symbol("revision-mismatch");
   }
 });
 
