@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { IS_WIN, TIMING_SCALE } from './src/__tests__/helpers/platform.js';
@@ -14,7 +15,7 @@ export default defineConfig({
     ...(IS_WIN ? {
       testTimeout: 30000 * TIMING_SCALE,
       hookTimeout: 10000 * TIMING_SCALE,
-      maxWorkers: 16,
+      maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
     setupFiles: ['src/__tests__/setup/clear-copilot-home.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in

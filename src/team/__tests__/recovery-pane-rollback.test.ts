@@ -499,7 +499,7 @@ describe('recovery pane rollback evidence', () => {
     ));
     try {
       await awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 });
-      await expect(awaitWorkerLaunchProviderStarted(launchAttempt, { timeoutMs: 10_000, pollIntervalMs: 5 })).resolves.toBe(true);
+      await expect(awaitWorkerLaunchProviderStarted(launchAttempt, { timeoutMs: scaleTiming(10_000), pollIntervalMs: 5 })).resolves.toBe(true);
       await expect(loadCurrentWorkerLaunchAttempt({
         cwd,
         teamName,
@@ -548,11 +548,15 @@ describe('recovery pane rollback evidence', () => {
       stoppableProviderArgv(priorStopPath),
       cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
-      .resolves.toEqual({ ok: true });
-    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
-      .resolves.toBe(true);
-    writeFileSync(priorStopPath, 'stop');
+    // Stop the provider even when an await fails, so it cannot outlive the test.
+    try {
+      await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
+        .resolves.toBe(true);
+    } finally {
+      writeFileSync(priorStopPath, 'stop');
+    }
     await expect(priorBootstrap).resolves.toMatchObject({ outcome: 'ran' });
     mkdirSync(join(configPath, '..'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
@@ -711,11 +715,15 @@ describe('recovery pane rollback evidence', () => {
       stoppableProviderArgv(priorStopPath),
       cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
-      .resolves.toEqual({ ok: true });
-    await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
-      .resolves.toBe(true);
-    writeFileSync(priorStopPath, 'stop');
+    // Stop the provider even when an await fails, so it cannot outlive the test.
+    try {
+      await expect(awaitWorkerLaunchAcknowledgement(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(awaitWorkerLaunchProviderStarted(priorAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
+        .resolves.toBe(true);
+    } finally {
+      writeFileSync(priorStopPath, 'stop');
+    }
     await expect(priorBootstrap).resolves.toMatchObject({ outcome: 'ran' });
     mkdirSync(join(configPath, '..'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
@@ -759,11 +767,15 @@ describe('recovery pane rollback evidence', () => {
     const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
       oldAttempt, stoppableProviderArgv(oldStopPath), cwd,
     ));
-    await expect(awaitWorkerLaunchAcknowledgement(oldAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
-      .resolves.toEqual({ ok: true });
-    await expect(awaitWorkerLaunchProviderStarted(oldAttempt, { timeoutMs: 10_000, pollIntervalMs: 5 }))
-      .resolves.toBe(true);
-    writeFileSync(oldStopPath, 'stop');
+    // Stop the provider even when an await fails, so it cannot outlive the test.
+    try {
+      await expect(awaitWorkerLaunchAcknowledgement(oldAttempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(awaitWorkerLaunchProviderStarted(oldAttempt, { timeoutMs: scaleTiming(10_000), pollIntervalMs: 5 }))
+        .resolves.toBe(true);
+    } finally {
+      writeFileSync(oldStopPath, 'stop');
+    }
     await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
     const oldPid = JSON.parse(readFileSync(oldAttempt.startedPath, 'utf8')).pid as number;
     const configPath = absPath(cwd, TeamPaths.config(teamName));
@@ -944,7 +956,7 @@ describe('recovery pane rollback evidence', () => {
         pollIntervalMs: 5,
       });
       if (!accepted.ok) throw new Error(`launch acknowledgement failed: ${accepted.reason}`);
-      await expect(awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: 10_000, pollIntervalMs: 5 }))
+      await expect(awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: scaleTiming(10_000), pollIntervalMs: 5 }))
         .resolves.toBe(true);
       return { ownership, provider: config.provider, attempt };
     });
