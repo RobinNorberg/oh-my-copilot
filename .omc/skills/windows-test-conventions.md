@@ -37,6 +37,7 @@ Shared helpers live in `src/__tests__/helpers/platform.ts`. Import them; do not 
 | `requiresExecutable(name)` / `hasExecutable(name)` | PATH + PATHEXT lookup without a shell. The WindowsApps `python`/`python3` Store stub counts as absent. |
 | `toFileUrl(p)` | `pathToFileURL(p).href` for ESM imports of temp files. |
 | `toPosix(p)` | Separator-agnostic path assertions. |
+| `removeTempDir(p)` | Async teardown of a temp tree that a just-exiting or detached child may still hold (cwd or open handle). Node 25 `rmSync` throws EPERM at once despite `maxRetries`; this uses `fs.promises.rm`, which retries. |
 | `scaleTiming(ms)` / `TIMING_SCALE` | Wall-clock ceilings tuned on Linux (`toBeLessThan(scaleTiming(500))`). 4x on win32, identity elsewhere. Keep a ceiling that guards a known stall (a 500ms spin) below that stall instead. |
 
 The skip helpers return true when the test must skip, and the reason sits in the call or the test
@@ -46,12 +47,15 @@ only runs Linux.
 ## Known Windows product gaps
 
 Gated tests below hide a real product gap, not a host limit. Remove the gate when the gap is fixed.
+None are open. List each new one here with the gated test names and the fix options.
 
-- **Deferred cleanup retry never schedules on a loaded Windows host.** The session-start hook
-  probes lock-owner liveness with PowerShell, which needs 1-5 s under load. That exceeds the
-  bounded probe budget, so the holder reads as "unverifiable" instead of "contended" and no
-  deferred retry is scheduled. Gated: `retries deferred cleanup after its own lock wait expires` in
-  `src/__tests__/session-start-script-context.test.ts` and
-  `src/installer/__tests__/session-start-template.test.ts`.
-  Fix options: (1) raise the probe budget on win32 so the PowerShell probe completes;
-  (2) schedule the deferred retry when the holder is unverifiable, with a bounded retry count.
+## Win32 traps already fixed in product code
+
+- `stat.ino` as a Number collides on NTFS: file IDs exceed 2^53, so adjacent directories round to
+  one value. Key visited sets on `statSync(p, { bigint: true })` as `${dev}:${ino}`.
+- A lock holder whose PowerShell owner probe outlasts a bounded budget reads "unverifiable", not
+  "contended". Callers that can retry later must treat it as pending. In session-start the
+  tool-failure lock wait retries "unverifiable" like contention until its deadline, for every
+  caller: the SessionStart foreground purge, each deferred cleanup link (the 3-link chain is a
+  backstop), and the stabilization worker, which keeps its window open until its hard lifetime.
+  None of them purge without the lock.

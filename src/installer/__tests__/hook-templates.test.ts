@@ -833,6 +833,36 @@ OMC Ultrawork = "특수부대 작전 반"
       expect(source).not.toMatch(/spawnSync\(\s*'powershell'/);
     }
   });
+
+  it('keeps the tool-failure cleanup block identical in the plugin and standalone session-start hooks', () => {
+    const extract = (hookPath: string) => {
+      const source = readFileSync(hookPath, 'utf8').replace(/\r\n/g, '\n');
+      const lockBlockStart = source.indexOf('const POST_TOOL_FAILURE_LOCK_WAIT_MS');
+      const lockBlockEnd = source.indexOf('function legacyToolFailureArtifactSnapshot(');
+      const purgeStart = source.indexOf('async function purgeLegacyToolFailureState(');
+      const purgeEnd = source.indexOf('\n}\n', purgeStart);
+      expect(lockBlockStart).toBeGreaterThan(-1);
+      expect(lockBlockEnd).toBeGreaterThan(lockBlockStart);
+      expect(purgeStart).toBeGreaterThan(-1);
+      expect(purgeEnd).toBeGreaterThan(purgeStart);
+      const stabilizeStart = source.indexOf('async function stabilizeLegacyToolFailureState(');
+      const stabilizeEnd = source.indexOf('\n}\n', stabilizeStart);
+      expect(stabilizeStart).toBeGreaterThan(-1);
+      expect(stabilizeEnd).toBeGreaterThan(stabilizeStart);
+      // Only the plugin hook carries the test-only final-scan synchronization.
+      const stabilize = source.slice(stabilizeStart, stabilizeEnd).replace(/^\s*await waitForTestFinalArtifactScanRelease\(\);\n/m, '');
+      return [source.slice(lockBlockStart, lockBlockEnd), source.slice(purgeStart, purgeEnd), stabilize];
+    };
+    const [scriptLockBlock, scriptPurge, scriptStabilize] = extract(join(packageRoot, 'scripts', 'session-start.mjs'));
+    const [templateLockBlock, templatePurge, templateStabilize] = extract(join(packageRoot, 'templates', 'hooks', 'session-start.mjs'));
+
+    expect(scriptLockBlock).toContain('async function waitForPostToolFailureLock(');
+    expect(scriptLockBlock).toContain('async function purgeToolFailureStateDirectory(');
+    expect(templateLockBlock).toBe(scriptLockBlock);
+    expect(templatePurge).toBe(scriptPurge);
+    expect(scriptStabilize).toContain('purgeLegacyToolFailureState(omcRoot, POST_TOOL_FAILURE_LOCK_WAIT_MS, false, lifetimeDeadline)');
+    expect(templateStabilize).toBe(scriptStabilize);
+  });
 });
 
 describe('pre-tool-use packaged artifacts', () => {
