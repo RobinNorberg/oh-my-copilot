@@ -610,6 +610,49 @@ describe("git top-level memoization", () => {
     expect(getProjectIdentifier(repo)).toBe(recovered);
   });
 
+  it("does not cache a project identifier derived from a dubious-ownership refusal", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
+    const refusal = Object.assign(new Error("Command failed: git remote get-url origin"), {
+      status: 128,
+      stderr: "fatal: detected dubious ownership in repository\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /repo\n",
+    });
+    mockedExecFileSync.mockImplementationOnce(() => { throw refusal; });
+
+    const fallback = getProjectIdentifier(repo);
+    const recovered = getProjectIdentifier(repo);
+    expect(recovered).not.toBe(fallback);
+    expect(getProjectIdentifier(repo)).toBe(recovered);
+  });
+
+  it("does not cache project identifiers for a bare repository or when GIT_DIR is set", () => {
+    const bare = join(tempDir, "bare.git");
+    mkdirSync(bare, { recursive: true });
+    git(bare, ["init", "--bare", "--quiet"]);
+    git(bare, ["remote", "add", "origin", "https://example.test/first.git"]);
+    const remoteCallsFor = (cwd: string) => mockedExecFileSync.mock.calls.filter(([command, args, options]) => command === "git" && Array.isArray(args) && args[0] === "remote" && args[1] === "get-url" && (options as { cwd?: string } | undefined)?.cwd === cwd).length;
+
+    const first = getProjectIdentifier(bare);
+    expect(getProjectIdentifier(bare)).toBe(first);
+    expect(remoteCallsFor(bare)).toBe(2);
+    git(bare, ["remote", "set-url", "origin", "https://example.test/second.git"]);
+    expect(getProjectIdentifier(bare)).not.toBe(first);
+
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    const previousGitDir = process.env.GIT_DIR;
+    try {
+      process.env.GIT_DIR = join(repo, ".git");
+      getProjectIdentifier(repo);
+      getProjectIdentifier(repo);
+      expect(remoteCallsFor(repo)).toBe(2);
+    } finally {
+      if (previousGitDir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = previousGitDir;
+    }
+  });
+
   it("keeps concurrent render scopes isolated", async () => {
     const repo = join(tempDir, "repo");
     initRepo(repo);

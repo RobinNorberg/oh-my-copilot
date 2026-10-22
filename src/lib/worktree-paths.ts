@@ -125,9 +125,15 @@ function projectIdentifierEnvironmentSignature(): string {
   return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(['OMC_STATE_DIR', stateDir !== undefined, stateDir ?? ''])}`;
 }
 
-/** True when a git probe failed with a definitive exit, not a spawn error or timeout. */
+/**
+ * True when a git probe failed with a definitive exit, not a spawn error, a
+ * timeout, or a safe.directory ownership refusal (which a config change lifts).
+ */
 function isDefinitiveGitExit(error: unknown): boolean {
-  return typeof (error as { status?: unknown } | null)?.status === 'number';
+  const failure = error as { status?: unknown; stderr?: unknown } | null;
+  if (typeof failure?.status !== 'number') return false;
+  const stderr = String(failure.stderr ?? '');
+  return !stderr.includes('dubious ownership') && !stderr.includes('safe.directory');
 }
 
 /**
@@ -870,20 +876,28 @@ function getGitTopologySignature(cwd: string): string {
   return signatures.join('|');
 }
 
-function createStateRootCacheEntry(cwd: string, root: string | null): StateRootCacheEntry {
+function createStateRootCacheEntry(
+  cwd: string,
+  root: string | null,
+  environmentSignature: () => string = gitProbeEnvironmentSignature,
+): StateRootCacheEntry {
   return {
     root,
     metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
     topologySignature: getGitTopologySignature(cwd),
-    environmentSignature: gitProbeEnvironmentSignature(),
+    environmentSignature: environmentSignature(),
   };
 }
 
-function isStateRootCacheEntryValid(cwd: string, entry: StateRootCacheEntry): boolean {
+function isStateRootCacheEntryValid(
+  cwd: string,
+  entry: StateRootCacheEntry,
+  environmentSignature: () => string = gitProbeEnvironmentSignature,
+): boolean {
   return (
     entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) &&
     entry.topologySignature === getGitTopologySignature(cwd) &&
-    entry.environmentSignature === gitProbeEnvironmentSignature()
+    entry.environmentSignature === environmentSignature()
   );
 }
 
@@ -1239,11 +1253,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   const processCacheKey = canonicalizeExistingPath(root) ?? resolve(root);
   const processCached = projectIdentifierCacheMap.get(processCacheKey);
   if (processCached) {
-    if (
-      processCached.metadataSignature === (getGitMetadataSnapshot(root)?.signature ?? null) &&
-      processCached.topologySignature === getGitTopologySignature(root) &&
-      processCached.environmentSignature === projectIdentifierEnvironmentSignature()
-    ) {
+    if (isStateRootCacheEntryValid(root, processCached, projectIdentifierEnvironmentSignature)) {
       projectIdentifierCacheMap.delete(processCacheKey);
       projectIdentifierCacheMap.set(processCacheKey, processCached);
       if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, processCached.identifier);
@@ -1253,12 +1263,12 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     projectIdentifierCacheMap.delete(processCacheKey);
   }
   // Signatures are taken before probing so a change made during the probes re-probes next time.
-  const processCacheEntry = {
-    ...createStateRootCacheEntry(root, null),
-    environmentSignature: projectIdentifierEnvironmentSignature(),
-  };
-  // Spawn errors and timeouts are transient: their fallback identity is not cached.
-  let cacheable = true;
+  // Global gitconfig and [include] files are not tracked (same limitation as the getGitTopLevel cache).
+  const processCacheEntry = createStateRootCacheEntry(root, null, projectIdentifierEnvironmentSignature);
+  // Spawn errors, timeouts and ownership refusals are transient: their fallback identity is not cached.
+  // Without .git metadata at or above the root (bare repo) or with GIT_DIR set, the signatures
+  // cannot see remote changes, so the identity is not cached either.
+  let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === undefined;
 
   let remoteUrl = '';
   try {
