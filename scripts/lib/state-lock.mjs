@@ -42,6 +42,9 @@ let linuxClockTicksPerSecond;
 let ownIdentityCache = null;
 let lastLockFailure = null;
 let lastLockFailureDetail = null;
+// Fork fix: 'malformed-owner' when an unverifiable failure came from owner metadata that no
+// retry can repair, as opposed to a probe that ran out of time. Reset by every recordFailure.
+let lastLockFailureReason = null;
 // Fork fix: nonces of lock owners this module published but no longer holds (a failed release,
 // or a failed acquire after publication). Only this module instance could hold them, so a row or
 // artifact carrying one is orphaned-by-self and reclaimable instead of self-deadlocking the
@@ -361,9 +364,10 @@ function openMutationDb(lockPath, bypassTestOverride = false, busyTimeoutMs = 20
   }
 }
 
-function recordFailure(kind, detail) {
+function recordFailure(kind, detail, reason) {
   lastLockFailure = kind;
   lastLockFailureDetail = detail || null;
+  lastLockFailureReason = reason || null;
 }
 
 export function getStateFileLockDiagnostic() {
@@ -391,6 +395,10 @@ export function getStateFileLockFailureMessage() {
 
 export function getStateFileLockFailureKind() {
   return lastLockFailure;
+}
+
+export function getStateFileLockFailureReason() {
+  return lastLockFailureReason;
 }
 
 export function isStateFileLockingSupported() {
@@ -498,7 +506,7 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       const existing = readOwner(lockPath);
       if (existing === 'absent') continue;
       if (!existing) {
-        recordFailure('unverifiable');
+        recordFailure('unverifiable', null, 'malformed-owner');
         console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
         return null;
       }
@@ -572,6 +580,7 @@ function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHoo
 function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [] }) {
   lastLockFailureDetail = null;
   lastLockFailure = null;
+  lastLockFailureReason = null;
   void requireExclusive;
   if (remainingOperationTimeoutMs(operationDeadline) <= 0) {
     recordFailure('contention');
@@ -671,7 +680,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
       if (!validRow(row)) {
         db.exec('ROLLBACK');
         db.close();
-        recordFailure('unverifiable');
+        recordFailure('unverifiable', null, 'malformed-owner');
         return null;
       }
       const live = cachedOwnerLive({ pid: row.pid, processStart: row.process_start, nonce: row.nonce }, verified, 'row', false);
@@ -692,7 +701,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
       if (!artifact) {
         db.exec('ROLLBACK');
         db.close();
-        recordFailure('unverifiable');
+        recordFailure('unverifiable', null, 'malformed-owner');
         console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
         return null;
       }

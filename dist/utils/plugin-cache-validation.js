@@ -10,20 +10,30 @@ const FILESYSTEM_JUNK_NAMES = new Set(['.ds_store', 'desktop.ini', 'thumbs.db'])
 export function isOmcPluginCacheIdentity(pluginName, marketplace) {
     return OMC_PLUGIN_CACHE_IDENTITIES.has(`${pluginName}@${marketplace}`.toLowerCase());
 }
+function identityPart(value) {
+    if (typeof value === 'bigint')
+        return value;
+    // A Number above 2^53 may be a rounded file ID, which cannot prove identity.
+    return Number.isSafeInteger(value) ? BigInt(value) : undefined;
+}
 export function sameFileSystemIdentity(left, right) {
-    return (typeof left.dev === 'number' &&
-        typeof left.ino === 'number' &&
-        left.ino !== 0 &&
-        typeof right.dev === 'number' &&
-        typeof right.ino === 'number' &&
-        right.ino !== 0 &&
-        left.dev === right.dev &&
-        left.ino === right.ino);
+    const leftDev = identityPart(left.dev);
+    const leftIno = identityPart(left.ino);
+    const rightDev = identityPart(right.dev);
+    const rightIno = identityPart(right.ino);
+    return (leftDev !== undefined &&
+        leftIno !== undefined &&
+        leftIno !== 0n &&
+        rightDev !== undefined &&
+        rightIno !== undefined &&
+        rightIno !== 0n &&
+        leftDev === rightDev &&
+        leftIno === rightIno);
 }
 export function hasAncestorWithIdentity(path, identity) {
     let currentPath = path;
     while (true) {
-        if (sameFileSystemIdentity(statSync(currentPath), identity))
+        if (sameFileSystemIdentity(statSync(currentPath, { bigint: true }), identity))
             return true;
         const parentPath = dirname(currentPath);
         if (parentPath === currentPath)
@@ -41,7 +51,7 @@ export function firstChildBelowDirectoryIdentity(path, directoryIdentity) {
         if (parentPath === currentPath)
             return undefined;
         try {
-            if (sameFileSystemIdentity(statSync(parentPath), directoryIdentity))
+            if (sameFileSystemIdentity(statSync(parentPath, { bigint: true }), directoryIdentity))
                 return basename(currentPath);
         }
         catch {
@@ -92,7 +102,7 @@ function pathTraversesFileSystemIdentity(path, identity) {
         steps.push(components[index]);
     const activeLinks = new Set();
     try {
-        if (sameFileSystemIdentity(lstatSync(currentPath), identity))
+        if (sameFileSystemIdentity(lstatSync(currentPath, { bigint: true }), identity))
             return true;
     }
     catch {
@@ -113,7 +123,7 @@ function pathTraversesFileSystemIdentity(path, identity) {
         const nextPath = join(currentPath, step);
         let nextStats;
         try {
-            nextStats = lstatSync(nextPath);
+            nextStats = lstatSync(nextPath, { bigint: true });
         }
         catch {
             // Earlier components have already been checked; a missing suffix cannot traverse a later link.
@@ -126,15 +136,8 @@ function pathTraversesFileSystemIdentity(path, identity) {
             continue;
         }
         // bigint: NTFS file IDs exceed 2^53, so the Number inodes of distinct links can collide
-        let linkIdentity;
-        try {
-            linkIdentity = lstatSync(nextPath, { bigint: true });
-        }
-        catch {
-            // A link that vanished since the lstat above is keyed by path.
-        }
-        const linkKey = linkIdentity && linkIdentity.ino !== 0n
-            ? `inode:${linkIdentity.dev}:${linkIdentity.ino}`
+        const linkKey = nextStats.ino !== 0n
+            ? `inode:${nextStats.dev}:${nextStats.ino}`
             : `path:${process.platform === 'win32' ? nextPath.toLowerCase() : nextPath}`;
         if (activeLinks.has(linkKey))
             return false;
@@ -250,7 +253,7 @@ function hasUsableOmcHookTargets(path, staleVersionIdentity) {
     return true;
 }
 function hasResolvablePluginSymlinks(directory, staleVersionIdentity, ancestors = [], payload) {
-    const directoryStats = statSync(directory);
+    const directoryStats = statSync(directory, { bigint: true });
     if (ancestors.some((identity) => sameFileSystemIdentity(directoryStats, identity)))
         return false;
     const branch = [...ancestors, directoryStats];
@@ -258,7 +261,7 @@ function hasResolvablePluginSymlinks(directory, staleVersionIdentity, ancestors 
     for (const entry of entries) {
         const entryPath = join(directory, entry.name);
         if (entry.isSymbolicLink()) {
-            const entryStats = statSync(entryPath);
+            const entryStats = statSync(entryPath, { bigint: true });
             if (pathTraversesFileSystemIdentity(entryPath, staleVersionIdentity))
                 return false;
             if (entryStats.isDirectory()) {

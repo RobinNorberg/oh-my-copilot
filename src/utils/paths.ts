@@ -541,7 +541,7 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
         .map(ap => join(pluginDir, ap.slice(pluginDirNorm.length + 1).split('/')[0]));
       const filesystemActiveVersionDirsHere: string[] = [];
       try {
-        const pluginDirStats = statSync(pluginDir);
+        const pluginDirStats = statSync(pluginDir, { bigint: true });
         for (const activePath of activePathsArray) {
           const versionName = firstChildBelowDirectoryIdentity(activePath, pluginDirStats);
           if (versionName) filesystemActiveVersionDirsHere.push(join(pluginDir, versionName));
@@ -642,11 +642,11 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
           // Native paths (backslashes on win32): the helper uses basename, not split('/').
           const target = pickHighestVersionDir(activeVersionDirsHere);
           try {
-            const targetStats = statSync(target);
+            const targetStats = statSync(target, { bigint: true });
             if (!targetStats.isDirectory()) {
               throw new Error('Registered active plugin target is not a directory');
             }
-            const staleVersionStats = statSync(versionDir);
+            const staleVersionStats = statSync(versionDir, { bigint: true });
             const resolvedTarget = realpathSync(target);
             const resolvedStaleVersion = realpathSync(versionDir);
             const targetPath = comparisonPath(resolvedTarget);

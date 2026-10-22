@@ -129,6 +129,15 @@ function startSessionStartProcess(
   return { child, output };
 }
 
+// A well-formed owner whose liveness probe reports unknown, as a timed-out win32 probe does.
+const PROBE_TIMEOUT_ENV = { OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID: String(process.pid) };
+
+function writeProbeTimeoutLockOwner(lockPath: string) {
+  const owner = JSON.stringify({ version: 1, pid: process.pid, processStart: 'probe-timeout-fixture', createdAt: new Date().toISOString(), nonce: randomUUID() });
+  writeFileSync(lockPath, owner);
+  return owner;
+}
+
 async function waitForFilesToDisappear(paths: string[], timeoutMs: number) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -481,7 +490,7 @@ describe('session-start template retired-state handling', () => {
     const legacyPath = join(stateDir, 'last-tool-error.json');
     const workerLockPath = join(stateDir, '.legacy-tool-failure-cleanup-worker.lock');
     writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'unverifiable legacy secret' }));
-    writeFileSync(`${legacyPath}.lock`, 'malformed lock metadata');
+    const owner = writeProbeTimeoutLockOwner(`${legacyPath}.lock`);
 
     // As a background child SessionStart purges in the foreground but starts no worker.
     const output = JSON.parse(await startSessionStartProcess(SCRIPT_PATH, fakeHome, {
@@ -493,15 +502,16 @@ describe('session-start template retired-state handling', () => {
       OMC_STATE_DIR: '',
       OMC_HOOK_BACKGROUND_CHILD: '1',
       OMC_TEST_TOOL_FAILURE_STABILIZATION_MS: '1500',
+      ...PROBE_TIMEOUT_ENV,
     }).output);
     expect(output.continue).toBe(true);
     expect(existsSync(legacyPath)).toBe(true);
-    expect(readFileSync(`${legacyPath}.lock`, 'utf-8')).toBe('malformed lock metadata');
+    expect(readFileSync(`${legacyPath}.lock`, 'utf-8')).toBe(owner);
 
     const startedAt = Date.now();
     const worker = spawn(NODE, [SCRIPT_PATH, '--stabilize-legacy-tool-failure-state', omcRoot, '500', '3000'], {
       stdio: 'ignore',
-      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, CLAUDE_PLUGIN_ROOT: '', OMC_HOOK_BACKGROUND_CHILD: '1' },
+      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, CLAUDE_PLUGIN_ROOT: '', OMC_HOOK_BACKGROUND_CHILD: '1', ...PROBE_TIMEOUT_ENV },
     });
     const workerExit = new Promise<number | null>((resolve, reject) => {
       worker.once('error', reject);
@@ -517,7 +527,7 @@ describe('session-start template retired-state handling', () => {
       // The unverifiable holder kept the 500 ms window open until the 3000 ms lifetime.
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3000);
       expect(existsSync(legacyPath)).toBe(true);
-      expect(readFileSync(`${legacyPath}.lock`, 'utf-8')).toBe('malformed lock metadata');
+      expect(readFileSync(`${legacyPath}.lock`, 'utf-8')).toBe(owner);
       expect(existsSync(workerLockPath)).toBe(false);
     } finally {
       if (worker.exitCode === null) worker.kill();
@@ -530,8 +540,8 @@ describe('session-start template retired-state handling', () => {
     const legacyPath = join(omcRoot, 'state', 'last-tool-error.json');
     const lockPath = `${legacyPath}.lock`;
     writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'deferred unverifiable legacy secret' }));
-    writeFileSync(lockPath, 'malformed lock metadata');
-    const env: NodeJS.ProcessEnv = { ...process.env, OMC_HOOK_BACKGROUND_CHILD: '1' };
+    writeProbeTimeoutLockOwner(lockPath);
+    const env: NodeJS.ProcessEnv = { ...process.env, OMC_HOOK_BACKGROUND_CHILD: '1', ...PROBE_TIMEOUT_ENV };
     delete env.OMC_TEST_TOOL_FAILURE_STABILIZATION_MS;
     const link = spawn(NODE, [SCRIPT_PATH, '--purge-legacy-tool-failure-state', omcRoot, '6000'], { stdio: 'ignore', env });
     const linkExit = new Promise<{ code: number | null; at: number }>((resolve, reject) => {
@@ -540,7 +550,7 @@ describe('session-start template retired-state handling', () => {
     });
 
     try {
-      // The holder outlives one 2000 ms owner probe but not the link's 6000 ms window.
+      // The holder stays unverifiable past the 2500 ms foreground wait but not the link's 6000 ms window.
       await new Promise(resolve => setTimeout(resolve, 2500));
       expect(link.exitCode).toBeNull();
       rmSync(lockPath, { force: true });
@@ -567,10 +577,10 @@ describe('session-start template retired-state handling', () => {
     const lockPath = `${legacyPath}.lock`;
     const workerLockPath = join(stateDir, '.legacy-tool-failure-cleanup-worker.lock');
     writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'stabilized unverifiable legacy secret' }));
-    writeFileSync(lockPath, 'malformed lock metadata');
+    writeProbeTimeoutLockOwner(lockPath);
     const worker = spawn(NODE, [SCRIPT_PATH, '--stabilize-legacy-tool-failure-state', omcRoot, '500', '10000'], {
       stdio: 'ignore',
-      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, CLAUDE_PLUGIN_ROOT: '', OMC_HOOK_BACKGROUND_CHILD: '1' },
+      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, CLAUDE_PLUGIN_ROOT: '', OMC_HOOK_BACKGROUND_CHILD: '1', ...PROBE_TIMEOUT_ENV },
     });
     const workerExit = new Promise<{ code: number | null; at: number }>((resolve, reject) => {
       worker.once('error', reject);
@@ -593,6 +603,54 @@ describe('session-start template retired-state handling', () => {
       expect(exit?.code).toBe(0);
       expect(exit!.at).toBeGreaterThanOrEqual(removedAt);
       expect(existsSync(legacyPath)).toBe(false);
+      expect(existsSync(workerLockPath)).toBe(false);
+    } finally {
+      if (worker.exitCode === null) worker.kill();
+      await workerExit.catch(() => undefined);
+    }
+  });
+
+  it('treats malformed failure-state lock metadata as terminal in SessionStart and the stabilizer', async () => {
+    const omcRoot = join(fakeProject, '.omg');
+    const stateDir = join(omcRoot, 'state');
+    const legacyPath = join(stateDir, 'last-tool-error.json');
+    const lockPath = `${legacyPath}.lock`;
+    const workerLockPath = join(stateDir, '.legacy-tool-failure-cleanup-worker.lock');
+    writeFileSync(legacyPath, JSON.stringify({ tool_input_preview: 'malformed lock legacy secret' }));
+    writeFileSync(lockPath, 'malformed lock metadata');
+
+    // Malformed metadata never repairs itself, so SessionStart does not spend its 2500 ms lock wait.
+    const sessionStartedAt = Date.now();
+    const output = JSON.parse(await startSessionStartProcess(SCRIPT_PATH, fakeHome, {
+      hook_event_name: 'SessionStart',
+      session_id: 'session-current',
+      cwd: fakeProject,
+    }, { CLAUDE_PLUGIN_ROOT: '', OMC_STATE_DIR: '', OMC_HOOK_BACKGROUND_CHILD: '1' }).output);
+    expect(output.continue).toBe(true);
+    expect(Date.now() - sessionStartedAt).toBeLessThan(2000);
+    expect(existsSync(legacyPath)).toBe(true);
+    expect(readFileSync(lockPath, 'utf-8')).toBe('malformed lock metadata');
+
+    const workerStartedAt = Date.now();
+    const worker = spawn(NODE, [SCRIPT_PATH, '--stabilize-legacy-tool-failure-state', omcRoot, '500', '10000'], {
+      stdio: 'ignore',
+      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, CLAUDE_PLUGIN_ROOT: '', OMC_HOOK_BACKGROUND_CHILD: '1' },
+    });
+    const workerExit = new Promise<number | null>((resolve, reject) => {
+      worker.once('error', reject);
+      worker.once('exit', code => resolve(code));
+    });
+
+    try {
+      const exitCode = await Promise.race([
+        workerExit,
+        new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 8000)),
+      ]);
+      expect(exitCode).toBe(0);
+      // The 500 ms window is not extended to the 10000 ms lifetime.
+      expect(Date.now() - workerStartedAt).toBeLessThan(5000);
+      expect(existsSync(legacyPath)).toBe(true);
+      expect(readFileSync(lockPath, 'utf-8')).toBe('malformed lock metadata');
       expect(existsSync(workerLockPath)).toBe(false);
     } finally {
       if (worker.exitCode === null) worker.kill();

@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { isUsableVersionPath } from '../plugin-cache-validation.js';
+import { hasAncestorWithIdentity, isUsableVersionPath, sameFileSystemIdentity } from '../plugin-cache-validation.js';
 import { canCreateJunctions } from '../../__tests__/helpers/platform.js';
 const lossyInodes = vi.hoisted(() => ({ enabled: false }));
 // NTFS file IDs exceed 2^53, so the Number `ino` of distinct links can round to
-// the same value. With `enabled`, every Number-valued lstat of a link reports one
-// shared inode while bigint stats keep the real, distinct IDs.
+// the same value. With `enabled`, every Number-valued lstat of a link and every
+// Number-valued stat reports one shared inode while bigint stats keep the real,
+// distinct IDs.
 vi.mock('fs', async (importOriginal) => {
     const original = await importOriginal();
     const lstatSync = ((path, options) => {
@@ -16,7 +17,13 @@ vi.mock('fs', async (importOriginal) => {
             return stat;
         return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 2 ** 53 });
     });
-    return { ...original, lstatSync, default: { ...original, lstatSync } };
+    const statSync = ((path, options) => {
+        const stat = original.statSync(path, options);
+        if (!lossyInodes.enabled || options?.bigint || !stat)
+            return stat;
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 2 ** 53 });
+    });
+    return { ...original, lstatSync, statSync, default: { ...original, lstatSync, statSync } };
 });
 describe('isUsableVersionPath', () => {
     let root;
@@ -38,10 +45,37 @@ describe('isUsableVersionPath', () => {
         // followed while the first is still being resolved.
         symlinkSync(stale, join(root, 'hop'), 'junction');
         symlinkSync(join(root, 'hop', 'next'), join(candidate, 'scripts'), 'junction');
-        const staleIdentity = statSync(stale);
+        const staleIdentity = statSync(stale, { bigint: true });
         lossyInodes.enabled = true;
         expect(lstatSync(join(root, 'hop')).ino).toBe(lstatSync(join(candidate, 'scripts')).ino);
         expect(isUsableVersionPath(candidate, staleIdentity)).toBe(false);
+    });
+});
+describe('sameFileSystemIdentity', () => {
+    let root;
+    beforeEach(() => {
+        root = mkdtempSync(join(tmpdir(), 'omc-plugin-cache-identity-'));
+    });
+    afterEach(() => {
+        lossyInodes.enabled = false;
+        rmSync(root, { recursive: true, force: true });
+    });
+    it('keeps distinct directories apart when their Number inode values collide', () => {
+        const other = join(root, 'other');
+        const nested = join(root, 'tree', 'nested');
+        mkdirSync(other);
+        mkdirSync(nested, { recursive: true });
+        lossyInodes.enabled = true;
+        expect(statSync(other).ino).toBe(statSync(nested).ino);
+        expect(sameFileSystemIdentity(statSync(other, { bigint: true }), statSync(nested, { bigint: true }))).toBe(false);
+        expect(hasAncestorWithIdentity(nested, statSync(other, { bigint: true }))).toBe(false);
+        expect(hasAncestorWithIdentity(nested, statSync(root, { bigint: true }))).toBe(true);
+    });
+    it('does not accept a rounded Number inode as proof of identity', () => {
+        const lossy = statSync(root);
+        const rounded = Object.assign(Object.create(Object.getPrototypeOf(lossy)), lossy, { ino: 2 ** 53 });
+        expect(sameFileSystemIdentity(rounded, rounded)).toBe(false);
+        expect(sameFileSystemIdentity(lossy, statSync(root, { bigint: true }))).toBe(Number.isSafeInteger(lossy.ino));
     });
 });
 //# sourceMappingURL=plugin-cache-validation.test.js.map

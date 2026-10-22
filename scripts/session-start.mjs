@@ -167,10 +167,10 @@ async function loadPostToolFailureStateLock() {
 }
 
 async function waitForPostToolFailureLock(canonicalPath, deadline) {
-  const { acquireStateFileLockAtPathSync, getStateFileLockFailureKind } = await loadPostToolFailureStateLock();
-  while (Date.now() < deadline) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) return { lock: null, timedOut: true };
+  const { acquireStateFileLockAtPathSync, getStateFileLockFailureKind, getStateFileLockFailureReason } = await loadPostToolFailureStateLock();
+  // A spent budget still makes one attempt.
+  do {
+    const remaining = Math.max(0, deadline - Date.now());
     const lock = acquireStateFileLockAtPathSync(
       `${canonicalPath}.lock`, 1, true, false,
       Math.min(POST_TOOL_FAILURE_SQLITE_BUSY_WAIT_MS, remaining),
@@ -180,13 +180,16 @@ async function waitForPostToolFailureLock(canonicalPath, deadline) {
     const failureKind = getStateFileLockFailureKind();
     // On win32 the owner probe spawns PowerShell, which can outlast a bounded probe budget
     // under load. The holder then reads as unverifiable, which is not proof that it is gone,
-    // so it is retried like contention until the deadline.
+    // so it is retried like contention until the deadline. Malformed owner metadata never
+    // repairs itself, so it is terminal. An older bridge without the reason getter keeps
+    // retrying.
     if (failureKind !== 'contention' && failureKind !== 'unverifiable') return { lock: null, timedOut: false };
+    if (failureKind === 'unverifiable' && getStateFileLockFailureReason?.() === 'malformed-owner') return { lock: null, timedOut: false };
     const remainingAfterAttempt = deadline - Date.now();
     if (remainingAfterAttempt > 0) {
       await new Promise(resolve => setTimeout(resolve, Math.min(POST_TOOL_FAILURE_LOCK_RETRY_MS, remainingAfterAttempt)));
     }
-  }
+  } while (Date.now() < deadline);
   return { lock: null, timedOut: true };
 }
 
@@ -1529,7 +1532,7 @@ async function main() {
           ? resolve(process.env.OMC_STATE_DIR, 'non-git')
           : join(homedir(), '.omg');
         resolveSessionPluginOccupancy(sessionStartDeadline);
-        await purgeLegacyToolFailureState(unscopedOmcRoot);
+        await purgeLegacyToolFailureState(unscopedOmcRoot, Math.max(0, Math.min(POST_TOOL_FAILURE_LOCK_WAIT_MS, sessionStartDeadline - Date.now() - SESSION_START_OUTPUT_RESERVE_MS)));
         deferToolFailureCleanupStabilization(unscopedOmcRoot);
       } catch {
         // Legacy-state cleanup is best-effort on the no-workspace fast path.
@@ -1553,7 +1556,7 @@ async function main() {
       } catch { /* dist unavailable: the link stays unbound */ }
     }
     const omcRoot = await resolveOmcStateRoot(directory);
-    await purgeLegacyToolFailureState(omcRoot);
+    await purgeLegacyToolFailureState(omcRoot, Math.max(0, Math.min(POST_TOOL_FAILURE_LOCK_WAIT_MS, sessionStartDeadline - Date.now() - SESSION_START_OUTPUT_RESERVE_MS)));
     deferToolFailureCleanupStabilization(omcRoot);
     let messages = [];
     const userMessages = [];
