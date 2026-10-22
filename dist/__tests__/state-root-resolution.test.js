@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -116,7 +117,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         delete process.env.OMC_STATE_DIR;
         clearWorktreeCache();
     });
-    afterEach(() => {
+    afterEach(async () => {
         if (previousHome === undefined)
             delete process.env.HOME;
         else
@@ -130,7 +131,10 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         else
             process.env.OMC_STATE_DIR = previousStateDir;
         clearWorktreeCache();
-        rmSync(tempDir, { recursive: true, force: true });
+        // A process of the run.cjs hook tree can still be exiting when execFileSync
+        // returns; on Windows its open handles block the rm with EPERM for ~20 ms.
+        // The async rm honours maxRetries for EPERM; Node 25's native rmSync does not.
+        await rm(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
     // ────────────────────────────────────────────────────────────────────────────
     // 1. Default state dir (no OMC_STATE_DIR)

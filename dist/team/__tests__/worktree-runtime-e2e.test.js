@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createGitFixture, orchestratorEventLogPath, readEventLog, waitForEventInLog, } from './helpers/git-fixture.js';
 import { startMergeOrchestrator, } from '../merge-orchestrator.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 beforeAll(() => {
     process.env.OMC_RUNTIME_V2 = '1';
 });
@@ -92,7 +93,7 @@ describe('worktree runtime e2e: 3 workers × 3 commits', () => {
             const wMerges = mergeSucceeded.filter((e) => e.worker === worker);
             expect(wMerges.length).toBeGreaterThanOrEqual(COMMITS_PER_WORKER);
         }
-    }, 60000);
+    }, scaleTiming(60000)); // 9 serialized commit-then-merge rounds of git spawns
     it('leader branch has merge commits after all workers finish', async () => {
         const COMMITS_PER_WORKER = 3; // smaller count for speed
         const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
@@ -131,7 +132,7 @@ describe('worktree runtime e2e: 3 workers × 3 commits', () => {
         const mergeCommitLines = logOutput.split('\n').filter((l) => l.trim().length > 0);
         // At least one merge per worker (3 workers × 1 = 3 minimum)
         expect(mergeCommitLines.length).toBeGreaterThanOrEqual(workers.length);
-    }, 60000);
+    }, scaleTiming(60000)); // 9 serialized commit-then-merge rounds of git spawns
     it('leader inbox has merge notifications', async () => {
         await fixture.commitFile('worker-1', 'worker-1/notify.ts', '// notify test\n');
         await handle.pollOnce();

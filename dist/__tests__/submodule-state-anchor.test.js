@@ -13,6 +13,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getWorktreeRoot, getGitTopLevel, getOmcRoot, resolveToWorktreeRoot, clearWorktreeCache } from '../lib/worktree-paths.js';
+import { scaleTiming } from './helpers/platform.js';
 function git(cwd, ...args) {
     return execFileSync('git', ['-c', 'protocol.file.allow=always', ...args], {
         cwd,
@@ -64,7 +65,8 @@ describe('submodule state anchoring (issue #3349)', () => {
             gitAvailable = false;
         }
         clearWorktreeCache();
-    });
+        // Five repos and three submodule adds spawn ~25 git processes.
+    }, scaleTiming(10_000));
     afterAll(() => {
         clearWorktreeCache();
         if (tempDir)

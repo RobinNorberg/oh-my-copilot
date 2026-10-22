@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { currentStrictProcessStartIdentity } from '../team-owner-epoch.js';
-import { posixOnly } from '../../__tests__/helpers/platform.js';
+import { posixOnly, scaleTiming } from '../../__tests__/helpers/platform.js';
 const paneMocks = vi.hoisted(() => {
     const state = { liveness: new Map() };
     return {
@@ -267,14 +267,14 @@ async function attachPersistedPriorLaunch(teamName, configPath) {
     const providerScript = [
         "const fs=require('node:fs')",
         `const stopPath=${JSON.stringify(stopPath)}`,
-        'const deadline=Date.now()+5000',
+        `const deadline=Date.now()+${scaleTiming(5000)}`,
         'const timer=setInterval(()=>{if(fs.existsSync(stopPath)){clearInterval(timer);process.exit(0)}if(Date.now()>deadline){clearInterval(timer);process.exit(2)}},10)',
     ].join(';');
     const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(attempt, [process.execPath, '-e', providerScript], cwd));
     let launchCompleted = false;
     try {
-        await expect(awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: 1_000, pollIntervalMs: 5 })).resolves.toEqual({ ok: true });
-        await expect(awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: 2_000, pollIntervalMs: 5 })).resolves.toBe(true);
+        await expect(awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: scaleTiming(1_000), pollIntervalMs: 5 })).resolves.toEqual({ ok: true });
+        await expect(awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: scaleTiming(2_000), pollIntervalMs: 5 })).resolves.toBe(true);
         writeFileSync(stopPath, 'stop');
         await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
         launchCompleted = true;
@@ -364,7 +364,7 @@ describe('recovery pane rollback evidence', () => {
                     recovery_id: recoveryId, replacement_generation: 2, pane_attempt_id: 'test-pane-attempt' } });
             const expected = JSON.parse(readFileSync(attempt.expectedPath, 'utf8'));
             writeFileSync(attempt.ackPath, JSON.stringify({ ...expected, kind: 'worker_launch_ack', written_at: new Date().toISOString() }));
-            await awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: 1_000, pollIntervalMs: 5 });
+            await awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: scaleTiming(1_000), pollIntervalMs: 5 });
             let reads = 0;
             return Object.defineProperty({ ownership }, 'attempt', {
                 enumerable: true,

@@ -181,8 +181,8 @@ function resolveSuperprojectRoot(cwd) {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    anchor = (0, import_path2.resolve)(superRoot);
+    probeCwd = anchor;
   }
   if (completed) {
     if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -5855,9 +5855,12 @@ function commandExists(command, env) {
   });
   return result.status === 0;
 }
+function isOmcCliAvailable(env = process.env) {
+  return commandExists(OMC_CLI_BINARY, env);
+}
 function resolveOmcCliPrefix(options = {}) {
   const env = options.env ?? process.env;
-  const omcAvailable = options.omcAvailable ?? commandExists(OMC_CLI_BINARY, env);
+  const omcAvailable = options.omcAvailable ?? isOmcCliAvailable(env);
   if (omcAvailable) {
     return OMC_CLI_BINARY;
   }
@@ -9599,7 +9602,12 @@ async function runWorkerLaunchBootstrap(value) {
         stdio: process.platform === "win32" ? ["pipe", "pipe", "pipe"] : invocation.providerGateFd === void 0 ? "inherit" : ["inherit", "inherit", "inherit", "pipe"],
         detached: process.platform !== "win32"
       });
-      if (process.platform === "win32" && invocation.stdinPayload && child.stdin?.writable) {
+      const supervisorExited = () => child.exitCode !== null || child.signalCode !== null;
+      const supervisorStdinWritable = () => Boolean(child.stdin?.writable && !child.stdin.destroyed) && !supervisorExited();
+      if (process.platform === "win32" && child.stdin) {
+        child.stdin.on("error", () => void 0);
+      }
+      if (process.platform === "win32" && invocation.stdinPayload && supervisorStdinWritable()) {
         child.stdin.write(`${invocation.stdinPayload}
 `);
       }
@@ -9794,17 +9802,20 @@ async function runWorkerLaunchBootstrap(value) {
           return process.platform !== "win32" && launchGroup !== null && await waitForProcessGroupAbsence(launchGroup.processGroupId, Date.now() + 2e3);
         }
         if (process.platform === "win32") {
-          if (!providerPid || !providerStartIdentity || !child.stdin?.writable) return false;
-          const frame = JSON.stringify({
-            protocol: WINDOWS_SUPERVISOR_PROTOCOL,
-            kind: "terminate",
-            attempt_id: spec.attempt_id,
-            instance_id: spec.instance_id,
-            authority_digest: spec.authority_digest,
-            containment_nonce: spec.containment_nonce
-          });
-          child.stdin.write(`${frame}
+          if (!providerPid || !providerStartIdentity) return false;
+          if (!supervisorExited()) {
+            if (!supervisorStdinWritable()) return false;
+            const frame = JSON.stringify({
+              protocol: WINDOWS_SUPERVISOR_PROTOCOL,
+              kind: "terminate",
+              attempt_id: spec.attempt_id,
+              instance_id: spec.instance_id,
+              authority_digest: spec.authority_digest,
+              containment_nonce: spec.containment_nonce
+            });
+            child.stdin.write(`${frame}
 `);
+          }
           return await Promise.race([
             windowsTerminal,
             new Promise((resolve18) => setTimeout(() => resolve18(false), 5e3))

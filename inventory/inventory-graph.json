@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ba7fb73dc90ecfe462efefed1b624e72ff61e0dc",
-    "sourceSha256": "6dd74ef919cfee791941993853d82029f08a814b3a2219dee37066f70859a454",
+    "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
+    "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ba7fb73dc90ecfe462efefed1b624e72ff61e0dc",
-  "sourceSha256": "6dd74ef919cfee791941993853d82029f08a814b3a2219dee37066f70859a454",
+  "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
+  "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1617,
-      "total": 1641
+      "srcFiles": 1618,
+      "total": 1642
     },
     "generated": {
-      "distFiles": 6207,
+      "distFiles": 6211,
       "bridgeFiles": 9,
-      "total": 6216
+      "total": 6220
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2072,6 +2072,10 @@
       "dist/__tests__/skills-frontmatter-regression.test.d.ts.map",
       "dist/__tests__/skills-frontmatter-regression.test.js",
       "dist/__tests__/skills-frontmatter-regression.test.js.map",
+      "dist/__tests__/skills-runtime-probe-laziness.test.d.ts",
+      "dist/__tests__/skills-runtime-probe-laziness.test.d.ts.map",
+      "dist/__tests__/skills-runtime-probe-laziness.test.js",
+      "dist/__tests__/skills-runtime-probe-laziness.test.js.map",
       "dist/__tests__/skills.test.d.ts",
       "dist/__tests__/skills.test.d.ts.map",
       "dist/__tests__/skills.test.js",
@@ -14393,6 +14397,26 @@
         "id": "dist/__tests__/skills-frontmatter-regression.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/skills-frontmatter-regression.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/skills-runtime-probe-laziness.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/skills-runtime-probe-laziness.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/skills-runtime-probe-laziness.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/skills-runtime-probe-laziness.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/skills-runtime-probe-laziness.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/skills-runtime-probe-laziness.test.js"
+      },
+      {
+        "id": "dist/__tests__/skills-runtime-probe-laziness.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/skills-runtime-probe-laziness.test.js.map"
       },
       {
         "id": "dist/__tests__/skills.test.d.ts",
@@ -43450,6 +43474,11 @@
         "path": "src/__tests__/skills-frontmatter-regression.test.ts"
       },
       {
+        "id": "src/__tests__/skills-runtime-probe-laziness.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/skills-runtime-probe-laziness.test.ts"
+      },
+      {
         "id": "src/__tests__/skills.test.ts",
         "kind": "src",
         "path": "src/__tests__/skills.test.ts"
@@ -61062,6 +61091,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/skills-runtime-probe-laziness.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-runtime-probe-laziness.test.ts",
+        "to": "src/features/builtin-skills/runtime-guidance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-runtime-probe-laziness.test.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-runtime-probe-laziness.test.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/skills.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -61283,6 +61332,11 @@
       },
       {
         "from": "src/__tests__/state-root-resolution.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/state-root-resolution.test.ts",
         "to": "external:node:os",
         "kind": "imports"
       },
@@ -61349,6 +61403,11 @@
       {
         "from": "src/__tests__/submodule-state-anchor.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/submodule-state-anchor.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -67023,6 +67082,11 @@
       },
       {
         "from": "src/features/builtin-skills/skills.ts",
+        "to": "src/features/builtin-skills/runtime-guidance.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/builtin-skills/skills.ts",
         "to": "src/features/builtin-skills/types.ts",
         "kind": "type-imports"
       },
@@ -67040,6 +67104,11 @@
         "from": "src/features/builtin-skills/skills.ts",
         "to": "src/utils/omc-cli-rendering.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/features/builtin-skills/skills.ts",
+        "to": "src/utils/omc-cli-rendering.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/features/builtin-skills/skills.ts",
@@ -90853,6 +90922,11 @@
       },
       {
         "from": "src/team/__tests__/worktree-runtime-e2e.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worktree-runtime-e2e.test.ts",
         "to": "src/team/__tests__/helpers/git-fixture.ts",
         "kind": "imports"
       },
@@ -98523,12 +98597,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8557,
-      "edgeCount": 9594,
-      "importEdgeCount": 8006,
+      "nodeCount": 8562,
+      "edgeCount": 9603,
+      "importEdgeCount": 8012,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "2b820b9793507e631f41e817034f478b2f2da64556738343e661833ce6d07712",
-  "manifestSha256": "2c560e89550f5689b2074fe03440319e2f4d6640ab81e9a2bb357cf6ca3fa824"
+  "inventorySha256": "e0c0bc55ac9bf6daf2ac19932ad81f7cba8e39e8357551a8a76e595d54950d25",
+  "manifestSha256": "3afd86cceabd222e76394fcf9df5c4947d57db5771a76ea55ba5d0811f0f8fbe"
 }

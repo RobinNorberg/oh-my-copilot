@@ -35839,8 +35839,8 @@ function resolveSuperprojectRoot(cwd2) {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    anchor = (0, import_path22.resolve)(superRoot);
+    probeCwd = anchor;
   }
   if (completed) {
     if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -45641,9 +45641,12 @@ function commandExists2(command, env2) {
   });
   return result.status === 0;
 }
+function isOmcCliAvailable(env2 = process.env) {
+  return commandExists2(OMC_CLI_BINARY, env2);
+}
 function resolveOmcCliPrefix(options = {}) {
   const env2 = options.env ?? process.env;
-  const omcAvailable = options.omcAvailable ?? commandExists2(OMC_CLI_BINARY, env2);
+  const omcAvailable = options.omcAvailable ?? isOmcCliAvailable(env2);
   if (omcAvailable) {
     return OMC_CLI_BINARY;
   }
@@ -45665,13 +45668,8 @@ function rewriteOmcCliInvocations(text, options = {}) {
   if (!text.includes("omc ")) {
     return text;
   }
-  return text.replace(/`omc ([^`\r\n]+)`/g, (_match, suffix) => {
-    const prefix = resolveInvocationPrefix(suffix, options);
-    return `\`${prefix} ${suffix}\``;
-  }).replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart, leader, suffix) => {
-    const prefix = resolveInvocationPrefix(suffix, options);
-    return `${lineStart}${leader}${prefix} ${suffix}`;
-  });
+  const prefix = resolveOmcCliPrefix(options);
+  return text.replace(/`omc ([^`\r\n]+)`/g, (_match, suffix) => `\`${prefix} ${suffix}\``).replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart, leader, suffix) => `${lineStart}${leader}${prefix} ${suffix}`);
 }
 var import_child_process13, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
 var init_omc_cli_rendering = __esm({
@@ -72969,16 +72967,20 @@ function renderDeepInterviewRuntimeGuidance(availability) {
     "If Codex becomes unavailable, briefly note that and fall back to the Claude-only recommendations already listed in Phase 5."
   ].join("\n");
 }
+function resolveAvailability(availability) {
+  if (typeof availability === "function") return availability();
+  return availability ?? detectSkillRuntimeAvailability();
+}
 function renderSkillRuntimeGuidance(skillName, availability) {
   switch (normalizeSkillName(skillName)) {
     case "deep-interview":
-      return renderDeepInterviewRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderDeepInterviewRuntimeGuidance(resolveAvailability(availability));
     case "ralplan":
     case "omc-plan":
     case "plan":
-      return renderPlanRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderPlanRuntimeGuidance(resolveAvailability(availability));
     case "ralph":
-      return renderRalphRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderRalphRuntimeGuidance(resolveAvailability(availability));
     default:
       return "";
   }
@@ -73105,12 +73107,12 @@ function applyDeepInterviewRuntimeSettings(template) {
 function normalizeSkillNameForRuntimeRendering(skillName) {
   return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, "").replace(/^omc:/, "");
 }
-function renderBundledSkillBody(skillName, body) {
+function renderBundledSkillBody(skillName, body, cliOptions) {
   const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
-  const rewrittenBody = rewriteOmcCliInvocations(body.trim());
+  const rewrittenBody = rewriteOmcCliInvocations(body.trim(), cliOptions);
   return normalizedSkillName === "deep-interview" || normalizedSkillName === "deep-dive" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
 }
-function loadSkillFromFile(skillPath, skillName) {
+function loadSkillFromFile(skillPath, skillName, context) {
   try {
     const content = (0, import_fs72.readFileSync)(skillPath, "utf-8");
     const { metadata, body } = parseFrontmatter(content);
@@ -73118,10 +73120,10 @@ function loadSkillFromFile(skillPath, skillName) {
     const safePrimaryName = toSafeSkillName(resolvedName);
     const pipeline = parseSkillPipelineMetadata(metadata);
     const fullBody = readSkillBodyOverride(skillPath, metadata, body);
-    const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody);
+    const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody, context.cliOptions);
     const template = [
       renderedBody,
-      renderSkillRuntimeGuidance(safePrimaryName),
+      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability),
       renderSkillPipelineGuidance(safePrimaryName, pipeline),
       renderSkillResourcesGuidance(skillPath)
     ].filter((section) => section.trim().length > 0).join("\n\n");
@@ -73163,6 +73165,11 @@ function loadSkillsFromDirectory() {
   }
   const skills = [];
   const seenNames = /* @__PURE__ */ new Set();
+  let availability;
+  const context = {
+    cliOptions: { omcAvailable: isOmcCliAvailable() },
+    runtimeAvailability: () => availability ??= detectSkillRuntimeAvailability()
+  };
   try {
     const entries = (0, import_fs72.readdirSync)(SKILLS_DIR2, { withFileTypes: true }).sort((a, b) => {
       if (a.name === "skillify") return -1;
@@ -73176,7 +73183,7 @@ function loadSkillsFromDirectory() {
       }
       const skillPath = (0, import_path85.join)(SKILLS_DIR2, entry2.name, "SKILL.md");
       if ((0, import_fs72.existsSync)(skillPath)) {
-        const skillEntries = loadSkillFromFile(skillPath, entry2.name);
+        const skillEntries = loadSkillFromFile(skillPath, entry2.name, context);
         for (const skill of skillEntries) {
           const key = skill.name.toLowerCase();
           if (seenNames.has(key)) continue;

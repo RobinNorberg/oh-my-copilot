@@ -250,8 +250,9 @@ function resolveSuperprojectRoot(cwd) {
             completed = true;
             break;
         }
-        anchor = superRoot;
-        probeCwd = superRoot;
+        // git prints forward slashes on Windows; return a native path like getGitTopLevel().
+        anchor = resolve(superRoot);
+        probeCwd = anchor;
     }
     if (completed) {
         if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {

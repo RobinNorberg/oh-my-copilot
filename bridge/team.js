@@ -164,8 +164,8 @@ function resolveSuperprojectRoot(cwd) {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    anchor = resolve(superRoot);
+    probeCwd = anchor;
   }
   if (completed) {
     if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -7901,9 +7901,12 @@ function commandExists(command, env) {
   });
   return result.status === 0;
 }
+function isOmcCliAvailable(env = process.env) {
+  return commandExists(OMC_CLI_BINARY, env);
+}
 function resolveOmcCliPrefix(options = {}) {
   const env = options.env ?? process.env;
-  const omcAvailable = options.omcAvailable ?? commandExists(OMC_CLI_BINARY, env);
+  const omcAvailable = options.omcAvailable ?? isOmcCliAvailable(env);
   if (omcAvailable) {
     return OMC_CLI_BINARY;
   }
