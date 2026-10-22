@@ -17,9 +17,13 @@ function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
   return result.status === 0;
 }
 
+export function isOmcCliAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
+  return commandExists(OMC_CLI_BINARY, env);
+}
+
 export function resolveOmcCliPrefix(options: OmcCliRenderOptions = {}): string {
   const env = options.env ?? process.env;
-  const omcAvailable = options.omcAvailable ?? commandExists(OMC_CLI_BINARY, env);
+  const omcAvailable = options.omcAvailable ?? isOmcCliAvailable(env);
   if (omcAvailable) {
     return OMC_CLI_BINARY;
   }
@@ -55,14 +59,12 @@ export function rewriteOmcCliInvocations(
   if (!text.includes('omc ')) {
     return text;
   }
+  // The prefix does not depend on the suffix. Resolve it once per text, not per
+  // match: each PATH lookup spawns `where`, ~75 ms on Windows.
+  const prefix = resolveOmcCliPrefix(options);
 
   return text
-    .replace(/`omc ([^`\r\n]+)`/g, (_match, suffix: string) => {
-      const prefix = resolveInvocationPrefix(suffix, options);
-      return `\`${prefix} ${suffix}\``;
-    })
-    .replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart: string, leader: string, suffix: string) => {
-      const prefix = resolveInvocationPrefix(suffix, options);
-      return `${lineStart}${leader}${prefix} ${suffix}`;
-    });
+    .replace(/`omc ([^`\r\n]+)`/g, (_match, suffix: string) => `\`${prefix} ${suffix}\``)
+    .replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart: string, leader: string, suffix: string) =>
+      `${lineStart}${leader}${prefix} ${suffix}`);
 }
