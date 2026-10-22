@@ -186,6 +186,7 @@ export declare function isWindowsBatchProvider(command: string): boolean;
 /** The quoted line for a cmd-hosted provider; throws when cmd could not carry it intact. */
 export declare function buildWindowsBatchProviderLine(providerArgv: readonly string[]): string;
 export declare function quoteWindowsCreateProcessArgument(value: string): string;
+/** `env` must be trusted, host-derived env: on a win32 host SystemRoot is read from process.env and the caller's env is ignored. */
 export declare function buildProviderSpawnInvocation(providerArgv: readonly string[], platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv): ProviderSpawnInvocation;
 export declare function materializeProviderSpawnInvocation(invocation: ProviderSpawnInvocation, options?: {
     superviseWindowsTree?: boolean;

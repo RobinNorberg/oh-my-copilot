@@ -9473,7 +9473,7 @@ function buildProviderSpawnInvocation(providerArgv, platform = process.platform,
   if (!command) throw new Error("worker_launch_provider_argv_missing");
   if (platform === "win32" && !/\.(exe|com)$/i.test(command)) {
     const systemRootKey = Object.keys(env).find((key) => key.toUpperCase() === "SYSTEMROOT");
-    const systemRoot = systemRootKey === void 0 ? void 0 : env[systemRootKey];
+    const systemRoot = process.platform === "win32" ? process.env.SystemRoot ?? process.env.SYSTEMROOT : systemRootKey === void 0 ? void 0 : env[systemRootKey];
     if (!systemRoot || !/^[A-Za-z]:\\[^"%\x00-\x1f]*$/.test(systemRoot)) throw new Error("worker_launch_cmd_authority_missing");
     const comSpec = `${systemRoot.replace(/\\+$/, "")}\\System32\\cmd.exe`;
     const lineVar = `_OMC_PL_${(0, import_node_crypto5.randomBytes)(8).toString("hex").toUpperCase()}`;
