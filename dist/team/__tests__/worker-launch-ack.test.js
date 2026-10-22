@@ -2730,6 +2730,79 @@ describe('worker launch acknowledgement', () => {
             vi.resetModules();
         }
     });
+    // A supervisor that exits while the bootstrap writes its stdin fails that
+    // write asynchronously with EPIPE. The bootstrap must own that stream error
+    // and settle through its exit handling instead of crashing the process.
+    it.runIf(process.platform === 'win32').each(['payload', 'terminate'])('settles a Windows supervisor stdin EPIPE after supervisor exit through exit handling (%s write)', async (failingWrite) => {
+        vi.resetModules();
+        const actualChildProcess = await vi.importActual('node:child_process');
+        const supervisorScript = failingWrite === 'payload'
+            ? 'process.exit(0)'
+            : [
+                "const rl=require('node:readline').createInterface({input:process.stdin})",
+                "rl.once('line',line=>{const p=JSON.parse(line);process.stdout.write(JSON.stringify({protocol:'worker-launch-windows-supervisor-v1',kind:'ready',attempt_id:p.identity.attempt_id,instance_id:p.identity.instance_id,authority_digest:p.authority_digest,containment_nonce:p.containment_nonce,pid:process.pid,process_start_identity:'1'})+'\\n')})",
+                'setInterval(()=>{},1000)',
+            ].join(';');
+        let supervisor;
+        const epipeOwned = [];
+        const spawnMock = vi.fn((_command, _args, options) => {
+            const child = actualChildProcess.spawn(process.execPath, ['-e', supervisorScript], options);
+            supervisor = child;
+            const stdin = child.stdin;
+            const realWrite = stdin.write.bind(stdin);
+            let writes = 0;
+            stdin.write = ((chunk) => {
+                writes += 1;
+                if ((failingWrite === 'payload' && writes === 1) || (failingWrite === 'terminate' && writes === 2)) {
+                    child.kill();
+                    setImmediate(() => {
+                        epipeOwned.push(stdin.listenerCount('error') > 0);
+                        stdin.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE', errno: -4047, syscall: 'write' }));
+                    });
+                    return false;
+                }
+                return realWrite(chunk);
+            });
+            return child;
+        });
+        vi.doMock('node:child_process', () => ({ ...actualChildProcess, spawn: spawnMock }));
+        let bootstrap;
+        try {
+            const workerLaunch = await import('../worker-launch-ack.js');
+            const launchAttempt = await attempt();
+            const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [process.execPath, '-e', ''], cwd);
+            bootstrap = workerLaunch.runWorkerLaunchBootstrap(spec);
+            await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, {
+                timeoutMs: LAUNCH_WAIT_TIMEOUT_MS,
+                pollIntervalMs: 5,
+            })).resolves.toEqual({ ok: true });
+            if (failingWrite === 'terminate') {
+                await vi.waitFor(() => expect(existsSync(launchAttempt.startedPath)).toBe(true), { timeout: 10_000, interval: 20 });
+                const expected = JSON.parse(await readFile(launchAttempt.expectedPath, 'utf8'));
+                await writeFile(`${launchAttempt.startedPath}.termination-request`, JSON.stringify({
+                    ...expected,
+                    kind: 'worker_launch_termination_request', operation: 'terminate',
+                    pid: supervisor?.pid, process_start_identity: '1',
+                    authority_digest: spec.authority_digest, containment_nonce: spec.containment_nonce,
+                    written_at: new Date().toISOString(),
+                }), 'utf8');
+            }
+            // No terminal proof arrived before the supervisor died, so the
+            // existing early-exit path reports cleanup as unverified.
+            await expect(bootstrap).resolves.toEqual({ outcome: 'provider_cleanup_unverified' });
+            expect(epipeOwned).toEqual([true]);
+            if (failingWrite === 'terminate') {
+                const terminal = JSON.parse(await readFile(`${launchAttempt.startedPath}.terminal`, 'utf8'));
+                expect(terminal).toMatchObject({ outcome: 'cleanup_unverified', cleanup_verified: false, pid: supervisor?.pid });
+            }
+        }
+        finally {
+            await bootstrap?.catch(() => undefined);
+            supervisor?.kill();
+            vi.doUnmock('node:child_process');
+            vi.resetModules();
+        }
+    }, 20_000);
     it('quotes exact Windows CreateProcess arguments', () => {
         expect(quoteWindowsCreateProcessArgument('')).toBe('""');
         expect(quoteWindowsCreateProcessArgument('plain')).toBe('"plain"');

@@ -72967,16 +72967,20 @@ function renderDeepInterviewRuntimeGuidance(availability) {
     "If Codex becomes unavailable, briefly note that and fall back to the Claude-only recommendations already listed in Phase 5."
   ].join("\n");
 }
+function resolveAvailability(availability) {
+  if (typeof availability === "function") return availability();
+  return availability ?? detectSkillRuntimeAvailability();
+}
 function renderSkillRuntimeGuidance(skillName, availability) {
   switch (normalizeSkillName(skillName)) {
     case "deep-interview":
-      return renderDeepInterviewRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderDeepInterviewRuntimeGuidance(resolveAvailability(availability));
     case "ralplan":
     case "omc-plan":
     case "plan":
-      return renderPlanRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderPlanRuntimeGuidance(resolveAvailability(availability));
     case "ralph":
-      return renderRalphRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderRalphRuntimeGuidance(resolveAvailability(availability));
     default:
       return "";
   }
@@ -73119,7 +73123,7 @@ function loadSkillFromFile(skillPath, skillName, context) {
     const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody, context.cliOptions);
     const template = [
       renderedBody,
-      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability()),
+      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability),
       renderSkillPipelineGuidance(safePrimaryName, pipeline),
       renderSkillResourcesGuidance(skillPath)
     ].filter((section) => section.trim().length > 0).join("\n\n");

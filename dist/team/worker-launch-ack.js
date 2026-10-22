@@ -1902,7 +1902,17 @@ export async function runWorkerLaunchBootstrap(value) {
                         : ['inherit', 'inherit', 'inherit', 'pipe'],
                 detached: process.platform !== 'win32',
             });
-            if (process.platform === 'win32' && invocation.stdinPayload && child.stdin?.writable) {
+            const supervisorExited = () => child.exitCode !== null || child.signalCode !== null;
+            const supervisorStdinWritable = () => Boolean(child.stdin?.writable && !child.stdin.destroyed)
+                && !supervisorExited();
+            if (process.platform === 'win32' && child.stdin) {
+                // Own supervisor stdin errors for the child's lifetime. A frame written
+                // as the supervisor exits fails asynchronously with EPIPE; the exit
+                // handler and the missing terminal proof report that outcome, so the
+                // stream error itself carries no extra signal.
+                child.stdin.on('error', () => undefined);
+            }
+            if (process.platform === 'win32' && invocation.stdinPayload && supervisorStdinWritable()) {
                 child.stdin.write(`${invocation.stdinPayload}\n`);
             }
             let settled = false;
@@ -2145,14 +2155,20 @@ export async function runWorkerLaunchBootstrap(value) {
                         && await waitForProcessGroupAbsence(launchGroup.processGroupId, Date.now() + 2_000);
                 }
                 if (process.platform === 'win32') {
-                    if (!providerPid || !providerStartIdentity || !child.stdin?.writable)
+                    if (!providerPid || !providerStartIdentity)
                         return false;
-                    const frame = JSON.stringify({
-                        protocol: WINDOWS_SUPERVISOR_PROTOCOL, kind: 'terminate', attempt_id: spec.attempt_id,
-                        instance_id: spec.instance_id,
-                        authority_digest: spec.authority_digest, containment_nonce: spec.containment_nonce,
-                    });
-                    child.stdin.write(`${frame}\n`);
+                    // An already-exited supervisor cannot take the frame; its terminal
+                    // proof (or the exit handler's false) settles windowsTerminal below.
+                    if (!supervisorExited()) {
+                        if (!supervisorStdinWritable())
+                            return false;
+                        const frame = JSON.stringify({
+                            protocol: WINDOWS_SUPERVISOR_PROTOCOL, kind: 'terminate', attempt_id: spec.attempt_id,
+                            instance_id: spec.instance_id,
+                            authority_digest: spec.authority_digest, containment_nonce: spec.containment_nonce,
+                        });
+                        child.stdin.write(`${frame}\n`);
+                    }
                     return await Promise.race([
                         windowsTerminal,
                         new Promise(resolve => setTimeout(() => resolve(false), 5_000)),

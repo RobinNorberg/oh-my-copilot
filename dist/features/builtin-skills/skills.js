@@ -194,7 +194,7 @@ function loadSkillFromFile(skillPath, skillName, context) {
         const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody, context.cliOptions);
         const template = [
             renderedBody,
-            renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability()),
+            renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability),
             renderSkillPipelineGuidance(safePrimaryName, pipeline),
             renderSkillResourcesGuidance(skillPath),
         ].filter((section) => section.trim().length > 0).join('\n\n');

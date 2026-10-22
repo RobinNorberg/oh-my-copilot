@@ -7,5 +7,5 @@ export interface SkillRuntimeAvailability {
     antigravity: boolean;
 }
 export declare function detectSkillRuntimeAvailability(detector?: (agentType: CliAgentType) => boolean): SkillRuntimeAvailability;
-export declare function renderSkillRuntimeGuidance(skillName: string, availability?: SkillRuntimeAvailability): string;
+export declare function renderSkillRuntimeGuidance(skillName: string, availability?: SkillRuntimeAvailability | (() => SkillRuntimeAvailability)): string;
 //# sourceMappingURL=runtime-guidance.d.ts.map
