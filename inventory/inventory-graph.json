@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "26650ea15bd13870c6c9518bbeafa66b34bdb0a9",
-    "sourceSha256": "bf733d052a166d46c9ef2a31d557263cd69e396be2ff8b4bc3618bbed61174c2",
+    "head": "ba7fb73dc90ecfe462efefed1b624e72ff61e0dc",
+    "sourceSha256": "6dd74ef919cfee791941993853d82029f08a814b3a2219dee37066f70859a454",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "26650ea15bd13870c6c9518bbeafa66b34bdb0a9",
-  "sourceSha256": "bf733d052a166d46c9ef2a31d557263cd69e396be2ff8b4bc3618bbed61174c2",
+  "head": "ba7fb73dc90ecfe462efefed1b624e72ff61e0dc",
+  "sourceSha256": "6dd74ef919cfee791941993853d82029f08a814b3a2219dee37066f70859a454",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1641
     },
     "generated": {
-      "distFiles": 6203,
+      "distFiles": 6207,
       "bridgeFiles": 9,
-      "total": 6212
+      "total": 6216
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1116,6 +1116,10 @@
       "dist/__tests__/copilot-config-dir-alias.test.d.ts.map",
       "dist/__tests__/copilot-config-dir-alias.test.js",
       "dist/__tests__/copilot-config-dir-alias.test.js.map",
+      "dist/__tests__/copilot-file-tool-injection.test.d.ts",
+      "dist/__tests__/copilot-file-tool-injection.test.d.ts.map",
+      "dist/__tests__/copilot-file-tool-injection.test.js",
+      "dist/__tests__/copilot-file-tool-injection.test.js.map",
       "dist/__tests__/copilot-hook-adapter.test.d.ts",
       "dist/__tests__/copilot-hook-adapter.test.d.ts.map",
       "dist/__tests__/copilot-hook-adapter.test.js",
@@ -9609,6 +9613,26 @@
         "id": "dist/__tests__/copilot-config-dir-alias.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/copilot-config-dir-alias.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-file-tool-injection.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-file-tool-injection.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-file-tool-injection.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-file-tool-injection.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-file-tool-injection.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-file-tool-injection.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-file-tool-injection.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-file-tool-injection.test.js.map"
       },
       {
         "id": "dist/__tests__/copilot-hook-adapter.test.d.ts",
@@ -98499,12 +98523,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8553,
+      "nodeCount": 8557,
       "edgeCount": 9594,
       "importEdgeCount": 8006,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "2b820b9793507e631f41e817034f478b2f2da64556738343e661833ce6d07712",
-  "manifestSha256": "061c776b408cc92a6711c073b87f737bf3eab26c89b9052998a8df2755094fd8"
+  "manifestSha256": "2c560e89550f5689b2074fe03440319e2f4d6640ab81e9a2bb357cf6ca3fa824"
 }
