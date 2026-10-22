@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
-    "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
+    "head": "03fe92e54825ccecb9c43fc00d203013664f89ce",
+    "sourceSha256": "baeb8f99e182c12a902521151c850e94541a491038aaf3e73a635d3bfda676e5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5a9ab6f11e9c4e83aa8d6b6491cb807700423442",
-  "sourceSha256": "7d745bd55050195dcd6d17d10e7ef1ae171c6389d1c08e4b2d794d290afd2d01",
+  "head": "03fe92e54825ccecb9c43fc00d203013664f89ce",
+  "sourceSha256": "baeb8f99e182c12a902521151c850e94541a491038aaf3e73a635d3bfda676e5",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1618,
-      "total": 1642
+      "srcFiles": 1619,
+      "total": 1643
     },
     "generated": {
-      "distFiles": 6211,
+      "distFiles": 6215,
       "bridgeFiles": 9,
-      "total": 6220
+      "total": 6224
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -5627,6 +5627,10 @@
       "dist/platform/__tests__/process-utils-identity.test.d.ts.map",
       "dist/platform/__tests__/process-utils-identity.test.js",
       "dist/platform/__tests__/process-utils-identity.test.js.map",
+      "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts",
+      "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts.map",
+      "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js",
+      "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js.map",
       "dist/platform/executable-resolution.d.ts",
       "dist/platform/executable-resolution.d.ts.map",
       "dist/platform/executable-resolution.js",
@@ -32174,6 +32178,26 @@
         "path": "dist/platform/__tests__/process-utils-identity.test.js.map"
       },
       {
+        "id": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts"
+      },
+      {
+        "id": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.d.ts.map"
+      },
+      {
+        "id": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js",
+        "kind": "generated-dist",
+        "path": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js"
+      },
+      {
+        "id": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/platform/__tests__/process-utils-pid-reuse.windows.test.js.map"
+      },
+      {
         "id": "dist/platform/executable-resolution.d.ts",
         "kind": "generated-dist",
         "path": "dist/platform/executable-resolution.d.ts"
@@ -48042,6 +48066,11 @@
         "id": "src/platform/__tests__/process-utils-identity.test.ts",
         "kind": "src",
         "path": "src/platform/__tests__/process-utils-identity.test.ts"
+      },
+      {
+        "id": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "kind": "src",
+        "path": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts"
       },
       {
         "id": "src/platform/executable-resolution.ts",
@@ -84311,6 +84340,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:node:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-pid-reuse.windows.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/platform/executable-resolution.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -98597,12 +98661,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8562,
-      "edgeCount": 9603,
-      "importEdgeCount": 8012,
+      "nodeCount": 8567,
+      "edgeCount": 9610,
+      "importEdgeCount": 8018,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "e0c0bc55ac9bf6daf2ac19932ad81f7cba8e39e8357551a8a76e595d54950d25",
-  "manifestSha256": "3afd86cceabd222e76394fcf9df5c4947d57db5771a76ea55ba5d0811f0f8fbe"
+  "inventorySha256": "e18e12d46d5a594d6aeb6788596f728502c51a7c4ab61fe3e30fe2ca588b2ba7",
+  "manifestSha256": "db05069eba9a3b5634b550b361f3be01d03a787ce448ca2943b679ac87e2d20b"
 }
