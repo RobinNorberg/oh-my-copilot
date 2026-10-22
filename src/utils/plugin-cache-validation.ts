@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, parse, resolve } from 'path';
-import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, statSync, type Stats } from 'fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, statSync, type BigIntStats, type Stats } from 'fs';
 
 /**
  * The hook runner's required entry points. Keep this aligned with isPluginRoot()
@@ -129,9 +129,16 @@ function pathTraversesFileSystemIdentity(path: string, identity: Stats): boolean
       continue;
     }
 
+    // bigint: NTFS file IDs exceed 2^53, so the Number inodes of distinct links can collide
+    let linkIdentity: BigIntStats | undefined;
+    try {
+      linkIdentity = lstatSync(nextPath, { bigint: true });
+    } catch {
+      // A link that vanished since the lstat above is keyed by path.
+    }
     const linkKey =
-      typeof nextStats.dev === 'number' && typeof nextStats.ino === 'number' && nextStats.ino !== 0
-        ? `inode:${nextStats.dev}:${nextStats.ino}`
+      linkIdentity && linkIdentity.ino !== 0n
+        ? `inode:${linkIdentity.dev}:${linkIdentity.ino}`
         : `path:${process.platform === 'win32' ? nextPath.toLowerCase() : nextPath}`;
     if (activeLinks.has(linkKey)) return false;
     let linkTarget: string;

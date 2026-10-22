@@ -17,6 +17,13 @@ export declare const TIMING_SCALE: number;
 /** Scale a Linux-tuned wall-clock ceiling for the host. Identity on Linux and macOS. */
 export declare function scaleTiming(ms: number): number;
 /**
+ * Remove a temp tree in teardown. Windows refuses to delete a directory that a
+ * still-exiting or detached child holds as its cwd or has a handle in (EPERM).
+ * Node 25's `rmSync` does not retry EPERM despite `maxRetries`; `fs.promises.rm`
+ * does, with linear backoff (about 5.5 s in total here).
+ */
+export declare function removeTempDir(path: string): Promise<void>;
+/**
  * Skip on Windows. `reason` names the POSIX-only behavior so the call site
  * documents itself, e.g. `posixOnly('NTFS has no POSIX mode bits')`.
  */

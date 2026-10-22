@@ -77,6 +77,13 @@ describe('platform test helpers', () => {
     }
   });
 
+  it('rejects at once on a non-retryable removal error', async () => {
+    const startedAt = Date.now();
+    await expect(removeTempDir(join(tmpdir(), 'x'.repeat(40_000)))).rejects.toMatchObject({ code: 'ENAMETOOLONG' });
+    // The retry budget (about 5.5 s) applies only to retryable errors such as EPERM.
+    expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
+
   it('caches symlink and junction probes', () => {
     const symlinks = canCreateSymlinks();
     expect(canCreateSymlinks()).toBe(symlinks);

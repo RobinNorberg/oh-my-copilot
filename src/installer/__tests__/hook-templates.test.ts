@@ -833,6 +833,28 @@ OMC Ultrawork = "특수부대 작전 반"
       expect(source).not.toMatch(/spawnSync\(\s*'powershell'/);
     }
   });
+
+  it('keeps the tool-failure cleanup block identical in the plugin and standalone session-start hooks', () => {
+    const extract = (hookPath: string) => {
+      const source = readFileSync(hookPath, 'utf8').replace(/\r\n/g, '\n');
+      const lockBlockStart = source.indexOf('const POST_TOOL_FAILURE_LOCK_WAIT_MS');
+      const lockBlockEnd = source.indexOf('function legacyToolFailureArtifactSnapshot(');
+      const purgeStart = source.indexOf('async function purgeLegacyToolFailureState(');
+      const purgeEnd = source.indexOf('\n}\n', purgeStart);
+      expect(lockBlockStart).toBeGreaterThan(-1);
+      expect(lockBlockEnd).toBeGreaterThan(lockBlockStart);
+      expect(purgeStart).toBeGreaterThan(-1);
+      expect(purgeEnd).toBeGreaterThan(purgeStart);
+      return [source.slice(lockBlockStart, lockBlockEnd), source.slice(purgeStart, purgeEnd)];
+    };
+    const [scriptLockBlock, scriptPurge] = extract(join(packageRoot, 'scripts', 'session-start.mjs'));
+    const [templateLockBlock, templatePurge] = extract(join(packageRoot, 'templates', 'hooks', 'session-start.mjs'));
+
+    expect(scriptLockBlock).toContain('async function waitForPostToolFailureLock(');
+    expect(scriptLockBlock).toContain('async function purgeToolFailureStateDirectory(');
+    expect(templateLockBlock).toBe(scriptLockBlock);
+    expect(templatePurge).toBe(scriptPurge);
+  });
 });
 
 describe('pre-tool-use packaged artifacts', () => {

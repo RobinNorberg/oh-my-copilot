@@ -54,5 +54,8 @@ None are open. List each new one here with the gated test names and the fix opti
 - `stat.ino` as a Number collides on NTFS: file IDs exceed 2^53, so adjacent directories round to
   one value. Key visited sets on `statSync(p, { bigint: true })` as `${dev}:${ino}`.
 - A lock holder whose PowerShell owner probe outlasts a bounded budget reads "unverifiable", not
-  "contended". Callers that can retry later must treat it as pending (session-start deferred
-  cleanup does, with a bounded chain).
+  "contended". Callers that can retry later must treat it as pending. In session-start the
+  tool-failure lock wait retries "unverifiable" like contention until its deadline, for every
+  caller: the SessionStart foreground purge, each deferred cleanup link (the 3-link chain is a
+  backstop), and the stabilization worker, which keeps its window open until its hard lifetime.
+  None of them purge without the lock.

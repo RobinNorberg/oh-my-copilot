@@ -3907,7 +3907,12 @@ function pathTraversesFileSystemIdentity(path30, identity) {
       currentPath = nextPath;
       continue;
     }
-    const linkKey = typeof nextStats.dev === "number" && typeof nextStats.ino === "number" && nextStats.ino !== 0 ? `inode:${nextStats.dev}:${nextStats.ino}` : `path:${process.platform === "win32" ? nextPath.toLowerCase() : nextPath}`;
+    let linkIdentity;
+    try {
+      linkIdentity = (0, import_fs2.lstatSync)(nextPath, { bigint: true });
+    } catch {
+    }
+    const linkKey = linkIdentity && linkIdentity.ino !== 0n ? `inode:${linkIdentity.dev}:${linkIdentity.ino}` : `path:${process.platform === "win32" ? nextPath.toLowerCase() : nextPath}`;
     if (activeLinks.has(linkKey)) return false;
     let linkTarget;
     try {
@@ -53297,9 +53302,10 @@ function scanDirectories(projectRoot) {
       return;
     }
     try {
-      const stat2 = (0, import_node_fs4.statSync)(absDir);
-      if (visitedInodes.has(stat2.ino)) return;
-      visitedInodes.add(stat2.ino);
+      const stat2 = (0, import_node_fs4.statSync)(absDir, { bigint: true });
+      const inodeKey = `${stat2.dev}:${stat2.ino}`;
+      if (visitedInodes.has(inodeKey)) return;
+      visitedInodes.add(inodeKey);
     } catch {
       return;
     }

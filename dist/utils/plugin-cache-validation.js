@@ -125,8 +125,16 @@ function pathTraversesFileSystemIdentity(path, identity) {
             currentPath = nextPath;
             continue;
         }
-        const linkKey = typeof nextStats.dev === 'number' && typeof nextStats.ino === 'number' && nextStats.ino !== 0
-            ? `inode:${nextStats.dev}:${nextStats.ino}`
+        // bigint: NTFS file IDs exceed 2^53, so the Number inodes of distinct links can collide
+        let linkIdentity;
+        try {
+            linkIdentity = lstatSync(nextPath, { bigint: true });
+        }
+        catch {
+            // A link that vanished since the lstat above is keyed by path.
+        }
+        const linkKey = linkIdentity && linkIdentity.ino !== 0n
+            ? `inode:${linkIdentity.dev}:${linkIdentity.ino}`
             : `path:${process.platform === 'win32' ? nextPath.toLowerCase() : nextPath}`;
         if (activeLinks.has(linkKey))
             return false;

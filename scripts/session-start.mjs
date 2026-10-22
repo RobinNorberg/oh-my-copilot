@@ -179,8 +179,9 @@ async function waitForPostToolFailureLock(canonicalPath, deadline) {
     if (lock) return { lock, timedOut: false };
     const failureKind = getStateFileLockFailureKind();
     // On win32 the owner probe spawns PowerShell, which can outlast a bounded probe budget
-    // under load. The holder then reads as unverifiable, which is not proof that it is gone.
-    if (failureKind !== 'contention') return { lock: null, timedOut: false, unverifiable: failureKind === 'unverifiable' };
+    // under load. The holder then reads as unverifiable, which is not proof that it is gone,
+    // so it is retried like contention until the deadline.
+    if (failureKind !== 'contention' && failureKind !== 'unverifiable') return { lock: null, timedOut: false };
     const remainingAfterAttempt = deadline - Date.now();
     if (remainingAfterAttempt > 0) {
       await new Promise(resolve => setTimeout(resolve, Math.min(POST_TOOL_FAILURE_LOCK_RETRY_MS, remainingAfterAttempt)));
@@ -206,7 +207,7 @@ function hasToolFailureArtifacts(directory, canonicalFilename) {
   }
 }
 
-async function purgeToolFailureStateDirectory(directory, canonicalFilename, deadline, lifetimeDeadline = Infinity, retryUnverifiable = false) {
+async function purgeToolFailureStateDirectory(directory, canonicalFilename, deadline, lifetimeDeadline = Infinity) {
   if (!hasToolFailureArtifacts(directory, canonicalFilename)) return false;
   const canonicalPath = join(directory, canonicalFilename);
   let postToolFailureLock;
@@ -217,7 +218,7 @@ async function purgeToolFailureStateDirectory(directory, canonicalFilename, dead
     return false;
   }
   postToolFailureLock = lockWait.lock;
-  if (!postToolFailureLock) return lockWait.timedOut || (retryUnverifiable && lockWait.unverifiable === true);
+  if (!postToolFailureLock) return lockWait.timedOut;
   let releaseFailed = false;
   let pastLifetime = false;
   try {
@@ -505,7 +506,7 @@ async function purgeLegacyToolFailureState(omcRoot, waitMs = POST_TOOL_FAILURE_L
   }
 
   const cleanupPending = (await Promise.all(
-    directories.map(([directory, filename]) => purgeToolFailureStateDirectory(directory, filename, deadline, lifetimeDeadline, deferOnTimeout)),
+    directories.map(([directory, filename]) => purgeToolFailureStateDirectory(directory, filename, deadline, lifetimeDeadline)),
   )).some(Boolean);
   if (cleanupPending && deferOnTimeout && !shouldStabilizeToolFailureCleanup()
     && deferredAttempt < POST_TOOL_FAILURE_DEFERRED_MAX_ATTEMPTS) {

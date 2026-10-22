@@ -26144,9 +26144,10 @@ function scanDirectories(projectRoot) {
       return;
     }
     try {
-      const stat = (0, import_node_fs3.statSync)(absDir);
-      if (visitedInodes.has(stat.ino)) return;
-      visitedInodes.add(stat.ino);
+      const stat = (0, import_node_fs3.statSync)(absDir, { bigint: true });
+      const inodeKey = `${stat.dev}:${stat.ino}`;
+      if (visitedInodes.has(inodeKey)) return;
+      visitedInodes.add(inodeKey);
     } catch {
       return;
     }
