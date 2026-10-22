@@ -252,8 +252,9 @@ function resolveSuperprojectRoot(cwd: string): string | null {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    // git prints forward slashes on Windows; return a native path like getGitTopLevel().
+    anchor = resolve(superRoot);
+    probeCwd = anchor;
   }
 
   if (completed) {

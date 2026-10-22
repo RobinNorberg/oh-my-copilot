@@ -9,8 +9,9 @@
  * Adapted from oh-my-opencode's builtin-skills feature.
  */
 import type { BuiltinSkill } from './types.js';
+import { type OmcCliRenderOptions } from '../../utils/omc-cli-rendering.js';
 export declare function isPathInsideOrEqual(parentPath: string, candidatePath: string): boolean;
-export declare function renderBundledSkillBody(skillName: string, body: string): string;
+export declare function renderBundledSkillBody(skillName: string, body: string, cliOptions?: OmcCliRenderOptions): string;
 /**
  * Get all builtin skills
  *

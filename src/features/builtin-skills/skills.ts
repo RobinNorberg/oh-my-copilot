@@ -14,10 +14,10 @@ import { join, dirname, basename, resolve, relative, isAbsolute, win32 } from 'p
 import { fileURLToPath } from 'url';
 import type { BuiltinSkill } from './types.js';
 import { parseFrontmatter, parseFrontmatterAliases } from '../../utils/frontmatter.js';
-import { rewriteOmcCliInvocations } from '../../utils/omc-cli-rendering.js';
+import { isOmcCliAvailable, rewriteOmcCliInvocations, type OmcCliRenderOptions } from '../../utils/omc-cli-rendering.js';
 import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../utils/skill-pipeline.js';
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
-import { renderSkillRuntimeGuidance } from './runtime-guidance.js';
+import { detectSkillRuntimeAvailability, renderSkillRuntimeGuidance, type SkillRuntimeAvailability } from './runtime-guidance.js';
 import { isSkininthegamebrosUser } from '../../utils/skininthegamebros-user.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import entitlementManifest from '../../config/builtin-skill-entitlements.json' with { type: 'json' };
@@ -219,18 +219,28 @@ function normalizeSkillNameForRuntimeRendering(skillName: string): string {
   return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
 }
 
-export function renderBundledSkillBody(skillName: string, body: string): string {
+export function renderBundledSkillBody(skillName: string, body: string, cliOptions?: OmcCliRenderOptions): string {
   const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
-  const rewrittenBody = rewriteOmcCliInvocations(body.trim());
+  const rewrittenBody = rewriteOmcCliInvocations(body.trim(), cliOptions);
   return normalizedSkillName === 'deep-interview' || normalizedSkillName === 'deep-dive'
     ? applyDeepInterviewRuntimeSettings(rewrittenBody)
     : rewrittenBody;
 }
 
 /**
+ * Host probes shared by every skill in one load pass. Each probe spawns a
+ * process (`where omg`, `<cli> --version`), which costs seconds per pass on
+ * Windows when repeated for every skill.
+ */
+interface SkillRenderContext {
+  cliOptions: OmcCliRenderOptions;
+  runtimeAvailability: () => SkillRuntimeAvailability;
+}
+
+/**
  * Load a single skill from a SKILL.md file
  */
-function loadSkillFromFile(skillPath: string, skillName: string): BuiltinSkill[] {
+function loadSkillFromFile(skillPath: string, skillName: string, context: SkillRenderContext): BuiltinSkill[] {
   try {
     const content = readFileSync(skillPath, 'utf-8');
     const { metadata, body } = parseFrontmatter(content);
@@ -238,10 +248,10 @@ function loadSkillFromFile(skillPath: string, skillName: string): BuiltinSkill[]
     const safePrimaryName = toSafeSkillName(resolvedName);
     const pipeline = parseSkillPipelineMetadata(metadata);
     const fullBody = readSkillBodyOverride(skillPath, metadata, body);
-    const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody);
+    const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody, context.cliOptions);
     const template = [
       renderedBody,
-      renderSkillRuntimeGuidance(safePrimaryName),
+      renderSkillRuntimeGuidance(safePrimaryName, context.runtimeAvailability()),
       renderSkillPipelineGuidance(safePrimaryName, pipeline),
       renderSkillResourcesGuidance(skillPath),
     ].filter((section) => section.trim().length > 0).join('\n\n');
@@ -297,6 +307,11 @@ function loadSkillsFromDirectory(): BuiltinSkill[] {
 
   const skills: BuiltinSkill[] = [];
   const seenNames = new Set<string>();
+  let availability: SkillRuntimeAvailability | undefined;
+  const context: SkillRenderContext = {
+    cliOptions: { omcAvailable: isOmcCliAvailable() },
+    runtimeAvailability: () => (availability ??= detectSkillRuntimeAvailability()),
+  };
 
   try {
     const entries = readdirSync(SKILLS_DIR, { withFileTypes: true })
@@ -316,7 +331,7 @@ function loadSkillsFromDirectory(): BuiltinSkill[] {
 
       const skillPath = join(SKILLS_DIR, entry.name, 'SKILL.md');
       if (existsSync(skillPath)) {
-        const skillEntries = loadSkillFromFile(skillPath, entry.name);
+        const skillEntries = loadSkillFromFile(skillPath, entry.name, context);
         for (const skill of skillEntries) {
           const key = skill.name.toLowerCase();
           if (seenNames.has(key)) continue;

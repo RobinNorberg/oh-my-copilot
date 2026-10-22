@@ -238,7 +238,8 @@ describe.sequential('direct mailbox notification orchestration', () => {
         const actualCwd = join(root, 'actual');
         const aliasCwd = join(root, 'alias');
         await mkdir(join(actualCwd, '.omg', 'state', 'team', 'dispatch-team', 'dispatch'), { recursive: true });
-        await symlink(actualCwd, aliasCwd, 'dir');
+        // A junction needs no symlink privilege on Windows; elsewhere it is a dir symlink.
+        await symlink(actualCwd, aliasCwd, 'junction');
         const state = harness(params({ cwd: actualCwd }));
         state.dependencies.invokeEffect = vi.fn(async () => ({
             kind: 'attempted_unconfirmed',
