@@ -2736,15 +2736,20 @@ describe('worker launch acknowledgement', () => {
       '--literal=bang! caret^',
     ];
 
-    const windowsInvocation = buildProviderSpawnInvocation(providerArgv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe' });
+    const windowsInvocation = buildProviderSpawnInvocation(providerArgv, 'win32', { SystemRoot: 'C:\\Windows' });
+    const [lineVar] = Object.keys(windowsInvocation.env ?? {});
+    expect(lineVar).toMatch(/^_OMC_PL_[0-9A-F]{16}$/);
     expect(windowsInvocation).toEqual({
       command: 'C:\\Windows\\System32\\cmd.exe',
       args: ['/d', '/v:off', '/s', '/c'],
-      batchScript: '@echo off\r\n"C:\\Windows\\System32\\cmd.exe" /d /v:off /s /c "set "_OMC_PROVIDER_LINE=" & %%_OMC_PROVIDER_LINE%%"\r\n',
+      batchScript: `@echo off\r\nif not defined ${lineVar} exit /b 87\r\n"C:\\Windows\\System32\\cmd.exe" /d /v:off /s /c "set "${lineVar}=" & %%${lineVar}%%"\r\n`,
       env: {
-        _OMC_PROVIDER_LINE: '"C:\\Program Files\\Codex\\codex.cmd" "--label=100% ready" "--home=%USERPROFILE%" "--encoded=%25" "say ""hello"" & continue" "--literal=bang! caret^"',
+        [lineVar!]: '"C:\\Program Files\\Codex\\codex.cmd" "--label=100% ready" "--home=%USERPROFILE%" "--encoded=%25" "say ""hello"" & continue" "--literal=bang! caret^"',
       },
     });
+    // Each launch gets its own variable name, so an inherited value never matches.
+    expect(Object.keys(buildProviderSpawnInvocation(providerArgv, 'win32', { SystemRoot: 'C:\\Windows' }).env ?? {}))
+      .not.toEqual([lineVar]);
     const materialized = await materializeProviderSpawnInvocation(windowsInvocation);
     expect(materialized.windowsVerbatimArguments).toBe(true);
     expect(materialized.env).toEqual(windowsInvocation.env);
@@ -2761,26 +2766,39 @@ describe('worker launch acknowledgement', () => {
       command: providerArgv[0],
       args: providerArgv.slice(1),
     });
-    expect(buildProviderSpawnInvocation(['C:\\Tools\\codex.exe', '--version'], 'win32', { ComSpec: 'cmd.exe' }))
+    expect(buildProviderSpawnInvocation(['C:\\Tools\\codex.exe', '--version'], 'win32', { SystemRoot: 'C:\\Windows' }))
       .toEqual({ command: 'C:\\Tools\\codex.exe', args: ['--version'] });
-    expect(buildProviderSpawnInvocation(['C:\\Tools\\CODEX.COM', '100%'], 'win32', { ComSpec: 'cmd.exe' }))
+    expect(buildProviderSpawnInvocation(['C:\\Tools\\CODEX.COM', '100%'], 'win32', { SystemRoot: 'C:\\Windows' }))
       .toEqual({ command: 'C:\\Tools\\CODEX.COM', args: ['100%'] });
     // A bare name or a trailing-dot batch path keeps the cmd route.
     for (const command of ['codex', 'C:\\Tools\\codex.cmd.', 'C:\\Tools\\CODEX.BAT']) {
-      expect(buildProviderSpawnInvocation([command], 'win32', { ComSpec: 'cmd.exe' })).toMatchObject({ command: 'cmd.exe', batchScript: expect.any(String) });
+      expect(buildProviderSpawnInvocation([command], 'win32', { SystemRoot: 'C:\\Windows' }))
+        .toMatchObject({ command: 'C:\\Windows\\System32\\cmd.exe', batchScript: expect.any(String) });
+    }
+  });
+
+  it('pins the batch wrapper cmd under SystemRoot and ignores ComSpec', () => {
+    const argv = ['C:\\Tools\\provider.cmd', 'x'];
+    const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath, SYSTEMROOT: 'D:\\Win\\' });
+    expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
+    expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
+    expect(invocation.batchScript).not.toContain(process.execPath);
+    // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
+    for (const env of [{}, { ComSpec: 'C:\\Windows\\System32\\cmd.exe' }, { SystemRoot: 'Windows' }, { SystemRoot: '\\\\server\\share' }, { SystemRoot: 'C:\\%X%' }]) {
+      expect(() => buildProviderSpawnInvocation(argv, 'win32', env)).toThrow('worker_launch_cmd_authority_missing');
     }
   });
 
   it('rejects control characters and over-long lines in native Windows batch arguments', async () => {
-    const comSpec = { ComSpec: 'C:\\Windows\\System32\\cmd.exe' };
+    const comSpec = { SystemRoot: 'C:\\Windows' };
     for (let code = 0; code < 0x20; code++) {
       expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', `x${String.fromCharCode(code)}y`], 'win32', comSpec))
         .toThrow('worker_launch_provider_argv_invalid');
     }
     expect(() => buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(8000)], 'win32', comSpec))
       .toThrow('worker_launch_provider_argv_too_long');
-    expect(buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(7900)], 'win32', comSpec).env)
-      .toEqual({ _OMC_PROVIDER_LINE: `"C:\\Tools\\provider.cmd" "${'A'.repeat(7900)}"` });
+    expect(Object.values(buildProviderSpawnInvocation(['C:\\Tools\\provider.cmd', 'A'.repeat(7900)], 'win32', comSpec).env ?? {}))
+      .toEqual([`"C:\\Tools\\provider.cmd" "${'A'.repeat(7900)}"`]);
     // The bootstrap spec refuses the same argv before the supervisor runs.
     const launchAttempt = await attempt();
     expect(() => buildWorkerLaunchBootstrapSpec(launchAttempt, ['C:\\Tools\\provider.cmd', 'x\x1Ay'], cwd, { platform: 'win32' }))
@@ -2944,7 +2962,7 @@ describe('worker launch acknowledgement', () => {
     // The provider records its argv and whether the wrapper's line variable
     // leaked into its environment, then exits 7 so the exit code is proven to
     // propagate through both cmd layers.
-    await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:'_OMC_PROVIDER_LINE' in process.env}));process.exit(7)" %*\r\n`, 'utf8');
+    await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}));process.exit(7)" %*\r\n`, 'utf8');
     const injection = `echo pwned>"${canaryPath}"`;
     const payload = [
       '100% ready', '%USERPROFILE%', '%PATH:~0,1%', 'bang!', '!PATH!', 'caret^', '^', 'say "hello" & continue', 'two words',
@@ -2954,7 +2972,7 @@ describe('worker launch acknowledgement', () => {
     const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
       [providerPath, outputPath, ...payload],
       'win32',
-      { ComSpec: process.env.ComSpec ?? process.env.COMSPEC ?? 'cmd.exe' },
+      { SystemRoot: process.env.SystemRoot },
     ));
     const exitCode = await new Promise<number | null>((resolve, reject) => {
       const child = spawn(invocation.command, invocation.args, {
@@ -2977,9 +2995,9 @@ describe('worker launch acknowledgement', () => {
       await mkdir(providerDir, { recursive: true });
       const providerPath = join(providerDir, 'provider.cmd');
       const outputPath = join(cwd, 'argv.json');
-      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:'_OMC_PROVIDER_LINE' in process.env}))" %*\r\n`, 'utf8');
+      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*\r\n`, 'utf8');
       const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
-        [providerPath, outputPath, ...payload], 'win32', { ComSpec: process.env.ComSpec ?? process.env.COMSPEC ?? 'cmd.exe' },
+        [providerPath, outputPath, ...payload], 'win32', { SystemRoot: process.env.SystemRoot },
       ));
       try {
         const exitCode = await new Promise<number | null>((resolve, reject) => {
@@ -3030,7 +3048,7 @@ describe('worker launch acknowledgement', () => {
       const payload = ['%USERPROFILE%', '100% ready', 'a" & echo x & "b', '!PATH!', 'åäö'];
       const invocation = buildProviderSpawnInvocation(
         [process.execPath, '-e', "require('fs').writeFileSync(process.argv[1],JSON.stringify(process.argv.slice(2)))", outputPath, ...payload],
-        'win32', { ComSpec: process.env.ComSpec ?? 'cmd.exe' },
+        'win32', { SystemRoot: process.env.SystemRoot },
       );
       expect(invocation).toEqual({ command: process.execPath, args: expect.any(Array) });
       await new Promise<void>((resolve, reject) => {
@@ -3048,12 +3066,58 @@ describe('worker launch acknowledgement', () => {
       const providerPath = join(providerDir, 'provider.cmd');
       const outputPath = join(cwd, 'argv.json');
       const canaryPath = join(cwd, 'injected.txt');
-      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:'_OMC_PROVIDER_LINE' in process.env}));process.exit(7)" %*\r\n`, 'utf8');
+      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}));process.exit(7)" %*\r\n`, 'utf8');
       const payload = [
         `--deny-tool=x" & echo pwned>"${canaryPath}" & rem "`, `a b & echo pwned>"${canaryPath}"`, `x\\" & echo pwned>"${canaryPath}" & \\"`,
         'hello world', 'say "hi"', '%USERPROFILE%', '100% ready', '!PATH!', '^', '', 'trail\\', 'åäö ü 漢字',
       ];
       const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [providerPath, outputPath, ...payload], cwd);
+      const bootstrap = runWorkerLaunchBootstrap(spec);
+      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: LAUNCH_WAIT_TIMEOUT_MS, pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
+      await expect(readFile(outputPath, 'utf8').then(JSON.parse)).resolves.toEqual({ argv: payload, leaked: false });
+      expect(existsSync(canaryPath)).toBe(false);
+    }, 30_000);
+
+    it('refuses to run the wrapper when the spawn env lacks its line variable', async () => {
+      cwd = await createFixture('worker-launch-native-noline-');
+      const providerPath = join(cwd, 'provider.cmd');
+      const outputPath = join(cwd, 'argv.json');
+      const canaryPath = join(cwd, 'injected.txt');
+      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],'ran')" %*\r\n`, 'utf8');
+      const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
+        [providerPath, outputPath], 'win32', { SystemRoot: process.env.SystemRoot },
+      ));
+      try {
+        // An inherited fixed-name line from older builds must never stand in for the per-launch one.
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          const child = spawn(invocation.command, invocation.args, {
+            stdio: 'pipe', windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+            env: { ...process.env, _OMC_PROVIDER_LINE: `echo pwned>"${canaryPath}"` },
+          });
+          child.once('error', reject);
+          child.once('exit', code => resolve(code));
+        });
+        expect(exitCode).toBe(87);
+        expect(existsSync(outputPath)).toBe(false);
+        expect(existsSync(canaryPath)).toBe(false);
+      } finally {
+        await invocation.cleanup();
+      }
+    });
+
+    it.each([
+      ['filters a case-variant pre-set provider-line variable', (canaryPath: string) => ({ _omc_provider_line: `echo pwned>"${canaryPath}"` })],
+      ['ignores a provider_env ComSpec', () => ({ ComSpec: process.execPath })],
+    ])('supervisor %s', async (_name, providerEnvFor) => {
+      const launchAttempt = await attempt();
+      const providerPath = join(cwd, 'provider.cmd');
+      const outputPath = join(cwd, 'argv.json');
+      const canaryPath = join(cwd, 'injected.txt');
+      await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify({argv:process.argv.slice(2),leaked:Object.keys(process.env).some(k=>k.toUpperCase().startsWith('_OMC_P'))}))" %*\r\n`, 'utf8');
+      const payload = ['hello world', '100% ready'];
+      const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [providerPath, outputPath, ...payload], cwd, { providerEnv: providerEnvFor(canaryPath) });
       const bootstrap = runWorkerLaunchBootstrap(spec);
       await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: LAUNCH_WAIT_TIMEOUT_MS, pollIntervalMs: 5 }))
         .resolves.toEqual({ ok: true });
@@ -3070,7 +3134,7 @@ describe('worker launch acknowledgement', () => {
     // `start /b` leaves a descendant that outlives the provider's exit.
     await writeFile(providerPath, `@echo off\r\nstart "" /b "${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],String(process.pid));setInterval(()=>{},1000)" "${orphanPidPath}"\r\n`, 'utf8');
     const invocation = await materializeProviderSpawnInvocation(buildProviderSpawnInvocation(
-      [providerPath], 'win32', { ComSpec: process.env.ComSpec ?? process.env.COMSPEC ?? 'cmd.exe' },
+      [providerPath], 'win32', { SystemRoot: process.env.SystemRoot },
     ), { superviseWindowsTree: true });
     const supervisor = spawn(invocation.command, invocation.args, {
       stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: invocation.windowsVerbatimArguments, env: { ...process.env, ...invocation.env },
@@ -3112,7 +3176,7 @@ describe('worker launch acknowledgement', () => {
     expect(() => buildProviderSpawnInvocation(
       ['C:\\Tools\\provider.cmd', '--prompt=line one\r\nwhoami'],
       'win32',
-      { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      { SystemRoot: 'C:\\Windows' },
     )).toThrow('worker_launch_provider_argv_invalid');
   });
 

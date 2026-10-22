@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { constants, existsSync } from 'node:fs';
 import { link, lstat, mkdir, mkdtemp, open, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -1702,7 +1702,7 @@ export function buildWindowsSupervisorInvocation(spec, sourceEnv = process.env) 
 }
 /**
  * Quote one argument for the provider line a child `cmd.exe` expands from
- * `_OMC_PROVIDER_LINE` and hands, through a `.cmd`/`.bat` provider's `%*`, to
+ * its provider-line variable and hands, through a `.cmd`/`.bat` provider's `%*`, to
  * the provider's C runtime argv parser.
  *
  * - Every argument is wrapped in double quotes and an embedded `"` becomes
@@ -1771,7 +1771,17 @@ export function buildProviderSpawnInvocation(providerArgv, platform = process.pl
     if (!command)
         throw new Error('worker_launch_provider_argv_missing');
     if (platform === 'win32' && !/\.(exe|com)$/i.test(command)) {
-        const comSpec = env.ComSpec ?? env.COMSPEC ?? 'cmd.exe';
+        // ComSpec is caller-controlled and a bare `cmd.exe` is searched in the cwd
+        // first, so cmd is pinned under SystemRoot, as the supervisor pins it under
+        // the system directory. Without an absolute SystemRoot the launch fails closed.
+        const systemRootKey = Object.keys(env).find(key => key.toUpperCase() === 'SYSTEMROOT');
+        const systemRoot = systemRootKey === undefined ? undefined : env[systemRootKey];
+        if (!systemRoot || !/^[A-Za-z]:\\[^"%\x00-\x1f]*$/.test(systemRoot))
+            throw new Error('worker_launch_cmd_authority_missing');
+        const comSpec = `${systemRoot.replace(/\\+$/, '')}\\System32\\cmd.exe`;
+        // A fresh name per launch: an inherited variable can never stand in for
+        // the line, and the wrapper refuses to run when the spawn env lacks it.
+        const lineVar = `_OMC_PL_${randomBytes(8).toString('hex').toUpperCase()}`;
         // Native .cmd/.bat providers cannot be spawned directly (CVE-2024-27980:
         // CreateProcess routes them through cmd.exe, which reparses the argv).
         // `start` and `call` both mangle a batch target's line (`start` reruns it
@@ -1786,14 +1796,15 @@ export function buildProviderSpawnInvocation(providerArgv, platform = process.pl
         // an .exe/.com extension keeps this route, whose PATHEXT search finds it.
         const batchScript = [
             '@echo off',
-            `${quoteWindowsBatchFileArgument(comSpec)} /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %%${PROVIDER_LINE_VAR}%%"`,
+            `if not defined ${lineVar} exit /b 87`,
+            `${quoteWindowsBatchFileArgument(comSpec)} /d /v:off /s /c "set "${lineVar}=" & %%${lineVar}%%"`,
             '',
         ].join('\r\n');
         return {
             command: comSpec,
             args: ['/d', '/v:off', '/s', '/c'],
             batchScript,
-            env: { [PROVIDER_LINE_VAR]: buildWindowsBatchProviderLine(providerArgv) },
+            env: { [lineVar]: buildWindowsBatchProviderLine(providerArgv) },
         };
     }
     return { command, args };

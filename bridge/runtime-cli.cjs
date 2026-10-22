@@ -7632,6 +7632,10 @@ async function terminateOwnedProcessTree(options) {
     // at microsecond precision or almost every live child reads as reused.
     "        $created = ([DateTime]$row.CreationDate).ToUniversalTime().Ticks; $started = $process.StartTime.ToUniversalTime().Ticks",
     "        if (($started - $started % 10) -ne ($created - $created % 10)) { continue }",
+    // ParentProcessId is never cleared, so a process created before its owned
+    // "parent" names a dead earlier holder of that reused PID: not a descendant.
+    "        $parentStart = $owned[$parent].Process.StartTime.ToUniversalTime().Ticks",
+    "        if (($created - $created % 10) -lt ($parentStart - $parentStart % 10)) { continue }",
     "        [void][OmcNative]::NtSuspendProcess($process.Handle)",
     "        $owned[$id] = @{ Process = $process; Depth = ([int]$owned[$parent].Depth + 1); Suspended = $true }",
     "        $added = $true",
@@ -9468,17 +9472,22 @@ function buildProviderSpawnInvocation(providerArgv, platform = process.platform,
   const [command, ...args] = providerArgv;
   if (!command) throw new Error("worker_launch_provider_argv_missing");
   if (platform === "win32" && !/\.(exe|com)$/i.test(command)) {
-    const comSpec = env.ComSpec ?? env.COMSPEC ?? "cmd.exe";
+    const systemRootKey = Object.keys(env).find((key) => key.toUpperCase() === "SYSTEMROOT");
+    const systemRoot = systemRootKey === void 0 ? void 0 : env[systemRootKey];
+    if (!systemRoot || !/^[A-Za-z]:\\[^"%\x00-\x1f]*$/.test(systemRoot)) throw new Error("worker_launch_cmd_authority_missing");
+    const comSpec = `${systemRoot.replace(/\\+$/, "")}\\System32\\cmd.exe`;
+    const lineVar = `_OMC_PL_${(0, import_node_crypto5.randomBytes)(8).toString("hex").toUpperCase()}`;
     const batchScript = [
       "@echo off",
-      `${quoteWindowsBatchFileArgument(comSpec)} /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %%${PROVIDER_LINE_VAR}%%"`,
+      `if not defined ${lineVar} exit /b 87`,
+      `${quoteWindowsBatchFileArgument(comSpec)} /d /v:off /s /c "set "${lineVar}=" & %%${lineVar}%%"`,
       ""
     ].join("\r\n");
     return {
       command: comSpec,
       args: ["/d", "/v:off", "/s", "/c"],
       batchScript,
-      env: { [PROVIDER_LINE_VAR]: buildWindowsBatchProviderLine(providerArgv) }
+      env: { [lineVar]: buildWindowsBatchProviderLine(providerArgv) }
     };
   }
   return { command, args };

@@ -10000,7 +10000,7 @@ var init_host_load_gate = __esm({
 });
 
 // src/team/worker-launch-ack.ts
-import { createHash as createHash7, randomUUID as randomUUID11 } from "node:crypto";
+import { createHash as createHash7, randomBytes, randomUUID as randomUUID11 } from "node:crypto";
 import { constants as constants3, existsSync as existsSync22 } from "node:fs";
 import { link as link2, lstat as lstat5, mkdir as mkdir7, mkdtemp, open as open3, readFile as readFile9, rm as rm7, unlink as unlink4, writeFile as writeFile6 } from "node:fs/promises";
 import { dirname as dirname20, isAbsolute as isAbsolute7, join as join24, relative as relative7, resolve as resolve9, sep as sep4 } from "node:path";
@@ -19545,7 +19545,7 @@ var init_process_utils2 = __esm({
 
 // src/smoke/copilot-sdk-driver.ts
 import { spawnSync as nodeSpawnSync } from "child_process";
-import { randomBytes } from "crypto";
+import { randomBytes as randomBytes2 } from "crypto";
 import { existsSync as existsSync35, mkdirSync as mkdirSync9, readdirSync as readdirSync14, readFileSync as readFileSync22, realpathSync as realpathSync9, writeFileSync as writeFileSync9 } from "fs";
 import { createRequire as createRequire2 } from "module";
 import { dirname as dirname33, isAbsolute as isAbsolute12, join as join42, relative as relative11, resolve as resolve14 } from "path";
