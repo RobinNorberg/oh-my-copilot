@@ -50,8 +50,8 @@ spawns up to 20k processes waiting for Windows to reuse a PID, so it runs only w
 
 ## Known Windows product gaps
 
-
 Gated tests below hide a real product gap, not a host limit. Remove the gate when the gap is fixed.
+
 - **An orphaned grandchild escapes `terminateOwnedProcessTree` on win32.** The batch-wrapper
   supervision path (`materializeProviderSpawnInvocation` with `superviseWindowsTree`, used by the
   direct recovery gate) has no Job object. When an early-exit provider leaves a descendant that
