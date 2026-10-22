@@ -2781,17 +2781,17 @@ describe('worker launch acknowledgement', () => {
 
   it('pins the batch wrapper cmd under SystemRoot and ignores ComSpec', () => {
     const argv = ['C:\\Tools\\provider.cmd', 'x'];
-    // A win32 host reads SystemRoot from process.env, so stub it to exercise the validation path.
+    // A win32 host reads SystemRoot from process.env and other hosts from the caller env, so set both.
     vi.stubEnv('SystemRoot', 'D:\\Win\\');
     try {
-      const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath });
+      const invocation = buildProviderSpawnInvocation(argv, 'win32', { ComSpec: process.execPath, SystemRoot: 'D:\\Win\\' });
       expect(invocation.command).toBe('D:\\Win\\System32\\cmd.exe');
       expect(invocation.batchScript).toContain('\r\n"D:\\Win\\System32\\cmd.exe" /d /v:off /s /c ');
       expect(invocation.batchScript).not.toContain(process.execPath);
       // A missing or non-absolute SystemRoot fails closed instead of searching for cmd.exe.
       for (const root of ['', 'Windows', '\\\\server\\share', 'C:\\%X%']) {
         vi.stubEnv('SystemRoot', root);
-        expect(() => buildProviderSpawnInvocation(argv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe' })).toThrow('worker_launch_cmd_authority_missing');
+        expect(() => buildProviderSpawnInvocation(argv, 'win32', { ComSpec: 'C:\\Windows\\System32\\cmd.exe', SystemRoot: root })).toThrow('worker_launch_cmd_authority_missing');
       }
     } finally {
       vi.unstubAllEnvs();
