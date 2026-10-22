@@ -627,7 +627,8 @@ describe('session-start template retired-state handling', () => {
       cwd: fakeProject,
     }, { CLAUDE_PLUGIN_ROOT: '', OMC_STATE_DIR: '', OMC_HOOK_BACKGROUND_CHILD: '1' }).output);
     expect(output.continue).toBe(true);
-    expect(Date.now() - sessionStartedAt).toBeLessThan(2000);
+    // 2400 leaves room for a win32 cold node start yet stays below the 2500 ms wait plus startup.
+    expect(Date.now() - sessionStartedAt).toBeLessThan(2400);
     expect(existsSync(legacyPath)).toBe(true);
     expect(readFileSync(lockPath, 'utf-8')).toBe('malformed lock metadata');
 
