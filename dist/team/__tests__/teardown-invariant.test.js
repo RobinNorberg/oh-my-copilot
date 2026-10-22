@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 import { createGitFixture, orchestratorEventLogPath, readEventLog, waitForEventInLog, } from './helpers/git-fixture.js';
 import { startMergeOrchestrator, } from '../merge-orchestrator.js';
 beforeAll(() => {
@@ -24,7 +25,7 @@ function makeConfig(fixture, overrides = {}) {
         leaderBranch: fixture.leaderBranch,
         cwd: fixture.repoRoot,
         pollIntervalMs: 100,
-        drainTimeoutMs: 2000,
+        drainTimeoutMs: scaleTiming(2000),
         ...overrides,
     };
 }
@@ -51,7 +52,7 @@ describe('drainAndStop — clean + conflicting work', () => {
         // Worker-2 writes to a file that CONFLICTS with a file on the leader branch.
         // First, put content on the leader branch by merging worker-1 cleanly.
         const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
-        await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', worker: 'worker-1', timeoutMs: 8000 });
+        await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', worker: 'worker-1', timeoutMs: scaleTiming(8000) });
         // Now worker-2 modifies the SAME file that's on leader with incompatible content
         // We need to create a conflict: leader has README.md, worker-2 modifies it
         await fixture.commitFile('worker-2', 'README.md', '# conflict from worker-2\ncompletely different content\n');
@@ -60,10 +61,13 @@ describe('drainAndStop — clean + conflicting work', () => {
         // Drain and stop
         const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         let result;
+        // Capture before restoring: mockRestore() also resets the recorded calls.
+        let stderrOutput = '';
         try {
             result = await handle.drainAndStop();
         }
         finally {
+            stderrOutput = stderrWrite.mock.calls.map(([chunk]) => String(chunk)).join('');
             stderrWrite.mockRestore();
         }
         // Worker-1 should have merged cleanly (already done above).
@@ -73,7 +77,7 @@ describe('drainAndStop — clean + conflicting work', () => {
         // Teardown audit file should exist if there were unmerged workers.
         const auditPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
         if (result.unmerged.length > 0) {
-            expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('[team/merge-orchestrator] WARNING: auto-merge left worker commits unmerged at shutdown:'));
+            expect(stderrOutput).toContain('[team/merge-orchestrator] WARNING: auto-merge left worker commits unmerged at shutdown:');
             expect(existsSync(auditPath)).toBe(true);
             const auditContent = readFileSync(auditPath, 'utf-8');
             expect(auditContent).toContain('"type":"unmerged_at_shutdown"');

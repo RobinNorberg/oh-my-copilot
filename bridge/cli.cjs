@@ -130453,6 +130453,9 @@ async function processHookImpl(hookType, rawInput) {
   }
 }
 async function processHook(hookType, rawInput) {
+  if (process.env.DISABLE_OMC === "1" || process.env.DISABLE_OMC === "true") {
+    return { continue: true };
+  }
   const legacyStarted = performance.now();
   const rawRecord = rawInput && typeof rawInput === "object" ? rawInput : {};
   const inputDirectory = typeof rawRecord.cwd === "string" ? rawRecord.cwd : typeof rawRecord.directory === "string" ? rawRecord.directory : void 0;

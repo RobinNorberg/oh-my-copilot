@@ -2510,6 +2510,13 @@ async function processHookImpl(hookType, rawInput) {
  * OMC_HOOK_DISPATCHER_ROLLBACK. Unknown failures remain advisory.
  */
 export async function processHook(hookType, rawInput) {
+    // The kill switch returns before any work: worktree-root resolution below
+    // spawns git, which costs hundreds of ms on a loaded Windows host. This
+    // intentionally also skips cutover dispatch telemetry and the shadow
+    // observer: a disabled OMC records nothing for the hook.
+    if (process.env.DISABLE_OMC === "1" || process.env.DISABLE_OMC === "true") {
+        return { continue: true };
+    }
     const legacyStarted = performance.now();
     const rawRecord = rawInput && typeof rawInput === "object"
         ? rawInput
