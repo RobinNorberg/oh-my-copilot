@@ -69842,12 +69842,12 @@ function updateSessionEndActionPayload(directory, sessionId, authority, actionNa
     for (const name of actionNames) job.actions[name].payload = { ...job.actions[name].payload, ...payload };
   });
 }
-function mutateLatest(directory, sessionId, mutate) {
+function mutateLatest(directory, sessionId, mutate, retryOn = "any-null") {
   for (let i = 0; i < 8; i++) {
     const current = readSessionEndJob(directory, sessionId);
     if (!current) return null;
     const result = mutateAtRevision(directory, sessionId, current.revision, mutate);
-    if (result !== REVISION_MISMATCH) return result;
+    if (result !== REVISION_MISMATCH && (result || retryOn === "mismatch")) return result;
   }
   return null;
 }
@@ -69981,7 +69981,7 @@ function renewSessionEndLease(directory, sessionId, nonce, generation, deadlineA
     owner.leaseGeneration++;
     owner.heartbeatAt = nowIso();
     owner.leaseExpiresAt = new Date(Math.min(Date.now() + 750, deadlineAt)).toISOString();
-  });
+  }, "mismatch");
 }
 function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, expectedGeneration, liveness) {
   const current = readSessionEndJob(directory, sessionId);
@@ -70019,13 +70019,13 @@ function releaseSessionEndJob(directory, sessionId, nonce, generation, reason = 
       job.phase = "recoverable-failure";
       job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce };
     }
-  });
+  }, "mismatch");
 }
 function updateSessionEndJob(directory, sessionId, expectedOwner, mutate) {
   return mutateLatest(directory, sessionId, (job) => {
     if (job.owner?.nonce !== expectedOwner || job.phase === "complete") throw new Error("owner-conflict");
     mutate(job);
-  });
+  }, "mismatch");
 }
 function claimSessionEndAction(directory, sessionId, ownerNonce, name, deadlineAt) {
   return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => {

@@ -30,6 +30,7 @@ const fsControl = vi.hoisted(() => ({
   jobPath: undefined as string | undefined,
   afterJobRead: undefined as undefined | (() => void),
   lockOpens: 0,
+  failLockOpens: 0,
 }));
 vi.mock('fs', async importOriginal => {
   const actual = await importOriginal<typeof import('fs')>();
@@ -45,7 +46,13 @@ vi.mock('fs', async importOriginal => {
       return content;
     }) as typeof actual.readFileSync,
     openSync: ((file: unknown, ...rest: unknown[]) => {
-      if (typeof file === 'string' && file === `${fsControl.jobPath}.lock` && rest[0] === 'wx') fsControl.lockOpens++;
+      if (typeof file === 'string' && file === `${fsControl.jobPath}.lock` && rest[0] === 'wx') {
+        fsControl.lockOpens++;
+        if (fsControl.failLockOpens > 0) {
+          fsControl.failLockOpens--;
+          throw Object.assign(new Error('EIO: simulated lock failure'), { code: 'EIO' });
+        }
+      }
       return (actual.openSync as (...args: unknown[]) => unknown)(file, ...rest);
     }) as typeof actual.openSync,
   };
@@ -75,6 +82,7 @@ afterEach(() => {
   fsControl.jobPath = undefined;
   fsControl.afterJobRead = undefined;
   fsControl.lockOpens = 0;
+  fsControl.failLockOpens = 0;
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
@@ -344,6 +352,24 @@ describe('durable SessionEnd cleanup manifest', () => {
       expect(fsControl.lockOpens).toBe(1);
     }
     expect(readSessionEndJob(directory, sessionId)?.owner?.nonce).toBe('other-owner');
+  });
+
+  it('keeps retrying a pre-existing caller through a failed lock, unlike the lease path', () => {
+    const directory = project();
+    const sessionId = 'seal-retry';
+    expect(prepareCoreManifest(directory, sessionId, { transcriptPath: '/tmp/transcript' })).not.toBeNull();
+    fsControl.jobPath = sessionEndJobPath(directory, sessionId);
+
+    fsControl.failLockOpens = 2;
+    expect(sealCoreManifest(directory, sessionId)?.producers.core.state).toBe('sealed');
+    expect(fsControl.lockOpens).toBe(3);
+
+    sealWikiManifest(directory, sessionId);
+    const owner = claimSessionEndJob(directory, sessionId, 'owner', 'identity', Date.now() + 5_000)!;
+    fsControl.lockOpens = 0;
+    fsControl.failLockOpens = 1;
+    expect(renewSessionEndLease(directory, sessionId, 'owner', owner.owner!.leaseGeneration, Date.now() + 5_000)).toBeNull();
+    expect(fsControl.lockOpens).toBe(1);
   });
 
   it('bounds required failures and never retries a failed remote delivery attempt', () => {

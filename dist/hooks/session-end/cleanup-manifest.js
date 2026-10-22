@@ -177,7 +177,7 @@ export function mutateSessionEndJob(directory, sessionId, expectedRevision, muta
     const result = mutateAtRevision(directory, sessionId, expectedRevision, mutate);
     return result === REVISION_MISMATCH ? null : result;
 }
-/** Only a stale expected revision is worth a re-read; a rejected mutation or a lock timeout is final. */
+/** A stale expected revision, told apart from a rejected mutation or a lock timeout (both null). */
 const REVISION_MISMATCH = Symbol('revision-mismatch');
 function mutateAtRevision(directory, sessionId, expectedRevision, mutate) {
     let terminal = false;
@@ -221,12 +221,13 @@ export function updateSessionEndActionPayload(directory, sessionId, authority, a
             job.actions[name].payload = { ...job.actions[name].payload, ...payload };
     });
 }
-function mutateLatest(directory, sessionId, mutate) { for (let i = 0; i < 8; i++) {
+/** `mismatch` retries only a stale revision: owner-fenced heartbeat paths must not spin on a rejection or a lock timeout. */
+function mutateLatest(directory, sessionId, mutate, retryOn = 'any-null') { for (let i = 0; i < 8; i++) {
     const current = readSessionEndJob(directory, sessionId);
     if (!current)
         return null;
     const result = mutateAtRevision(directory, sessionId, current.revision, mutate);
-    if (result !== REVISION_MISMATCH)
+    if (result !== REVISION_MISMATCH && (result || retryOn === 'mismatch'))
         return result;
 } return null; }
 export function prepareCoreManifest(directory, sessionId, payload) {
@@ -379,7 +380,7 @@ export function claimSessionEndJob(directory, sessionId, nonce, identity, deadli
     throw new Error('claim-conflict'); job.owner = { nonce, pid: process.pid, processStartIdentity: identity, claimedAt: nowIso(), heartbeatAt: nowIso(), leaseExpiresAt: new Date(Math.min(now + 750, deadlineAt)).toISOString(), runDeadlineAt: new Date(deadlineAt).toISOString(), leaseGeneration: 1, claimedFromRevision: job.revision }; job.phase = 'processing'; }); }
 /** Owner-fenced writes re-read on revision drift: action children write the same manifest mid-run, so a stale-revision CAS miss is not a lost lease. */
 export function renewSessionEndLease(directory, sessionId, nonce, generation, deadlineAt) { return mutateLatest(directory, sessionId, (job) => { const owner = job.owner; if (!owner || owner.nonce !== nonce || owner.leaseGeneration !== generation)
-    throw new Error('lease-conflict'); owner.leaseGeneration++; owner.heartbeatAt = nowIso(); owner.leaseExpiresAt = new Date(Math.min(Date.now() + 750, deadlineAt)).toISOString(); }); }
+    throw new Error('lease-conflict'); owner.leaseGeneration++; owner.heartbeatAt = nowIso(); owner.leaseExpiresAt = new Date(Math.min(Date.now() + 750, deadlineAt)).toISOString(); }, 'mismatch'); }
 /** Reaping is intentionally separate from a new claim. Caller must establish dead or PID-reused identity. */
 export function reapStaleSessionEndOwner(directory, sessionId, expectedNonce, expectedGeneration, liveness) { const current = readSessionEndJob(directory, sessionId); if (!current || Date.now() < Date.parse(current.owner?.leaseExpiresAt ?? ''))
     return null; return mutateSessionEndJob(directory, sessionId, current.revision, (job) => { if (!job.owner || job.owner.nonce !== expectedNonce || job.owner.leaseGeneration !== expectedGeneration || Date.now() < Date.parse(job.owner.leaseExpiresAt) || (liveness !== 'dead' && liveness !== 'mismatch'))
@@ -412,9 +413,9 @@ export function releaseSessionEndJob(directory, sessionId, nonce, generation, re
 } job.owner = null; if (job.phase !== 'complete') {
     job.phase = 'recoverable-failure';
     job.recoverableFailure = { reason, releasedAt: nowIso(), ownerNonce: nonce };
-} }); }
+} }, 'mismatch'); }
 export function updateSessionEndJob(directory, sessionId, expectedOwner, mutate) { return mutateLatest(directory, sessionId, (job) => { if (job.owner?.nonce !== expectedOwner || job.phase === 'complete')
-    throw new Error('owner-conflict'); mutate(job); }); }
+    throw new Error('owner-conflict'); mutate(job); }, 'mismatch'); }
 export function claimSessionEndAction(directory, sessionId, ownerNonce, name, deadlineAt) { return updateSessionEndJob(directory, sessionId, ownerNonce, (job) => { const action = job.actions[name]; if (!action || !['pending', 'retryable'].includes(action.status) || action.claimantNonce)
     throw new Error('action-claim-conflict'); if (action.class === 'best-effort' && action.attempts > 0) {
     action.status = 'expired';
