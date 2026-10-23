@@ -96,6 +96,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
 | `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
+| `OMC_COPILOT_STOP_CHAIN_MAX` | Most OMC Stop continuations per genuine user prompt under Copilot, an integer from 1 to 7. Default 3 (see [Stop](#stop)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
 ### Not projected
@@ -335,6 +336,17 @@ Fires when Claude finishes a response.
 
 `persistent-mode` injects a reinforcement message like "The boulder never stops" when an active execution mode is running, prompting continued work. A fresh unconfirmed ultragoal is exempt while Claude `/goal` confirmation is pending; confirmed runs remain fail-closed.
 
+**Continuation per host.** A Stop block continues the session on both hosts, but the hosts mark a chained Stop the same way (`stop_hook_active: true`) for different reasons:
+
+| Host | Chained Stop (`stop_hook_active: true`) | Bound |
+|---|---|---|
+| Claude Code | Always allowed to end: another block trips Claude Code's repeated-block override. | One continuation per Stop. |
+| Copilot (`OMC_HOOK_EVENT` set) | Evaluated like any Stop. Copilot sets the flag on every Stop after a blocked one, and the block reason arrives as the next user prompt. | The mode's own cap (ultragoal `max_reinforcements`, ralph `max_iterations`, which is not extended inside a chain), then the stop-chain cap: at most 3 continuations per genuine user prompt. `OMC_COPILOT_STOP_CHAIN_MAX` (1 to 7) overrides it; 1 is the old behaviour. The CLI itself ends a turn after 8 blocks. |
+
+Each Copilot continuation is billed as one premium request. The budget governor counts it (the continuation is a `user.message` without an agent source, measured at `session.shutdown`), but it only warns; it does not stop a chain. `keyword-detector.mjs` counts the chain from the continuation prompts (OMC block headers such as `[ULTRAGOAL #`, `[RALPH LOOP`, `[AUTOPILOT`) and never arms a mode from them; any other prompt resets the count. If the payload says Copilot's native autopilot is on (field names unverified, read defensively), `persistent-mode` does not block, so the two loops do not double-bill.
+
+**Ultragoal on Copilot.** Copilot has no Claude `/goal`. `omg ultragoal goal-start --criterion <text> ...` writes the OMG goal record (`.omg/ultragoal/omg-goal.json`: objective, acceptance criteria, one evidence slot each). Under Copilot the PreToolUse guard accepts an active record whose objective matches the ultragoal objective, and Stop keeps continuing until `omg ultragoal goal-evidence` has filled every slot, the stop caps are reached, or the user cancels. A `task` subagent runs under its own session id; the guard resolves its parent from a parent field in the payload when there is one, else from the parent's `events.jsonl` (`subagent.started` with the child's id), and applies the parent's ultragoal state. Without either link the child is not guarded.
+
 ### SessionEnd
 
 Fires when a session ends.
@@ -353,6 +365,8 @@ Saves agent activity, token usage, and other session data to `.omg/sessions/`. I
 | Copilot (`OMC_HOOK_EVENT=SessionEnd`) | 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
 
 The budget counts Worker boot, stdin, imports and the git root probe. 1500 ms is a chosen value, about 5x the idle foreground cost, not a measured limit. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
+
+**Mid-session SessionEnd on Copilot.** Copilot 1.0.91 fires SessionEnd after every agentStop, so the per-session cleanup job (mode-state cleanup, team cleanup, notifications, callbacks, the next chain link) runs once, and only after the session really ends. The foreground marks the job `host: copilot`, and the worker holds it while `$COPILOT_HOME/session-state/<id>/events.jsonl` shows no `session.shutdown` after the session's last activity, rechecking every 5 s for 30 s. The next SessionEnd or a SessionStart reconcile picks it up after that. A missing events file, or one idle for 2 hours, is treated as ended.
 
 ---
 

@@ -1,0 +1,16 @@
+{"type":"session.start","id":"799208de-6f73-49dd-b63b-b73fdabea7b7","timestamp":"2026-10-23T02:18:39.515Z"}
+{"type":"user.message","id":"ec5f5a1a-16b3-4122-b183-51029db355f3","timestamp":"2026-10-23T02:18:42.804Z"}
+{"type":"assistant.turn_start","id":"6336b01b-7c1e-4a95-bc94-57d3c7a31b2c","timestamp":"2026-10-23T02:18:44.699Z"}
+{"type":"tool.execution_start","id":"38c993ed-ff59-458a-b86b-d862a48644c3","timestamp":"2026-10-23T02:18:49.172Z"}
+{"type":"assistant.turn_start","id":"68481a61-911a-4955-8113-5426cf3b1928","timestamp":"2026-10-23T02:18:50.157Z"}
+{"type":"tool.execution_start","id":"1827c8a2-836c-4812-a8bf-fe8798b26100","timestamp":"2026-10-23T02:18:52.478Z"}
+{"type":"assistant.turn_start","id":"9e70b502-2a5a-433e-8499-539bc76fcc7d","timestamp":"2026-10-23T02:18:54.235Z"}
+{"type":"tool.execution_start","id":"0ea70575-d596-4683-bd63-b57154a19704","timestamp":"2026-10-23T02:18:56.645Z"}
+{"type":"subagent.started","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"7fee3e5c-77ea-4454-938d-c500a664a008","timestamp":"2026-10-23T02:18:57.007Z","data":{"toolCallId":"call_KDtVbSkC9Rn9jalHIksTQzsI","agentName":"explore","agentType":"explore"}}
+{"type":"user.message","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"36b639ec-8d1b-47c8-8fab-b67abf0787dc","timestamp":"2026-10-23T02:18:59.311Z","data":{"source":"agent-ad86cfd2-c9aa-49bd-a886-811317997b19"}}
+{"type":"assistant.turn_start","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"0ea54c12-fdec-4498-b4d3-db21de7659d4","timestamp":"2026-10-23T02:18:59.313Z"}
+{"type":"tool.execution_start","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"0672a7cd-d615-44ca-9f17-060f5d127232","timestamp":"2026-10-23T02:19:01.199Z"}
+{"type":"assistant.turn_start","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"34c4b7e7-7a11-4e0f-9bd7-ca8c5d20c567","timestamp":"2026-10-23T02:19:02.659Z"}
+{"type":"tool.execution_start","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"2cc2de1b-c7da-447c-a12d-515262cbc43a","timestamp":"2026-10-23T02:19:05.335Z"}
+{"type":"assistant.turn_start","agentId":"ece89723-4efa-45e2-8786-92dbe14ac85a","id":"bb987a75-a398-433c-aaea-fd1879f84bf8","timestamp":"2026-10-23T02:19:06.822Z"}
+{"type":"assistant.turn_start","id":"cd95ae0d-0c0d-40a2-b664-fcffb0c58867","timestamp":"2026-10-23T02:19:11.018Z"}

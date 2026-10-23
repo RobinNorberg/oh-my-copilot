@@ -37,9 +37,13 @@ export async function publishSessionEndBootstrap(input: SessionEndBootstrapInput
   // forwarder (processSessionEnd) is not registered when plugin hooks are enabled.
   const enqueuer = mayHaveChain(directory, input.session_id) ? await import('./chain-enqueuer.js') : null;
   const chain: SpawnNextChain | null = enqueuer ? enqueuer.planChainEnqueue(directory, input.session_id, input.reason) : null;
+  // Copilot CLI (OMC_HOOK_EVENT from copilot/hooks.json) fires SessionEnd after
+  // every turn; the worker holds the job until the session really ends
+  // (copilot-liveness.ts).
+  const host = process.env.OMC_HOOK_EVENT === 'SessionEnd' ? { host: 'copilot' } : {};
   const payload = chain
-    ? { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], chain }
-    : { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [] };
+    ? { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], chain, ...host }
+    : { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], ...host };
   const prepared = prepareCoreManifest(directory, input.session_id, payload);
   if (!prepared) {
     // The enqueuer already recorded 'enqueued'; without a manifest (another

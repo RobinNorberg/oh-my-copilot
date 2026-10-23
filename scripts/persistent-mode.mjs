@@ -154,6 +154,9 @@ const { readStdin } = await import(
   pathToFileURL(join(__dirname, "lib", "stdin.mjs")).href
 );
 const { resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, "lib", "state-root.mjs")).href);
+const { isCopilotHookHost } = await import(pathToFileURL(join(__dirname, "lib", "hook-host.mjs")).href);
+const { isCopilotNativeAutopilot, readCopilotStopChain, resolveCopilotStopChainMax } = await import(pathToFileURL(join(__dirname, "lib", "copilot-continuation.mjs")).href);
+const { isGoalRecordComplete, missingGoalCriteria, readOmgGoalRecord } = await import(pathToFileURL(join(__dirname, "lib", "omg-goal-record.mjs")).href);
 
 function readJsonFile(path) {
   try {
@@ -1271,7 +1274,13 @@ async function main() {
     // Claude Code sets stop_hook_active when a Stop hook is already running.
     // Never emit another decision:block in that re-entrant path: doing so trips
     // Claude Code's safety override for repeatedly blocked Stop hooks.
-    if (data.stop_hook_active === true) {
+    // Copilot CLI sets it on every Stop after a blocked one, so returning here
+    // would cap OMC at one continuation per user prompt. On Copilot the chain
+    // goes on, bounded by each mode's own cap below and by the stop-chain cap
+    // (scripts/lib/copilot-continuation.mjs) checked once the state root is known.
+    const copilotHost = isCopilotHookHost();
+    const copilotChainedStop = copilotHost && data.stop_hook_active === true;
+    if (data.stop_hook_active === true && !copilotHost) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -1287,6 +1296,19 @@ async function main() {
     const omcRoot = await resolveOmcStateRoot(directory);
     const stateDir = join(omcRoot, "state");
     const globalStateDir = join(homedir(), ".omg", "state");
+
+    if (copilotHost) {
+      // Copilot's native autopilot continues on its own until task_complete;
+      // a second continuation loop on top would double-bill every turn.
+      if (isCopilotNativeAutopilot(data)) {
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+      if (copilotChainedStop && readCopilotStopChain(stateDir, sessionId) >= resolveCopilotStopChainMax()) {
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+    }
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Claude Code cannot compact.
@@ -1473,6 +1495,13 @@ async function main() {
           return;
         }
 
+        // Copilot chained stop: max_iterations bounds the chain; extending
+        // here would let one user prompt run (and bill) without limit.
+        if (copilotChainedStop) {
+          console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+          return;
+        }
+
         // Extend and keep going.
         ralph.state.max_iterations = maxIter + 10;
         ralph.state.last_checked_at = new Date().toISOString();
@@ -1515,7 +1544,11 @@ async function main() {
       const sessionMatches = hasValidSessionId
         ? ultragoal.state.session_id === sessionId
         : !ultragoal.state.session_id || ultragoal.state.session_id === sessionId;
-      if (sessionMatches && !isUltragoalTerminalState(ultragoal.state, omcRoot)) {
+      // Copilot has no Claude /goal: the OMG goal record (omg ultragoal
+      // goal-start) holds the acceptance criteria, and the session may end
+      // once every criterion has evidence recorded.
+      const goalRecord = copilotHost ? readOmgGoalRecord([omcRoot, join(directory, ".omg")]) : null;
+      if (sessionMatches && !isUltragoalTerminalState(ultragoal.state, omcRoot) && !isGoalRecordComplete(goalRecord?.record)) {
         const newCount = (ultragoal.state.reinforcement_count || 0) + 1;
         const maxReinforcements = ultragoal.state.max_reinforcements || 50;
 
@@ -1535,9 +1568,19 @@ async function main() {
         }
         writeJsonFile(ultragoal.path, ultragoal.state);
 
-        let reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, keep the matching Claude /goal active, and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run /oh-my-copilot:cancel to cleanly exit.`;
         const objective = getUltragoalObjective(ultragoal.state, omcRoot);
-        if (objective) reason += `\nClaude /goal objective: ${objective}`;
+        let reason;
+        if (copilotHost) {
+          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, record evidence for every acceptance criterion with omg ultragoal goal-evidence --criterion <id> --evidence "<evidence>", and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run /oh-my-copilot:cancel to cleanly exit.`;
+          const goalObjective = goalRecord?.record.objective || objective;
+          if (goalObjective) reason += `\nGoal objective: ${goalObjective}`;
+          reason += goalRecord
+            ? `\nMissing evidence: ${missingGoalCriteria(goalRecord.record).map((criterion) => `${criterion.id} ${criterion.text}`).join("; ")}`
+            : `\nNo OMG goal record yet: run omg ultragoal goal-start --criterion "<acceptance criterion>" (one --criterion per criterion).`;
+        } else {
+          reason = `[ULTRAGOAL #${newCount}/${maxReinforcements}] Ultragoal mode is active. Continue the durable goal workflow, keep the matching Claude /goal active, and checkpoint .omg/ultragoal/ledger.jsonl before stopping. When all ultragoal stories are complete and the final quality gate passes, run /oh-my-copilot:cancel to cleanly exit.`;
+          if (objective) reason += `\nClaude /goal objective: ${objective}`;
+        }
         if (errorGuidance) {
           reason = errorGuidance + reason;
         }
