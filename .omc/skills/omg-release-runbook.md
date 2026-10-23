@@ -19,7 +19,7 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
 ## Primary path: `omg release <X.Y.Z>`
 
-The pre-flight, ship sequence and verification below are scripted as ten
+The pre-flight, ship sequence and verification below are scripted as eleven
 resumable phases. Run the script; use an agent only to triage the phase it
 stops at. The manual steps in the rest of this file are the fallback and the
 reference for what each phase asserts.
@@ -34,11 +34,17 @@ reference for what each phase asserts.
 
    ```bash
    omg release X.Y.Z --to gates --suite full --baseline <last good report>   # preflight..gates, no premium requests
-   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): commit, pr, promote, tag (asks), verify
+   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): commit, suite, pr, promote, tag, verify
+   omg release X.Y.Z --yes ...       # required for the tag phase without a terminal (agent lanes, CI)
    ```
 
-   Phases: preflight, bump, build, gates, smoke, commit, pr, promote, tag,
-   verify. State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   Phases: preflight, bump, build, gates, smoke, commit, suite, pr, promote,
+   tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
+   commit: some tests read committed state (npm pack of the committed tree,
+   committed docs/CLAUDE.md, inventory drift) and always fail before it. So
+   `--to gates --suite full` only runs the static gates; use
+   `--to suite --suite full` for the whole pre-PR check. The suite child
+   inherits your environment, not the ship scrub (no GIT_NO_REPLACE_OBJECTS). State is `.omg/release/X.Y.Z.json`; a run without `--from`
    resumes at the first phase not yet ok; `--from <phase>` re-runs one.
    Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 3. Exit 1 = a phase failed or is blocked; the output names the cause (failed
@@ -50,7 +56,12 @@ reference for what each phase asserts.
      yourself and re-run. CI is judged by the `omg ship` merge rule: every
      check outside `ship.advisoryChecks` SUCCESS/SKIPPED; each failed run is
      rerun once automatically, the second failure stops with the test names.
-   - `tag` blocked: no `--yes` and the confirmation was declined (or no TTY).
+   - `tag` blocked: no `--yes` and the confirmation was declined or there is
+     no terminal to ask on. The confirmation is never skipped on its own: pass
+     `--yes` once you have decided to publish.
+   - `verify` failed with "is on npm and GitHub Release … is published": the
+     release is out; a job of the tag run failed afterwards. Triage the named
+     job; do not rerun the run and do not use Release Recovery.
    - `verify` blocked: the tag run or npm propagation is still going; re-run
      `--from verify`.
 4. The script never deletes `.git/index.lock`, never force-pushes, rebases or

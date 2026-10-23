@@ -38,11 +38,11 @@ describe('omg release CLI', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('--dry-run prints the numbered plan of all ten phases and runs nothing', async () => {
+  it('--dry-run prints the numbered plan of all eleven phases and runs nothing', async () => {
     expect(await run('5.12.2', '--dry-run')).toBe(0);
     const text = out.join('\n');
     expect(text).toContain('omg release 5.12.2 --dry-run: plan only, nothing runs');
-    for (const [i, id] of ['preflight', 'bump', 'build', 'gates', 'smoke', 'commit', 'pr', 'promote', 'tag', 'verify'].entries()) {
+    for (const [i, id] of ['preflight', 'bump', 'build', 'gates', 'smoke', 'commit', 'suite', 'pr', 'promote', 'tag', 'verify'].entries()) {
       expect(text).toMatch(new RegExp(`${String(i + 1).padStart(2)}\\S* \\S*${id}`));
     }
     expect(calls).toEqual([]);

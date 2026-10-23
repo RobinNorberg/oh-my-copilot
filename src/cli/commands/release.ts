@@ -33,7 +33,10 @@ function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined
 }
 
 async function ttyConfirm(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY) return false;
+  if (!process.stdin.isTTY) {
+    console.error('No interactive terminal to confirm on; pass --yes to confirm the tag without a prompt.');
+    return false;
+  }
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
@@ -62,14 +65,14 @@ export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
 export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
   const cmd = new Command('release');
   cmd
-    .description('Maintainer-only release: preflight, bump, build, gates, smoke, commit, PR to dev, promote to main, tag, verify (resumable)')
+    .description('Maintainer-only release: preflight, bump, build, gates, smoke, commit, suite, PR to dev, promote to main, tag, verify (resumable)')
     .argument('<version>', 'Release version X.Y.Z')
     .option('--from <phase>', `Start at this phase (${PHASES.join(', ')}); default: the first phase not yet ok`)
     .option('--to <phase>', 'Stop after this phase')
     .option('--dry-run', 'Print the plan for the selected phases without running anything')
     .option('--json', 'JSON output')
     .option('--yes', 'Create and push the tag without the interactive confirmation')
-    .option('--suite <suite>', 'gates vitest suite: none, targeted (related to src changed since the last tag) or full', 'none')
+    .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full', 'none')
     .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
     .option('--live-smoke', 'Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
