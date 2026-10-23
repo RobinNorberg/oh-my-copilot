@@ -37,6 +37,7 @@ type Generator = {
   DISPATCH_ARG: string;
   HOOK_SEPARATOR: string;
   FORK_HOOKS: ClaudeHooksFile['hooks'];
+  withCopilotToolNames(matcher: string): string;
   buildCopilotHooks(source: unknown, options?: { preload?: boolean; forkHooks?: ClaudeHooksFile['hooks'] }): CopilotHooksFile;
   renderCopilotHooks(sourceText: string, options?: { preload?: boolean }): string;
 };
@@ -103,13 +104,15 @@ describe('copilot/hooks.json generation', () => {
   });
 
   it('emits one dispatcher entry per (event, matcher) group with its hooks, extra args and summed timeout', async () => {
-    const { FORK_HOOKS } = await generator;
+    const { FORK_HOOKS, withCopilotToolNames } = await generator;
     const pattern = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/(\S+)((?: \S+)*)$/;
     const expected = Object.entries({ ...source.hooks, ...FORK_HOOKS }).flatMap(([event, groups]) => groups
       .filter(group => !(event === 'SessionStart' && group.matcher && group.matcher !== '*'))
       .map(group => ({
         event,
-        matcher: group.matcher && group.matcher !== '*' ? group.matcher : undefined,
+        matcher: !group.matcher || group.matcher === '*'
+          ? undefined
+          : event === 'PermissionRequest' ? withCopilotToolNames(group.matcher) : group.matcher,
         timeoutSec: group.hooks.reduce((sum, hook) => sum + (hook.timeout ?? 0), 0),
         hooks: group.hooks.map(hook => {
           const match = pattern.exec(hook.command);
@@ -184,7 +187,8 @@ describe('copilot/hooks.json generation', () => {
     // Only upstream's Bash-scoped git-guardrails entry (#4140-era) carries a PreToolUse matcher.
     expect(generated.hooks.PreToolUse.map(entry => entry.matcher)).toEqual([undefined, 'Bash']);
     expect(generated.hooks.PreToolUse[1].args.at(-1)).toMatch(/git-guardrails\.mjs$/);
-    expect(generated.hooks.PermissionRequest.map(entry => entry.matcher)).toEqual(['Bash']);
+    // The permissionRequest payload carries the raw Copilot toolName (powershell on Windows).
+    expect(generated.hooks.PermissionRequest.map(entry => entry.matcher)).toEqual(['Bash|bash|powershell']);
   });
 
   it('keeps the Claude tool names of the PostToolUse file-context matcher verbatim', () => {
