@@ -18,6 +18,7 @@ export default defineConfig({
       maxWorkers: Math.min(16, Math.max(1, availableParallelism() - 1)),
     } : {}),
     setupFiles: ['src/__tests__/setup/clear-copilot-home.ts'],
+    globalSetup: ['src/__tests__/setup/global-state-guard.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in
     // src/lib/mode-state-io.ts) run only when NODE_ENV is 'test'. Pin it so an
     // inherited NODE_ENV=production cannot silently disable them.

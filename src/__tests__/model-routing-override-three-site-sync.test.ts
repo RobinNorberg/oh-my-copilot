@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { useIsolatedCwd } from './helpers/isolated-cwd.js';
 
 // extractOverrideBlock assumes no nested <system-reminder> blocks inside the
 // override text; if nested reminders are ever introduced, this helper must
@@ -12,6 +13,8 @@ function extractOverrideBlock(source: string): string {
   if (end < 0) return '';
   return source.slice(start, end);
 }
+
+useIsolatedCwd();
 
 describe('MODEL ROUTING OVERRIDE message — three-site sync', () => {
   const ORIGINAL_ENV = { ...process.env };

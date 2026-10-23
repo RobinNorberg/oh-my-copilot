@@ -2,9 +2,13 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { useIsolatedCwd } from './helpers/isolated-cwd.js';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const RUN_CJS = join(REPO_ROOT, 'scripts', 'run.cjs');
+
+// The hooks key their per-session state off the payload cwd; keep it out of the checkout.
+const isolatedRoot = useIsolatedCwd();
 
 // The trusted worker hooks, with the OMC_SKIP_HOOKS event token that makes each
 // one take its early-return branch before it ever reads stdin (#4086).
@@ -64,7 +68,7 @@ function payloadFor(event: string): string {
     // Advice injection is deduplicated per session, so every probe needs its own
     // session id to observe the hook's payload-derived output.
     session_id: `run-cjs-worker-skip-guard-${randomUUID()}`,
-    cwd: REPO_ROOT,
+    cwd: isolatedRoot(),
     hook_event_name: event,
     prompt: 'probe',
     tool_name: 'Read',
