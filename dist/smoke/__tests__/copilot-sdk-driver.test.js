@@ -175,6 +175,7 @@ function input(loaded, over = {}, gitCalls = []) {
         mcpServer: 't',
         runChain: async () => { throw new Error('chain runner not stubbed'); },
         runTeam: async () => { throw new Error('team runner not stubbed'); },
+        runCli: async () => { throw new Error('cli runner not stubbed'); },
         ...over,
     };
 }

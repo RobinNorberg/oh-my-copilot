@@ -22,6 +22,7 @@ import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
+import type { runCliScenario } from './copilot-cli-scenarios.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
 export type PermissionResult = {
     kind: 'approve-once';
@@ -190,6 +191,8 @@ export interface SdkTierInput {
     runChain: typeof runChainScenario;
     /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
     runTeam: typeof runTeamScenario;
+    /** The CLI scenarios' runner ({@link runCliScenario}, headless copilot sessions), injected by the smoke entry. */
+    runCli: typeof runCliScenario;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];
