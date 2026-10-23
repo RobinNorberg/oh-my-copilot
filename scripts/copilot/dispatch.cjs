@@ -41,6 +41,19 @@
  *     PermissionRequest exit 2, which is kept.
  * A group with a single non-empty output is passed through byte for byte.
  *
+ * Payload: the stdin JSON object passes through normalizeHookPayload()
+ * (scripts/lib/copilot-payload.cjs) once, so every hook sees Claude field
+ * names next to Copilot's (camelCase PermissionRequest/SubagentStart fields,
+ * `skill` → `Skill`, `t-x` → `mcp__t__x`, tool_input argument names,
+ * tool_response). Non-JSON stdin is passed on unchanged.
+ *
+ * systemMessage handoff: Copilot has no model channel for a Stop that does
+ * not block. A merged Stop systemMessage is then stored in
+ * $COPILOT_HOME/projects/.omg-pending-context/<sessionId>.json, and the next
+ * UserPromptSubmit of that session prepends it to its additionalContext
+ * (which Copilot injects) and deletes the file. A blocking Stop gets it
+ * appended to the block reason instead.
+ *
  * Kill switch: OMC_COPILOT_HOOK_DISPATCH=0 runs each hook the old way, as its
  * own `node --require adapter run.cjs <script>` process, one after another,
  * and merges their already-adapted outputs with the same rules. No
@@ -58,9 +71,11 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { statSync } = require('fs');
+const { mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } = require('fs');
 const { Writable } = require('stream');
 const { transform, parseHookOutput, writeAllSync } = require('../lib/copilot-hook-adapter.cjs');
+const { normalizeHookPayload } = require('../lib/copilot-payload.cjs');
+const { getCopilotConfigDir } = require('../lib/config-dir.cjs');
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');
@@ -74,6 +89,8 @@ const EVENT_PATTERN = /^[A-Z][A-Za-z]+$/;
 // dispatcher stops waiting for a run.cjs that failed to enforce its own.
 const LEGACY_OUTER_GRACE_MS = 2000;
 const LEGACY_CLOSE_SETTLE_MS = 300;
+const PENDING_CONTEXT_DIR = '.omg-pending-context';
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -439,7 +456,79 @@ function readStdin() {
   });
 }
 
-async function dispatch(event, hooks, input) {
+/** stdin bytes → { input, payload }: the normalized JSON object, or the raw bytes and null. */
+function normalizeInput(event, raw) {
+  let payload;
+  try {
+    payload = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return { input: raw, payload: null };
+  }
+  if (!isPlainObject(payload)) return { input: raw, payload: null };
+  const normalized = normalizeHookPayload(event, payload);
+  return { input: Buffer.from(JSON.stringify(normalized), 'utf8'), payload: normalized };
+}
+
+// Keyed by the (globally unique) session id under the per-user config dir, like
+// context-guard-stop's retry guard: no git probe on every prompt (the project
+// state root costs ~130 ms on Windows).
+function pendingContextPath(payload) {
+  const sessionId = payload && payload.session_id;
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) return null;
+  return path.join(getCopilotConfigDir(), 'projects', PENDING_CONTEXT_DIR, `${sessionId}.json`);
+}
+
+function readPendingMessages(file) {
+  try {
+    const messages = JSON.parse(readFileSync(file, 'utf8')).messages;
+    return Array.isArray(messages) ? messages.filter(nonEmptyString) : [];
+  } catch {
+    return [];
+  }
+}
+
+const objectStdout = value => (Object.keys(value).length ? `${JSON.stringify(value)}\n` : '');
+
+/**
+ * The systemMessage handoff (see the header) applied to the merged output.
+ * Any failure leaves the output as it was, with an `[omg-hook]` note.
+ */
+async function handOffSystemMessage(event, payload, merged) {
+  if (event !== 'Stop' && event !== 'UserPromptSubmit') return merged;
+  const parsed = parseHookOutput(merged.stdout);
+  if (parsed.kind === 'raw') return merged;
+  const value = parsed.kind === 'object' ? { ...parsed.value } : {};
+  try {
+    if (event === 'Stop') {
+      if (!nonEmptyString(value.systemMessage)) return merged;
+      const message = value.systemMessage;
+      delete value.systemMessage;
+      if (value.decision === 'block') {
+        value.reason = nonEmptyString(value.reason) ? `${value.reason}\n\n${message}` : message;
+      } else {
+        const file = pendingContextPath(payload);
+        if (!file) return merged;
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify({ messages: [...readPendingMessages(file), message] }), { mode: 0o600 });
+      }
+      return { ...merged, stdout: objectStdout(value) };
+    }
+    const file = pendingContextPath(payload);
+    if (!file) return merged;
+    const messages = readPendingMessages(file);
+    try { unlinkSync(file); } catch { /* absent */ }
+    if (messages.length === 0) return merged;
+    const pending = messages.join('\n');
+    value.additionalContext = nonEmptyString(value.additionalContext) ? `${pending}\n${value.additionalContext}` : pending;
+    return { ...merged, stdout: objectStdout(value) };
+  } catch (error) {
+    const note = `[omg-hook] ${event}: systemMessage handoff failed: ${error && error.message ? error.message : String(error)}\n`;
+    return { ...merged, stderr: `${merged.stderr || ''}${note}` };
+  }
+}
+
+async function dispatch(event, hooks, rawInput) {
+  const { input, payload } = normalizeInput(event, rawInput);
   const legacy = process.env.OMC_COPILOT_HOOK_DISPATCH === '0';
   const debug = Boolean(process.env.OMC_DEBUG_HOOKS);
   const results = [];
@@ -462,7 +551,7 @@ async function dispatch(event, hooks, input) {
     }
     results.push(result);
   }
-  return mergeHookResults(event, results);
+  return handOffSystemMessage(event, payload, mergeHookResults(event, results));
 }
 
 async function main() {
@@ -498,5 +587,6 @@ module.exports = {
   mergeHookResults,
   legacyOuterTimeoutMs,
   groupBudgetMs,
+  normalizeInput,
   dispatch,
 };

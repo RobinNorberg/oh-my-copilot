@@ -1,0 +1,96 @@
+{
+  "description": "Hook payloads Copilot CLI 1.0.91 sent to PascalCase registrations (live probe 2026-10-23, recorder plugin). Paths are scrubbed; everything else is verbatim.",
+  "PermissionRequest.shell": {
+    "hookName": "permissionRequest",
+    "sessionId": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": 1792721932917,
+    "cwd": "C:\\probe\\project",
+    "toolName": "powershell",
+    "toolInput": { "command": "echo probe-shell" },
+    "permissionSuggestions": []
+  },
+  "PermissionRequest.mcp": {
+    "hookName": "permissionRequest",
+    "sessionId": "f5e52b74-3bbc-46f3-8f38-5b2787df5bf8",
+    "timestamp": 1792721819981,
+    "cwd": "C:\\probe\\project",
+    "toolName": "t/state_read",
+    "toolInput": { "mode": "ultragoal" },
+    "permissionSuggestions": []
+  },
+  "PreToolUse.view": {
+    "hook_event_name": "PreToolUse",
+    "session_id": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": "2026-10-23T02:18:49.174Z",
+    "cwd": "C:\\probe\\project",
+    "tool_name": "Read",
+    "tool_input": { "path": "C:\\probe\\project\\does-not-exist-probe.txt" }
+  },
+  "PreToolUse.task": {
+    "hook_event_name": "PreToolUse",
+    "session_id": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": "2026-10-23T02:18:56.646Z",
+    "cwd": "C:\\probe\\project",
+    "tool_name": "Agent",
+    "tool_input": {
+      "description": "List directory file names",
+      "prompt": "List the file names in the current directory and reply in one line.",
+      "agent_type": "explore",
+      "name": "directory-list",
+      "mode": "sync"
+    }
+  },
+  "PreToolUse.skill": {
+    "hook_event_name": "PreToolUse",
+    "session_id": "b3010530-780f-4318-a4a2-c8562ec0e97e",
+    "timestamp": "2026-10-23T02:21:30.104Z",
+    "cwd": "C:\\probe\\project",
+    "tool_name": "skill",
+    "tool_input": { "skill": "cancel" }
+  },
+  "PreToolUse.mcp": {
+    "hook_event_name": "PreToolUse",
+    "session_id": "f5e52b74-3bbc-46f3-8f38-5b2787df5bf8",
+    "timestamp": "2026-10-23T02:16:59.424Z",
+    "cwd": "C:\\probe\\project",
+    "tool_name": "t-state_read",
+    "tool_input": { "mode": "ultragoal" }
+  },
+  "PostToolUse.shell": {
+    "hook_event_name": "PostToolUse",
+    "session_id": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": "2026-10-23T02:18:53.714Z",
+    "cwd": "C:\\probe\\project",
+    "tool_name": "Bash",
+    "tool_input": { "command": "echo probe-shell", "description": "Run requested shell probe" },
+    "tool_result": { "result_type": "success", "text_result_for_llm": "probe-shell\n<shellId: 0 completed with exit code 0>" }
+  },
+  "SubagentStart": {
+    "sessionId": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": 1792721937422,
+    "cwd": "C:\\probe\\project",
+    "transcriptPath": "C:\\probe\\home\\session-state\\ad86cfd2-c9aa-49bd-a886-811317997b19\\events.jsonl",
+    "agentName": "explore"
+  },
+  "SubagentStop": {
+    "hook_event_name": "SubagentStop",
+    "session_id": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+    "timestamp": "2026-10-23T02:19:10.060Z",
+    "cwd": "C:\\probe\\project",
+    "transcript_path": "C:\\probe\\home\\session-state\\ad86cfd2-c9aa-49bd-a886-811317997b19\\events.jsonl",
+    "agent_id": "ece89723-4efa-45e2-8786-92dbe14ac85a",
+    "agent_type": "explore",
+    "agent_name": "explore",
+    "last_assistant_message": "No files in the current directory.",
+    "stop_reason": "end_turn"
+  },
+  "Stop.continuation": {
+    "hook_event_name": "Stop",
+    "session_id": "61b74574-b97a-4c2c-82f6-4d89613496df",
+    "timestamp": "2026-10-23T02:23:24.229Z",
+    "cwd": "C:\\probe\\project",
+    "transcript_path": "C:\\probe\\home\\session-state\\61b74574-b97a-4c2c-82f6-4d89613496df\\events.jsonl",
+    "stop_reason": "end_turn",
+    "stop_hook_active": true
+  }
+}

@@ -13,6 +13,9 @@
  *   - Never block context_limit stops (would cause compaction deadlock)
  *   - Never block user-requested stops (respect Ctrl+C / cancel)
  *   - Max 2 blocks per transcript (retry guard prevents infinite loops)
+ *   - Unknown context usage never blocks
+ *   - Copilot CLI (events.jsonl transcript): never block a stop_hook_active
+ *     continuation or right after a compaction; block without continue:false
  *
  * Hook output:
  *   - { decision: "block", reason: "..." } when context too high
@@ -25,7 +28,7 @@ import { execFileSync } from 'node:child_process';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { readStdin } from './lib/stdin.mjs';
-import { resolveContextPercent } from './lib/context-usage.mjs';
+import { isCopilotTranscript, resolveContextPercent, resolveCopilotTranscriptContext } from './lib/context-usage.mjs';
 
 const DEFAULT_THRESHOLD = 75;
 const CRITICAL_THRESHOLD = 95;
@@ -222,8 +225,26 @@ async function main() {
 
     const sessionId = data.session_id || data.sessionId || '';
     const rawTranscriptPath = data.transcript_path || data.transcriptPath || '';
-    const transcriptPath = resolveTranscriptPath(rawTranscriptPath, data.cwd);
-    const pct = (await resolveContextPercent(data, transcriptPath, data.cwd)) ?? 0;
+    const copilot = isCopilotTranscript(rawTranscriptPath);
+
+    // Copilot CLI: stopReason is always "end_turn", so the stop_reason checks
+    // above never match. A turn Copilot already continued for a Stop block
+    // (stop_hook_active) is never blocked again: each continuation is a
+    // premium request. A compaction newer than the last token sample means
+    // the context was full and Copilot already compacted it.
+    if (copilot && (data.stop_hook_active === true || resolveCopilotTranscriptContext(rawTranscriptPath).compacted)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    const transcriptPath = copilot ? rawTranscriptPath : resolveTranscriptPath(rawTranscriptPath, data.cwd);
+    const pct = await resolveContextPercent(data, transcriptPath, data.cwd);
+
+    // Unknown context usage never blocks.
+    if (pct === null) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
 
     if (pct >= CRITICAL_THRESHOLD) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
@@ -241,8 +262,10 @@ async function main() {
 
       incrementBlockCount(sessionId);
 
+      // On Copilot continue:false would win over the block (the adapter emits
+      // {}), so the guard sends the block alone there.
       console.log(JSON.stringify({
-        continue: false,
+        ...(copilot ? {} : { continue: false }),
         decision: 'block',
         reason: buildStopRecoveryAdvice(pct, blockCount + 1)
       }));

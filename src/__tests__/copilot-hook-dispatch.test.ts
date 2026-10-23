@@ -265,7 +265,7 @@ function probePlugin(): string {
   mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, 'hooks'), { recursive: true });
   writeFileSync(join(root, 'scripts', 'run.cjs'), '// plugin-root marker');
-  for (const name of ['context-guard-stop.mjs', 'budget-guard.mjs', 'persistent-mode.mjs', 'not-audited.mjs', 'subagent-tracker.mjs', 'pre-tool-enforcer.mjs']) {
+  for (const name of ['context-guard-stop.mjs', 'budget-guard.mjs', 'persistent-mode.mjs', 'not-audited.mjs', 'subagent-tracker.mjs', 'pre-tool-enforcer.mjs', 'prompt-probe.mjs']) {
     copyFileSync(PROBE, join(root, 'scripts', name));
   }
   const command = (script: string) => `node "\${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "\${CLAUDE_PLUGIN_ROOT}"/scripts/${script}`;
@@ -279,12 +279,16 @@ function probePlugin(): string {
       ] }],
       SubagentStart: [{ matcher: '*', hooks: [{ type: 'command', command: `${command('subagent-tracker.mjs')} start`, timeout: 5 }] }],
       PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: command('pre-tool-enforcer.mjs'), timeout: 5 }] }],
+      UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: command('prompt-probe.mjs'), timeout: 5 }] }],
     },
   }));
   return root;
 }
 
-type Trace = { name: string; pid: number; isMainThread: boolean; argv: string[]; marker: string | null; owner: string | null; event: string | null };
+type Trace = {
+  name: string; pid: number; isMainThread: boolean; argv: string[]; marker: string | null; owner: string | null; event: string | null;
+  input?: Record<string, unknown>;
+};
 
 function runDispatch(root: string, event: string, scripts: string[][], payload: Record<string, unknown>, extra: Record<string, string> = {}) {
   const trace = join(tempDir('omg-dispatch-trace-'), 'trace.jsonl');
@@ -446,6 +450,118 @@ describe('dispatch.cjs end to end (probe plugin)', () => {
   }, 60_000);
 });
 
+const LIVE = JSON.parse(readFileSync(join(REPO_ROOT, 'src', '__tests__', 'fixtures', 'copilot-live-payloads', 'cli-1.0.91.json'), 'utf8')) as Record<string, Record<string, unknown>>;
+
+describe('dispatch payload normalization (recorded Copilot CLI 1.0.91 payloads)', () => {
+  it('hands every hook the Claude field names next to the Copilot ones', () => {
+    const root = probePlugin();
+    const result = runDispatch(root, 'SubagentStart', [['subagent-tracker.mjs', 'start']], { ...LIVE.SubagentStart, traceInput: true });
+    expect(result.status, result.stderr).toBe(0);
+    const input = result.traces[0].input!;
+    expect(input).toMatchObject({
+      sessionId: LIVE.SubagentStart.sessionId,
+      session_id: LIVE.SubagentStart.sessionId,
+      transcript_path: LIVE.SubagentStart.transcriptPath,
+      hook_event_name: 'SubagentStart',
+      agentName: 'explore',
+    });
+  }, 60_000);
+
+  it('rewrites skill and plugin MCP tool names for PreToolUse hooks', () => {
+    const root = probePlugin();
+    const skill = runDispatch(root, 'PreToolUse', [['pre-tool-enforcer.mjs']], { ...LIVE['PreToolUse.skill'], traceInput: true });
+    expect(skill.traces[0].input).toMatchObject({ tool_name: 'Skill', tool_input: { skill: 'cancel' } });
+    const mcp = runDispatch(root, 'PreToolUse', [['pre-tool-enforcer.mjs']], { ...LIVE['PreToolUse.mcp'], traceInput: true });
+    expect(mcp.traces[0].input).toMatchObject({ tool_name: 'mcp__t__state_read' });
+  }, 60_000);
+
+  it('passes non-JSON stdin through unchanged', () => {
+    const { input, payload } = (dispatcher as unknown as {
+      normalizeInput(event: string, raw: Buffer): { input: Buffer; payload: unknown };
+    }).normalizeInput('Stop', Buffer.from('not json'));
+    expect(input.toString()).toBe('not json');
+    expect(payload).toBeNull();
+  });
+});
+
+describe('PermissionRequest end to end (real permission-handler, recorded payloads)', () => {
+  function runPermission(payload: Record<string, unknown>) {
+    const base = tempDir('omg-dispatch-permission-');
+    const cwd = join(base, 'p');
+    const home = join(base, 'h');
+    mkdirSync(cwd);
+    mkdirSync(home);
+    execFileSync('git', ['init', '-q'], { cwd, windowsHide: true });
+    const argv = dispatcher.encodeDispatchArgv('PermissionRequest', [{ script: join(REPO_ROOT, 'scripts', 'permission-handler.mjs') }]);
+    const result = spawnSync(process.execPath, ['--require', ADAPTER, DISPATCH, ...argv], {
+      cwd,
+      env: cleanEnv({ HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT, OMC_HOOK_EVENT: 'PermissionRequest' }),
+      input: JSON.stringify({ ...payload, cwd }),
+      encoding: 'utf8',
+      timeout: 60_000,
+      windowsHide: true,
+    });
+    return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+  }
+  const shell = LIVE['PermissionRequest.shell'];
+
+  it('answers a safe powershell command with the Copilot allow shape', () => {
+    const result = runPermission({ ...shell, toolInput: { command: 'git status' } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ behavior: 'allow', message: 'Safe read-only command' });
+  }, 60_000);
+
+  it.each([
+    ['the recorded command (not auto-approved)', shell],
+    ['a plugin MCP tool', LIVE['PermissionRequest.mcp']],
+  ])('emits nothing for %s, so Copilot asks as usual', (_label, payload) => {
+    const result = runPermission(payload);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('');
+  }, 60_000);
+});
+
+describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () => {
+  const sessionId = '61b74574-b97a-4c2c-82f6-4d89613496df';
+
+  it('stores a non-blocking Stop systemMessage and injects it once into the next prompt', () => {
+    const root = probePlugin();
+    const stateDir = tempDir('omg-dispatch-handoff-');
+    const cwd = tempDir('omg-dispatch-handoff-cwd-');
+    const env = { COPILOT_HOME: stateDir };
+    const pendingFile = join(stateDir, 'projects', '.omg-pending-context', `${sessionId}.json`);
+    const stop = runDispatch(root, 'Stop', [['budget-guard.mjs']], {
+      session_id: sessionId, cwd,
+      hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] ralph run at 80%' } } },
+    }, env);
+    expect(stop.status, stop.stderr).toBe(0);
+    expect(JSON.parse(stop.stdout)).toEqual({ continue: true });
+    expect(JSON.parse(readFileSync(pendingFile, 'utf8'))).toEqual({ messages: ['[BUDGET] ralph run at 80%'] });
+
+    const prompt = { session_id: sessionId, cwd, hooks: { 'prompt-probe.mjs': { stdout: { additionalContext: 'keyword context' } } } };
+    const first = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
+    expect(first.status, first.stderr).toBe(0);
+    expect(JSON.parse(first.stdout)).toEqual({ additionalContext: '[BUDGET] ralph run at 80%\nkeyword context' });
+    expect(existsSync(pendingFile)).toBe(false);
+
+    const second = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
+    expect(JSON.parse(second.stdout)).toEqual({ additionalContext: 'keyword context' });
+  }, 60_000);
+
+  it('appends the systemMessage to a block reason from another hook', () => {
+    const root = probePlugin();
+    const result = runDispatch(root, 'Stop', [['persistent-mode.mjs'], ['budget-guard.mjs']], {
+      session_id: sessionId,
+      hooks: {
+        'persistent-mode.mjs': { stdout: { decision: 'block', reason: 'The boulder never stops' } },
+        'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 80%' } },
+      },
+    }, { COPILOT_HOME: tempDir('omg-dispatch-handoff-') });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 80%', continue: true });
+  }, 60_000);
+});
+
 describe('dispatch per-hook isolation', () => {
   /**
    * run.cjs is the same CommonJS module instance dispatch.cjs requires, so
@@ -469,7 +585,7 @@ describe('dispatch per-hook isolation', () => {
     runCjs.runResolvedHook = (resolution, _args, io) => {
       const name = basename(resolution.targetPath);
       if (name === 'c.mjs') return Promise.reject(new Error('runner rejected'));
-      io.stdout.write(JSON.stringify({ continue: true, systemMessage: `from ${name}` }));
+      io.stdout.write(JSON.stringify({ continue: true, additionalContext: `from ${name}` }));
       return Promise.resolve(0);
     };
     if (failClosed) process.env.OMC_HOOK_FAIL_CLOSED = '1';
@@ -489,7 +605,7 @@ describe('dispatch per-hook isolation', () => {
     [true, 1],
   ])('failClosed=%s: throwing and rejecting hooks fail alone (exit %i), the others keep their output', async (failClosed, exitCode) => {
     const merged = await dispatchWithFailures(failClosed);
-    expect(JSON.parse(merged.stdout)).toEqual({ continue: true, systemMessage: 'from a.mjs\nfrom d.mjs' });
+    expect(JSON.parse(merged.stdout)).toEqual({ continue: true, additionalContext: 'from a.mjs\nfrom d.mjs' });
     expect(merged.exitCode).toBe(exitCode);
   });
 });

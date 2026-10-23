@@ -635,6 +635,10 @@ describe('permission-handler', () => {
         const result = processPermissionRequest(camelInput('view', 'git status'));
         expect(result).toEqual({ continue: true });
       });
+
+      it.each(['t/state_read', 't-state_read', 'mcp__t__state_read'])('leaves the plugin MCP tool %s to the normal flow', toolName => {
+        expect(processPermissionRequest(camelInput(toolName, 'git status'))).toEqual({ continue: true });
+      });
     });
 
     describe('ask rule sources (.claude and .copilot)', () => {

@@ -29,7 +29,13 @@
  *     Claude-shaped object (subagent_type, model:'opus'), breaking the call.
  *   - Stop/SubagentStop `continue:false` + `decision:'block'` emits `{}`:
  *     Claude precedence (continue:false beats decision), so the turn stops.
- *   - PermissionRequest exit 2 is kept (exit 2 = deny on both hosts).
+ *   - PermissionRequest exit 2 is kept (exit 2 = deny on both hosts). Its
+ *     Claude hookSpecificOutput.decision becomes Copilot's top-level
+ *     {behavior, message, interrupt}; `ask` or no decision emits nothing.
+ *   - systemMessage (ignored by Copilot) joins additionalContext on the
+ *     events that inject it, joins a Stop/SubagentStop block reason, is kept
+ *     on a non-blocking Stop for the dispatcher's next-prompt handoff, and is
+ *     dropped elsewhere.
  *   - Every other non-zero exit becomes 0 plus one `[omg-hook]` stderr line,
  *     so our own bugs never fail closed. OMC_HOOK_FAIL_CLOSED=1 keeps the code.
  *   - Stdout written by other 'exit' listeners after this one ran is dropped.
@@ -42,6 +48,8 @@ const path = require('path');
 
 const STDERR_TAIL_BYTES = 4096;
 const STOP_EVENTS = new Set(['Stop', 'SubagentStop']);
+// Events whose top-level additionalContext Copilot CLI injects (hooks reference, 1.0.103).
+const CONTEXT_EVENTS = new Set(['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'SubagentStart', 'Notification']);
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -143,12 +151,57 @@ function shapeObject(event, input, notes, debug) {
 
   if (hso) output.hookSpecificOutput = hso;
 
+  if (event === 'PermissionRequest') return permissionOutput(output, hso);
+
   if (STOP_EVENTS.has(event) && output.continue === false && output.decision === 'block') {
     const reason = nonEmptyString(output.stopReason) || nonEmptyString(output.reason);
     notes.push(`[omg-hook] ${event}: continue:false overrides decision:block; allowing stop${reason ? `: ${reason}` : ''}`);
     return {};
   }
 
+  return routeSystemMessage(event, output, notes, debug);
+}
+
+/**
+ * Copilot reads only top-level {behavior: allow|deny, message, interrupt}
+ * and has no `ask`. Claude's hookSpecificOutput.decision is translated; `ask`
+ * or no decision returns null, so nothing is emitted and Copilot's normal
+ * permission flow runs.
+ */
+function permissionOutput(output, hso) {
+  const decision = hso && isPlainObject(hso.decision) ? hso.decision : null;
+  const behavior = decision ? decision.behavior : output.behavior;
+  if (behavior !== 'allow' && behavior !== 'deny') return null;
+  const result = { behavior };
+  const message = decision ? nonEmptyString(decision.reason) || nonEmptyString(decision.message) : nonEmptyString(output.message);
+  if (message) result.message = message;
+  const interrupt = decision ? decision.interrupt : output.interrupt;
+  if (behavior === 'deny' && interrupt === true) result.interrupt = true;
+  return result;
+}
+
+/**
+ * Copilot ignores `systemMessage` on every event. It is appended to
+ * `additionalContext` where Copilot injects that, and to a Stop/SubagentStop
+ * block reason. A Stop systemMessage without a block is kept for the
+ * dispatcher, which hands it to the next UserPromptSubmit. On every other
+ * event it is dropped.
+ */
+function routeSystemMessage(event, output, notes, debug) {
+  const message = nonEmptyString(output.systemMessage);
+  if (!message) return output;
+  if (CONTEXT_EVENTS.has(event)) {
+    const context = nonEmptyString(output.additionalContext);
+    output.additionalContext = context ? `${context}\n${message}` : message;
+    delete output.systemMessage;
+  } else if (STOP_EVENTS.has(event) && output.decision === 'block') {
+    const reason = nonEmptyString(output.reason);
+    output.reason = reason ? `${reason}\n\n${message}` : message;
+    delete output.systemMessage;
+  } else if (event !== 'Stop') {
+    delete output.systemMessage;
+    if (debug) notes.push(`[omg-hook] ${event}: dropped systemMessage (no Copilot channel for this event)`);
+  }
   return output;
 }
 
@@ -191,7 +244,8 @@ function transform(event, run = {}) {
   const parsed = parseHookOutput(stdout);
   if (parsed.kind === 'empty') return finish('', code);
   if (parsed.kind === 'raw') return finish(stdout, code);
-  return emitObject(shapeObject(event, parsed.value, notes, run.debug === true), code);
+  const shaped = shapeObject(event, parsed.value, notes, run.debug === true);
+  return shaped === null ? finish('', code) : emitObject(shaped, code);
 }
 
 // ~2 s total: a hook whose stdout pipe has not drained in that long is dead

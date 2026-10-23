@@ -238,3 +238,58 @@ describe('context-guard-stop safe recovery messaging (issue #1373)', () => {
     expect(() => readFileSync(gitLogPath, 'utf-8')).toThrow();
   });
 });
+
+/** A Copilot CLI events.jsonl with the event shapes Copilot CLI 1.0.91 persisted. */
+function writeCopilotEvents(dir: string, sessionId: string, events: Array<Record<string, unknown>>): string {
+  const sessionDir = join(dir, 'session-state', sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  const filePath = join(sessionDir, 'events.jsonl');
+  writeFileSync(filePath, events.map(event => JSON.stringify(event)).join('\n') + '\n', 'utf-8');
+  return filePath;
+}
+
+describe('context-guard-stop on Copilot CLI transcripts', () => {
+  let tempDir: string;
+  const sessionId = '61b74574-b97a-4c2c-82f6-4d89613496df';
+  const model = { type: 'session.model_change', data: { source: 'startup', contextTier: null, newModel: 'claude-sonnet-5.5' } };
+  // 170000 of claude-sonnet-5.5's 200000 default-tier prompt tokens = 85%.
+  const compactionStart = { type: 'session.compaction_start', data: { currentTokens: 170000, trigger: 'auto' } };
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(homedir(), 'context-guard-copilot-'));
+  });
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const run = (transcript: string, extra: Record<string, unknown> = {}) => runContextGuardStopWithEnv(
+    { hook_event_name: 'Stop', session_id: `${sessionId}`, cwd: tempDir, transcript_path: transcript, stop_reason: 'end_turn', stop_hook_active: false, ...extra },
+    { HOME: tempDir, USERPROFILE: tempDir, COPILOT_HOME: tempDir },
+  );
+
+  it('blocks from the newest currentTokens sample, without continue:false', () => {
+    const out = run(writeCopilotEvents(tempDir, sessionId, [model, compactionStart]));
+    expect(out.decision).toBe('block');
+    expect(out).not.toHaveProperty('continue');
+    expect(String(out.reason)).toContain('Context at 85%');
+  });
+
+  it('never blocks a stop_hook_active continuation', () => {
+    const out = run(writeCopilotEvents(tempDir, sessionId, [model, compactionStart]), { stop_hook_active: true });
+    expect(out).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('treats a newer compaction_complete as "context was full", and does not block', () => {
+    const out = run(writeCopilotEvents(tempDir, sessionId, [
+      model, compactionStart, { type: 'session.compaction_complete', data: { success: true, preCompactionTokens: 170000, postCompactionTokens: 9000 } },
+    ]));
+    expect(out).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('does not block when the model limit is unknown', () => {
+    const out = run(writeCopilotEvents(tempDir, sessionId, [
+      { type: 'session.model_change', data: { newModel: 'some-future-model' } }, compactionStart,
+    ]));
+    expect(out).toEqual({ continue: true, suppressOutput: true });
+  });
+});
