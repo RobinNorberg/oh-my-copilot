@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [main, dev]
   workflow_dispatch:
+    inputs:
+      smoke_scenarios:
+        description: 'Opt-in tier 2 Copilot smoke scenarios, comma-separated (e.g. continuation,prompt-context,events: ~4 premium requests). Empty: none.'
+        required: false
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -455,6 +460,9 @@ jobs:
   # Headless smoke against the real Copilot CLI on Linux (docs/DEVELOPERS.md
   # "Tier 2 in CI"). Every run: tier 2 SDK static checks, zero model calls.
   # v* tags add the default scenarios (smoke, guardrail: ~2 premium requests).
+  # Opt-in scenarios (billed, never by default) come from the manual run's
+  # `smoke_scenarios` input, or on v* tags from the repository variable
+  # COPILOT_SMOKE_OPT_IN (same comma-separated list; a tag push takes no inputs).
   # Needs the COPILOT_GITHUB_TOKEN secret; without it (fork PRs, Dependabot,
   # secret not configured) the job passes with a skip notice. Tags skip the
   # build job, so the condition admits a skipped build on tags only. The
@@ -470,6 +478,7 @@ jobs:
       # loader runs the native @github/copilot-linux-x64 binary.
       SMOKE_CLI_DIST_TAG: latest
       SMOKE_SDK_RANGE: '^1.0.16'
+      SMOKE_OPT_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_scenarios || (github.event_name == 'push' && github.ref_type == 'tag' && vars.COPILOT_SMOKE_OPT_IN) || '' }}
     steps:
       - name: Check for the Copilot token
         id: gate
@@ -554,32 +563,82 @@ jobs:
           echo "omg smoke copilot --tier 2 exit $status"
           exit "$status"
 
+      - name: Tier 2 opt-in scenarios (smoke_scenarios input / COPILOT_SMOKE_OPT_IN on tags)
+        if: steps.gate.outputs.enabled == 'true' && env.SMOKE_OPT_IN != ''
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          OMC_LIVE_SMOKE: '2'
+        run: |
+          # The list reaches the shell only through env; names are lowercase words, commas and dashes.
+          if ! printf '%s' "$SMOKE_OPT_IN" | grep -Eq '^[a-z][a-z,-]*$'; then
+            echo "::error::smoke scenario list must match ^[a-z][a-z,-]*\$, got: $SMOKE_OPT_IN"
+            exit 1
+          fi
+          set +e
+          node bridge/cli.cjs smoke copilot --tier 2 --scenario "$SMOKE_OPT_IN" --keep-home --json > "$SMOKE_ROOT/reports/opt-in.json" 2> "$SMOKE_ROOT/reports/opt-in.stderr.txt"
+          status=$?
+          set -e
+          jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/opt-in.json" || cat "$SMOKE_ROOT/reports/opt-in.json"
+          jq -r '"cost: \(.cost.premiumRequests // "?") premium request(s), \(.cost.credits // "?") credit(s)"' "$SMOKE_ROOT/reports/opt-in.json" || true
+          echo "omg smoke copilot --tier 2 --scenario $SMOKE_OPT_IN exit $status"
+          exit "$status"
+
+      - name: Stage smoke artifacts
+        if: always() && steps.gate.outputs.enabled == 'true'
+        run: |
+          # Detached hook children (SessionEnd workers, cache-occupancy
+          # publishers) outlive the smoke and rewrite or delete files under the
+          # kept homes; zipping the live dir failed with ENOENT on
+          # .omg/cache-occupancy/<hash>.json (v5.12.2 tag run). Wait briefly for
+          # them, then snapshot the dir without the volatile caches. Only the
+          # snapshot is leak-scanned and uploaded.
+          SMOKE_ROOT="${SMOKE_ROOT:-$RUNNER_TEMP/copilot-smoke}"
+          STAGE="$RUNNER_TEMP/copilot-smoke-upload"
+          rm -rf "$STAGE"
+          [ -d "$SMOKE_ROOT" ] || exit 0
+          for _ in $(seq 1 15); do
+            pgrep -f "$GITHUB_WORKSPACE/(scripts|dist|bridge)/" > /dev/null || break
+            sleep 2
+          done
+          pgrep -af "$GITHUB_WORKSPACE/(scripts|dist|bridge)/" && echo "::notice::hook children still running after 30 s; snapshotting anyway" || true
+          mkdir -p "$STAGE"
+          set +e
+          rsync -a --exclude='cache-occupancy/' --exclude='*.lock' "$SMOKE_ROOT/" "$STAGE/"
+          status=$?
+          set -e
+          # 24 = some source files vanished during the copy (a late child): the snapshot is still usable.
+          if [ "$status" -ne 0 ] && [ "$status" -ne 24 ]; then
+            echo "::error::rsync of the smoke artifacts failed ($status)"
+            exit "$status"
+          fi
+          du -sh "$STAGE"
+
       - name: Check smoke artifacts for token leaks
         id: leak-check
         if: always() && steps.gate.outputs.enabled == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         run: |
-          # Fail closed and delete the dir: nothing token-shaped may be uploaded.
+          # Fail closed and delete the snapshot: nothing token-shaped may be uploaded.
           # No -I: binary files (session-store.db) are scanned too.
-          SMOKE_ROOT="${SMOKE_ROOT:-$RUNNER_TEMP/copilot-smoke}"
-          [ -d "$SMOKE_ROOT" ] || exit 0
+          STAGE="$RUNNER_TEMP/copilot-smoke-upload"
+          [ -d "$STAGE" ] || exit 0
           leaked=0
-          if grep -rlE 'gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' "$SMOKE_ROOT"; then leaked=1; fi
-          if printf '%s\n' "$COPILOT_GITHUB_TOKEN" | grep -rlF -f - "$SMOKE_ROOT"; then leaked=1; fi
+          if grep -rlE 'gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' "$STAGE"; then leaked=1; fi
+          if printf '%s\n' "$COPILOT_GITHUB_TOKEN" | grep -rlF -f - "$STAGE"; then leaked=1; fi
           if [ "$leaked" -ne 0 ]; then
-            rm -rf "$SMOKE_ROOT"
+            rm -rf "$STAGE"
             echo "::error::token-shaped string in the smoke artifacts (files above); artifacts deleted, not uploaded"
             exit 1
           fi
-          echo "no token-shaped strings under $SMOKE_ROOT"
+          echo "no token-shaped strings under $STAGE"
 
       - name: Upload smoke report and artifacts
         if: always() && steps.gate.outputs.enabled == 'true' && steps.leak-check.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: copilot-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/copilot-smoke/
+          path: ${{ runner.temp }}/copilot-smoke-upload/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14

@@ -895,6 +895,7 @@ omg smoke copilot --tier 2            # tier 2 default scenarios smoke,guardrail
 omg smoke copilot --tier 2 --scenario skill,delegate   # or --scenario all
 omg smoke copilot --tier 2 --scenario chain            # opt-in: a real two-link factory chain (~2 premium requests)
 omg smoke copilot --tier 2 --scenario filetools        # opt-in: pre/postToolUse hooks on the file tools (~1 premium request)
+omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt-in CLI scenarios (4 premium requests)
 ```
 
 - **Tier 0** checks: `plugin.manifest`, `plugin.hooks`, `copilot.binary`, `copilot.plugin_list`, `copilot.skill_list`, `copilot.agents`, `mcp.list_tools`. `mcp.list_tools` spawns `dist/mcp/standalone-server.js`, so run `npm run build` first.
@@ -910,6 +911,12 @@ omg smoke copilot --tier 2 --scenario filetools        # opt-in: pre/postToolUse
 | `delegate` | a hand-off to `oh-my-copilot:architect` | `scn.delegate.selected`, `scn.delegate.hooks`, `scn.delegate.completed` |
 | `filetools` (opt-in, never in `all`) | view and edit `filetools/notes.txt`, create `filetools/new/created.txt`; each directory holds a `README.md` with a fresh nonce | `scn.filetools.tools`, `scn.filetools.hooks`, `scn.filetools.pre`, `scn.filetools.post`, `scn.filetools.matcher`, `scn.filetools.payload`, `scn.filetools.injected`, `scn.filetools.injected_write` |
 | `chain` (opt-in, never in `all`) | two real `copilot -p` factory links: link 1 replies with one token, link 2 runs the project skill `/chain-ack` | `scn.chain.link1`, `scn.chain.spawned`, `scn.chain.inherited`, `scn.chain.closed`, `scn.chain.premium` |
+| `continuation` (opt-in CLI, 2 premium requests) | a stub Stop hook blocks the first stop once with a nonce reason | `scn.continuation.blocked`, `scn.continuation.reason_injected`, `scn.continuation.stop_hook_active`, `scn.continuation.echo` |
+| `prompt-context` (opt-in CLI, 1) | a stub UserPromptSubmit `additionalContext` nonce the model must echo | `scn.prompt-context.accepted`, `scn.prompt-context.reached_model` |
+| `events` (opt-in CLI, 1) | view a missing file, a shell call under default permissions, then `/compact` on the resumed session | `scn.events.post_tool_use_failure`, `scn.events.permission_request`, `scn.events.pre_compact` |
+| `ultragoal` (opt-in CLI, 2; pending lane g-cont) | ultragoal activated by our UserPromptSubmit group, past the confirmation TTL; tools must not be denied | `scn.ultragoal.seeded`, `scn.ultragoal.tools_allowed` |
+
+- **CLI scenarios.** `continuation`, `prompt-context`, `events` and `ultragoal` run headless `copilot` sessions with the plugin under test, not SDK sessions; see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios) for what each one sets up. A scenario in `PENDING_SCENARIOS` is written to behaviour another lane delivers: its failing checks start with a `[PENDING …]` note.
 
 - **`filetools` scenario.** The model gets no shell and may read and write only under the sandbox project. The session loads a second plugin next to ours, a probe whose `PreToolUse`, `PostToolUse`, `PostToolUse` with our `Read|Write|Edit|MultiEdit` matcher, `preToolUse` and `postToolUse` entries append their stdin payload to `<home>/filetools-probe.jsonl`. A record belongs to the tool call whose arguments equal its tool input, since neither payload carries the call id. `pre`, `post` and `matcher` fail when a completed file tool call has no record of that entry; `payload` checks that the Claude-format records name the tool `Read`, `Write` or `Edit` and carry its path (for `apply_patch`, the patch text's file lines). `injected` passes when the nonce from `filetools/README.md` is in a `postToolUse` `hook.end` output and in the result of a view call, which is the text the runtime sends the model; `injected_write` does the same for `filetools/new/README.md` and a write call (`create`, `edit` or `apply_patch`). A view of a README itself never counts. Whether the model echoed the nonce is reported, not required. The model picks its tools: `auto` has used `edit` and `create`, or one `apply_patch` for both files.
 - **`chain` scenario.** It does not use an SDK session. It seeds the sandbox with `omg factory init` plus a `success:*` route to stage `link-2`, pre-writes link 1's ledger, and spawns link 1 like a factory link (AFK profile, `--plugin-dir`, `OMC_CHAIN_LINK`). The chain then runs itself through the SessionEnd hook and worker, and stops at the stage-visit cap after link 2. The checks read the ledgers, decisions, stop marker, and both link sessions' `events.jsonl`: link 1 was resolved by `OMC_CHAIN_LINK`, link 2 was spawned and ended under its own inherited identity, the chain closed out (`loop-capped:link-2`, no open ledger), and both links together cost at most 2 premium requests. The links run on the CLI's default model without `--max-ai-credits`, because a factory link's argv carries no credit cap, so `--max-credits` does not bound them. `--timeout` applies to link 1 and again to the wait for link 2.
@@ -928,6 +935,18 @@ claude mcp add omg-dev -- node C:/Code/OMC/dist/mcp/standalone-server.js
 ```
 
 `OMC_DISABLE_TOOLS=smoke` hides `host_smoke`. See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the developer workflow.
+
+### `omg hooks doctor`
+
+Checks the Copilot hook wiring as Copilot CLI runs it: `node` on PATH, `copilot/hooks.json` in sync with `scripts/copilot/build-hooks.mjs` (read only), every hook script path present, a dry dispatch of each entry with a recorded Copilot payload (timing and stderr, which Copilot only writes to its debug log), and the installed Copilot CLI against the verified target 1.0.91.
+
+```bash
+omg hooks doctor                    # all checks; the hooks run in a throwaway project and home
+omg hooks doctor --event Stop       # dispatch one event
+omg hooks doctor --no-dispatch --json
+```
+
+Each check is `ok`, `WARN` (hook stderr, a run over 80% of its timeout, a CLI version other than the target) or `FAIL` (node missing, drift, a missing script, a non-zero exit, a timeout, non-JSON stdout). Exit `1` when a check failed. Details: [DEVELOPERS.md](./DEVELOPERS.md#copilot-hooks-per-event-dispatcher).
 
 ### MCP tools `copilot_run_*` (delegate a task to Copilot)
 
