@@ -15510,6 +15510,12 @@ function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
   return getWorktreeRoot() || resolveNonGitStateAnchor();
 }
+function withWorktreePathRenderScope(fn) {
+  return worktreePathRenderScope.run(
+    { gitTopLevelProbes: /* @__PURE__ */ new Map(), projectIdentifiers: /* @__PURE__ */ new Map(), omcRoots: /* @__PURE__ */ new Map() },
+    fn
+  );
+}
 function gitErrorStderr(error2) {
   if (!error2 || typeof error2 !== "object") {
     return "";
@@ -16089,6 +16095,17 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
+  let root = scope.omcRoots.get(key);
+  if (root === void 0) {
+    root = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root);
+  }
+  return root;
+}
+function computeOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
@@ -16403,7 +16420,8 @@ function resolveStateWorkingDirectory(workingDirectory) {
     return validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
   }
   if (!workingDirectory) return process.cwd();
-  validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  const strict = validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  if (probeGitTopLevel((0, import_path16.resolve)(workingDirectory)).status === "ok") return strict;
   const validated = validateWorkingDirectory(workingDirectory);
   return validated;
 }
@@ -16468,6 +16486,12 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
     const providedCommonDir = getGitCommonDir(providedRoot);
     if (trustedCommonDir && providedCommonDir && sameCanonicalPath(providedCommonDir, trustedCommonDir)) {
       return { status: "ok", root: providedRoot };
+    }
+    if (trustedProbe.status === "not_a_repository") {
+      const nestedRel = (0, import_path16.relative)(trustedRootReal, providedRootReal);
+      if (nestedRel !== "" && !nestedRel.startsWith("..") && !(0, import_path16.isAbsolute)(nestedRel)) {
+        return { status: "ok", root: providedRoot };
+      }
     }
     return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
   }
@@ -23106,6 +23130,10 @@ No active sessions for this mode.`);
       stateGetStatusTool,
       stateMigrateNonGitTool
     ];
+    for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+      const handler = tool.handler;
+      tool.handler = ((args) => withWorktreePathRenderScope(() => handler(args)));
+    }
   }
 });
 

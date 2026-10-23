@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { resolveShipConfig } from '../../ship/config.js';
-import { PHASES, readReleaseState, releaseStatePath, resumePoint, runRelease, } from '../engine.js';
+import { defaultReleaseExec, PHASES, readReleaseState, releaseStatePath, resumePoint, runRelease, } from '../engine.js';
 const V = '5.12.2';
 const HEAD = '1'.repeat(40);
 const BASE = '2'.repeat(40);
@@ -62,7 +62,10 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         const through = PHASES.indexOf(okThrough);
         if (through >= PHASES.indexOf('bump'))
             write('package.json', JSON.stringify({ name: 'oh-my-copilot', version: V }));
-        const facts = through >= PHASES.indexOf('commit') ? { headSha: HEAD } : {};
+        const facts = {
+            ...(through >= PHASES.indexOf('commit') ? { headSha: HEAD } : {}),
+            ...(through >= PHASES.indexOf('suite') ? { suiteSha: HEAD } : {}),
+        };
         mkdirSync(join(stateRoot, 'release'), { recursive: true });
         writeFileSync(releaseStatePath(stateRoot, V), JSON.stringify({ version: 1, release: V, createdAt: 'x', updatedAt: 'x', phases: okPhases(okThrough), reruns: {}, ...facts, ...extra }));
     }
@@ -191,7 +194,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(calls.some((c) => c.startsWith('git commit') || c.startsWith('git add'))).toBe(false);
         });
         it('refuses a resume on another branch or a HEAD that does not descend from the release commit, unless --from preflight', async () => {
-            seedState('commit', { branch: `release/v${V}` });
+            seedState('suite', { branch: `release/v${V}` });
             handlers.push((key) => (key === 'git rev-parse --abbrev-ref HEAD' ? ok('feat/other\n') : undefined));
             const onOther = await release({ to: 'pr' });
             expect(onOther.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
@@ -219,7 +222,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(`${OTHER}\n`) : undefined), landed);
             const result = await release({ from: 'promote', to: 'promote' });
             expect(result.phases[0]).toMatchObject({ id: 'promote', status: 'blocked' });
-            expect(result.phases[0].details).toContain('commit: HEAD 555555555555 is not the recorded release commit 111111111111; new local commits must go back through the gates (--from gates)');
+            expect(result.phases[0].details).toContain('commit: HEAD 555555555555 is not the recorded release commit 111111111111; new local commits must go back through the gates and the suite (--from gates)');
         });
         it('refuses to skip pr when the recorded dev merge does not contain the release commit', async () => {
             seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
@@ -347,14 +350,29 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(result.phases[0].details).toEqual(['dist/new.js']);
         });
     });
-    describe('gates', () => {
-        it('--suite full never reads a stale report left by an earlier run', async () => {
+    describe('suite', () => {
+        it('runs after the commit phase, never in gates', async () => {
             seedState('build');
+            const gates = await release({ to: 'gates', suite: 'full' });
+            expect(gates.ok).toBe(true);
+            expect(calls.some((c) => c.includes('vitest'))).toBe(false);
+            expect(PHASES.indexOf('suite')).toBe(PHASES.indexOf('commit') + 1);
+        });
+        it('--suite full never reads a stale report left by an earlier run', async () => {
+            seedState('commit');
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
             const report = join(stateRoot, 'release', `${V}-vitest.json`);
             mkdirSync(dirname(report), { recursive: true });
             writeFileSync(report, JSON.stringify({ testResults: [] }));
-            const result = await release({ to: 'gates', suite: 'full' });
+            const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
             expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/vitest wrote no JSON report/) });
+        });
+        it('a suite recorded for an earlier HEAD does not let pr be skipped', async () => {
+            seedState('suite', { suiteSha: OTHER });
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
+            const result = await release({ from: 'pr', to: 'pr' });
+            expect(result.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
+            expect(result.phases[0].details).toContain('suite: the suite did not run on the recorded release commit (--from suite)');
         });
     });
     describe('smoke', () => {
@@ -409,7 +427,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         let prHead;
         let checksJson;
         beforeEach(() => {
-            seedState('commit');
+            seedState('suite');
             prState = 'OPEN';
             prHead = HEAD;
             checksJson = checks('FAILURE');
@@ -446,7 +464,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(events.some((e) => e.phase === 'pr' && e.status === 'heartbeat')).toBe(true);
         });
         it('pushes again on a re-run while the PR is open, and blocks on a refused push without forcing', async () => {
-            seedState('commit', { devPr: 301 });
+            seedState('suite', { devPr: 301 });
             handlers.unshift((key) => (key === 'git push origin HEAD:refs/heads/release/v5.12.2' ? no('! [rejected] HEAD -> release/v5.12.2 (fetch first)') : undefined));
             const result = await release({ to: 'pr' });
             expect(calls).toContain('git push origin HEAD:refs/heads/release/v5.12.2');
@@ -500,14 +518,14 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
         });
         it('re-run after the owner merged picks the merge commit up without pushing again', async () => {
-            seedState('commit', { devPr: 301 });
+            seedState('suite', { devPr: 301 });
             prState = 'MERGED';
             const result = await release({ to: 'pr' });
             expect(result.ok).toBe(true);
             expect(calls.some((c) => c.startsWith('git push'))).toBe(false);
         });
         it('blocks on an already-merged release PR whose merge does not contain local HEAD, with a follow-up PR route', async () => {
-            seedState('commit', { devPr: 301 });
+            seedState('suite', { devPr: 301 });
             prState = 'MERGED';
             prHead = OTHER;
             handlers.unshift((key) => (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}` || key === `git merge-base --is-ancestor ${HEAD} refs/remotes/origin/dev` ? no('', 1) : undefined));
@@ -519,7 +537,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(readReleaseState(stateRoot, V).devMergeSha).toBeUndefined();
         });
         it('accepts the merged release PR once a follow-up PR into dev carried the missing commits: the dev tip is the dev merge', async () => {
-            seedState('commit', { devPr: 301 });
+            seedState('suite', { devPr: 301 });
             prState = 'MERGED';
             handlers.unshift((key) => {
                 if (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}`)
@@ -792,9 +810,20 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         });
         it('does not rerun a failed tag run whose version is already on npm, and points at Release Recovery', async () => {
             published = true;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined));
             const result = await release({ to: 'verify' });
             expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/oh-my-copilot@5\.12\.2 is already on npm: not rerun/) });
             expect(result.phases[0].details.join('\n')).toMatch(/Release Recovery workflow \(release\.yml/);
+            expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+        });
+        it('names the failed job and the published release instead of suggesting Release Recovery', async () => {
+            published = true;
+            const result = await release({ to: 'verify' });
+            expect(result.phases[0]).toMatchObject({
+                status: 'fail',
+                note: expect.stringMatching(/failed job\(s\) Create GitHub Release; oh-my-copilot@5\.12\.2 is on npm and GitHub Release v5\.12\.2 is published, so no Release Recovery/),
+            });
+            expect(result.phases[0].details.join('\n')).not.toMatch(/Release Recovery workflow/);
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
         });
         it('resumes --from verify off the release branch once the main merge is recorded, still checking the merges and the tag', async () => {
@@ -828,6 +857,25 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(readReleaseState(stateRoot, V).tagRunId).toBe(901);
             expect(calls.find((c) => c.startsWith('gh run list'))).toContain(`--commit ${MERGE}`);
         });
+    });
+});
+describe('defaultReleaseExec environment', () => {
+    it('does not give the suite runner the ship scrub (node keeps GIT_* variables and has no forced GIT_NO_REPLACE_OBJECTS)', () => {
+        const saved = { idx: process.env.GIT_INDEX_FILE, repl: process.env.GIT_NO_REPLACE_OBJECTS };
+        process.env.GIT_INDEX_FILE = 'kept-for-node';
+        delete process.env.GIT_NO_REPLACE_OBJECTS;
+        try {
+            const r = defaultReleaseExec(process.execPath, ['-p', 'JSON.stringify([process.env.GIT_INDEX_FILE, process.env.GIT_NO_REPLACE_OBJECTS ?? null])']);
+            expect(JSON.parse(r.stdout)).toEqual(['kept-for-node', null]);
+        }
+        finally {
+            if (saved.idx === undefined)
+                delete process.env.GIT_INDEX_FILE;
+            else
+                process.env.GIT_INDEX_FILE = saved.idx;
+            if (saved.repl !== undefined)
+                process.env.GIT_NO_REPLACE_OBJECTS = saved.repl;
+        }
     });
 });
 //# sourceMappingURL=engine.test.js.map

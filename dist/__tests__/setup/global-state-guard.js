@@ -1,0 +1,75 @@
+// Fails the run when a test wrote fixture session state into the checkout's own
+// .omg / .omc state. State and hook code resolve their root from process.cwd(), so a
+// test that does not isolate cwd (src/__tests__/helpers/isolated-cwd.ts) or set
+// OMC_STATE_DIR pollutes the real project: its fake sessions then show up in state_list_active
+// and slow every per-session scan. Real sessions have UUID ids and are ignored, so a live
+// session in the same checkout does not trip the guard.
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STATE_ROOTS = ['.omg', '.omc'];
+/** Session-id keyed entries under a state root, without UUID (real) sessions: name -> signature. */
+function fixtureSessions(root, name) {
+    const found = new Map();
+    const add = (label, path) => {
+        const signature = (function sign(p) {
+            let files = 0;
+            let newest = 0;
+            const stack = [p];
+            while (stack.length > 0) {
+                const current = stack.pop();
+                let stat;
+                try {
+                    stat = statSync(current);
+                }
+                catch {
+                    continue;
+                }
+                newest = Math.max(newest, stat.mtimeMs);
+                if (stat.isDirectory()) {
+                    for (const entry of readdirSync(current))
+                        stack.push(join(current, entry));
+                }
+                else {
+                    files++;
+                }
+            }
+            return `${files}:${newest}`;
+        })(path);
+        found.set(label, signature);
+    };
+    const scan = (dir, label, stem) => {
+        if (!existsSync(dir))
+            return;
+        for (const entry of readdirSync(dir)) {
+            const id = stem ? entry.replace(/\.json$/, '') : entry;
+            if (UUID.test(id))
+                continue;
+            add(`${label}/${entry}`, join(dir, entry));
+        }
+    };
+    scan(join(root, 'state', 'sessions'), `${name}/state/sessions`, false);
+    scan(join(root, 'sessions'), `${name}/sessions`, true);
+    scan(join(root, 'state', 'session-end-jobs'), `${name}/state/session-end-jobs`, true);
+    return found;
+}
+function snapshot(repo) {
+    const all = new Map();
+    for (const root of STATE_ROOTS) {
+        for (const [label, signature] of fixtureSessions(join(repo, root), root))
+            all.set(label, signature);
+    }
+    return all;
+}
+export default function setup() {
+    const repo = process.cwd();
+    const before = snapshot(repo);
+    return () => {
+        const leaked = [...snapshot(repo)].filter(([label, signature]) => before.get(label) !== signature).map(([label]) => label);
+        if (leaked.length > 0) {
+            throw new Error(`tests wrote fixture session state into the repository's own state dir (${leaked.length}):\n  ${leaked.join('\n  ')}\n` +
+                'Run the test from a temp repo (useIsolatedCwd in src/__tests__/helpers/isolated-cwd.ts) or point OMC_STATE_DIR at a temp dir.');
+        }
+    };
+}
+//# sourceMappingURL=global-state-guard.js.map

@@ -10,10 +10,13 @@
  *              npm version + every version stamp + prompt projections
  *   build      npm run build, git add -f dist bridge, orphan + untracked
  *              checks, import / --version / MCP start probes
- *   gates      tsc, projections, copilot generators, multi-repo path gate,
- *              optional vitest suite (targeted, or full against a baseline)
+ *   gates      tsc, projections, copilot generators, multi-repo path gate
  *   smoke      live Tier 2 smoke, only with --live-smoke
  *   commit     release commit, then the inventory regenerated LAST
+ *   suite      optional vitest suite (targeted, or full against a baseline),
+ *              run on the committed tree: some tests (npm pack, committed
+ *              docs/CLAUDE.md, inventory drift) read committed state and
+ *              always fail on the uncommitted release tree
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
@@ -36,7 +39,7 @@ import { loadBaseKnownFlaky, prRepoUrl } from '../ship/config.js';
 import { scrubShipEnv } from '../ship/exec.js';
 import { parseFailingTests, watchGates } from '../ship/gates.js';
 import { compareVersions, failingTitlesFromVitestJson, findDistOrphans, newFailures, parseBaselineTitles, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, tagTargetProblem, VERSION_STAMPS, } from './checks.js';
-export const PHASES = ['preflight', 'bump', 'build', 'gates', 'smoke', 'commit', 'pr', 'promote', 'tag', 'verify'];
+export const PHASES = ['preflight', 'bump', 'build', 'gates', 'smoke', 'commit', 'suite', 'pr', 'promote', 'tag', 'verify'];
 export function isPhaseId(value) {
     return PHASES.includes(value);
 }
@@ -49,10 +52,13 @@ export const defaultReleaseExec = (cmd, args, opts) => {
     if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
         return { status: 1, stdout: '', stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
     }
+    // Only the engine's own git / gh calls run under the ship scrub (GIT_NO_REPLACE_OBJECTS=1 and
+    // friends); node, npm and the vitest suite keep the caller's environment, as in CI.
+    const base = cmd === 'git' || cmd === 'gh' ? scrubShipEnv(process.env) : process.env;
     // One command string through the shell (the arguments were checked inert above).
     const result = spawnSync(shell ? ['npm', ...args].join(' ') : cmd, shell ? [] : args, {
         cwd: opts?.cwd,
-        env: { ...scrubShipEnv(process.env), ...opts?.env },
+        env: { ...base, ...opts?.env },
         encoding: 'utf8',
         windowsHide: true,
         maxBuffer: 512 * 1024 * 1024,
@@ -131,9 +137,6 @@ export function phasePlan(id, v, opts) {
                 'tsc --noEmit',
                 'generate-prompt-projections.mjs --verify; copilot build-hooks.mjs / build-agents.mjs --verify',
                 'node scripts/ci/check-multirepo-paths.mjs',
-                opts.suite === 'full'
-                    ? `vitest run --reporter=json; fail only on titles not in ${opts.baseline ?? '(no baseline: any failure fails)'}`
-                    : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag>' : 'suite: none (pass --suite targeted|full)',
             ];
         case 'smoke':
             return opts.liveSmoke
@@ -144,6 +147,12 @@ export function phasePlan(id, v, opts) {
                 `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
                 'node scripts/generate-inventory-graph.mjs --write; commit inventory/ if changed; --verify',
                 'git status --porcelain is empty',
+            ];
+        case 'suite':
+            return [
+                opts.suite === 'full'
+                    ? `vitest run --reporter=json (on the committed tree); fail only on titles not in ${opts.baseline ?? '(no baseline: any failure fails)'}`
+                    : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag> (on the committed tree)' : 'suite: none (pass --suite targeted|full)',
             ];
         case 'pr':
             return [
@@ -231,6 +240,7 @@ class Release {
                 case 'bump': return this.bump();
                 case 'build': return this.build();
                 case 'gates': return this.gates();
+                case 'suite': return this.suite();
                 case 'smoke': return this.smoke();
                 case 'commit': return this.commit();
                 case 'pr': return await this.pr();
@@ -362,7 +372,12 @@ class Release {
         this.script('scripts/copilot/build-hooks.mjs', '--verify');
         this.script('scripts/copilot/build-agents.mjs', '--verify');
         this.script('scripts/ci/check-multirepo-paths.mjs');
+        return { status: 'ok', note: 'gates green' };
+    }
+    /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
+    suite() {
         const suite = this.opts.suite ?? 'none';
+        this.save({ suiteSha: this.git('rev-parse', 'HEAD') });
         if (suite === 'targeted') {
             const tag = this.run('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']);
             if (tag.status !== 0)
@@ -370,9 +385,9 @@ class Release {
             const changed = this.git('diff', '--name-only', `${tag.stdout.trim()}...HEAD`, '--', 'src')
                 .split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && existsSync(join(this.deps.root, f)));
             if (changed.length === 0)
-                return { status: 'ok', note: `gates green; no src changes since ${tag.stdout.trim()} for the targeted suite` };
+                return { status: 'ok', note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
             this.script('node_modules/vitest/vitest.mjs', 'related', '--run', '--exclude', 'tests/perf/**', ...changed);
-            return { status: 'ok', note: `gates green; targeted suite over ${changed.length} changed src file(s)` };
+            return { status: 'ok', note: `targeted suite over ${changed.length} changed src file(s)` };
         }
         if (suite === 'full') {
             const out = join(this.deps.stateRoot, 'release', `${this.v}-vitest.json`);
@@ -388,9 +403,9 @@ class Release {
             const fresh = newFailures(failing, baseline);
             if (fresh.length > 0)
                 fail(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
-            return { status: 'ok', note: `gates green; full suite: ${failing.length} failing, all in the baseline` };
+            return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
         }
-        return { status: 'ok', note: 'gates green; no vitest suite (--suite none)' };
+        return { status: 'ok', note: 'no vitest suite (--suite none)' };
     }
     smoke() {
         if (!this.opts.liveSmoke) {
@@ -507,7 +522,12 @@ class Release {
                 if (released)
                     return null;
                 const head = this.git('rev-parse', 'HEAD');
-                return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates (--from gates)`;
+                return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates and the suite (--from gates)`;
+            }
+            case 'suite': {
+                if (released)
+                    return null;
+                return s.suiteSha && s.suiteSha === s.headSha ? null : `the suite did not run on the recorded release commit (--from suite)`;
             }
             case 'pr': {
                 if (s.devPr === undefined || !s.devMergeSha)
@@ -768,7 +788,7 @@ class Release {
         const warn = smoke === 'ok' ? '' : ` WARNING: the live Tier 2 smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}.`;
         const action = local.status === 0 ? 'Push the existing local' : 'Create and push';
         if (!this.opts.yes && !(await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`))) {
-            blocked(`${tag} not pushed (confirm, or pass --yes)`);
+            blocked(`${tag} not pushed: the confirmation was declined or there is no interactive terminal (pass --yes to confirm without a prompt)`);
         }
         if (local.status !== 0) {
             this.git('tag', '-a', tag, '-m', tag, sha);
@@ -802,6 +822,23 @@ class Release {
                 const details = () => failedJobs.flatMap((j) => [`failed job: ${j.name}`, ...this.failingTestsOfJob(String(j.databaseId)).map((t) => `  ${t}`)]);
                 // Rerunning a run that already published would republish over the version and fail (runbook: Release Recovery).
                 if (this.run('npm', ['view', `${this.pkgName}@${v}`, 'version']).stdout.trim() === v) {
+                    const names = failedJobs.map((j) => j.name).join(', ') || '(no job reported)';
+                    const rel = this.run('gh', ['release', 'view', tag, '--json', 'tagName,isDraft']);
+                    const published = rel.status === 0 && (() => {
+                        try {
+                            const r = JSON.parse(rel.stdout);
+                            return r.tagName === tag && !r.isDraft;
+                        }
+                        catch {
+                            return false;
+                        }
+                    })();
+                    if (published) {
+                        fail(`tag run ${run.databaseId} ${run.conclusion}: failed job(s) ${names}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
+                            `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
+                            ...details(),
+                        ]);
+                    }
                     fail(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
                         `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
                         `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,

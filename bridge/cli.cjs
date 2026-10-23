@@ -35965,7 +35965,7 @@ function withProjectIdentifierScope(fn) {
 }
 function withWorktreePathRenderScope(fn) {
   return worktreePathRenderScope.run(
-    { gitTopLevelProbes: /* @__PURE__ */ new Map(), projectIdentifiers: /* @__PURE__ */ new Map() },
+    { gitTopLevelProbes: /* @__PURE__ */ new Map(), projectIdentifiers: /* @__PURE__ */ new Map(), omcRoots: /* @__PURE__ */ new Map() },
     fn
   );
 }
@@ -36548,6 +36548,17 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
+  let root2 = scope.omcRoots.get(key);
+  if (root2 === void 0) {
+    root2 = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root2);
+  }
+  return root2;
+}
+function computeOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root3 = worktreeRoot || getGitTopLevel() || process.cwd();
@@ -36966,7 +36977,8 @@ function resolveStateWorkingDirectory(workingDirectory) {
     return validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
   }
   if (!workingDirectory) return process.cwd();
-  validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  const strict = validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  if (probeGitTopLevel((0, import_path22.resolve)(workingDirectory)).status === "ok") return strict;
   const validated = validateWorkingDirectory(workingDirectory);
   return validated;
 }
@@ -37031,6 +37043,12 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
     const providedCommonDir = getGitCommonDir(providedRoot);
     if (trustedCommonDir && providedCommonDir && sameCanonicalPath(providedCommonDir, trustedCommonDir)) {
       return { status: "ok", root: providedRoot };
+    }
+    if (trustedProbe.status === "not_a_repository") {
+      const nestedRel = (0, import_path22.relative)(trustedRootReal, providedRootReal);
+      if (nestedRel !== "" && !nestedRel.startsWith("..") && !(0, import_path22.isAbsolute)(nestedRel)) {
+        return { status: "ok", root: providedRoot };
+      }
     }
     return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
   }
@@ -50202,6 +50220,10 @@ No active sessions for this mode.`);
       stateGetStatusTool,
       stateMigrateNonGitTool
     ];
+    for (const tool2 of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+      const handler = tool2.handler;
+      tool2.handler = ((args) => withWorktreePathRenderScope(() => handler(args)));
+    }
   }
 });
 
@@ -143532,7 +143554,7 @@ var import_url23 = require("url");
 init_atomic_write();
 init_config4();
 init_exec();
-var PHASES2 = ["preflight", "bump", "build", "gates", "smoke", "commit", "pr", "promote", "tag", "verify"];
+var PHASES2 = ["preflight", "bump", "build", "gates", "smoke", "commit", "suite", "pr", "promote", "tag", "verify"];
 function isPhaseId(value) {
   return PHASES2.includes(value);
 }
@@ -143543,9 +143565,10 @@ var defaultReleaseExec = (cmd, args, opts) => {
   if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
     return { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
   }
+  const base = cmd === "git" || cmd === "gh" ? scrubShipEnv(process.env) : process.env;
   const result = (0, import_child_process54.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
     cwd: opts?.cwd,
-    env: { ...scrubShipEnv(process.env), ...opts?.env },
+    env: { ...base, ...opts?.env },
     encoding: "utf8",
     windowsHide: true,
     maxBuffer: 512 * 1024 * 1024,
@@ -143618,8 +143641,7 @@ function phasePlan(id, v, opts) {
       return [
         "tsc --noEmit",
         "generate-prompt-projections.mjs --verify; copilot build-hooks.mjs / build-agents.mjs --verify",
-        "node scripts/ci/check-multirepo-paths.mjs",
-        opts.suite === "full" ? `vitest run --reporter=json; fail only on titles not in ${opts.baseline ?? "(no baseline: any failure fails)"}` : opts.suite === "targeted" ? "vitest related --run <src files changed since the last v* tag>" : "suite: none (pass --suite targeted|full)"
+        "node scripts/ci/check-multirepo-paths.mjs"
       ];
     case "smoke":
       return opts.liveSmoke ? ["OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (about 2 premium requests); every check must pass"] : ["SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; about 2 premium requests)"];
@@ -143628,6 +143650,10 @@ function phasePlan(id, v, opts) {
         `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
         "node scripts/generate-inventory-graph.mjs --write; commit inventory/ if changed; --verify",
         "git status --porcelain is empty"
+      ];
+    case "suite":
+      return [
+        opts.suite === "full" ? `vitest run --reporter=json (on the committed tree); fail only on titles not in ${opts.baseline ?? "(no baseline: any failure fails)"}` : opts.suite === "targeted" ? "vitest related --run <src files changed since the last v* tag> (on the committed tree)" : "suite: none (pass --suite targeted|full)"
       ];
     case "pr":
       return [
@@ -143716,6 +143742,8 @@ ${r.stderr}`));
           return this.build();
         case "gates":
           return this.gates();
+        case "suite":
+          return this.suite();
         case "smoke":
           return this.smoke();
         case "commit":
@@ -143820,14 +143848,19 @@ ${r.stderr}`));
     this.script("scripts/copilot/build-hooks.mjs", "--verify");
     this.script("scripts/copilot/build-agents.mjs", "--verify");
     this.script("scripts/ci/check-multirepo-paths.mjs");
+    return { status: "ok", note: "gates green" };
+  }
+  /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
+  suite() {
     const suite = this.opts.suite ?? "none";
+    this.save({ suiteSha: this.git("rev-parse", "HEAD") });
     if (suite === "targeted") {
       const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
       if (tag.status !== 0) fail6("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
       const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs156.existsSync)((0, import_path187.join)(this.deps.root, f)));
-      if (changed.length === 0) return { status: "ok", note: `gates green; no src changes since ${tag.stdout.trim()} for the targeted suite` };
+      if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       this.script("node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed);
-      return { status: "ok", note: `gates green; targeted suite over ${changed.length} changed src file(s)` };
+      return { status: "ok", note: `targeted suite over ${changed.length} changed src file(s)` };
     }
     if (suite === "full") {
       const out = (0, import_path187.join)(this.deps.stateRoot, "release", `${this.v}-vitest.json`);
@@ -143840,9 +143873,9 @@ ${r.stderr}`));
       const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs156.readFileSync)(this.opts.baseline, "utf8")) : [];
       const fresh = newFailures(failing, baseline);
       if (fresh.length > 0) fail6(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
-      return { status: "ok", note: `gates green; full suite: ${failing.length} failing, all in the baseline` };
+      return { status: "ok", note: `full suite: ${failing.length} failing, all in the baseline` };
     }
-    return { status: "ok", note: "gates green; no vitest suite (--suite none)" };
+    return { status: "ok", note: "no vitest suite (--suite none)" };
   }
   smoke() {
     if (!this.opts.liveSmoke) {
@@ -143944,7 +143977,11 @@ ${r.stderr}`));
         if (!s.headSha || !FULL_SHA3.test(s.headSha)) return "no release commit recorded (--from commit)";
         if (released) return null;
         const head = this.git("rev-parse", "HEAD");
-        return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates (--from gates)`;
+        return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates and the suite (--from gates)`;
+      }
+      case "suite": {
+        if (released) return null;
+        return s.suiteSha && s.suiteSha === s.headSha ? null : `the suite did not run on the recorded release commit (--from suite)`;
       }
       case "pr": {
         if (s.devPr === void 0 || !s.devMergeSha) return "no merged release PR into dev recorded (--from pr)";
@@ -144165,7 +144202,7 @@ ${r.stderr}`));
     const warn = smoke === "ok" ? "" : ` WARNING: the live Tier 2 smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}.`;
     const action = local.status === 0 ? "Push the existing local" : "Create and push";
     if (!this.opts.yes && !await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`)) {
-      blocked(`${tag} not pushed (confirm, or pass --yes)`);
+      blocked(`${tag} not pushed: the confirmation was declined or there is no interactive terminal (pass --yes to confirm without a prompt)`);
     }
     if (local.status !== 0) {
       this.git("tag", "-a", tag, "-m", tag, sha);
@@ -144193,6 +144230,22 @@ ${r.stderr}`));
         const failedJobs = jobs2.filter((j) => j.conclusion && !["success", "skipped"].includes(j.conclusion));
         const details = () => failedJobs.flatMap((j) => [`failed job: ${j.name}`, ...this.failingTestsOfJob(String(j.databaseId)).map((t) => `  ${t}`)]);
         if (this.run("npm", ["view", `${this.pkgName}@${v}`, "version"]).stdout.trim() === v) {
+          const names = failedJobs.map((j) => j.name).join(", ") || "(no job reported)";
+          const rel2 = this.run("gh", ["release", "view", tag, "--json", "tagName,isDraft"]);
+          const published = rel2.status === 0 && (() => {
+            try {
+              const r = JSON.parse(rel2.stdout);
+              return r.tagName === tag && !r.isDraft;
+            } catch {
+              return false;
+            }
+          })();
+          if (published) {
+            fail6(`tag run ${run.databaseId} ${run.conclusion}: failed job(s) ${names}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
+              `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
+              ...details()
+            ]);
+          }
           fail6(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
             `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
@@ -144320,7 +144373,10 @@ function phaseOption(raw, flag) {
   return raw;
 }
 async function ttyConfirm(question) {
-  if (!process.stdin.isTTY) return false;
+  if (!process.stdin.isTTY) {
+    console.error("No interactive terminal to confirm on; pass --yes to confirm the tag without a prompt.");
+    return false;
+  }
   const rl = (0, import_promises35.createInterface)({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
@@ -144342,7 +144398,7 @@ function printResult(result) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, smoke, commit, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "gates vitest suite: none, targeted (related to src changed since the last tag) or full", "none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, smoke, commit, suite, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full", "none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
     const json = Boolean(o.json);
     try {
       let version3;

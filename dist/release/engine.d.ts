@@ -10,10 +10,13 @@
  *              npm version + every version stamp + prompt projections
  *   build      npm run build, git add -f dist bridge, orphan + untracked
  *              checks, import / --version / MCP start probes
- *   gates      tsc, projections, copilot generators, multi-repo path gate,
- *              optional vitest suite (targeted, or full against a baseline)
+ *   gates      tsc, projections, copilot generators, multi-repo path gate
  *   smoke      live Tier 2 smoke, only with --live-smoke
  *   commit     release commit, then the inventory regenerated LAST
+ *   suite      optional vitest suite (targeted, or full against a baseline),
+ *              run on the committed tree: some tests (npm pack, committed
+ *              docs/CLAUDE.md, inventory drift) read committed state and
+ *              always fail on the uncommitted release tree
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
@@ -30,7 +33,7 @@
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
 import type { ReleaseProgressInput } from './progress.js';
-export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "smoke", "commit", "pr", "promote", "tag", "verify"];
+export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "smoke", "commit", "suite", "pr", "promote", "tag", "verify"];
 export type PhaseId = (typeof PHASES)[number];
 export declare function isPhaseId(value: string): value is PhaseId;
 export type PhaseStatus = 'ok' | 'skipped' | 'fail' | 'blocked';
@@ -52,6 +55,8 @@ export interface ReleaseState {
     branch?: string;
     /** HEAD after the commit phase; a resume needs HEAD to descend from it. */
     headSha?: string;
+    /** HEAD the suite phase ran on; a suite recorded for another HEAD does not hold. */
+    suiteSha?: string;
     devPr?: number;
     devMergeSha?: string;
     mainPr?: number;
