@@ -5,6 +5,7 @@ import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEnd
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
+import { isCopilotSessionEndJob, isCopilotSessionLive } from './copilot-liveness.js';
 const WORKER_ARG = '--omc-session-end-worker';
 const MAX_WORKER_MS = 10_000;
 /** Copilot permission switches excluded from the COPILOT_* passthrough (mirrors action-runner.ts). */
@@ -144,7 +145,18 @@ function reschedulePendingWorker(payload, job) {
             : 250;
     setTimeout(() => { void processSessionEndWorker(payload); }, delay);
 }
-export async function processSessionEndWorker(payload) {
+/** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
+const COPILOT_LIVE_RECHECK_MS = 5_000;
+const COPILOT_LIVE_MAX_RECHECKS = 6;
+export async function processSessionEndWorker(payload, liveRechecks = 0) {
+    // Copilot fires SessionEnd after every turn; run nothing while the session goes on.
+    const pending = readSessionEndJob(payload.directory, payload.sessionId);
+    if (pending && pending.phase !== 'complete' && isCopilotSessionEndJob(pending) && isCopilotSessionLive(payload.sessionId)) {
+        if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
+            setTimeout(() => { void processSessionEndWorker(payload, liveRechecks + 1); }, COPILOT_LIVE_RECHECK_MS);
+        }
+        return;
+    }
     const deadlineAt = Date.now() + MAX_WORKER_MS;
     const nonce = randomUUID();
     const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 2_500));
