@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { buildWorkerStartCommand } from '../tmux-session.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 import { getProcessStartIdentity, isProcessAlive, isProcessIdentityLive } from '../../platform/process-utils.js';
 import {
   awaitWorkerLaunchAcknowledgement,
@@ -394,7 +395,7 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
     }
   });
 
-  it('accepts the materialized descriptor and consumes it exactly once', async () => {
+  it.skipIf(posixOnly('simulated linux transport hits the NTFS private-file mode check'))('accepts the materialized descriptor and consumes it exactly once', async () => {
     originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
     const attempt = await makeAttempt();
@@ -435,7 +436,7 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
     await expect(runWorkerLaunchFromEnvironment()).rejects.toThrow('worker_launch_descriptor_required');
   });
 
-  it('delivers a bounded command for a provider environment with a large value', async () => {
+  it.skipIf(posixOnly('simulated linux transport hits the NTFS private-file mode check'))('delivers a bounded command for a provider environment with a large value', async () => {
     originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
     vi.stubEnv('SHELL', '/bin/bash');

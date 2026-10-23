@@ -24,7 +24,7 @@ describe('autoresearch intake draft artifacts', () => {
                 keepPolicy: 'score_improvement',
                 seedInputs: { topic: 'Improve onboarding for first-time contributors' },
             });
-            expect(artifact.path).toMatch(/\.omg\/specs\/deep-interview-autoresearch-improve-onboarding-for-first-time-contributors\.md$/);
+            expect(artifact.path).toMatch(/\.omg[\\/]specs[\\/]deep-interview-autoresearch-improve-onboarding-for-first-time-contributors\.md$/);
             expect(artifact.launchReady).toBe(false);
             expect(artifact.content).toMatch(/## Mission Draft/);
             expect(artifact.content).toMatch(/## Evaluator Draft/);
@@ -54,9 +54,9 @@ describe('autoresearch intake draft artifacts', () => {
                 seedInputs: { topic: 'Measure onboarding friction' },
             });
             expect(artifacts.draftArtifactPath).toMatch(/deep-interview-autoresearch-onboarding-friction\.md$/);
-            expect(artifacts.missionArtifactPath).toMatch(/autoresearch-onboarding-friction\/mission\.md$/);
-            expect(artifacts.sandboxArtifactPath).toMatch(/autoresearch-onboarding-friction\/sandbox\.md$/);
-            expect(artifacts.resultPath).toMatch(/autoresearch-onboarding-friction\/result\.json$/);
+            expect(artifacts.missionArtifactPath).toMatch(/autoresearch-onboarding-friction[\\/]mission\.md$/);
+            expect(artifacts.sandboxArtifactPath).toMatch(/autoresearch-onboarding-friction[\\/]sandbox\.md$/);
+            expect(artifacts.resultPath).toMatch(/autoresearch-onboarding-friction[\\/]result\.json$/);
             const resultJson = JSON.parse(await readFile(artifacts.resultPath, 'utf-8'));
             const missionContent = await readFile(artifacts.missionArtifactPath, 'utf-8');
             const sandboxContent = await readFile(artifacts.sandboxArtifactPath, 'utf-8');

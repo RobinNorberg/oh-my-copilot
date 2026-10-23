@@ -15,6 +15,7 @@ import {
   withTeamInstanceLifecycleLock,
 } from '../../team/team-instance.js';
 import type { TeamConfig, TmuxServerIdentity } from '../../team/types.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
 const tmuxMocks = vi.hoisted(() => ({
   killWorkerPanes: vi.fn(async () => undefined),
@@ -753,7 +754,9 @@ describe('team-server artifact convergence + scoped cleanup', () => {
     });
     let competingEntered = false;
     let competing: Promise<void> | undefined;
-    const sendObserved = await boundedSignal(sendGate, 2_000);
+    // The send follows a 500ms poll plus pane, authority and lifecycle-lock
+    // reads; under full-suite load on Windows that path alone can exceed 2s.
+    const sendObserved = await boundedSignal(sendGate, scaleTiming(2_000));
     let competingWasBlocked = false;
     let competingSetupError: unknown;
     try {

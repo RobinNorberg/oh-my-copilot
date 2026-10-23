@@ -1,0 +1,138 @@
+/**
+ * `omg release <version>`: the maintainer-only release pipeline as ordered,
+ * resumable phases (src/release/engine.ts). `--dry-run` prints the plan and
+ * runs nothing; without `--from` a run resumes at the first phase not yet ok.
+ *
+ * Exit codes: 0 ok, 1 a phase failed or is blocked, 2 usage error.
+ */
+
+import { Command } from 'commander';
+import chalk from 'chalk';
+import { createInterface } from 'readline/promises';
+import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { parseReleaseVersion } from '../../release/checks.js';
+import {
+  defaultReleaseExec,
+  isPhaseId,
+  PHASES,
+  runRelease,
+  type PhaseId,
+  type ReleaseDeps,
+  type ReleaseExec,
+  type ReleaseResult,
+} from '../../release/engine.js';
+import { emitReleaseProgress } from '../../release/progress.js';
+
+class UsageError extends Error {}
+
+function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined {
+  if (raw === undefined) return undefined;
+  if (!isPhaseId(raw)) throw new UsageError(`${flag} must be one of ${PHASES.join(', ')}, got ${JSON.stringify(raw)}`);
+  return raw;
+}
+
+async function ttyConfirm(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+  } finally {
+    rl.close();
+  }
+}
+
+function printResult(result: ReleaseResult): void {
+  if (result.dryRun) {
+    console.log(chalk.bold(`omg release ${result.version} --dry-run: plan only, nothing runs (state ${result.statePath})`));
+    for (const p of result.phases) {
+      console.log(`${chalk.cyan(String(PHASES.indexOf(p.id) + 1).padStart(2))} ${chalk.bold(p.id)}`);
+      for (const s of p.steps ?? []) console.log(`     - ${s}`);
+    }
+    return;
+  }
+  const color = result.ok ? chalk.green : chalk.red;
+  console.log(color(`release ${result.version}: ${result.ok ? 'ok' : 'stopped'} (state ${result.statePath})`));
+}
+
+export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
+  exec?: ReleaseExec;
+}
+
+export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
+  const cmd = new Command('release');
+  cmd
+    .description('Maintainer-only release: preflight, bump, build, gates, smoke, commit, PR to dev, promote to main, tag, verify (resumable)')
+    .argument('<version>', 'Release version X.Y.Z')
+    .option('--from <phase>', `Start at this phase (${PHASES.join(', ')}); default: the first phase not yet ok`)
+    .option('--to <phase>', 'Stop after this phase')
+    .option('--dry-run', 'Print the plan for the selected phases without running anything')
+    .option('--json', 'JSON output')
+    .option('--yes', 'Create and push the tag without the interactive confirmation')
+    .option('--suite <suite>', 'gates vitest suite: none, targeted (related to src changed since the last tag) or full', 'none')
+    .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
+    .option('--live-smoke', 'Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise')
+    .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
+    .option('--timeout <minutes>', 'Minutes the pr / promote / verify phases wait on CI per run', '60')
+    .action(async (versionRaw: string, o: {
+      from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite: string; baseline?: string;
+      liveSmoke?: boolean; fixOrphans?: boolean; timeout: string;
+    }) => {
+      const json = Boolean(o.json);
+      try {
+        let version: string;
+        try {
+          version = parseReleaseVersion(versionRaw);
+        } catch (error) {
+          throw new UsageError((error as Error).message);
+        }
+        if (!['none', 'targeted', 'full'].includes(o.suite)) throw new UsageError(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
+        if (o.baseline && o.suite !== 'full') throw new UsageError('--baseline needs --suite full');
+        const timeoutMinutes = Number(o.timeout);
+        if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) throw new UsageError('--timeout must be a positive number of minutes');
+        const from = phaseOption(o.from, '--from');
+        const to = phaseOption(o.to, '--to');
+        if (from && to && PHASES.indexOf(from) > PHASES.indexOf(to)) throw new UsageError(`--from ${from} comes after --to ${to}`);
+        const exec = overrides.exec ?? defaultReleaseExec;
+        const root = overrides.root ?? (() => {
+          const r = exec('git', ['rev-parse', '--show-toplevel']);
+          if (r.status !== 0) throw new UsageError('omg release must run inside a git repository');
+          return r.stdout.trim();
+        })();
+        const stateRoot = overrides.stateRoot ?? getOmcRoot(root);
+        const deps: ReleaseDeps = {
+          exec,
+          root,
+          stateRoot,
+          node: overrides.node ?? process.execPath,
+          loadShipConfig: overrides.loadShipConfig ?? ((ctx) => loadTrustedShipConfig({ ...ctx, ...userConfigLayers() })),
+          progress: overrides.progress ?? ((event) => { emitReleaseProgress({ agent: 'release', ...event }, stateRoot); }),
+          log: overrides.log ?? ((line) => { if (!json) console.error(line); }),
+          confirm: overrides.confirm ?? ttyConfirm,
+          sleep: overrides.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+          now: overrides.now ?? (() => Date.now()),
+        };
+        const result = await runRelease(deps, {
+          version,
+          from,
+          to,
+          dryRun: o.dryRun,
+          yes: o.yes,
+          suite: o.suite as 'none' | 'targeted' | 'full',
+          baseline: o.baseline,
+          liveSmoke: o.liveSmoke,
+          fixOrphans: o.fixOrphans,
+          timeoutMinutes,
+        });
+        if (json) console.log(JSON.stringify(result, null, 2));
+        else printResult(result);
+        process.exitCode = result.ok ? 0 : 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+        else console.error(chalk.red(`Error: ${message}`));
+        process.exitCode = error instanceof UsageError ? 2 : 1;
+      }
+    });
+  return cmd;
+}

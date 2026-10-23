@@ -265,6 +265,12 @@ import {
   strictIdentityUnavailableError,
   TeamSessionCreationError,
 } from '../tmux-session.js';
+import { __setPsmuxDetectionForTests } from '../psmux-adapter.js';
+
+// The fixtures model stock tmux/cmux. A win32 host with psmux installed would
+// otherwise route every creation through the psmux namespace path.
+beforeEach(() => __setPsmuxDetectionForTests(false));
+afterEach(() => __setPsmuxDetectionForTests(undefined));
 
 function destructiveProviderCalls(): string[][] {
   return mockedCalls.execFileArgs.filter((args) =>

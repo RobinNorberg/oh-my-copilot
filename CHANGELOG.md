@@ -2,6 +2,58 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.12.2
+
+## [5.12.2] - 2026-10-23
+
+Fork **v5.12.2** (from v5.12.1) is a patch release. It hardens native
+Windows provider launch, fixes several cross-platform races, and brings the
+Windows test suite to a clean run. It also adds `omg release` and
+`omg progress` for maintainers.
+
+### Security
+
+- **Windows: hardened native .cmd/.bat provider launch (argument quoting and
+  supervisor launch path); upgrading is recommended for Windows users with
+  npm-installed providers** (#274).
+
+### Added
+
+- **`omg release <X.Y.Z>`** (#258): the maintainer release as ten resumable,
+  gated phases (preflight, bump, build, gates, smoke, commit, pr, promote,
+  tag, verify), with state in `.omg/release/<X.Y.Z>.json`.
+- **`omg progress emit|watch|status`** (#255): append-only agent progress
+  events, with stall detection for the lead.
+- **`omg smoke copilot --tier 2 --scenario filetools`** (#259): an opt-in
+  live check that PreToolUse/PostToolUse hooks fire on Copilot's file tools
+  and that directory-context injection reaches the model.
+
+### Fixed
+
+- **Races (#268-#276).** SessionEnd lease renewal, job updates and release
+  re-read the manifest under the lock, so revision drift from action children
+  no longer reads as a lost lease; a worker releasing a still-reserved action
+  undoes its claim, so the job can complete. A state-lock `SQLITE_BUSY` during
+  open is retried instead of falling back to an unlocked read (concurrent
+  duplicate Stop). The Windows supervisor's stdin EPIPE in the worker launch
+  bootstrap is handled (#270). `getProjectIdentifier` caches its git probes
+  per process, validated by git metadata and environment signatures (#268).
+- **Injectors and `apply_patch`** (#259): the rules and directory-context
+  injectors read the file paths from `apply_patch` patch text, so they inject
+  for GPT-family models too.
+- **Windows product fixes:** atomic writes and team `writeAtomic` retry
+  EPERM/EACCES/EBUSY renames, and atomic-write rollback no longer fails
+  silently; `omg ask claude` passes the prompt over stdin; autoresearch
+  tolerates `core.autocrlf`; worktree-root and plugin-cache path handling,
+  graph runtime gates, the python REPL fallback and LSP devcontainer URIs.
+
+### Tests
+
+- **Windows test suite.** The Windows vitest baseline (810 failures in 146
+  files) is worked down to zero across lanes #256-#276: shared platform helpers
+  (`src/__tests__/helpers/platform.ts`, `scaleTiming`), POSIX-only gates,
+  load-tolerant timing, and root-cause fixes for four full-suite flakes.
+
 # oh-my-copilot v5.12.1
 
 ## [5.12.1] - 2026-10-21

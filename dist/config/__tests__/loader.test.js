@@ -341,6 +341,8 @@ describe("plan output configuration", () => {
             });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -381,6 +383,8 @@ describe("company context configuration", () => {
             });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -432,6 +436,8 @@ describe("team.roleRouting (Option E)", () => {
             });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -454,6 +460,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(config.team?.roleRouting?.executor).toEqual({ provider: "cursor" });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -496,6 +504,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(config.team?.roleRouting?.critic).toEqual({ provider: "cursor" });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -515,6 +525,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(config.team?.roleRouting?.critic?.provider).toBe("codex");
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -542,6 +554,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.critic\.provider/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -559,6 +573,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/orchestrator: key "provider" is not allowed/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -574,6 +590,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.agent/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -595,6 +613,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(r["reviewer"]).toEqual({ provider: "codex" });
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -610,6 +630,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.ops\.defaultAgentType/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -625,6 +647,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/unknown role "totally-fake-role"/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -649,6 +673,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(config.team?.roleRouting?.critic?.reasoningEffort).toBe("max");
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -668,6 +694,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.reasoningEffort.*invalid.*ultra/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -687,6 +715,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.reasoningEffort.*invalid/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -706,6 +736,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.reasoningEffort.*ultra/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -725,6 +757,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/reasoningEffort.*not supported for this provider/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -744,6 +778,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.reasoningEffort.*string/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -763,6 +799,8 @@ describe("team.roleRouting (Option E)", () => {
             expect(() => loadConfig()).toThrow(/orchestrator: key "reasoningEffort" is not allowed/);
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -808,6 +846,8 @@ describe("delegation routing deprecation warnings", () => {
             expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("delegationRouting to Codex/Gemini is deprecated"));
         }
         finally {
+            // Restore cwd before rmSync: Windows cannot delete the process cwd.
+            process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
@@ -854,6 +894,7 @@ describe("loadConfig() — autopilot team worker config", () => {
 describe("loadConfig() — autopilot.workflows", () => {
     const originalCwd = process.cwd();
     const originalConfigHome = process.env.XDG_CONFIG_HOME;
+    const originalAppData = process.env.APPDATA;
     let tempDir;
     let configHome;
     const writeProjectConfig = (content) => {
@@ -869,6 +910,8 @@ describe("loadConfig() — autopilot.workflows", () => {
         tempDir = mkdtempSync(join(tmpdir(), "omc-workflow-config-"));
         configHome = join(tempDir, "config");
         process.env.XDG_CONFIG_HOME = configHome;
+        // getConfigDir() reads APPDATA instead of XDG_CONFIG_HOME on win32.
+        process.env.APPDATA = configHome;
         process.chdir(tempDir);
     });
     afterEach(() => {
@@ -877,6 +920,10 @@ describe("loadConfig() — autopilot.workflows", () => {
             delete process.env.XDG_CONFIG_HOME;
         else
             process.env.XDG_CONFIG_HOME = originalConfigHome;
+        if (originalAppData === undefined)
+            delete process.env.APPDATA;
+        else
+            process.env.APPDATA = originalAppData;
         rmSync(tempDir, { recursive: true, force: true });
     });
     it.each([

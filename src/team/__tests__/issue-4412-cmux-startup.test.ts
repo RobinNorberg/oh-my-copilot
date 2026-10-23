@@ -10,6 +10,7 @@ import {
   splitTeamWorkerPaneWithEvidence,
 } from '../tmux-session.js';
 import { getWorkerEnv } from '../model-contract.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 const FAKE_CMUX_SOURCE = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -106,7 +107,9 @@ afterEach(async () => {
   fixtureRoot = '';
 });
 
-describe('issue #4412: cmux startup compatibility', () => {
+// cmux is a macOS terminal, and the fake CLI is an extensionless shebang script
+// that execFile cannot start on win32.
+describe.skipIf(posixOnly('cmux does not exist on win32'))('issue #4412: cmux startup compatibility', () => {
   it.each([
     ['dedicated-command support', 'old'],
     ['surface-option support', 'new'],

@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { delimiter, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { IS_WIN } from './helpers/platform.js';
 // @ts-expect-error -- plain .mjs helper without type declarations
 import { normalizeHookCommand, UNIX_HOOK_PREFIX, WINDOWS_HOOK_PREFIX } from '../../scripts/lib/hook-command-normalizer.mjs';
 
@@ -90,9 +91,16 @@ describe('plugin-setup.mjs dependency installation', () => {
     cpSync(join(PACKAGE_ROOT, 'scripts', 'find-node.sh'), join(packageRoot, 'scripts', 'find-node.sh'));
     cpSync(join(PACKAGE_ROOT, 'hooks', 'hooks.json'), join(packageRoot, 'hooks', 'hooks.json'));
     cpSync(join(PACKAGE_ROOT, 'package.json'), join(packageRoot, 'package.json'));
-    const fakeNpm = join(fakeBin, 'npm');
-    writeFileSync(fakeNpm, '#!/bin/sh\necho simulated rebuild failure >&2\nexit 17\n');
-    chmodSync(fakeNpm, 0o755);
+    // execSync runs npm through cmd.exe on win32, which resolves npm.cmd.
+    if (IS_WIN) {
+      writeFileSync(join(fakeBin, 'npm.cmd'), '@echo simulated rebuild failure 1>&2\r\n@exit /b 17\r\n');
+    } else {
+      const fakeNpm = join(fakeBin, 'npm');
+      writeFileSync(fakeNpm, '#!/bin/sh\necho simulated rebuild failure >&2\nexit 17\n');
+      chmodSync(fakeNpm, 0o755);
+    }
+    // Windows spells the variable Path; overriding a second casing would duplicate it.
+    const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
 
     try {
       const output = execFileSync(process.execPath, [join(packageRoot, 'scripts', 'plugin-setup.mjs')], {
@@ -102,7 +110,7 @@ describe('plugin-setup.mjs dependency installation', () => {
           ...process.env,
           COPILOT_HOME: configDir,
           HOME: fakeHome,
-          PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+          [pathKey]: `${fakeBin}${delimiter}${process.env[pathKey] ?? ''}`,
         },
       });
 

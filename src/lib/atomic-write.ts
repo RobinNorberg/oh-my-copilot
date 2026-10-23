@@ -217,7 +217,11 @@ function descriptorIdentity(fd: number, operations?: AtomicWriteOperations): Fil
   }
 }
 
-/** Restore the prior target without exposing a partially written generation. */
+/**
+ * Restore the prior target without exposing a partially written generation.
+ * On win32 callers close the published descriptor first: it refuses to rename
+ * over a file that is still open (EPERM). POSIX keeps it open until cleanup.
+ */
 function rollbackPriorTarget(
   filePath: string,
   backupPath: string | null,
@@ -239,8 +243,14 @@ function rollbackPriorTarget(
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
-    // The caller still fails closed; retain whichever durable target remains.
+  } catch (error) {
+    // The caller still fails closed with its own error; retain whichever
+    // durable target remains, but do not hide that the rollback did not happen.
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${(error as Error).message}`);
+    } catch {
+      // Never let logging a rollback failure throw.
+    }
   }
 }
 
@@ -313,6 +323,10 @@ export async function atomicWriteJson(
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error) {
+        if (process.platform === "win32") {
+          await fd.close().catch(() => undefined);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -321,7 +335,7 @@ export async function atomicWriteJson(
         throw error;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
 
@@ -362,6 +376,31 @@ export function atomicWriteSync(
   hooks?: AtomicWriteHooks,
 ): void {
   atomicWriteFileSync(filePath, content, hooks);
+}
+
+const RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
+
+/**
+ * win32 refuses to rename over a target that another process holds open for a
+ * moment (a concurrent reader, AV, the indexer) with EPERM/EACCES/EBUSY, so a
+ * reader polling a manifest could fail the writer's publication outright.
+ * Retry that sharing violation within a short bounded budget (~350ms).
+ */
+function renameSyncRetryingWin32Sharing(
+  rename: (source: string, destination: string) => void,
+  source: string,
+  destination: string,
+): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || attempt >= 20 || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")) throw error;
+      Atomics.wait(RENAME_RETRY_WAIT, 0, 0, Math.min(25, 1 + attempt * 2));
+    }
+  }
 }
 
 /**
@@ -415,7 +454,7 @@ export function atomicWriteFileSync(
     hooks?.beforeRename?.();
     // Keep the opened descriptor live through rename so publication can be
     // checked against the inode that was actually written.
-    (operations?.rename ?? fsSync.renameSync)(tempPath, filePath);
+    renameSyncRetryingWin32Sharing(operations?.rename ?? fsSync.renameSync, tempPath, filePath);
     let publishedIdentity: FileIdentity | null = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
@@ -423,6 +462,14 @@ export function atomicWriteFileSync(
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error) {
+      if (process.platform === "win32") {
+        try {
+          fsSync.closeSync(fd);
+        } catch {
+          // The rollback below does not need the descriptor.
+        }
+        fd = null;
+      }
       rollbackPriorTarget(
         filePath,
         backupPath,
@@ -584,6 +631,14 @@ export function atomicWriteBatchSync(
         hooks?.afterRename?.();
         verifyPublishedFile(write.fd, write.path, "atomic batch write");
       } catch (error) {
+        if (process.platform === "win32") {
+          try {
+            fsSync.closeSync(write.fd);
+          } catch {
+            // The rollback below does not need the descriptor.
+          }
+          write.fd = null;
+        }
         rollbackPriorTarget(
           write.path,
           write.backupPath,

@@ -32,6 +32,10 @@ import {
   readOperationFileNoFollow,
   withContainedPathForPlatform,
 } from "../../runtime/safe-fs.js";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
+
+// Host run directories need contained directory-FD traversal, which win32 refuses by design.
+const NO_CONTAINED_FS = posixOnly("graph runtime refuses the pathname fallback on win32");
 
 describe("graph runtime safe filesystem", () => {
   const tempDirs: string[] = [];
@@ -64,7 +68,7 @@ describe("graph runtime safe filesystem", () => {
     expect(process.platform).toBe(before);
   });
 
-  it("reads, writes, renames, and deletes through actual host directory operations", () => {
+  it.skipIf(NO_CONTAINED_FS)("reads, writes, renames, and deletes through actual host directory operations", () => {
     const { handle } = makeRunDir();
     withContainedOperations(handle, (ops) => {
       const fd = ops.open("artifact.txt", fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY);
@@ -77,7 +81,7 @@ describe("graph runtime safe filesystem", () => {
     });
   });
 
-  it("rejects a final artifact symlink on Linux and Darwin", () => {
+  it.skipIf(NO_CONTAINED_FS)("rejects a final artifact symlink on Linux and Darwin", () => {
     const { root, handle } = makeRunDir();
     const outside = join(root, "outside.txt");
     writeFileSync(outside, "outside");
@@ -89,7 +93,7 @@ describe("graph runtime safe filesystem", () => {
     expect(readFileSync(outside, "utf8")).toBe("outside");
   });
 
-  it("rejects special files and hardlinks as contained artifacts", () => {
+  it.skipIf(NO_CONTAINED_FS)("rejects special files and hardlinks as contained artifacts", () => {
     const { root, handle } = makeRunDir();
     const outside = join(root, "outside.txt");
     writeFileSync(outside, "outside");
@@ -109,7 +113,7 @@ describe("graph runtime safe filesystem", () => {
     }
   });
 
-  it("keeps a validated operation scope on the original inode after replacement", () => {
+  it.skipIf(NO_CONTAINED_FS)("keeps a validated operation scope on the original inode after replacement", () => {
     const { root, handle } = makeRunDir();
     const outside = join(root, "outside");
     mkdirSync(outside);
@@ -133,7 +137,7 @@ describe("graph runtime safe filesystem", () => {
     expect(() => withContainedOperations(handle, () => undefined)).toThrow();
   });
 
-  it("fails closed on Windows instead of using a raceable pathname fallback", () => {
+  it.skipIf(NO_CONTAINED_FS)("fails closed on Windows instead of using a raceable pathname fallback", () => {
     const { handle } = makeRunDir();
     const artifact = join(handle.path, "artifact.txt");
     writeFileSync(artifact, "windows-compatible");
@@ -150,7 +154,7 @@ describe("graph runtime safe filesystem", () => {
       .toThrow("refusing pathname fallback");
   });
 
-  it("preserves ordinary ENOENT behavior for missing artifacts", () => {
+  it.skipIf(NO_CONTAINED_FS)("preserves ordinary ENOENT behavior for missing artifacts", () => {
     const { handle } = makeRunDir();
 
     expect(() => readContainedFileNoFollow(handle, "missing.txt")).toThrow(
@@ -208,7 +212,7 @@ describe("graph runtime safe filesystem", () => {
     );
   });
 
-  it("rejects a parent replacement before contained traversal", () => {
+  it.skipIf(NO_CONTAINED_FS)("rejects a parent replacement before contained traversal", () => {
     const { root, handle } = makeRunDir();
     const outside = mkdtempSync(join(realpathSync(tmpdir()), "omc-safe-fs-outside-"));
     tempDirs.push(outside);
@@ -222,14 +226,14 @@ describe("graph runtime safe filesystem", () => {
     }
   });
 
-  it("validates names before contained traversal", () => {
+  it.skipIf(NO_CONTAINED_FS)("validates names before contained traversal", () => {
     const { handle } = makeRunDir();
     expect(() => readContainedFileNoFollow(handle, "../outside.txt")).toThrow(
       "invalid contained artifact",
     );
   });
 
-  it("fails closed for every operation on unsupported platforms", () => {
+  it.skipIf(NO_CONTAINED_FS)("fails closed for every operation on unsupported platforms", () => {
     const { handle } = makeRunDir();
     for (const operation of ["read", "write", "rename", "delete"]) {
       expect(() =>
@@ -238,7 +242,7 @@ describe("graph runtime safe filesystem", () => {
     }
   });
 
-  it("invalidates every operation after its synchronous scope closes", () => {
+  it.skipIf(NO_CONTAINED_FS)("invalidates every operation after its synchronous scope closes", () => {
     const { handle } = makeRunDir();
     let retained!: DirectoryOperations;
     withContainedOperations(handle, (ops) => { retained = ops; });
@@ -251,7 +255,7 @@ describe("graph runtime safe filesystem", () => {
     ]) expect(operation).toThrow("outside synchronous callback");
   });
 
-  it.each([false, true])("invalidates retained nested operations before FD reuse (throws=%s)", (throws) => {
+  it.skipIf(NO_CONTAINED_FS).each([false, true])("invalidates retained nested operations before FD reuse (throws=%s)", (throws) => {
     const { root, handle } = makeRunDir();
     const outside = join(root, "outside");
     mkdirSync(outside);
@@ -300,7 +304,7 @@ describe("graph runtime safe filesystem", () => {
     }
   });
 
-  it.each([false, true])("anchors atomic publication and rollback through replacement (rollback=%s)", (rollback) => {
+  it.skipIf(NO_CONTAINED_FS).each([false, true])("anchors atomic publication and rollback through replacement (rollback=%s)", (rollback) => {
     const { root, handle } = makeRunDir();
     const outside = join(root, "outside");
     const moved = `${handle.path}-original`;

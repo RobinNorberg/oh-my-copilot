@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { requiresSymlinks } from './helpers/platform.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -70,6 +71,10 @@ function createFixture(options = {}) {
     git(root, ['init', '--quiet']);
     git(root, ['config', 'user.name', 'Fixture']);
     git(root, ['config', 'user.email', 'fixture@example.test']);
+    // The real repo pins eol=lf in .gitattributes. Without that, a host-level
+    // core.autocrlf=true (Git for Windows) checks out CRLF snapshots and breaks
+    // the coordinator source digest.
+    git(root, ['config', 'core.autocrlf', 'false']);
     git(root, ['add', '.']);
     git(root, ['add', '-f', '--', 'dist/index.js', 'dist/runtime.js', 'bridge/mcp-server.cjs']);
     if (options.trackCli !== false)
@@ -308,7 +313,7 @@ describe('plugin shipping surface transaction', () => {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain('coordinator source digest mismatch');
     });
-    it('rejects initial runtime entrypoints that escape through a symlink', () => {
+    it.skipIf(requiresSymlinks())('rejects initial runtime entrypoints that escape through a symlink', () => {
         const fixture = createFixture();
         rmSync(join(fixture.root, 'bridge', 'cli.cjs'));
         symlinkSync('/etc/passwd', join(fixture.root, 'bridge', 'cli.cjs'));

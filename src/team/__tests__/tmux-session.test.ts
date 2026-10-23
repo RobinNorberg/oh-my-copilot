@@ -555,6 +555,8 @@ describe('applyMainVerticalLayout', () => {
     });
 
     try {
+      // Stock tmux guard path, even on a win32 host with psmux installed.
+      (await import('../psmux-adapter.js')).__setPsmuxDetectionForTests(false);
       const { applyMainVerticalLayout } = await import('../tmux-session.js');
       await applyMainVerticalLayout('team-session', { tmuxServerIdentity: identity });
     } finally {
@@ -591,6 +593,8 @@ describe('applyMainVerticalLayout', () => {
     });
 
     try {
+      // Stock tmux guard path, even on a win32 host with psmux installed.
+      (await import('../psmux-adapter.js')).__setPsmuxDetectionForTests(false);
       const { applyMainVerticalLayout } = await import('../tmux-session.js');
       await expect(applyMainVerticalLayout('team-session', { required: true, tmuxServerIdentity: identity }))
         .rejects.toThrow('team_layout_window_width_invalid:not-a-width');
@@ -624,6 +628,8 @@ describe('applyMainVerticalLayout', () => {
     });
 
     try {
+      // Stock tmux guard path, even on a win32 host with psmux installed.
+      (await import('../psmux-adapter.js')).__setPsmuxDetectionForTests(false);
       const { applyMainVerticalLayout } = await import('../tmux-session.js');
       await expect(applyMainVerticalLayout('team-session', { required: true, tmuxServerIdentity: identity }))
         .rejects.toThrow('team_layout_window_width_invalid:39');
@@ -662,6 +668,8 @@ describe('applyMainVerticalLayout', () => {
     });
 
     try {
+      // Stock tmux guard path, even on a win32 host with psmux installed.
+      (await import('../psmux-adapter.js')).__setPsmuxDetectionForTests(false);
       const { applyMainVerticalLayout } = await import('../tmux-session.js');
       await expect(applyMainVerticalLayout('team-session', { tmuxServerIdentity: identity }))
         .rejects.toThrow('team_layout_server_guard_failed');

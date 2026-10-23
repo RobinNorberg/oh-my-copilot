@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync, spawnSync } from "child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
+import { rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 
 const SCRIPT_PATH = join(process.cwd(), "scripts", "session-start.mjs");
 
 describe("session-start background output isolation", () => {
-  it("keeps foreground hook stdout/stderr clean when notification module writes", () => {
+  it("keeps foreground hook stdout/stderr clean when notification module writes", async () => {
     const sandbox = mkdtempSync(join(tmpdir(), "omc-session-start-bg-"));
     const projectDir = join(sandbox, "project");
     const pluginRoot = join(sandbox, "plugin");
@@ -45,7 +46,9 @@ describe("session-start background output isolation", () => {
       expect(result.stderr).not.toContain("BACKGROUND_STDERR_LEAK");
       expect(result.stderr).toBe("");
     } finally {
-      rmSync(sandbox, { recursive: true, force: true });
+      // The detached notification child inherits the project cwd, which Windows
+      // locks until the child exits. Async rm retries that EPERM; rmSync does not.
+      await rm(sandbox, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }
   });
 });

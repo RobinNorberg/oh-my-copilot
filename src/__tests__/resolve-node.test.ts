@@ -28,6 +28,10 @@ vi.mock('os', async () => {
 import { existsSync, readdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { pickLatestVersion, resolveNodeBinary } from '../utils/resolve-node.js';
+import { IS_WIN, posixOnly } from './helpers/platform.js';
+
+// resolveNodeBinary skips the nvm/fnm/system-path fallbacks on win32 by design.
+const POSIX_FALLBACKS = posixOnly('nvm, fnm and system node fallbacks are POSIX-only');
 
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReaddirSync = vi.mocked(readdirSync);
@@ -112,7 +116,7 @@ describe('resolveNodeBinary', () => {
     });
 
     expect(resolveNodeBinary()).toBe('/opt/homebrew/bin/node');
-    expect(mockedExecSync).toHaveBeenCalledWith('which node', { encoding: 'utf-8', stdio: 'pipe', windowsHide: true });
+    expect(mockedExecSync).toHaveBeenCalledWith(IS_WIN ? 'where node' : 'which node', { encoding: 'utf-8', stdio: 'pipe', windowsHide: true });
   });
 
   it('prefers PATH node over a CI-only hostedtoolcache process.execPath', () => {
@@ -135,7 +139,7 @@ describe('resolveNodeBinary', () => {
     expect(resolveNodeBinary()).toBe('/Users/tester/.nvm/versions/node/v22.0.0/bin/node');
   });
 
-  it('falls back to the latest nvm version when PATH node and process.execPath are unusable', () => {
+  it.skipIf(POSIX_FALLBACKS)('falls back to the latest nvm version when PATH node and process.execPath are unusable', () => {
     setExecPath('/opt/hostedtoolcache/node/20.20.2/x64/bin/node');
 
     mockedExistsSync.mockImplementation((pathLike) => {
@@ -147,7 +151,7 @@ describe('resolveNodeBinary', () => {
     expect(resolveNodeBinary()).toBe('/home/tester/.nvm/versions/node/v22.3.0/bin/node');
   });
 
-  it.each([
+  it.skipIf(POSIX_FALLBACKS).each([
     ['/home/tester/.nvm/versions/node', 'bin/node'],
     ['/home/tester/.fnm/node-versions', 'installation/bin/node'],
   ])('skips incomplete newer installations in %s', (baseDir, binarySuffix) => {
@@ -160,7 +164,7 @@ describe('resolveNodeBinary', () => {
     expect(resolveNodeBinary()).toBe(olderBinary);
   });
 
-  it('skips unsupported older installations and continues to system Node', () => {
+  it.skipIf(POSIX_FALLBACKS)('skips unsupported older installations and continues to system Node', () => {
     setExecPath('/opt/hostedtoolcache/node/24.0.0/bin/node');
     const baseDir = '/home/tester/.nvm/versions/node';
     const unsupportedBinary = `${baseDir}/v18.20.8/bin/node`;

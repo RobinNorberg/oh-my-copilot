@@ -20,6 +20,7 @@
  */
 
 import { spawnSync as nodeSpawnSync } from 'child_process';
+import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
@@ -36,6 +37,9 @@ import {
   evaluateSdkSkills,
   evaluateSdkToolsExcluded,
   failedTier2Checks,
+  FILETOOLS_FILES,
+  FILETOOLS_MARKER,
+  probeHooksJson,
   hostSmokeToolName,
   runCost,
   RUNTIME_MIN_MAX_CREDITS,
@@ -46,7 +50,9 @@ import {
   skippedScenarioChecks,
   sliceLogByTime,
   usageCredits,
+  type FiletoolsEvidence,
   type PermissionRequestLike,
+  type ProbeRecord,
   type Rpc,
   type Scenario,
   type ScenarioCost,
@@ -349,6 +355,59 @@ export function prepareSdkProject(spawnSync: SpawnSyncFn, projectDir: string, re
     if (res.status !== 0) return `git ${args.join(' ')}: ${excerpt(`${res.stderr ?? ''}${res.error?.message ?? ''}`, 200) || `exit ${res.status}`}`;
   }
   return null;
+}
+
+/**
+ * filetools: the fixture under the sandbox project (notes.txt, a README.md
+ * carrying a fresh nonce) and a probe plugin under the home whose hook entries
+ * ({@link probeHooksJson}) append their stdin payloads to `probe.jsonl`.
+ */
+export function prepareFiletools(projectDir: string, home: string, node: string = process.execPath): { nonce: string; writeNonce: string; probeDir: string; probeLog: string } {
+  const nonce = `omg-dirctx-${randomBytes(6).toString('hex')}`;
+  const writeNonce = `omg-dirctx-${randomBytes(6).toString('hex')}`;
+  mkdirSync(join(projectDir, dirname(FILETOOLS_FILES.writeContext)), { recursive: true });
+  writeFileSync(join(projectDir, FILETOOLS_FILES.notes), 'status: draft\n');
+  writeFileSync(join(projectDir, FILETOOLS_FILES.context), `# Filetools fixture\n\n${FILETOOLS_MARKER} ${nonce}\n`);
+  writeFileSync(join(projectDir, FILETOOLS_FILES.writeContext), `# Filetools new files\n\n${FILETOOLS_MARKER} ${writeNonce}\n`);
+  const probeDir = join(home, 'filetools-probe');
+  const probeLog = join(home, 'filetools-probe.jsonl');
+  const script = join(probeDir, 'probe.cjs');
+  mkdirSync(probeDir, { recursive: true });
+  writeFileSync(join(probeDir, 'plugin.json'), `${JSON.stringify({ name: 'omg-smoke-probe', version: '0.0.0', description: 'omg smoke filetools hook probe', hooks: './hooks.json' }, null, 2)}\n`);
+  writeFileSync(join(probeDir, 'hooks.json'), `${JSON.stringify(probeHooksJson(node, script, probeLog), null, 2)}\n`);
+  writeFileSync(script, [
+    "'use strict';",
+    "const fs = require('fs');",
+    'const [label, log] = process.argv.slice(2);',
+    'const chunks = [];',
+    "process.stdin.on('data', (c) => chunks.push(c));",
+    "process.stdin.on('end', () => {",
+    "  const raw = Buffer.concat(chunks).toString('utf8');",
+    '  let payload = null;',
+    '  try { payload = JSON.parse(raw); } catch { /* recorded as null */ }',
+    "  fs.appendFileSync(log, JSON.stringify({ label, payload }) + '\\n');",
+    '});',
+    '',
+  ].join('\n'));
+  return { nonce, writeNonce, probeDir, probeLog };
+}
+
+/** What the filetools turn left behind: the probe records and the fixture's state. */
+export function collectFiletools(projectDir: string, probe: { nonce: string; writeNonce: string; probeLog: string }): FiletoolsEvidence {
+  let records: ProbeRecord[] = [];
+  try {
+    records = readFileSync(probe.probeLog, 'utf-8').split(/\r?\n/).filter(Boolean).flatMap((line) => {
+      try { return [JSON.parse(line) as ProbeRecord]; } catch { return []; }
+    });
+  } catch { /* no hook ran */ }
+  const read = (rel: string) => { try { return readFileSync(join(projectDir, rel), 'utf-8'); } catch { return null; } };
+  return {
+    nonce: probe.nonce,
+    writeNonce: probe.writeNonce,
+    probe: records,
+    edited: /^status: done\s*$/m.test(read(FILETOOLS_FILES.notes) ?? ''),
+    created: read(FILETOOLS_FILES.created) !== null,
+  };
 }
 
 function remoteRefs(spawnSync: SpawnSyncFn, remoteDir: string, env: NodeJS.ProcessEnv): string | null {
@@ -670,8 +729,10 @@ async function runScenario(
   let wedged = false;
   let spent = 0;
   let error: string | undefined;
+  let probe: ReturnType<typeof prepareFiletools> | undefined;
 
   try {
+    if (name === 'filetools') probe = prepareFiletools(input.projectDir, input.home);
     session = await withTimeout(client.createSession({
       onPermissionRequest: (req) => (spec.permit(req, permitCtx) ? { kind: 'approve-once' } : reject(`omg smoke ${name}: ${req.kind ?? 'request'} not permitted`)),
       onEvent: (event) => {
@@ -681,7 +742,7 @@ async function runScenario(
         spent += usageCredits(event);
         if (!capped && spent > budget) { capped = true; onCap(); }
       },
-      pluginDirectories: [input.root],
+      pluginDirectories: probe ? [input.root, probe.probeDir] : [input.root],
       workingDirectory: input.projectDir,
       disabledMcpServers: ['github-mcp-server'],
       excludedTools: scenarioExcludedTools(name, input.mcpServer),
@@ -725,6 +786,7 @@ async function runScenario(
     timeoutMs: input.timeoutMs,
     ...(error ? { error } : {}),
     ...(name === 'guardrail' ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {}),
+    ...(probe ? { filetools: collectFiletools(input.projectDir, probe) } : {}),
     model: modelLabel,
     maxCredits: input.maxCredits,
     budget,

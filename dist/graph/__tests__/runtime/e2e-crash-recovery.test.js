@@ -11,6 +11,7 @@
  *   canonicalJson equality (epoch-bearing envelope fields excluded).
  */
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { spawn, spawnSync } from "child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, statSync, utimesSync, } from "fs";
 import { tmpdir } from "os";
@@ -164,7 +165,7 @@ function journalRecords(runDir) {
         }
     });
 }
-describe("e2e crash recovery via spawned CLI (AC-2/AC-3)", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("e2e crash recovery via spawned CLI (AC-2/AC-3)", () => {
     let baseDir;
     beforeAll(async () => {
         await ensureDist();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PLAN_OUTPUT_DIRECTORY, DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE, getPlanOutputDirectory, getPlanOutputFilenameTemplate, resolveAutopilotPlanPath, resolveOpenQuestionsPlanPath, resolvePlanOutputAbsolutePath, resolvePlanOutputFilename, resolvePlanOutputPath, } from "../plan-output.js";
+import { toPosix } from "../../__tests__/helpers/platform.js";
 describe("plan output helpers", () => {
     it("uses default directory and filename template", () => {
         expect(getPlanOutputDirectory()).toBe(DEFAULT_PLAN_OUTPUT_DIRECTORY);
@@ -35,7 +36,7 @@ describe("plan output helpers", () => {
                 filenameTemplate: "{{kind}}.plan.md",
             },
         };
-        expect(resolvePlanOutputAbsolutePath("/repo", "autopilot-impl", config)).toBe("/repo/docs/plans/autopilot-impl.plan.md");
+        expect(toPosix(resolvePlanOutputAbsolutePath("/repo", "autopilot-impl", config))).toBe("/repo/docs/plans/autopilot-impl.plan.md");
     });
 });
 //# sourceMappingURL=plan-output.test.js.map

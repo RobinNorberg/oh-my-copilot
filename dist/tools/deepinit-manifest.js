@@ -65,6 +65,7 @@ export function isExcluded(name) {
  */
 export function scanDirectories(projectRoot) {
     const result = {};
+    // bigint keys: NTFS file IDs exceed 2^53, so Number inodes of distinct dirs can collide
     const visitedInodes = new Set();
     // Resolve the real project root for symlink containment checks
     let realProjectRoot;
@@ -91,10 +92,11 @@ export function scanDirectories(projectRoot) {
         }
         // Symlink loop protection via inode tracking
         try {
-            const stat = statSync(absDir);
-            if (visitedInodes.has(stat.ino))
+            const stat = statSync(absDir, { bigint: true });
+            const inodeKey = `${stat.dev}:${stat.ino}`;
+            if (visitedInodes.has(inodeKey))
                 return;
-            visitedInodes.add(stat.ino);
+            visitedInodes.add(inodeKey);
         }
         catch {
             return; // Skip inaccessible directories

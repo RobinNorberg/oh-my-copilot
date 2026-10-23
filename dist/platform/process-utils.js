@@ -507,8 +507,14 @@ export async function terminateOwnedProcessTree(options) {
         '      if (-not $owned.ContainsKey($parent) -or $owned.ContainsKey($id)) { continue }',
         '      try {',
         '        $process = [System.Diagnostics.Process]::GetProcessById($id)',
-        '        $created = ([DateTime]$row.CreationDate).ToUniversalTime().Ticks',
-        '        if ($process.StartTime.ToUniversalTime().Ticks -ne $created) { continue }',
+        // CIM CreationDate carries microseconds, StartTime 100 ns ticks: compare
+        // at microsecond precision or almost every live child reads as reused.
+        '        $created = ([DateTime]$row.CreationDate).ToUniversalTime().Ticks; $started = $process.StartTime.ToUniversalTime().Ticks',
+        '        if (($started - $started % 10) -ne ($created - $created % 10)) { continue }',
+        // ParentProcessId is never cleared, so a process created before its owned
+        // "parent" names a dead earlier holder of that reused PID: not a descendant.
+        '        $parentStart = $owned[$parent].Process.StartTime.ToUniversalTime().Ticks',
+        '        if (($created - $created % 10) -lt ($parentStart - $parentStart % 10)) { continue }',
         '        [void][OmcNative]::NtSuspendProcess($process.Handle)',
         '        $owned[$id] = @{ Process = $process; Depth = ([int]$owned[$parent].Depth + 1); Suspended = $true }',
         '        $added = $true',

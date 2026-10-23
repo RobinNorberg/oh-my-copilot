@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { scanDirectories, loadManifest, computeDiff, isExcluded, deepinitManifestTool, } from '../deepinit-manifest.js';
@@ -20,7 +20,7 @@ function createTestDir() {
 }
 function createFile(relativePath, content = '') {
     const fullPath = join(TEST_DIR, relativePath);
-    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    const dir = dirname(fullPath);
     mkdirSync(dir, { recursive: true });
     writeFileSync(fullPath, content);
 }
@@ -36,6 +36,20 @@ function createManifest(directories) {
 // Mock validateWorkingDirectory to return our test dir
 import * as worktreePaths from '../../lib/worktree-paths.js';
 import { vi } from 'vitest';
+const lossyInodes = vi.hoisted(() => ({ enabled: false }));
+// NTFS file IDs exceed 2^53, so the Number `ino` of distinct directories can
+// round to the same value. With `enabled`, every Number-valued stat reports one
+// shared inode while bigint stats keep the real, distinct IDs.
+vi.mock('node:fs', async (importOriginal) => {
+    const original = await importOriginal();
+    const statSync = ((path, options) => {
+        const stat = original.statSync(path, options);
+        if (!lossyInodes.enabled || options?.bigint || !stat)
+            return stat;
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 2 ** 53 });
+    });
+    return { ...original, statSync, default: { ...original, statSync } };
+});
 vi.mock('../../lib/worktree-paths.js', async (importOriginal) => {
     const original = await importOriginal();
     return {
@@ -83,7 +97,15 @@ describe('scanDirectories', () => {
         TEST_DIR = createTestDir();
     });
     afterEach(() => {
+        lossyInodes.enabled = false;
         rmSync(TEST_DIR, { recursive: true, force: true });
+    });
+    it('lists every directory when Number inode values collide', () => {
+        createFile('a/index.ts');
+        createFile('b/index.ts');
+        lossyInodes.enabled = true;
+        const result = scanDirectories(TEST_DIR);
+        expect(Object.keys(result).sort()).toEqual(['a', 'b']);
     });
     it('scans flat directory correctly', () => {
         createFile('index.ts');

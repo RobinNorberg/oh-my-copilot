@@ -102,7 +102,8 @@ describe("Skill Bridge Module", () => {
             writeFileSync(join(skillsDir, "linked-skill.md"), "---\nname: Linked Skill\ntriggers:\n  - linked\n---\nContent");
             const linkedProjectRoot = join(tmpdir(), `omc-bridge-link-${Date.now()}-${Math.random().toString(16).slice(2)}`);
             try {
-                symlinkSync(testProjectRoot, linkedProjectRoot, "dir");
+                // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+                symlinkSync(testProjectRoot, linkedProjectRoot, "junction");
                 const files = findSkillFiles(linkedProjectRoot);
                 const projectFiles = files.filter((f) => f.scope === "project");
                 expect(projectFiles).toHaveLength(1);

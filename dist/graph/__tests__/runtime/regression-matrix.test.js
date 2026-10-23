@@ -12,6 +12,7 @@
  *       fold fail closed (CORRUPT_JOURNAL) without executing any node.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readdirSync, readFileSync, rmSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -73,7 +74,7 @@ function runOptions(runsRoot, executor) {
         prompter: { prompt: async () => "approved" },
     };
 }
-describe("regression matrix (AC-9/10/11/11b)", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("regression matrix (AC-9/10/11/11b)", () => {
     it("terminal-fails a node after exactly its max_attempts budget (AC-9)", async () => {
         // Arrange: b1 gets a reduced descriptor budget; executor always fails it.
         const input = loadFixture("fanout-join-graph.json");

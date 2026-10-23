@@ -26,6 +26,7 @@ import { tmpdir } from "os";
 import { basename, dirname, join } from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 
 import { FileOwnershipFence } from "../../runtime/fence.js";
 import { FenceError } from "../../runtime/types.js";
@@ -67,7 +68,7 @@ function readLockPayload(dir: string): FenceLockPayload {
   return JSON.parse(readFileSync(join(dir, LOCK_NAME), "utf8")) as FenceLockPayload;
 }
 
-describe("FileOwnershipFence", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("FileOwnershipFence", () => {
   const roots: string[] = [];
 
   /** Fresh runsRoot + run dir under os.tmpdir(); auto-cleaned after each test. */

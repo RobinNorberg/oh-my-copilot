@@ -8,6 +8,10 @@ import { join, win32 } from 'node:path';
 import { executeClaudeMdTransaction, isClaudeMdEnabledInConfig, isStrictChildPath, type ClaudeMdTransactionFs } from '../claude-md-transaction.js';
 import { CLAUDE_MD_COORDINATOR_SCHEMA_VERSION, runClaudeMdCoordinator, runClaudeMdCoordinatorHandshake } from '../../cli/claude-md-coordinator.js';
 import corpus from './fixtures/legacy-guides.json' with { type: 'json' };
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
+
+// Root aliases are directory links: 'junction' needs no symlink privilege on
+// win32 and is a plain dir symlink elsewhere. File-link cases skip without it.
 
 const roots: string[] = [];
 function fixture(): { root: string; source: string } {
@@ -113,7 +117,7 @@ describe('CLAUDE.md transactions', () => {
     expect(output.endsWith(existing)).toBe(true);
   });
 
-  it('refuses a symlink before mutation', () => {
+  it.skipIf(requiresSymlinks())('refuses a symlink before mutation', () => {
     const { root, source } = fixture();
     const outside = join(root, 'outside');
     writeFileSync(outside, 'unchanged');
@@ -123,7 +127,7 @@ describe('CLAUDE.md transactions', () => {
     expect(readFileSync(outside, 'utf8')).toBe('unchanged');
   });
 
-  it('refuses a dangling target symlink before mutation', () => {
+  it.skipIf(requiresSymlinks())('refuses a dangling target symlink before mutation', () => {
     const { root, source } = fixture();
     const target = join(root, 'CLAUDE.md');
     symlinkSync(join(root, 'missing-target'), target);
@@ -137,8 +141,8 @@ describe('CLAUDE.md transactions', () => {
     const nested = `${root}-nested`;
     const alias = `${root}-alias`;
     roots.push(nested, alias);
-    symlinkSync(root, nested);
-    symlinkSync(nested, alias);
+    symlinkSync(root, nested, 'junction');
+    symlinkSync(nested, alias, 'junction');
     const result = executeClaudeMdTransaction({ mode: 'local', root: alias, source, sourceRoot: join(root, 'plugin') });
     expect(result).toMatchObject({ ok: true, mutatedPaths: [realpathSync(join(root, 'CLAUDE.md'))] });
     expect(readFileSync(join(root, 'CLAUDE.md'), 'utf8')).toContain('# canonical');
@@ -148,7 +152,7 @@ describe('CLAUDE.md transactions', () => {
     const { root, source } = fixture();
     const dangling = join(root, 'dangling-root');
     const file = join(root, 'file-root');
-    symlinkSync(join(root, 'missing-root'), dangling);
+    symlinkSync(join(root, 'missing-root'), dangling, 'junction');
     writeFileSync(file, 'not a directory');
     for (const invalidRoot of [dangling, file]) {
       const result = executeClaudeMdTransaction({ mode: 'local', root: invalidRoot, source, sourceRoot: join(root, 'plugin') });
@@ -157,7 +161,7 @@ describe('CLAUDE.md transactions', () => {
     expect(nodeFs.existsSync(join(root, 'CLAUDE.md'))).toBe(false);
   });
 
-  it('refuses a companion target symlink before mutation', () => {
+  it.skipIf(requiresSymlinks())('refuses a companion target symlink before mutation', () => {
     const { root, source } = fixture();
     const outside = join(root, 'outside-companion');
     writeFileSync(outside, 'unchanged');
@@ -172,12 +176,12 @@ describe('CLAUDE.md transactions', () => {
     const alternate = mkdtempSync(join(tmpdir(), 'omc-claude-md-transaction-alternate-'));
     const alias = `${root}-alias`;
     roots.push(alternate, alias);
-    symlinkSync(root, alias);
+    symlinkSync(root, alias, 'junction');
     writeFileSync(join(root, 'CLAUDE.md'), 'user bytes');
     let renames = 0;
     const fs = { ...nodeFs, renameSync(oldPath: nodeFs.PathLike, newPath: nodeFs.PathLike) {
       nodeFs.renameSync(oldPath, newPath);
-      if (++renames === 1) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias); }
+      if (++renames === 1) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias, 'junction'); }
     } } as ClaudeMdTransactionFs;
     const result = executeClaudeMdTransaction({ mode: 'global-preserve', root: alias, source, sourceRoot: join(root, 'plugin'), fs });
     expect(result).toMatchObject({ ok: false, exitCode: 5, failedPhase: 'mutation', failedPath: join(realpathSync(root), 'CLAUDE.md') });
@@ -191,12 +195,12 @@ describe('CLAUDE.md transactions', () => {
     const alternate = mkdtempSync(join(tmpdir(), 'omc-claude-md-transaction-final-local-alternate-'));
     const alias = `${root}-alias`;
     roots.push(alternate, alias);
-    symlinkSync(root, alias);
+    symlinkSync(root, alias, 'junction');
     const main = join(root, 'CLAUDE.md');
     let renames = 0;
     const fs = { ...nodeFs, renameSync(oldPath: nodeFs.PathLike, newPath: nodeFs.PathLike) {
       nodeFs.renameSync(oldPath, newPath);
-      if (++renames === 1) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias); }
+      if (++renames === 1) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias, 'junction'); }
     } } as ClaudeMdTransactionFs;
     const result = executeClaudeMdTransaction({ mode: 'local', root: alias, source, sourceRoot: join(root, 'plugin'), fs });
     expect(result).toMatchObject({ ok: false, exitCode: 5, failedPhase: 'mutation' });
@@ -210,7 +214,7 @@ describe('CLAUDE.md transactions', () => {
     const alternate = mkdtempSync(join(tmpdir(), 'omc-claude-md-transaction-final-delete-alternate-'));
     const alias = `${root}-alias`;
     roots.push(alternate, alias);
-    symlinkSync(root, alias);
+    symlinkSync(root, alias, 'junction');
     const main = join(root, 'CLAUDE.md');
     const companion = join(root, 'CLAUDE-omc.md');
     writeFileSync(main, 'user bytes');
@@ -218,7 +222,7 @@ describe('CLAUDE.md transactions', () => {
     const canonicalCompanion = join(realpathSync(root), 'CLAUDE-omc.md');
     const fs = { ...nodeFs, unlinkSync(path: nodeFs.PathLike) {
       nodeFs.unlinkSync(path);
-      if (path === canonicalCompanion) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias); }
+      if (path === canonicalCompanion) { nodeFs.unlinkSync(alias); symlinkSync(alternate, alias, 'junction'); }
     } } as ClaudeMdTransactionFs;
     const result = executeClaudeMdTransaction({ mode: 'global-overwrite', root: alias, source, sourceRoot: join(root, 'plugin'), fs });
     expect(result).toMatchObject({ ok: false, exitCode: 5, failedPhase: 'mutation' });
@@ -286,7 +290,7 @@ describe('CLAUDE.md transactions', () => {
     expect(result.tempCleanup.every(item => item.ok)).toBe(true);
   });
 
-  it('fails closed when a transaction-created path is swapped for a dangling symlink during rollback', () => {
+  it.skipIf(requiresSymlinks())('fails closed when a transaction-created path is swapped for a dangling symlink during rollback', () => {
     const { root, source } = fixture();
     const companion = join(root, 'CLAUDE-omc.md');
     writeFileSync(join(root, 'CLAUDE.md'), 'user trailing bytes');

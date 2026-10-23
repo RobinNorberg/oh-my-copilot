@@ -124,12 +124,15 @@ function shouldPipePromptViaStdin(provider, prompt) {
   // frontmatter) token as an option and either errors out or drops the prompt.
   // Route those over stdin (`claude -p` reads the prompt from stdin). Short,
   // single-line, non-option prompts keep the existing `-p <prompt>` behavior.
+  // On Windows the spawn goes through cmd.exe, which joins argv unquoted: the
+  // prompt would split on spaces and `&`/`|` would run as commands, so it always
+  // goes over stdin there, as for codex and gemini.
   if (provider === 'claude') {
     if (typeof prompt !== 'string') {
       return false;
     }
 
-    return prompt.includes('\n') || prompt.length > 500 || /^\s*-/.test(prompt);
+    return SHOULD_USE_WINDOWS_SHELL || prompt.includes('\n') || prompt.length > 500 || /^\s*-/.test(prompt);
   }
 
   // grok and muse (prompt file), cursor-agent (interactive stdin), and any other

@@ -44,6 +44,8 @@ import { lookoutCommand } from './lookout.js';
 import { intakeCommand } from './commands/intake.js';
 import { factoryCommand } from './commands/factory.js';
 import { shipCommand } from './commands/ship.js';
+import { releaseCommand } from './commands/release.js';
+import { progressCommand } from './commands/progress.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
 import { parseHudWatchInterval, runHudWatchLoop } from './hud-watch.js';
@@ -1219,7 +1221,7 @@ smokeCmd
     .option('--timeout <ms>', 'Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
     .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
     .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
-    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); chain and team (opt-in, never in all) run a real two-link factory chain and a real 2-worker sdk team')
+    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain and team (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain and a real 2-worker sdk team')
     .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
     .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
     .addHelpText('after', `
@@ -1504,6 +1506,8 @@ program.addCommand(lookoutCommand());
 program.addCommand(intakeCommand());
 program.addCommand(factoryCommand());
 program.addCommand(shipCommand());
+program.addCommand(releaseCommand());
+program.addCommand(progressCommand());
 /**
  * Returns the fully-configured commander program.
  *

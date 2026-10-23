@@ -5,7 +5,8 @@ import { execFileSync, spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, lstatSync } from 'fs';
 import { homedir, tmpdir } from 'os';
-import { basename, dirname, join } from 'path';
+import { basename, dirname, join, resolve } from 'path';
+import { IS_WIN } from '../../__tests__/helpers/platform.js';
 import {
   stateReadTool,
   stateWriteTool,
@@ -74,10 +75,11 @@ function liveLockOwner() {
 }
 
 function portableWorkflowState(sessionId: string): Record<string, unknown> {
-  const transcriptRoot = '/tmp/state-tools-transcripts';
+  // The validator requires canonical absolute paths (resolve(p) === p), which a POSIX literal is not on win32.
+  const transcriptRoot = resolve('/tmp/state-tools-transcripts');
   const fileIdentity = { device: 0, inode: 0, size: 0, mtimeNs: '0', ctimeNs: '0', contentSha256: '0'.repeat(64) };
   const activationBoundary = {
-    transcriptPath: `${transcriptRoot}/${sessionId}.jsonl`,
+    transcriptPath: join(transcriptRoot, `${sessionId}.jsonl`),
     transcriptRoot,
     transcriptBasename: `${sessionId}.jsonl`,
     sessionId,
@@ -1721,8 +1723,10 @@ describe('state-tools', () => {
 
     it('does not probe the home-global autopilot fallback during broad clear', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-global');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const statePath = join(home, '.omg', 'state', 'autopilot-state.json');
         mkdirSync(dirname(statePath), { recursive: true });
@@ -1736,12 +1740,16 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
     it('recovers a same-project shared-session clear transaction with no primary during broad clear', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-shared-session-clear-intent');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const statePath = join(home, '.omg', 'state', 'sessions', 'project-a-clear', 'autopilot-state.json');
         mkdirSync(dirname(statePath), { recursive: true });
@@ -1759,12 +1767,16 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
     it('preserves a foreign dead publication temp beside an authorized home-global state', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-global-foreign-temp');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const statePath = join(home, '.omg', 'state', 'autopilot-state.json');
         const foreignTemp = `${statePath}.emergency-quarantine.${randomUUID()}.payload.999999999.1.${randomUUID()}.tmp`;
@@ -1780,13 +1792,17 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
 
     it('preserves a malformed journal beside an authorized shared-session state', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-shared-session-malformed-journal');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const statePath = join(home, '.omg', 'state', 'sessions', 'project-a', 'autopilot-state.json');
         const journalPath = `${statePath}.emergency-journal.json`;
@@ -1802,14 +1818,18 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
 
 
     it('preserves an unrelated-project home-global autopilot fallback without signaling', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-unrelated');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const statePath = join(home, '.omg', 'state', 'autopilot-state.json');
         mkdirSync(dirname(statePath), { recursive: true });
@@ -1823,12 +1843,16 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
     it('preserves unrelated shared-session autopilot state and emergency artifacts during broad clear', async () => {
       const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
       const home = join(TEST_DIR, 'home-shared-session-projects');
       process.env.HOME = home;
+      process.env.USERPROFILE = home;
       try {
         const projectAPath = join(home, '.omg', 'state', 'sessions', 'project-a-named', 'autopilot-state.json');
         const projectALegacyPath = join(home, '.omg', 'state', 'sessions', 'project-a-legacy', 'autopilot-state.json');
@@ -1885,6 +1909,8 @@ describe('state-tools', () => {
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
       }
     });
 
@@ -2380,7 +2406,8 @@ describe('state-tools', () => {
       const realOmcDir = mkdtempSync(join(tmpdir(), 'state-tools-real-omc-'));
       try {
         rmSync(join(symlinkTestDir, '.omg'), { recursive: true, force: true });
-        symlinkSync(realOmcDir, join(symlinkTestDir, '.omg'), 'dir');
+        // A junction needs no privilege on Windows and lstat still reports it as a link.
+        symlinkSync(realOmcDir, join(symlinkTestDir, '.omg'), IS_WIN ? 'junction' : 'dir');
         const orphanSessionId = 'ended-symlink-session';
         const freshSessionId = 'fresh-symlink-session';
         mkdirSync(join(realOmcDir, 'sessions'), { recursive: true });

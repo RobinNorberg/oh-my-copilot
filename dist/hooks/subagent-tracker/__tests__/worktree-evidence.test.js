@@ -4,6 +4,9 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { collectWorktreeDirtyEvidence, buildDirtyWorktreeNotice, isAbnormalTermination, MAX_EVIDENCE_ENTRIES, } from "../worktree-evidence.js";
+import { posixOnly, toPosix } from "../../../__tests__/helpers/platform.js";
+// The fake git binaries below are /bin/sh scripts, which Windows cannot exec without a shell.
+const SH_FAKE_GIT = posixOnly("fake git is a /bin/sh script");
 const tempDirs = [];
 function makeTempDir(prefix = "omc-wt-evidence-") {
     const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -51,7 +54,7 @@ describe("collectWorktreeDirtyEvidence", () => {
         expect(evidence.ignoredCount).toBe(0);
         expect(evidence.entries).toEqual([]);
         expect(evidence.truncated).toBe(false);
-        expect(evidence.worktreeRoot).toBe(realpathSync(repo));
+        expect(toPosix(evidence.worktreeRoot)).toBe(toPosix(realpathSync(repo)));
     });
     it("flags dirty when a tracked file is modified", () => {
         const repo = makeTempDir();
@@ -151,7 +154,7 @@ describe("collectWorktreeDirtyEvidence", () => {
         git(repo, ["worktree", "add", "-b", "linked-branch", worktree]);
         const evidence = collectWorktreeDirtyEvidence(worktree);
         expect(evidence.isLinkedWorktree).toBe(true);
-        expect(evidence.worktreeRoot).toBe(realpathSync(worktree));
+        expect(toPosix(evidence.worktreeRoot)).toBe(toPosix(realpathSync(worktree)));
         expect(evidence.kind).toBe("clean");
         // Dirty the linked worktree.
         writeFileSync(join(worktree, "README.md"), "# modified in worktree\n");
@@ -210,7 +213,7 @@ describe("collectWorktreeDirtyEvidence", () => {
         initRepo(repo);
         expect(() => collectWorktreeDirtyEvidence(repo, { gitCommand: "/nonexistent/git" })).not.toThrow();
     });
-    it("respects a shared bounded git deadline (issue #3663 B5)", () => {
+    it.skipIf(SH_FAKE_GIT)("respects a shared bounded git deadline (issue #3663 B5)", () => {
         // B5: the total git wall-time must be capped by the shared deadline even
         // when a single git call would otherwise run far longer. Use a
         // script-provided fake git that sleeps longer than the tiny deadline; the
@@ -231,7 +234,7 @@ describe("collectWorktreeDirtyEvidence", () => {
         expect(elapsed).toBeLessThan(1500);
         expect(() => evidence).not.toThrow();
     });
-    it("survives huge nested untracked output beyond the default buffer (issue #3663 B7)", () => {
+    it.skipIf(SH_FAKE_GIT)("survives huge nested untracked output beyond the default buffer (issue #3663 B7)", () => {
         // B7: git status --untracked-files=all on a huge dirty tree can exceed
         // Node's default 1 MiB maxBuffer (ENOBUFS), losing ALL evidence. The
         // collector must count every line and cap entries without throwing.
@@ -258,7 +261,7 @@ done
         expect(evidence.entries.length).toBe(MAX_EVIDENCE_ENTRIES);
         expect(evidence.truncated).toBe(true);
     });
-    it("keeps dirty evidence when only the ignored scan fails (issue #3663 P1)", () => {
+    it.skipIf(SH_FAKE_GIT)("keeps dirty evidence when only the ignored scan fails (issue #3663 P1)", () => {
         // P1: the ignored-file scan is informational. When the regular status call
         // already proved the worktree dirty, a secondary ignored-scan failure must
         // NOT overwrite the dirty kind with git_unavailable — that suppressed the
@@ -286,11 +289,11 @@ exit 0
         // Ignored info is unavailable, so it degrades to 0 — never to lost evidence.
         expect(evidence.ignoredCount).toBe(0);
         expect(evidence.error).toContain("ignored_scan_failed");
-        expect(evidence.worktreeRoot).toBe(realpathSync(repo));
+        expect(toPosix(evidence.worktreeRoot)).toBe(toPosix(realpathSync(repo)));
         // The coordinator notice and the replay dirty gate both key off kind.
         expect(buildDirtyWorktreeNotice(evidence, "agent-p1", "executor")).toContain("2 uncommitted file(s)");
     });
-    it("keeps a clean verdict when only the ignored scan fails (issue #3663 P1)", () => {
+    it.skipIf(SH_FAKE_GIT)("keeps a clean verdict when only the ignored scan fails (issue #3663 P1)", () => {
         const repo = makeTempDir();
         initRepo(repo);
         const fakeGit = join(repo, "ignored-fails-clean-git.sh");
@@ -313,7 +316,7 @@ exit 0
         expect(evidence.ignoredCount).toBe(0);
         expect(evidence.error).toContain("ignored_scan_failed");
     });
-    it("attributes overflow rows to their porcelain category (issue #3663 P2)", () => {
+    it.skipIf(SH_FAKE_GIT)("attributes overflow rows to their porcelain category (issue #3663 P2)", () => {
         // P2: rows beyond MAX_EVIDENCE_ENTRIES were counted as untracked
         // regardless of their porcelain status code, so tracked (at-risk,
         // committed-history-bearing) work was reported as untracked and ignored

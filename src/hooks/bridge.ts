@@ -3381,6 +3381,13 @@ export async function processHook(
   hookType: HookType,
   rawInput: HookInput,
 ): Promise<HookOutput> {
+  // The kill switch returns before any work: worktree-root resolution below
+  // spawns git, which costs hundreds of ms on a loaded Windows host. This
+  // intentionally also skips cutover dispatch telemetry and the shadow
+  // observer: a disabled OMC records nothing for the hook.
+  if (process.env.DISABLE_OMC === "1" || process.env.DISABLE_OMC === "true") {
+    return { continue: true };
+  }
   const legacyStarted = performance.now();
   const rawRecord =
     rawInput && typeof rawInput === "object"

@@ -173,7 +173,8 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     });
     it('all seven wiki tools reject a symlink foreign alias without leaking the canonical target', async () => {
         const symlinkAlias = join(tempDir, 'foreign-alias');
-        symlinkSync(foreignRepo, symlinkAlias);
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(foreignRepo, symlinkAlias, 'junction');
         const canonicalForeign = realpathSync(foreignRepo);
         const canonicalSession = realpathSync(sessionRepo);
         const results = await invokeAllWikiTools(symlinkAlias);

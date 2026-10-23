@@ -93,7 +93,9 @@ var OmcPaths = {
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
 var gitTopLevelCacheMap = /* @__PURE__ */ new Map();
+var gitTopLevelNegativeCacheMap = /* @__PURE__ */ new Map();
 var superprojectCacheMap = /* @__PURE__ */ new Map();
+var projectIdentifierCacheMap = /* @__PURE__ */ new Map();
 var canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
 var GIT_PROBE_ENVIRONMENT_KEYS = [
   "PATH",
@@ -117,6 +119,16 @@ function gitProbeEnvironmentSignature() {
   const fixedEntries = GIT_PROBE_ENVIRONMENT_KEYS.map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
   const dynamicEntries = Object.keys(process.env).filter((key) => /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)).sort().map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
   return [...fixedEntries, ...dynamicEntries].join("\0");
+}
+function projectIdentifierEnvironmentSignature() {
+  const stateDir = process.env.OMC_STATE_DIR;
+  return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(["OMC_STATE_DIR", stateDir !== void 0, stateDir ?? ""])}`;
+}
+function isDefinitiveGitExit(error) {
+  const failure = error;
+  if (typeof failure?.status !== "number") return false;
+  const stderr = String(failure.stderr ?? "");
+  return !stderr.includes("dubious ownership") && !stderr.includes("safe.directory");
 }
 var workspaceCacheMap = /* @__PURE__ */ new Map();
 function findWorkspaceRoot(startDir) {
@@ -216,8 +228,8 @@ function resolveSuperprojectRoot(cwd) {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    anchor = (0, import_path2.resolve)(superRoot);
+    probeCwd = anchor;
   }
   if (completed) {
     if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -707,16 +719,16 @@ function getGitTopologySignature(cwd) {
   }
   return signatures.join("|");
 }
-function createStateRootCacheEntry(cwd, root) {
+function createStateRootCacheEntry(cwd, root, environmentSignature = gitProbeEnvironmentSignature) {
   return {
     root,
     metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
     topologySignature: getGitTopologySignature(cwd),
-    environmentSignature: gitProbeEnvironmentSignature()
+    environmentSignature: environmentSignature()
   };
 }
-function isStateRootCacheEntryValid(cwd, entry) {
-  return entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) && entry.topologySignature === getGitTopologySignature(cwd) && entry.environmentSignature === gitProbeEnvironmentSignature();
+function isStateRootCacheEntryValid(cwd, entry, environmentSignature = gitProbeEnvironmentSignature) {
+  return entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) && entry.topologySignature === getGitTopologySignature(cwd) && entry.environmentSignature === environmentSignature();
 }
 function isGitTopLevelCacheEntryValid(cwd, cached) {
   const current = getGitMetadataSnapshot(cwd);
@@ -754,7 +766,24 @@ function getGitTopLevel(cwd) {
     }
     gitTopLevelCacheMap.delete(key);
   }
+  const negative = gitTopLevelNegativeCacheMap.get(key);
+  if (negative) {
+    if (isStateRootCacheEntryValid(effectiveCwd, negative)) {
+      gitTopLevelNegativeCacheMap.delete(key);
+      gitTopLevelNegativeCacheMap.set(key, negative);
+      return null;
+    }
+    gitTopLevelNegativeCacheMap.delete(key);
+  }
   const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status === "not_a_repository") {
+    if (gitTopLevelNegativeCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = gitTopLevelNegativeCacheMap.keys().next().value;
+      if (oldest !== void 0) gitTopLevelNegativeCacheMap.delete(oldest);
+    }
+    gitTopLevelNegativeCacheMap.set(key, createStateRootCacheEntry(effectiveCwd, null));
+    return null;
+  }
   if (probe.status !== "ok") return null;
   cacheGitTopLevel(key, probe.root, effectiveCwd);
   return probe.root;
@@ -840,6 +869,20 @@ function getProjectIdentifier(worktreeRoot) {
     if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
     return identifier2;
   }
+  const processCacheKey = canonicalizeExistingPath(root) ?? (0, import_path2.resolve)(root);
+  const processCached = projectIdentifierCacheMap.get(processCacheKey);
+  if (processCached) {
+    if (isStateRootCacheEntryValid(root, processCached, projectIdentifierEnvironmentSignature)) {
+      projectIdentifierCacheMap.delete(processCacheKey);
+      projectIdentifierCacheMap.set(processCacheKey, processCached);
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, processCached.identifier);
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, processCached.identifier);
+      return processCached.identifier;
+    }
+    projectIdentifierCacheMap.delete(processCacheKey);
+  }
+  const processCacheEntry = createStateRootCacheEntry(root, null, projectIdentifierEnvironmentSignature);
+  let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === void 0;
   let remoteUrl = "";
   try {
     remoteUrl = (0, import_child_process.execFileSync)("git", ["remote", "get-url", "origin"], {
@@ -849,7 +892,8 @@ function getProjectIdentifier(worktreeRoot) {
       windowsHide: true,
       timeout: 5e3
     }).trim();
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
   let primaryRoot = root;
   try {
@@ -868,12 +912,20 @@ function getProjectIdentifier(worktreeRoot) {
         primaryRoot = resolved;
       }
     }
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
   const source = remoteUrl || primaryRoot;
   const hash = (0, import_crypto.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path2.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
   const identifier = `${dirName}-${hash}`;
+  if (cacheable) {
+    if (projectIdentifierCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = projectIdentifierCacheMap.keys().next().value;
+      if (oldest !== void 0) projectIdentifierCacheMap.delete(oldest);
+    }
+    projectIdentifierCacheMap.set(processCacheKey, { ...processCacheEntry, identifier });
+  }
   if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;

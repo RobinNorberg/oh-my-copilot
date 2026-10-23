@@ -6,10 +6,13 @@ import {
   chmodSync,
   existsSync,
   linkSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -19,6 +22,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
 import { acquireStateFileLockAtPathSync, acquireStateFileLockSync, getStateFileLockFailureKind, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockAtPathSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
 
@@ -60,6 +64,7 @@ import {
   fileIdentityOf,
   sameFileIdentity,
 } from '../atomic-write.js';
+import type { AtomicWriteOperations } from '../atomic-write.js';
 
 // SQLite's busy handler sums the sleeps it requests (about 75 ms of them here)
 // instead of watching a clock, so a loaded or virtualized runner stretches the
@@ -187,7 +192,7 @@ describe('atomicWriteJson', () => {
     expect(readdirSync(directory)).toEqual(['state.json']);
   });
 
-  it('creates missing parents and publishes owner-only replacement files', async () => {
+  it('creates missing parents and publishes replacement files', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-parent-'));
     directories.push(directory);
     const filePath = join(directory, 'nested', 'state.json');
@@ -195,6 +200,15 @@ describe('atomicWriteJson', () => {
     await atomicWriteJson(filePath, { status: 'new' });
 
     expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
+  });
+
+  it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('publishes owner-only replacement files', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-mode-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+
+    await atomicWriteJson(filePath, { status: 'new' });
+
     expect(statSync(filePath).mode & 0o777).toBe(0o600);
   });
 
@@ -212,7 +226,65 @@ describe('atomicWriteJson', () => {
     expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
   });
 
-  it.each(['hardlink', 'special', 'replacement', 'permissions'])(
+  describe('win32 rename sharing violations', () => {
+    // Directory-bound operations over the real filesystem, with a scripted rename.
+    function boundOperations(directory: string, failures: (call: number) => string | null): { operations: AtomicWriteOperations; renames: () => number } {
+      let calls = 0;
+      const at = (name: string) => join(directory, name);
+      return {
+        renames: () => calls,
+        operations: {
+          open: (name, flags, mode) => openSync(at(name), flags, mode),
+          lstat: name => lstatSync(at(name)),
+          rename: (source, destination) => {
+            const code = failures(++calls);
+            if (code) throw Object.assign(new Error(`${code}: simulated sharing violation`), { code });
+            renameSync(at(source), at(destination));
+          },
+          unlink: name => unlinkSync(at(name)),
+          link: (source, destination) => linkSync(at(source), at(destination)),
+          sync: () => {},
+        },
+      };
+    }
+
+    function asWin32<T>(body: () => T): T {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+      try {
+        return body();
+      } finally {
+        Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+      }
+    }
+
+    it('publishes after a rename that failed with EPERM twice', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-eperm-'));
+      directories.push(directory);
+      writeFileSync(join(directory, 'state.json'), 'old');
+      const { operations, renames } = boundOperations(directory, call => (call <= 2 ? 'EPERM' : null));
+
+      asWin32(() => atomicWriteFileSync('state.json', 'new', undefined, operations));
+
+      expect(renames()).toBe(3);
+      expect(readFileSync(join(directory, 'state.json'), 'utf8')).toBe('new');
+    });
+
+    it('throws EACCES once the retry budget is spent and keeps the old target', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-eacces-'));
+      directories.push(directory);
+      writeFileSync(join(directory, 'state.json'), 'old');
+      const { operations, renames } = boundOperations(directory, () => 'EACCES');
+
+      expect(() => asWin32(() => atomicWriteFileSync('state.json', 'new', undefined, operations))).toThrow(expect.objectContaining({ code: 'EACCES' }));
+
+      expect(renames()).toBe(21);
+      expect(readFileSync(join(directory, 'state.json'), 'utf8')).toBe('old');
+    });
+  });
+
+  // win32 skips the temp mode check by design: NTFS has no POSIX mode bits.
+  it.each(['hardlink', 'special', 'replacement', ...(posixOnly('NTFS has no POSIX mode bits') ? [] : ['permissions'])])(
     'rejects an untrusted temporary generation (%s) before rename',
     async kind => {
       const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-`));
@@ -292,6 +364,43 @@ describe('atomicWriteJson', () => {
       expect(readdirSync(directory)).toEqual(['state.json']);
     },
   );
+
+  it('rolls back the prior target when async publication loses its ownership hook', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-async-boundary-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    writeFileSync(filePath, '"old"', 'utf8');
+    const hooks = { afterRename: () => { throw new Error('publication fenced'); } };
+
+    await expect(atomicWriteJson(filePath, 'new', hooks)).rejects.toThrow('publication fenced');
+
+    expect(readFileSync(filePath, 'utf8')).toBe('"old"');
+    expect(readdirSync(directory)).toEqual(['state.json']);
+  });
+
+  it('reports a rollback that cannot restore the prior target instead of swallowing it', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-rollback-failure-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    writeFileSync(filePath, 'old', 'utf8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const hooks = {
+      afterRename: () => {
+        // Take the backup away so the rollback rename has nothing to restore.
+        for (const entry of readdirSync(directory).filter(name => name.includes('.rollback.'))) {
+          unlinkSync(join(directory, entry));
+        }
+        throw new Error('publication fenced');
+      },
+    };
+
+    try {
+      expect(() => atomicWriteFileSync(filePath, 'new', hooks)).toThrow('publication fenced');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`atomic write rollback of ${filePath} failed`));
+    } finally {
+      warn.mockRestore();
+    }
+  });
 
   it('propagates temp write failures without publishing a target', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-write-error-'));

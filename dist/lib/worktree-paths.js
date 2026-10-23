@@ -55,8 +55,19 @@ const MAX_WORKTREE_CACHE_SIZE = 8;
 const worktreeCacheMap = new Map();
 /** Positive Git roots used by state/path construction; security callers probe fresh. */
 const gitTopLevelCacheMap = new Map();
+/**
+ * Non-repository answers for getGitTopLevel(), validated by the .git topology
+ * above cwd so a later `git init` (or a Git environment change) re-probes.
+ */
+const gitTopLevelNegativeCacheMap = new Map();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map();
+/**
+ * Git-derived project identifiers (remote URL + common dir probes), validated by
+ * the .git metadata, topology and environment signatures so `git remote set-url`,
+ * a new worktree layout or a Git/OMC_STATE_DIR environment change re-probes.
+ */
+const projectIdentifierCacheMap = new Map();
 const canonicalWorkingDirectoryRoots = new WeakMap();
 const GIT_PROBE_ENVIRONMENT_KEYS = [
     'PATH',
@@ -84,6 +95,21 @@ function gitProbeEnvironmentSignature() {
         .sort()
         .map((key) => JSON.stringify([key, process.env[key] !== undefined, process.env[key] ?? '']));
     return [...fixedEntries, ...dynamicEntries].join('\0');
+}
+function projectIdentifierEnvironmentSignature() {
+    const stateDir = process.env.OMC_STATE_DIR;
+    return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(['OMC_STATE_DIR', stateDir !== undefined, stateDir ?? ''])}`;
+}
+/**
+ * True when a git probe failed with a definitive exit, not a spawn error, a
+ * timeout, or a safe.directory ownership refusal (which a config change lifts).
+ */
+function isDefinitiveGitExit(error) {
+    const failure = error;
+    if (typeof failure?.status !== 'number')
+        return false;
+    const stderr = String(failure.stderr ?? '');
+    return !stderr.includes('dubious ownership') && !stderr.includes('safe.directory');
 }
 /**
  * LRU cache for workspace marker lookups.
@@ -224,8 +250,9 @@ function resolveSuperprojectRoot(cwd) {
             completed = true;
             break;
         }
-        anchor = superRoot;
-        probeCwd = superRoot;
+        // git prints forward slashes on Windows; return a native path like getGitTopLevel().
+        anchor = resolve(superRoot);
+        probeCwd = anchor;
     }
     if (completed) {
         if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -392,6 +419,7 @@ let gitShowToplevelProbeForTests;
 export function setGitShowToplevelProbeForTests(probe) {
     gitShowToplevelProbeForTests = probe;
     gitTopLevelCacheMap.clear();
+    gitTopLevelNegativeCacheMap.clear();
 }
 function gitErrorStderr(error) {
     if (!error || typeof error !== 'object') {
@@ -793,18 +821,18 @@ function getGitTopologySignature(cwd) {
     }
     return signatures.join('|');
 }
-function createStateRootCacheEntry(cwd, root) {
+function createStateRootCacheEntry(cwd, root, environmentSignature = gitProbeEnvironmentSignature) {
     return {
         root,
         metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
         topologySignature: getGitTopologySignature(cwd),
-        environmentSignature: gitProbeEnvironmentSignature(),
+        environmentSignature: environmentSignature(),
     };
 }
-function isStateRootCacheEntryValid(cwd, entry) {
+function isStateRootCacheEntryValid(cwd, entry, environmentSignature = gitProbeEnvironmentSignature) {
     return (entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) &&
         entry.topologySignature === getGitTopologySignature(cwd) &&
-        entry.environmentSignature === gitProbeEnvironmentSignature());
+        entry.environmentSignature === environmentSignature());
 }
 function isGitTopLevelCacheEntryValid(cwd, cached) {
     const current = getGitMetadataSnapshot(cwd);
@@ -838,7 +866,8 @@ function cacheGitTopLevel(key, root, cwd) {
     });
 }
 /**
- * Resolve a literal Git top-level with positive, metadata-validated caching.
+ * Resolve a literal Git top-level with metadata-validated caching of roots and
+ * of git's definitive "not a git repository" answer.
  * Security-sensitive containment decisions must call probeGitTopLevel() instead.
  */
 export function getGitTopLevel(cwd) {
@@ -853,7 +882,26 @@ export function getGitTopLevel(cwd) {
         }
         gitTopLevelCacheMap.delete(key);
     }
+    const negative = gitTopLevelNegativeCacheMap.get(key);
+    if (negative) {
+        if (isStateRootCacheEntryValid(effectiveCwd, negative)) {
+            gitTopLevelNegativeCacheMap.delete(key);
+            gitTopLevelNegativeCacheMap.set(key, negative);
+            return null;
+        }
+        gitTopLevelNegativeCacheMap.delete(key);
+    }
     const probe = probeGitTopLevel(effectiveCwd);
+    if (probe.status === 'not_a_repository') {
+        // Only git's definitive answer is cached; git_missing and probe_failed re-probe.
+        if (gitTopLevelNegativeCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+            const oldest = gitTopLevelNegativeCacheMap.keys().next().value;
+            if (oldest !== undefined)
+                gitTopLevelNegativeCacheMap.delete(oldest);
+        }
+        gitTopLevelNegativeCacheMap.set(key, createStateRootCacheEntry(effectiveCwd, null));
+        return null;
+    }
     if (probe.status !== 'ok')
         return null;
     cacheGitTopLevel(key, probe.root, effectiveCwd);
@@ -1127,6 +1175,27 @@ export function getProjectIdentifier(worktreeRoot) {
             scope.projectIdentifiers.set(scopeKey, identifier);
         return identifier;
     }
+    const processCacheKey = canonicalizeExistingPath(root) ?? resolve(root);
+    const processCached = projectIdentifierCacheMap.get(processCacheKey);
+    if (processCached) {
+        if (isStateRootCacheEntryValid(root, processCached, projectIdentifierEnvironmentSignature)) {
+            projectIdentifierCacheMap.delete(processCacheKey);
+            projectIdentifierCacheMap.set(processCacheKey, processCached);
+            if (operationScope && operationScopeKey)
+                operationScope.set(operationScopeKey, processCached.identifier);
+            if (scope && scopeKey)
+                scope.projectIdentifiers.set(scopeKey, processCached.identifier);
+            return processCached.identifier;
+        }
+        projectIdentifierCacheMap.delete(processCacheKey);
+    }
+    // Signatures are taken before probing so a change made during the probes re-probes next time.
+    // Global gitconfig and [include] files are not tracked (same limitation as the getGitTopLevel cache).
+    const processCacheEntry = createStateRootCacheEntry(root, null, projectIdentifierEnvironmentSignature);
+    // Spawn errors, timeouts and ownership refusals are transient: their fallback identity is not cached.
+    // Without .git metadata at or above the root (bare repo) or with GIT_DIR set, the signatures
+    // cannot see remote changes, so the identity is not cached either.
+    let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === undefined;
     let remoteUrl = '';
     try {
         remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
@@ -1137,9 +1206,11 @@ export function getProjectIdentifier(worktreeRoot) {
             timeout: 5000,
         }).trim();
     }
-    catch {
+    catch (error) {
         // No git remote (local-only repo or not a git repo) — use the normalized
         // repository identity below.
+        if (!isDefinitiveGitExit(error))
+            cacheable = false;
     }
     // For linked worktrees (created via `git worktree add`), resolve to the
     // primary repository root so all worktrees of the same repo produce the
@@ -1169,13 +1240,23 @@ export function getProjectIdentifier(worktreeRoot) {
             }
         }
     }
-    catch {
+    catch (error) {
         // Not a git repo or command failed — fall back to worktree root
+        if (!isDefinitiveGitExit(error))
+            cacheable = false;
     }
     const source = remoteUrl || primaryRoot;
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
     const identifier = `${dirName}-${hash}`;
+    if (cacheable) {
+        if (projectIdentifierCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+            const oldest = projectIdentifierCacheMap.keys().next().value;
+            if (oldest !== undefined)
+                projectIdentifierCacheMap.delete(oldest);
+        }
+        projectIdentifierCacheMap.set(processCacheKey, { ...processCacheEntry, identifier });
+    }
     if (operationScope && operationScopeKey)
         operationScope.set(operationScopeKey, identifier);
     if (scope && scopeKey)
@@ -1413,8 +1494,10 @@ export function ensureAllOmcDirs(worktreeRoot) {
 export function clearWorktreeCache() {
     worktreeCacheMap.clear();
     gitTopLevelCacheMap.clear();
+    gitTopLevelNegativeCacheMap.clear();
     superprojectCacheMap.clear();
     workspaceCacheMap.clear();
+    projectIdentifierCacheMap.clear();
 }
 // ============================================================================
 // SESSION-SCOPED STATE PATHS

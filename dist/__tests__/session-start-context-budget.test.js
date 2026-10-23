@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
+import { rm } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -53,8 +54,12 @@ describe.each(HOOK_SCRIPTS)("%s session-start.mjs honors OMC_SESSION_START_CONTE
         // 7,000 chars of Priority Context: over the default 6,000-char aggregate budget on its own.
         writeFileSync(join(project, ".omg", "notepad.md"), `## Priority Context\n${"- keep this priority line\n".repeat(280)}${SENTINEL}\n`, "utf-8");
     });
-    afterEach(() => {
-        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    afterEach(async () => {
+        // Every hook run leaves a detached SessionEnd reconcile child still
+        // resolving the project's state root when execFileSync returns; on
+        // Windows its handles block the rm with EPERM until it exits.
+        // The async rm honours maxRetries for EPERM; Node 25's native rmSync does not.
+        await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     });
     it("truncates to the 6000-char default when the variable is unset", () => {
         const context = runHook(script, project, home, {

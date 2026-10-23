@@ -3,15 +3,16 @@ import { existsSync, mkdtempSync, rmSync, unlinkSync, statSync, readFileSync, wr
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawn } from "child_process";
+import { toFileUrl } from "../../__tests__/helpers/platform.js";
 import { registerMessage, lookupByMessageId, removeSession, removeMessagesByPane, markPaneNonReplyable, isPaneReplyBlocked, pruneStale, loadAllMappings, } from "../session-registry.js";
-const SESSION_REGISTRY_MODULE_PATH = join(process.cwd(), "src", "notifications", "session-registry.ts");
+const SESSION_REGISTRY_MODULE_URL = toFileUrl(join(process.cwd(), "src", "notifications", "session-registry.ts"));
 let testDir;
 let REGISTRY_PATH;
 let LOCK_PATH;
 function registerMessageInChildProcess(mapping) {
     return new Promise((resolve, reject) => {
         const script = `
-import { registerMessage } from ${JSON.stringify(SESSION_REGISTRY_MODULE_PATH)};
+import { registerMessage } from ${JSON.stringify(SESSION_REGISTRY_MODULE_URL)};
 const mapping = JSON.parse(process.env.TEST_MAPPING_JSON ?? "{}");
 registerMessage(mapping);
 `;

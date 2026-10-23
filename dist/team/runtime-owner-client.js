@@ -97,6 +97,9 @@ function recoveryOwnerBootstrapCandidatePath(cwd, teamName, expectedEpoch, nonce
     return absPath(cwd, TeamPaths.recoveryOwnerBootstrapCandidate(teamName, expectedEpoch, nonce));
 }
 async function syncParentDirectory(path) {
+    // Windows cannot fsync a directory handle (EPERM); skipped as in task-recovery-checkpoint.ts.
+    if (process.platform === 'win32')
+        return;
     const directory = await open(dirname(path), 'r');
     try {
         await directory.sync();

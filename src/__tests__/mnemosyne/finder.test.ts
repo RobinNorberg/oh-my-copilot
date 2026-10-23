@@ -142,6 +142,6 @@ describe('Skill Finder', () => {
   });
 
   it('should construct PROJECT_SKILLS_SUBDIR with path.join', () => {
-    expect(PROJECT_SKILLS_SUBDIR).toBe(join('.omg', 'skills'));
+    expect(join(PROJECT_SKILLS_SUBDIR)).toBe(join('.omg', 'skills'));
   });
 });

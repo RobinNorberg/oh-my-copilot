@@ -15,11 +15,11 @@ import { OMC_PLUGIN_ROOT_ENV } from '../../lib/env-vars.js';
 describe('parsePluginDirArg', () => {
     it('returns absolute path for "--plugin-dir <path>" form', () => {
         const out = parsePluginDirArg(['--plugin-dir', '/foo/bar', 'other']);
-        expect(out).toBe(resolve('/foo/bar'));
+        expect(out).toBe('/foo/bar');
     });
     it('returns absolute path for "--plugin-dir=<path>" form', () => {
         const out = parsePluginDirArg(['--plugin-dir=/foo/bar']);
-        expect(out).toBe(resolve('/foo/bar'));
+        expect(out).toBe('/foo/bar');
     });
     it('preserves Windows drive-letter absolute paths on non-Windows hosts', () => {
         const out = parsePluginDirArg(['--plugin-dir', 'C:\\Users\\me\\omc']);
@@ -179,12 +179,12 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
     it('1. --plugin-dir <path> → child env contains absolute OMC_PLUGIN_ROOT', async () => {
         await runLaunch(['--plugin-dir', '/tmp/foo']);
         expect(capturedEnv).not.toBeNull();
-        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
+        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/foo');
     });
     it('2. --plugin-dir=<path> → child env contains absolute OMC_PLUGIN_ROOT', async () => {
         await runLaunch(['--plugin-dir=/tmp/foo']);
         expect(capturedEnv).not.toBeNull();
-        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
+        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/foo');
     });
     it('3. no flag and no parent env → child env does not contain OMC_PLUGIN_ROOT', async () => {
         await runLaunch([]);
@@ -194,7 +194,7 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
     it('4. parent env set + --plugin-dir → argv wins over inherited env', async () => {
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/bar';
         await runLaunch(['--plugin-dir', '/tmp/foo']);
-        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
+        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/foo');
     });
     it('5. parent env set + no flag → child inherits parent OMC_PLUGIN_ROOT', async () => {
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/bar';

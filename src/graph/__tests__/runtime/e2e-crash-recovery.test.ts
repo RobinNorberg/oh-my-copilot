@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { spawn, spawnSync } from "child_process";
 import {
   existsSync,
@@ -206,7 +207,7 @@ function journalRecords(runDir: string): ParsedJournalRecord[] {
     });
 }
 
-describe("e2e crash recovery via spawned CLI (AC-2/AC-3)", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("e2e crash recovery via spawned CLI (AC-2/AC-3)", () => {
   let baseDir: string | undefined;
 
   beforeAll(async () => {

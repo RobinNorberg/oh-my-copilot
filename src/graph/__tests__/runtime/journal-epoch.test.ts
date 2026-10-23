@@ -8,6 +8,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import {
   existsSync,
   mkdirSync,
@@ -108,7 +109,7 @@ async function completeRunWithEpochs(
   return { sealed, lines };
 }
 
-describe("journal epoch provenance (P1-4)", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("journal epoch provenance (P1-4)", () => {
   it.each(["missing", "empty"])(
     "fails closed before executing work when an existing descriptor has a %s journal",
     async (journalState) => {

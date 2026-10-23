@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { formatSessionSummary, interpolatePath, triggerStopCallbacks } from '../callbacks.js';
 import type { SessionMetrics } from '../index.js';
+import { normalize } from 'path';
+import { toPosix } from '../../../__tests__/helpers/platform.js';
 
 // Mock auto-update module
 vi.mock('../../../features/auto-update.js', () => ({
@@ -88,36 +90,36 @@ describe('formatSessionSummary', () => {
 describe('interpolatePath', () => {
   it('replaces {session_id} placeholder', () => {
     const result = interpolatePath('/tmp/{session_id}.md', 'abc-123');
-    expect(result).toBe('/tmp/abc-123.md');
+    expect(toPosix(result)).toBe('/tmp/abc-123.md');
   });
 
   it('replaces {date} placeholder', () => {
     const result = interpolatePath('/tmp/{date}.md', 'session-1');
     // Date should be YYYY-MM-DD format
-    expect(result).toMatch(/\/tmp\/\d{4}-\d{2}-\d{2}\.md/);
+    expect(toPosix(result)).toMatch(/\/tmp\/\d{4}-\d{2}-\d{2}\.md/);
   });
 
   it('replaces {time} placeholder', () => {
     const result = interpolatePath('/tmp/{time}.md', 'session-1');
     // Time should be HH-MM-SS format
-    expect(result).toMatch(/\/tmp\/\d{2}-\d{2}-\d{2}\.md/);
+    expect(toPosix(result)).toMatch(/\/tmp\/\d{2}-\d{2}-\d{2}\.md/);
   });
 
   it('replaces ~ with homedir', () => {
     const result = interpolatePath('~/logs/test.md', 'session-1');
     expect(result).not.toContain('~');
-    expect(result).toContain('/logs/test.md');
+    expect(toPosix(result)).toContain('/logs/test.md');
   });
 
   it('replaces multiple placeholders', () => {
     const result = interpolatePath('/tmp/{date}/{session_id}.md', 'my-session');
     expect(result).toContain('my-session');
-    expect(result).toMatch(/\/tmp\/\d{4}-\d{2}-\d{2}\/my-session\.md/);
+    expect(toPosix(result)).toMatch(/\/tmp\/\d{4}-\d{2}-\d{2}\/my-session\.md/);
   });
 
   it('handles paths without placeholders', () => {
     const result = interpolatePath('/tmp/fixed-path.md', 'session-1');
-    expect(result).toBe('/tmp/fixed-path.md');
+    expect(toPosix(result)).toBe('/tmp/fixed-path.md');
   });
 });
 
@@ -172,9 +174,9 @@ describe('triggerStopCallbacks', () => {
     const metrics = createTestMetrics();
     await triggerStopCallbacks(metrics, testInput);
 
-    expect(mockMkdirSync).toHaveBeenCalledWith('/tmp', { recursive: true });
+    expect(mockMkdirSync).toHaveBeenCalledWith(normalize('/tmp'), { recursive: true });
     expect(mockWriteFileSync).toHaveBeenCalledWith(
-      '/tmp/test-test-session-123.md',
+      normalize('/tmp/test-test-session-123.md'),
       expect.stringContaining('test-session-123'),
       { encoding: 'utf-8', mode: 0o600 }
     );
@@ -196,7 +198,7 @@ describe('triggerStopCallbacks', () => {
     await triggerStopCallbacks(metrics, testInput);
 
     expect(mockWriteFileSync).toHaveBeenCalledWith(
-      '/tmp/test.json',
+      normalize('/tmp/test.json'),
       expect.stringContaining('"session_id"'),
       { encoding: 'utf-8', mode: 0o600 }
     );

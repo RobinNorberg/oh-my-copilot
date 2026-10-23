@@ -75,7 +75,7 @@ describe("readHudConfig", () => {
     it("reads callCountsFormat from settings.json", () => {
       mockExistsSync.mockImplementation((path) => {
         const s = String(path);
-        return /[\/]Users[\/]testuser[\/]\.claude[\/]settings\.json$/.test(
+        return /[\\/]Users[\\/]testuser[\\/]\.claude[\\/]settings\.json$/.test(
           s,
         );
       });
@@ -233,7 +233,7 @@ describe("readHudConfig", () => {
     it("allows mission board to be explicitly enabled from settings", () => {
       mockExistsSync.mockImplementation((path) => {
         const s = String(path);
-        return /[\/]Users[\/]testuser[\/]\.claude[\/]settings\.json$/.test(s);
+        return /[\\/]Users[\\/]testuser[\\/]\.claude[\\/]settings\.json$/.test(s);
       });
       mockReadFileSync.mockReturnValue(
         JSON.stringify({
@@ -385,7 +385,7 @@ describe("writeHudConfig", () => {
   it("merges legacy hud-config defaults into the written omcHud payload", () => {
     mockExistsSync.mockImplementation((path) => {
       const s = String(path);
-      return s.endsWith("settings.json") || s.endsWith(".omg/hud-config.json");
+      return s.endsWith("settings.json") || /[\\/]\.omg[\\/]hud-config\.json$/.test(s);
     });
     mockReadFileSync.mockImplementation((path) => {
       const s = String(path);

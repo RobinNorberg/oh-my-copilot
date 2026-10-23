@@ -5,7 +5,8 @@ import { join } from 'path';
 import { PassThrough } from 'stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
-import { globalModuleRoots, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, } from '../copilot-sdk-driver.js';
+import { spawnSync } from 'child_process';
+import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, } from '../copilot-sdk-driver.js';
 import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL } from '../copilot-sdk-scenarios.js';
 import { LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
@@ -240,6 +241,61 @@ describe('runSdkTier (fake SDK)', () => {
         const result = await runSdkTier(input(loaded, { scenarios: [name] }));
         expect(result.checks.filter((c) => !c.ok)).toEqual([]);
         expect(result.checks.map((c) => c.id).slice(7)).toEqual(scenarioCheckIds(name));
+    });
+    it('filetools: loads the probe plugin next to ours and evaluates the probe records and the fixture', async () => {
+        const projectDir = join(parent, 'project');
+        const probeLog = join(parent, 'home', 'filetools-probe.jsonl');
+        const captured = readFileSync(join(FIXTURES, 'tier2-filetools-patch-probe.jsonl'), 'utf-8');
+        const nonceOf = (rel) => /omg-dirctx-[0-9a-f]+/.exec(readFileSync(join(projectDir, rel), 'utf-8'))[0];
+        // Read when the fake emits, after the driver wrote the fixture: replay the capture under this run's nonces.
+        const events = {
+            get filetools() {
+                const text = readFileSync(join(FIXTURES, 'tier2-filetools-patch-events.jsonl'), 'utf-8')
+                    .split('omg-dirctx-11e9834dc45b').join(nonceOf('filetools/README.md'))
+                    .split('omg-dirctx-397636e54ea0').join(nonceOf('filetools/new/README.md'));
+                writeFileSync(probeLog, captured);
+                writeFileSync(join(projectDir, 'filetools', 'notes.txt'), 'status: done\n');
+                writeFileSync(join(projectDir, 'filetools', 'new', 'created.txt'), 'created\n');
+                return parseJsonl(text).events;
+            },
+        };
+        const { loaded, rec } = fakeSdk({ events });
+        const result = await runSdkTier(input(loaded, { scenarios: ['filetools'] }));
+        expect(result.checks.filter((c) => !c.ok)).toEqual([]);
+        expect(result.checks.map((c) => c.id).slice(7)).toEqual(scenarioCheckIds('filetools'));
+        const session = rec.sessions[1];
+        expect(session.pluginDirectories).toEqual([root, join(parent, 'home', 'filetools-probe')]);
+        expect(session.excludedTools).toEqual(scenarioExcludedTools('filetools', 't'));
+        // The fake's path-less read/write requests are rejected.
+        expect(rec.permissions.filter((p) => p.scenario === 'filetools').map((p) => p.decision)).toEqual(['reject', 'reject', 'reject']);
+    });
+    it('filetools fixture: the probe script records its stdin per label; collect reads it back', () => {
+        const projectDir = join(parent, 'project');
+        const home = join(parent, 'home');
+        const probe = prepareFiletools(projectDir, home);
+        expect(probe.nonce).toMatch(/^omg-dirctx-[0-9a-f]{12}$/);
+        expect(probe.writeNonce).toMatch(/^omg-dirctx-[0-9a-f]{12}$/);
+        expect(probe.writeNonce).not.toBe(probe.nonce);
+        expect(readFileSync(join(projectDir, 'filetools', 'README.md'), 'utf-8')).toContain(`Context marker: ${probe.nonce}`);
+        expect(readFileSync(join(projectDir, 'filetools', 'new', 'README.md'), 'utf-8')).toContain(`Context marker: ${probe.writeNonce}`);
+        expect(JSON.parse(readFileSync(join(probe.probeDir, 'plugin.json'), 'utf-8'))).toMatchObject({ name: 'omg-smoke-probe', hooks: './hooks.json' });
+        const hooks = JSON.parse(readFileSync(join(probe.probeDir, 'hooks.json'), 'utf-8'));
+        const entry = hooks.hooks.PostToolUse[1];
+        expect(entry.exec).toBe(process.execPath);
+        const res = spawnSync(entry.exec, entry.args, { input: JSON.stringify({ tool_name: 'Read', tool_input: { path: 'x' } }), encoding: 'utf-8', timeout: 30_000 });
+        expect(res.status).toBe(0);
+        spawnSync(entry.exec, [entry.args[0], 'PreToolUse', entry.args[2]], { input: 'not json', encoding: 'utf-8', timeout: 30_000 });
+        let ev = collectFiletools(projectDir, probe);
+        expect(ev.probe).toEqual([
+            { label: 'PostToolUse:matcher', payload: { tool_name: 'Read', tool_input: { path: 'x' } } },
+            { label: 'PreToolUse', payload: null },
+        ]);
+        expect(ev).toMatchObject({ nonce: probe.nonce, edited: false, created: false });
+        writeFileSync(join(projectDir, 'filetools', 'notes.txt'), 'status: done\r\n');
+        writeFileSync(join(projectDir, 'filetools', 'new', 'created.txt'), 'created');
+        ev = collectFiletools(projectDir, probe);
+        expect(ev).toMatchObject({ edited: true, created: true });
+        expect(collectFiletools(projectDir, { nonce: 'n', writeNonce: 'w', probeLog: join(home, 'missing.jsonl') }).probe).toEqual([]);
     });
     it('key failures: no deny event, wrong skill path, no subagent event', async () => {
         const guard = fixtureEvents('guardrail').filter((e) => e.type !== 'tool.execution_complete');

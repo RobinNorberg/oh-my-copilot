@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync as rawMkdtempSync, readdirSync, readFileSync, r
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash } from 'node:crypto';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 import {
   buildCliOutput,
   buildTerminalCliResult,
@@ -1181,9 +1182,9 @@ describe('runtime-cli recovery intent cleanup', () => {
   it('keeps a predeadline malformed admission fenced after a postdeadline corruption touch', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-grace-touched-malformed-admission-'));
     try {
-      const deadline = Date.now() + 100;
+      const deadline = Date.now() + scaleTiming(100);
       const { path } = seedPredeadlineReservation(cwd, 'request-touched-corrupt', 'recovery-touched-corrupt', deadline);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(150));
       const reservation = JSON.parse(readFileSync(path, 'utf8')) as { payload_hash: string };
       reservation.payload_hash = '0'.repeat(64);
       writeFileSync(path, JSON.stringify(reservation));
@@ -1197,9 +1198,9 @@ describe('runtime-cli recovery intent cleanup', () => {
     'keeps a predeadline admission fenced when a postdeadline corruption changes %s without its payload hash', field => {
       const cwd = mkdtempSync(join(tmpdir(), `runtime-cli-grace-touched-${field}-`));
       try {
-        const deadline = Date.now() + 100;
+        const deadline = Date.now() + scaleTiming(100);
         const { path } = seedPredeadlineReservation(cwd, `request-touched-${field}`, `recovery-touched-${field}`, deadline);
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(150));
         const reservation = JSON.parse(readFileSync(path, 'utf8')) as Record<string, string>;
         reservation[field] = field === 'team_name' ? 'foreign-team' : '0'.repeat(64);
         writeFileSync(path, JSON.stringify(reservation));

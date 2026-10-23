@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync as createTempDir, readFileSync, rmSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
 import { canonicalRecoveryPayloadHash, readRecoveryOutcome, readRecoveryRequestReservation, reserveRecoveryRequest, writeRecoveryFinal } from '../recovery-request-store.js';
 import { createRecoveryOwnerClient, isExpectedRecoveryOwnerSuccessor, recoveryOwnerBootstrapTestHooks, requestRuntimeOwnerRecovery, setRuntimeOwnerDispatch, withRecoveryAdmissionLock, type RecoverDeadWorkerOwnerInput } from '../runtime-owner-client.js';
@@ -387,9 +388,9 @@ describe('runtime owner durable request admission', () => {
       const requestId = 'deleted-final-request';
       const admissionDispatch = vi.fn(async (input: RecoverDeadWorkerOwnerInput) => publishSuccess(input.cwd, input.requestId));
       const admittingClient = createRecoveryOwnerClient(admissionDispatch,
-        { minTimeoutMs: 1_000, maxTimeoutMs: 1_000, pollIntervalMs: 10 });
+        { minTimeoutMs: scaleTiming(1_000), maxTimeoutMs: scaleTiming(1_000), pollIntervalMs: 10 });
       const expected = await admittingClient.recoverDeadWorker({ teamName: 'recovery-team', cwd, workerName: 'worker-1',
-        requestId, instanceId: INSTANCE_ID, timeoutMs: 1_000 });
+        requestId, instanceId: INSTANCE_ID, timeoutMs: scaleTiming(1_000) });
       const reservation = readRecoveryRequestReservation(cwd, requestId);
       expect(reservation).toMatchObject({ kind: 'reservation', request_id: requestId,
         team_name: 'recovery-team', worker_name: 'worker-1' });
@@ -400,10 +401,10 @@ describe('runtime owner durable request admission', () => {
       unlinkSync(absPath(cwd, TeamPaths.config('recovery-team')));
       const bootstrapOwner = vi.fn(async () => true);
       const client = createRecoveryOwnerClient(vi.fn(), { persistentOwnerBootstrap: true, bootstrapOwner,
-        minTimeoutMs: 1_000, maxTimeoutMs: 1_000, pollIntervalMs: 10 });
+        minTimeoutMs: scaleTiming(1_000), maxTimeoutMs: scaleTiming(1_000), pollIntervalMs: 10 });
 
       await expect(client.recoverDeadWorker({ teamName: 'recovery-team', cwd, workerName: 'worker-1',
-        requestId, instanceId: INSTANCE_ID, timeoutMs: 1_000 })).resolves.toEqual(expected);
+        requestId, instanceId: INSTANCE_ID, timeoutMs: scaleTiming(1_000) })).resolves.toEqual(expected);
       expect(bootstrapOwner).not.toHaveBeenCalled();
       expect(readRecoveryOutcome(cwd, requestId)).toMatchObject({
         kind: 'final', recovery_id: expected.recoveryId,

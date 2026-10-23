@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { closeSync, constants as fsConstants, fstatSync, fsyncSync, openSync, readFileSync, writeSync, } from "fs";
-import { isAbsolute, join, normalize, win32 } from "path";
+import { isAbsolute, normalize, posix, win32 } from "path";
 import { directoryOperations, containedFdPath, containedFsPlatformSupported } from "./contained-fd.js";
 import { openOrCreateDirectoryAt, openExistingDirectoryAt } from "./run-dir.js";
 const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
@@ -75,7 +75,7 @@ export function readFileNoFollow(filePath) {
 export function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = process.platform) {
     assertSafeContainedFileName(fileName, platform);
     assertContainedFsSupported(platform);
-    return join(containedFdPath(directoryFd, platform), fileName);
+    return posix.join(containedFdPath(directoryFd, platform), fileName);
 }
 /**
  * Run a synchronous operation against a directory FD on Linux. If the

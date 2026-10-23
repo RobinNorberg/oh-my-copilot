@@ -16,6 +16,8 @@ vi.mock('../../ralph/index.js', () => ({
 // Import mocked functions after vi.mock
 import * as ralphLoop from '../../ralph/index.js';
 import { readModeState } from '../../../lib/mode-state-io.js';
+import { getProcessStartIdentitySync } from '../../../platform/process-utils.js';
+import { canCreateSymlinks } from '../../../__tests__/helpers/platform.js';
 describe('AutopilotCancel', () => {
     let testDir;
     let previousHome;
@@ -233,8 +235,7 @@ describe('AutopilotCancel', () => {
             state.workflowRunId = '11111111-1111-4111-8111-111111111111';
             writeAutopilotState(testDir, state, sessionId);
             const statePath = resolveSessionStatePath('autopilot', sessionId, testDir);
-            const stat = require('fs').readFileSync(`/proc/${process.pid}/stat`, 'utf8');
-            const processStart = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
+            const processStart = getProcessStartIdentitySync(process.pid);
             writeFileSync(`${statePath}.mutation.lock`, JSON.stringify({ version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: '22222222-2222-4222-8222-222222222222' }));
             expect(cancelAutopilot(testDir, sessionId).success).toBe(false);
             expect(clearAutopilot(testDir, sessionId).success).toBe(false);
@@ -597,15 +598,19 @@ describe('AutopilotCancel', () => {
             const before = require('fs').readFileSync(stateFile);
             expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
             expect(require('fs').readFileSync(stateFile)).toEqual(before);
-            state.pipelineTracking.activationBoundary.transcriptPath = transcript;
-            writeAutopilotState(testDir, state, sessionId);
-            const target = join(encodedProject, 'target.jsonl');
-            writeFileSync(target, '');
-            rmSync(transcript);
-            symlinkSync(target, transcript);
-            const symlinkBytes = require('fs').readFileSync(stateFile);
-            expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
-            expect(require('fs').readFileSync(stateFile)).toEqual(symlinkBytes);
+            // The final-symlink case needs a file symlink; Windows without
+            // Developer Mode cannot create one, so only that case is skipped.
+            if (canCreateSymlinks()) {
+                state.pipelineTracking.activationBoundary.transcriptPath = transcript;
+                writeAutopilotState(testDir, state, sessionId);
+                const target = join(encodedProject, 'target.jsonl');
+                writeFileSync(target, '');
+                rmSync(transcript);
+                symlinkSync(target, transcript);
+                const symlinkBytes = require('fs').readFileSync(stateFile);
+                expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
+                expect(require('fs').readFileSync(stateFile)).toEqual(symlinkBytes);
+            }
             rmSync(transcript);
             writeFileSync(transcript, '');
             const validStat = statSync(transcript, { bigint: true });

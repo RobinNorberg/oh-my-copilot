@@ -5,6 +5,7 @@ import { buildSync } from 'esbuild';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { IS_WIN, requiresSymlinks } from './helpers/platform.js';
 const REPO_ROOT = join(__dirname, '..', '..');
 const SETUP_SCRIPT = join(REPO_ROOT, 'scripts', 'setup-claude-md.sh');
 const CONFIG_DIR_HELPER = join(REPO_ROOT, 'scripts', 'lib', 'config-dir.sh');
@@ -951,7 +952,7 @@ Use the real docs file.
         // User content should be preserved
         expect(baseClaude).toContain('# User CLAUDE');
     });
-    it('refuses preserve mode when the companion path is a symlink', () => {
+    it.skipIf(requiresSymlinks())('refuses preserve mode when the companion path is a symlink', () => {
         const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
 
@@ -1273,7 +1274,8 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         buildCoordinatorFixture(newVersion, readFileSync(join(newVersion, 'docs', 'CLAUDE.md'), 'utf-8'), '4.9.0');
         // Post-repair state: repair-plugin-cache.mjs replaces the stale version
         // dir with a symlink fallback to the latest version.
-        symlinkSync('4.9.0', oldVersion, 'dir');
+        // Same link shape as repair-plugin-cache.mjs: an absolute junction on win32.
+        symlinkSync(IS_WIN ? newVersion : '4.9.0', oldVersion, IS_WIN ? 'junction' : 'dir');
         // Registry still records the compat path, as left by the repair.
         mkdirSync(join(homeRoot, '.claude', 'plugins'), { recursive: true });
         writeFileSync(join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({

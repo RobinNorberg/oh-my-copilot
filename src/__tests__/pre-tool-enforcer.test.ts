@@ -2359,7 +2359,8 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
   function run(input: Record<string, unknown>, env: Record<string, string> = {}): Record<string, unknown> {
     return runPreToolEnforcerWithEnv(
       { cwd: tempDir, ...input },
-      { XDG_CONFIG_HOME: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env },
+      // getConfigDir() reads APPDATA on win32 and XDG_CONFIG_HOME elsewhere.
+      { XDG_CONFIG_HOME: xdgConfigHome, APPDATA: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env },
     );
   }
 

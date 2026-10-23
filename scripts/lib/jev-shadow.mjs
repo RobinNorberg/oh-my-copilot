@@ -127,7 +127,9 @@ function createSweepLockFile(lockPath) {
       return undefined;
     }
     writeFileSync(descriptor, String(process.pid));
-    return { path: lockPath, descriptor, dev: stats.dev, ino: stats.ino };
+    // bigint: NTFS file IDs exceed 2^53, so Number identities of distinct files can collide
+    const identity = fstatSync(descriptor, { bigint: true });
+    return { path: lockPath, descriptor, dev: identity.dev, ino: identity.ino };
   } catch {
     if (descriptor !== undefined) {
       try {
@@ -140,21 +142,21 @@ function createSweepLockFile(lockPath) {
   }
 }
 
-function releaseSweepLock(lock) {
+export function releaseSweepLock(lock) {
   try {
     closeSync(lock.descriptor);
   } catch {
     // Best effort
   }
   try {
-    const stats = lstatSync(lock.path);
+    const stats = lstatSync(lock.path, { bigint: true });
     if (stats.dev === lock.dev && stats.ino === lock.ino) unlinkSync(lock.path);
   } catch {
     // Best effort
   }
 }
 
-function acquireSweepLock(markerPath, now = Date.now()) {
+export function acquireSweepLock(markerPath, now = Date.now()) {
   if (!markerPath) return undefined;
   const bucket = Math.floor(now / SWEEP_THROTTLE_MS);
   return createSweepLockFile(`${markerPath}.lock-${bucket}`);

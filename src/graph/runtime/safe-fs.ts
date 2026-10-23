@@ -8,7 +8,7 @@ import {
   readFileSync,
   writeSync,
 } from "fs";
-import { isAbsolute, join, normalize, win32 } from "path";
+import { isAbsolute, normalize, posix, win32 } from "path";
 import { directoryOperations, type DirectoryOperations, containedFdPath, containedFsPlatformSupported } from "./contained-fd.js";
 import { openOrCreateDirectoryAt, openExistingDirectoryAt } from "./run-dir.js";
 import type { RunDirHandle } from "./run-dir.js";
@@ -117,7 +117,7 @@ export function containedPathForPlatform(
 ): string {
   assertSafeContainedFileName(fileName, platform);
   assertContainedFsSupported(platform);
-  return join(containedFdPath(directoryFd, platform), fileName);
+  return posix.join(containedFdPath(directoryFd, platform), fileName);
 }
 
 /**

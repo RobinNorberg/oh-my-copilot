@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 const WORKTREE_LIB_PATH = join(process.cwd(), 'skills', 'project-session-manager', 'lib', 'worktree.sh');
 const PSM_PATH = join(process.cwd(), 'skills', 'project-session-manager', 'psm.sh');
+// Bash-side path for the shim (MSYS form under Git Bash); node-side setup spawns plain `git`.
 const REAL_GIT = execFileSync('bash', ['-lc', 'command -v git'], { encoding: 'utf-8' }).trim();
 
 function commandExit(script: string, env: NodeJS.ProcessEnv): { status: number; stderr: string } {
@@ -55,14 +56,14 @@ describe('project-session-manager worktree result protocol', () => {
     mkdirSync(repo, { recursive: true });
     mkdirSync(shimDir, { recursive: true });
 
-    execFileSync(REAL_GIT, ['init', '-b', 'main'], { cwd: repo });
-    execFileSync(REAL_GIT, ['config', 'user.email', 'test@example.com'], { cwd: repo });
-    execFileSync(REAL_GIT, ['config', 'user.name', 'Test User'], { cwd: repo });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: repo });
     writeFileSync(join(repo, 'README.md'), 'test\n');
-    execFileSync(REAL_GIT, ['add', 'README.md'], { cwd: repo });
-    execFileSync(REAL_GIT, ['commit', '-m', 'initial'], { cwd: repo });
-    execFileSync(REAL_GIT, ['branch', 'origin/main'], { cwd: repo });
-    if (branch) execFileSync(REAL_GIT, ['branch', branch], { cwd: repo });
+    execFileSync('git', ['add', 'README.md'], { cwd: repo });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repo });
+    execFileSync('git', ['branch', 'origin/main'], { cwd: repo });
+    if (branch) execFileSync('git', ['branch', branch], { cwd: repo });
 
     const shim = join(shimDir, 'git');
     writeFileSync(shim, `#!/usr/bin/env bash
@@ -90,7 +91,7 @@ exec "$REAL_GIT" "$@"
           CREATOR: creator,
           REPO: repo,
           REAL_GIT,
-          PATH: `${shimDir}:${process.env.PATH}`,
+          PATH: `${shimDir}${delimiter}${process.env.PATH}`,
         },
       },
     );

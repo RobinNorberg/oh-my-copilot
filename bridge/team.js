@@ -57,6 +57,16 @@ function gitProbeEnvironmentSignature() {
   const dynamicEntries = Object.keys(process.env).filter((key) => /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)).sort().map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
   return [...fixedEntries, ...dynamicEntries].join("\0");
 }
+function projectIdentifierEnvironmentSignature() {
+  const stateDir = process.env.OMC_STATE_DIR;
+  return `${gitProbeEnvironmentSignature()}\0${JSON.stringify(["OMC_STATE_DIR", stateDir !== void 0, stateDir ?? ""])}`;
+}
+function isDefinitiveGitExit(error) {
+  const failure2 = error;
+  if (typeof failure2?.status !== "number") return false;
+  const stderr = String(failure2.stderr ?? "");
+  return !stderr.includes("dubious ownership") && !stderr.includes("safe.directory");
+}
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
   const effectiveStart = startDir || process.cwd();
@@ -154,8 +164,8 @@ function resolveSuperprojectRoot(cwd) {
       completed = true;
       break;
     }
-    anchor = superRoot;
-    probeCwd = superRoot;
+    anchor = resolve(superRoot);
+    probeCwd = anchor;
   }
   if (completed) {
     if (superprojectCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
@@ -610,16 +620,16 @@ function getGitTopologySignature(cwd) {
   }
   return signatures.join("|");
 }
-function createStateRootCacheEntry(cwd, root) {
+function createStateRootCacheEntry(cwd, root, environmentSignature = gitProbeEnvironmentSignature) {
   return {
     root,
     metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
     topologySignature: getGitTopologySignature(cwd),
-    environmentSignature: gitProbeEnvironmentSignature()
+    environmentSignature: environmentSignature()
   };
 }
-function isStateRootCacheEntryValid(cwd, entry) {
-  return entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) && entry.topologySignature === getGitTopologySignature(cwd) && entry.environmentSignature === gitProbeEnvironmentSignature();
+function isStateRootCacheEntryValid(cwd, entry, environmentSignature = gitProbeEnvironmentSignature) {
+  return entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) && entry.topologySignature === getGitTopologySignature(cwd) && entry.environmentSignature === environmentSignature();
 }
 function isGitTopLevelCacheEntryValid(cwd, cached) {
   const current = getGitMetadataSnapshot(cwd);
@@ -657,7 +667,24 @@ function getGitTopLevel(cwd) {
     }
     gitTopLevelCacheMap.delete(key);
   }
+  const negative = gitTopLevelNegativeCacheMap.get(key);
+  if (negative) {
+    if (isStateRootCacheEntryValid(effectiveCwd, negative)) {
+      gitTopLevelNegativeCacheMap.delete(key);
+      gitTopLevelNegativeCacheMap.set(key, negative);
+      return null;
+    }
+    gitTopLevelNegativeCacheMap.delete(key);
+  }
   const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status === "not_a_repository") {
+    if (gitTopLevelNegativeCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = gitTopLevelNegativeCacheMap.keys().next().value;
+      if (oldest !== void 0) gitTopLevelNegativeCacheMap.delete(oldest);
+    }
+    gitTopLevelNegativeCacheMap.set(key, createStateRootCacheEntry(effectiveCwd, null));
+    return null;
+  }
   if (probe.status !== "ok") return null;
   cacheGitTopLevel(key, probe.root, effectiveCwd);
   return probe.root;
@@ -750,6 +777,20 @@ function getProjectIdentifier(worktreeRoot) {
     if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
     return identifier2;
   }
+  const processCacheKey = canonicalizeExistingPath(root) ?? resolve(root);
+  const processCached = projectIdentifierCacheMap.get(processCacheKey);
+  if (processCached) {
+    if (isStateRootCacheEntryValid(root, processCached, projectIdentifierEnvironmentSignature)) {
+      projectIdentifierCacheMap.delete(processCacheKey);
+      projectIdentifierCacheMap.set(processCacheKey, processCached);
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, processCached.identifier);
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, processCached.identifier);
+      return processCached.identifier;
+    }
+    projectIdentifierCacheMap.delete(processCacheKey);
+  }
+  const processCacheEntry = createStateRootCacheEntry(root, null, projectIdentifierEnvironmentSignature);
+  let cacheable = processCacheEntry.metadataSignature !== null && process.env.GIT_DIR === void 0;
   let remoteUrl = "";
   try {
     remoteUrl = execFileSync("git", ["remote", "get-url", "origin"], {
@@ -759,7 +800,8 @@ function getProjectIdentifier(worktreeRoot) {
       windowsHide: true,
       timeout: 5e3
     }).trim();
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
   let primaryRoot = root;
   try {
@@ -778,12 +820,20 @@ function getProjectIdentifier(worktreeRoot) {
         primaryRoot = resolved;
       }
     }
-  } catch {
+  } catch (error) {
+    if (!isDefinitiveGitExit(error)) cacheable = false;
   }
   const source = remoteUrl || primaryRoot;
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
   const identifier = `${dirName}-${hash}`;
+  if (cacheable) {
+    if (projectIdentifierCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = projectIdentifierCacheMap.keys().next().value;
+      if (oldest !== void 0) projectIdentifierCacheMap.delete(oldest);
+    }
+    projectIdentifierCacheMap.set(processCacheKey, { ...processCacheEntry, identifier });
+  }
   if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
@@ -920,7 +970,7 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
+var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -947,7 +997,9 @@ var init_worktree_paths = __esm({
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
     gitTopLevelCacheMap = /* @__PURE__ */ new Map();
+    gitTopLevelNegativeCacheMap = /* @__PURE__ */ new Map();
     superprojectCacheMap = /* @__PURE__ */ new Map();
+    projectIdentifierCacheMap = /* @__PURE__ */ new Map();
     canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
     GIT_PROBE_ENVIRONMENT_KEYS = [
       "PATH",
@@ -4042,7 +4094,17 @@ async function writeAtomic3(path5, data) {
   try {
     await writeFile3(tmp, data, "utf8");
     const { rename: rename7 } = await import("node:fs/promises");
-    await rename7(tmp, path5);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename7(tmp, path5);
+        break;
+      } catch (error) {
+        const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
+        const code = error.code ?? "";
+        if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
+        await new Promise((resolve18) => setTimeout(resolve18, delay));
+      }
+    }
   } finally {
     await rm3(tmp, { force: true }).catch(() => void 0);
   }
@@ -4879,6 +4941,7 @@ async function teamMarkTaskCompleted(teamName, taskId, cwd) {
     await writeAtomic3(p, JSON.stringify(next, null, 2));
   }, 5e3);
 }
+var WIN32_RENAME_RETRY_CODES, WIN32_RENAME_RETRY_DELAYS_MS;
 var init_team_ops = __esm({
   "src/team/team-ops.ts"() {
     "use strict";
@@ -4891,6 +4954,8 @@ var init_team_ops = __esm({
     init_tasks();
     init_task_recovery_checkpoint();
     init_worker_canonicalization();
+    WIN32_RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
+    WIN32_RENAME_RETRY_DELAYS_MS = [5, 10, 20, 40, 80, 160, 320];
   }
 });
 
@@ -5966,7 +6031,7 @@ var init_plugin_cache_validation = __esm({
 });
 
 // src/utils/paths.ts
-import { join as join14, dirname as dirname14 } from "path";
+import { join as join14, dirname as dirname14, basename as basename8 } from "path";
 import { existsSync as existsSync11, readFileSync as readFileSync8, readdirSync as readdirSync5, statSync as statSync3, lstatSync as lstatSync5, realpathSync as realpathSync4, unlinkSync as unlinkSync5, rmSync, renameSync as renameSync2, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
@@ -7836,9 +7901,12 @@ function commandExists(command, env) {
   });
   return result.status === 0;
 }
+function isOmcCliAvailable(env = process.env) {
+  return commandExists(OMC_CLI_BINARY, env);
+}
 function resolveOmcCliPrefix(options = {}) {
   const env = options.env ?? process.env;
-  const omcAvailable = options.omcAvailable ?? commandExists(OMC_CLI_BINARY, env);
+  const omcAvailable = options.omcAvailable ?? isOmcCliAvailable(env);
   if (omcAvailable) {
     return OMC_CLI_BINARY;
   }
@@ -7910,13 +7978,13 @@ var init_builtin_skill_entitlements = __esm({
 
 // src/features/builtin-skills/skills.ts
 import { existsSync as existsSync16, readdirSync as readdirSync7, readFileSync as readFileSync11 } from "fs";
-import { join as join18, dirname as dirname17, basename as basename8, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 } from "path";
+import { join as join18, dirname as dirname17, basename as basename9, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 function getPackageDir2() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = basename8(__dirname);
-    const parentDirName = basename8(dirname17(__dirname));
-    const grandparentDirName = basename8(dirname17(dirname17(__dirname)));
+    const currentDirName = basename9(__dirname);
+    const parentDirName = basename9(dirname17(__dirname));
+    const grandparentDirName = basename9(dirname17(dirname17(__dirname)));
     if (currentDirName === "bridge") {
       return join18(__dirname, "..");
     }
@@ -9027,7 +9095,7 @@ import {
   execFileSync as execFileSync3,
   spawnSync as spawnSync4
 } from "child_process";
-import { basename as basename9 } from "path";
+import { basename as basename10 } from "path";
 import { promisify } from "util";
 function tmuxEnv() {
   const { TMUX: _, PSMUX_SESSION: __, ...env } = process.env;
@@ -9610,7 +9678,11 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations)
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
+  } catch (error) {
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${error.message}`);
+    } catch {
+    }
   }
 }
 function removeBackup(backupPath, operations) {
@@ -9657,6 +9729,10 @@ async function atomicWriteJson2(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error) {
+        if (process.platform === "win32") {
+          await fd.close().catch(() => void 0);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -9665,7 +9741,7 @@ async function atomicWriteJson2(filePath, data, hooks) {
         throw error;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
     success = true;
@@ -9687,17 +9763,18 @@ async function atomicWriteJson2(filePath, data, hooks) {
     }
   }
 }
-var ATOMIC_BATCH_MAX_CONTENT_BYTES;
+var RENAME_RETRY_WAIT, ATOMIC_BATCH_MAX_CONTENT_BYTES;
 var init_atomic_write = __esm({
   "src/lib/atomic-write.ts"() {
     "use strict";
+    RENAME_RETRY_WAIT = new Int32Array(new SharedArrayBuffer(4));
     ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
   }
 });
 
 // src/platform/posix-shell.ts
 import { existsSync as existsSync20 } from "fs";
-import { basename as basename11, join as join22 } from "path";
+import { basename as basename12, join as join22 } from "path";
 var WINDOWS_SHELL_INSTALL_SUFFIXES;
 var init_posix_shell = __esm({
   "src/platform/posix-shell.ts"() {
@@ -9924,7 +10001,7 @@ var init_host_load_gate = __esm({
 });
 
 // src/team/worker-launch-ack.ts
-import { createHash as createHash7, randomUUID as randomUUID11 } from "node:crypto";
+import { createHash as createHash7, randomBytes, randomUUID as randomUUID11 } from "node:crypto";
 import { constants as constants3, existsSync as existsSync22 } from "node:fs";
 import { link as link2, lstat as lstat5, mkdir as mkdir7, mkdtemp, open as open3, readFile as readFile9, rm as rm7, unlink as unlink4, writeFile as writeFile6 } from "node:fs/promises";
 import { dirname as dirname20, isAbsolute as isAbsolute7, join as join24, relative as relative7, resolve as resolve9, sep as sep4 } from "node:path";
@@ -9948,15 +10025,23 @@ function buildWindowsSupervisorSource() {
     // interactive provider never reaches the pane. Stdin is read through a
     // StreamReader because [Console]::In.ReadLineAsync() blocks on .NET
     // Framework, which hid provider exit until the next control line.
-    `public static class O { [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public IntPtr lpReserved; public IntPtr lpDesktop; public IntPtr lpTitle; public int dwX; public int dwY; public int dwXSize; public int dwYSize; public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags; public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2; public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError; } [StructLayout(LayoutKind.Sequential)] public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public uint dwProcessId; public uint dwThreadId; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_BASIC_LIMIT_INFORMATION { public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass; } [StructLayout(LayoutKind.Sequential)] public struct IO_COUNTERS { public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount; public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit; public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed; } [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi); [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr CreateJobObjectW(IntPtr a, string n); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr j, int c, IntPtr i, uint l); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AssignProcessToJobObject(IntPtr j, IntPtr p); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint ResumeThread(IntPtr h); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateJobObject(IntPtr j, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateProcess(IntPtr p, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetExitCodeProcess(IntPtr h, out uint code); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetHandleInformation(IntPtr h, uint m, uint f); public static string Quote(string value) { var b = new StringBuilder(); b.Append('"'); int slashes = 0; foreach (var c in value) { if (c == '\\\\') { slashes++; continue; } if (c == '"') { b.Append('\\\\', slashes * 2 + 1); b.Append('"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('"'); return b.ToString(); } public static string BuildCommandLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(Quote(argv[i])); } return b.ToString(); } }`,
+    // The start identity is read while the provider is still suspended: a
+    // short-lived provider can exit before a slow host reaches the ready
+    // frame, and Get-Process on an exited PID throws, killing the supervisor.
+    `public static class O { [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct STARTUPINFO { public int cb; public IntPtr lpReserved; public IntPtr lpDesktop; public IntPtr lpTitle; public int dwX; public int dwY; public int dwXSize; public int dwYSize; public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags; public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2; public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError; } [StructLayout(LayoutKind.Sequential)] public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public uint dwProcessId; public uint dwThreadId; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_BASIC_LIMIT_INFORMATION { public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass; } [StructLayout(LayoutKind.Sequential)] public struct IO_COUNTERS { public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount; public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount; } [StructLayout(LayoutKind.Sequential)] public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit; public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed; } [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi); [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr CreateJobObjectW(IntPtr a, string n); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetInformationJobObject(IntPtr j, int c, IntPtr i, uint l); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AssignProcessToJobObject(IntPtr j, IntPtr p); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint ResumeThread(IntPtr h); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateJobObject(IntPtr j, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateProcess(IntPtr p, uint c); [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetExitCodeProcess(IntPtr h, out uint code); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetHandleInformation(IntPtr h, uint m, uint f); public static string Quote(string value) { var b = new StringBuilder(); b.Append('"'); int slashes = 0; foreach (var c in value) { if (c == '\\\\') { slashes++; continue; } if (c == '"') { b.Append('\\\\', slashes * 2 + 1); b.Append('"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('"'); return b.ToString(); } public static string BuildCommandLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(Quote(argv[i])); } return b.ToString(); } public static string CmdQuote(string value) { var b = new StringBuilder(); b.Append('"'); int slashes = 0; foreach (var c in value) { if (c < ' ') throw new ArgumentException("worker_launch_provider_argv_invalid"); if (c == '\\\\') { slashes++; continue; } if (c == '"') { b.Append('\\\\', slashes * 2); b.Append('"'); b.Append('"'); slashes = 0; continue; } b.Append('\\\\', slashes); slashes = 0; b.Append(c); } b.Append('\\\\', slashes * 2); b.Append('"'); return b.ToString(); } public static string BuildCmdLine(string[] argv) { var b = new StringBuilder(); for (var i = 0; i < argv.Length; i++) { if (i != 0) b.Append(' '); b.Append(CmdQuote(argv[i])); } if (b.Length > ${WINDOWS_PROVIDER_LINE_MAX}) throw new ArgumentException("worker_launch_provider_argv_too_long"); return b.ToString(); } }`,
     '"@',
     "$pi = New-Object O+PROCESS_INFORMATION; $job = [IntPtr]::Zero; $envPtr = [IntPtr]::Zero; $cmd = $null; $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero",
     "try {",
-    "  $cmd = [O]::BuildCommandLine([string[]]$payload.provider_argv)",
-    '  $envPairs = @($payload.provider_env.psobject.Properties | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }); $envText = (($envPairs -join [char]0) + [char]0 + [char]0); $envBytes = [Text.Encoding]::Unicode.GetBytes($envText); $envPtr = [Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length); [Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $envPtr, $envBytes.Length)',
-    `  $conIn = [O]::CreateFileW('CONIN$', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); $conOut = [O]::CreateFileW('CONOUT$', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); if ($conIn -eq [IntPtr]::Zero -or $conIn -eq [IntPtr]::new(-1) -or $conOut -eq [IntPtr]::Zero -or $conOut -eq [IntPtr]::new(-1)) { $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero; throw "worker_launch_console_unavailable" }; if (-not [O]::SetHandleInformation($conIn, 1, 1) -or -not [O]::SetHandleInformation($conOut, 1, 1)) { throw "worker_launch_console_unavailable" }; $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut; $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW([NullString]::Value, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }`,
-    '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, [NullString]::Value); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; if ([O]::ResumeThread($pi.hThread) -eq [uint32]::MaxValue) { throw "worker_launch_resume_failed" }',
-    '  $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
+    // A .cmd/.bat argv[0] is never handed to CreateProcessW, which would run
+    // it through cmd.exe with the MSVC-quoted line (CVE-2024-27980). cmd.exe
+    // itself is started instead and expands the cmd-quoted line once from
+    // its environment block, clearing the variable before the provider runs.
+    "  $argv = [string[]]$payload.provider_argv; $app = [NullString]::Value; $providerLine = $null",
+    `  if ($argv[0] -match '\\.(cmd|bat)[. ]*$') { $providerLine = [O]::BuildCmdLine($argv); $app = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'; $cmd = '"' + $app + '" /d /v:off /s /c "set "${PROVIDER_LINE_VAR}=" & %${PROVIDER_LINE_VAR}%"' } else { $cmd = [O]::BuildCommandLine($argv) }`,
+    `  $envPairs = @($payload.provider_env.psobject.Properties | Where-Object { $_.Name -ne '${PROVIDER_LINE_VAR}' } | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } }); if ($null -ne $providerLine) { $envPairs += [pscustomobject]@{ Name = '${PROVIDER_LINE_VAR}'; Value = $providerLine } }; $envPairs = @($envPairs | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }); $envText = (($envPairs -join [char]0) + [char]0 + [char]0); $envBytes = [Text.Encoding]::Unicode.GetBytes($envText); $envPtr = [Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length); [Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $envPtr, $envBytes.Length)`,
+    `  $conIn = [O]::CreateFileW('CONIN$', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); $conOut = [O]::CreateFileW('CONOUT$', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); if ($conIn -eq [IntPtr]::Zero -or $conIn -eq [IntPtr]::new(-1) -or $conOut -eq [IntPtr]::Zero -or $conOut -eq [IntPtr]::new(-1)) { $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero; throw "worker_launch_console_unavailable" }; if (-not [O]::SetHandleInformation($conIn, 1, 1) -or -not [O]::SetHandleInformation($conOut, 1, 1)) { throw "worker_launch_console_unavailable" }; $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut; $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW($app, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }`,
+    '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, [NullString]::Value); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; if ([O]::ResumeThread($pi.hThread) -eq [uint32]::MaxValue) { throw "worker_launch_resume_failed" }',
+    '  $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
     '  $stdinReader = New-Object IO.StreamReader([Console]::OpenStandardInput()); $readTask = $stdinReader.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = $stdinReader.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.instance_id -ne $payload.identity.instance_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
     "} catch { if ($pi.hProcess -ne [IntPtr]::Zero) { if ($job -ne [IntPtr]::Zero) { [O]::TerminateJobObject($job, 1) | Out-Null } else { [O]::TerminateProcess($pi.hProcess, 1) | Out-Null }; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null }; throw } finally { if ($envPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }; if ($conIn -ne [IntPtr]::Zero) { [O]::CloseHandle($conIn) | Out-Null }; if ($conOut -ne [IntPtr]::Zero) { [O]::CloseHandle($conOut) | Out-Null }; if ($pi.hThread -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hThread) | Out-Null }; if ($pi.hProcess -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hProcess) | Out-Null }; if ($job -ne [IntPtr]::Zero) { [O]::CloseHandle($job) | Out-Null } }"
     // Fork fix: a real newline. "`n" is only an escape inside PowerShell strings;
@@ -10245,6 +10330,9 @@ async function loadCurrentWorkerLaunchAttempt(input) {
 }
 function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}) {
   if (!isValidIdentity(attempt)) throw new Error("worker_launch_attempt_identity_invalid");
+  if ((options.platform ?? process.platform) === "win32" && providerArgv[0] && isWindowsBatchProvider(providerArgv[0])) {
+    buildWindowsBatchProviderLine(providerArgv);
+  }
   const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
   const absoluteCwd = resolve9(cwd);
   const containmentNonce = randomUUID11();
@@ -10973,10 +11061,19 @@ function isDeterministicTransportPath(expectedPath, candidate, fileName) {
   return isExactText(candidate) && resolve9(candidate) === resolve9(join24(dirname20(expectedPath), fileName));
 }
 function quoteWindowsCmdArgument(value) {
-  if (/[\r\n]/.test(value)) throw new Error("worker_launch_provider_argv_invalid");
-  return `"${value.replace(/%/g, "%%").replace(/"/g, '""')}"`;
+  if (/[\x00-\x1f]/.test(value)) throw new Error("worker_launch_provider_argv_invalid");
+  const escaped = value.replace(/(\\*)"/g, '$1$1""').replace(/(\\+)$/, "$1$1");
+  return `"${escaped}"`;
 }
-var WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS;
+function isWindowsBatchProvider(command) {
+  return /\.(cmd|bat)[. ]*$/i.test(command);
+}
+function buildWindowsBatchProviderLine(providerArgv) {
+  const line = providerArgv.map(quoteWindowsCmdArgument).join(" ");
+  if (line.length > WINDOWS_PROVIDER_LINE_MAX) throw new Error("worker_launch_provider_argv_too_long");
+  return line;
+}
+var WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
@@ -11029,6 +11126,8 @@ var init_worker_launch_ack = __esm({
       "PUBLIC",
       "ALLUSERSPROFILE"
     ];
+    WINDOWS_PROVIDER_LINE_MAX = 8e3;
+    PROVIDER_LINE_VAR = "_OMC_PROVIDER_LINE";
   }
 });
 
@@ -11396,7 +11495,7 @@ import { spawn } from "node:child_process";
 import { createHash as createHash9, randomUUID as randomUUID13 } from "node:crypto";
 import { existsSync as existsSync24, readdirSync as readdirSync10, readFileSync as readFileSync18 } from "node:fs";
 import { link as link3, mkdir as mkdir8, open as open4, readFile as readFile10, unlink as unlink5 } from "node:fs/promises";
-import { basename as basename12, dirname as dirname22, join as join26 } from "node:path";
+import { basename as basename13, dirname as dirname22, join as join26 } from "node:path";
 function workspaceHash(cwd) {
   return createHash9("sha256").update(cwd).digest("hex");
 }
@@ -11471,6 +11570,7 @@ function recoveryOwnerBootstrapCandidatePath(cwd, teamName, expectedEpoch, nonce
   return absPath(cwd, TeamPaths.recoveryOwnerBootstrapCandidate(teamName, expectedEpoch, nonce));
 }
 async function syncParentDirectory(path5) {
+  if (process.platform === "win32") return;
   const directory = await open4(dirname22(path5), "r");
   try {
     await directory.sync();
@@ -11723,10 +11823,10 @@ function ownerAvailability(cwd, teamName) {
 function resolveRuntimeCliPath() {
   if (process.env.OMC_RUNTIME_CLI_PATH) return process.env.OMC_RUNTIME_CLI_PATH;
   if (typeof __dirname !== "undefined" && __dirname) {
-    return basename12(__dirname) === "bridge" ? join26(__dirname, "runtime-cli.cjs") : join26(__dirname, "../../bridge/runtime-cli.cjs");
+    return basename13(__dirname) === "bridge" ? join26(__dirname, "runtime-cli.cjs") : join26(__dirname, "../../bridge/runtime-cli.cjs");
   }
   const entry = process.argv[1];
-  if (entry && basename12(entry) === "runtime-cli.cjs") return entry;
+  if (entry && basename13(entry) === "runtime-cli.cjs") return entry;
   throw new Error("runtime_owner_bootstrap_path_unavailable");
 }
 function isExpectedRecoveryOwnerSuccessor(owner, expectedEpoch, childPid, childProcessStartedAt, fenceOk, expectedNonce) {
@@ -12109,7 +12209,7 @@ import { existsSync as existsSync25, mkdtempSync, rmSync as rmSync2, statSync as
 import { createHash as createHash10, randomUUID as randomUUID14 } from "crypto";
 import { execFile as execFile3 } from "child_process";
 import { promisify as promisify3 } from "util";
-import { join as join27, basename as basename13, dirname as dirname23, isAbsolute as isAbsolute8, win32 as win323 } from "path";
+import { join as join27, basename as basename14, dirname as dirname23, isAbsolute as isAbsolute8, win32 as win323 } from "path";
 import { tmpdir as tmpdir3 } from "os";
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
@@ -12904,7 +13004,7 @@ function getDefaultShell() {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/bash";
-  const name = basename13(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename14(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
   }
@@ -12914,7 +13014,7 @@ function pathEntries(envPath) {
   return (envPath ?? "").split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim()).filter(Boolean);
 }
 function pathCandidateNames(candidatePath) {
-  const base = basename13(candidatePath.replace(/\\/g, "/"));
+  const base = basename14(candidatePath.replace(/\\/g, "/"));
   const bare = base.replace(/\.(exe|cmd|bat)$/i, "");
   if (process.platform === "win32") {
     return Array.from(/* @__PURE__ */ new Set([`${bare}.exe`, `${bare}.cmd`, `${bare}.bat`, bare]));
@@ -12940,7 +13040,7 @@ function resolveShellFromCandidates(paths, rcFile) {
 }
 function resolveSupportedShellAffinity(shellPath2) {
   if (!shellPath2) return null;
-  const name = basename13(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename14(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
   if (!existsSync25(shellPath2)) return null;
   const home = process.env.HOME ?? "";
@@ -12975,7 +13075,7 @@ function logWorkerSpawnDiagnostic(message) {
 `);
 }
 function paneCurrentCommandLooksReady(command) {
-  const normalized = basename13(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
+  const normalized = basename14(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
   return SUPPORTED_POSIX_SHELLS.has(normalized) || ["cmd", "powershell", "pwsh", "nu", "elvish"].includes(normalized);
 }
 async function getPaneCurrentCommandStatus(paneId, tmuxServerIdentity) {
@@ -13152,7 +13252,7 @@ function assertSafeCmdValue2(value) {
   if (/[\r\n\0]/.test(value)) throw new Error("Invalid Windows command value: contains CR, LF, or NUL");
 }
 function shellNameFromPath(shellPath2) {
-  const shellName = basename13(shellPath2.replace(/\\/g, "/"));
+  const shellName = basename14(shellPath2.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -15370,7 +15470,7 @@ var init_tmux_session = __esm({
 
 // src/team/mcp-comm.ts
 import { realpathSync as realpathSync5 } from "node:fs";
-import { basename as basename14, dirname as dirname24, join as join28 } from "node:path";
+import { basename as basename15, dirname as dirname24, join as join28 } from "node:path";
 function isConfirmedNotification(outcome) {
   if (!outcome.ok) return false;
   if (outcome.transport !== "hook") return true;
@@ -15396,7 +15496,7 @@ function canonicalNotificationLockIdentity(lockPath) {
     return realpathSync5(lockPath);
   } catch {
     try {
-      return join28(realpathSync5(dirname24(lockPath)), basename14(lockPath));
+      return join28(realpathSync5(dirname24(lockPath)), basename15(lockPath));
     } catch {
       return lockPath;
     }
@@ -15862,12 +15962,12 @@ var init_mcp_comm = __esm({
 
 // src/agents/prompt-helpers.ts
 import { readdirSync as readdirSync11 } from "fs";
-import { join as join29, dirname as dirname25, basename as basename15 } from "path";
+import { join as join29, dirname as dirname25, basename as basename16 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function getPackageDir3() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = basename15(__dirname);
-    const parentDirName = basename15(dirname25(__dirname));
+    const currentDirName = basename16(__dirname);
+    const parentDirName = basename16(dirname25(__dirname));
     if (currentDirName === "bridge") {
       return join29(__dirname, "..");
     }
@@ -15878,7 +15978,7 @@ function getPackageDir3() {
   try {
     const __filename2 = fileURLToPath4(import.meta.url);
     const __dirname2 = dirname25(__filename2);
-    const currentDirName = basename15(__dirname2);
+    const currentDirName = basename16(__dirname2);
     if (currentDirName === "bridge") {
       return join29(__dirname2, "..");
     }
@@ -15899,7 +15999,7 @@ function getValidAgentRoles() {
   try {
     const agentsDir = join29(getPackageDir3(), "agents");
     const files = readdirSync11(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => basename15(f, ".md")).sort();
+    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => basename16(f, ".md")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -16860,7 +16960,7 @@ var init_worktree_cleanup_safety = __esm({
 
 // src/team/git-worktree.ts
 import { existsSync as existsSync30, lstatSync as lstatSync8, realpathSync as realpathSync7, readFileSync as readFileSync20, readdirSync as readdirSync12, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
-import { basename as basename16, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
+import { basename as basename17, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 function getWorktreePath(repoRoot, teamName, workerName) {
   return join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
@@ -16901,7 +17001,7 @@ function canonicalPathForComparison(path5) {
         canonical = resolve11(path5);
         break;
       }
-      missingTail.unshift(basename16(existing));
+      missingTail.unshift(basename17(existing));
       existing = parent;
     }
   }
@@ -19298,7 +19398,7 @@ var init_copilot_session_eval = __esm({
 
 // src/smoke/copilot-sdk-scenarios.ts
 import { realpathSync as realpathSync8 } from "fs";
-import { basename as basename17, join as join41, resolve as resolve13, sep as sep6 } from "path";
+import { basename as basename18, join as join41, resolve as resolve13, sep as sep6 } from "path";
 function samePathKey(p, platform) {
   let out = resolve13(p);
   try {
@@ -19330,17 +19430,22 @@ function permitScopedRead(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder(resolve13(ctx.projectDir, target), ctx.projectDir, platform);
+}
 function canon(p, platform = process.platform) {
   const out = resolve13(p).split(sep6).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS;
+var ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     PLUGIN_NAME = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
@@ -19350,6 +19455,20 @@ var init_copilot_sdk_scenarios = __esm({
     NO_WRITE_TOOLS = ["create", "edit"];
     denyAll = () => false;
     GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+    FILETOOLS_DIR = "filetools";
+    FILETOOLS_FILES = {
+      notes: `${FILETOOLS_DIR}/notes.txt`,
+      created: `${FILETOOLS_DIR}/new/created.txt`,
+      /**
+       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+       * README once per session, so the read (view of notes.txt) and the write
+       * (creating created.txt) each get their own.
+       */
+      context: `${FILETOOLS_DIR}/README.md`,
+      writeContext: `${FILETOOLS_DIR}/new/README.md`
+    };
+    FILETOOLS_MARKER = "Context marker:";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -19378,6 +19497,19 @@ var init_copilot_sdk_scenarios = __esm({
         prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
+      },
+      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+      filetools: {
+        name: "filetools",
+        prompt: [
+          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+          `1. View ${FILETOOLS_FILES.notes}.`,
+          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+        ].join("\n"),
+        excludedTools: ["powershell", "shell"],
+        permit: permitProjectFiles
       },
       // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
       // factory link (copilot-chain-scenario.ts) under the AFK profile.
@@ -19414,6 +19546,7 @@ var init_process_utils2 = __esm({
 
 // src/smoke/copilot-sdk-driver.ts
 import { spawnSync as nodeSpawnSync } from "child_process";
+import { randomBytes as randomBytes2 } from "crypto";
 import { existsSync as existsSync35, mkdirSync as mkdirSync9, readdirSync as readdirSync14, readFileSync as readFileSync22, realpathSync as realpathSync9, writeFileSync as writeFileSync9 } from "fs";
 import { createRequire as createRequire2 } from "module";
 import { dirname as dirname33, isAbsolute as isAbsolute12, join as join42, relative as relative11, resolve as resolve14 } from "path";
@@ -26340,10 +26473,10 @@ import { readdirSync as readdirSync15, readFileSync as readFileSync25, existsSyn
 import { join as join47 } from "path";
 
 // src/planning/artifact-names.ts
-import { basename as basename18 } from "path";
+import { basename as basename19 } from "path";
 var PLANNING_ARTIFACT_TIMESTAMP_PATTERN = /^\d{8}T\d{6}Z$/;
 function legacyTestSpecSlug(fileNameOrPath) {
-  const match = basename18(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
+  const match = basename19(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
   return match?.groups?.slug ?? null;
 }
 function requiredTimestampedTestSpecFileName(prdArtifact) {
@@ -26364,7 +26497,7 @@ function splitTimestampPrefix(rawSlug) {
   };
 }
 function parsePlanningArtifactFileName(fileNameOrPath) {
-  const fileName = basename18(fileNameOrPath);
+  const fileName = basename19(fileNameOrPath);
   const autoresearchDeepInterviewMatch = fileName.match(
     /^deep-interview-autoresearch-(?<slug>.+)\.md$/i
   );
@@ -26428,7 +26561,7 @@ function selectMatchingTestSpecsForPrd(prdPath, testSpecPaths) {
     return [];
   }
   const requiredTimestampedFileName = requiredTimestampedTestSpecFileName(prdArtifact);
-  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename18(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
+  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename19(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
 }
 function selectLatestPlanningArtifactPath(paths) {
   return [...paths].sort(comparePlanningArtifactPaths).at(-1) ?? null;

@@ -8,6 +8,7 @@ import {
   generateUsageReport,
 } from '../usage-tracker.js';
 import type { TaskUsageRecord } from '../usage-tracker.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 describe('usage-tracker', () => {
   let testDir: string;
@@ -72,7 +73,7 @@ describe('usage-tracker', () => {
       expect(lines).toHaveLength(2);
     });
 
-    it('creates log with correct permissions', () => {
+    it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('creates log with correct permissions', () => {
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
 
       const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');

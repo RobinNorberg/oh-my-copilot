@@ -41,8 +41,14 @@ afterEach(() => {
 describe("scanLookout: briefing rules", () => {
     const NOW = new Date("2026-09-08T00:00:00Z");
     // Fresh repo per test: afterEach wipes tempDirs, so a shared fixture
-    // would leave later tests scanning a deleted directory.
-    const base = () => ({ repo: makeRepo(), now: NOW });
+    // would leave later tests scanning a deleted directory. Within a test the
+    // repo is reused: the scan only reads it, and table-driven tests call
+    // base() dozens of times (each repo costs five git spawns).
+    let testRepo;
+    afterEach(() => {
+        testRepo = undefined;
+    });
+    const base = () => ({ repo: (testRepo ??= makeRepo()), now: NOW });
     it("flags force operations as high severity with evidence", () => {
         const report = scanLookout({
             ...base(),

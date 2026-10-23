@@ -16,7 +16,9 @@ map, fork-owned logic) and `omg-release-runbook.md` (pre-flight, ship, verify).
 This skill is the order and the delegation that made four cycles in two days
 (v5.6.1 → v5.8.1) land without a bad tag. Robin's standing rules apply:
 delegate implementation to subagents; no force-pushes anywhere; recycle agents
-when their report is processed.
+when their report is processed. Every lane brief carries the progress snippet
+from `agent-progress-events.md`, and the lead arms one Monitor on
+`omg progress watch --dir <dir> --stall 10m` instead of polling lanes.
 
 ## Inputs
 - Last ported upstream sha (memory `omc-upstream-porting`), `origin/dev`, a
@@ -47,6 +49,8 @@ when their report is processed.
    `bash scripts/sync-version.sh X` → sed the stamp in `docs/CLAUDE.md` and
    `tests/fixtures/prompt-projection/claude-managed-block.golden` →
    `npm run generate:prompt-projections` (reads `package.json`).
+   Steps 3 to 5 after the port commit are `omg release X` (resumable phases;
+   `omg-release-runbook.md` "Primary path"); the chain below is the fallback.
 4. **One gated chain (lead, background, every step `&&`):** port commit →
    tsc → `npm run build` → `verify:prompt-projections` → generators
    `--verify` → path gate → `git add -f dist bridge && git add -A` →

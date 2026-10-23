@@ -70,19 +70,26 @@ function renderDeepInterviewRuntimeGuidance(availability: SkillRuntimeAvailabili
   ].join('\n');
 }
 
+function resolveAvailability(
+  availability?: SkillRuntimeAvailability | (() => SkillRuntimeAvailability),
+): SkillRuntimeAvailability {
+  if (typeof availability === 'function') return availability();
+  return availability ?? detectSkillRuntimeAvailability();
+}
+
 export function renderSkillRuntimeGuidance(
   skillName: string,
-  availability?: SkillRuntimeAvailability,
+  availability?: SkillRuntimeAvailability | (() => SkillRuntimeAvailability),
 ): string {
   switch (normalizeSkillName(skillName)) {
     case 'deep-interview':
-      return renderDeepInterviewRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderDeepInterviewRuntimeGuidance(resolveAvailability(availability));
     case 'ralplan':
     case 'omc-plan':
     case 'plan':
-      return renderPlanRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderPlanRuntimeGuidance(resolveAvailability(availability));
     case 'ralph':
-      return renderRalphRuntimeGuidance(availability ?? detectSkillRuntimeAvailability());
+      return renderRalphRuntimeGuidance(resolveAvailability(availability));
     default:
       return '';
   }

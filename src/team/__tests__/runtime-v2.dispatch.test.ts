@@ -19,7 +19,7 @@ const { atomicWriteControl, mockFsPromises } = vi.hoisted(() => {
     },
     samePath(left: string, right: string): boolean {
       if (left === right) return true;
-      const normalize = (value: string) => value.replace(/^\/private\/var\//, '/var/');
+      const normalize = (value: string) => value.replace(/\\/g, '/').replace(/^\/private\/var\//, '/var/');
       if (normalize(left) === normalize(right)) return true;
       const tail = normalize(right).split('/').slice(-4).join('/');
       return tail.length > 0 && normalize(left).endsWith(`/${tail}`);
@@ -71,6 +71,7 @@ import { enqueueDispatchRequest, listDispatchRequests, transitionDispatchRequest
 import { readRecoveryOutcome, reserveRecoveryRequest } from '../recovery-request-store.js';
 import { hashTaskRecoveryCheckpointPayload, taskRecoveryClaimTokenHash } from '../task-recovery-checkpoint.js';
 import { absPath, TeamPaths } from '../state-paths.js';
+import { IS_WIN, posixOnly, toPosix } from '../../__tests__/helpers/platform.js';
 import { createTeamInstanceBinding, reserveTeamInstance } from '../team-instance.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import type { TmuxServerIdentity } from '../types.js';
@@ -402,6 +403,8 @@ describe('runtime v2 startup inbox dispatch', () => {
   };
 
   let cwd: string;
+  // Worker instructions name the absolute team root on win32 (runtime-v2.ts workerInstructionStateRoot).
+  const instructionRoot = () => IS_WIN ? toPosix(absPath(cwd, TeamPaths.root('dispatch-team'))) : '$OMC_TEAM_STATE_ROOT';
   let restoreFixtureEnv: (() => void) | undefined;
   let startupDeliveryGate: Deferred<void> | undefined;
   const activeRealLaunches: Array<{
@@ -1292,7 +1295,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(requests[0]?.transport_preference).toBe('transport_direct');
     expect(requests[0]?.fallback_allowed).toBe(true);
     expect(requests[0]?.inbox_correlation_key).toBe('startup:worker-1:1:attempt-worker-1');
-    expect(requests[0]?.trigger_message).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
+    expect(requests[0]?.trigger_message).toContain(`${instructionRoot()}/workers/worker-1/inbox.md`);
     expect(requests[0]?.trigger_message).toContain('execute now');
     expect(requests[0]?.trigger_message).toContain('concrete progress');
 
@@ -1539,7 +1542,7 @@ describe('runtime v2 startup inbox dispatch', () => {
           const promptIndex = launchConfig?.launchArgs?.indexOf('-p') ?? -1;
           expect(promptIndex).toBe(expectedArgs.length);
           expect(launchConfig?.launchArgs?.[promptIndex + 1]).toContain(
-            '$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md',
+            `${instructionRoot()}/workers/worker-1/inbox.md`,
           );
           expect(mocks.sendToWorker).not.toHaveBeenCalled();
           expect(mocks.deliverStartupInbox).not.toHaveBeenCalled();
@@ -2094,7 +2097,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(mocks.killTeamSession).not.toHaveBeenCalled();
   });
 
-  it('does not persist sensitive cmux worker command payloads in startup failure evidence', async () => {
+  it.skipIf(posixOnly('win32 startup rollback reports provider_cleanup_unverified: no POSIX process-group containment'))('does not persist sensitive cmux worker command payloads in startup failure evidence', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-redacted-startup-failure-');
     const secret = 'SECRET_TOKEN_SHOULD_NOT_LEAK';
     const getAttempt = await configureRealUnresolvedStartupLaunch({
@@ -2159,7 +2162,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(markerText).not.toContain('--api-key');
   });
 
-  it('does not persist sensitive primary cmux failure payloads in startup failure evidence', async () => {
+  it.skipIf(posixOnly('win32 startup rollback reports provider_cleanup_unverified: no POSIX process-group containment'))('does not persist sensitive primary cmux failure payloads in startup failure evidence', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-redacted-primary-failure-');
     const secret = 'SECRET_TOKEN_SHOULD_NOT_LEAK';
     const getAttempt = await configureRealUnresolvedStartupLaunch({
@@ -2224,7 +2227,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(markerText).not.toContain('--api-key');
   });
 
-  it('preserves a dirty worktree after verified provider cleanup during startup rollback', async () => {
+  it.skipIf(posixOnly('win32 startup rollback reports provider_cleanup_unverified: no POSIX process-group containment'))('preserves a dirty worktree after verified provider cleanup during startup rollback', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-dirty-startup-failure-');
     execFileSync('git', ['init'], { cwd, stdio: 'pipe' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd, stdio: 'pipe' });
@@ -2333,15 +2336,15 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(manifest.worktree_mode).toBe('named');
 
     const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
-    expect(requests[0]?.trigger_message).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
+    expect(requests[0]?.trigger_message).toContain(`${instructionRoot()}/workers/worker-1/inbox.md`);
     expect(requests[0]?.trigger_message).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
     expect(runtime.config.team_state_root).toBeDefined();
     const teamStateRoot = runtime.config.team_state_root!;
-    expect(requests[0]?.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot))
-      .toContain(absPath(cwd, TeamPaths.inbox('dispatch-team', 'worker-1')));
+    expect(toPosix(requests[0]!.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot)))
+      .toContain(toPosix(absPath(cwd, TeamPaths.inbox('dispatch-team', 'worker-1'))));
 
     const overlay = await readFile(absPath(cwd, TeamPaths.overlay('dispatch-team', 'worker-1')), 'utf-8');
-    expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
+    expect(overlay).toContain(`${instructionRoot()}/workers/worker-1/status.json`);
     expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
   });
 
@@ -4733,10 +4736,10 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith(
       'gemini',
-      expect.stringContaining('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md'),
+      expect.stringContaining(`${instructionRoot()}/workers/worker-1/inbox.md`),
     );
     const promptModeInstruction = modelContractMocks.getPromptModeArgs.mock.calls[0]?.[1];
-    expect(promptModeInstruction).toContain('Open $OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
+    expect(promptModeInstruction).toContain(`Open ${instructionRoot()}/workers/worker-1/inbox.md`);
     expect(promptModeInstruction).not.toContain('claim-task');
     expect(promptModeInstruction).not.toContain('transition-task-status');
     expect(promptModeInstruction).not.toContain('blocked');
@@ -4747,7 +4750,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       expect.objectContaining({
         launchBinary: '/usr/bin/gemini',
         launchArgs: expect.arrayContaining([
-          expect.stringContaining('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md'),
+          expect.stringContaining(`${instructionRoot()}/workers/worker-1/inbox.md`),
         ]),
       }),
     );
