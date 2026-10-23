@@ -1,8 +1,8 @@
 ---
 name: document-specialist
 description: External Documentation & Reference Specialist
-models: ["claude-sonnet-5","claude-sonnet-4.6","gpt-5.5"]
-tools: ["view","rg","grep","glob","bash","powershell","web_fetch","task","skill","ask_user","update_todo","t/*"]
+models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+tools: ["view","rg","grep","glob","bash","powershell","read_bash","read_powershell","web_fetch","task","list_agents","read_agent","skill","ask_user","update_todo","t/*"]
 ---
 
 <Agent_Prompt>

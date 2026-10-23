@@ -700,21 +700,22 @@ could not start any worker.
 - **macOS:** `--madmax` and `--yolo` require tmux on both hosts. The rule is
   judged from the arguments you typed.
 
-### `agents.<name>.model` is a no-op on Copilot
+### `agents.<name>.model` on Copilot
 
-The `agents.<name>.model` override is applied by rewriting the delegation call
-through the PreToolUse `updatedInput` channel. Copilot does not support that
-channel, so the adapter drops it. On Copilot, per-agent models come from the
-generated `models:` lists or from Copilot's own
-`subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json`. Use
-the agent id as Copilot shows it; plugin agents are namespaced
-(`oh-my-copilot:<name>`):
+The `agents.<name>.model` override is applied under Claude Code by rewriting
+the delegation call through the PreToolUse `updatedInput` channel. Copilot does
+not support that channel, so the adapter drops it. `omg setup` therefore copies
+your explicit overrides into Copilot's own per-agent setting,
+`subagents.agents["oh-my-copilot:<name>"].model` in `$COPILOT_HOME/settings.json`
+(tier aliases resolve to the Copilot model for that tier). Existing settings keys
+are preserved, a `settings.json.bak` is written first, and an unchanged file is
+not rewritten. Re-run `omg setup` after editing the override. Removing an
+override from the config does not remove it from `settings.json`; delete it
+there. You can still edit the setting by hand:
 
 ```json
-{ "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5" } } } }
+{ "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5.5" } } } }
 ```
-
-Under Claude Code the override works as before.
 
 ### Removed: the safe-command approver
 

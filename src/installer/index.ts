@@ -33,6 +33,8 @@ import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { analyzeLegacyClaudeMd, OMC_END_MARKER, OMC_START_MARKER, parseClaudeMdMarkers, removeClaudeMdRanges } from './claude-md-analysis.js';
 import { executeClaudeMdTransaction, isClaudeMdEnabledInConfig } from './claude-md-transaction.js';
 import { HISTORICAL_AGENT_OWNERSHIP, type HistoricalAgentOwnership } from './historical-agent-ownership.js';
+import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
+import { resolveAgentModelOverrides, syncCopilotAgentModels } from './copilot-agent-models.js';
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 /** Claude Code configuration directory */
@@ -2871,6 +2873,18 @@ export function install(options: InstallOptions = {}): InstallResult {
     } catch (_e) {
       log('  Warning: Could not configure settings.json (non-fatal)');
       result.hooksConfigured = false;
+    }
+
+    // Copilot ignores the PreToolUse model rewrite, so push explicit
+    // agents.<name>.model overrides into its native subagents.agents setting.
+    if (!projectScoped) {
+      try {
+        const overrides = resolveAgentModelOverrides(loadJsoncFile(getConfigPaths().user)?.agents);
+        const synced = syncCopilotAgentModels(SETTINGS_FILE, overrides);
+        if (synced.length > 0) log(`  Synced ${synced.length} per-agent model override(s) to settings.json subagents.agents`);
+      } catch {
+        log('  Warning: Could not sync per-agent model overrides (non-fatal)');
+      }
     }
 
     // Save version metadata (skip for project-scoped plugins)

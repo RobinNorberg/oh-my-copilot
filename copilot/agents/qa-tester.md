@@ -1,7 +1,7 @@
 ---
 name: qa-tester
 description: Interactive CLI testing specialist using tmux for session management
-models: ["claude-sonnet-5","claude-sonnet-4.6","gpt-5.5"]
+models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
 include-custom-instructions: true
 ---
 

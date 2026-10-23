@@ -1,7 +1,7 @@
 ---
 name: code-simplifier
 description: Simplifies and refines code for clarity, consistency, and maintainability while preserving all functionality. Focuses on recently modified code unless instructed otherwise.
-models: ["claude-opus-5","claude-opus-4.8","gpt-5.5"]
+models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5"]
 include-custom-instructions: true
 ---
 
