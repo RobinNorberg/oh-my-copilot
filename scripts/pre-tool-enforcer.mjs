@@ -1357,27 +1357,36 @@ function activeUltragoalSessionIds(stateDir, exclude) {
 }
 
 const PARENT_SESSION_LINK_FILE = 'copilot-parent-session.json';
+const PARENT_SESSION_MISS_TTL_MS = 30_000;
 
 /**
  * Copilot runs a `task` subagent under its own session id, with no parent
  * field in its tool events (live 1.0.91), so the parent's session-scoped
  * ultragoal guard never saw the child's tools. Resolve the parent from the
  * payload when it names one, else from the parent's events.jsonl
- * (`subagent.started` with agentId = child), and cache the link in the
- * child's session dir. '' when nothing links the child to a guarded session.
+ * (`subagent.started` with agentId = child), and cache the result in the
+ * session dir: a link for good, a miss for 30 s or until the candidate set
+ * changes (so an unrelated session does not re-read a parent's events on
+ * every tool call).
+ * '' when nothing links the child to a guarded session.
  */
 function resolveGuardSessionForCopilotSubagent(stateDir, sessionId, data) {
   if (!isValidSessionId(sessionId)) return '';
   const linkPath = join(stateDir, 'sessions', sessionId, PARENT_SESSION_LINK_FILE);
-  const cached = readJsonFile(linkPath)?.parent_session_id;
-  if (typeof cached === 'string' && isValidSessionId(cached) && cached !== sessionId) return cached;
+  const cached = readJsonFile(linkPath);
+  if (typeof cached?.parent_session_id === 'string' && isValidSessionId(cached.parent_session_id) && cached.parent_session_id !== sessionId) {
+    return cached.parent_session_id;
+  }
   const candidates = activeUltragoalSessionIds(stateDir, sessionId);
   if (candidates.length === 0) return '';
+  const candidateKey = [...candidates].sort().join(',');
+  const named = data.parent_session_id || data.parentSessionId || data.parent_agent_id || data.parentAgentId;
+  const missFresh = Date.now() - Date.parse(cached?.checked_at ?? '') < PARENT_SESSION_MISS_TTL_MS;
+  if (!named && cached?.parent_session_id === null && cached.candidates === candidateKey && missFresh) return '';
   const parent = resolveCopilotParentSessionId(data, sessionId, candidates);
-  if (!parent) return '';
   try {
     mkdirSync(dirname(linkPath), { recursive: true });
-    writeFileSync(linkPath, JSON.stringify({ parent_session_id: parent, linked_at: new Date().toISOString() }), { mode: 0o600 });
+    writeFileSync(linkPath, JSON.stringify({ parent_session_id: parent || null, candidates: candidateKey, checked_at: new Date().toISOString() }), { mode: 0o600 });
   } catch {
     // The link is re-derived on the next call.
   }
