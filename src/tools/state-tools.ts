@@ -13,6 +13,7 @@ import {
   resolveStatePath,
   ensureOmcDir,
   resolveStateWorkingDirectory,
+  withWorktreePathRenderScope,
   isSensitiveStateLocation,
   probeGitTopLevel,
   resolveSessionStatePath,
@@ -2465,3 +2466,9 @@ export const stateTools = [
   stateGetStatusTool,
   stateMigrateNonGitTool,
 ];
+
+// One render scope per call: the per-session loops resolve the state root thousands of times.
+for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+  const handler = tool.handler as (args: never) => Promise<unknown>;
+  tool.handler = ((args: never) => withWorktreePathRenderScope(() => handler(args))) as typeof tool.handler;
+}
