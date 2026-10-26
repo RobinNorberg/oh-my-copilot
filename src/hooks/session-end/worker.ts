@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
@@ -126,6 +126,9 @@ const COPILOT_LIVE_MAX_RECHECKS = 6;
 export async function processSessionEndWorker(payload: SessionEndWorkerPayload, liveRechecks = 0): Promise<void> {
   // Copilot fires SessionEnd after every turn; run nothing while the session goes on.
   const pending = readSessionEndJob(payload.directory, payload.sessionId);
+  // A held job's clock starts at this SessionEnd, not the first turn's, so a
+  // long session still gets its full grace and action deadlines at the real end.
+  if (pending?.phase === 'collecting' && isCopilotSessionEndJob(pending)) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
   if (pending && pending.phase !== 'complete' && isCopilotSessionEndJob(pending) && isCopilotSessionLive(payload.sessionId)) {
     if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
       setTimeout(() => { void processSessionEndWorker(payload, liveRechecks + 1); }, COPILOT_LIVE_RECHECK_MS);

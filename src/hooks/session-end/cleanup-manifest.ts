@@ -325,6 +325,21 @@ export function acknowledgeSessionEndDiscoveryTicket(directory: string, sessionI
 export function takeSessionEndDiscoveryPage(directory: string, limit = 4): string[] { return claimSessionEndDiscoveryTickets(directory, limit).map(ticket => ticket.sessionId); }
 
 
+/**
+ * Restart the producer grace and action deadlines of a job no worker has
+ * claimed yet. A Copilot job is created at the first turn's SessionEnd and
+ * held while the session goes on (worker.ts); without this its deadlines
+ * would lapse mid-session and the real end would expire every action.
+ */
+export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string): SessionEndJobV1 | null {
+  const current = readSessionEndJob(directory, sessionId);
+  if (!current || current.phase !== 'collecting' || current.owner) return null;
+  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+    if (job.phase !== 'collecting' || job.owner) throw new Error('rearm-conflict');
+    Object.assign(job, initialDeadlines());
+  });
+}
+
 /** Recovery may seal a prepared core only after foreground cleanup has a durable completed result. */
 export function recoverPreparedCoreProducer(directory: string, sessionId: string): SessionEndJobV1 | null {
   return mutateLatest(directory, sessionId, job => {
