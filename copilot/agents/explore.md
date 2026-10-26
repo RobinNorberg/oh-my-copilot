@@ -1,8 +1,8 @@
 ---
 name: explore
 description: Codebase search specialist for finding files and code patterns
-models: ["claude-haiku-4.5","gpt-5.4-mini","gpt-5-mini"]
-tools: ["view","rg","grep","glob","bash","powershell","web_fetch","task","skill","ask_user","update_todo","t/*"]
+models: ["claude-haiku-5.5","claude-haiku-4.5","gemini-3.8-flash"]
+tools: ["view","rg","grep","glob","bash","powershell","read_bash","read_powershell","web_fetch","task","list_agents","read_agent","skill","ask_user","update_todo","t/*"]
 ---
 
 <Agent_Prompt>

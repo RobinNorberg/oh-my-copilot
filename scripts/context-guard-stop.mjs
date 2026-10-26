@@ -13,9 +13,14 @@
  *   - Never block context_limit stops (would cause compaction deadlock)
  *   - Never block user-requested stops (respect Ctrl+C / cancel)
  *   - Max 2 blocks per transcript (retry guard prevents infinite loops)
+ *   - Unknown context usage never blocks
+ *   - Copilot CLI (events.jsonl transcript): never blocks; above the threshold
+ *     it sends the advice once per session as a systemMessage, and nothing for
+ *     a stop_hook_active continuation or right after a compaction
  *
  * Hook output:
  *   - { decision: "block", reason: "..." } when context too high
+ *   - { continue: true, systemMessage: "..." } instead on Copilot CLI
  *   - { continue: true, suppressOutput: true } otherwise
  */
 
@@ -25,7 +30,8 @@ import { execFileSync } from 'node:child_process';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { readStdin } from './lib/stdin.mjs';
-import { resolveContextPercent } from './lib/context-usage.mjs';
+import childSession from './lib/child-session.cjs';
+import { isCopilotTranscript, resolveContextPercent, resolveCopilotTranscriptContext } from './lib/context-usage.mjs';
 
 const DEFAULT_THRESHOLD = 75;
 const CRITICAL_THRESHOLD = 95;
@@ -203,6 +209,13 @@ function buildStopRecoveryAdvice(contextPercent, blockCount) {
     `(.omg/state, .omg/notepad.md). (Block ${blockCount}/${MAX_BLOCKS})`;
 }
 
+function buildCopilotContextAdvice(contextPercent) {
+  const severity = contextPercent >= 90 ? 'CRITICAL' : 'HIGH';
+  return `[OMC ${severity}] Context was at ${contextPercent}% at the last Copilot token sample ` +
+    `(threshold: ${THRESHOLD}%). Keep the remaining work compact, avoid spawning new agents, ` +
+    `checkpoint progress in .omg/state and .omg/notepad.md, and suggest the user run /compact.`;
+}
+
 async function main() {
   try {
     const input = await readStdin();
@@ -220,13 +233,55 @@ async function main() {
       return;
     }
 
+    // A subagent's Stop (child session id) gets no later prompt to carry advice.
+    if (childSession.isChildSessionPayload(data)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
     const sessionId = data.session_id || data.sessionId || '';
     const rawTranscriptPath = data.transcript_path || data.transcriptPath || '';
-    const transcriptPath = resolveTranscriptPath(rawTranscriptPath, data.cwd);
-    const pct = (await resolveContextPercent(data, transcriptPath, data.cwd)) ?? 0;
+    const copilot = isCopilotTranscript(rawTranscriptPath);
+
+    // Copilot CLI: stopReason is always "end_turn", so the stop_reason checks
+    // above never match. A turn Copilot already continued for a Stop block
+    // (stop_hook_active) is left alone. A compaction newer than the last token
+    // sample means the context was full and Copilot already compacted it.
+    const copilotContext = copilot && data.stop_hook_active !== true
+      ? resolveCopilotTranscriptContext(rawTranscriptPath)
+      : null;
+    if (copilot && (!copilotContext || copilotContext.compacted)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    const transcriptPath = copilot ? rawTranscriptPath : resolveTranscriptPath(rawTranscriptPath, data.cwd);
+    const pct = await resolveContextPercent(data, transcriptPath, data.cwd, copilotContext || undefined);
+
+    // Unknown context usage never blocks.
+    if (pct === null) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
 
     if (pct >= CRITICAL_THRESHOLD) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    // Copilot never blocks: its only token sample is the last compaction start
+    // or the previous process's session.shutdown, so the percentage is stale
+    // (a session resumed after shutting down at 80% would pay a premium
+    // request per block for nothing), and the model cannot run /compact. The
+    // advice goes out once per session as a systemMessage, which the hook
+    // dispatcher hands to the next prompt at no cost.
+    if (copilot && pct >= THRESHOLD) {
+      if (getBlockCount(sessionId) >= 1) {
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+      incrementBlockCount(sessionId);
+      console.log(JSON.stringify({ continue: true, systemMessage: buildCopilotContextAdvice(pct) }));
       return;
     }
 

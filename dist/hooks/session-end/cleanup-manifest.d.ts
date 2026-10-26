@@ -133,6 +133,36 @@ export declare function releaseSessionEndDiscoveryTicket(directory: string, sess
 export declare function acknowledgeSessionEndDiscoveryTicket(directory: string, sessionId: string): void;
 /** Compatibility read-only page retained for callers that do not claim tickets. */
 export declare function takeSessionEndDiscoveryPage(directory: string, limit?: number): string[];
+/**
+ * Restart the producer grace and action deadlines of a job no worker has
+ * claimed yet. A Copilot job is created at the first turn's SessionEnd and
+ * held while the session goes on (worker.ts); without this its deadlines
+ * would lapse mid-session and the real end would expire every action.
+ * `restartGrace: false` (the real end) keeps the grace the holds already ran
+ * and only moves the action deadline past it, so the actions run now instead
+ * of waiting a fresh grace.
+ */
+export declare function rearmUnclaimedSessionEndJob(directory: string, sessionId: string, { restartGrace }?: {
+    restartGrace?: boolean;
+}): SessionEndJobV1 | null;
+/**
+ * What a Copilot SessionEnd leaves for the worker to plan the factory-chain
+ * link from. `claudeEntrypoint` carries the deferring SessionEnd's
+ * CLAUDE_CODE_ENTRYPOINT, so the worker still refuses a Claude session's link claim.
+ */
+export interface DeferredSessionEndChain {
+    reason: string;
+    linkEnv?: string;
+    claudeEntrypoint?: string;
+}
+/**
+ * Copilot fires SessionEnd after every turn, so the chain link is decided at
+ * the real end (worker.ts), not with the first turn's outcome. Each
+ * SessionEnd records its reason and link claim here; the last one wins.
+ */
+export declare function deferSessionEndChain(directory: string, sessionId: string, deferred: DeferredSessionEndChain): SessionEndJobV1 | null;
+/** The real end: replace the deferred marker with the planned chain, if any. */
+export declare function resolveDeferredSessionEndChain(directory: string, sessionId: string, chain: Record<string, unknown> | null): SessionEndJobV1 | null;
 /** Recovery may seal a prepared core only after foreground cleanup has a durable completed result. */
 export declare function recoverPreparedCoreProducer(directory: string, sessionId: string): SessionEndJobV1 | null;
 /** A prepared core cannot be recovered once its foreground prerequisite is exhausted after grace. */

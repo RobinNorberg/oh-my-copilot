@@ -862,6 +862,17 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
+  let root = scope.omcRoots.get(key);
+  if (root === void 0) {
+    root = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root);
+  }
+  return root;
+}
+function computeOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
@@ -2641,6 +2652,32 @@ var SKININTHEGAMEBROS_ONLY_SKILLS2 = new Set(
 // src/lib/security-config.ts
 var import_fs14 = require("fs");
 var import_path15 = require("path");
+
+// src/config/copilot-models.json
+var copilot_models_default = {
+  knownModels: [
+    "claude-sonnet-5.5",
+    "claude-opus-5.5",
+    "claude-haiku-5.5",
+    "claude-haiku-4.5",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-luna",
+    "gpt-5.3-codex",
+    "gemini-3.8-flash"
+  ],
+  tiers: {
+    opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
+    sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
+    haiku: ["claude-haiku-5.5", "claude-haiku-4.5", "gemini-3.8-flash"],
+    fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
+  }
+};
+
+// src/team/model-contract.ts
+var COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(
+  Object.entries(copilot_models_default.tiers).map(([tier, ids]) => [tier, ids[0]])
+);
 
 // src/team/psmux-adapter.ts
 var import_child_process4 = require("child_process");

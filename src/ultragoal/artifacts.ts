@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import {
   formatClaudeGoalReconciliation,
   parseClaudeGoalSnapshot,
   reconcileClaudeGoalSnapshot,
 } from '../goal-workflows/claude-goal-snapshot.js';
+import { atomicWriteJson } from '../lib/atomic-write.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export const ULTRAGOAL_DIR = '.omg/ultragoal';
@@ -483,11 +484,77 @@ export async function createUltragoalPlan(cwd: string, options: CreateUltragoalO
   if (plan.claudeGoalMode === 'aggregate') plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
 
   await mkdir(ultragoalDir(cwd, planId), { recursive: true });
+  // A goal record (goal-record.ts OMG_GOAL_RECORD) belongs to the plan it was
+  // started under; a recreated plan starts without one.
+  await rm(join(ultragoalDir(cwd, planId), 'omg-goal.json'), { force: true });
   await writeFile(ultragoalBriefPath(cwd, planId), options.brief.endsWith('\n') ? options.brief : `${options.brief}\n`);
   await writePlan(cwd, plan);
   await writeFile(ultragoalLedgerPath(cwd, planId), '');
   await appendLedger(cwd, { ts: now, event: 'plan_created', message: `${candidates.length} goal(s) created` }, planId);
+  if (planId) await recordUltragoalStatePlanId(cwd, planId);
   return plan;
+}
+
+const STATE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+
+async function readActiveUltragoalState(path: string): Promise<Record<string, unknown> | null> {
+  try {
+    const state = JSON.parse(await readFile(path, 'utf-8')) as Record<string, unknown> | null;
+    return state && typeof state === 'object' && state.active === true ? state : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Name the plan this session runs in its ultragoal state (`plan_id`): the key
+ * the hooks' goal-record lookup (scripts/lib/omg-goal-record.mjs) and a
+ * session-scoped `state_clear` use. The session is OMC_SESSION_ID, else
+ * Copilot's COPILOT_AGENT_SESSION_ID; without either, the legacy state file,
+ * else the only active session state. No active state, or several candidate
+ * sessions: nothing is written and the hooks fall back to scanning plans.
+ * Best-effort: the plan artifacts are already written. Returns the state path
+ * it stamped, or null.
+ */
+export async function recordUltragoalStatePlanId(cwd: string, planId: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  const stateDir = join(getOmcRoot(cwd), 'state');
+  const legacy = join(stateDir, 'ultragoal-state.json');
+  const sessionId = [env.OMC_SESSION_ID, env.COPILOT_AGENT_SESSION_ID]
+    .map((value) => value?.trim())
+    .find((value): value is string => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
+  let target: { path: string; state: Record<string, unknown> } | undefined;
+  if (sessionId) {
+    const sessionPath = join(stateDir, 'sessions', sessionId, 'ultragoal-state.json');
+    const sessionState = await readActiveUltragoalState(sessionPath);
+    const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
+    if (sessionState) target = { path: sessionPath, state: sessionState };
+    else if (legacyState && (legacyState.session_id === undefined || legacyState.session_id === sessionId)) target = { path: legacy, state: legacyState };
+  } else {
+    const legacyState = await readActiveUltragoalState(legacy);
+    if (legacyState) target = { path: legacy, state: legacyState };
+    else {
+      let sessions: string[] = [];
+      try {
+        sessions = (await readdir(join(stateDir, 'sessions'), { withFileTypes: true }))
+          .filter((entry) => entry.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry.name))
+          .map((entry) => join(stateDir, 'sessions', entry.name, 'ultragoal-state.json'));
+      } catch { /* no session states */ }
+      const active = [];
+      for (const path of sessions) {
+        const state = await readActiveUltragoalState(path);
+        if (state) active.push({ path, state });
+      }
+      if (active.length === 1) target = active[0];
+    }
+  }
+  if (!target) return null;
+  if (target.state.plan_id === planId) return target.path;
+  try {
+    await atomicWriteJson(target.path, { ...target.state, plan_id: planId });
+  } catch {
+    return null;
+  }
+  return target.path;
 }
 
 export function summarizeUltragoalPlan(plan: UltragoalPlan): { total: number; pending: number; inProgress: number; complete: number; failed: number; reviewBlocked: number; aggregateComplete: boolean; activeGoalId?: string } {

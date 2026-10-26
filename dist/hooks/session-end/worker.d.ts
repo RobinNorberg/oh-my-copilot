@@ -7,7 +7,7 @@ export interface SessionEndWorkerPayload {
 export declare function workerEnvironment(): NodeJS.ProcessEnv;
 export declare function spawnSessionEndWorker(payload: SessionEndWorkerPayload): boolean;
 export declare function executeSessionEndAction(name: SessionEndActionName, payload: SessionEndWorkerPayload, deadlineAt: number, authority?: SessionEndActionAuthority): Promise<void>;
-export declare function processSessionEndWorker(payload: SessionEndWorkerPayload): Promise<void>;
+export declare function processSessionEndWorker(payload: SessionEndWorkerPayload, liveRechecks?: number): Promise<void>;
 /** Bounded fair SessionStart recovery based on durable tickets, not a directory page. */
 export declare function reconcileSessionEndJobs(directory: string, sessionIds?: readonly string[]): void;
 //# sourceMappingURL=worker.d.ts.map

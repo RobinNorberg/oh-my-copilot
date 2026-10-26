@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "ad86cfd2-c9aa-49bd-a886-811317997b19",
+  "timestamp": "2026-10-23T02:19:10.060Z",
+  "cwd": "<CWD>",
+  "transcript_path": "<COPILOT_HOME>\\session-state\\ad86cfd2-c9aa-49bd-a886-811317997b19\\events.jsonl",
+  "agent_id": "ece89723-4efa-45e2-8786-92dbe14ac85a",
+  "agent_type": "explore",
+  "agent_name": "explore",
+  "last_assistant_message": "<response>",
+  "stop_reason": "end_turn"
+}

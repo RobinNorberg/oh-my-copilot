@@ -1,10 +1,11 @@
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, resolveDeferredSessionEndChain, type DeferredSessionEndChain, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
+import { isCopilotSessionEndJob, isCopilotSessionLive } from './copilot-liveness.js';
 
 const WORKER_ARG = '--omc-session-end-worker';
 const MAX_WORKER_MS = 10_000;
@@ -118,7 +119,53 @@ function reschedulePendingWorker(payload: SessionEndWorkerPayload, job: ReturnTy
   setTimeout(() => { void processSessionEndWorker(payload); }, delay);
 }
 
-export async function processSessionEndWorker(payload: SessionEndWorkerPayload): Promise<void> {
+/** Plan the factory-chain link a Copilot SessionEnd deferred (deferSessionEndChain) before any worker claims the job. */
+async function planDeferredChain(payload: SessionEndWorkerPayload): Promise<void> {
+  const deferred = readSessionEndJob(payload.directory, payload.sessionId)?.actions['spawn-next']?.payload?.deferredChain as Partial<DeferredSessionEndChain> | undefined;
+  if (!deferred || typeof deferred !== 'object') return;
+  const [{ planChainEnqueue, recordChainHandoffFailure, resolveChainLink, readChainLedger }, { CHAIN_LINK_ENV }] = await Promise.all([import('./chain-enqueuer.js'), import('./spawn-next.js')]);
+  const env: NodeJS.ProcessEnv = {
+    ...(typeof deferred.linkEnv === 'string' ? { [CHAIN_LINK_ENV]: deferred.linkEnv } : {}),
+    ...(typeof deferred.claudeEntrypoint === 'string' ? { CLAUDE_CODE_ENTRYPOINT: deferred.claudeEntrypoint } : {}),
+  };
+  const chain = planChainEnqueue(payload.directory, payload.sessionId, typeof deferred.reason === 'string' ? deferred.reason : 'other', env);
+  // A null from a duplicate-session-end (another worker is still deciding the
+  // link: its ledger is open) is no decision: keep the marker for that worker.
+  if (!chain) {
+    const ledger = readChainLedger(payload.directory, resolveChainLink(payload.directory, payload.sessionId, env).linkId);
+    if (ledger && !ledger.closedAt) return;
+  }
+  if (resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain as unknown as Record<string, unknown> | null) || !chain) return;
+  // Another worker claimed the job first. Unless it carries this link's chain
+  // (it replayed the closeout), the closed ledger says `enqueued` for a chain
+  // nothing will run: name it, as the foreground path does.
+  const landed = readSessionEndJob(payload.directory, payload.sessionId)?.actions['spawn-next']?.payload?.chain as { sessionId?: unknown } | undefined;
+  if (landed?.sessionId !== chain.sessionId) recordChainHandoffFailure(payload.directory, chain, 'manifest-unavailable', { hostSessionId: payload.sessionId });
+}
+
+/** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
+const COPILOT_LIVE_RECHECK_MS = 5_000;
+const COPILOT_LIVE_MAX_RECHECKS = 6;
+
+export async function processSessionEndWorker(payload: SessionEndWorkerPayload, liveRechecks = 0): Promise<void> {
+  // Copilot fires SessionEnd after every turn; run nothing while the session goes on.
+  const pending = readSessionEndJob(payload.directory, payload.sessionId);
+  const copilotJob = Boolean(pending && isCopilotSessionEndJob(pending));
+  if (pending && pending.phase !== 'complete' && copilotJob && isCopilotSessionLive(payload.sessionId)) {
+    // A held job's clock restarts at each mid-session SessionEnd, so a long
+    // session still has its grace and action deadlines when it really ends.
+    if (pending.phase === 'collecting') rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
+    if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
+      setTimeout(() => { void processSessionEndWorker(payload, liveRechecks + 1); }, COPILOT_LIVE_RECHECK_MS);
+    }
+    return;
+  }
+  // The real end: the holds already ran the grace; refresh only the action
+  // deadline, and decide the chain link with the last SessionEnd's outcome.
+  if (pending?.phase === 'collecting' && copilotJob) {
+    rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId, { restartGrace: false });
+    await planDeferredChain(payload);
+  }
   const deadlineAt = Date.now() + MAX_WORKER_MS; const nonce = randomUUID(); const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 2_500));
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);

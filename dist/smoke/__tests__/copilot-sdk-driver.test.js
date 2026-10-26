@@ -8,7 +8,7 @@ import { parseJsonl } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
 import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, } from '../copilot-sdk-driver.js';
 import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL } from '../copilot-sdk-scenarios.js';
-import { LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
+import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
 const FIXTURES = join(__dirname, 'fixtures');
 const fixtureEvents = (name) => parseJsonl(readFileSync(join(FIXTURES, `tier2-${name}-events.jsonl`), 'utf-8')).events;
@@ -175,6 +175,7 @@ function input(loaded, over = {}, gitCalls = []) {
         mcpServer: 't',
         runChain: async () => { throw new Error('chain runner not stubbed'); },
         runTeam: async () => { throw new Error('team runner not stubbed'); },
+        runCli: async () => { throw new Error('cli runner not stubbed'); },
         ...over,
     };
 }
@@ -413,6 +414,25 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
         expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual(['send:s2']); // guardrail never prompted
         expect(rec.connection.args).toEqual(['--log-level', 'debug', '--max-ai-credits', '30']); // CLI minimum
     });
+    it('CLI scenarios run through runCli, their cost is counted and the rest is skipped past the cap', async () => {
+        const { loaded, rec } = fakeSdk();
+        const calls = [];
+        const shutdown = { type: 'session.shutdown', data: { totalPremiumRequests: 2, totalNanoAiu: 50e9 } };
+        const result = await runSdkTier(input(loaded, {
+            scenarios: ['events', 'smoke'],
+            maxCredits: 30,
+            runCli: async (cli) => {
+                calls.push(`${cli.name}:${cli.budget}`);
+                return { name: cli.name, timeoutMs: 1, model: 'cli', maxCredits: cli.maxCredits, budget: cli.budget, capped: false, wedged: false, events: [shutdown], idle: true, timedOut: false, cli: { sessionId: 's', nonce: 'n', steps: [], stub: [] } };
+            },
+        }));
+        expect(calls).toEqual(['events:30']);
+        expect(result.cost).toMatchObject({ premiumRequests: 2, credits: 50 });
+        const c = byId(result.checks);
+        for (const id of scenarioCheckIds('smoke'))
+            expect(c[id]).toMatchObject({ ok: false, detail: CREDIT_CAP_SKIP_DETAIL });
+        expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
+    });
     it('passes the cap to the runtime when above the CLI minimum', async () => {
         const { loaded, rec } = fakeSdk();
         await runSdkTier(input(loaded, { scenarios: [], maxCredits: 45.5 }));
@@ -647,7 +667,13 @@ describe('runCopilotSmoke tier 2', () => {
         expect(liveRunRefusal(1, undefined, {}, { NODE_ENV: 'test' })).toBe(LIVE_RUN_REFUSED_DETAIL);
         expect(liveRunRefusal(1, undefined, { loadSdk: async () => null }, test)).toBe(LIVE_RUN_REFUSED_DETAIL);
         expect(liveRunRefusal(2, undefined, { spawn: (() => null) }, test)).toBe(LIVE_RUN_REFUSED_DETAIL);
-        expect(liveRunRefusal(2, undefined, { loadSdk: async () => null }, test)).toBeNull();
+        expect(liveRunRefusal(2, ['smoke', 'guardrail'], { loadSdk: async () => null }, test)).toBeNull();
+        // An injected SDK does not make the real-process scenarios safe: they need an injected runner too.
+        for (const name of ['events', 'chain', 'team']) {
+            expect(liveRunRefusal(2, [name], { loadSdk: async () => null }, test)).toBe(`${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${name}`);
+            expect(liveRunRefusal(2, [name], { loadSdk: async () => null }, { ...test, OMC_LIVE_SMOKE: '2' })).toBeNull();
+        }
+        expect(liveRunRefusal(2, ['events'], { loadSdk: async () => null, runCli: async () => { throw new Error('fake'); } }, test)).toBeNull();
         expect(liveRunRefusal(0, undefined, {}, test)).toBeNull();
         expect(liveRunRefusal(2, undefined, {}, {})).toBeNull(); // not under a test runner
     });

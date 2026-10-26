@@ -856,6 +856,17 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
+  let root = scope.omcRoots.get(key);
+  if (root === void 0) {
+    root = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root);
+  }
+  return root;
+}
+function computeOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
@@ -6454,6 +6465,32 @@ var init_executable_resolution = __esm({
   }
 });
 
+// src/config/copilot-models.json
+var copilot_models_default;
+var init_copilot_models = __esm({
+  "src/config/copilot-models.json"() {
+    copilot_models_default = {
+      knownModels: [
+        "claude-sonnet-5.5",
+        "claude-opus-5.5",
+        "claude-haiku-5.5",
+        "claude-haiku-4.5",
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-5.3-codex",
+        "gemini-3.8-flash"
+      ],
+      tiers: {
+        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
+        sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
+        haiku: ["claude-haiku-5.5", "claude-haiku-4.5", "gemini-3.8-flash"],
+        fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
+      }
+    };
+  }
+});
+
 // src/team/model-contract.ts
 function untrustedPathPatterns() {
   return process.platform === "win32" ? [...UNTRUSTED_PATH_PATTERNS, ...UNTRUSTED_WINDOWS_PATH_PATTERNS] : UNTRUSTED_PATH_PATTERNS;
@@ -6545,8 +6582,8 @@ function shouldUseClaudeBareMode(env = process.env) {
   return typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim().length > 0;
 }
 function toCopilotModelId(model) {
-  const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
-  if (alias) return alias;
+  const key = model.toLowerCase();
+  if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key)) return COPILOT_TIER_ALIAS_MODELS[key];
   if (!/^claude-/.test(model)) return model;
   return model.replace(/\[1m\]$/i, "").replace(/-\d{8}$/, "").replace(/^(claude-[a-z]+)-(\d+)-(\d+)(?=$|-[a-z])/, "$1-$2.$3");
 }
@@ -6760,6 +6797,7 @@ var init_model_contract = __esm({
     init_security_config();
     init_host_signal();
     init_executable_resolution();
+    init_copilot_models();
     resolvedPathCache = /* @__PURE__ */ new Map();
     UNTRUSTED_PATH_PATTERNS = [
       /^\/tmp(\/|$)/,
@@ -6772,12 +6810,9 @@ var init_model_contract = __esm({
       /[\\/]Downloads[\\/]/i
     ];
     COPILOT_WORKER_BASE_FLAGS = ["--allow-all-tools", "--allow-all-paths", "--allow-all-urls", "--no-ask-user"];
-    COPILOT_TIER_ALIAS_MODELS = {
-      opus: "claude-opus-5",
-      sonnet: "claude-sonnet-5",
-      haiku: "claude-haiku-4.5",
-      fable: "claude-fable-5.1"
-    };
+    COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(
+      Object.entries(copilot_models_default.tiers).map(([tier, ids]) => [tier, ids[0]])
+    );
     CONTRACTS = {
       claude: {
         agentType: "claude",
@@ -18571,15 +18606,16 @@ function canon(p, platform = process.platform) {
   const out = (0, import_path37.resolve)(p).split(import_path37.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs33, import_path37, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, SCENARIOS;
+var import_fs33, import_path37, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     import_fs33 = require("fs");
     import_path37 = require("path");
     init_copilot_session_eval();
+    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...CLI_SCENARIOS];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     PLUGIN_NAME = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
@@ -18603,6 +18639,9 @@ var init_copilot_sdk_scenarios = __esm({
       writeContext: `${FILETOOLS_DIR}/new/README.md`
     };
     FILETOOLS_MARKER = "Context marker:";
+    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+    EVENTS_SHELL_TOKEN = "omg-events-probe";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -18662,6 +18701,36 @@ var init_copilot_sdk_scenarios = __esm({
           "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
           "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
         ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+      continuation: {
+        name: "continuation",
+        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      "prompt-context": {
+        name: "prompt-context",
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll
+      },
+      events: {
+        name: "events",
+        prompt: [
+          "Do these two steps in order, then answer with one short line:",
+          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      ultragoal: {
+        name: "ultragoal",
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
         excludedTools: [],
         permit: denyAll
       }

@@ -22,6 +22,7 @@ import { flushPendingWrites } from '../subagent-tracker/index.js';
 import { readDispatchTelemetryTail } from '../registry/cutover.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { closeAllJobDbs } from '../../lib/job-state-db.js';
+import { useIsolatedCwd } from '../../__tests__/helpers/isolated-cwd.js';
 
 function writeCanonicalTeamState(tempDir: string, sessionId: string, teamName: string, phase: string): void {
   const canonicalTeamDir = join(tempDir, '.omg', 'state', 'team', teamName);
@@ -53,6 +54,8 @@ function writeCanonicalTeamState(tempDir: string, sessionId: string, teamName: s
 // ============================================================================
 // Hook Routing Tests
 // ============================================================================
+
+useIsolatedCwd();
 
 describe('processHook - Routing Matrix', () => {
   const originalEnv = process.env;

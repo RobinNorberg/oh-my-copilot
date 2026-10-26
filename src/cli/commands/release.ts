@@ -17,14 +17,14 @@ import {
   isPhaseId,
   PHASES,
   runRelease,
+  UsageError,
   type PhaseId,
   type ReleaseDeps,
   type ReleaseExec,
   type ReleaseResult,
+  type SuiteLevel,
 } from '../../release/engine.js';
 import { emitReleaseProgress } from '../../release/progress.js';
-
-class UsageError extends Error {}
 
 function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined {
   if (raw === undefined) return undefined;
@@ -33,7 +33,10 @@ function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined
 }
 
 async function ttyConfirm(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY) return false;
+  if (!process.stdin.isTTY) {
+    console.error('No interactive terminal to confirm on; pass --yes to confirm the tag without a prompt.');
+    return false;
+  }
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
@@ -62,21 +65,22 @@ export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
 export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
   const cmd = new Command('release');
   cmd
-    .description('Maintainer-only release: preflight, bump, build, gates, smoke, commit, PR to dev, promote to main, tag, verify (resumable)')
+    .description('Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)')
     .argument('<version>', 'Release version X.Y.Z')
     .option('--from <phase>', `Start at this phase (${PHASES.join(', ')}); default: the first phase not yet ok`)
     .option('--to <phase>', 'Stop after this phase')
     .option('--dry-run', 'Print the plan for the selected phases without running anything')
     .option('--json', 'JSON output')
     .option('--yes', 'Create and push the tag without the interactive confirmation')
-    .option('--suite <suite>', 'gates vitest suite: none, targeted (related to src changed since the last tag) or full', 'none')
+    .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none')
     .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
     .option('--live-smoke', 'Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise')
+    .option('--allow-skipped-smoke', 'Let the pr phase run although the live smoke was skipped')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
     .option('--timeout <minutes>', 'Minutes the pr / promote / verify phases wait on CI per run', '60')
     .action(async (versionRaw: string, o: {
-      from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite: string; baseline?: string;
-      liveSmoke?: boolean; fixOrphans?: boolean; timeout: string;
+      from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
+      liveSmoke?: boolean; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
     }) => {
       const json = Boolean(o.json);
       try {
@@ -86,13 +90,16 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
         } catch (error) {
           throw new UsageError((error as Error).message);
         }
-        if (!['none', 'targeted', 'full'].includes(o.suite)) throw new UsageError(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
-        if (o.baseline && o.suite !== 'full') throw new UsageError('--baseline needs --suite full');
+        if (o.suite !== undefined && !['none', 'targeted', 'full'].includes(o.suite)) throw new UsageError(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
+        if (o.baseline && o.suite !== undefined && o.suite !== 'full') throw new UsageError('--baseline needs --suite full');
         const timeoutMinutes = Number(o.timeout);
         if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) throw new UsageError('--timeout must be a positive number of minutes');
         const from = phaseOption(o.from, '--from');
         const to = phaseOption(o.to, '--to');
         if (from && to && PHASES.indexOf(from) > PHASES.indexOf(to)) throw new UsageError(`--from ${from} comes after --to ${to}`);
+        if (o.suite !== undefined && to && PHASES.indexOf(to) < PHASES.indexOf('suite')) {
+          console.error(chalk.yellow(`Warning: --to ${to} stops before the suite phase, so --suite ${o.suite} does not run in this invocation (it is recorded for the release and runs when a later run reaches suite).`));
+        }
         const exec = overrides.exec ?? defaultReleaseExec;
         const root = overrides.root ?? (() => {
           const r = exec('git', ['rev-parse', '--show-toplevel']);
@@ -118,9 +125,10 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           to,
           dryRun: o.dryRun,
           yes: o.yes,
-          suite: o.suite as 'none' | 'targeted' | 'full',
+          suite: o.suite as SuiteLevel | undefined,
           baseline: o.baseline,
           liveSmoke: o.liveSmoke,
+          allowSkippedSmoke: o.allowSkippedSmoke,
           fixOrphans: o.fixOrphans,
           timeoutMinutes,
         });

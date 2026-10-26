@@ -18,6 +18,7 @@
  * forceInherit is never auto-enabled, and bare model IDs leak through.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { useIsolatedCwd } from './helpers/isolated-cwd.js';
 // ── Env helpers ──────────────────────────────────────────────────────────────
 const BEDROCK_ENV_KEYS = [
     'CLAUDE_CODE_USE_BEDROCK',
@@ -54,6 +55,8 @@ function restore(saved) {
     }
 }
 // ── Tests ────────────────────────────────────────────────────────────────────
+// The hook calls below pass process.cwd() as the directory; keep their session state out of the checkout.
+useIsolatedCwd();
 describe('Bedrock model routing repro', () => {
     let saved;
     beforeEach(() => {

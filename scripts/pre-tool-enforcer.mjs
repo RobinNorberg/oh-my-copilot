@@ -24,6 +24,9 @@ import { resolveConfiguredAgentModel } from './lib/agent-model-config.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
 import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
 import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
+import { isCopilotHookHost, isSkillToolName } from './lib/hook-host.mjs';
+import { extractCopilotNativeGoal, resolveCopilotParentSessionId } from './lib/copilot-continuation.mjs';
+import { readOmgGoalRecord, ultragoalStatePlanId } from './lib/omg-goal-record.mjs';
 
 // Inlined from src/config/models.ts — avoids a dist/ import so the hook works
 // before a build and stays consistent with the TypeScript source.
@@ -1282,7 +1285,7 @@ function isSingleShellCommand(command) {
 
 const OMC_CLI_PREFIX_PATTERN = /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)|(?:omg|omc|oh-my-copilot|oh-my-copilot\.js|gjc))\s+/;
 const CANCEL_CLI_SUBCOMMAND_PATTERN = /^(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)(?:\s|$)/;
-const ULTRAGOAL_CLI_SUBCOMMAND_PATTERN = /^ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers|add-goal|list-plans)(?:\s|$)/;
+const ULTRAGOAL_CLI_SUBCOMMAND_PATTERN = /^ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers|add-goal|list-plans|goal-start|goal-evidence)(?:\s|$)/;
 
 function matchesOmcCliSubcommand(command, subcommandPattern) {
   if (!isSingleShellCommand(command)) return false;
@@ -1292,7 +1295,7 @@ function matchesOmcCliSubcommand(command, subcommandPattern) {
 
 function isCancelSkillBootstrapTool(toolName, toolInput) {
   const skillName = extractSkillName(toolInput);
-  if (toolName === 'Skill' && skillName === 'cancel') return true;
+  if (isSkillToolName(toolName) && skillName === 'cancel') return true;
   if (toolName === 'ToolSearch') return true;
 
   if (toolName === 'Read') {
@@ -1316,7 +1319,17 @@ function isCancelSkillBootstrapTool(toolName, toolInput) {
 }
 
 function isUltragoalBootstrapTool(toolName, toolInput) {
-  if (toolName === 'Skill' && extractSkillName(toolInput) === 'ultragoal') return true;
+  if (isSkillToolName(toolName) && extractSkillName(toolInput) === 'ultragoal') return true;
+  // Copilot often reads the skill file (the keyword-detector's Read fallback)
+  // instead of invoking the skill tool.
+  if (toolName === 'Read') {
+    const filePath = typeof toolInput.file_path === 'string'
+      ? toolInput.file_path
+      : typeof toolInput.path === 'string'
+        ? toolInput.path
+        : '';
+    if (/(?:^|\/)(?:skills|skill-bodies)\/ultragoal\/SKILL\.md$/i.test(filePath.replace(/\\/g, '/'))) return true;
+  }
   if (toolName !== 'Bash') return false;
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
   // omg is the command the ultragoal artifacts now tell the agent to run; omc
@@ -1325,13 +1338,73 @@ function isUltragoalBootstrapTool(toolName, toolInput) {
   return matchesOmcCliSubcommand(command, ULTRAGOAL_CLI_SUBCOMMAND_PATTERN);
 }
 
-function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data) {
+// Sessions (other than `exclude`) holding an active ultragoal state: the
+// candidates a Copilot subagent's parent is looked up among.
+function activeUltragoalSessionIds(stateDir, exclude) {
+  let entries = [];
+  try {
+    entries = readdirSync(join(stateDir, 'sessions'), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const ids = [];
+  for (const entry of entries.slice(0, 200)) {
+    if (!entry.isDirectory() || entry.name === exclude || !isValidSessionId(entry.name)) continue;
+    const state = readJsonFile(join(stateDir, 'sessions', entry.name, 'ultragoal-state.json'));
+    if (state?.active === true) ids.push(entry.name);
+  }
+  return ids;
+}
+
+const PARENT_SESSION_LINK_FILE = 'copilot-parent-session.json';
+const PARENT_SESSION_MISS_TTL_MS = 30_000;
+
+/**
+ * Copilot runs a `task` subagent under its own session id, with no parent
+ * field in its tool events (live 1.0.91), so the parent's session-scoped
+ * ultragoal guard never saw the child's tools. Resolve the parent from the
+ * payload when it names one, else from the parent's events.jsonl
+ * (`subagent.started` with agentId = child), and cache the result in the
+ * session dir: a link for good, a miss for 30 s or until the candidate set
+ * changes (so an unrelated session does not re-read a parent's events on
+ * every tool call).
+ * '' when nothing links the child to a guarded session.
+ */
+function resolveGuardSessionForCopilotSubagent(stateDir, sessionId, data) {
+  if (!isValidSessionId(sessionId)) return '';
+  const linkPath = join(stateDir, 'sessions', sessionId, PARENT_SESSION_LINK_FILE);
+  const cached = readJsonFile(linkPath);
+  if (typeof cached?.parent_session_id === 'string' && isValidSessionId(cached.parent_session_id) && cached.parent_session_id !== sessionId) {
+    return cached.parent_session_id;
+  }
+  const candidates = activeUltragoalSessionIds(stateDir, sessionId);
+  if (candidates.length === 0) return '';
+  const candidateKey = [...candidates].sort().join(',');
+  const named = data.parent_session_id || data.parentSessionId || data.parent_agent_id || data.parentAgentId;
+  const missFresh = Date.now() - Date.parse(cached?.checked_at ?? '') < PARENT_SESSION_MISS_TTL_MS;
+  if (!named && cached?.parent_session_id === null && cached.candidates === candidateKey && missFresh) return '';
+  const parent = resolveCopilotParentSessionId(data, sessionId, candidates);
+  try {
+    mkdirSync(dirname(linkPath), { recursive: true });
+    writeFileSync(linkPath, JSON.stringify({ parent_session_id: parent || null, candidates: candidateKey, checked_at: new Date().toISOString() }), { mode: 0o600 });
+  } catch {
+    // The link is re-derived on the next call.
+  }
+  return parent;
+}
+
+function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data, omcRoot = join(directory, '.omg')) {
   if (process.env.ALLOW_ULTRAGOAL_WITHOUT_GOAL === '1') return null;
   const toolName = data.tool_name || data.toolName || '';
   const toolInput = data.toolInput || data.tool_input || {};
   if (isUltragoalBootstrapTool(toolName, toolInput)) return null;
   if (isCancelSkillBootstrapTool(toolName, toolInput)) return null;
-  const loaded = readSessionModeState(stateDir, 'ultragoal', sessionId);
+  const copilotHost = isCopilotHookHost();
+  let loaded = readSessionModeState(stateDir, 'ultragoal', sessionId);
+  if (copilotHost && !loaded.state?.active) {
+    const parentSessionId = resolveGuardSessionForCopilotSubagent(stateDir, sessionId, data);
+    if (parentSessionId) loaded = readSessionModeState(stateDir, 'ultragoal', parentSessionId);
+  }
   const state = loaded.state;
   if (!state?.active) return null;
   if (isStaleModeState(state)) return null;
@@ -1340,7 +1413,10 @@ function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, dat
   if (isAwaitingConfirmation(state)) return null;
 
   const expected = getExpectedUltragoalObjective(state, directory);
-  const actual = extractClaudeGoalSnapshot(data, sessionId, directory);
+  // Copilot: a native autopilot/goal objective in the payload counts like a
+  // Claude /goal (field names UNVERIFIED; read defensively, never required).
+  const actual = extractClaudeGoalSnapshot(data, sessionId, directory)
+    ?? (copilotHost ? extractCopilotNativeGoal(data) : null);
   const actualObjective = normalizeText(actual?.objective);
   const expectedObjective = normalizeText(expected);
   const status = normalizePhase(actual?.status);
@@ -1355,6 +1431,25 @@ function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, dat
   // observable at all is preserved below, so the guard stays meaningful.
   if (!expectedObjective && actualObjective && activeStatus) return null;
   if (objectiveMatches && activeStatus) return null;
+
+  // Copilot has no Claude /goal: the OMG goal record written by
+  // `omg ultragoal goal-start` stands in for it (src/ultragoal/goal-record.ts).
+  if (copilotHost) {
+    const found = readOmgGoalRecord([omcRoot, join(directory, '.omg')], { planId: ultragoalStatePlanId(state) });
+    const record = found?.record;
+    const recordStatus = normalizePhase(record?.status);
+    const recordObjective = normalizeText(record?.objective);
+    const recordUsable = recordStatus === 'active' || recordStatus === 'complete';
+    // Multi-plan runs have no base goals.json; the record's own plan names the objective.
+    const recordExpected = expectedObjective || normalizeText(found?.planObjective);
+    if (record && recordUsable && (!recordExpected || recordObjective === recordExpected)) return null;
+    const problem = !record
+      ? 'no OMG goal record exists yet.'
+      : !recordUsable
+        ? `the OMG goal record is ${record.status || 'missing a status'}.`
+        : `the OMG goal record objective does not match: "${record.objective}".`;
+    return `[ULTRAGOAL GOAL RECORD REQUIRED] Active ultragoal state requires an OMG goal record before tools run on GitHub Copilot CLI (it has no Claude /goal); ${problem} Record the objective and its acceptance criteria with: omg ultragoal goal-start --criterion "<acceptance criterion>" (one --criterion per criterion; it defaults to the expected objective). Or run /oh-my-copilot:cancel, or set ALLOW_ULTRAGOAL_WITHOUT_GOAL=1 to bypass this guard intentionally. Expected objective: ${expected || '<the objective passed to goal-start>'}`;
+  }
 
   const mismatch = actualObjective
     ? `current Claude /goal appears unrelated: "${actual.objective}".`
@@ -1608,11 +1703,15 @@ function getSkillProtectionLevel(skillName, rawSkillName) {
   // When rawSkillName is provided, only apply protection to OMC-prefixed skills.
   // Non-prefixed skills are project custom skills or other plugins — no protection.
   // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1581
+  // Copilot CLI's skill tool passes the bare name ({"skill":"cancel"}, live
+  // 1.0.91), so there an unprefixed name counts when the plugin ships it.
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
   if (rawSkillName != null && typeof rawSkillName === 'string' &&
-      !rawSkillName.toLowerCase().startsWith('oh-my-copilot:')) {
+      !rawSkillName.toLowerCase().startsWith('oh-my-copilot:') &&
+      !(isCopilotHookHost() && !rawSkillName.includes(':') &&
+        getPluginSkillsDirs().some((dir) => existsSync(join(dir, normalized, 'SKILL.md'))))) {
     return 'none';
   }
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
   return SKILL_PROTECTION_MAP[normalized] || 'none';
 }
 
@@ -1757,7 +1856,7 @@ async function recordToolInvocation(data, directory) {
     const sessionId = data.session_id || data.sessionId || '';
     if (!sessionId || !directory) return;
 
-    if (toolName === 'Skill') {
+    if (isSkillToolName(toolName)) {
       const skillName = data.toolInput?.skill || data.tool_input?.skill || '';
       if (skillName) {
         const { recordSkillInvoked } = await import('../dist/hooks/subagent-tracker/flow-tracer.js');
@@ -1795,7 +1894,7 @@ async function main() {
     // Activate skill state when Skill tool is invoked (issue #1033)
     // Writes skill-active-state.json so the persistent-mode Stop hook can
     // prevent premature session termination while a skill is executing.
-    if (toolName === 'Skill') {
+    if (isSkillToolName(toolName)) {
       const toolInput = data.toolInput || data.tool_input || {};
       const skillName = extractSkillName(toolInput);
       if (skillName) {
@@ -1816,7 +1915,7 @@ async function main() {
           ? data.sessionId
           : '';
 
-    const ultragoalDenyReason = evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data);
+    const ultragoalDenyReason = evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data, omcRoot);
     if (ultragoalDenyReason) {
       console.log(JSON.stringify({
         continue: true,

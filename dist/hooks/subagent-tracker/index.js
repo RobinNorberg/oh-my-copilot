@@ -462,10 +462,51 @@ export function getStaleAgents(state) {
 // ============================================================================
 // Hook Processors
 // ============================================================================
+function firstString(...values) {
+    for (const value of values) {
+        if (typeof value === "string" && value.trim())
+            return value.trim();
+    }
+    return undefined;
+}
+/**
+ * Copilot CLI field names → Claude's (live probe on Copilot CLI 1.0.91).
+ * SubagentStart arrives camelCase, `{sessionId, transcriptPath, agentName}`,
+ * with no agent id; SubagentStop has `agent_id` (the child session id),
+ * `agent_type`, `agent_name` and `last_assistant_message` (camelCase
+ * `agentId`, `agentType`, `agentName`, `response`). A start without an id
+ * gets a `copilot-<type>-<time>-<random>` id; its stop then reconciles by
+ * agent_type (the oldest running one of that type when several run).
+ */
+export function normalizeSubagentInput(input, event) {
+    const raw = input;
+    const agentType = firstString(raw.agent_type, raw.agentType, raw.agent_name, raw.agentName);
+    const normalized = {
+        ...raw,
+        session_id: firstString(raw.session_id, raw.sessionId),
+        transcript_path: firstString(raw.transcript_path, raw.transcriptPath),
+        agent_id: firstString(raw.agent_id, raw.agentId),
+        agent_type: agentType,
+    };
+    if (event === "start" && !normalized.agent_id) {
+        normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    if (event === "stop" && normalized.output === undefined) {
+        const output = firstString(raw.last_assistant_message, raw.response);
+        if (output)
+            normalized.output = output;
+    }
+    for (const key of Object.keys(normalized)) {
+        if (normalized[key] === undefined)
+            delete normalized[key];
+    }
+    return normalized;
+}
 /**
  * Process SubagentStart event
  */
-export function processSubagentStart(input) {
+export function processSubagentStart(rawInput) {
+    const input = normalizeSubagentInput(rawInput, "start");
     const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
     const writePath = resolveWritePath(input.cwd, sessionId);
     ensureParentDir(writePath);
@@ -570,7 +611,13 @@ export function processSubagentStart(input) {
  * running entry here belongs to the current session. Reconciliation is only
  * considered reliable when there is exactly one candidate (optionally narrowed
  * by agent_type metadata) — otherwise the choice would be ambiguous and could
- * close the wrong agent. Returns the index of the candidate, or -1.
+ * close the wrong agent. The exception is Copilot CLI, whose SubagentStart
+ * carries no agent id: several running `copilot-<type>-*` entries of the
+ * stop's type close oldest first (FIFO). If a newer same-type Copilot agent
+ * stops before an older one, the older entry is closed with the newer one's output and duration (and vice versa
+ * later); per-type counts stay correct, per-agent attribution may be
+ * swapped. This is accepted because Copilot's SubagentStart carries no id.
+ * Returns the index of the candidate, or -1.
  */
 function findReconcilableRunningAgent(state, agentType) {
     const candidates = [];
@@ -582,7 +629,19 @@ function findReconcilableRunningAgent(state, agentType) {
             continue;
         candidates.push(i);
     }
-    return candidates.length === 1 ? candidates[0] : -1;
+    if (candidates.length === 1)
+        return candidates[0];
+    if (!agentType)
+        return -1;
+    const copilotPrefix = `copilot-${agentType}-`;
+    let oldest = -1;
+    for (const i of candidates) {
+        if (!state.agents[i].agent_id.startsWith(copilotPrefix))
+            continue;
+        if (oldest === -1 || state.agents[i].started_at < state.agents[oldest].started_at)
+            oldest = i;
+    }
+    return oldest;
 }
 /**
  * Mark running agents that have exceeded the stale threshold as failed. Used
@@ -612,7 +671,8 @@ function reapStaleRunningAgents(state, nowIso) {
 /**
  * Process SubagentStop event
  */
-export function processSubagentStop(input) {
+export function processSubagentStop(rawInput) {
+    const input = normalizeSubagentInput(rawInput, "stop");
     const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
     const writePath = resolveWritePath(input.cwd, sessionId);
     ensureParentDir(writePath);

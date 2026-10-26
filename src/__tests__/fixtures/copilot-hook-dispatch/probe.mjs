@@ -22,6 +22,7 @@ process.stdin.on('end', () => {
       marker: payload.marker ?? null,
       owner: process.env.OMC_SESSION_OWNER_PID ?? null,
       event: process.env.OMC_HOOK_EVENT ?? null,
+      ...(payload.traceInput ? { input: payload } : {}),
     })}\n`);
   }
   if (spec.stderr) process.stderr.write(spec.stderr);
