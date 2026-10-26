@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createUltragoalPlan, readUltragoalPlan, startNextUltragoal } from '../artifacts.js';
+import { createUltragoalPlan, readUltragoalPlan, startNextUltragoal, UltragoalError } from '../artifacts.js';
 import { missingGoalCriteria, omgGoalRecordPath, omgGoalRecordSnapshot, readOmgGoalRecord, recordOmgGoalEvidence, startOmgGoal } from '../goal-record.js';
 import { ultragoalCommand } from '../../cli/commands/ultragoal.js';
 
@@ -72,6 +72,32 @@ describe('OMG goal record', () => {
     await expect(startOmgGoal(cwd, { criteria: ['x'] })).rejects.toThrow(/No ultragoal plan/);
     await startOmgGoal(cwd, { criteria: ['x'], objective: 'explicit objective' });
     await expect(recordOmgGoalEvidence(cwd, { criterion: 'C9', evidence: 'e' })).rejects.toThrow(/Unknown criterion/);
+  });
+
+  it('reports a corrupt record as an UltragoalError and lets goal-start replace it', async () => {
+    await startedPlan();
+    await writeFile(omgGoalRecordPath(cwd), '{"version": 1, "objective": ');
+    const error = await readOmgGoalRecord(cwd).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(UltragoalError);
+    expect((error as Error).message).toMatch(/Corrupt OMG goal record/);
+
+    const replaced = await startOmgGoal(cwd, { criteria: ['tests pass'] });
+    expect((await readOmgGoalRecord(cwd))?.criteria).toEqual(replaced.criteria);
+  });
+
+  it('writes the record without leaving temp files behind', async () => {
+    await startedPlan();
+    await startOmgGoal(cwd, { criteria: ['tests pass'] });
+    await recordOmgGoalEvidence(cwd, { criterion: 'C1', evidence: 'green' });
+    const dir = join(omgGoalRecordPath(cwd), '..');
+    expect((await readdir(dir)).filter((name) => name.includes('omg-goal'))).toEqual(['omg-goal.json']);
+  });
+
+  it('drops the record when create-goals recreates the plan', async () => {
+    await startedPlan();
+    await startOmgGoal(cwd, { criteria: ['tests pass'] });
+    await createUltragoalPlan(cwd, { brief: 'again', goals: [{ title: 'Again', objective: 'Ship it again' }], force: true });
+    expect(await readOmgGoalRecord(cwd)).toBeNull();
   });
 });
 
