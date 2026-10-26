@@ -51,14 +51,14 @@ function printResult(result) {
 export function releaseCommand(overrides = {}) {
     const cmd = new Command('release');
     cmd
-        .description('Maintainer-only release: preflight, bump, build, gates, smoke, commit, suite, PR to dev, promote to main, tag, verify (resumable)')
+        .description('Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)')
         .argument('<version>', 'Release version X.Y.Z')
         .option('--from <phase>', `Start at this phase (${PHASES.join(', ')}); default: the first phase not yet ok`)
         .option('--to <phase>', 'Stop after this phase')
         .option('--dry-run', 'Print the plan for the selected phases without running anything')
         .option('--json', 'JSON output')
         .option('--yes', 'Create and push the tag without the interactive confirmation')
-        .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full', 'none')
+        .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none')
         .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
         .option('--live-smoke', 'Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise')
         .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
@@ -73,9 +73,9 @@ export function releaseCommand(overrides = {}) {
             catch (error) {
                 throw new UsageError(error.message);
             }
-            if (!['none', 'targeted', 'full'].includes(o.suite))
+            if (o.suite !== undefined && !['none', 'targeted', 'full'].includes(o.suite))
                 throw new UsageError(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
-            if (o.baseline && o.suite !== 'full')
+            if (o.baseline && o.suite !== undefined && o.suite !== 'full')
                 throw new UsageError('--baseline needs --suite full');
             const timeoutMinutes = Number(o.timeout);
             if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0)
@@ -84,6 +84,9 @@ export function releaseCommand(overrides = {}) {
             const to = phaseOption(o.to, '--to');
             if (from && to && PHASES.indexOf(from) > PHASES.indexOf(to))
                 throw new UsageError(`--from ${from} comes after --to ${to}`);
+            if (o.suite !== undefined && to && PHASES.indexOf(to) < PHASES.indexOf('suite')) {
+                console.error(chalk.yellow(`Warning: --to ${to} stops before the suite phase, so --suite ${o.suite} does not run in this invocation (it is recorded for the release and runs when a later run reaches suite).`));
+            }
             const exec = overrides.exec ?? defaultReleaseExec;
             const root = overrides.root ?? (() => {
                 const r = exec('git', ['rev-parse', '--show-toplevel']);

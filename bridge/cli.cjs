@@ -37046,7 +37046,7 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
     }
     if (trustedProbe.status === "not_a_repository") {
       const nestedRel = (0, import_path22.relative)(trustedRootReal, providedRootReal);
-      if (nestedRel !== "" && !nestedRel.startsWith("..") && !(0, import_path22.isAbsolute)(nestedRel)) {
+      if (nestedRel !== "" && nestedRel !== ".." && !nestedRel.startsWith(`..${import_path22.sep}`) && !(0, import_path22.isAbsolute)(nestedRel)) {
         return { status: "ok", root: providedRoot };
       }
     }
@@ -143554,10 +143554,11 @@ var import_url23 = require("url");
 init_atomic_write();
 init_config4();
 init_exec();
-var PHASES2 = ["preflight", "bump", "build", "gates", "smoke", "commit", "suite", "pr", "promote", "tag", "verify"];
+var PHASES2 = ["preflight", "bump", "build", "gates", "commit", "suite", "smoke", "pr", "promote", "tag", "verify"];
 function isPhaseId(value) {
   return PHASES2.includes(value);
 }
+var SUITE_RANK = { none: 0, targeted: 1, full: 2 };
 var PROSE_FILES = ["CHANGELOG.md", ".github/release-body.md", "README.md", "docs/REFERENCE.md", "docs/MIGRATION.md"];
 var SHELL_SAFE_ARG = /^[\w@./:=-]+$/;
 var defaultReleaseExec = (cmd, args, opts) => {
@@ -143565,7 +143566,7 @@ var defaultReleaseExec = (cmd, args, opts) => {
   if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
     return { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
   }
-  const base = cmd === "git" || cmd === "gh" ? scrubShipEnv(process.env) : process.env;
+  const base = opts?.inheritEnv ? process.env : scrubShipEnv(process.env);
   const result = (0, import_child_process54.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
     cwd: opts?.cwd,
     env: { ...base, ...opts?.env },
@@ -143792,7 +143793,7 @@ ${r.stderr}`));
     if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail2(remoteTag.stderr, 1).join("")}`);
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail6(`${problems.length} preflight problem(s)`, problems);
-    this.save({ branch, headSha: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
+    this.save({ branch, headSha: void 0, suiteSha: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
     return { status: "ok", note: `on release/v${v} over origin/dev ${devVersion}` };
   }
   gitProcesses() {
@@ -143859,7 +143860,9 @@ ${r.stderr}`));
       if (tag.status !== 0) fail6("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
       const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs156.existsSync)((0, import_path187.join)(this.deps.root, f)));
       if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
-      this.script("node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed);
+      const args = ["node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed];
+      this.deps.log(`  node ${args.join(" ")}`);
+      this.must(this.deps.node, args, `node ${args.join(" ")}`, { inheritEnv: true });
       return { status: "ok", note: `targeted suite over ${changed.length} changed src file(s)` };
     }
     if (suite === "full") {
@@ -143867,7 +143870,7 @@ ${r.stderr}`));
       (0, import_fs156.mkdirSync)((0, import_path187.join)(this.deps.stateRoot, "release"), { recursive: true });
       (0, import_fs156.rmSync)(out, { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`]);
+      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { inheritEnv: true });
       if (!(0, import_fs156.existsSync)(out)) fail6(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
       const failing = failingTitlesFromVitestJson((0, import_fs156.readFileSync)(out, "utf8"));
       const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs156.readFileSync)(this.opts.baseline, "utf8")) : [];
@@ -143875,7 +143878,8 @@ ${r.stderr}`));
       if (fresh.length > 0) fail6(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
       return { status: "ok", note: `full suite: ${failing.length} failing, all in the baseline` };
     }
-    return { status: "ok", note: "no vitest suite (--suite none)" };
+    this.deps.log("  !! SKIPPED the vitest suite (--suite none). The runbook requires --suite full before the PR: re-run with --from suite --suite full --baseline <report>.");
+    return { status: "skipped", note: "vitest suite not run (--suite none)" };
   }
   smoke() {
     if (!this.opts.liveSmoke) {
@@ -143977,7 +143981,10 @@ ${r.stderr}`));
         if (!s.headSha || !FULL_SHA3.test(s.headSha)) return "no release commit recorded (--from commit)";
         if (released) return null;
         const head = this.git("rev-parse", "HEAD");
-        return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates and the suite (--from gates)`;
+        if (head === s.headSha) return null;
+        const srcChanged = this.run("git", ["diff", "--quiet", s.headSha, "--", "src"]).status !== 0;
+        const from = srcChanged ? "build" : "gates";
+        return `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the ${srcChanged ? "build, the " : ""}gates and the suite (--from ${from})`;
       }
       case "suite": {
         if (released) return null;
@@ -144291,11 +144298,19 @@ function resumePoint(state, from) {
   }
   return null;
 }
-async function runRelease(deps, opts) {
-  const v = opts.version;
+async function runRelease(deps, requested) {
+  const v = requested.version;
   const statePath = releaseStatePath(deps.stateRoot, v);
   const existing = readReleaseState(deps.stateRoot, v);
-  const start = resumePoint(existing, opts.from);
+  const start = resumePoint(existing, requested.from);
+  const recorded = start === "preflight" ? void 0 : existing?.suite;
+  if (requested.suite && recorded && SUITE_RANK[requested.suite] < SUITE_RANK[recorded]) {
+    const note = `--suite ${requested.suite} is below the --suite ${recorded} recorded for ${v}; pass --suite ${recorded} (or omit --suite), or start over with --from preflight`;
+    deps.log(`[${start}] blocked: ${note}`);
+    return { ok: false, version: v, dryRun: Boolean(requested.dryRun), statePath, phases: [{ id: start ?? "verify", status: "blocked", note }] };
+  }
+  const opts = { ...requested, suite: requested.suite ?? recorded ?? "none" };
+  if (opts.baseline && opts.suite !== "full") throw new Error(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES2.indexOf(opts.to ?? "verify");
   if (opts.from && PHASES2.indexOf(opts.from) > last) throw new Error(`--from ${opts.from} comes after --to ${opts.to}`);
   const selected = start === null ? [] : PHASES2.slice(PHASES2.indexOf(start), last + 1);
@@ -144316,6 +144331,7 @@ async function runRelease(deps, opts) {
     for (const d of skip) deps.log(`    ${d}`);
     return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: "blocked", note, details: skip }] };
   }
+  if (release.current.suite !== opts.suite) release.save({ suite: opts.suite });
   for (const id of selected) {
     deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
     deps.progress({ phase: id, status: "start" });
@@ -144398,7 +144414,7 @@ function printResult(result) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, smoke, commit, suite, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full", "none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
     const json = Boolean(o.json);
     try {
       let version3;
@@ -144407,13 +144423,16 @@ function releaseCommand(overrides = {}) {
       } catch (error2) {
         throw new UsageError2(error2.message);
       }
-      if (!["none", "targeted", "full"].includes(o.suite)) throw new UsageError2(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
-      if (o.baseline && o.suite !== "full") throw new UsageError2("--baseline needs --suite full");
+      if (o.suite !== void 0 && !["none", "targeted", "full"].includes(o.suite)) throw new UsageError2(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
+      if (o.baseline && o.suite !== void 0 && o.suite !== "full") throw new UsageError2("--baseline needs --suite full");
       const timeoutMinutes = Number(o.timeout);
       if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) throw new UsageError2("--timeout must be a positive number of minutes");
       const from = phaseOption(o.from, "--from");
       const to = phaseOption(o.to, "--to");
       if (from && to && PHASES2.indexOf(from) > PHASES2.indexOf(to)) throw new UsageError2(`--from ${from} comes after --to ${to}`);
+      if (o.suite !== void 0 && to && PHASES2.indexOf(to) < PHASES2.indexOf("suite")) {
+        console.error(source_default.yellow(`Warning: --to ${to} stops before the suite phase, so --suite ${o.suite} does not run in this invocation (it is recorded for the release and runs when a later run reaches suite).`));
+      }
       const exec3 = overrides.exec ?? defaultReleaseExec;
       const root2 = overrides.root ?? (() => {
         const r = exec3("git", ["rev-parse", "--show-toplevel"]);

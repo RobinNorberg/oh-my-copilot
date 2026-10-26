@@ -11,12 +11,14 @@
  *   build      npm run build, git add -f dist bridge, orphan + untracked
  *              checks, import / --version / MCP start probes
  *   gates      tsc, projections, copilot generators, multi-repo path gate
- *   smoke      live Tier 2 smoke, only with --live-smoke
  *   commit     release commit, then the inventory regenerated LAST
  *   suite      optional vitest suite (targeted, or full against a baseline),
  *              run on the committed tree: some tests (npm pack, committed
  *              docs/CLAUDE.md, inventory drift) read committed state and
- *              always fail on the uncommitted release tree
+ *              always fail on the uncommitted release tree. The level is
+ *              recorded in the state and a later run never lowers it
+ *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
+ *              a red suite costs no premium requests
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
@@ -33,7 +35,7 @@
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
 import type { ReleaseProgressInput } from './progress.js';
-export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "smoke", "commit", "suite", "pr", "promote", "tag", "verify"];
+export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "commit", "suite", "smoke", "pr", "promote", "tag", "verify"];
 export type PhaseId = (typeof PHASES)[number];
 export declare function isPhaseId(value: string): value is PhaseId;
 export type PhaseStatus = 'ok' | 'skipped' | 'fail' | 'blocked';
@@ -57,6 +59,8 @@ export interface ReleaseState {
     headSha?: string;
     /** HEAD the suite phase ran on; a suite recorded for another HEAD does not hold. */
     suiteSha?: string;
+    /** Highest --suite requested for this release (a later run without --suite keeps it, a lower one is refused). */
+    suite?: SuiteLevel;
     devPr?: number;
     devMergeSha?: string;
     mainPr?: number;
@@ -65,9 +69,13 @@ export interface ReleaseState {
     /** Run id -> automatic reruns spent (one per run). */
     reruns: Record<string, number>;
 }
-export type ReleaseExec = (cmd: string, args: string[], opts?: ExecOptions & {
+export type SuiteLevel = 'none' | 'targeted' | 'full';
+/** `inheritEnv`: run with the caller's environment instead of the ship scrub (the vitest suite only). */
+export type ReleaseExecOptions = ExecOptions & {
     timeoutMs?: number;
-}) => ExecResult;
+    inheritEnv?: boolean;
+};
+export type ReleaseExec = (cmd: string, args: string[], opts?: ReleaseExecOptions) => ExecResult;
 /** Files the release prose lives in; uncommitted edits to them are folded into the release commit. */
 export declare const PROSE_FILES: string[];
 export declare const defaultReleaseExec: ReleaseExec;
@@ -86,7 +94,8 @@ export interface ReleaseOptions {
     dryRun?: boolean;
     /** Tag without the interactive confirmation. */
     yes?: boolean;
-    suite?: 'none' | 'targeted' | 'full';
+    /** Omitted: the level recorded for this release (none when nothing was recorded). */
+    suite?: SuiteLevel;
     /** Full-suite baseline: a vitest JSON report or one `<file> > <title>` per line. */
     baseline?: string;
     liveSmoke?: boolean;
@@ -128,5 +137,5 @@ export declare function readReleaseState(stateRoot: string, version: string): Re
 export declare function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[];
 /** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */
 export declare function resumePoint(state: ReleaseState | null, from?: PhaseId): PhaseId | null;
-export declare function runRelease(deps: ReleaseDeps, opts: ReleaseOptions): Promise<ReleaseResult>;
+export declare function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): Promise<ReleaseResult>;
 //# sourceMappingURL=engine.d.ts.map

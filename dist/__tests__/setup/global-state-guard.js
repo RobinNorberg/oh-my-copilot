@@ -38,10 +38,12 @@ function fixtureSessions(root, name) {
         })(path);
         found.set(label, signature);
     };
-    const scan = (dir, label, stem) => {
+    const scan = (dir, label, stem, keyed = () => true) => {
         if (!existsSync(dir))
             return;
         for (const entry of readdirSync(dir)) {
+            if (!keyed(entry))
+                continue;
             const id = stem ? entry.replace(/\.json$/, '') : entry;
             if (UUID.test(id))
                 continue;
@@ -50,10 +52,13 @@ function fixtureSessions(root, name) {
     };
     scan(join(root, 'state', 'sessions'), `${name}/state/sessions`, false);
     scan(join(root, 'sessions'), `${name}/sessions`, true);
-    scan(join(root, 'state', 'session-end-jobs'), `${name}/state/session-end-jobs`, true);
+    // Only the <session id>.json job files are session keyed: runs/<job uuid>/ (action-runner.ts),
+    // discovery.json and the *.lock / *.reclaim files beside the jobs are not.
+    scan(join(root, 'state', 'session-end-jobs'), `${name}/state/session-end-jobs`, true, (entry) => entry.endsWith('.json') && entry !== 'discovery.json');
     return found;
 }
-function snapshot(repo) {
+/** Fixture session entries under the repository's .omg / .omc: label -> file count and newest mtime. */
+export function snapshot(repo) {
     const all = new Map();
     for (const root of STATE_ROOTS) {
         for (const [label, signature] of fixtureSessions(join(repo, root), root))

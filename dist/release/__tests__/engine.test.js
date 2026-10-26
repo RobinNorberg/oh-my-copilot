@@ -24,9 +24,12 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     let confirmAnswer;
     let confirms;
     let shipBlock;
-    const exec = (cmd, args) => {
+    let inherited;
+    const exec = (cmd, args, opts) => {
         const key = `${cmd === process.execPath ? 'node' : cmd} ${args.join(' ')}`;
         calls.push(key);
+        if (opts?.inheritEnv)
+            inherited.push(key);
         for (const h of handlers) {
             const r = h(key, args);
             if (r)
@@ -114,6 +117,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         root = mkdtempSync(join(tmpdir(), 'omg-release-'));
         stateRoot = join(root, '.omg');
         calls = [];
+        inherited = [];
         events = [];
         logs = [];
         handlers = [];
@@ -187,14 +191,14 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(resumePoint(readReleaseState(stateRoot, V))).toBe('gates');
         });
         it('refuses --from past a phase that never passed', async () => {
-            seedState('gates');
+            seedState('build');
             const result = await release({ from: 'commit', to: 'commit' });
             expect(result.phases).toEqual([expect.objectContaining({ id: 'commit', status: 'blocked' })]);
-            expect(result.phases[0].details).toContain('smoke: has not passed (run it: --from smoke)');
+            expect(result.phases[0].details).toContain('gates: has not passed (run it: --from gates)');
             expect(calls.some((c) => c.startsWith('git commit') || c.startsWith('git add'))).toBe(false);
         });
         it('refuses a resume on another branch or a HEAD that does not descend from the release commit, unless --from preflight', async () => {
-            seedState('suite', { branch: `release/v${V}` });
+            seedState('smoke', { branch: `release/v${V}` });
             handlers.push((key) => (key === 'git rev-parse --abbrev-ref HEAD' ? ok('feat/other\n') : undefined));
             const onOther = await release({ to: 'pr' });
             expect(onOther.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
@@ -214,7 +218,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             const result = await release({ from: 'preflight', to: 'preflight' });
             expect(result.ok).toBe(true);
             const state = readReleaseState(stateRoot, V);
-            for (const key of ['devPr', 'devMergeSha', 'mainPr', 'mainMergeSha', 'tagRunId', 'headSha'])
+            for (const key of ['devPr', 'devMergeSha', 'mainPr', 'mainMergeSha', 'tagRunId', 'headSha', 'suiteSha'])
                 expect(state[key]).toBeUndefined();
         });
         it('refuses to skip past commit when HEAD moved off the release commit: new commits go back through the gates', async () => {
@@ -223,6 +227,18 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             const result = await release({ from: 'promote', to: 'promote' });
             expect(result.phases[0]).toMatchObject({ id: 'promote', status: 'blocked' });
             expect(result.phases[0].details).toContain('commit: HEAD 555555555555 is not the recorded release commit 111111111111; new local commits must go back through the gates and the suite (--from gates)');
+        });
+        it('sends new commits that change src back through the build, so dist/ and bridge/ are not stale', async () => {
+            seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
+            handlers.push((key) => {
+                if (key === 'git rev-parse HEAD')
+                    return ok(`${OTHER}\n`);
+                if (key === `git diff --quiet ${HEAD} -- src`)
+                    return no('', 1);
+                return undefined;
+            }, landed);
+            const result = await release({ from: 'promote', to: 'promote' });
+            expect(result.phases[0].details).toContain('commit: HEAD 555555555555 is not the recorded release commit 111111111111; new local commits must go back through the build, the gates and the suite (--from build)');
         });
         it('refuses to skip pr when the recorded dev merge does not contain the release commit', async () => {
             seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
@@ -367,8 +383,40 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
             expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/vitest wrote no JSON report/) });
         });
+        it('records --suite none as skipped, with a warning', async () => {
+            seedState('commit');
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
+            const result = await release({ from: 'suite', to: 'suite' });
+            expect(result.phases[0]).toMatchObject({ id: 'suite', status: 'skipped', note: 'vitest suite not run (--suite none)' });
+            expect(logs.join('\n')).toMatch(/SKIPPED the vitest suite/);
+            expect(readReleaseState(stateRoot, V)).toMatchObject({ suite: 'none', suiteSha: HEAD });
+        });
+        it('keeps the suite level a run before the suite phase asked for, and refuses a lower one later', async () => {
+            seedState('build');
+            expect((await release({ to: 'gates', suite: 'full' })).ok).toBe(true);
+            expect(readReleaseState(stateRoot, V).suite).toBe('full');
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
+            const lower = await release({ to: 'suite', suite: 'none' });
+            expect(lower.ok).toBe(false);
+            expect(lower.phases[0]).toMatchObject({ id: 'commit', status: 'blocked', note: expect.stringMatching(/--suite none is below the --suite full recorded for 5\.12\.2/) });
+            expect(calls.some((c) => c.startsWith('git commit'))).toBe(false);
+            // Without --suite the resume runs the recorded full suite.
+            const resumed = await release({ to: 'suite' });
+            expect(calls.some((c) => c.includes('vitest.mjs run'))).toBe(true);
+            // Only the vitest child skips the ship scrub.
+            expect(inherited).toHaveLength(1);
+            expect(inherited[0]).toMatch(/^node node_modules\/vitest\/vitest\.mjs run /);
+            expect(resumed.phases.find((p) => p.id === 'suite')).toMatchObject({ status: 'fail', note: expect.stringMatching(/vitest wrote no JSON report/) });
+            expect((await release({ dryRun: true, from: 'suite', to: 'suite' })).phases[0].steps[0]).toMatch(/^vitest run --reporter=json/);
+        });
+        it('--from preflight starts over with the suite level of that run', async () => {
+            seedState('verify', { suite: 'full', branch: `release/v${V}` });
+            handlers.push(preflightOk);
+            expect((await release({ from: 'preflight', to: 'preflight', suite: 'none' })).ok).toBe(true);
+            expect(readReleaseState(stateRoot, V).suite).toBe('none');
+        });
         it('a suite recorded for an earlier HEAD does not let pr be skipped', async () => {
-            seedState('suite', { suiteSha: OTHER });
+            seedState('smoke', { suiteSha: OTHER });
             handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
             const result = await release({ from: 'pr', to: 'pr' });
             expect(result.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
@@ -376,15 +424,20 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         });
     });
     describe('smoke', () => {
+        it('runs after the suite, so a red suite costs no premium requests', () => {
+            expect(PHASES.indexOf('smoke')).toBe(PHASES.indexOf('suite') + 1);
+        });
         it('is skipped loudly without --live-smoke', async () => {
-            seedState('gates');
+            seedState('suite');
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
             const result = await release({ to: 'smoke' });
             expect(result.phases).toEqual([expect.objectContaining({ id: 'smoke', status: 'skipped' })]);
             expect(logs.join('\n')).toMatch(/SKIPPED the live Tier 2 smoke/);
-            expect(calls).toEqual([]);
+            expect(calls.some((c) => c.includes('smoke copilot'))).toBe(false);
         });
         it('requires every check green with --live-smoke', async () => {
-            seedState('gates');
+            seedState('suite');
+            handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
             handlers.push((key) => (key === 'node bridge/cli.cjs smoke copilot --tier 2 --json'
                 ? { status: 1, stdout: '{"ok":false,"checks":[{"id":"scn.guardrail","ok":false,"detail":"not denied"}]}', stderr: '' }
                 : undefined));
@@ -394,7 +447,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
     describe('commit', () => {
         it('commits the release, then the inventory last, and requires a clean tree', async () => {
-            seedState('smoke');
+            seedState('gates');
             let inventoryWritten = false;
             handlers.push((key) => {
                 if (key === 'git diff --cached --quiet')
@@ -427,7 +480,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         let prHead;
         let checksJson;
         beforeEach(() => {
-            seedState('suite');
+            seedState('smoke');
             prState = 'OPEN';
             prHead = HEAD;
             checksJson = checks('FAILURE');
@@ -464,7 +517,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(events.some((e) => e.phase === 'pr' && e.status === 'heartbeat')).toBe(true);
         });
         it('pushes again on a re-run while the PR is open, and blocks on a refused push without forcing', async () => {
-            seedState('suite', { devPr: 301 });
+            seedState('smoke', { devPr: 301 });
             handlers.unshift((key) => (key === 'git push origin HEAD:refs/heads/release/v5.12.2' ? no('! [rejected] HEAD -> release/v5.12.2 (fetch first)') : undefined));
             const result = await release({ to: 'pr' });
             expect(calls).toContain('git push origin HEAD:refs/heads/release/v5.12.2');
@@ -518,14 +571,14 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
         });
         it('re-run after the owner merged picks the merge commit up without pushing again', async () => {
-            seedState('suite', { devPr: 301 });
+            seedState('smoke', { devPr: 301 });
             prState = 'MERGED';
             const result = await release({ to: 'pr' });
             expect(result.ok).toBe(true);
             expect(calls.some((c) => c.startsWith('git push'))).toBe(false);
         });
         it('blocks on an already-merged release PR whose merge does not contain local HEAD, with a follow-up PR route', async () => {
-            seedState('suite', { devPr: 301 });
+            seedState('smoke', { devPr: 301 });
             prState = 'MERGED';
             prHead = OTHER;
             handlers.unshift((key) => (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}` || key === `git merge-base --is-ancestor ${HEAD} refs/remotes/origin/dev` ? no('', 1) : undefined));
@@ -537,7 +590,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(readReleaseState(stateRoot, V).devMergeSha).toBeUndefined();
         });
         it('accepts the merged release PR once a follow-up PR into dev carried the missing commits: the dev tip is the dev merge', async () => {
-            seedState('suite', { devPr: 301 });
+            seedState('smoke', { devPr: 301 });
             prState = 'MERGED';
             handlers.unshift((key) => {
                 if (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}`)
@@ -860,13 +913,14 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
 });
 describe('defaultReleaseExec environment', () => {
-    it('does not give the suite runner the ship scrub (node keeps GIT_* variables and has no forced GIT_NO_REPLACE_OBJECTS)', () => {
+    it('scrubs every child, node scripts included (they call git), and only an inheritEnv call (the suite) keeps the caller environment', () => {
         const saved = { idx: process.env.GIT_INDEX_FILE, repl: process.env.GIT_NO_REPLACE_OBJECTS };
-        process.env.GIT_INDEX_FILE = 'kept-for-node';
+        process.env.GIT_INDEX_FILE = 'caller-index';
         delete process.env.GIT_NO_REPLACE_OBJECTS;
+        const probe = ['-p', 'JSON.stringify([process.env.GIT_INDEX_FILE ?? null, process.env.GIT_NO_REPLACE_OBJECTS ?? null])'];
         try {
-            const r = defaultReleaseExec(process.execPath, ['-p', 'JSON.stringify([process.env.GIT_INDEX_FILE, process.env.GIT_NO_REPLACE_OBJECTS ?? null])']);
-            expect(JSON.parse(r.stdout)).toEqual(['kept-for-node', null]);
+            expect(JSON.parse(defaultReleaseExec(process.execPath, probe).stdout)).toEqual([null, '1']);
+            expect(JSON.parse(defaultReleaseExec(process.execPath, probe, { inheritEnv: true }).stdout)).toEqual(['caller-index', null]);
         }
         finally {
             if (saved.idx === undefined)

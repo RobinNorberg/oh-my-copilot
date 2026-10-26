@@ -16489,7 +16489,7 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
     }
     if (trustedProbe.status === "not_a_repository") {
       const nestedRel = (0, import_path16.relative)(trustedRootReal, providedRootReal);
-      if (nestedRel !== "" && !nestedRel.startsWith("..") && !(0, import_path16.isAbsolute)(nestedRel)) {
+      if (nestedRel !== "" && nestedRel !== ".." && !nestedRel.startsWith(`..${import_path16.sep}`) && !(0, import_path16.isAbsolute)(nestedRel)) {
         return { status: "ok", root: providedRoot };
       }
     }
