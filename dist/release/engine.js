@@ -571,6 +571,8 @@ class Release {
                 const required = this.opts.suite ?? 'none';
                 return SUITE_RANK[ran] < SUITE_RANK[required] ? `the suite ran at --suite ${ran}, below the --suite ${required} this release requires (--from suite --suite ${required})` : null;
             }
+            case 'smoke':
+                return this.opts.liveSmoke && status === 'skipped' ? 'the live smoke was skipped (--from smoke --live-smoke)' : null;
             case 'pr': {
                 if (s.devPr === undefined || !s.devMergeSha)
                     return 'no merged release PR into dev recorded (--from pr)';
@@ -624,6 +626,10 @@ class Release {
         return Number(m[1]);
     }
     async pr() {
+        const smoke = this.state.phases.smoke?.status;
+        if (smoke !== 'ok' && !this.opts.allowSkippedSmoke) {
+            blocked(`the live smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}; run it (--from smoke --live-smoke, about 2 premium requests), or pass --allow-skipped-smoke to release without it`);
+        }
         const branch = `release/v${this.v}`;
         // Pushed on every run until merged, so commits added after a failure reach the PR.
         if (this.state.devPr === undefined || this.viewPr(this.state.devPr).state !== 'MERGED') {
@@ -829,6 +835,8 @@ class Release {
         const smoke = this.state.phases.smoke?.status;
         const warn = smoke === 'ok' ? '' : ` WARNING: the live Tier 2 smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}.`;
         const action = local.status === 0 ? 'Push the existing local' : 'Create and push';
+        if (this.opts.yes && smoke !== 'ok')
+            this.deps.log(`  !!${warn}`);
         if (!this.opts.yes && !(await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`))) {
             blocked(`${tag} not pushed: the confirmation was declined or there is no interactive terminal (pass --yes to confirm without a prompt)`);
         }
@@ -958,6 +966,9 @@ export async function runRelease(deps, requested) {
     if (requested.baseline && opts.suite !== 'full')
         throw new UsageError(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
     const last = PHASES.indexOf(opts.to ?? 'verify');
+    if (start !== null && opts.suite === 'full' && opts.baseline && PHASES.indexOf(start) <= PHASES.indexOf('suite') && last >= PHASES.indexOf('suite') && !existsSync(opts.baseline)) {
+        throw new UsageError(`baseline report not found: ${opts.baseline} (pass --baseline again)`);
+    }
     if (opts.from && PHASES.indexOf(opts.from) > last)
         throw new UsageError(`--from ${opts.from} comes after --to ${opts.to}`);
     // A resume point past --to means the selected range is already done.

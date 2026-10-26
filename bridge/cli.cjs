@@ -144012,6 +144012,8 @@ ${r.stderr}`));
         const required2 = this.opts.suite ?? "none";
         return SUITE_RANK[ran] < SUITE_RANK[required2] ? `the suite ran at --suite ${ran}, below the --suite ${required2} this release requires (--from suite --suite ${required2})` : null;
       }
+      case "smoke":
+        return this.opts.liveSmoke && status === "skipped" ? "the live smoke was skipped (--from smoke --live-smoke)" : null;
       case "pr": {
         if (s.devPr === void 0 || !s.devMergeSha) return "no merged release PR into dev recorded (--from pr)";
         const sha = this.mergedSha(s.devPr);
@@ -144053,6 +144055,10 @@ ${r.stderr}`));
     return Number(m[1]);
   }
   async pr() {
+    const smoke = this.state.phases.smoke?.status;
+    if (smoke !== "ok" && !this.opts.allowSkippedSmoke) {
+      blocked(`the live smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}; run it (--from smoke --live-smoke, about 2 premium requests), or pass --allow-skipped-smoke to release without it`);
+    }
     const branch = `release/v${this.v}`;
     if (this.state.devPr === void 0 || this.viewPr(this.state.devPr).state !== "MERGED") {
       const push = this.run("git", ["push", "origin", `HEAD:refs/heads/${branch}`]);
@@ -144230,6 +144236,7 @@ ${r.stderr}`));
     const smoke = this.state.phases.smoke?.status;
     const warn = smoke === "ok" ? "" : ` WARNING: the live Tier 2 smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}.`;
     const action = local.status === 0 ? "Push the existing local" : "Create and push";
+    if (this.opts.yes && smoke !== "ok") this.deps.log(`  !!${warn}`);
     if (!this.opts.yes && !await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`)) {
       blocked(`${tag} not pushed: the confirmation was declined or there is no interactive terminal (pass --yes to confirm without a prompt)`);
     }
@@ -144335,6 +144342,9 @@ async function runRelease(deps, requested) {
   const opts = { ...requested, suite: requested.suite ?? recorded ?? "none", baseline };
   if (requested.baseline && opts.suite !== "full") throw new UsageError2(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES2.indexOf(opts.to ?? "verify");
+  if (start !== null && opts.suite === "full" && opts.baseline && PHASES2.indexOf(start) <= PHASES2.indexOf("suite") && last >= PHASES2.indexOf("suite") && !(0, import_fs156.existsSync)(opts.baseline)) {
+    throw new UsageError2(`baseline report not found: ${opts.baseline} (pass --baseline again)`);
+  }
   if (opts.from && PHASES2.indexOf(opts.from) > last) throw new UsageError2(`--from ${opts.from} comes after --to ${opts.to}`);
   const selected = start === null ? [] : PHASES2.slice(PHASES2.indexOf(start), last + 1);
   if (opts.dryRun) {
@@ -144436,7 +144446,7 @@ function printResult(result) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
     const json = Boolean(o.json);
     try {
       let version3;
@@ -144487,6 +144497,7 @@ function releaseCommand(overrides = {}) {
         suite: o.suite,
         baseline: o.baseline,
         liveSmoke: o.liveSmoke,
+        allowSkippedSmoke: o.allowSkippedSmoke,
         fixOrphans: o.fixOrphans,
         timeoutMinutes
       });

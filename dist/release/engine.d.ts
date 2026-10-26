@@ -109,6 +109,8 @@ export interface ReleaseOptions {
     /** Full-suite baseline: a vitest JSON report or one `<file> > <title>` per line. */
     baseline?: string;
     liveSmoke?: boolean;
+    /** Let pr run although the live smoke did not pass (it was skipped). */
+    allowSkippedSmoke?: boolean;
     fixOrphans?: boolean;
     /** Total minutes the pr / promote / verify phases wait on CI per invocation. */
     timeoutMinutes?: number;
