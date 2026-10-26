@@ -24,6 +24,9 @@
  *   - additionalContext and systemMessage: joined with "\n" in hook order
  *     (top level and hookSpecificOutput alike).
  *   - PreToolUse: any `deny` wins, and the first deny reason is kept.
+ *   - PermissionRequest: any `behavior:'deny'` wins (top level, and
+ *     hookSpecificOutput.decision alike); behavior/message/interrupt/decision
+ *     all come from the first denying hook.
  *   - decision:'block' (Stop/SubagentStop): a block from any hook survives, and
  *     every hook still runs. Several blocks join their reasons with "\n\n" in
  *     hook order. A block beats another hook's continue:false: the merged
@@ -147,6 +150,15 @@ function mergeExitCodes(codes) {
 
 const JOINED_KEYS = new Set(['additionalContext', 'systemMessage']);
 const DECISION_KEYS = new Set(['permissionDecision', 'permissionDecisionReason']);
+// PermissionRequest: Copilot's top-level {behavior, message, interrupt} and the
+// nested Claude-shaped hookSpecificOutput.decision.
+const PERMISSION_KEYS = new Set(['behavior', 'message', 'interrupt', 'decision']);
+
+/** The first PermissionRequest output that denies, at either shape's level. */
+function firstPermissionDeny(objects) {
+  return objects.find(object => object.behavior === 'deny' ||
+    (isPlainObject(object.decision) && object.decision.behavior === 'deny')) || null;
+}
 
 function firstDeny(objects) {
   for (const object of objects) {
@@ -174,6 +186,7 @@ function mergeObjects(event, objects, nested) {
     for (const key of Object.keys(object)) if (!order.includes(key)) order.push(key);
   }
   const deny = event === 'PreToolUse' ? firstDeny(objects) : null;
+  const permissionDeny = event === 'PermissionRequest' ? firstPermissionDeny(objects) : null;
   const blocks = nested ? [] : objects.filter(object => object.decision === 'block');
   const block = blocks.length ? { reason: joinBlockReasons(blocks) } : null;
   // A Stop/SubagentStop block wins over another hook's continue:false.
@@ -189,6 +202,8 @@ function mergeObjects(event, objects, nested) {
     } else if (key === 'hookSpecificOutput') {
       const nestedObjects = holders.map(object => object[key]).filter(isPlainObject);
       merged[key] = nestedObjects.length ? mergeObjects(event, nestedObjects, true) : first;
+    } else if (PERMISSION_KEYS.has(key) && permissionDeny) {
+      merged[key] = permissionDeny[key];
     } else if (DECISION_KEYS.has(key) && deny) {
       merged[key] = key === 'permissionDecision' ? 'deny' : deny.reason;
     } else if (key === 'continue' && stop) {

@@ -177,6 +177,21 @@ describe('dispatch merge rules', () => {
     expect(allowed.permissionDecision).toBe('allow');
   });
 
+  it('PermissionRequest: a later deny wins over an earlier allow at both shape levels', () => {
+    const decision = (behavior: string, message: string, interrupt?: boolean) => {
+      const top = { behavior, message, ...(interrupt ? { interrupt } : {}) };
+      return { ...top, hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { ...top } } };
+    };
+    const merged = JSON.parse(dispatcher.mergeHookResults('PermissionRequest', [
+      hook('a.mjs', decision('allow', 'fine')), hook('b.mjs', decision('deny', 'first no', true)), hook('c.mjs', decision('deny', 'second no')),
+    ]).stdout);
+    expect(merged).toEqual(decision('deny', 'first no', true));
+    const allowed = JSON.parse(dispatcher.mergeHookResults('PermissionRequest', [
+      hook('a.mjs', decision('allow', 'fine')), hook('b.mjs', decision('allow', 'also fine')),
+    ]).stdout);
+    expect(allowed).toEqual(decision('allow', 'fine'));
+  });
+
   describe.each(['Stop', 'SubagentStop'])('%s block merge', (event) => {
     it.each([
       {
