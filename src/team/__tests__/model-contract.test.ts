@@ -636,11 +636,12 @@ describe('model-contract', () => {
       expect(toCopilotModelId('claude-sonnet-4-5-20250929')).toBe('claude-sonnet-4.5');
       expect(toCopilotModelId('claude-opus-4-8[1m]')).toBe('claude-opus-4.8');
       expect(toCopilotModelId('claude-sonnet-5[1m]')).toBe('claude-sonnet-5');
-      // First column of MODEL_TABLE in scripts/copilot/build-agents.mjs.
-      expect(toCopilotModelId('opus')).toBe('claude-opus-5');
-      expect(toCopilotModelId('sonnet')).toBe('claude-sonnet-5');
-      expect(toCopilotModelId('haiku')).toBe('claude-haiku-4.5');
-      expect(toCopilotModelId('fable')).toBe('claude-fable-5.1');
+      // First column of the tiers in src/config/copilot-models.json.
+      expect(toCopilotModelId('opus')).toBe('claude-opus-5.5');
+      expect(toCopilotModelId('sonnet')).toBe('claude-sonnet-5.5');
+      expect(toCopilotModelId('haiku')).toBe('claude-haiku-5.5');
+      expect(toCopilotModelId('fable')).toBe('claude-opus-5.5');
+      expect(toCopilotModelId('Opus')).toBe('claude-opus-5.5');
       expect(toCopilotModelId('gpt-5.4-mini')).toBe('gpt-5.4-mini');
     });
 
