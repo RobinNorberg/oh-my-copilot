@@ -64216,7 +64216,7 @@ function normalizeSubagentInput(input, event) {
     agent_type: agentType
   };
   if (event === "start" && !normalized.agent_id) {
-    normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}`;
+    normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
   if (event === "stop" && normalized.output === void 0) {
     const output = firstString(raw.last_assistant_message, raw.response);
@@ -64318,7 +64318,15 @@ function findReconcilableRunningAgent(state, agentType) {
     if (agentType && agent.agent_type !== agentType) continue;
     candidates.push(i);
   }
-  return candidates.length === 1 ? candidates[0] : -1;
+  if (candidates.length === 1) return candidates[0];
+  if (!agentType) return -1;
+  const copilotPrefix = `copilot-${agentType}-`;
+  let oldest = -1;
+  for (const i of candidates) {
+    if (!state.agents[i].agent_id.startsWith(copilotPrefix)) continue;
+    if (oldest === -1 || state.agents[i].started_at < state.agents[oldest].started_at) oldest = i;
+  }
+  return oldest;
 }
 function reapStaleRunningAgents(state, nowIso2) {
   const now2 = new Date(nowIso2).getTime();

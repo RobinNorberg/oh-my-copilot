@@ -204,11 +204,26 @@ describe('context-guard-stop on Copilot CLI transcripts', () => {
         rmSync(tempDir, { recursive: true, force: true });
     });
     const run = (transcript, extra = {}) => runContextGuardStopWithEnv({ hook_event_name: 'Stop', session_id: `${sessionId}`, cwd: tempDir, transcript_path: transcript, stop_reason: 'end_turn', stop_hook_active: false, ...extra }, { HOME: tempDir, USERPROFILE: tempDir, COPILOT_HOME: tempDir });
-    it('blocks from the newest currentTokens sample, without continue:false', () => {
-        const out = run(writeCopilotEvents(tempDir, sessionId, [model, compactionStart]));
-        expect(out.decision).toBe('block');
-        expect(out).not.toHaveProperty('continue');
-        expect(String(out.reason)).toContain('Context at 85%');
+    it('never blocks: advises once per session as a systemMessage from the newest currentTokens sample', () => {
+        const transcript = writeCopilotEvents(tempDir, sessionId, [model, compactionStart]);
+        const first = run(transcript);
+        expect(first).not.toHaveProperty('decision');
+        expect(first.continue).toBe(true);
+        expect(String(first.systemMessage)).toContain('Context was at 85%');
+        expect(run(transcript)).toEqual({ continue: true, suppressOutput: true });
+    });
+    it('a session resumed after shutting down at 80% gets no block and one systemMessage', () => {
+        // The previous process's shutdown is the only token sample a resumed session has.
+        const transcript = writeCopilotEvents(tempDir, sessionId, [
+            model,
+            { type: 'session.shutdown', data: { currentTokens: 160000, currentModel: 'claude-sonnet-5.5' } },
+            { type: 'session.resume', data: { eventCount: 40 } },
+        ]);
+        const outputs = [run(transcript), run(transcript), run(transcript)];
+        expect(outputs.some(out => out.decision === 'block')).toBe(false);
+        const advised = outputs.filter(out => typeof out.systemMessage === 'string');
+        expect(advised).toHaveLength(1);
+        expect(String(advised[0].systemMessage)).toContain('Context was at 80%');
     });
     it('never blocks a stop_hook_active continuation', () => {
         const out = run(writeCopilotEvents(tempDir, sessionId, [model, compactionStart]), { stop_hook_active: true });

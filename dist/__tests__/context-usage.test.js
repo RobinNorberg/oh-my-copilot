@@ -469,5 +469,10 @@ describe('resolveCopilotTranscriptContext (Copilot CLI events.jsonl)', () => {
     it('feeds resolveContextPercent', async () => {
         expect(await resolveContextPercent({}, writeEvents([shutdown]), tempDir)).toBe(50);
     });
+    it('resolveContextPercent reuses a passed Copilot context instead of re-reading the transcript', async () => {
+        const transcript = writeEvents([shutdown]);
+        const context = { percent: 42, currentTokens: 1, model: 'claude-sonnet-5.5', compacted: false };
+        expect(await resolveContextPercent({}, transcript, tempDir, context)).toBe(42);
+    });
 });
 //# sourceMappingURL=context-usage.test.js.map

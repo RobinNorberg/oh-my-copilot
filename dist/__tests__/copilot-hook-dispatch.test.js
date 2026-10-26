@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
@@ -148,6 +148,20 @@ describe('dispatch merge rules', () => {
         expect(merged.additionalContext).toBe('ctx');
         const allowed = JSON.parse(dispatcher.mergeHookResults('PreToolUse', [hook('a.mjs', allow), hook('b.mjs', { continue: true })]).stdout);
         expect(allowed.permissionDecision).toBe('allow');
+    });
+    it('PermissionRequest: a later deny wins over an earlier allow at both shape levels', () => {
+        const decision = (behavior, message, interrupt) => {
+            const top = { behavior, message, ...(interrupt ? { interrupt } : {}) };
+            return { ...top, hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { ...top } } };
+        };
+        const merged = JSON.parse(dispatcher.mergeHookResults('PermissionRequest', [
+            hook('a.mjs', decision('allow', 'fine')), hook('b.mjs', decision('deny', 'first no', true)), hook('c.mjs', decision('deny', 'second no')),
+        ]).stdout);
+        expect(merged).toEqual(decision('deny', 'first no', true));
+        const allowed = JSON.parse(dispatcher.mergeHookResults('PermissionRequest', [
+            hook('a.mjs', decision('allow', 'fine')), hook('b.mjs', decision('allow', 'also fine')),
+        ]).stdout);
+        expect(allowed).toEqual(decision('allow', 'fine'));
     });
     describe.each(['Stop', 'SubagentStop'])('%s block merge', (event) => {
         it.each([
@@ -452,7 +466,11 @@ describe('PermissionRequest end to end (real permission-handler, recorded payloa
     it('answers a safe powershell command with the Copilot allow shape', () => {
         const result = runPermission({ ...shell, toolInput: { command: 'git status' } });
         expect(result.status, result.stderr).toBe(0);
-        expect(JSON.parse(result.stdout)).toEqual({ behavior: 'allow', message: 'Safe read-only command' });
+        expect(JSON.parse(result.stdout)).toEqual({
+            behavior: 'allow',
+            message: 'Safe read-only command',
+            hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', message: 'Safe read-only command' } },
+        });
     }, 60_000);
     it.each([
         ['the recorded command (not auto-approved)', shell],
@@ -473,15 +491,15 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
         const pendingFile = join(stateDir, 'projects', '.omg-pending-context', `${sessionId}.json`);
         const stop = runDispatch(root, 'Stop', [['budget-guard.mjs']], {
             session_id: sessionId, cwd,
-            hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] ralph run at 80%' } } },
+            hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] ralph run at 90%' } } },
         }, env);
         expect(stop.status, stop.stderr).toBe(0);
         expect(JSON.parse(stop.stdout)).toEqual({ continue: true });
-        expect(JSON.parse(readFileSync(pendingFile, 'utf8'))).toEqual({ messages: ['[BUDGET] ralph run at 80%'] });
+        expect(JSON.parse(readFileSync(pendingFile, 'utf8'))).toEqual({ messages: ['[BUDGET] ralph run at 90%'] });
         const prompt = { session_id: sessionId, cwd, hooks: { 'prompt-probe.mjs': { stdout: { additionalContext: 'keyword context' } } } };
         const first = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
         expect(first.status, first.stderr).toBe(0);
-        expect(JSON.parse(first.stdout)).toEqual({ additionalContext: '[BUDGET] ralph run at 80%\nkeyword context' });
+        expect(JSON.parse(first.stdout)).toEqual({ additionalContext: '[BUDGET] ralph run at 90%\nkeyword context' });
         expect(existsSync(pendingFile)).toBe(false);
         const second = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
         expect(JSON.parse(second.stdout)).toEqual({ additionalContext: 'keyword context' });
@@ -492,11 +510,49 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
             session_id: sessionId,
             hooks: {
                 'persistent-mode.mjs': { stdout: { decision: 'block', reason: 'The boulder never stops' } },
-                'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 80%' } },
+                'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } },
             },
         }, { COPILOT_HOME: tempDir('omg-dispatch-handoff-') });
         expect(result.status, result.stderr).toBe(0);
-        expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 80%', continue: true });
+        expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 90%', continue: true });
+    }, 60_000);
+    it('stores nothing for a subagent Stop (child session id, parent transcript)', () => {
+        const root = probePlugin();
+        const stateDir = tempDir('omg-dispatch-handoff-');
+        const parentId = 'ad86cfd2-c9aa-49bd-a886-811317997b19';
+        const childId = 'ece89723-4efa-45e2-8786-92dbe14ac85a';
+        const stop = runDispatch(root, 'Stop', [['budget-guard.mjs']], {
+            session_id: childId,
+            transcript_path: join(stateDir, 'session-state', parentId, 'events.jsonl'),
+            hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } } },
+        }, { COPILOT_HOME: stateDir });
+        expect(stop.status, stop.stderr).toBe(0);
+        expect(existsSync(join(stateDir, 'projects', '.omg-pending-context'))).toBe(false);
+        // The parent's own Stop (matching transcript) still hands off.
+        runDispatch(root, 'Stop', [['budget-guard.mjs']], {
+            session_id: parentId,
+            transcript_path: join(stateDir, 'session-state', parentId, 'events.jsonl'),
+            hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } } },
+        }, { COPILOT_HOME: stateDir });
+        expect(readdirSync(join(stateDir, 'projects', '.omg-pending-context'))).toEqual([`${parentId}.json`]);
+    }, 60_000);
+    it('SessionEnd prunes pending files older than 24 hours and keeps fresh ones', () => {
+        const root = probePlugin();
+        const stateDir = tempDir('omg-dispatch-handoff-');
+        const dir = join(stateDir, 'projects', '.omg-pending-context');
+        mkdirSync(dir, { recursive: true });
+        const stale = join(dir, 'stale-session.json');
+        const fresh = join(dir, 'fresh-session.json');
+        writeFileSync(stale, JSON.stringify({ messages: ['old'] }));
+        writeFileSync(fresh, JSON.stringify({ messages: ['new'] }));
+        const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        utimesSync(stale, twoDaysAgo, twoDaysAgo);
+        const end = runDispatch(root, 'SessionEnd', [['session-end.mjs']], {
+            session_id: sessionId, hooks: { 'session-end.mjs': { stdout: { continue: true } } },
+        }, { COPILOT_HOME: stateDir });
+        expect(end.status, end.stderr).toBe(0);
+        expect(existsSync(stale)).toBe(false);
+        expect(existsSync(fresh)).toBe(true);
     }, 60_000);
 });
 describe('dispatch per-hook isolation', () => {

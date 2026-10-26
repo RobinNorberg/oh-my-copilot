@@ -188,7 +188,8 @@ export declare function getStaleAgents(state: SubagentTrackingState): SubagentIn
  * with no agent id; SubagentStop has `agent_id` (the child session id),
  * `agent_type`, `agent_name` and `last_assistant_message` (camelCase
  * `agentId`, `agentType`, `agentName`, `response`). A start without an id
- * gets a `copilot-<type>-<time>` id; its stop then reconciles by agent_type.
+ * gets a `copilot-<type>-<time>-<random>` id; its stop then reconciles by
+ * agent_type (the oldest running one of that type when several run).
  */
 export declare function normalizeSubagentInput<T extends SubagentStartInput | SubagentStopInput>(input: T, event: "start" | "stop"): T;
 /**
