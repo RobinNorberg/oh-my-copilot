@@ -24,7 +24,8 @@ vi.mock('../action-runner.js', () => ({
 }));
 
 import { isCopilotSessionEndJob, isCopilotSessionLive } from '../copilot-liveness.js';
-import { mutateSessionEndJob, prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
+import { deferSessionEndChain, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
+import { factoryStateDir } from '../chain-enqueuer.js';
 import { processSessionEndWorker } from '../worker.js';
 
 const FIXTURES = join(process.cwd(), 'src', '__tests__', 'fixtures', 'copilot-live');
@@ -181,6 +182,31 @@ describe('session-end worker on Copilot', () => {
       process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '0';
       vi.resetModules();
     }
+  });
+
+  it('decides the factory-chain link at the real end with the last SessionEnd outcome', async () => {
+    const dir = project();
+    mkdirSync(factoryStateDir(dir), { recursive: true });
+    writeFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), JSON.stringify({ intentId: 'intent-copilot' }));
+    writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'code-review' } }));
+    prepareCopilotJob(dir);
+    const decisions = () => { try { return readFileSync(join(factoryStateDir(dir), 'chain-decisions.jsonl'), 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line).decision); } catch { return []; } };
+
+    // Turn 1 ended in an error; the session went on and ended cleanly.
+    deferSessionEndChain(dir, SESSION, { reason: 'error' });
+    writeEvents('session-events-midsession.jsonl');
+    await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+    expect(decisions()).toEqual([]);
+    expect(JSON.parse(readFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), 'utf8')).closedAt).toBeUndefined();
+
+    deferSessionEndChain(dir, SESSION, { reason: 'complete' });
+    writeEvents('session-events-shutdown.jsonl');
+    await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+    const ended = readSessionEndJob(dir, SESSION)!;
+    expect(ended.actions['spawn-next'].payload.deferredChain).toBeUndefined();
+    expect(ended.actions['spawn-next'].payload.chain).toMatchObject({ outcome: 'success', intentId: 'intent-copilot' });
+    expect(ended.actions['spawn-next'].status).toBe('completed');
+    expect(decisions()).toEqual(['enqueued']);
   });
 
   it('runs a Claude Code job without waiting on Copilot events', async () => {

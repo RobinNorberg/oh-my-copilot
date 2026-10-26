@@ -344,6 +344,32 @@ export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string
   });
 }
 
+/** What a Copilot SessionEnd leaves for the worker to plan the factory-chain link from. */
+export interface DeferredSessionEndChain { reason: string; linkEnv?: string; }
+
+function mutateUnclaimedSpawnNext(directory: string, sessionId: string, mutate: (payload: Record<string, unknown>) => Record<string, unknown>): SessionEndJobV1 | null {
+  const current = readSessionEndJob(directory, sessionId);
+  if (!current || current.phase !== 'collecting' || current.owner) return null;
+  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+    if (job.phase !== 'collecting' || job.owner) throw new Error('spawn-next-conflict');
+    job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
+  });
+}
+
+/**
+ * Copilot fires SessionEnd after every turn, so the chain link is decided at
+ * the real end (worker.ts), not with the first turn's outcome. Each
+ * SessionEnd records its reason and link claim here; the last one wins.
+ */
+export function deferSessionEndChain(directory: string, sessionId: string, deferred: DeferredSessionEndChain): SessionEndJobV1 | null {
+  return mutateUnclaimedSpawnNext(directory, sessionId, (payload) => ({ ...payload, deferredChain: deferred }));
+}
+
+/** The real end: replace the deferred marker with the planned chain, if any. */
+export function resolveDeferredSessionEndChain(directory: string, sessionId: string, chain: Record<string, unknown> | null): SessionEndJobV1 | null {
+  return mutateUnclaimedSpawnNext(directory, sessionId, ({ deferredChain: _deferred, ...payload }) => (chain ? { ...payload, chain } : payload));
+}
+
 /** Recovery may seal a prepared core only after foreground cleanup has a durable completed result. */
 export function recoverPreparedCoreProducer(directory: string, sessionId: string): SessionEndJobV1 | null {
   return mutateLatest(directory, sessionId, job => {

@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, resolveDeferredSessionEndChain, type DeferredSessionEndChain, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
@@ -119,6 +119,16 @@ function reschedulePendingWorker(payload: SessionEndWorkerPayload, job: ReturnTy
   setTimeout(() => { void processSessionEndWorker(payload); }, delay);
 }
 
+/** Plan the factory-chain link a Copilot SessionEnd deferred (deferSessionEndChain) before any worker claims the job. */
+async function planDeferredChain(payload: SessionEndWorkerPayload): Promise<void> {
+  const deferred = readSessionEndJob(payload.directory, payload.sessionId)?.actions['spawn-next']?.payload?.deferredChain as Partial<DeferredSessionEndChain> | undefined;
+  if (!deferred || typeof deferred !== 'object') return;
+  const [{ planChainEnqueue }, { CHAIN_LINK_ENV }] = await Promise.all([import('./chain-enqueuer.js'), import('./spawn-next.js')]);
+  const env: NodeJS.ProcessEnv = typeof deferred.linkEnv === 'string' ? { [CHAIN_LINK_ENV]: deferred.linkEnv } : {};
+  const chain = planChainEnqueue(payload.directory, payload.sessionId, typeof deferred.reason === 'string' ? deferred.reason : 'other', env);
+  resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain as unknown as Record<string, unknown> | null);
+}
+
 /** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
 const COPILOT_LIVE_RECHECK_MS = 5_000;
 const COPILOT_LIVE_MAX_RECHECKS = 6;
@@ -136,8 +146,12 @@ export async function processSessionEndWorker(payload: SessionEndWorkerPayload, 
     }
     return;
   }
-  // The real end: the holds already ran the grace; refresh only the action deadline.
-  if (pending?.phase === 'collecting' && copilotJob) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId, { restartGrace: false });
+  // The real end: the holds already ran the grace; refresh only the action
+  // deadline, and decide the chain link with the last SessionEnd's outcome.
+  if (pending?.phase === 'collecting' && copilotJob) {
+    rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId, { restartGrace: false });
+    await planDeferredChain(payload);
+  }
   const deadlineAt = Date.now() + MAX_WORKER_MS; const nonce = randomUUID(); const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 2_500));
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
