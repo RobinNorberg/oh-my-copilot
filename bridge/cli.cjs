@@ -112545,8 +112545,13 @@ async function runCliScenario(input) {
   const prompts = [["prompt", SCENARIOS[name].prompt], ...name === "events" ? [["compact", COMPACT_PROMPT]] : []];
   let error2;
   let timedOut = false;
+  let capped = false;
   let budget = input.budget;
   for (const [label, prompt] of prompts) {
+    if (budget <= 0) {
+      capped = true;
+      break;
+    }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
     const res = await runAsync(input.spawn ?? import_child_process45.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
@@ -112581,7 +112586,7 @@ async function runCliScenario(input) {
       out: r.out && typeof r.out === "object" ? r.out : {}
     }));
   }
-  return { ...base, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
+  return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
 var import_crypto44, import_child_process45, import_fs141, import_path170, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
@@ -136202,13 +136207,15 @@ function dispatchChecks(manifest, root2, env2, spawnSync18, deps, only) {
     return checks;
   } finally {
     try {
-      (0, import_fs147.rmSync)(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
+      (deps.rmSync ?? import_fs147.rmSync)(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
     } catch (err) {
       try {
         const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
-        (0, import_child_process49.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true }).on("error", () => {
+        const minimalEnv = {};
+        for (const key of ["PATH", "Path", "SystemRoot", "TEMP", "TMP"]) if (env2[key] !== void 0) minimalEnv[key] = env2[key];
+        (deps.spawn ?? import_child_process49.spawn)(process.execPath, ["-e", script, parent], { detached: true, stdio: "ignore", windowsHide: true, cwd: (0, import_os29.tmpdir)(), env: minimalEnv }).on("error", () => {
         }).unref();
-        checks.push({ id: "dispatch.cleanup", status: "ok", detail: `hook workers still hold the sandbox (${err.message}); a background process removes ${parent} once they exit` });
+        checks.push({ id: "dispatch.cleanup", status: "ok", detail: `hook workers still hold the sandbox (${err.message}); a background process is scheduled to remove ${parent} once they exit` });
       } catch {
         checks.push({ id: "dispatch.cleanup", status: "warn", detail: `could not remove the sandbox ${parent}: ${err.message}` });
       }

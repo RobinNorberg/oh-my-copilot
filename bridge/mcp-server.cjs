@@ -34490,8 +34490,13 @@ async function runCliScenario(input) {
   const prompts = [["prompt", SCENARIOS[name].prompt], ...name === "events" ? [["compact", COMPACT_PROMPT]] : []];
   let error2;
   let timedOut = false;
+  let capped = false;
   let budget = input.budget;
   for (const [label, prompt] of prompts) {
+    if (budget <= 0) {
+      capped = true;
+      break;
+    }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
     const res = await runAsync(input.spawn ?? import_child_process19.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
@@ -34526,7 +34531,7 @@ async function runCliScenario(input) {
       out: r.out && typeof r.out === "object" ? r.out : {}
     }));
   }
-  return { ...base, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
+  return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
 var import_crypto16, import_child_process19, import_fs53, import_path69, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({

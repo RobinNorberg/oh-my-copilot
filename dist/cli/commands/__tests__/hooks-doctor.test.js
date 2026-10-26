@@ -101,6 +101,24 @@ describe('runHooksDoctor', () => {
         const none = await runHooksDoctor({ pluginRoot: root, env: process.env, dispatch: false, deps: deps() });
         expect(none.checks.some((c) => c.id.startsWith('dispatch'))).toBe(false);
     });
+    it('hands a sandbox that cannot be removed to a detached remover run from tmpdir with a minimal env', async () => {
+        const root = fakeRoot({ Stop: '' });
+        const calls = [];
+        const spawn = (_cmd, args, options) => {
+            calls.push({ args, options });
+            return { on: () => ({ unref: () => { } }) };
+        };
+        const rmSync = () => { throw new Error('EBUSY'); };
+        const env = { PATH: process.env.PATH ?? '', SECRET_TOKEN: 'hunter2' };
+        const report = await runHooksDoctor({ pluginRoot: root, env, event: 'Stop', deps: deps({ rmSync, spawn }) });
+        const cleanup = byId(report)['dispatch.cleanup'];
+        expect(cleanup.status).toBe('ok');
+        expect(cleanup.detail).toContain('is scheduled to remove');
+        expect(calls).toHaveLength(1);
+        dirs.push(calls[0].args[calls[0].args.length - 1]);
+        expect(calls[0].options.cwd).toBe(tmpdir());
+        expect(calls[0].options.env).toEqual({ PATH: env.PATH });
+    });
     it('fails the sync check when the generator renders something else', async () => {
         const root = fakeRoot({ Stop: '' });
         const report = await runHooksDoctor({ pluginRoot: root, env: process.env, dispatch: false, deps: deps({ renderHooks: async () => '{}\n' }) });

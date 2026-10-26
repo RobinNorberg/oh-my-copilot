@@ -15,6 +15,8 @@
  * strips OMC_* switches), so no user state or notification config is touched.
  * Exit codes: 0 no check failed (warnings allowed), 1 a check failed.
  */
+import { spawn as nodeSpawn } from 'child_process';
+import { rmSync } from 'fs';
 import type { Command } from 'commander';
 import { type BinaryResolverDeps } from '../../smoke/copilot-binary.js';
 import type { SpawnSyncFn } from '../../smoke/process-utils.js';
@@ -44,6 +46,9 @@ export interface HooksDoctorDeps extends BinaryResolverDeps {
     /** The generator's rendering of hooks/hooks.json (default: scripts/copilot/build-hooks.mjs). */
     renderHooks?: (root: string, sourceText: string) => Promise<string>;
     randomUUID?: () => string;
+    /** Sandbox removal and the detached remover spawn (default: fs.rmSync, child_process.spawn). */
+    rmSync?: typeof rmSync;
+    spawn?: typeof nodeSpawn;
 }
 /**
  * Hook payloads as Copilot CLI 1.0.91 sent them to our PascalCase

@@ -198,8 +198,14 @@ export async function runCliScenario(input) {
     const prompts = [['prompt', SCENARIOS[name].prompt], ...(name === 'events' ? [['compact', COMPACT_PROMPT]] : [])];
     let error;
     let timedOut = false;
+    let capped = false;
     let budget = input.budget;
     for (const [label, prompt] of prompts) {
+        // The argsFor floor would let a step overshoot a spent budget by up to RUNTIME_MIN_MAX_CREDITS.
+        if (budget <= 0) {
+            capped = true;
+            break;
+        }
         const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
         // The prompt rides stdin, never argv (a piped prompt is non-interactive).
         const res = await runAsync(input.spawn ?? nodeSpawn, input.spawnSync, plan.command, plan.args, {
@@ -236,6 +242,6 @@ export async function runCliScenario(input) {
             out: r.out && typeof r.out === 'object' ? r.out : {},
         }));
     }
-    return { ...base, events, idle: !timedOut && !error, timedOut, ...(error ? { error } : {}) };
+    return { ...base, capped, events, idle: !timedOut && !error, timedOut, ...(error ? { error } : {}) };
 }
 //# sourceMappingURL=copilot-cli-scenarios.js.map
