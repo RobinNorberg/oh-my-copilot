@@ -350,7 +350,7 @@ You can change the AI model used by each agent:
 }
 ```
 
-> ℹ️ On GitHub Copilot CLI these `agents.<name>.model` overrides are a no-op: they are applied through a hook channel (`updatedInput`) that Copilot does not support. Use Copilot's `subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json` instead; otherwise each agent uses the `models:` list generated from its tier. See [REFERENCE.md](./REFERENCE.md#agent-customization).
+> ℹ️ On GitHub Copilot CLI the hook channel (`updatedInput`) that applies these overrides under Claude Code is not supported, so `omg setup` copies the overrides from your user config into `subagents.agents["oh-my-copilot:<name>"].model` in `$COPILOT_HOME/settings.json` (the expected key, not yet verified on a live Copilot; check with `/subagents`). Re-run `omg setup` after editing an override; without one, each agent uses the `models:` list generated from its tier. See [REFERENCE.md](./REFERENCE.md#agent-customization).
 
 #### Default model mapping
 

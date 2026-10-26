@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8216e94acc7fd544c8e62677ef951b30d08ad248",
-    "sourceSha256": "c8d1e973b39cb7f7e801553331b55f71c76d5fbdb475293eae2513dce82125ba",
+    "head": "d43f8442eb4662dc36de8526952b79a113d677bf",
+    "sourceSha256": "e6c2277a98c7a035b64c13a43882240c7e638d8f6b9d51bb1d9e24d81ee7322e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8216e94acc7fd544c8e62677ef951b30d08ad248",
-  "sourceSha256": "c8d1e973b39cb7f7e801553331b55f71c76d5fbdb475293eae2513dce82125ba",
+  "head": "d43f8442eb4662dc36de8526952b79a113d677bf",
+  "sourceSha256": "e6c2277a98c7a035b64c13a43882240c7e638d8f6b9d51bb1d9e24d81ee7322e",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1621,
-      "total": 1645
+      "srcFiles": 1624,
+      "total": 1648
     },
     "generated": {
-      "distFiles": 6223,
+      "distFiles": 6232,
       "bridgeFiles": 9,
-      "total": 6232
+      "total": 6241
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2793,6 +2793,7 @@
       "dist/config/ado-config.js",
       "dist/config/ado-config.js.map",
       "dist/config/builtin-skill-entitlements.json",
+      "dist/config/copilot-models.json",
       "dist/config/index.d.ts",
       "dist/config/index.d.ts.map",
       "dist/config/index.js",
@@ -4990,6 +4991,10 @@
       "dist/installer/__tests__/claude-md-transaction.test.d.ts.map",
       "dist/installer/__tests__/claude-md-transaction.test.js",
       "dist/installer/__tests__/claude-md-transaction.test.js.map",
+      "dist/installer/__tests__/copilot-agent-models.test.d.ts",
+      "dist/installer/__tests__/copilot-agent-models.test.d.ts.map",
+      "dist/installer/__tests__/copilot-agent-models.test.js",
+      "dist/installer/__tests__/copilot-agent-models.test.js.map",
       "dist/installer/__tests__/fixtures/legacy-guides.json",
       "dist/installer/__tests__/has-enabled-omc-plugin.test.d.ts",
       "dist/installer/__tests__/has-enabled-omc-plugin.test.d.ts.map",
@@ -5063,6 +5068,10 @@
       "dist/installer/claude-md-transaction.d.ts.map",
       "dist/installer/claude-md-transaction.js",
       "dist/installer/claude-md-transaction.js.map",
+      "dist/installer/copilot-agent-models.d.ts",
+      "dist/installer/copilot-agent-models.d.ts.map",
+      "dist/installer/copilot-agent-models.js",
+      "dist/installer/copilot-agent-models.js.map",
       "dist/installer/historical-agent-ownership.d.ts",
       "dist/installer/historical-agent-ownership.d.ts.map",
       "dist/installer/historical-agent-ownership.js",
@@ -18016,6 +18025,11 @@
         "path": "dist/config/builtin-skill-entitlements.json"
       },
       {
+        "id": "dist/config/copilot-models.json",
+        "kind": "generated-dist",
+        "path": "dist/config/copilot-models.json"
+      },
+      {
         "id": "dist/config/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/config/index.d.ts"
@@ -29001,6 +29015,26 @@
         "path": "dist/installer/__tests__/claude-md-transaction.test.js.map"
       },
       {
+        "id": "dist/installer/__tests__/copilot-agent-models.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/installer/__tests__/copilot-agent-models.test.d.ts"
+      },
+      {
+        "id": "dist/installer/__tests__/copilot-agent-models.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/installer/__tests__/copilot-agent-models.test.d.ts.map"
+      },
+      {
+        "id": "dist/installer/__tests__/copilot-agent-models.test.js",
+        "kind": "generated-dist",
+        "path": "dist/installer/__tests__/copilot-agent-models.test.js"
+      },
+      {
+        "id": "dist/installer/__tests__/copilot-agent-models.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/installer/__tests__/copilot-agent-models.test.js.map"
+      },
+      {
         "id": "dist/installer/__tests__/fixtures/legacy-guides.json",
         "kind": "generated-dist",
         "path": "dist/installer/__tests__/fixtures/legacy-guides.json"
@@ -29364,6 +29398,26 @@
         "id": "dist/installer/claude-md-transaction.js.map",
         "kind": "generated-dist",
         "path": "dist/installer/claude-md-transaction.js.map"
+      },
+      {
+        "id": "dist/installer/copilot-agent-models.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/installer/copilot-agent-models.d.ts"
+      },
+      {
+        "id": "dist/installer/copilot-agent-models.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/installer/copilot-agent-models.d.ts.map"
+      },
+      {
+        "id": "dist/installer/copilot-agent-models.js",
+        "kind": "generated-dist",
+        "path": "dist/installer/copilot-agent-models.js"
+      },
+      {
+        "id": "dist/installer/copilot-agent-models.js.map",
+        "kind": "generated-dist",
+        "path": "dist/installer/copilot-agent-models.js.map"
       },
       {
         "id": "dist/installer/historical-agent-ownership.d.ts",
@@ -44471,6 +44525,11 @@
         "path": "src/config/builtin-skill-entitlements.json"
       },
       {
+        "id": "src/config/copilot-models.json",
+        "kind": "src",
+        "path": "src/config/copilot-models.json"
+      },
+      {
         "id": "src/config/index.ts",
         "kind": "src",
         "path": "src/config/index.ts"
@@ -47261,6 +47320,11 @@
         "path": "src/installer/__tests__/claude-md-transaction.test.ts"
       },
       {
+        "id": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "kind": "src",
+        "path": "src/installer/__tests__/copilot-agent-models.test.ts"
+      },
+      {
         "id": "src/installer/__tests__/fixtures/historical-agents/analyst.agent.md",
         "kind": "src",
         "path": "src/installer/__tests__/fixtures/historical-agents/analyst.agent.md"
@@ -47409,6 +47473,11 @@
         "id": "src/installer/claude-md-transaction.ts",
         "kind": "src",
         "path": "src/installer/claude-md-transaction.ts"
+      },
+      {
+        "id": "src/installer/copilot-agent-models.ts",
+        "kind": "src",
+        "path": "src/installer/copilot-agent-models.ts"
       },
       {
         "id": "src/installer/historical-agent-ownership.ts",
@@ -54915,6 +54984,11 @@
       {
         "from": "src/__tests__/copilot-agents-manifest.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-agents-manifest.test.ts",
+        "to": "src/config/copilot-models.json",
         "kind": "imports"
       },
       {
@@ -80328,6 +80402,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/copilot-agent-models.test.ts",
+        "to": "src/installer/copilot-agent-models.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/__tests__/has-enabled-omc-plugin.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80858,6 +80957,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/config/copilot-models.json",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/installer/copilot-agent-models.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/hooks.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80919,12 +81043,22 @@
       },
       {
         "from": "src/installer/index.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/index.ts",
         "to": "src/installer/claude-md-analysis.ts",
         "kind": "imports"
       },
       {
         "from": "src/installer/index.ts",
         "to": "src/installer/claude-md-transaction.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/index.ts",
+        "to": "src/installer/copilot-agent-models.ts",
         "kind": "imports"
       },
       {
@@ -92339,6 +92473,11 @@
       },
       {
         "from": "src/team/model-contract.ts",
+        "to": "src/config/copilot-models.json",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/model-contract.ts",
         "to": "src/config/models.ts",
         "kind": "imports"
       },
@@ -98834,12 +98973,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8577,
-      "edgeCount": 9633,
-      "importEdgeCount": 8040,
+      "nodeCount": 8589,
+      "edgeCount": 9647,
+      "importEdgeCount": 8053,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4f8b366ab23d9366ff0e446182d4910035074a14151ef01f8965118a3517eb0",
-  "manifestSha256": "92013c27430dcb3ae817c987a28cd5d6e795d3eb8c5307bb076847453033c266"
+  "inventorySha256": "52901ec3fd9e8bee5a5aed9e491e19fb7396c9d3b91cc4e548e2b127dd4efdb6",
+  "manifestSha256": "c84eea825da79cf654bbb3526f89eddf49f31ff6599150083545e44ec4be4353"
 }

@@ -8,6 +8,7 @@ import { detectHostCliType } from '../utils/host-signal.js';
 import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
 import type { WorkerLaunchDescriptor } from './types.js';
 import type { ExternalModelsDefaults } from '../shared/types.js';
+import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 
 export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 
@@ -240,16 +241,10 @@ export function shouldUseClaudeBareMode(env: NodeJS.ProcessEnv = process.env): b
  */
 export const COPILOT_WORKER_BASE_FLAGS = ['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user'] as const;
 
-/**
- * First-choice Copilot model per bare tier alias. Duplicates the first column
- * of MODEL_TABLE in scripts/copilot/build-agents.mjs; keep the two in sync.
- */
-const COPILOT_TIER_ALIAS_MODELS: Record<string, string> = {
-  opus: 'claude-opus-5',
-  sonnet: 'claude-sonnet-5',
-  haiku: 'claude-haiku-4.5',
-  fable: 'claude-fable-5.1',
-};
+/** First-choice Copilot model per bare tier alias (src/config/copilot-models.json). */
+const COPILOT_TIER_ALIAS_MODELS: Record<string, string> = Object.fromEntries(
+  Object.entries(copilotModels.tiers as Record<string, string[]>).map(([tier, ids]) => [tier, ids[0]]),
+);
 
 /**
  * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
@@ -259,8 +254,8 @@ const COPILOT_TIER_ALIAS_MODELS: Record<string, string> = {
  * Anything else passes through unchanged.
  */
 export function toCopilotModelId(model: string): string {
-  const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
-  if (alias) return alias;
+  const key = model.toLowerCase();
+  if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key)) return COPILOT_TIER_ALIAS_MODELS[key];
   if (!/^claude-/.test(model)) return model;
   return model
     .replace(/\[1m\]$/i, '')

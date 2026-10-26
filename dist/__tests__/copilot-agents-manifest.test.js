@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 /**
  * Copilot CLI loads the fork's agents from the generated copilot/agents/ (root
  * plugin.json `agents`, which REPLACES default agents/ discovery). agents/*.md
@@ -18,19 +19,14 @@ const READ_ONLY_AGENTS = [
     'document-specialist', 'explore', 'scientist', 'security-reviewer', 'verifier',
 ];
 const EXPECTED_TOOLS = [
-    'view', 'rg', 'grep', 'glob', 'bash', 'powershell', 'web_fetch',
-    'task', 'skill', 'ask_user', 'update_todo', 't/*',
+    'view', 'rg', 'grep', 'glob', 'bash', 'powershell', 'read_bash', 'read_powershell', 'web_fetch',
+    'task', 'list_agents', 'read_agent', 'skill', 'ask_user', 'update_todo', 't/*',
 ];
 const WRITE_TOOLS = ['create', 'edit', 'apply_patch', 'str_replace_editor', 'write'];
 /** Agents that search or read docs only and therefore skip repository custom instructions. */
 const NO_CUSTOM_INSTRUCTIONS = ['document-specialist', 'explore'];
-// Checked against the model ids listed by `copilot help config` on Copilot CLI 1.0.88.
-const ALLOWED_MODEL_IDS = new Set([
-    'claude-opus-5', 'claude-opus-4.8', 'gpt-5.5',
-    'claude-sonnet-5', 'claude-sonnet-4.6',
-    'claude-haiku-4.5', 'gpt-5.4-mini', 'gpt-5-mini',
-    'claude-fable-5.1', 'claude-fable-5',
-]);
+// The one known-models list (src/config/copilot-models.json), shared with the generator.
+const ALLOWED_MODEL_IDS = new Set(copilotModels.knownModels);
 const listMd = (dir) => readdirSync(dir).filter(f => f.endsWith('.md')).sort();
 const sourceFiles = listMd(SOURCE_DIR);
 const generatedFiles = listMd(OUT_DIR);
@@ -136,6 +132,20 @@ describe('copilot/agents generated from agents/', () => {
             }
             else {
                 expect(models, fileName).toBeUndefined();
+            }
+        }
+    });
+    it('lists claude-opus-5.5 / claude-sonnet-5.5 / claude-haiku-5.5 first in their tiers', async () => {
+        const { MODEL_TABLE } = await generator;
+        expect(MODEL_TABLE.opus[0]).toBe('claude-opus-5.5');
+        expect(MODEL_TABLE.sonnet[0]).toBe('claude-sonnet-5.5');
+        expect(MODEL_TABLE.haiku[0]).toBe('claude-haiku-5.5');
+    });
+    it('lets read-only agents read async shell output and background subagents', () => {
+        for (const name of READ_ONLY_AGENTS) {
+            const tools = JSON.parse(generated.get(`${name}.md`).fields.get('tools'));
+            for (const tool of ['read_bash', 'read_powershell', 'list_agents', 'read_agent']) {
+                expect(tools, `${name} ${tool}`).toContain(tool);
             }
         }
     });

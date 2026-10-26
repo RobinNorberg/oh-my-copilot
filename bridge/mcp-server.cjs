@@ -28792,8 +28792,34 @@ var init_host_signal = __esm({
   }
 });
 
+// src/config/copilot-models.json
+var copilot_models_default;
+var init_copilot_models = __esm({
+  "src/config/copilot-models.json"() {
+    copilot_models_default = {
+      knownModels: [
+        "claude-sonnet-5.5",
+        "claude-opus-5.5",
+        "claude-haiku-5.5",
+        "claude-haiku-4.5",
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-luna",
+        "gpt-5.3-codex",
+        "gemini-3.8-flash"
+      ],
+      tiers: {
+        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
+        sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
+        haiku: ["claude-haiku-5.5", "claude-haiku-4.5", "gemini-3.8-flash"],
+        fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
+      }
+    };
+  }
+});
+
 // src/team/model-contract.ts
-var import_path53, import_os6;
+var import_path53, import_os6, COPILOT_TIER_ALIAS_MODELS;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -28805,6 +28831,10 @@ var init_model_contract = __esm({
     init_security_config();
     init_host_signal();
     init_executable_resolution();
+    init_copilot_models();
+    COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(
+      Object.entries(copilot_models_default.tiers).map(([tier, ids]) => [tier, ids[0]])
+    );
   }
 });
 

@@ -34,25 +34,27 @@ const REPO_ROOT = join(dirname(__filename), '..', '..');
 const SOURCE_DIR = join(REPO_ROOT, 'agents');
 const OUT_DIR = join(REPO_ROOT, 'copilot', 'agents');
 
-export const MODEL_TABLE = {
-  opus: ['claude-opus-5', 'claude-opus-4.8', 'gpt-5.5'],
-  sonnet: ['claude-sonnet-5', 'claude-sonnet-4.6', 'gpt-5.5'],
-  haiku: ['claude-haiku-4.5', 'gpt-5.4-mini', 'gpt-5-mini'],
-  fable: ['claude-fable-5.1', 'claude-fable-5', 'claude-opus-5'],
-};
+const COPILOT_MODELS = JSON.parse(readFileSync(join(REPO_ROOT, 'src', 'config', 'copilot-models.json'), 'utf8'));
+
+/** Tier alias -> Copilot model fallback list. Single source: src/config/copilot-models.json. */
+export const MODEL_TABLE = COPILOT_MODELS.tiers;
+/** Every Copilot model id the tier tables may reference (the one known-models list). */
+export const KNOWN_COPILOT_MODELS = COPILOT_MODELS.knownModels;
 
 /**
  * Every native Copilot CLI tool id an agent may be granted. A `disallowedTools`
  * agent's `tools` allowlist is FULL_TOOLS minus the ids its disallowed Claude
  * tools map to, so each DISALLOWED_TOOL_MAP entry really removes something.
  * Verified ids: view, create, edit, apply_patch, str_replace_editor, rg, grep,
- * glob, bash, powershell, web_fetch, task, skill, ask_user, update_todo, plus
- * `t/*` (the OMC MCP server's tools). `web_search` is NOT a Copilot tool id.
+ * glob, bash, powershell, read_bash, read_powershell, web_fetch, task,
+ * list_agents, read_agent, skill, ask_user, update_todo, plus `t/*` (the OMC
+ * MCP server's tools). read_* / list_agents / read_agent let read-only agents
+ * read async shell output and their own background subagents. `web_search` is NOT a Copilot tool id.
  */
 export const FULL_TOOLS = [
   'view', 'create', 'edit', 'apply_patch', 'str_replace_editor',
-  'rg', 'grep', 'glob', 'bash', 'powershell', 'web_fetch',
-  'task', 'skill', 'ask_user', 'update_todo', 't/*',
+  'rg', 'grep', 'glob', 'bash', 'powershell', 'read_bash', 'read_powershell', 'web_fetch',
+  'task', 'list_agents', 'read_agent', 'skill', 'ask_user', 'update_todo', 't/*',
 ];
 
 /** Agents that only search/read docs; every other agent reviews or edits code. */
@@ -61,7 +63,7 @@ const NO_CUSTOM_INSTRUCTIONS = new Set(['explore', 'document-specialist']);
 export const DISALLOWED_TOOL_MAP = {
   Write: ['create'],
   Edit: ['edit', 'apply_patch', 'str_replace_editor'],
-  Bash: ['bash', 'powershell'],
+  Bash: ['bash', 'powershell', 'read_bash', 'read_powershell'],
 };
 const FRONTMATTER_PATTERN = /^---\n([\s\S]*?)\n---\n/;
 const KEY_LINE_PATTERN = /^([A-Za-z][\w-]*):\s*(.*)$/;
