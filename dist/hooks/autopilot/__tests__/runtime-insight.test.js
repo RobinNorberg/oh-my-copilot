@@ -3,10 +3,12 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { formatAutopilotRuntimeInsight } from '../runtime-insight.js';
 import { writeHudState } from '../../../hud/state.js';
+import { useIsolatedCwd } from '../../../__tests__/helpers/isolated-cwd.js';
 function writeJson(filePath, value) {
     mkdirSync(join(filePath, '..'), { recursive: true });
     writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf-8');
 }
+useIsolatedCwd();
 describe('formatAutopilotRuntimeInsight', () => {
     let cwd;
     beforeEach(() => {

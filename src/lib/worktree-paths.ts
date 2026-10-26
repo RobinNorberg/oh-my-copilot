@@ -412,6 +412,7 @@ type GitTopLevelProbe =
 interface WorktreePathRenderScope {
   gitTopLevelProbes: Map<string, GitTopLevelProbe>;
   projectIdentifiers: Map<string, string>;
+  omcRoots: Map<string, string>;
 }
 
 const worktreePathRenderScope = new AsyncLocalStorage<WorktreePathRenderScope>();
@@ -425,14 +426,17 @@ export function withProjectIdentifierScope<T>(fn: () => T): T {
 /**
  * Run path lookups in an isolated render scope.
  *
- * The memo is intentionally opt-in and is discarded when the render settles.
- * Direct callers that enforce security boundaries continue to receive fresh
- * probes, while each HUD render gets a new scope that observes PATH and .git
- * metadata changes made between renders.
+ * The memo is intentionally opt-in and is discarded when the scope settles.
+ * Two callers open one: each HUD render, and each state tool call
+ * (src/tools/state-tools.ts), whose per-session loops would otherwise re-probe
+ * git and re-resolve the state root per session. Inside a scope the git probes
+ * (boundary decisions included) and getOmcRoot are memoized for that one
+ * render or call only; callers outside a scope receive fresh probes, and the
+ * next scope observes PATH and .git metadata changes made in between.
  */
 export function withWorktreePathRenderScope<T>(fn: () => T): T {
   return worktreePathRenderScope.run(
-    { gitTopLevelProbes: new Map(), projectIdentifiers: new Map() },
+    { gitTopLevelProbes: new Map(), projectIdentifiers: new Map(), omcRoots: new Map() },
     fn,
   );
 }
@@ -713,7 +717,7 @@ export function probeGitTopLevel(cwd: string): GitTopLevelProbe {
 
   // Outside an explicit render scope, never cache security decisions: PATH,
   // the git executable, and .git metadata can change between calls in the same
-  // process. A HUD render scope is intentionally limited to one invocation.
+  // process. A scope (one HUD render, one state tool call) is limited to one invocation.
   let result: GitTopLevelProbe;
   try {
     result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
@@ -1345,6 +1349,21 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
  * @returns Absolute path to the omc root directory
  */
 export function getOmcRoot(worktreeRoot?: string): string {
+  // Inside a render scope (one HUD render, one state tool call) the answer is memoized: every call
+  // revalidates the git metadata caches with dozens of stat calls, which a per-session loop over
+  // hundreds of session dirs multiplies into minutes on Windows.
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? '', process.env.OMC_STATE_DIR ?? '', process.cwd()].join(' ');
+  let root = scope.omcRoots.get(key);
+  if (root === undefined) {
+    root = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root);
+  }
+  return root;
+}
+
+function computeOmcRoot(worktreeRoot?: string): string {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     // Centralized state lives at $OMC_STATE_DIR/{projectId} — outside the
@@ -2271,7 +2290,10 @@ export function resolveStateWorkingDirectory(workingDirectory?: string): string 
 
   // Run the strict resolver first so a mixed git/non-git or foreign-repository
   // request cannot be silently substituted with the startup cwd.
-  validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  const strict = validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  // A repository nested under the git-less session root is used as is; validateWorkingDirectory
+  // would substitute the session root for it.
+  if (probeGitTopLevel(resolve(workingDirectory)).status === 'ok') return strict;
   const validated = validateWorkingDirectory(workingDirectory);
   return validated;
 }
@@ -2424,6 +2446,18 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     const providedCommonDir = getGitCommonDir(providedRoot);
     if (trustedCommonDir && providedCommonDir && sameCanonicalPath(providedCommonDir, trustedCommonDir)) {
       return { status: 'ok', root: providedRoot };
+    }
+
+    // A session started in a git-less directory (a workspace folder holding the project) has no
+    // repository of its own to protect: a repository nested under that directory is inside the
+    // boundary the session was started with, exactly as a plain subdirectory is. Every caller of
+    // this resolver gets it (state tools, wiki tools), and the root is the innermost repository
+    // holding workingDirectory: a repository nested in a nested one gets its own .omg.
+    if (trustedProbe.status === 'not_a_repository') {
+      const nestedRel = relative(trustedRootReal, providedRootReal);
+      if (nestedRel !== '' && nestedRel !== '..' && !nestedRel.startsWith(`..${sep}`) && !isAbsolute(nestedRel)) {
+        return { status: 'ok', root: providedRoot };
+      }
     }
 
     // Different repository (#3858): reject visibly instead of silently

@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
-import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, isSensitiveStateLocation, probeGitTopLevel, resolveSessionStatePath, resolveSessionStatePaths, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
+import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, withWorktreePathRenderScope, isSensitiveStateLocation, probeGitTopLevel, resolveSessionStatePath, resolveSessionStatePaths, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
 import { resolveSessionId } from '../lib/session-id.js';
 import { validatePayload } from '../lib/payload-limits.js';
 import { canClearStateForSession, findCompletedSessionStateFiles, findCompletedSessionStateCandidates, findSessionOwnedStateCandidates, getStateSessionOwner, writeStateFileLocked, writeStateFileLockedIf, writeStateFileLockedCreateIf, withStateFileMutationLock, clearStateFileLockedIf, emergencyMutateStateFileIf, recoverEmergencyStateFile, getStateMutationLockDiagnostic, getStateMutationLockFailureMessage, } from '../lib/mode-state-io.js';
@@ -2079,4 +2079,11 @@ export const stateTools = [
     stateGetStatusTool,
     stateMigrateNonGitTool,
 ];
+// One worktree-path scope per call (withWorktreePathRenderScope, not only the HUD's): the per-session
+// loops resolve the state root thousands of times. Git probes, boundary checks included, and getOmcRoot
+// are memoized for this call only; the next call probes afresh.
+for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+    const handler = tool.handler;
+    tool.handler = ((args) => withWorktreePathRenderScope(() => handler(args)));
+}
 //# sourceMappingURL=state-tools.js.map

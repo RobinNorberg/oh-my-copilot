@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6b3cefec58cc852df7e068e1f314262d875b2ea7",
-    "sourceSha256": "3d2f05904d650b614ee05d09ba8ac82c9e95c458a918887e7beb9dccc78afeb3",
+    "head": "f112337d04725d68866e1d7182e5931f7d378e9c",
+    "sourceSha256": "43512f8280362e5c53d104b45911385ce5fb1701244662ede34d6ee8bc989efc",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6b3cefec58cc852df7e068e1f314262d875b2ea7",
-  "sourceSha256": "3d2f05904d650b614ee05d09ba8ac82c9e95c458a918887e7beb9dccc78afeb3",
+  "head": "f112337d04725d68866e1d7182e5931f7d378e9c",
+  "sourceSha256": "43512f8280362e5c53d104b45911385ce5fb1701244662ede34d6ee8bc989efc",
   "counts": {
     "public": {
       "skills": 63,
@@ -26,15 +26,15 @@
       "hookFiles": 344,
       "featureFiles": 88,
       "toolFiles": 68,
-      "libFiles": 51,
+      "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1623,
-      "total": 1647
+      "srcFiles": 1625,
+      "total": 1649
     },
     "generated": {
-      "distFiles": 6223,
+      "distFiles": 6239,
       "bridgeFiles": 9,
-      "total": 6232
+      "total": 6248
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -698,6 +698,7 @@
       "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
       "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
       "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+      "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
       "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
       "src/lib/__tests__/worktree-paths-split-warning.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
@@ -865,13 +866,11 @@
       "scripts/lib/atomic-write.mjs",
       "scripts/lib/bounded-git-timeout.mjs",
       "scripts/lib/cache-occupancy.mjs",
-      "scripts/lib/child-session.cjs",
       "scripts/lib/config-dir.cjs",
       "scripts/lib/config-dir.mjs",
       "scripts/lib/config-dir.sh",
       "scripts/lib/context-usage.mjs",
       "scripts/lib/copilot-hook-adapter.cjs",
-      "scripts/lib/copilot-payload.cjs",
       "scripts/lib/encode-project-path.mjs",
       "scripts/lib/enforcement-log.mjs",
       "scripts/lib/force-agent-delegation-preflight.mjs",
@@ -1206,6 +1205,10 @@
       "dist/__tests__/goal-docs-contract.test.d.ts.map",
       "dist/__tests__/goal-docs-contract.test.js",
       "dist/__tests__/goal-docs-contract.test.js.map",
+      "dist/__tests__/helpers/isolated-cwd.d.ts",
+      "dist/__tests__/helpers/isolated-cwd.d.ts.map",
+      "dist/__tests__/helpers/isolated-cwd.js",
+      "dist/__tests__/helpers/isolated-cwd.js.map",
       "dist/__tests__/helpers/platform.d.ts",
       "dist/__tests__/helpers/platform.d.ts.map",
       "dist/__tests__/helpers/platform.js",
@@ -2038,6 +2041,14 @@
       "dist/__tests__/setup/clear-copilot-home.d.ts.map",
       "dist/__tests__/setup/clear-copilot-home.js",
       "dist/__tests__/setup/clear-copilot-home.js.map",
+      "dist/__tests__/setup/global-state-guard.d.ts",
+      "dist/__tests__/setup/global-state-guard.d.ts.map",
+      "dist/__tests__/setup/global-state-guard.js",
+      "dist/__tests__/setup/global-state-guard.js.map",
+      "dist/__tests__/setup/global-state-guard.test.d.ts",
+      "dist/__tests__/setup/global-state-guard.test.d.ts.map",
+      "dist/__tests__/setup/global-state-guard.test.js",
+      "dist/__tests__/setup/global-state-guard.test.js.map",
       "dist/__tests__/shared-memory-concurrency.test.d.ts",
       "dist/__tests__/shared-memory-concurrency.test.d.ts.map",
       "dist/__tests__/shared-memory-concurrency.test.js",
@@ -5193,6 +5204,10 @@
       "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js",
       "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js.map",
+      "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js",
+      "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js",
@@ -10073,6 +10088,26 @@
         "path": "dist/__tests__/goal-docs-contract.test.js.map"
       },
       {
+        "id": "dist/__tests__/helpers/isolated-cwd.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/isolated-cwd.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/isolated-cwd.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/isolated-cwd.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/isolated-cwd.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/isolated-cwd.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/isolated-cwd.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/isolated-cwd.js.map"
+      },
+      {
         "id": "dist/__tests__/helpers/platform.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/helpers/platform.d.ts"
@@ -14231,6 +14266,46 @@
         "id": "dist/__tests__/setup/clear-copilot-home.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup/clear-copilot-home.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.js"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.test.js"
+      },
+      {
+        "id": "dist/__tests__/setup/global-state-guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/global-state-guard.test.js.map"
       },
       {
         "id": "dist/__tests__/shared-memory-concurrency.test.d.ts",
@@ -30008,6 +30083,26 @@
         "path": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-nested-under-gitless-root.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts"
@@ -41033,11 +41128,6 @@
         "path": "scripts/lib/cache-occupancy.mjs"
       },
       {
-        "id": "scripts/lib/child-session.cjs",
-        "kind": "script",
-        "path": "scripts/lib/child-session.cjs"
-      },
-      {
         "id": "scripts/lib/config-dir.cjs",
         "kind": "script",
         "path": "scripts/lib/config-dir.cjs"
@@ -41061,11 +41151,6 @@
         "id": "scripts/lib/copilot-hook-adapter.cjs",
         "kind": "script",
         "path": "scripts/lib/copilot-hook-adapter.cjs"
-      },
-      {
-        "id": "scripts/lib/copilot-payload.cjs",
-        "kind": "script",
-        "path": "scripts/lib/copilot-payload.cjs"
       },
       {
         "id": "scripts/lib/encode-project-path.mjs",
@@ -42313,11 +42398,6 @@
         "path": "src/__tests__/copilot-notification-hook.test.ts"
       },
       {
-        "id": "src/__tests__/copilot-payload.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/copilot-payload.test.ts"
-      },
-      {
         "id": "src/__tests__/daemon-module-path.test.ts",
         "kind": "src",
         "path": "src/__tests__/daemon-module-path.test.ts"
@@ -42413,11 +42493,6 @@
         "path": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs"
       },
       {
-        "id": "src/__tests__/fixtures/copilot-live-payloads/cli-1.0.91.json",
-        "kind": "src",
-        "path": "src/__tests__/fixtures/copilot-live-payloads/cli-1.0.91.json"
-      },
-      {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs"
@@ -42456,6 +42531,11 @@
         "id": "src/__tests__/goal-docs-contract.test.ts",
         "kind": "src",
         "path": "src/__tests__/goal-docs-contract.test.ts"
+      },
+      {
+        "id": "src/__tests__/helpers/isolated-cwd.ts",
+        "kind": "src",
+        "path": "src/__tests__/helpers/isolated-cwd.ts"
       },
       {
         "id": "src/__tests__/helpers/platform.test.ts",
@@ -43521,6 +43601,16 @@
         "id": "src/__tests__/setup/clear-copilot-home.ts",
         "kind": "src",
         "path": "src/__tests__/setup/clear-copilot-home.ts"
+      },
+      {
+        "id": "src/__tests__/setup/global-state-guard.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup/global-state-guard.test.ts"
+      },
+      {
+        "id": "src/__tests__/setup/global-state-guard.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup/global-state-guard.ts"
       },
       {
         "id": "src/__tests__/shared-memory-concurrency.test.ts",
@@ -47593,6 +47683,11 @@
         "path": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts"
@@ -51471,11 +51566,6 @@
       },
       {
         "from": "scripts/context-guard-stop.mjs",
-        "to": "scripts/lib/child-session.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/context-guard-stop.mjs",
         "to": "scripts/lib/config-dir.mjs",
         "kind": "imports"
       },
@@ -51521,11 +51611,6 @@
       },
       {
         "from": "scripts/copilot/build-hooks.mjs",
-        "to": "external:node:module",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/build-hooks.mjs",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -51556,22 +51641,7 @@
       },
       {
         "from": "scripts/copilot/dispatch.cjs",
-        "to": "scripts/lib/child-session.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "scripts/lib/config-dir.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
         "to": "scripts/lib/copilot-hook-adapter.cjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "scripts/lib/copilot-payload.cjs",
         "kind": "imports"
       },
       {
@@ -54421,6 +54491,11 @@
       },
       {
         "from": "src/__tests__/bedrock-model-routing.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/bedrock-model-routing.test.ts",
         "to": "src/agents/definitions.ts",
         "kind": "imports"
       },
@@ -55150,31 +55225,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/copilot-payload.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-payload.test.ts",
-        "to": "external:node:module",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-payload.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-payload.test.ts",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-payload.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/daemon-module-path.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -55641,6 +55691,31 @@
       },
       {
         "from": "src/__tests__/goal-docs-contract.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/isolated-cwd.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/isolated-cwd.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/isolated-cwd.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/isolated-cwd.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/isolated-cwd.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -58201,6 +58276,11 @@
       },
       {
         "from": "src/__tests__/model-routing-override-three-site-sync.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/model-routing-override-three-site-sync.test.ts",
         "to": "src/hooks/bridge.ts",
         "kind": "imports"
       },
@@ -60385,6 +60465,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-worker-skip-guard.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -60977,6 +61062,41 @@
       {
         "from": "src/__tests__/setup-progress-script.test.ts",
         "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.test.ts",
+        "to": "src/__tests__/setup/global-state-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup/global-state-guard.ts",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
@@ -69881,6 +70001,11 @@
       },
       {
         "from": "src/hooks/__tests__/bridge-routing.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/bridge-routing.test.ts",
         "to": "src/hooks/bridge.ts",
         "kind": "imports"
       },
@@ -69967,6 +70092,11 @@
       {
         "from": "src/hooks/__tests__/bridge.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/bridge.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
         "kind": "imports"
       },
       {
@@ -70732,6 +70862,11 @@
       {
         "from": "src/hooks/autopilot/__tests__/runtime-insight.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/__tests__/runtime-insight.test.ts",
+        "to": "src/__tests__/helpers/isolated-cwd.ts",
         "kind": "imports"
       },
       {
@@ -81897,6 +82032,46 @@
       {
         "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "src/tools/state-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nested-under-gitless-root.test.ts",
+        "to": "src/tools/wiki-tools.ts",
         "kind": "imports"
       },
       {
@@ -98906,12 +99081,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8581,
-      "edgeCount": 9643,
-      "importEdgeCount": 8050,
+      "nodeCount": 8597,
+      "edgeCount": 9659,
+      "importEdgeCount": 8066,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "2f7da6ba6e639a5e5eeb3713e362cd8f7df475cfcf59ca9f1066ff924fdbfaef",
-  "manifestSha256": "92b1bf16927971290a274cfc39ffd1ad90461c8bdb185207bca70e16cf5eab3d"
+  "inventorySha256": "36737f75a4a43b2544d3c81b983a83930d4136418bd5c45c85c2bb158880b8e0",
+  "manifestSha256": "1b4116b3c965040129d3560453abe1e94c5785b7e8374f629f1d6207d0be0544"
 }

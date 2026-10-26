@@ -90,10 +90,13 @@ export declare function withProjectIdentifierScope<T>(fn: () => T): T;
 /**
  * Run path lookups in an isolated render scope.
  *
- * The memo is intentionally opt-in and is discarded when the render settles.
- * Direct callers that enforce security boundaries continue to receive fresh
- * probes, while each HUD render gets a new scope that observes PATH and .git
- * metadata changes made between renders.
+ * The memo is intentionally opt-in and is discarded when the scope settles.
+ * Two callers open one: each HUD render, and each state tool call
+ * (src/tools/state-tools.ts), whose per-session loops would otherwise re-probe
+ * git and re-resolve the state root per session. Inside a scope the git probes
+ * (boundary decisions included) and getOmcRoot are memoized for that one
+ * render or call only; callers outside a scope receive fresh probes, and the
+ * next scope observes PATH and .git metadata changes made in between.
  */
 export declare function withWorktreePathRenderScope<T>(fn: () => T): T;
 /**

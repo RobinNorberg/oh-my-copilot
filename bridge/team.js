@@ -839,6 +839,17 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const scope = worktreePathRenderScope.getStore();
+  if (!scope) return computeOmcRoot(worktreeRoot);
+  const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
+  let root = scope.omcRoots.get(key);
+  if (root === void 0) {
+    root = computeOmcRoot(worktreeRoot);
+    scope.omcRoots.set(key, root);
+  }
+  return root;
+}
+function computeOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
