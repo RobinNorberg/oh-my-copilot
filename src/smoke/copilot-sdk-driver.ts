@@ -480,7 +480,7 @@ function isCliScenario(name: Scenario): name is CliScenario {
   return (CLI_SCENARIOS as readonly Scenario[]).includes(name);
 }
 
-export const RUNTIME_WEDGED_DETAIL ='skipped: runtime unresponsive after a scenario timeout';
+export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
 
 type ScenarioEntry =
   | { name: Scenario; skip: string }
