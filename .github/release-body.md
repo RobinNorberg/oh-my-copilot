@@ -1,42 +1,53 @@
-# oh-my-copilot v5.12.2
+# oh-my-copilot v5.13.0
 
-A patch release from v5.12.1: Windows provider-launch hardening, race fixes,
-and a clean Windows test suite.
+A minor release from v5.12.2: OMC's keep-going modes now work on GitHub
+Copilot CLI, with chained Stop continuations, a native ultragoal goal record,
+per-agent models and a hook adapter brought up to Copilot CLI 1.0.103. No
+breaking changes, but on Copilot a prompt can now cost up to 3 extra premium
+requests from OMC continuations (`OMC_COPILOT_STOP_CHAIN_MAX=1` restores the
+old behaviour).
 
-Install with `npm install -g oh-my-copilot@5.12.2`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.13.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
-
-## Security
-
-- Windows: hardened native .cmd/.bat provider launch (argument quoting and
-  supervisor launch path); upgrading is recommended for Windows users with
-  npm-installed providers.
-
-## Fixed
-
-- Race fixes (#268-#276): SessionEnd lease and job updates no longer mistake
-  revision drift for a lost lease, a released worker's reserved action claim
-  is undone, the state lock retries an early `SQLITE_BUSY` instead of reading
-  unlocked, the Windows supervisor stdin EPIPE is handled, and
-  `getProjectIdentifier` caches its git probes per process with signature
-  validation.
-- The rules and directory-context injectors now inject for `apply_patch`
-  edits (GPT-family models).
-- Windows: atomic and team writes retry transient rename errors, atomic-write
-  rollback no longer fails silently, `omg ask claude` passes prompts over
-  stdin, and autoresearch tolerates `core.autocrlf`.
 
 ## Added
 
-- `omg release <X.Y.Z>`: a resumable, gated release pipeline for maintainers.
-- `omg progress emit|watch|status`: agent progress events with stall detection.
-- `omg smoke copilot --tier 2 --scenario filetools`: an opt-in live check of
-  file-tool hooks on Copilot.
+- Chained Stop continuation on Copilot (#279): up to 3 OMC continuations per
+  user prompt, each billed as one premium request; `OMC_COPILOT_STOP_CHAIN_MAX`
+  (1 to 7) overrides the cap.
+- OMG goal record for ultragoal on Copilot (#279): `omg ultragoal goal-start`
+  and `goal-evidence` stand in for Claude Code's `/goal`.
+- Per-agent models on Copilot (#281): `omg setup` syncs `agents.<name>.model`
+  overrides into Copilot's `settings.json` using the Copilot 5.5 tier table
+  (settings key not yet verified live; check with `/subagents`).
+- `omg hooks doctor` (#280): checks the Copilot hook wiring and dry-runs every
+  hook entry.
+- Opt-in live smoke scenarios (#280): `omg smoke copilot --tier 2 --scenario
+  continuation,prompt-context,events`.
 
-## Tests
+## Changed
 
-- The Windows test suite went from 810 failures to a clean full run: shared
-  platform helpers, POSIX-only gates, load-tolerant timing and root-cause
-  fixes for four full-suite flakes.
+- `context-guard-stop` never blocks on Copilot; it advises once per session
+  instead (#283).
+- Copilot hook payloads gain Claude field names, `systemMessage` reaches the
+  model, and PermissionRequest decisions use Copilot's shape with deny-wins
+  merging (#283).
+- On Copilot, SessionEnd cleanup and the factory-chain link wait for the real
+  session end (#279).
+- `omg release` runs the vitest suite in a new `suite` phase after `commit`,
+  records the suite level and baseline, and refuses a skipped live smoke at
+  `pr` unless `--allow-skipped-smoke` is given (#282).
 
-Fork deviations (kept and dropped) are listed in `CHANGELOG.md`.
+## Fixed
+
+- The lowercase `skill` tool on Copilot is recognized, so cancel, ultragoal
+  bootstrap and skill-state hooks fire (#279).
+- A repo nested under a git-less session root is no longer rejected, and
+  state-root lookups are memoized, which removes minutes-long scans on
+  Windows (#282).
+- Copilot subagents: parent-session lookup for the ultragoal guard, oldest-first
+  close of parallel same-type agents, and pruning of stale handoff files
+  (#279, #283).
+
+Upgrade notes are in `docs/MIGRATION.md`. Fork deviations (kept and dropped)
+are listed in `CHANGELOG.md`.
