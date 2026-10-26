@@ -34456,7 +34456,15 @@ async function runCliScenario(input) {
     return { ...base, events: [], idle: false, timedOut: false, error: `${name} setup: ${err.message}` };
   }
   if (cli.seed && !cli.seed.ok) return { ...base, events: [], idle: false, timedOut: false, error: `ultragoal seed: ${cli.seed.detail}` };
-  const args = [
+  const eventsFile = (0, import_path69.join)(input.home, "session-state", sessionId, "events.jsonl");
+  const readEvents = () => {
+    try {
+      return parseJsonl((0, import_fs53.readFileSync)(eventsFile, "utf8")).events;
+    } catch {
+      return [];
+    }
+  };
+  const argsFor = (budget2) => [
     "--plugin-dir",
     input.root,
     ...stub ? ["--plugin-dir", stub.dir] : [],
@@ -34471,13 +34479,14 @@ async function runCliScenario(input) {
     "--log-dir",
     (0, import_path69.join)(input.home, "logs"),
     "--max-ai-credits",
-    String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(input.budget)))
+    String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(budget2)))
   ];
   const prompts = [["prompt", SCENARIOS[name].prompt], ...name === "events" ? [["compact", COMPACT_PROMPT]] : []];
   let error2;
   let timedOut = false;
+  let budget = input.budget;
   for (const [label, prompt] of prompts) {
-    const plan = buildHostBinarySpawn(input.bin, args);
+    const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
     const res = await runAsync(input.spawn ?? import_child_process19.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
       env: input.env,
@@ -34496,13 +34505,9 @@ async function runCliScenario(input) {
       error2 = res.error ?? `copilot (${label}) exited ${String(res.code)}: ${excerpt(res.stderr, 200)}`;
       break;
     }
+    budget = input.budget - runCost({ events: readEvents() }).credits;
   }
-  const eventsFile = (0, import_path69.join)(input.home, "session-state", sessionId, "events.jsonl");
-  let events = [];
-  try {
-    events = parseJsonl((0, import_fs53.readFileSync)(eventsFile, "utf8")).events;
-  } catch {
-  }
+  const events = readEvents();
   if (!error2 && !timedOut && events.length === 0) error2 = `no events.jsonl for session ${sessionId}`;
   try {
     (0, import_fs53.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
@@ -34960,6 +34965,7 @@ __export(copilot_smoke_exports, {
   DELEGATE_AGENT: () => DELEGATE_AGENT2,
   DELEGATE_SMOKE_PROMPT: () => DELEGATE_SMOKE_PROMPT,
   KNOWN_SCENARIOS: () => KNOWN_SCENARIOS,
+  LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL: () => LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL,
   LIVE_RUN_REFUSED_DETAIL: () => LIVE_RUN_REFUSED_DETAIL,
   LOGIN_SHADOWING_TOKENS: () => LOGIN_SHADOWING_TOKENS,
   MCP_LIST_TIMEOUT_MS: () => MCP_LIST_TIMEOUT_MS,
@@ -35373,7 +35379,11 @@ function liveRunRefusal(tier, scenarios, deps, env = process.env) {
   const billable = tier === 1 || tier === 2 && (scenarios ?? DEFAULT_SCENARIOS).length > 0;
   if (!billable) return null;
   if (env.OMC_LIVE_SMOKE === String(tier)) return null;
-  if (tier === 1 && deps.spawn || tier === 2 && deps.loadSdk) return null;
+  if (tier === 1 && deps.spawn) return null;
+  if (tier === 2 && deps.loadSdk) {
+    const real = (scenarios ?? DEFAULT_SCENARIOS).filter((s) => s === "chain" && !deps.runChain || s === "team" && !deps.runTeam || CLI_SCENARIOS.includes(s) && !deps.runCli);
+    return real.length > 0 ? `${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${real.join(", ")}` : null;
+  }
   return LIVE_RUN_REFUSED_DETAIL;
 }
 async function runCopilotSmoke(input = {}) {
@@ -35522,16 +35532,16 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     skillDirs: countDirsWith((0, import_path72.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: runChainScenario,
-    runTeam: runTeamScenario,
-    runCli: runCliScenario
+    runChain: ctx.deps.runChain ?? runChainScenario,
+    runTeam: ctx.deps.runTeam ?? runTeamScenario,
+    runCli: ctx.deps.runCli ?? runCliScenario
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path72.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process21, import_crypto17, import_fs56, import_os8, import_path72, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process21, import_crypto17, import_fs56, import_os8, import_path72, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
@@ -35566,6 +35576,7 @@ var init_copilot_smoke = __esm({
     SMOKE_PERMISSION_FLAGS = ["--allow-all-tools", "--no-ask-user"];
     TIER0_COPILOT_IDS = ["copilot.binary", "copilot.plugin_list", "copilot.skill_list"];
     LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
+    LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli or set OMC_LIVE_SMOKE=2";
   }
 });
 

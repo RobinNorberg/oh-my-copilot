@@ -24,7 +24,7 @@ import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier } from './copil
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
-import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS } from './copilot-sdk-scenarios.js';
+import { CLI_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, } from './copilot-session-env.js';
 export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
@@ -486,6 +486,7 @@ export function evaluateTier1(input) {
 // Entry point
 // ---------------------------------------------------------------------------
 export const LIVE_RUN_REFUSED_DETAIL = 'live run refused under vitest — set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)';
+export const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = 'live run refused under vitest — an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli or set OMC_LIVE_SMOKE=2';
 /**
  * Hard no-billing guard: under a test runner (`VITEST` or `NODE_ENV=test` in
  * the real process env) a run that would call a model (tier 1; tier 2 with
@@ -503,8 +504,13 @@ export function liveRunRefusal(tier, scenarios, deps, env = process.env) {
         return null;
     if (env.OMC_LIVE_SMOKE === String(tier))
         return null;
-    if ((tier === 1 && deps.spawn) || (tier === 2 && deps.loadSdk))
+    if (tier === 1 && deps.spawn)
         return null;
+    if (tier === 2 && deps.loadSdk) {
+        // A fake SDK does not stop the chain, team and CLI scenarios from starting real copilot processes.
+        const real = (scenarios ?? DEFAULT_SCENARIOS).filter((s) => (s === 'chain' && !deps.runChain) || (s === 'team' && !deps.runTeam) || (CLI_SCENARIOS.includes(s) && !deps.runCli));
+        return real.length > 0 ? `${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${real.join(', ')}` : null;
+    }
     return LIVE_RUN_REFUSED_DETAIL;
 }
 export async function runCopilotSmoke(input = {}) {
@@ -678,9 +684,9 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
         agentFiles,
         mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
-        runChain: runChainScenario,
-        runTeam: runTeamScenario,
-        runCli: runCliScenario,
+        runChain: ctx.deps.runChain ?? runChainScenario,
+        runTeam: ctx.deps.runTeam ?? runTeamScenario,
+        runCli: ctx.deps.runCli ?? runCliScenario,
     });
     if (Object.keys(result.events).length)
         artifacts.events = result.events;
