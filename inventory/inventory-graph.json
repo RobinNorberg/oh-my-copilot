@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-    "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+    "head": "305b398416846dd8a4504848bdfa1f12f2317f7b",
+    "sourceSha256": "ebf2bd3638659eab297da0c432eff249bea0e7d927a667adfef6e3a619c90d0f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-  "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+  "head": "305b398416846dd8a4504848bdfa1f12f2317f7b",
+  "sourceSha256": "ebf2bd3638659eab297da0c432eff249bea0e7d927a667adfef6e3a619c90d0f",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,23 +28,23 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1621,
-      "total": 1645
+      "srcFiles": 1630,
+      "total": 1654
     },
     "generated": {
-      "distFiles": 6223,
+      "distFiles": 6243,
       "bridgeFiles": 9,
-      "total": 6232
+      "total": 6252
     },
     "prompt": {
-      "promptLikeFiles": 61
+      "promptLikeFiles": 62
     },
     "skills": 63,
     "commands": 21,
     "hookFiles": 344,
     "workflows": 9,
     "agentDefinitions": 18,
-    "promptLikeFiles": 61
+    "promptLikeFiles": 62
   },
   "public": {
     "skills": [
@@ -811,6 +811,7 @@
       "src/mcp/prompt-injection.ts",
       "src/mcp/prompt-persistence.ts",
       "src/ralphthon/deep-interview-prompt.ts",
+      "src/smoke/__tests__/fixtures/tier2-prompt-context-events.jsonl",
       "src/team/__tests__/prompt-sanitization.test.ts",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
@@ -2584,6 +2585,10 @@
       "dist/cli/commands/__tests__/factory-listen-port.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-listen-port.test.js",
       "dist/cli/commands/__tests__/factory-listen-port.test.js.map",
+      "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
+      "dist/cli/commands/__tests__/hooks-doctor.test.d.ts.map",
+      "dist/cli/commands/__tests__/hooks-doctor.test.js",
+      "dist/cli/commands/__tests__/hooks-doctor.test.js.map",
       "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts",
       "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts.map",
       "dist/cli/commands/__tests__/intake-headless-flag.test.js",
@@ -2660,6 +2665,10 @@
       "dist/cli/commands/factory.d.ts.map",
       "dist/cli/commands/factory.js",
       "dist/cli/commands/factory.js.map",
+      "dist/cli/commands/hooks.d.ts",
+      "dist/cli/commands/hooks.d.ts.map",
+      "dist/cli/commands/hooks.js",
+      "dist/cli/commands/hooks.js.map",
       "dist/cli/commands/intake.d.ts",
       "dist/cli/commands/intake.d.ts.map",
       "dist/cli/commands/intake.js",
@@ -5823,6 +5832,10 @@
       "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts.map",
       "dist/smoke/__tests__/copilot-chain-scenario.test.js",
       "dist/smoke/__tests__/copilot-chain-scenario.test.js.map",
+      "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts",
+      "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-cli-scenarios.test.js",
+      "dist/smoke/__tests__/copilot-cli-scenarios.test.js.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.js",
@@ -5851,6 +5864,14 @@
       "dist/smoke/copilot-chain-scenario.d.ts.map",
       "dist/smoke/copilot-chain-scenario.js",
       "dist/smoke/copilot-chain-scenario.js.map",
+      "dist/smoke/copilot-cli-scenarios.d.ts",
+      "dist/smoke/copilot-cli-scenarios.d.ts.map",
+      "dist/smoke/copilot-cli-scenarios.js",
+      "dist/smoke/copilot-cli-scenarios.js.map",
+      "dist/smoke/copilot-hook-manifest.d.ts",
+      "dist/smoke/copilot-hook-manifest.d.ts.map",
+      "dist/smoke/copilot-hook-manifest.js",
+      "dist/smoke/copilot-hook-manifest.js.map",
       "dist/smoke/copilot-sdk-driver.d.ts",
       "dist/smoke/copilot-sdk-driver.d.ts.map",
       "dist/smoke/copilot-sdk-driver.js",
@@ -7610,6 +7631,7 @@
       "src/mcp/prompt-injection.ts",
       "src/mcp/prompt-persistence.ts",
       "src/ralphthon/deep-interview-prompt.ts",
+      "src/smoke/__tests__/fixtures/tier2-prompt-context-events.jsonl",
       "src/team/__tests__/prompt-sanitization.test.ts",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
@@ -16971,6 +16993,26 @@
         "path": "dist/cli/commands/__tests__/factory-listen-port.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/hooks-doctor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/hooks-doctor.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/hooks-doctor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/hooks-doctor.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts"
@@ -17349,6 +17391,26 @@
         "id": "dist/cli/commands/factory.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory.js.map"
+      },
+      {
+        "id": "dist/cli/commands/hooks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/hooks.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/hooks.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/hooks.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/hooks.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/hooks.js"
+      },
+      {
+        "id": "dist/cli/commands/hooks.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/hooks.js.map"
       },
       {
         "id": "dist/cli/commands/intake.d.ts",
@@ -33166,6 +33228,26 @@
         "path": "dist/smoke/__tests__/copilot-chain-scenario.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-cli-scenarios.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-cli-scenarios.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-cli-scenarios.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-cli-scenarios.test.js.map"
+      },
+      {
         "id": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts"
@@ -33304,6 +33386,46 @@
         "id": "dist/smoke/copilot-chain-scenario.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-chain-scenario.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-cli-scenarios.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-cli-scenarios.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-cli-scenarios.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-cli-scenarios.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-cli-scenarios.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-cli-scenarios.js"
+      },
+      {
+        "id": "dist/smoke/copilot-cli-scenarios.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-cli-scenarios.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-hook-manifest.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-hook-manifest.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-hook-manifest.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-hook-manifest.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-hook-manifest.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-hook-manifest.js"
+      },
+      {
+        "id": "dist/smoke/copilot-hook-manifest.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-hook-manifest.js.map"
       },
       {
         "id": "dist/smoke/copilot-sdk-driver.d.ts",
@@ -44206,6 +44328,11 @@
         "path": "src/cli/commands/__tests__/factory-listen-port.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/hooks-doctor.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/intake-headless-flag.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/intake-headless-flag.test.ts"
@@ -44299,6 +44426,11 @@
         "id": "src/cli/commands/factory.ts",
         "kind": "src",
         "path": "src/cli/commands/factory.ts"
+      },
+      {
+        "id": "src/cli/commands/hooks.ts",
+        "kind": "src",
+        "path": "src/cli/commands/hooks.ts"
       },
       {
         "id": "src/cli/commands/intake.ts",
@@ -48381,6 +48513,11 @@
         "path": "src/smoke/__tests__/copilot-chain-scenario.test.ts"
       },
       {
+        "id": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-cli-scenarios.test.ts"
+      },
+      {
         "id": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "kind": "src",
         "path": "src/smoke/__tests__/copilot-sdk-driver.test.ts"
@@ -48441,9 +48578,19 @@
         "path": "src/smoke/__tests__/fixtures/tier2-chain-evidence.json"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-continuation-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-continuation-events.jsonl"
+      },
+      {
         "id": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-events-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-events-events.jsonl"
       },
       {
         "id": "src/smoke/__tests__/fixtures/tier2-filetools-events.jsonl",
@@ -48476,6 +48623,11 @@
         "path": "src/smoke/__tests__/fixtures/tier2-hooks-debug-excerpt.log"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-prompt-context-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-prompt-context-events.jsonl"
+      },
+      {
         "id": "src/smoke/__tests__/fixtures/tier2-skill-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier2-skill-events.jsonl"
@@ -48486,6 +48638,11 @@
         "path": "src/smoke/__tests__/fixtures/tier2-smoke-events.jsonl"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-ultragoal-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-ultragoal-events.jsonl"
+      },
+      {
         "id": "src/smoke/copilot-binary.ts",
         "kind": "src",
         "path": "src/smoke/copilot-binary.ts"
@@ -48494,6 +48651,16 @@
         "id": "src/smoke/copilot-chain-scenario.ts",
         "kind": "src",
         "path": "src/smoke/copilot-chain-scenario.ts"
+      },
+      {
+        "id": "src/smoke/copilot-cli-scenarios.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-cli-scenarios.ts"
+      },
+      {
+        "id": "src/smoke/copilot-hook-manifest.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-hook-manifest.ts"
       },
       {
         "id": "src/smoke/copilot-sdk-driver.ts",
@@ -64328,6 +64495,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/cli/commands/hooks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/cli/commands/hooks.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/smoke/copilot-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/smoke/copilot-hook-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/intake-headless-flag.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -64916,6 +65143,81 @@
         "from": "src/cli/commands/factory.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:commander",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/cli/utils/formatting.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/copilot-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/copilot-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/copilot-hook-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/copilot-hook-manifest.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/hooks.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/intake.ts",
@@ -65660,6 +65962,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/hooks.ts",
         "kind": "imports"
       },
       {
@@ -85613,6 +85920,81 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/copilot-cli-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-cli-scenarios.test.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -85963,6 +86345,86 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/copilot-hook-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-cli-scenarios.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-hook-manifest.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-hook-manifest.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-hook-manifest.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -85995,6 +86457,11 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "src/smoke/copilot-chain-scenario.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-cli-scenarios.ts",
         "kind": "type-imports"
       },
       {
@@ -86145,6 +86612,11 @@
       {
         "from": "src/smoke/copilot-smoke.ts",
         "to": "src/smoke/copilot-chain-scenario.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-cli-scenarios.ts",
         "kind": "imports"
       },
       {
@@ -98834,12 +99306,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8577,
-      "edgeCount": 9633,
-      "importEdgeCount": 8040,
+      "nodeCount": 8606,
+      "edgeCount": 9694,
+      "importEdgeCount": 8087,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4f8b366ab23d9366ff0e446182d4910035074a14151ef01f8965118a3517eb0",
-  "manifestSha256": "52867796df0cac9ef259dc834eaa41e28851cc93d14082d4f5e0fc248f89bb9f"
+  "inventorySha256": "f89538e717a1b75890d12062a31d0b5fa83cdb3f26c0bba6905a40892d03d1fd",
+  "manifestSha256": "5c77d8812d8716320fc293d6a22eab4b8c81ece47665a1b67c904e3513b42821"
 }
