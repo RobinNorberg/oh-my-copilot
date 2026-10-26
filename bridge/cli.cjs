@@ -112460,7 +112460,13 @@ function readJsonl(path30) {
   }
 }
 function ultragoalStatePath(projectDir, sessionId) {
-  return (0, import_path170.join)(projectDir, ".omg", "state", "sessions", sessionId, "ultragoal-state.json");
+  const centralized = process.env.OMC_STATE_DIR;
+  delete process.env.OMC_STATE_DIR;
+  try {
+    return resolveSessionStatePaths("ultragoal", sessionId, projectDir).sessionScoped;
+  } finally {
+    if (centralized !== void 0) process.env.OMC_STATE_DIR = centralized;
+  }
 }
 function seedUltragoal(input, sessionId, now2) {
   let entries;
@@ -112585,6 +112591,7 @@ var init_copilot_cli_scenarios = __esm({
     import_child_process45 = require("child_process");
     import_fs141 = require("fs");
     import_path170 = require("path");
+    init_worktree_paths();
     init_tmux_utils();
     init_copilot_session_eval();
     init_copilot_hook_manifest();

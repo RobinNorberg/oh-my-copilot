@@ -26,6 +26,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { spawn as nodeSpawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { resolveSessionStatePaths } from '../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
 import { excerpt, parseJsonl } from './copilot-session-eval.js';
 import { dispatchHookEntry, entryMatches, readCopilotHookManifest } from './copilot-hook-manifest.js';
@@ -99,12 +100,19 @@ function readJsonl(path) {
     }
 }
 /**
- * Where the hooks write the session's ultragoal state. A literal `.omg/`, not
- * getOmcRoot(): the hook env is stripped of OMC_STATE_DIR (buildSessionEnv),
- * while this process may carry one.
+ * Where the hooks write the session's ultragoal state. Resolved without this
+ * process's OMC_STATE_DIR: the hook env is stripped of it (buildSessionEnv).
  */
 export function ultragoalStatePath(projectDir, sessionId) {
-    return join(projectDir, '.omg', 'state', 'sessions', sessionId, 'ultragoal-state.json');
+    const centralized = process.env.OMC_STATE_DIR;
+    delete process.env.OMC_STATE_DIR;
+    try {
+        return resolveSessionStatePaths('ultragoal', sessionId, projectDir).sessionScoped;
+    }
+    finally {
+        if (centralized !== undefined)
+            process.env.OMC_STATE_DIR = centralized;
+    }
 }
 /**
  * Activate ultragoal for the session through our real UserPromptSubmit hook

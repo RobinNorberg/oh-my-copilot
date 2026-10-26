@@ -63,9 +63,8 @@ export declare function prepareStubPlugin(home: string, name: CliScenario, text:
     log: string;
 } | null;
 /**
- * Where the hooks write the session's ultragoal state. A literal `.omg/`, not
- * getOmcRoot(): the hook env is stripped of OMC_STATE_DIR (buildSessionEnv),
- * while this process may carry one.
+ * Where the hooks write the session's ultragoal state. Resolved without this
+ * process's OMC_STATE_DIR: the hook env is stripped of it (buildSessionEnv).
  */
 export declare function ultragoalStatePath(projectDir: string, sessionId: string): string;
 /**

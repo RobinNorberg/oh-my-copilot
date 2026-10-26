@@ -171,6 +171,7 @@ describe('seedUltragoal', () => {
     }
     it('activates through the UserPromptSubmit group, then backdates past the TTL and caps reinforcements', () => {
         const projectDir = tempDir('omg-cli-proj-');
+        spawnSync('git', ['init', '-q'], { cwd: projectDir }); // the smoke project is a git repo, so state resolves under it
         const now = Date.parse('2026-10-23T12:00:00.000Z');
         const seed = seedUltragoal({ root: fakeRoot(true), projectDir, env: process.env, spawnSync }, 'sid-1', now);
         expect(seed.ok).toBe(true);
