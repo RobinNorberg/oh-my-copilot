@@ -46,15 +46,22 @@ reference for what each phase asserts.
    `--suite` is recorded for the release: a later run without `--suite` uses
    the recorded level, a lower `--suite` is refused (start over with
    `--from preflight` to change it), and `--suite none` records `suite` as
-   skipped with a warning. `--baseline` is not recorded; pass it again on any
-   run that reaches `suite`. `--suite` with a `--to` before `suite` warns that
+   skipped with a warning. The level the suite actually ran at is recorded
+   too: raising `--suite` after the suite ran lower (e.g. `--suite none`,
+   then `--suite full`) blocks `pr` until `--from suite --suite full` runs it.
+   `--baseline` is recorded (as an absolute path) and reused by a later run
+   that does not pass it. `--suite` with a `--to` before `suite` warns that
    the suite does not run in that invocation. If the suite fails, fix, commit
-   and re-run: new commits that touch `src/` resume `--from build` (rebuilt
-   dist/bridge), others `--from gates`. Every child runs under the ship scrub
-   (GIT_NO_REPLACE_OBJECTS=1, redirecting GIT_*/GH_* dropped) except the
-   vitest suite, which inherits your environment as in CI. State is
-   `.omg/release/X.Y.Z.json`; a run without `--from`
-   resumes at the first phase not yet ok; `--from <phase>` re-runs one.
+   and re-run `--from build`: every build input (src, scripts, templates,
+   package.json, build config) feeds dist/bridge. The suite and the live
+   smoke fail if they leave files in the working tree (remove them, re-run),
+   and skipping past `commit` needs a clean tree, so nothing uncommitted is
+   swept into a later release commit or left out of what `pr` pushes. Every
+   child runs under the ship scrub (GIT_NO_REPLACE_OBJECTS=1, redirecting
+   GIT_*/GH_* dropped); the vitest suite drops only GIT_NO_REPLACE_OBJECTS,
+   as in CI. State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   resumes at the first phase not yet ok; `--from <phase>` re-runs one and
+   voids the records of every later phase, so they run again.
    Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 3. Exit 1 = a phase failed or is blocked; the output names the cause (failed
    checks with failing test titles, orphan dist files, missing stamps).
