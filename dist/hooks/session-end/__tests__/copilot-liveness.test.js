@@ -20,7 +20,8 @@ vi.mock('../action-runner.js', () => ({
     runSessionEndAction: vi.fn(async () => ({ code: 'completed', completed: true })),
 }));
 import { isCopilotSessionEndJob, isCopilotSessionLive } from '../copilot-liveness.js';
-import { mutateSessionEndJob, prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
+import { deferSessionEndChain, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
+import { factoryStateDir } from '../chain-enqueuer.js';
 import { processSessionEndWorker } from '../worker.js';
 const FIXTURES = join(process.cwd(), 'src', '__tests__', 'fixtures', 'copilot-live');
 const SESSION = '61b74574-b97a-4c2c-82f6-4d89613496df';
@@ -129,9 +130,9 @@ describe('session-end worker on Copilot', () => {
         expect(ended.actions['foreground-cleanup'].status).toBe('completed');
         expect(ended.actions.notification.status).toBe('completed');
     });
-    it('waits out a real producer grace at the true end before running best-effort actions', async () => {
-        // The 1 ms grace above skips the wait; load the modules again with a short real one.
-        // The clock is faked so a slow run cannot cross the grace before the follow-up is scheduled.
+    it('runs the actions at the real end without waiting a fresh producer grace', async () => {
+        // The 1 ms grace above hides a grace restart at the real end; load the modules again with a short real one.
+        // The clock is faked so a slow run cannot cross the grace by itself.
         process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '200';
         vi.resetModules();
         vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
@@ -142,21 +143,20 @@ describe('session-end worker on Copilot', () => {
             writeUltragoal(dir);
             const input = { hook_event_name: 'SessionEnd', session_id: SESSION, cwd: dir, reason: 'complete' };
             expect(manifest.prepareCoreManifest(dir, SESSION, { cwd: dir, reason: 'complete', input, initialTeamNames: [], host: 'copilot' })).not.toBeNull();
+            // A mid-session SessionEnd holds the job and restarts its grace.
+            writeEvents('session-events-midsession.jsonl');
+            await worker({ directory: dir, sessionId: SESSION }, 6);
+            const held = manifest.readSessionEndJob(dir, SESSION);
+            expect(held.actions.notification.status).toBe('pending');
+            await vi.advanceTimersByTimeAsync(300);
             writeEvents('session-events-shutdown.jsonl');
             const endedAt = Date.now();
             await worker({ directory: dir, sessionId: SESSION }, 6);
-            const armed = manifest.readSessionEndJob(dir, SESSION);
-            // Re-armed at the true end: the grace runs from this SessionEnd.
-            const graceEndsAt = Date.parse(armed.producerGraceExpiresAt);
-            expect(graceEndsAt).toBeGreaterThanOrEqual(endedAt + 200);
-            expect(armed.actions.notification.status).toBe('pending');
-            await vi.advanceTimersByTimeAsync(100);
-            expect(manifest.readSessionEndJob(dir, SESSION)?.actions.notification.status).toBe('pending');
-            await vi.advanceTimersByTimeAsync(150);
-            await vi.waitFor(() => expect(manifest.readSessionEndJob(dir, SESSION)?.phase).toBe('complete'), { timeout: 5_000, interval: 50 });
             const ended = manifest.readSessionEndJob(dir, SESSION);
+            expect(ended.producerGraceExpiresAt).toBe(held.producerGraceExpiresAt);
+            expect(ended.phase).toBe('complete');
             expect(ended.actions.notification.status).toBe('completed');
-            expect(Date.parse(ended.actions.notification.claimedAt)).toBeGreaterThanOrEqual(graceEndsAt);
+            expect(Date.parse(ended.actions.notification.claimedAt)).toBeLessThan(endedAt + 200);
             expect(Object.values(ended.actions).filter((action) => action.status === 'expired')).toEqual([]);
         }
         finally {
@@ -164,6 +164,33 @@ describe('session-end worker on Copilot', () => {
             process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '0';
             vi.resetModules();
         }
+    });
+    it('decides the factory-chain link at the real end with the last SessionEnd outcome', async () => {
+        const dir = project();
+        mkdirSync(factoryStateDir(dir), { recursive: true });
+        writeFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), JSON.stringify({ intentId: 'intent-copilot' }));
+        writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'code-review' } }));
+        prepareCopilotJob(dir);
+        const decisions = () => { try {
+            return readFileSync(join(factoryStateDir(dir), 'chain-decisions.jsonl'), 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line).decision);
+        }
+        catch {
+            return [];
+        } };
+        // Turn 1 ended in an error; the session went on and ended cleanly.
+        deferSessionEndChain(dir, SESSION, { reason: 'error' });
+        writeEvents('session-events-midsession.jsonl');
+        await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+        expect(decisions()).toEqual([]);
+        expect(JSON.parse(readFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), 'utf8')).closedAt).toBeUndefined();
+        deferSessionEndChain(dir, SESSION, { reason: 'complete' });
+        writeEvents('session-events-shutdown.jsonl');
+        await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+        const ended = readSessionEndJob(dir, SESSION);
+        expect(ended.actions['spawn-next'].payload.deferredChain).toBeUndefined();
+        expect(ended.actions['spawn-next'].payload.chain).toMatchObject({ outcome: 'success', intentId: 'intent-copilot' });
+        expect(ended.actions['spawn-next'].status).toBe('completed');
+        expect(decisions()).toEqual(['enqueued']);
     });
     it('runs a Claude Code job without waiting on Copilot events', async () => {
         const dir = project();

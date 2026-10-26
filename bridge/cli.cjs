@@ -70177,13 +70177,25 @@ function acknowledgeSessionEndDiscoveryTicket(directory, sessionId) {
   } catch {
   }
 }
-function rearmUnclaimedSessionEndJob(directory, sessionId) {
+function rearmUnclaimedSessionEndJob(directory, sessionId, { restartGrace = true } = {}) {
   const current = readSessionEndJob(directory, sessionId);
   if (!current || current.phase !== "collecting" || current.owner) return null;
   return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
     if (job.phase !== "collecting" || job.owner) throw new Error("rearm-conflict");
-    Object.assign(job, initialDeadlines());
+    if (restartGrace) Object.assign(job, initialDeadlines());
+    else job.bestEffortDeadlineAt = new Date(Math.max(Date.now(), Date.parse(job.producerGraceExpiresAt)) + REQUIRED_ACTION_EXECUTION_MS + BEST_EFFORT_ACTION_EXECUTION_MS).toISOString();
   });
+}
+function mutateUnclaimedSpawnNext(directory, sessionId, mutate) {
+  const current = readSessionEndJob(directory, sessionId);
+  if (!current || current.phase !== "collecting" || current.owner) return null;
+  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+    if (job.phase !== "collecting" || job.owner) throw new Error("spawn-next-conflict");
+    job.actions["spawn-next"].payload = mutate(job.actions["spawn-next"].payload);
+  });
+}
+function resolveDeferredSessionEndChain(directory, sessionId, chain) {
+  return mutateUnclaimedSpawnNext(directory, sessionId, ({ deferredChain: _deferred, ...payload }) => chain ? { ...payload, chain } : payload);
 }
 function recoverPreparedCoreProducer(directory, sessionId) {
   return mutateLatest(directory, sessionId, (job) => {
@@ -101670,16 +101682,29 @@ function reschedulePendingWorker(payload, job) {
     void processSessionEndWorker(payload);
   }, delay);
 }
+async function planDeferredChain(payload) {
+  const deferred = readSessionEndJob(payload.directory, payload.sessionId)?.actions["spawn-next"]?.payload?.deferredChain;
+  if (!deferred || typeof deferred !== "object") return;
+  const [{ planChainEnqueue: planChainEnqueue2 }, { CHAIN_LINK_ENV: CHAIN_LINK_ENV2 }] = await Promise.all([Promise.resolve().then(() => (init_chain_enqueuer(), chain_enqueuer_exports)), Promise.resolve().then(() => (init_spawn_next(), spawn_next_exports))]);
+  const env2 = typeof deferred.linkEnv === "string" ? { [CHAIN_LINK_ENV2]: deferred.linkEnv } : {};
+  const chain = planChainEnqueue2(payload.directory, payload.sessionId, typeof deferred.reason === "string" ? deferred.reason : "other", env2);
+  resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain);
+}
 async function processSessionEndWorker(payload, liveRechecks = 0) {
   const pending = readSessionEndJob(payload.directory, payload.sessionId);
-  if (pending?.phase === "collecting" && isCopilotSessionEndJob(pending)) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
-  if (pending && pending.phase !== "complete" && isCopilotSessionEndJob(pending) && isCopilotSessionLive(payload.sessionId)) {
+  const copilotJob = Boolean(pending && isCopilotSessionEndJob(pending));
+  if (pending && pending.phase !== "complete" && copilotJob && isCopilotSessionLive(payload.sessionId)) {
+    if (pending.phase === "collecting") rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
     if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
       setTimeout(() => {
         void processSessionEndWorker(payload, liveRechecks + 1);
       }, COPILOT_LIVE_RECHECK_MS);
     }
     return;
+  }
+  if (pending?.phase === "collecting" && copilotJob) {
+    rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId, { restartGrace: false });
+    await planDeferredChain(payload);
   }
   const deadlineAt = Date.now() + MAX_WORKER_MS;
   const nonce = (0, import_crypto36.randomUUID)();

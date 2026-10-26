@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { prepareCoreManifest } from './cleanup-manifest.js';
+import { deferSessionEndChain, prepareCoreManifest } from './cleanup-manifest.js';
 import { getOmcRoot, resolveToWorktreeRoot, validateSessionId } from '../../lib/worktree-paths.js';
 // Mirrors spawn-next.ts CHAIN_LINK_ENV; importing it would load that graph eagerly.
 const CHAIN_LINK_ENV = 'OMC_CHAIN_LINK';
@@ -29,12 +29,15 @@ export async function publishSessionEndBootstrap(input) {
     // Plugin installs route SessionEnd here (hooks/hooks.json → scripts/session-end.mjs),
     // so the chain enqueue must happen on this path — the standalone settings.json
     // forwarder (processSessionEnd) is not registered when plugin hooks are enabled.
-    const enqueuer = mayHaveChain(directory, input.session_id) ? await import('./chain-enqueuer.js') : null;
-    const chain = enqueuer ? enqueuer.planChainEnqueue(directory, input.session_id, input.reason) : null;
     // Copilot CLI (OMC_HOOK_EVENT from copilot/hooks.json) fires SessionEnd after
     // every turn; the worker holds the job until the session really ends
-    // (copilot-liveness.ts).
-    const host = process.env.OMC_HOOK_EVENT === 'SessionEnd' ? { host: 'copilot' } : {};
+    // (copilot-liveness.ts) and decides the chain link there, with the last
+    // SessionEnd's reason, instead of this turn's.
+    const copilot = process.env.OMC_HOOK_EVENT === 'SessionEnd';
+    const host = copilot ? { host: 'copilot' } : {};
+    const hasChain = mayHaveChain(directory, input.session_id);
+    const enqueuer = hasChain && !copilot ? await import('./chain-enqueuer.js') : null;
+    const chain = enqueuer ? enqueuer.planChainEnqueue(directory, input.session_id, input.reason) : null;
     const payload = chain
         ? { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], chain, ...host }
         : { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], ...host };
@@ -48,6 +51,10 @@ export async function publishSessionEndBootstrap(input) {
         if (chain && enqueuer)
             enqueuer.recordChainHandoffFailure(directory, chain, 'manifest-unavailable');
         return { continue: true };
+    }
+    if (hasChain && copilot) {
+        const linkEnv = process.env[CHAIN_LINK_ENV]?.trim();
+        deferSessionEndChain(directory, input.session_id, { reason: input.reason, ...(linkEnv ? { linkEnv } : {}) });
     }
     const { spawnSessionEndWorker } = await import('./worker.js');
     // A failed worker spawn is equally silent: the chain payload is durable but

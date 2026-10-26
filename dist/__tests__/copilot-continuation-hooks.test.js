@@ -229,6 +229,14 @@ describe('Copilot-native ultragoal goal record', () => {
         expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
     });
     const done = [{ id: 'C1', text: 'tests pass', evidence: 'npm test green' }];
+    it('retires the run goal record when the ultragoal state is terminal', () => {
+        const cwd = makeProject('omg-goal-stop-terminal-');
+        writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE, current_phase: 'complete' });
+        writeGoalRecord(cwd, { status: 'complete', criteria: done });
+        const recordPath = join(cwd, '.omg', 'ultragoal', 'omg-goal.json');
+        expect(runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), session_id: PARENT }, 'Stop').decision).toBeUndefined();
+        expect(existsSync(recordPath)).toBe(false);
+    });
     it('keeps continuing when the only complete record is for another objective (a previous run or story)', () => {
         const cwd = makeProject('omg-goal-stop-stale-');
         writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE });
@@ -316,6 +324,27 @@ describe('chained continuation on Copilot', () => {
         writeFileSync(join(sessionDir(cwd, sessionId), 'copilot-stop-chain.json'), JSON.stringify({ count: 2 }));
         expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
         expect(runHook(persistentModeScript, stop, 'Stop', { OMC_COPILOT_STOP_CHAIN_MAX: '5' }).decision).toBe('block');
+    });
+    it('keeps code-simplifier from blocking a chained Stop past the stop-chain cap', () => {
+        const cwd = makeProject('omg-chain-cap-simplifier-');
+        const git = (args) => execFileSync('git', args, { cwd, stdio: 'pipe' });
+        git(['config', 'user.email', 'test@example.com']);
+        git(['config', 'user.name', 'test']);
+        writeFileSync(join(cwd, 'a.ts'), 'const a = 1;\n');
+        git(['add', 'a.ts']);
+        git(['commit', '-q', '-m', 'init']);
+        writeFileSync(join(cwd, 'a.ts'), 'const a = 2;\n');
+        const omcHome = join(cwd, 'omc-home');
+        mkdirSync(omcHome, { recursive: true });
+        writeFileSync(join(omcHome, 'config.json'), JSON.stringify({ codeSimplifier: { enabled: true } }));
+        const simplifier = join(ROOT, 'scripts', 'code-simplifier.mjs');
+        const stop = fixture('stop-chained.json', cwd);
+        const chainFile = join(sessionDir(cwd, '61b74574-b97a-4c2c-82f6-4d89613496df'), 'copilot-stop-chain.json');
+        // persistent-mode (earlier in the Stop order) counted this Stop as the third continuation.
+        writeFileSync(chainFile, JSON.stringify({ count: 3 }));
+        expect(runHook(simplifier, stop, 'Stop', { OMC_HOME: omcHome }).decision).toBeUndefined();
+        writeFileSync(chainFile, JSON.stringify({ count: 1 }));
+        expect(runHook(simplifier, stop, 'Stop', { OMC_HOME: omcHome }).decision).toBe('block');
     });
     it('honours the ultragoal reinforcement cap inside a chain', () => {
         const cwd = makeProject('omg-chain-ultragoal-cap-');

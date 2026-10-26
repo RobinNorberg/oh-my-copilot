@@ -136,6 +136,24 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
         expect(planChainEnqueue).not.toHaveBeenCalled();
         expect(readSessionEndJob(dir, 'sess-f')).not.toBeNull();
     });
+    it('defers the chain link on Copilot: no plan at a SessionEnd, the last one names the reason', async () => {
+        const dir = tempDir();
+        writeLedger(dir, 'sess-h', { intentId: 'intent-h' });
+        vi.stubEnv('OMC_HOOK_EVENT', 'SessionEnd');
+        vi.stubEnv(CHAIN_LINK_ENV, 'link-h');
+        try {
+            await publishSessionEndBootstrap({ ...bootstrapInput(dir, 'sess-h'), reason: 'other' });
+            await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-h'));
+        }
+        finally {
+            vi.unstubAllEnvs();
+        }
+        expect(planChainEnqueue).not.toHaveBeenCalled();
+        expect(chainDecisions(dir)).toEqual([]);
+        const payload = readSessionEndJob(dir, 'sess-h')?.actions['spawn-next']?.payload;
+        expect(payload?.chain).toBeUndefined();
+        expect(payload?.deferredChain).toEqual({ reason: 'prompt_input_exit', linkEnv: 'link-h' });
+    });
     it('still plans (and records the rejection) when only an unbound chain-link claim exists', async () => {
         const dir = tempDir();
         vi.stubEnv(CHAIN_LINK_ENV, 'link-g');
