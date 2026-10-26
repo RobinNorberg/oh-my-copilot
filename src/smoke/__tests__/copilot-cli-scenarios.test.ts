@@ -309,6 +309,16 @@ describe('runCliScenario', () => {
     expect([cap(0), cap(1)]).toEqual(['100', '60']);
   });
 
+  it('events: the compact step is skipped and the run marked capped when the prompt step spent the budget', async () => {
+    const { home, projectDir } = sandbox();
+    const calls: Array<{ args: string[]; input: string }> = [];
+    const shutdown = JSON.stringify({ type: 'session.shutdown', data: { totalPremiumRequests: 1, totalNanoAiu: 120e9 } });
+    const run = await runCliScenario({ ...input('events', home, projectDir, fakeCopilot(home, 'sid-1', calls, [shutdown])), maxCredits: 100, budget: 100 });
+    expect(calls).toHaveLength(1);
+    expect(run.cli?.steps.map((s) => s.label)).toEqual(['prompt']);
+    expect(run.capped).toBe(true);
+  });
+
   it('reports an error when the session persisted no events', async () => {
     const { home, projectDir } = sandbox();
     const silent = ((_c: string, _a: string[]) => {
