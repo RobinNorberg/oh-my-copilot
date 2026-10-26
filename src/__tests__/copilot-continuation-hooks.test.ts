@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { provisionStandaloneStateLockBridge } from '../installer/index.js';
@@ -280,6 +280,20 @@ describe('Copilot-native ultragoal goal record', () => {
 
     expect(runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), session_id: PARENT }, 'Stop').decision).toBeUndefined();
     expect(existsSync(recordPath)).toBe(false);
+    const archived = readdirSync(join(cwd, '.omg', 'ultragoal')).filter((name) => /^omg-goal\..+\.json$/.test(name));
+    expect(archived).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(cwd, '.omg', 'ultragoal', archived[0]), 'utf-8'))).toMatchObject({ status: 'complete', criteria: done });
+  });
+
+  it('leaves a new run\'s goal record alone while the finished run\'s terminal state lingers', () => {
+    const cwd = makeProject('omg-goal-stop-rerun-');
+    writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE, completed_at: new Date(Date.now() - 60_000).toISOString() });
+    writeGoalRecord(cwd);
+    const recordPath = join(cwd, '.omg', 'ultragoal', 'omg-goal.json');
+    const before = readFileSync(recordPath, 'utf-8');
+
+    runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), session_id: PARENT }, 'Stop');
+    expect(readFileSync(recordPath, 'utf-8')).toBe(before);
   });
 
   it('keeps continuing when the only complete record is for another objective (a previous run or story)', () => {
