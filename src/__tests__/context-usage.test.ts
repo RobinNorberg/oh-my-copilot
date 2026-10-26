@@ -8,7 +8,7 @@ import type { StatuslineStdin } from '../hud/types.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
 // @ts-expect-error Local hook helper is a JS module loaded directly by the tests.
-import { resolveContextPercent, resolveHookContextPercent, resolveHudCacheContextPercent, resolveTranscriptContextPercent } from '../../scripts/lib/context-usage.mjs';
+import { resolveContextPercent, resolveCopilotTranscriptContext, resolveHookContextPercent, resolveHudCacheContextPercent, resolveTranscriptContextPercent } from '../../scripts/lib/context-usage.mjs';
 
 const HUD_CACHE_FILENAME = 'hud-stdin-cache.json';
 
@@ -443,5 +443,86 @@ describe('resolveContextPercent orchestration', () => {
 
   it('returns null when no source has usable context data', async () => {
     expect(await resolveContextPercent({}, join(tempDir, 'missing.jsonl'), tempDir)).toBeNull();
+  });
+});
+
+describe('resolveCopilotTranscriptContext (Copilot CLI events.jsonl)', () => {
+  function writeEvents(events: Array<Record<string, unknown>>, padding = 0): string {
+    const dir = join(tempDir, 'session-state', 'sid');
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, 'events.jsonl');
+    const filler = Array.from({ length: padding }, (_, i) => JSON.stringify({ type: 'assistant.message', data: { content: 'x'.repeat(200), i } }));
+    const lines = [...events.slice(0, 1).map(e => JSON.stringify(e)), ...filler, ...events.slice(1).map(e => JSON.stringify(e))];
+    writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf-8');
+    return filePath;
+  }
+  // Shapes as Copilot CLI 1.0.91 persisted them (live probe 2026-10-23).
+  const startModel = { type: 'session.model_change', data: { source: 'startup', contextTier: null, newModel: 'claude-opus-5.5', reasoningEffort: null } };
+  const shutdown = { type: 'session.shutdown', data: { shutdownType: 'routine', currentModel: 'gpt-6-luna', currentTokens: 136000, systemTokens: 9299 } };
+
+  it('reads currentTokens and model from session.shutdown', () => {
+    expect(resolveCopilotTranscriptContext(writeEvents([shutdown]))).toEqual({ percent: 50, currentTokens: 136000, model: 'gpt-6-luna', compacted: false });
+  });
+
+  it('takes the model from an earlier model_change beyond the first tail read', () => {
+    const transcript = writeEvents([startModel, { type: 'session.compaction_start', data: { currentTokens: 150000, trigger: 'auto' } }], 400);
+    expect(resolveCopilotTranscriptContext(transcript)).toMatchObject({ percent: 75, model: 'claude-opus-5.5' });
+  });
+
+  it('ignores a subagent model_change and an auto model', () => {
+    const transcript = writeEvents([
+      startModel,
+      { type: 'session.model_change', data: { newModel: 'auto' } },
+      { type: 'session.model_change', agentId: 'child', data: { newModel: 'gpt-6-luna' } },
+      { type: 'session.compaction_start', data: { currentTokens: 100000 } },
+    ]);
+    expect(resolveCopilotTranscriptContext(transcript)).toMatchObject({ percent: 50, model: 'claude-opus-5.5' });
+  });
+
+  it('uses the long_context tier limit when the session runs on it', () => {
+    const transcript = writeEvents([
+      { type: 'session.model_change', data: { contextTier: 'long_context', newModel: 'claude-sonnet-5.5' } },
+      { type: 'session.compaction_start', data: { currentTokens: 468000 } },
+    ]);
+    expect(resolveCopilotTranscriptContext(transcript).percent).toBe(50);
+  });
+
+  it('reports compacted with a null percent after a newer compaction_complete', () => {
+    const transcript = writeEvents([shutdown, { type: 'session.compaction_complete', data: { success: true, preCompactionTokens: 136000, postCompactionTokens: 768 } }]);
+    expect(resolveCopilotTranscriptContext(transcript)).toMatchObject({ percent: null, compacted: true });
+  });
+
+  it('returns null (unknown), not 0, without a token sample or a known model', () => {
+    expect(resolveCopilotTranscriptContext(writeEvents([startModel])).percent).toBeNull();
+    expect(resolveCopilotTranscriptContext(writeEvents([{ type: 'session.shutdown', data: { currentModel: 'unknown-model', currentTokens: 5 } }])).percent).toBeNull();
+    expect(resolveCopilotTranscriptContext(join(tempDir, 'transcript.jsonl')).percent).toBeNull();
+  });
+
+  it('OMC_COPILOT_CONTEXT_WINDOW overrides the table', () => {
+    const transcript = writeEvents([{ type: 'session.shutdown', data: { currentModel: 'unknown-model', currentTokens: 250 } }]);
+    process.env.OMC_COPILOT_CONTEXT_WINDOW = '1000';
+    try {
+      expect(resolveCopilotTranscriptContext(transcript).percent).toBe(25);
+    } finally {
+      delete process.env.OMC_COPILOT_CONTEXT_WINDOW;
+    }
+  });
+
+  it('feeds resolveContextPercent', async () => {
+    expect(await resolveContextPercent({}, writeEvents([shutdown]), tempDir)).toBe(50);
+  });
+
+  it('resolveContextPercent reuses a passed Copilot context instead of re-reading the transcript', async () => {
+    const transcript = writeEvents([shutdown]);
+    const context = { percent: 42, currentTokens: 1, model: 'claude-sonnet-5.5', compacted: false };
+    expect(await resolveContextPercent({}, transcript, tempDir, context)).toBe(42);
+  });
+
+  it('does not run the Claude usage parser on a Copilot transcript', async () => {
+    // A Claude-shaped usage frame in events.jsonl would win if the Claude parser ran first.
+    const transcript = writeEvents([shutdown, { usage: { context_window: 1000, input_tokens: 900 }, context_window: 1000, input_tokens: 900 }]);
+    expect(await resolveContextPercent({}, transcript, tempDir)).toBe(50);
+    const context = { percent: 42, currentTokens: 1, model: 'claude-sonnet-5.5', compacted: false };
+    expect(await resolveContextPercent({}, transcript, tempDir, context)).toBe(42);
   });
 });

@@ -242,11 +242,136 @@ export function resolveTranscriptContextPercent(transcriptPath, tailBytes = TRAN
 }
 
 /**
- * Resolve context usage from the best available source, in priority order.
+ * Prompt token limit per Copilot CLI model id, as [default tier, long_context
+ * tier]. From the CLI's `/models` response (`billing.token_prices.<tier>
+ * .max_prompt_tokens`) as logged by Copilot CLI 1.0.91 on 2026-10-23. Copilot
+ * documents no limits; an id missing here resolves to null (unknown).
+ * OMC_COPILOT_CONTEXT_WINDOW (tokens) overrides the table.
  */
-export async function resolveContextPercent(data, transcriptPath, directory) {
-  const transcriptPercent = resolveTranscriptContextPercent(transcriptPath);
-  if (transcriptPercent !== null) return transcriptPercent;
+export const COPILOT_PROMPT_TOKEN_LIMITS = {
+  'claude-sonnet-5.5': [200000, 936000],
+  'claude-opus-5.5': [200000, 1000000],
+  'claude-haiku-5.5': [100000, 936000],
+  'claude-haiku-4.5': [128000, 128000],
+  'claude-sonnet-5': [200000, 936000],
+  'claude-opus-5': [200000, 936000],
+  'claude-fable-5': [200000, 936000],
+  'claude-fable-5.1': [200000, 936000],
+  'gpt-6.1-sol': [272000, 922000],
+  'gpt-6-astra': [272000, 1050000],
+  'gpt-6-luna': [272000, 872000],
+  'gpt-6-sol': [272000, 872000],
+  'gemini-3.8-flash': [200000, 983040],
+};
+
+const COPILOT_TRANSCRIPT_TAIL_BYTES = 64 * 1024;
+const COPILOT_TRANSCRIPT_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Copilot CLI's transcript is `<COPILOT_HOME>/session-state/<sessionId>/events.jsonl`. */
+export function isCopilotTranscript(transcriptPath) {
+  return typeof transcriptPath === 'string' && /(^|[\\/])events\.jsonl$/.test(transcriptPath);
+}
+
+function copilotPromptLimit(model, contextTier) {
+  const override = Number(process.env.OMC_COPILOT_CONTEXT_WINDOW);
+  if (Number.isInteger(override) && override > 0) return override;
+  const limits = typeof model === 'string' ? COPILOT_PROMPT_TOKEN_LIMITS[model.toLowerCase()] : undefined;
+  if (!limits) return null;
+  return contextTier === 'long_context' ? limits[1] : limits[0];
+}
+
+/**
+ * Context usage from a Copilot CLI events.jsonl, newest event first. Copilot
+ * persists no live token data: only session.compaction_start and
+ * session.shutdown carry `currentTokens`, and the model comes from
+ * session.shutdown `currentModel`, session.auto_mode_resolved `chosenModel`
+ * or a main-agent session.model_change `newModel` (not `auto`).
+ *
+ * Returns { percent, currentTokens, model, compacted } where `percent` is
+ * null when the tokens, the model or its limit are unknown, and `compacted`
+ * is true when a session.compaction_complete is newer than the token sample:
+ * Copilot just compacted because the context was full, and the old sample no
+ * longer applies (percent is null then).
+ */
+export function resolveCopilotTranscriptContext(transcriptPath) {
+  const unknown = { percent: null, currentTokens: null, model: null, compacted: false };
+  if (!isCopilotTranscript(transcriptPath)) return unknown;
+
+  let fd = -1;
+  try {
+    const stat = statSync(transcriptPath);
+    if (stat.size === 0) return unknown;
+    const maxReadSize = Math.min(stat.size, COPILOT_TRANSCRIPT_MAX_BYTES);
+    let readSize = Math.min(COPILOT_TRANSCRIPT_TAIL_BYTES, maxReadSize);
+    fd = openSync(transcriptPath, 'r');
+    while (true) {
+      const offset = stat.size - readSize;
+      const buffer = Buffer.alloc(readSize);
+      const bytesRead = readSync(fd, buffer, 0, readSize, offset);
+      const lines = buffer.subarray(0, bytesRead).toString('utf-8').split(/\r?\n/);
+      let currentTokens = null;
+      let compacted = false;
+      let model = null;
+      let contextTier = null;
+      for (let i = lines.length - 1; i >= (offset > 0 ? 1 : 0); i--) {
+        if (!lines[i].includes('"session.')) continue;
+        let event;
+        try {
+          event = JSON.parse(lines[i]);
+        } catch {
+          continue;
+        }
+        const data = event?.data;
+        if (!data || typeof data !== 'object') continue;
+        if (currentTokens === null) {
+          if (event.type === 'session.compaction_complete') compacted = true;
+          if ((event.type === 'session.compaction_start' || event.type === 'session.shutdown') &&
+              Number.isFinite(data.currentTokens) && data.currentTokens >= 0) {
+            currentTokens = data.currentTokens;
+          }
+        }
+        if (model === null && !event.agentId) {
+          const candidate = event.type === 'session.shutdown' ? data.currentModel
+            : event.type === 'session.auto_mode_resolved' ? data.chosenModel
+              : event.type === 'session.model_change' ? data.newModel
+                : null;
+          if (typeof candidate === 'string' && candidate && candidate !== 'auto') model = candidate;
+        }
+        if (contextTier === null && !event.agentId && typeof data.contextTier === 'string') contextTier = data.contextTier;
+        if (currentTokens !== null && model !== null) break;
+      }
+      if ((currentTokens !== null && model !== null) || readSize >= maxReadSize) {
+        if (currentTokens === null || compacted) return { ...unknown, model, compacted };
+        const limit = copilotPromptLimit(model, contextTier);
+        return { percent: limit ? clampPercent((currentTokens / limit) * 100) : null, currentTokens, model, compacted };
+      }
+      readSize = Math.min(readSize * 4, maxReadSize);
+    }
+  } catch {
+    return unknown;
+  } finally {
+    if (fd !== -1) {
+      try { closeSync(fd); } catch {}
+    }
+  }
+}
+
+/**
+ * Resolve context usage from the best available source, in priority order.
+ * null means unknown; callers must not treat it as 0% or 100%.
+ * `copilotContext` is a resolveCopilotTranscriptContext() result the caller
+ * already has for this transcript, so the events.jsonl is not read twice.
+ */
+export async function resolveContextPercent(data, transcriptPath, directory, copilotContext) {
+  // A Copilot events.jsonl has no usage frame, so the Claude parser would only
+  // scan it up to its read limit.
+  if (copilotContext || isCopilotTranscript(transcriptPath)) {
+    const copilotPercent = (copilotContext || resolveCopilotTranscriptContext(transcriptPath)).percent;
+    if (copilotPercent !== null) return copilotPercent;
+  } else {
+    const transcriptPercent = resolveTranscriptContextPercent(transcriptPath);
+    if (transcriptPercent !== null) return transcriptPercent;
+  }
 
   const hookPercent = resolveHookContextPercent(data);
   if (hookPercent !== null) return hookPercent;
