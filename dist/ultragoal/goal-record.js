@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
-import { readUltragoalPlan, ultragoalDir, UltragoalError, } from './artifacts.js';
+import { readUltragoalPlan, recordUltragoalStatePlanId, ultragoalDir, UltragoalError, } from './artifacts.js';
 /**
  * OMG-owned goal record: the Copilot CLI stand-in for Claude Code's `/goal`.
  *
@@ -87,11 +87,18 @@ export async function startOmgGoal(cwd, options) {
     }
     const now = (options.now ?? new Date()).toISOString();
     // A corrupt or invalid record is replaced, not kept.
-    const previous = await readOmgGoalRecord(cwd, options.planId).catch((error) => {
+    let previous = await readOmgGoalRecord(cwd, options.planId).catch((error) => {
         if (error instanceof UltragoalError)
             return null;
         throw error;
     });
+    // A completed record for this objective is a finished run (the plan re-run
+    // without create-goals): archive it so its evidence cannot complete the new run.
+    if (previous?.objective === objective && previous.status === 'complete') {
+        const path = omgGoalRecordPath(cwd, options.planId);
+        await rename(path, path.replace(/\.json$/, `.${now.replace(/[:.]/g, '-')}.json`));
+        previous = null;
+    }
     const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
     const criteria = criteriaText.map((text, index) => {
         const old = kept.get(text);
@@ -110,6 +117,8 @@ export async function startOmgGoal(cwd, options) {
         criteria,
     };
     await writeOmgGoalRecord(cwd, record);
+    if (options.planId)
+        await recordUltragoalStatePlanId(cwd, options.planId);
     return record;
 }
 /** Fill one criterion's evidence slot; the record completes when every slot is filled. */

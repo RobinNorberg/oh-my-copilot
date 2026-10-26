@@ -38115,10 +38115,10 @@ async function atomicWriteJson(filePath, data, hooks) {
     }
   }
 }
-function renameSyncRetryingWin32Sharing(rename8, source, destination) {
+function renameSyncRetryingWin32Sharing(rename9, source, destination) {
   for (let attempt = 0; ; attempt++) {
     try {
-      rename8(source, destination);
+      rename9(source, destination);
       return;
     } catch (error2) {
       const code = error2.code;
@@ -48759,14 +48759,31 @@ function getModeRuntimeArtifactPaths(mode, root2, sessionIds, includeLegacy = tr
     ...[...sessionIds ?? listSessionIds(root2)].map((sid) => (0, import_path44.join)(stateRoot2, "sessions", sid))
   ]);
   const paths = [...dirs].flatMap((dir) => names.map((name) => (0, import_path44.join)(dir, name)));
-  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root2)] : paths;
+  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root2, sessionIds)] : paths;
 }
-function getOmgGoalRecordPaths(root2) {
+function getUltragoalStatePlanId(root2, sessionId) {
+  const legacy = getStatePath("ultragoal", root2);
+  for (const path30 of [getSessionStatePath("ultragoal", root2, sessionId), legacy]) {
+    try {
+      const state = JSON.parse((0, import_fs36.readFileSync)(path30, "utf-8"));
+      if (path30 === legacy && state.session_id !== sessionId) continue;
+      const planId = state.plan_id ?? state.planId;
+      if (typeof planId === "string" && ULTRAGOAL_PLAN_ID_PATTERN.test(planId)) return planId;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function getOmgGoalRecordPaths(root2, sessionIds) {
   const base = (0, import_path44.join)(getOmcRoot(root2), "ultragoal");
   let plans = [];
-  try {
-    plans = (0, import_fs36.readdirSync)((0, import_path44.join)(base, "plans"), { withFileTypes: true }).filter((entry2) => entry2.isDirectory()).map((entry2) => (0, import_path44.join)(base, "plans", entry2.name));
-  } catch {
+  if (sessionIds) {
+    plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root2, sid)).filter((id) => Boolean(id)))].map((id) => (0, import_path44.join)(base, "plans", id));
+  } else {
+    try {
+      plans = (0, import_fs36.readdirSync)((0, import_path44.join)(base, "plans"), { withFileTypes: true }).filter((entry2) => entry2.isDirectory()).map((entry2) => (0, import_path44.join)(base, "plans", entry2.name));
+    } catch {
+    }
   }
   return [base, ...plans].map((dir) => (0, import_path44.join)(dir, "omg-goal.json"));
 }
@@ -48980,7 +48997,7 @@ function recoverAutopilotEmergencyTransactions(root2, sessionId) {
     if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path30}`);
   }
 }
-var import_crypto14, import_fs36, import_os7, import_path44, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
+var import_crypto14, import_fs36, import_os7, import_path44, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, ULTRAGOAL_PLAN_ID_PATTERN, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
 var init_state_tools = __esm({
   "src/tools/state-tools.ts"() {
     "use strict";
@@ -49029,6 +49046,7 @@ var init_state_tools = __esm({
     CONVERGED_STATE_PATH_MODES = /* @__PURE__ */ new Set(["ralph", "ultrawork"]);
     RETIRED_WORKFLOW_MODES = /* @__PURE__ */ new Set(["ultrawork"]);
     NAMED_WORKFLOW_MARKERS = ["workflow", "workflowRunId", "pipelineTracking"];
+    ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
     stateReadTool = {
       name: "state_read",
       description: "Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.",
@@ -80965,10 +80983,10 @@ async function writeAtomic3(path30, data) {
   await (0, import_promises14.mkdir)((0, import_node_path16.dirname)(path30), { recursive: true });
   try {
     await (0, import_promises14.writeFile)(tmp, data, "utf8");
-    const { rename: rename8 } = await import("node:fs/promises");
+    const { rename: rename9 } = await import("node:fs/promises");
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await rename8(tmp, path30);
+        await rename9(tmp, path30);
         break;
       } catch (error2) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
@@ -97615,14 +97633,14 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
 `
     ).catch(logCursorTransitionMarkerFailure);
   };
-  const { rename: rename8 } = await import("fs/promises");
+  const { rename: rename9 } = await import("fs/promises");
   const { renameSync: renameSync20, readFileSync: readFileSync143, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
     let moved = false;
     try {
-      await rename8(outputFile, stalePath);
+      await rename9(outputFile, stalePath);
       moved = true;
     } catch {
     }
@@ -97803,7 +97821,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
       }, cwd2).catch(logEventFailure);
       if (verdictFile === processingOutputFile) {
         try {
-          await rename8(verdictFile, processedOutputFile);
+          await rename9(verdictFile, processedOutputFile);
         } catch {
         }
       }
@@ -97887,7 +97905,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
         const taskAlreadyRecorded = cursorVerdictTask.owner === worker.name && (cursorVerdictTask.status === "completed" || cursorVerdictTask.status === "failed") && typeof cursorVerdictTask.role === "string" && normalizeDelegationRole(cursorVerdictTask.role) === workerRole && metadata?.verdict_source === "cli_worker_output_contract" && metadata.verdict_claim_token === payload.claim_token && metadata.verdict_task_version === payload.task_version && (worker.launch_attempt_id === void 0 || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id) && metadata.verdict === payload.verdict;
         let quarantined = true;
         try {
-          await rename8(verdictFile, processedOutputFile);
+          await rename9(verdictFile, processedOutputFile);
         } catch {
           quarantined = false;
         }
@@ -98170,14 +98188,14 @@ Subagent skip reason: ${CURSOR_RUNTIME_POLICY_SKIP_REASON}` : cursorSummary;
           const bindingPath = nonCursorVerdictBindingPath(outputFile);
           const binding = await readNonCursorVerdictBinding(bindingPath);
           if (binding.kind !== "valid" || binding.binding.artifact_fingerprint !== nonCursorArtifactFingerprint || binding.binding.worker_name !== worker.name || binding.binding.task_id !== targetTaskId || binding.binding.task_version !== observedTaskVersion) return;
-          await rename8(verdictFile, processedOutputFile);
+          await rename9(verdictFile, processedOutputFile);
           await (0, import_promises26.rm)(bindingPath, { force: true });
         }, 100);
       } catch {
       }
     } else {
       try {
-        await rename8(verdictFile, processedOutputFile);
+        await rename9(verdictFile, processedOutputFile);
       } catch {
       }
     }
@@ -138297,6 +138315,7 @@ function formatClaudeGoalReconciliation(reconciliation) {
 var import_node_fs28 = require("node:fs");
 var import_promises32 = require("node:fs/promises");
 var import_node_path35 = require("node:path");
+init_atomic_write();
 init_worktree_paths();
 var ULTRAGOAL_DIR = ".omg/ultragoal";
 var ULTRAGOAL_BRIEF = "brief.md";
@@ -138529,7 +138548,54 @@ async function createUltragoalPlan(cwd2, options) {
   await writePlan(cwd2, plan);
   await (0, import_promises32.writeFile)(ultragoalLedgerPath(cwd2, planId), "");
   await appendLedger(cwd2, { ts: now2, event: "plan_created", message: `${candidates.length} goal(s) created` }, planId);
+  if (planId) await recordUltragoalStatePlanId(cwd2, planId);
   return plan;
+}
+var STATE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+async function readActiveUltragoalState(path30) {
+  try {
+    const state = JSON.parse(await (0, import_promises32.readFile)(path30, "utf-8"));
+    return state && typeof state === "object" && state.active === true ? state : null;
+  } catch {
+    return null;
+  }
+}
+async function recordUltragoalStatePlanId(cwd2, planId, env2 = process.env) {
+  const stateDir = (0, import_node_path35.join)(getOmcRoot(cwd2), "state");
+  const legacy = (0, import_node_path35.join)(stateDir, "ultragoal-state.json");
+  const sessionId = [env2.OMC_SESSION_ID, env2.COPILOT_AGENT_SESSION_ID].map((value) => value?.trim()).find((value) => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
+  let target;
+  if (sessionId) {
+    const sessionPath = (0, import_node_path35.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
+    const sessionState = await readActiveUltragoalState(sessionPath);
+    const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
+    if (sessionState) target = { path: sessionPath, state: sessionState };
+    else if (legacyState && (legacyState.session_id === void 0 || legacyState.session_id === sessionId)) target = { path: legacy, state: legacyState };
+  } else {
+    const legacyState = await readActiveUltragoalState(legacy);
+    if (legacyState) target = { path: legacy, state: legacyState };
+    else {
+      let sessions = [];
+      try {
+        sessions = (await (0, import_promises32.readdir)((0, import_node_path35.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path35.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
+      } catch {
+      }
+      const active = [];
+      for (const path30 of sessions) {
+        const state = await readActiveUltragoalState(path30);
+        if (state) active.push({ path: path30, state });
+      }
+      if (active.length === 1) target = active[0];
+    }
+  }
+  if (!target) return null;
+  if (target.state.plan_id === planId) return target.path;
+  try {
+    await atomicWriteJson(target.path, { ...target.state, plan_id: planId });
+  } catch {
+    return null;
+  }
+  return target.path;
 }
 function summarizeUltragoalPlan(plan) {
   return {
@@ -138962,10 +139028,15 @@ async function startOmgGoal(cwd2, options) {
     throw new UltragoalError(plan ? "No active ultragoal story; run `omg ultragoal complete-goals` first or pass --objective." : "No ultragoal plan found; run `omg ultragoal create-goals ...` first or pass --objective.");
   }
   const now2 = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  const previous = await readOmgGoalRecord(cwd2, options.planId).catch((error2) => {
+  let previous = await readOmgGoalRecord(cwd2, options.planId).catch((error2) => {
     if (error2 instanceof UltragoalError) return null;
     throw error2;
   });
+  if (previous?.objective === objective && previous.status === "complete") {
+    const path30 = omgGoalRecordPath(cwd2, options.planId);
+    await (0, import_promises33.rename)(path30, path30.replace(/\.json$/, `.${now2.replace(/[:.]/g, "-")}.json`));
+    previous = null;
+  }
   const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
   const criteria = criteriaText.map((text, index) => {
     const old = kept.get(text);
@@ -138984,6 +139055,7 @@ async function startOmgGoal(cwd2, options) {
     criteria
   };
   await writeOmgGoalRecord(cwd2, record2);
+  if (options.planId) await recordUltragoalStatePlanId(cwd2, options.planId);
   return record2;
 }
 async function recordOmgGoalEvidence(cwd2, options) {

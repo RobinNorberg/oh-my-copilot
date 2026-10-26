@@ -21663,14 +21663,31 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
     ...[...sessionIds ?? listSessionIds(root)].map((sid) => (0, import_path33.join)(stateRoot, "sessions", sid))
   ]);
   const paths = [...dirs].flatMap((dir) => names.map((name) => (0, import_path33.join)(dir, name)));
-  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root)] : paths;
+  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root, sessionIds)] : paths;
 }
-function getOmgGoalRecordPaths(root) {
+function getUltragoalStatePlanId(root, sessionId) {
+  const legacy = getStatePath("ultragoal", root);
+  for (const path15 of [getSessionStatePath("ultragoal", root, sessionId), legacy]) {
+    try {
+      const state = JSON.parse((0, import_fs30.readFileSync)(path15, "utf-8"));
+      if (path15 === legacy && state.session_id !== sessionId) continue;
+      const planId = state.plan_id ?? state.planId;
+      if (typeof planId === "string" && ULTRAGOAL_PLAN_ID_PATTERN.test(planId)) return planId;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function getOmgGoalRecordPaths(root, sessionIds) {
   const base = (0, import_path33.join)(getOmcRoot(root), "ultragoal");
   let plans = [];
-  try {
-    plans = (0, import_fs30.readdirSync)((0, import_path33.join)(base, "plans"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => (0, import_path33.join)(base, "plans", entry.name));
-  } catch {
+  if (sessionIds) {
+    plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root, sid)).filter((id) => Boolean(id)))].map((id) => (0, import_path33.join)(base, "plans", id));
+  } else {
+    try {
+      plans = (0, import_fs30.readdirSync)((0, import_path33.join)(base, "plans"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => (0, import_path33.join)(base, "plans", entry.name));
+    } catch {
+    }
   }
   return [base, ...plans].map((dir) => (0, import_path33.join)(dir, "omg-goal.json"));
 }
@@ -21884,7 +21901,7 @@ function recoverAutopilotEmergencyTransactions(root, sessionId) {
     if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path15}`);
   }
 }
-var import_crypto10, import_fs30, import_os4, import_path33, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
+var import_crypto10, import_fs30, import_os4, import_path33, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, ULTRAGOAL_PLAN_ID_PATTERN, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
 var init_state_tools = __esm({
   "src/tools/state-tools.ts"() {
     "use strict";
@@ -21933,6 +21950,7 @@ var init_state_tools = __esm({
     CONVERGED_STATE_PATH_MODES = /* @__PURE__ */ new Set(["ralph", "ultrawork"]);
     RETIRED_WORKFLOW_MODES = /* @__PURE__ */ new Set(["ultrawork"]);
     NAMED_WORKFLOW_MARKERS = ["workflow", "workflowRunId", "pipelineTracking"];
+    ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
     stateReadTool = {
       name: "state_read",
       description: "Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.",

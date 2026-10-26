@@ -281,6 +281,17 @@ describe('Copilot-native ultragoal goal record', () => {
             writePlanRecord(p2, 'ship plan two', { status: 'complete', criteria: done });
             expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
         });
+        it('selects the plan_id plan record even when another plan has a newer, complete one', () => {
+            const cwd = makeProject('omg-goal-planid-newer-');
+            writeModeState(cwd, PARENT, 'ultragoal', { plan_id: 'p2' });
+            writePlanRecord(writePlan(cwd, 'p2', 'ship plan two'), 'ship plan two', { updatedAt: '2026-01-01T00:00:00.000Z' });
+            writePlanRecord(writePlan(cwd, 'p1', 'ship plan one'), 'ship plan one', { status: 'complete', criteria: done });
+            const stop = { ...fixture('stop-first.json', cwd), session_id: PARENT };
+            expect(runHook(persistentModeScript, stop, 'Stop').reason).toContain('Missing evidence: C1 tests pass');
+            writeModeState(cwd, PARENT, 'ultragoal', {});
+            // Without plan_id the scan takes the newest matching record (p1, complete).
+            expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
+        });
     });
 });
 describe('chained continuation on Copilot', () => {
