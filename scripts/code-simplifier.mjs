@@ -26,6 +26,8 @@ import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
 import { recordJevShadow } from './lib/jev-shadow.mjs';
+import { isCopilotStopChainCapped } from './lib/copilot-continuation.mjs';
+import { isCopilotHookHost } from './lib/hook-host.mjs';
 
 const DEFAULT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'];
 const DEFAULT_MAX_FILES = 10;
@@ -128,6 +130,13 @@ async function main() {
     const config = readOmcConfig();
 
     if (!isEnabled(config)) {
+      process.stdout.write(JSON.stringify({ continue: true }) + '\n');
+      return;
+    }
+
+    // Copilot: the stop-chain cap (copilot-continuation.mjs) bounds every
+    // blocking Stop hook, not only persistent-mode's continuations.
+    if (isCopilotHookHost() && isCopilotStopChainCapped(stateDir, data.session_id || data.sessionId || '', data)) {
       process.stdout.write(JSON.stringify({ continue: true }) + '\n');
       return;
     }

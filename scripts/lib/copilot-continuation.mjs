@@ -60,6 +60,18 @@ export function readCopilotStopChain(stateDir, sessionId) {
   }
 }
 
+/**
+ * For a blocking Stop hook other than persistent-mode (which counts the
+ * chain): a chained Copilot Stop whose chain already reached the cap must not
+ * block, or the hooks together push it to the CLI's 8. Hooks that run after
+ * persistent-mode in the Stop order (copilot/hooks.json) see this Stop
+ * counted; pass `counted: false` from a hook that runs before it.
+ */
+export function isCopilotStopChainCapped(stateDir, sessionId, data, { counted = true, env = process.env } = {}) {
+  if (data?.stop_hook_active !== true) return false;
+  return readCopilotStopChain(stateDir, sessionId) + (counted ? 0 : 1) >= resolveCopilotStopChainMax(env);
+}
+
 /** A chained Stop: the previous block was delivered as a continuation, count it. Best effort. */
 export function incrementCopilotStopChain(stateDir, sessionId) {
   const path = stopChainPath(stateDir, sessionId);
