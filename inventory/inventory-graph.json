@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-    "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+    "head": "a3945c722483a75c7b5475bb15d179496a8aa60b",
+    "sourceSha256": "256be02843d86d611e2d903d178dce1600f42f93cdd91a8b0a4b19bd7a4a2534",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-  "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+  "head": "a3945c722483a75c7b5475bb15d179496a8aa60b",
+  "sourceSha256": "256be02843d86d611e2d903d178dce1600f42f93cdd91a8b0a4b19bd7a4a2534",
   "counts": {
     "public": {
       "skills": 63,
@@ -23,28 +23,28 @@
       "total": 113
     },
     "internal": {
-      "hookFiles": 344,
+      "hookFiles": 346,
       "featureFiles": 88,
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1621,
-      "total": 1645
+      "srcFiles": 1636,
+      "total": 1660
     },
     "generated": {
-      "distFiles": 6223,
+      "distFiles": 6243,
       "bridgeFiles": 9,
-      "total": 6232
+      "total": 6252
     },
     "prompt": {
-      "promptLikeFiles": 61
+      "promptLikeFiles": 63
     },
     "skills": 63,
     "commands": 21,
-    "hookFiles": 344,
+    "hookFiles": 346,
     "workflows": 9,
     "agentDefinitions": 18,
-    "promptLikeFiles": 61
+    "promptLikeFiles": 63
   },
   "public": {
     "skills": [
@@ -424,6 +424,7 @@
       "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
       "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
+      "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
       "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
       "src/hooks/session-end/__tests__/guardrails.test.ts",
@@ -446,6 +447,7 @@
       "src/hooks/session-end/chain-enqueuer.ts",
       "src/hooks/session-end/check-evidence.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
+      "src/hooks/session-end/copilot-liveness.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
       "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
@@ -778,6 +780,8 @@
       "scripts/measure-prompt-ssot.ts",
       "skills/project-session-manager/tests/test-psm-prompt-injection.sh",
       "src/__tests__/auto-upgrade-prompt.test.ts",
+      "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json",
+      "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json",
       "src/__tests__/helpers/prompt-test-helpers.ts",
       "src/__tests__/hud/prompt-time.test.ts",
       "src/__tests__/load-agent-prompt.test.ts",
@@ -869,16 +873,19 @@
       "scripts/lib/config-dir.mjs",
       "scripts/lib/config-dir.sh",
       "scripts/lib/context-usage.mjs",
+      "scripts/lib/copilot-continuation.mjs",
       "scripts/lib/copilot-hook-adapter.cjs",
       "scripts/lib/encode-project-path.mjs",
       "scripts/lib/enforcement-log.mjs",
       "scripts/lib/force-agent-delegation-preflight.mjs",
       "scripts/lib/hook-command-normalizer.mjs",
+      "scripts/lib/hook-host.mjs",
       "scripts/lib/hud-cache-wrapper.sh",
       "scripts/lib/hud-wrapper-template.mjs",
       "scripts/lib/hud-wrapper-template.txt",
       "scripts/lib/jev-shadow.mjs",
       "scripts/lib/model-routing-override-message.mjs",
+      "scripts/lib/omg-goal-record.mjs",
       "scripts/lib/pre-tool-enforcer-preflight.mjs",
       "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
@@ -1116,6 +1123,10 @@
       "dist/__tests__/copilot-config-dir-alias.test.d.ts.map",
       "dist/__tests__/copilot-config-dir-alias.test.js",
       "dist/__tests__/copilot-config-dir-alias.test.js.map",
+      "dist/__tests__/copilot-continuation-hooks.test.d.ts",
+      "dist/__tests__/copilot-continuation-hooks.test.d.ts.map",
+      "dist/__tests__/copilot-continuation-hooks.test.js",
+      "dist/__tests__/copilot-continuation-hooks.test.js.map",
       "dist/__tests__/copilot-file-tool-injection.test.d.ts",
       "dist/__tests__/copilot-file-tool-injection.test.d.ts.map",
       "dist/__tests__/copilot-file-tool-injection.test.js",
@@ -4389,6 +4400,10 @@
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.d.ts.map",
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.js",
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.js.map",
+      "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts",
+      "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/copilot-liveness.test.js",
+      "dist/hooks/session-end/__tests__/copilot-liveness.test.js.map",
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.d.ts",
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.d.ts.map",
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.js",
@@ -4477,6 +4492,10 @@
       "dist/hooks/session-end/cleanup-manifest.d.ts.map",
       "dist/hooks/session-end/cleanup-manifest.js",
       "dist/hooks/session-end/cleanup-manifest.js.map",
+      "dist/hooks/session-end/copilot-liveness.d.ts",
+      "dist/hooks/session-end/copilot-liveness.d.ts.map",
+      "dist/hooks/session-end/copilot-liveness.js",
+      "dist/hooks/session-end/copilot-liveness.js.map",
       "dist/hooks/session-end/foreground-bootstrap.d.ts",
       "dist/hooks/session-end/foreground-bootstrap.d.ts.map",
       "dist/hooks/session-end/foreground-bootstrap.js",
@@ -7043,10 +7062,18 @@
       "dist/ultragoal/__tests__/artifacts.test.d.ts.map",
       "dist/ultragoal/__tests__/artifacts.test.js",
       "dist/ultragoal/__tests__/artifacts.test.js.map",
+      "dist/ultragoal/__tests__/goal-record.test.d.ts",
+      "dist/ultragoal/__tests__/goal-record.test.d.ts.map",
+      "dist/ultragoal/__tests__/goal-record.test.js",
+      "dist/ultragoal/__tests__/goal-record.test.js.map",
       "dist/ultragoal/artifacts.d.ts",
       "dist/ultragoal/artifacts.d.ts.map",
       "dist/ultragoal/artifacts.js",
       "dist/ultragoal/artifacts.js.map",
+      "dist/ultragoal/goal-record.d.ts",
+      "dist/ultragoal/goal-record.d.ts.map",
+      "dist/ultragoal/goal-record.js",
+      "dist/ultragoal/goal-record.js.map",
       "dist/utils/__tests__/cache-occupancy.test.d.ts",
       "dist/utils/__tests__/cache-occupancy.test.d.ts.map",
       "dist/utils/__tests__/cache-occupancy.test.js",
@@ -7451,6 +7478,7 @@
       "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
       "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
+      "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
       "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
       "src/hooks/session-end/__tests__/guardrails.test.ts",
@@ -7473,6 +7501,7 @@
       "src/hooks/session-end/chain-enqueuer.ts",
       "src/hooks/session-end/check-evidence.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
+      "src/hooks/session-end/copilot-liveness.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
       "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
@@ -7577,6 +7606,8 @@
       "scripts/measure-prompt-ssot.ts",
       "skills/project-session-manager/tests/test-psm-prompt-injection.sh",
       "src/__tests__/auto-upgrade-prompt.test.ts",
+      "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json",
+      "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json",
       "src/__tests__/helpers/prompt-test-helpers.ts",
       "src/__tests__/hud/prompt-time.test.ts",
       "src/__tests__/load-agent-prompt.test.ts",
@@ -9629,6 +9660,26 @@
         "id": "dist/__tests__/copilot-config-dir-alias.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/copilot-config-dir-alias.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-continuation-hooks.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-continuation-hooks.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-continuation-hooks.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-continuation-hooks.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-continuation-hooks.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-continuation-hooks.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-continuation-hooks.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-continuation-hooks.test.js.map"
       },
       {
         "id": "dist/__tests__/copilot-file-tool-injection.test.d.ts",
@@ -25996,6 +26047,26 @@
         "path": "dist/hooks/session-end/__tests__/cleanup-manifest.test.js.map"
       },
       {
+        "id": "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/copilot-liveness.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/copilot-liveness.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/copilot-liveness.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/copilot-liveness.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/copilot-liveness.test.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/__tests__/duplicate-notifications.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/duplicate-notifications.test.d.ts"
@@ -26434,6 +26505,26 @@
         "id": "dist/hooks/session-end/cleanup-manifest.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/cleanup-manifest.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/copilot-liveness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/copilot-liveness.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/copilot-liveness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/copilot-liveness.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/copilot-liveness.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/copilot-liveness.js"
+      },
+      {
+        "id": "dist/hooks/session-end/copilot-liveness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/copilot-liveness.js.map"
       },
       {
         "id": "dist/hooks/session-end/foreground-bootstrap.d.ts",
@@ -39266,6 +39357,26 @@
         "path": "dist/ultragoal/__tests__/artifacts.test.js.map"
       },
       {
+        "id": "dist/ultragoal/__tests__/goal-record.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/__tests__/goal-record.test.d.ts"
+      },
+      {
+        "id": "dist/ultragoal/__tests__/goal-record.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/__tests__/goal-record.test.d.ts.map"
+      },
+      {
+        "id": "dist/ultragoal/__tests__/goal-record.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/__tests__/goal-record.test.js"
+      },
+      {
+        "id": "dist/ultragoal/__tests__/goal-record.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/__tests__/goal-record.test.js.map"
+      },
+      {
         "id": "dist/ultragoal/artifacts.d.ts",
         "kind": "generated-dist",
         "path": "dist/ultragoal/artifacts.d.ts"
@@ -39284,6 +39395,26 @@
         "id": "dist/ultragoal/artifacts.js.map",
         "kind": "generated-dist",
         "path": "dist/ultragoal/artifacts.js.map"
+      },
+      {
+        "id": "dist/ultragoal/goal-record.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/goal-record.d.ts"
+      },
+      {
+        "id": "dist/ultragoal/goal-record.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/goal-record.d.ts.map"
+      },
+      {
+        "id": "dist/ultragoal/goal-record.js",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/goal-record.js"
+      },
+      {
+        "id": "dist/ultragoal/goal-record.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ultragoal/goal-record.js.map"
       },
       {
         "id": "dist/utils/__tests__/cache-occupancy.test.d.ts",
@@ -41051,6 +41182,11 @@
         "path": "scripts/lib/context-usage.mjs"
       },
       {
+        "id": "scripts/lib/copilot-continuation.mjs",
+        "kind": "script",
+        "path": "scripts/lib/copilot-continuation.mjs"
+      },
+      {
         "id": "scripts/lib/copilot-hook-adapter.cjs",
         "kind": "script",
         "path": "scripts/lib/copilot-hook-adapter.cjs"
@@ -41076,6 +41212,11 @@
         "path": "scripts/lib/hook-command-normalizer.mjs"
       },
       {
+        "id": "scripts/lib/hook-host.mjs",
+        "kind": "script",
+        "path": "scripts/lib/hook-host.mjs"
+      },
+      {
         "id": "scripts/lib/hud-cache-wrapper.sh",
         "kind": "script",
         "path": "scripts/lib/hud-cache-wrapper.sh"
@@ -41099,6 +41240,11 @@
         "id": "scripts/lib/model-routing-override-message.mjs",
         "kind": "script",
         "path": "scripts/lib/model-routing-override-message.mjs"
+      },
+      {
+        "id": "scripts/lib/omg-goal-record.mjs",
+        "kind": "script",
+        "path": "scripts/lib/omg-goal-record.mjs"
       },
       {
         "id": "scripts/lib/pre-tool-enforcer-preflight.mjs",
@@ -42276,6 +42422,11 @@
         "path": "src/__tests__/copilot-config-dir-alias.test.ts"
       },
       {
+        "id": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-continuation-hooks.test.ts"
+      },
+      {
         "id": "src/__tests__/copilot-file-tool-injection.test.ts",
         "kind": "src",
         "path": "src/__tests__/copilot-file-tool-injection.test.ts"
@@ -42394,6 +42545,56 @@
         "id": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/session-events-midsession.jsonl",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/session-events-midsession.jsonl"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/session-events-shutdown.jsonl",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/session-events-shutdown.jsonl"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/skill-pretooluse.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/skill-pretooluse.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/stop-chained.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/stop-chained.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/stop-first.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/stop-first.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/subagent-child-pretooluse.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/subagent-child-pretooluse.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/subagent-parent-events.jsonl",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/subagent-parent-events.jsonl"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live/subagent-stop.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live/subagent-stop.json"
       },
       {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
@@ -46506,6 +46707,11 @@
         "path": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/copilot-liveness.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts"
@@ -46614,6 +46820,11 @@
         "id": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/cleanup-manifest.ts"
+      },
+      {
+        "id": "src/hooks/session-end/copilot-liveness.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/copilot-liveness.ts"
       },
       {
         "id": "src/hooks/session-end/foreground-bootstrap.ts",
@@ -50006,9 +50217,19 @@
         "path": "src/ultragoal/__tests__/artifacts.test.ts"
       },
       {
+        "id": "src/ultragoal/__tests__/goal-record.test.ts",
+        "kind": "src",
+        "path": "src/ultragoal/__tests__/goal-record.test.ts"
+      },
+      {
         "id": "src/ultragoal/artifacts.ts",
         "kind": "src",
         "path": "src/ultragoal/artifacts.ts"
+      },
+      {
+        "id": "src/ultragoal/goal-record.ts",
+        "kind": "src",
+        "path": "src/ultragoal/goal-record.ts"
       },
       {
         "id": "src/utils/__tests__/cache-occupancy.test.ts",
@@ -51889,6 +52110,16 @@
       },
       {
         "from": "scripts/keyword-detector.mjs",
+        "to": "scripts/lib/copilot-continuation.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/keyword-detector.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/keyword-detector.mjs",
         "to": "scripts/lib/jev-shadow.mjs",
         "kind": "imports"
       },
@@ -52003,6 +52234,21 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/copilot-continuation.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-continuation.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-continuation.mjs",
+        "to": "scripts/lib/config-dir.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/lib/copilot-hook-adapter.cjs",
         "to": "external:fs",
         "kind": "imports"
@@ -52080,6 +52326,16 @@
       {
         "from": "scripts/lib/jev-shadow.mjs",
         "to": "scripts/jev-resolve.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/omg-goal-record.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/omg-goal-record.mjs",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -52754,6 +53010,11 @@
       },
       {
         "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/copilot-continuation.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/pre-tool-enforcer.mjs",
         "to": "scripts/lib/encode-project-path.mjs",
         "kind": "imports"
       },
@@ -52764,7 +53025,17 @@
       },
       {
         "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/pre-tool-enforcer.mjs",
         "to": "scripts/lib/jev-shadow.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/omg-goal-record.mjs",
         "kind": "imports"
       },
       {
@@ -54925,6 +55196,41 @@
       {
         "from": "src/__tests__/copilot-config-dir-alias.test.ts",
         "to": "src/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-continuation-hooks.test.ts",
+        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -65476,6 +65782,16 @@
         "from": "src/cli/commands/ultragoal.ts",
         "to": "src/ultragoal/artifacts.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ultragoal.ts",
+        "to": "src/ultragoal/goal-record.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ultragoal.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/wait.ts",
@@ -76343,6 +76659,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "src/hooks/session-end/copilot-liveness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -77083,6 +77439,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/copilot-liveness.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/copilot-liveness.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/copilot-liveness.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -77356,6 +77727,11 @@
         "from": "src/hooks/session-end/worker.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
+        "to": "src/hooks/session-end/copilot-liveness.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/session-end/worker.ts",
@@ -96433,6 +96809,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "src/cli/commands/ultragoal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/__tests__/goal-record.test.ts",
+        "to": "src/ultragoal/goal-record.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/ultragoal/artifacts.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -96456,6 +96867,31 @@
         "from": "src/ultragoal/artifacts.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ultragoal/goal-record.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/utils/__tests__/cache-occupancy.test.ts",
@@ -98834,12 +99270,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8577,
-      "edgeCount": 9633,
-      "importEdgeCount": 8040,
+      "nodeCount": 8615,
+      "edgeCount": 9676,
+      "importEdgeCount": 8081,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4f8b366ab23d9366ff0e446182d4910035074a14151ef01f8965118a3517eb0",
-  "manifestSha256": "52867796df0cac9ef259dc834eaa41e28851cc93d14082d4f5e0fc248f89bb9f"
+  "inventorySha256": "88b1023edb47f8e9651748eeff0b4db6a856b4d9b76402faecfde9b0a0b2d039",
+  "manifestSha256": "d7d3a0a4b69414aaadc090e0df4407f914b08eaf091b8872a00744b575e6e9b4"
 }
