@@ -666,6 +666,51 @@ describe("subagent-tracker", () => {
             expect(entries).toContain("parent-uuid-xyz");
         });
     });
+    describe("Copilot CLI payloads (recorded on Copilot CLI 1.0.91)", () => {
+        const sessionId = "ad86cfd2-c9aa-49bd-a886-811317997b19";
+        it("tracks a camelCase start and closes it from the snake_case stop", () => {
+            // SubagentStart: camelCase, agentName only, no agent id.
+            const start = processSubagentStart({
+                sessionId,
+                timestamp: 1792721937422,
+                cwd: testDir,
+                transcriptPath: join(testDir, "events.jsonl"),
+                agentName: "explore",
+            });
+            const context = start.hookSpecificOutput?.additionalContext ?? "";
+            expect(context).toMatch(/^Agent explore started \(copilot-explore-[a-z0-9]+\)$/);
+            expect(context).not.toContain("undefined");
+            // SubagentStop: snake_case, agent_id is the child session id.
+            processSubagentStop({
+                hook_event_name: "SubagentStop",
+                session_id: sessionId,
+                cwd: testDir,
+                transcript_path: join(testDir, "events.jsonl"),
+                agent_id: "ece89723-4efa-45e2-8786-92dbe14ac85a",
+                agent_type: "explore",
+                agent_name: "explore",
+                last_assistant_message: "No files in the current directory.",
+                stop_reason: "end_turn",
+            });
+            flushPendingWrites();
+            const state = readTrackingState(testDir, sessionId);
+            expect(state.agents).toHaveLength(1);
+            expect(state.agents[0]).toMatchObject({
+                agent_type: "explore",
+                status: "completed",
+                output_summary: "No files in the current directory.",
+            });
+            expect(state.agents[0].synthetic).toBeUndefined();
+        });
+        it("accepts the camelCase stop fields (agentId, agentType, response)", () => {
+            processSubagentStart({ session_id: sessionId, cwd: testDir, agent_id: "child-1", agent_type: "explore" });
+            processSubagentStop({
+                sessionId, cwd: testDir, agentId: "child-1", agentType: "explore", agentName: "explore", response: "done", stopReason: "end_turn",
+            });
+            flushPendingWrites();
+            expect(readTrackingState(testDir, sessionId).agents[0]).toMatchObject({ agent_id: "child-1", status: "completed", output_summary: "done" });
+        });
+    });
     describe("processSubagentStop", () => {
         it("updates tracking state without injecting additional context into the stopping subagent", () => {
             const startInput = {

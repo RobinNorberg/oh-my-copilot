@@ -63934,6 +63934,7 @@ __export(subagent_tracker_exports, {
   handleSubagentStart: () => handleSubagentStart,
   handleSubagentStop: () => handleSubagentStop,
   mergeTrackerStates: () => mergeTrackerStates,
+  normalizeSubagentInput: () => normalizeSubagentInput,
   processSubagentStart: () => processSubagentStart,
   processSubagentStop: () => processSubagentStop,
   readDiskState: () => readDiskState,
@@ -64198,7 +64199,36 @@ function getStaleAgents(state) {
     return elapsed > STALE_THRESHOLD_MS2;
   });
 }
-function processSubagentStart(input) {
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return void 0;
+}
+function normalizeSubagentInput(input, event) {
+  const raw = input;
+  const agentType = firstString(raw.agent_type, raw.agentType, raw.agent_name, raw.agentName);
+  const normalized = {
+    ...raw,
+    session_id: firstString(raw.session_id, raw.sessionId),
+    transcript_path: firstString(raw.transcript_path, raw.transcriptPath),
+    agent_id: firstString(raw.agent_id, raw.agentId),
+    agent_type: agentType
+  };
+  if (event === "start" && !normalized.agent_id) {
+    normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}`;
+  }
+  if (event === "stop" && normalized.output === void 0) {
+    const output = firstString(raw.last_assistant_message, raw.response);
+    if (output) normalized.output = output;
+  }
+  for (const key of Object.keys(normalized)) {
+    if (normalized[key] === void 0) delete normalized[key];
+  }
+  return normalized;
+}
+function processSubagentStart(rawInput) {
+  const input = normalizeSubagentInput(rawInput, "start");
   const sessionId = resolveSessionId({ context: "hook", hookPayload: input });
   const writePath = resolveWritePath(input.cwd, sessionId);
   ensureParentDir2(writePath);
@@ -64307,7 +64337,8 @@ function reapStaleRunningAgents(state, nowIso2) {
   }
   return reaped;
 }
-function processSubagentStop(input) {
+function processSubagentStop(rawInput) {
+  const input = normalizeSubagentInput(rawInput, "stop");
   const sessionId = resolveSessionId({ context: "hook", hookPayload: input });
   const writePath = resolveWritePath(input.cwd, sessionId);
   ensureParentDir2(writePath);
@@ -108970,13 +109001,13 @@ function hashCredentialIdentity(identity) {
 function getOAuthAccountProfileIdentity(credentials) {
   const nestedAccount = credentials.oauthAccount;
   const account = typeof nestedAccount === "object" && nestedAccount !== null && !Array.isArray(nestedAccount) ? nestedAccount : {};
-  const firstString = (...values) => {
+  const firstString2 = (...values) => {
     for (const value of values) {
       if (typeof value === "string" && value.trim()) return value.trim();
     }
     return void 0;
   };
-  const credentialUuid = firstString(
+  const credentialUuid = firstString2(
     credentials.accountUuid,
     credentials.accountUUID,
     account.accountUuid,
@@ -108986,7 +109017,7 @@ function getOAuthAccountProfileIdentity(credentials) {
   if (credentialUuid) {
     return hashCredentialIdentity(JSON.stringify(["oauth-account-uuid", credentialUuid.toLowerCase()]));
   }
-  const credentialAccountId = firstString(
+  const credentialAccountId = firstString2(
     credentials.accountId,
     credentials.userId,
     credentials.userID,
@@ -108994,7 +109025,7 @@ function getOAuthAccountProfileIdentity(credentials) {
     account.userId,
     account.userID
   );
-  const credentialEmail = firstString(
+  const credentialEmail = firstString2(
     credentials.emailAddress,
     credentials.email,
     account.emailAddress,
@@ -109019,7 +109050,7 @@ function getOAuthAccountProfileIdentity(credentials) {
     if (accountMetadata == null) continue;
     if (typeof accountMetadata === "object" && !Array.isArray(accountMetadata)) {
       const candidate = accountMetadata;
-      if (firstString(
+      if (firstString2(
         candidate.accountUuid,
         candidate.accountUUID,
         candidate.uuid,
@@ -109036,17 +109067,17 @@ function getOAuthAccountProfileIdentity(credentials) {
       return null;
     }
   }
-  const accountUuid = firstString(
+  const accountUuid = firstString2(
     claudeJsonAccount.accountUuid,
     claudeJsonAccount.accountUUID,
     claudeJsonAccount.uuid
   );
-  const claudeJsonAccountId = firstString(
+  const claudeJsonAccountId = firstString2(
     claudeJsonAccount.accountId,
     claudeJsonAccount.userId,
     claudeJsonAccount.userID
   );
-  const claudeJsonEmail = firstString(claudeJsonAccount.emailAddress, claudeJsonAccount.email);
+  const claudeJsonEmail = firstString2(claudeJsonAccount.emailAddress, claudeJsonAccount.email);
   if (accountUuid) {
     if (credentialAccountId) return null;
     if (credentialEmail && (!claudeJsonEmail || credentialEmail.toLowerCase() !== claudeJsonEmail.toLowerCase())) {
@@ -109066,10 +109097,10 @@ function getOAuthAccountProfileIdentity(credentials) {
   if (credentialEmail && claudeJsonEmail && credentialEmail.toLowerCase() !== claudeJsonEmail.toLowerCase()) {
     return null;
   }
-  const tokenMaterial = firstString(credentials.refreshToken, credentials.accessToken);
+  const tokenMaterial = firstString2(credentials.refreshToken, credentials.accessToken);
   const tokenHash = tokenMaterial ? hashCredentialIdentity(tokenMaterial) : void 0;
-  const storedProfileIdentity = firstString(credentials[OMC_USAGE_PROFILE_ID_FIELD]);
-  const storedTokenHash = firstString(credentials[OMC_USAGE_PROFILE_TOKEN_HASH_FIELD]);
+  const storedProfileIdentity = firstString2(credentials[OMC_USAGE_PROFILE_ID_FIELD]);
+  const storedTokenHash = firstString2(credentials[OMC_USAGE_PROFILE_TOKEN_HASH_FIELD]);
   if (storedProfileIdentity && tokenHash && storedTokenHash === tokenHash) {
     return storedProfileIdentity;
   }

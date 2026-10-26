@@ -462,10 +462,50 @@ export function getStaleAgents(state) {
 // ============================================================================
 // Hook Processors
 // ============================================================================
+function firstString(...values) {
+    for (const value of values) {
+        if (typeof value === "string" && value.trim())
+            return value.trim();
+    }
+    return undefined;
+}
+/**
+ * Copilot CLI field names → Claude's (live probe on Copilot CLI 1.0.91).
+ * SubagentStart arrives camelCase, `{sessionId, transcriptPath, agentName}`,
+ * with no agent id; SubagentStop has `agent_id` (the child session id),
+ * `agent_type`, `agent_name` and `last_assistant_message` (camelCase
+ * `agentId`, `agentType`, `agentName`, `response`). A start without an id
+ * gets a `copilot-<type>-<time>` id; its stop then reconciles by agent_type.
+ */
+export function normalizeSubagentInput(input, event) {
+    const raw = input;
+    const agentType = firstString(raw.agent_type, raw.agentType, raw.agent_name, raw.agentName);
+    const normalized = {
+        ...raw,
+        session_id: firstString(raw.session_id, raw.sessionId),
+        transcript_path: firstString(raw.transcript_path, raw.transcriptPath),
+        agent_id: firstString(raw.agent_id, raw.agentId),
+        agent_type: agentType,
+    };
+    if (event === "start" && !normalized.agent_id) {
+        normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}`;
+    }
+    if (event === "stop" && normalized.output === undefined) {
+        const output = firstString(raw.last_assistant_message, raw.response);
+        if (output)
+            normalized.output = output;
+    }
+    for (const key of Object.keys(normalized)) {
+        if (normalized[key] === undefined)
+            delete normalized[key];
+    }
+    return normalized;
+}
 /**
  * Process SubagentStart event
  */
-export function processSubagentStart(input) {
+export function processSubagentStart(rawInput) {
+    const input = normalizeSubagentInput(rawInput, "start");
     const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
     const writePath = resolveWritePath(input.cwd, sessionId);
     ensureParentDir(writePath);
@@ -612,7 +652,8 @@ function reapStaleRunningAgents(state, nowIso) {
 /**
  * Process SubagentStop event
  */
-export function processSubagentStop(input) {
+export function processSubagentStop(rawInput) {
+    const input = normalizeSubagentInput(rawInput, "stop");
     const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
     const writePath = resolveWritePath(input.cwd, sessionId);
     ensureParentDir(writePath);

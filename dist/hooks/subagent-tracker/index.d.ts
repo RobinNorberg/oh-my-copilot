@@ -183,13 +183,22 @@ export declare function flushPendingWrites(): void;
  */
 export declare function getStaleAgents(state: SubagentTrackingState): SubagentInfo[];
 /**
+ * Copilot CLI field names → Claude's (live probe on Copilot CLI 1.0.91).
+ * SubagentStart arrives camelCase, `{sessionId, transcriptPath, agentName}`,
+ * with no agent id; SubagentStop has `agent_id` (the child session id),
+ * `agent_type`, `agent_name` and `last_assistant_message` (camelCase
+ * `agentId`, `agentType`, `agentName`, `response`). A start without an id
+ * gets a `copilot-<type>-<time>` id; its stop then reconciles by agent_type.
+ */
+export declare function normalizeSubagentInput<T extends SubagentStartInput | SubagentStopInput>(input: T, event: "start" | "stop"): T;
+/**
  * Process SubagentStart event
  */
-export declare function processSubagentStart(input: SubagentStartInput): HookOutput;
+export declare function processSubagentStart(rawInput: SubagentStartInput): HookOutput;
 /**
  * Process SubagentStop event
  */
-export declare function processSubagentStop(input: SubagentStopInput): HookOutput;
+export declare function processSubagentStop(rawInput: SubagentStopInput): HookOutput;
 /**
  * Cleanup stale agents (mark as failed)
  */
