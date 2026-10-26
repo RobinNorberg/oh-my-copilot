@@ -6,6 +6,7 @@ import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/mode
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 import { detectHostCliType } from '../utils/host-signal.js';
 import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
+import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 const resolvedPathCache = new Map();
 // Locations any process can write to, so a binary resolved there is not
 // trustworthy.
@@ -174,16 +175,8 @@ export function shouldUseClaudeBareMode(env = process.env) {
  * (self-continuation races the inbox protocol) and no COPILOT_ALLOW_ALL.
  */
 export const COPILOT_WORKER_BASE_FLAGS = ['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user'];
-/**
- * First-choice Copilot model per bare tier alias. Duplicates the first column
- * of MODEL_TABLE in scripts/copilot/build-agents.mjs; keep the two in sync.
- */
-const COPILOT_TIER_ALIAS_MODELS = {
-    opus: 'claude-opus-5',
-    sonnet: 'claude-sonnet-5',
-    haiku: 'claude-haiku-4.5',
-    fable: 'claude-fable-5.1',
-};
+/** First-choice Copilot model per bare tier alias (src/config/copilot-models.json). */
+const COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(Object.entries(copilotModels.tiers).map(([tier, ids]) => [tier, ids[0]]));
 /**
  * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
  * defaults are dashed (claude-opus-4-8). Rewrites that shape (keeping a

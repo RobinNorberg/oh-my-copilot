@@ -8,6 +8,7 @@
  */
 import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
+import { toCopilotModelId } from '../team/model-contract.js';
 import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 /**
  * Settings key prefix for plugin agents. UNVERIFIED on a live Copilot: the other
@@ -15,41 +16,50 @@ import copilotModels from '../config/copilot-models.json' with { type: 'json' };
  * `subagent.started.model` in events.jsonl after setting an override.
  */
 export const COPILOT_PLUGIN_AGENT_PREFIX = 'oh-my-copilot:';
-const COPILOT_MODEL_ID = /^(claude|gpt|gemini)-/;
-const TIERS = copilotModels.tiers;
+const KNOWN_MODELS = new Set(copilotModels.knownModels);
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 /** `securityReviewer` -> `security-reviewer`. */
 const toAgentName = (configKey) => configKey.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`);
 /**
  * Explicit `agents.<name>.model` overrides as { agentName: copilotModelId }.
- * Tier aliases (opus/sonnet/haiku/fable) resolve to the tier's first Copilot id;
- * Copilot ids pass through; anything else (e.g. a Claude Code model id) is skipped.
+ * Values go through toCopilotModelId (tier aliases in any case resolve to the
+ * tier's first Copilot id; dashed Claude Code ids become dotted) and are kept
+ * only when the result is in copilot-models.json knownModels; everything else
+ * (`inherit`, unlisted ids such as claude-opus-4-8) lands in `skipped`.
  * `omc` is the orchestrator, not a delegatable agent.
  */
 export function resolveAgentModelOverrides(agents) {
-    const out = {};
+    const overrides = {};
+    const skipped = [];
     for (const [key, value] of Object.entries(agents ?? {})) {
         const model = value?.model?.trim();
         if (key === 'omc' || !model)
             continue;
-        const resolved = TIERS[model]?.[0] ?? (COPILOT_MODEL_ID.test(model) ? model : undefined);
-        if (resolved)
-            out[toAgentName(key)] = resolved;
+        const resolved = toCopilotModelId(model);
+        if (KNOWN_MODELS.has(resolved))
+            overrides[toAgentName(key)] = resolved;
+        else
+            skipped.push(`${key}: "${model}"`);
     }
-    return out;
+    return { overrides, skipped };
 }
 /** Pure merge: sets `subagents.agents[prefix+name].model`, keeps every other key. */
 export function mergeSubagentModels(settings, overrides) {
     const names = Object.keys(overrides);
     if (names.length === 0)
         return { settings, changed: false };
-    const subagents = { ...settings.subagents };
-    const agents = { ...subagents.agents };
+    // Non-object values (`agents: []`, a string entry) are replaced, not spread into index keys.
+    const subagents = isRecord(settings.subagents) ? { ...settings.subagents } : {};
+    const agents = isRecord(subagents.agents) ? { ...subagents.agents } : {};
     let changed = false;
     for (const name of names) {
         const id = `${COPILOT_PLUGIN_AGENT_PREFIX}${name}`;
-        if (agents[id]?.model === overrides[name])
+        const entry = isRecord(agents[id]) ? agents[id] : undefined;
+        if (entry?.model === overrides[name])
             continue;
-        agents[id] = { ...agents[id], model: overrides[name] };
+        agents[id] = { ...entry, model: overrides[name] };
         changed = true;
     }
     if (!changed)
@@ -58,29 +68,30 @@ export function mergeSubagentModels(settings, overrides) {
 }
 /**
  * Merge overrides into settings.json. No write when nothing changes; otherwise a
- * `.bak` copy of the previous file, then an atomic replace. Unparseable settings
- * are left untouched. Returns the agent names written.
+ * `.bak` copy of the previous file, then an atomic replace. Settings that are not
+ * a JSON object are left untouched and reported in `error`. Returns the agent
+ * names written.
  */
 export function syncCopilotAgentModels(settingsFile, overrides) {
     if (Object.keys(overrides).length === 0)
-        return [];
+        return { written: [] };
     let current = {};
     if (existsSync(settingsFile)) {
         try {
             current = JSON.parse(readFileSync(settingsFile, 'utf-8'));
         }
         catch {
-            return [];
+            return { written: [], error: `${settingsFile} is not valid JSON; left untouched` };
         }
-        if (current === null || typeof current !== 'object' || Array.isArray(current))
-            return [];
+        if (!isRecord(current))
+            return { written: [], error: `${settingsFile} is not a JSON object; left untouched` };
     }
     const { settings, changed } = mergeSubagentModels(current, overrides);
     if (!changed)
-        return [];
+        return { written: [] };
     if (existsSync(settingsFile))
         copyFileSync(settingsFile, `${settingsFile}.bak`);
     atomicWriteJsonSync(settingsFile, settings);
-    return Object.keys(overrides);
+    return { written: Object.keys(overrides) };
 }
 //# sourceMappingURL=copilot-agent-models.js.map
