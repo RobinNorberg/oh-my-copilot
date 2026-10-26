@@ -705,13 +705,21 @@ could not start any worker.
 The `agents.<name>.model` override is applied under Claude Code by rewriting
 the delegation call through the PreToolUse `updatedInput` channel. Copilot does
 not support that channel, so the adapter drops it. `omg setup` therefore copies
-your explicit overrides into Copilot's own per-agent setting,
-`subagents.agents["oh-my-copilot:<name>"].model` in `$COPILOT_HOME/settings.json`
-(tier aliases resolve to the Copilot model for that tier). Existing settings keys
-are preserved, a `settings.json.bak` is written first, and an unchanged file is
-not rewritten. Re-run `omg setup` after editing the override. Removing an
-override from the config does not remove it from `settings.json`; delete it
-there. You can still edit the setting by hand:
+the explicit overrides in your user config (`%APPDATA%\claude-omc\config.jsonc`
+on Windows, `~/.config/claude-omc/config.jsonc` elsewhere) into Copilot's own
+per-agent setting in `$COPILOT_HOME/settings.json`. Project overrides in
+`.copilot/omg.jsonc` are not synced. The key written is
+`subagents.agents["oh-my-copilot:<name>"].model`. That is the expected key, since it
+matches the agent name Copilot reports at runtime, but it has not been confirmed
+as a settings key on a live Copilot; check with `/subagents` that the override
+took effect. Tier aliases (any case) resolve to the Copilot model for that tier,
+dashed Claude Code ids such as `claude-sonnet-5-5` become dotted, and only ids in
+`src/config/copilot-models.json` `knownModels` are written; setup prints a warning
+for every value it skips (`inherit`, unlisted ids). Existing settings keys are
+preserved, a `settings.json.bak` is written first, and an unchanged file is not
+rewritten. Re-run `omg setup` after editing the override. Removing an override
+from the config does not remove it from `settings.json`; delete it there. You can
+still edit the setting by hand:
 
 ```json
 { "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5.5" } } } }
