@@ -570,7 +570,7 @@ jobs:
           OMC_LIVE_SMOKE: '2'
         run: |
           # The list reaches the shell only through env; names are lowercase words, commas and dashes.
-          if ! printf '%s' "$SMOKE_OPT_IN" | grep -Eq '^[a-z][a-z,-]*$'; then
+          if [[ ! $SMOKE_OPT_IN =~ ^[a-z][a-z,-]*$ ]]; then
             echo "::error::smoke scenario list must match ^[a-z][a-z,-]*\$, got: $SMOKE_OPT_IN"
             exit 1
           fi
