@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "51767eb80c221850b56b6ffc067106950fbfbd0c",
-    "sourceSha256": "1d5a0a49a14cd28fdb620d10d81ff84e89d916c48674ee052f7944727557e7ea",
+    "head": "6b3cefec58cc852df7e068e1f314262d875b2ea7",
+    "sourceSha256": "3d2f05904d650b614ee05d09ba8ac82c9e95c458a918887e7beb9dccc78afeb3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "51767eb80c221850b56b6ffc067106950fbfbd0c",
-  "sourceSha256": "1d5a0a49a14cd28fdb620d10d81ff84e89d916c48674ee052f7944727557e7ea",
+  "head": "6b3cefec58cc852df7e068e1f314262d875b2ea7",
+  "sourceSha256": "3d2f05904d650b614ee05d09ba8ac82c9e95c458a918887e7beb9dccc78afeb3",
   "counts": {
     "public": {
       "skills": 63,
@@ -865,6 +865,7 @@
       "scripts/lib/atomic-write.mjs",
       "scripts/lib/bounded-git-timeout.mjs",
       "scripts/lib/cache-occupancy.mjs",
+      "scripts/lib/child-session.cjs",
       "scripts/lib/config-dir.cjs",
       "scripts/lib/config-dir.mjs",
       "scripts/lib/config-dir.sh",
@@ -41032,6 +41033,11 @@
         "path": "scripts/lib/cache-occupancy.mjs"
       },
       {
+        "id": "scripts/lib/child-session.cjs",
+        "kind": "script",
+        "path": "scripts/lib/child-session.cjs"
+      },
+      {
         "id": "scripts/lib/config-dir.cjs",
         "kind": "script",
         "path": "scripts/lib/config-dir.cjs"
@@ -51465,6 +51471,11 @@
       },
       {
         "from": "scripts/context-guard-stop.mjs",
+        "to": "scripts/lib/child-session.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/context-guard-stop.mjs",
         "to": "scripts/lib/config-dir.mjs",
         "kind": "imports"
       },
@@ -51541,6 +51552,11 @@
       {
         "from": "scripts/copilot/dispatch.cjs",
         "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/dispatch.cjs",
+        "to": "scripts/lib/child-session.cjs",
         "kind": "imports"
       },
       {
@@ -98890,12 +98906,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8580,
-      "edgeCount": 9641,
-      "importEdgeCount": 8048,
+      "nodeCount": 8581,
+      "edgeCount": 9643,
+      "importEdgeCount": 8050,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "70c366115b15acf77cf7102599fd71d78254c249dd364102a309ced097d91393",
-  "manifestSha256": "cd5216a5752909ea77c2debe1e818e039e3ccbf2112f906953b4aadacb01cda9"
+  "inventorySha256": "2f7da6ba6e639a5e5eeb3713e362cd8f7df475cfcf59ca9f1066ff924fdbfaef",
+  "manifestSha256": "92b1bf16927971290a274cfc39ffd1ad90461c8bdb185207bca70e16cf5eab3d"
 }
