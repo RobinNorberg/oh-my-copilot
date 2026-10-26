@@ -145,10 +145,15 @@ export declare function takeSessionEndDiscoveryPage(directory: string, limit?: n
 export declare function rearmUnclaimedSessionEndJob(directory: string, sessionId: string, { restartGrace }?: {
     restartGrace?: boolean;
 }): SessionEndJobV1 | null;
-/** What a Copilot SessionEnd leaves for the worker to plan the factory-chain link from. */
+/**
+ * What a Copilot SessionEnd leaves for the worker to plan the factory-chain
+ * link from. `claudeEntrypoint` carries the deferring SessionEnd's
+ * CLAUDE_CODE_ENTRYPOINT, so the worker still refuses a Claude session's link claim.
+ */
 export interface DeferredSessionEndChain {
     reason: string;
     linkEnv?: string;
+    claudeEntrypoint?: string;
 }
 /**
  * Copilot fires SessionEnd after every turn, so the chain link is decided at

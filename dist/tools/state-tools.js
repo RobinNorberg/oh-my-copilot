@@ -1298,6 +1298,11 @@ export const stateClearTool = {
                 const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
                 const namedPrimaries = mode === 'autopilot' ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
                 const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+                // Before any state file goes: the ultragoal record paths come from each cleared state's plan_id.
+                const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root, [sessionId]);
+                const completedRecordPaths = mode === 'ultragoal'
+                    ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root, [candidate.completedSessionId]) }] : [])
+                    : [];
                 let directCleared = 0;
                 for (const candidate of namedPrimaries) {
                     const success = clearAutopilotMarkerCandidate(candidate, root);
@@ -1308,7 +1313,14 @@ export const stateClearTool = {
                 const completedSessionCleanup = clearCompletedSessionStateCandidates(mode, root, sessionId, completedCandidates.filter((candidate) => !namedPrimaryPaths.has(candidate.path)), teamCleanup);
                 const runtimeCleanup = mode === 'team'
                     ? { cleared: 0, hadFailure: false }
-                    : clearModeRuntimeArtifacts(mode, root, sessionId);
+                    : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+                for (const { statePath, recordPaths } of completedRecordPaths) {
+                    if (existsSync(statePath))
+                        continue;
+                    const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+                    runtimeCleanup.cleared += recordCleanup.cleared;
+                    runtimeCleanup.hadFailure ||= recordCleanup.hadFailure;
+                }
                 const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
                 const signaledCandidateDirs = new Set();
                 for (const candidate of sessionSignalCandidates) {
@@ -1388,7 +1400,8 @@ export const stateClearTool = {
                                 writeSessionCancelSignal(root, ownerSessionId, mode, ownerDirectCandidate);
                                 clearModeState(mode, root, ownerSessionId, ownerDirectCandidate?.state);
                             }
-                            const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+                            // ownerSessionId === sessionId: the paths captured before the primary clear.
+                            const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
                             runtimeCleanup.cleared += ownerRuntimeCleanup.cleared;
                             runtimeCleanup.hadFailure ||= ownerRuntimeCleanup.hadFailure;
                             ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));

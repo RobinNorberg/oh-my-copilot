@@ -22393,6 +22393,8 @@ ${JSON.stringify(writtenState, null, 2)}
             const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
             const namedPrimaries = mode === "autopilot" ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
             const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+            const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root, [sessionId]);
+            const completedRecordPaths = mode === "ultragoal" ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root, [candidate.completedSessionId]) }] : []) : [];
             let directCleared = 0;
             for (const candidate of namedPrimaries) {
               const success = clearAutopilotMarkerCandidate(candidate, root);
@@ -22406,7 +22408,13 @@ ${JSON.stringify(writtenState, null, 2)}
               completedCandidates.filter((candidate) => !namedPrimaryPaths.has(candidate.path)),
               teamCleanup
             );
-            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearModeRuntimeArtifacts(mode, root, sessionId);
+            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+            for (const { statePath, recordPaths } of completedRecordPaths) {
+              if ((0, import_fs30.existsSync)(statePath)) continue;
+              const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+              runtimeCleanup2.cleared += recordCleanup.cleared;
+              runtimeCleanup2.hadFailure ||= recordCleanup.hadFailure;
+            }
             const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
             const signaledCandidateDirs = /* @__PURE__ */ new Set();
             for (const candidate of sessionSignalCandidates) {
@@ -22477,7 +22485,7 @@ ${JSON.stringify(writtenState, null, 2)}
                     writeSessionCancelSignal(root, ownerSessionId, mode, ownerDirectCandidate);
                     clearModeState(mode, root, ownerSessionId, ownerDirectCandidate?.state);
                   }
-                  const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+                  const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
                   runtimeCleanup2.cleared += ownerRuntimeCleanup.cleared;
                   runtimeCleanup2.hadFailure ||= ownerRuntimeCleanup.hadFailure;
                   ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));

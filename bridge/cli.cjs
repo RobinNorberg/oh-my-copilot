@@ -49489,6 +49489,8 @@ ${JSON.stringify(writtenState, null, 2)}
             const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
             const namedPrimaries = mode === "autopilot" ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
             const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+            const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root2, [sessionId]);
+            const completedRecordPaths = mode === "ultragoal" ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root2, [candidate.completedSessionId]) }] : []) : [];
             let directCleared = 0;
             for (const candidate of namedPrimaries) {
               const success = clearAutopilotMarkerCandidate(candidate, root2);
@@ -49502,7 +49504,13 @@ ${JSON.stringify(writtenState, null, 2)}
               completedCandidates.filter((candidate) => !namedPrimaryPaths.has(candidate.path)),
               teamCleanup
             );
-            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearModeRuntimeArtifacts(mode, root2, sessionId);
+            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+            for (const { statePath, recordPaths } of completedRecordPaths) {
+              if ((0, import_fs36.existsSync)(statePath)) continue;
+              const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+              runtimeCleanup2.cleared += recordCleanup.cleared;
+              runtimeCleanup2.hadFailure ||= recordCleanup.hadFailure;
+            }
             const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
             const signaledCandidateDirs = /* @__PURE__ */ new Set();
             for (const candidate of sessionSignalCandidates) {
@@ -49573,7 +49581,7 @@ ${JSON.stringify(writtenState, null, 2)}
                     writeSessionCancelSignal(root2, ownerSessionId, mode, ownerDirectCandidate);
                     clearModeState(mode, root2, ownerSessionId, ownerDirectCandidate?.state);
                   }
-                  const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root2, ownerSessionId);
+                  const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
                   runtimeCleanup2.cleared += ownerRuntimeCleanup.cleared;
                   runtimeCleanup2.hadFailure ||= ownerRuntimeCleanup.hadFailure;
                   ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root2, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));
@@ -70187,12 +70195,16 @@ function rearmUnclaimedSessionEndJob(directory, sessionId, { restartGrace = true
   });
 }
 function mutateUnclaimedSpawnNext(directory, sessionId, mutate) {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current || current.phase !== "collecting" || current.owner) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
-    if (job.phase !== "collecting" || job.owner) throw new Error("spawn-next-conflict");
-    job.actions["spawn-next"].payload = mutate(job.actions["spawn-next"].payload);
-  });
+  for (let i = 0; i < 8; i++) {
+    const current = readSessionEndJob(directory, sessionId);
+    if (!current || current.phase !== "collecting" || current.owner) return null;
+    const result = mutateAtRevision(directory, sessionId, current.revision, (job) => {
+      if (job.phase !== "collecting" || job.owner) throw new Error("spawn-next-conflict");
+      job.actions["spawn-next"].payload = mutate(job.actions["spawn-next"].payload);
+    });
+    if (result !== REVISION_MISMATCH) return result;
+  }
+  return null;
 }
 function resolveDeferredSessionEndChain(directory, sessionId, chain) {
   return mutateUnclaimedSpawnNext(directory, sessionId, ({ deferredChain: _deferred, ...payload }) => chain ? { ...payload, chain } : payload);
@@ -101685,10 +101697,19 @@ function reschedulePendingWorker(payload, job) {
 async function planDeferredChain(payload) {
   const deferred = readSessionEndJob(payload.directory, payload.sessionId)?.actions["spawn-next"]?.payload?.deferredChain;
   if (!deferred || typeof deferred !== "object") return;
-  const [{ planChainEnqueue: planChainEnqueue2 }, { CHAIN_LINK_ENV: CHAIN_LINK_ENV2 }] = await Promise.all([Promise.resolve().then(() => (init_chain_enqueuer(), chain_enqueuer_exports)), Promise.resolve().then(() => (init_spawn_next(), spawn_next_exports))]);
-  const env2 = typeof deferred.linkEnv === "string" ? { [CHAIN_LINK_ENV2]: deferred.linkEnv } : {};
+  const [{ planChainEnqueue: planChainEnqueue2, recordChainHandoffFailure: recordChainHandoffFailure2, resolveChainLink: resolveChainLink2, readChainLedger: readChainLedger2 }, { CHAIN_LINK_ENV: CHAIN_LINK_ENV2 }] = await Promise.all([Promise.resolve().then(() => (init_chain_enqueuer(), chain_enqueuer_exports)), Promise.resolve().then(() => (init_spawn_next(), spawn_next_exports))]);
+  const env2 = {
+    ...typeof deferred.linkEnv === "string" ? { [CHAIN_LINK_ENV2]: deferred.linkEnv } : {},
+    ...typeof deferred.claudeEntrypoint === "string" ? { CLAUDE_CODE_ENTRYPOINT: deferred.claudeEntrypoint } : {}
+  };
   const chain = planChainEnqueue2(payload.directory, payload.sessionId, typeof deferred.reason === "string" ? deferred.reason : "other", env2);
-  resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain);
+  if (!chain) {
+    const ledger = readChainLedger2(payload.directory, resolveChainLink2(payload.directory, payload.sessionId, env2).linkId);
+    if (ledger && !ledger.closedAt) return;
+  }
+  if (resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain) || !chain) return;
+  const landed = readSessionEndJob(payload.directory, payload.sessionId)?.actions["spawn-next"]?.payload?.chain;
+  if (landed?.sessionId !== chain.sessionId) recordChainHandoffFailure2(payload.directory, chain, "manifest-unavailable", { hostSessionId: payload.sessionId });
 }
 async function processSessionEndWorker(payload, liveRechecks = 0) {
   const pending = readSessionEndJob(payload.directory, payload.sessionId);

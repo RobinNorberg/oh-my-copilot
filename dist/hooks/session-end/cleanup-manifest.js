@@ -512,15 +512,21 @@ export function rearmUnclaimedSessionEndJob(directory, sessionId, { restartGrace
             job.bestEffortDeadlineAt = new Date(Math.max(Date.now(), Date.parse(job.producerGraceExpiresAt)) + REQUIRED_ACTION_EXECUTION_MS + BEST_EFFORT_ACTION_EXECUTION_MS).toISOString();
     });
 }
+/** Retries a stale revision (a concurrent re-arm or resolve), never a claimed job. */
 function mutateUnclaimedSpawnNext(directory, sessionId, mutate) {
-    const current = readSessionEndJob(directory, sessionId);
-    if (!current || current.phase !== 'collecting' || current.owner)
-        return null;
-    return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
-        if (job.phase !== 'collecting' || job.owner)
-            throw new Error('spawn-next-conflict');
-        job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
-    });
+    for (let i = 0; i < 8; i++) {
+        const current = readSessionEndJob(directory, sessionId);
+        if (!current || current.phase !== 'collecting' || current.owner)
+            return null;
+        const result = mutateAtRevision(directory, sessionId, current.revision, (job) => {
+            if (job.phase !== 'collecting' || job.owner)
+                throw new Error('spawn-next-conflict');
+            job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
+        });
+        if (result !== REVISION_MISMATCH)
+            return result;
+    }
+    return null;
 }
 /**
  * Copilot fires SessionEnd after every turn, so the chain link is decided at
