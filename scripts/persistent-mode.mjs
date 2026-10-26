@@ -1556,7 +1556,13 @@ async function main() {
       // objective (a previous run or story) counts as no record.
       const foundGoalRecord = copilotHost ? readOmgGoalRecord([omcRoot, join(directory, ".omg")], { planId: ultragoalStatePlanId(ultragoal.state) }) : null;
       const goalRecord = goalRecordMatches(ultragoal.state, foundGoalRecord) ? foundGoalRecord : null;
-      if (sessionMatches && !isUltragoalTerminalState(ultragoal.state, omcRoot) && !isGoalRecordComplete(goalRecord?.record)) {
+      const terminal = isUltragoalTerminalState(ultragoal.state, omcRoot);
+      // The run is over: its goal record goes with it, so a re-run of the
+      // same plan cannot end on the finished run's evidence.
+      if (sessionMatches && terminal && goalRecord) {
+        try { unlinkSync(goalRecord.path); } catch { /* already gone */ }
+      }
+      if (sessionMatches && !terminal && !isGoalRecordComplete(goalRecord?.record)) {
         const newCount = (ultragoal.state.reinforcement_count || 0) + 1;
         const maxReinforcements = ultragoal.state.max_reinforcements || 50;
 

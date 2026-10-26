@@ -272,6 +272,16 @@ describe('Copilot-native ultragoal goal record', () => {
 
   const done = [{ id: 'C1', text: 'tests pass', evidence: 'npm test green' }];
 
+  it('retires the run goal record when the ultragoal state is terminal', () => {
+    const cwd = makeProject('omg-goal-stop-terminal-');
+    writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE, current_phase: 'complete' });
+    writeGoalRecord(cwd, { status: 'complete', criteria: done });
+    const recordPath = join(cwd, '.omg', 'ultragoal', 'omg-goal.json');
+
+    expect(runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), session_id: PARENT }, 'Stop').decision).toBeUndefined();
+    expect(existsSync(recordPath)).toBe(false);
+  });
+
   it('keeps continuing when the only complete record is for another objective (a previous run or story)', () => {
     const cwd = makeProject('omg-goal-stop-stale-');
     writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE });
