@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import {
   formatClaudeGoalReconciliation,
@@ -483,6 +483,9 @@ export async function createUltragoalPlan(cwd: string, options: CreateUltragoalO
   if (plan.claudeGoalMode === 'aggregate') plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
 
   await mkdir(ultragoalDir(cwd, planId), { recursive: true });
+  // A goal record (goal-record.ts OMG_GOAL_RECORD) belongs to the plan it was
+  // started under; a recreated plan starts without one.
+  await rm(join(ultragoalDir(cwd, planId), 'omg-goal.json'), { force: true });
   await writeFile(ultragoalBriefPath(cwd, planId), options.brief.endsWith('\n') ? options.brief : `${options.brief}\n`);
   await writePlan(cwd, plan);
   await writeFile(ultragoalLedgerPath(cwd, planId), '');

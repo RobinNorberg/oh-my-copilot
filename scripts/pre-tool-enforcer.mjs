@@ -26,7 +26,7 @@ import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
 import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
 import { isCopilotHookHost, isSkillToolName } from './lib/hook-host.mjs';
 import { extractCopilotNativeGoal, resolveCopilotParentSessionId } from './lib/copilot-continuation.mjs';
-import { readOmgGoalRecord } from './lib/omg-goal-record.mjs';
+import { readOmgGoalRecord, ultragoalStatePlanId } from './lib/omg-goal-record.mjs';
 
 // Inlined from src/config/models.ts — avoids a dist/ import so the hook works
 // before a build and stays consistent with the TypeScript source.
@@ -1435,11 +1435,14 @@ function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, dat
   // Copilot has no Claude /goal: the OMG goal record written by
   // `omg ultragoal goal-start` stands in for it (src/ultragoal/goal-record.ts).
   if (copilotHost) {
-    const record = readOmgGoalRecord([omcRoot, join(directory, '.omg')])?.record;
+    const found = readOmgGoalRecord([omcRoot, join(directory, '.omg')], { planId: ultragoalStatePlanId(state) });
+    const record = found?.record;
     const recordStatus = normalizePhase(record?.status);
     const recordObjective = normalizeText(record?.objective);
     const recordUsable = recordStatus === 'active' || recordStatus === 'complete';
-    if (record && recordUsable && (!expectedObjective || recordObjective === expectedObjective)) return null;
+    // Multi-plan runs have no base goals.json; the record's own plan names the objective.
+    const recordExpected = expectedObjective || normalizeText(found?.planObjective);
+    if (record && recordUsable && (!recordExpected || recordObjective === recordExpected)) return null;
     const problem = !record
       ? 'no OMG goal record exists yet.'
       : !recordUsable

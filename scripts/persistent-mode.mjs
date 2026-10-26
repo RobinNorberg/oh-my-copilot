@@ -156,7 +156,7 @@ const { readStdin } = await import(
 const { resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, "lib", "state-root.mjs")).href);
 const { isCopilotHookHost } = await import(pathToFileURL(join(__dirname, "lib", "hook-host.mjs")).href);
 const { isCopilotNativeAutopilot, readCopilotStopChain, resolveCopilotStopChainMax } = await import(pathToFileURL(join(__dirname, "lib", "copilot-continuation.mjs")).href);
-const { isGoalRecordComplete, missingGoalCriteria, readOmgGoalRecord } = await import(pathToFileURL(join(__dirname, "lib", "omg-goal-record.mjs")).href);
+const { goalRecordMatches, isGoalRecordComplete, missingGoalCriteria, readOmgGoalRecord, ultragoalStatePlanId } = await import(pathToFileURL(join(__dirname, "lib", "omg-goal-record.mjs")).href);
 
 function readJsonFile(path) {
   try {
@@ -1546,8 +1546,10 @@ async function main() {
         : !ultragoal.state.session_id || ultragoal.state.session_id === sessionId;
       // Copilot has no Claude /goal: the OMG goal record (omg ultragoal
       // goal-start) holds the acceptance criteria, and the session may end
-      // once every criterion has evidence recorded.
-      const goalRecord = copilotHost ? readOmgGoalRecord([omcRoot, join(directory, ".omg")]) : null;
+      // once every criterion has evidence recorded. A record for another
+      // objective (a previous run or story) counts as no record.
+      const foundGoalRecord = copilotHost ? readOmgGoalRecord([omcRoot, join(directory, ".omg")], { planId: ultragoalStatePlanId(ultragoal.state) }) : null;
+      const goalRecord = goalRecordMatches(ultragoal.state, foundGoalRecord) ? foundGoalRecord : null;
       if (sessionMatches && !isUltragoalTerminalState(ultragoal.state, omcRoot) && !isGoalRecordComplete(goalRecord?.record)) {
         const newCount = (ultragoal.state.reinforcement_count || 0) + 1;
         const maxReinforcements = ultragoal.state.max_reinforcements || 50;

@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { atomicWriteJson } from '../lib/atomic-write.js';
 import {
   readUltragoalPlan,
   ultragoalDir,
@@ -58,16 +59,21 @@ export async function readOmgGoalRecord(cwd: string, planId?: string): Promise<O
   } catch {
     return null;
   }
-  const parsed = JSON.parse(raw) as OmgGoalRecord;
+  let parsed: OmgGoalRecord;
+  try {
+    parsed = JSON.parse(raw) as OmgGoalRecord;
+  } catch {
+    throw new UltragoalError(`Corrupt OMG goal record at ${omgGoalRecordPath(cwd, planId)}; rerun omg ultragoal goal-start to replace it.`);
+  }
   if (parsed?.version !== 1 || typeof parsed.objective !== 'string' || !Array.isArray(parsed.criteria)) {
     throw new UltragoalError(`Invalid OMG goal record at ${omgGoalRecordPath(cwd, planId)}.`);
   }
   return parsed;
 }
 
+/** Temp file + rename: the hooks never see a missing or half-written record mid-update. */
 async function writeOmgGoalRecord(cwd: string, record: OmgGoalRecord): Promise<void> {
-  await mkdir(ultragoalDir(cwd, record.planId), { recursive: true });
-  await writeFile(omgGoalRecordPath(cwd, record.planId), `${JSON.stringify(record, null, 2)}\n`);
+  await atomicWriteJson(omgGoalRecordPath(cwd, record.planId), record);
 }
 
 export function missingGoalCriteria(record: OmgGoalRecord): OmgGoalCriterion[] {
@@ -114,7 +120,11 @@ export async function startOmgGoal(cwd: string, options: StartOmgGoalOptions): P
       : 'No ultragoal plan found; run `omg ultragoal create-goals ...` first or pass --objective.');
   }
   const now = (options.now ?? new Date()).toISOString();
-  const previous = await readOmgGoalRecord(cwd, options.planId);
+  // A corrupt or invalid record is replaced, not kept.
+  const previous = await readOmgGoalRecord(cwd, options.planId).catch((error: unknown) => {
+    if (error instanceof UltragoalError) return null;
+    throw error;
+  });
   const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
   const criteria = criteriaText.map((text, index): OmgGoalCriterion => {
     const old = kept.get(text);
