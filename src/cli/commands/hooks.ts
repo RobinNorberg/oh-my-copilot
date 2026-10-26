@@ -16,7 +16,7 @@
  * Exit codes: 0 no check failed (warnings allowed), 1 a check failed.
  */
 
-import { spawnSync as nodeSpawnSync } from 'child_process';
+import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -239,12 +239,19 @@ function dispatchChecks(manifest: CopilotHookManifest, root: string, env: NodeJS
     }
     return checks;
   } finally {
-    // Hook sqlite DBs or a detached SessionEnd worker may still hold the dir on win32: retry
-    // with a linear backoff (~5 s in total), then report the leftover instead of hiding it.
+    // Hook sqlite DBs or a detached worker (SessionStart's 30 s legacy-state stabilizer) may still
+    // hold the dir on win32: retry with a linear backoff (~5 s in total), then hand the removal to
+    // a detached process that outlives the worker, and report the leftover instead of hiding it.
     try {
       rmSync(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
     } catch (err) {
-      checks.push({ id: 'dispatch.cleanup', status: 'warn', detail: `could not remove the sandbox ${parent}: ${(err as Error).message}` });
+      try {
+        const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
+        nodeSpawn(process.execPath, ['-e', script, parent], { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
+        checks.push({ id: 'dispatch.cleanup', status: 'ok', detail: `hook workers still hold the sandbox (${(err as Error).message}); a background process removes ${parent} once they exit` });
+      } catch {
+        checks.push({ id: 'dispatch.cleanup', status: 'warn', detail: `could not remove the sandbox ${parent}: ${(err as Error).message}` });
+      }
     }
   }
 }
