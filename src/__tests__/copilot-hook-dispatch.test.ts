@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
@@ -578,6 +578,47 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
     }, { COPILOT_HOME: tempDir('omg-dispatch-handoff-') });
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 80%', continue: true });
+  }, 60_000);
+
+  it('stores nothing for a subagent Stop (child session id, parent transcript)', () => {
+    const root = probePlugin();
+    const stateDir = tempDir('omg-dispatch-handoff-');
+    const parentId = 'ad86cfd2-c9aa-49bd-a886-811317997b19';
+    const childId = 'ece89723-4efa-45e2-8786-92dbe14ac85a';
+    const stop = runDispatch(root, 'Stop', [['budget-guard.mjs']], {
+      session_id: childId,
+      transcript_path: join(stateDir, 'session-state', parentId, 'events.jsonl'),
+      hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } } },
+    }, { COPILOT_HOME: stateDir });
+    expect(stop.status, stop.stderr).toBe(0);
+    expect(existsSync(join(stateDir, 'projects', '.omg-pending-context'))).toBe(false);
+
+    // The parent's own Stop (matching transcript) still hands off.
+    runDispatch(root, 'Stop', [['budget-guard.mjs']], {
+      session_id: parentId,
+      transcript_path: join(stateDir, 'session-state', parentId, 'events.jsonl'),
+      hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } } },
+    }, { COPILOT_HOME: stateDir });
+    expect(readdirSync(join(stateDir, 'projects', '.omg-pending-context'))).toEqual([`${parentId}.json`]);
+  }, 60_000);
+
+  it('SessionEnd prunes pending files older than 24 hours and keeps fresh ones', () => {
+    const root = probePlugin();
+    const stateDir = tempDir('omg-dispatch-handoff-');
+    const dir = join(stateDir, 'projects', '.omg-pending-context');
+    mkdirSync(dir, { recursive: true });
+    const stale = join(dir, 'stale-session.json');
+    const fresh = join(dir, 'fresh-session.json');
+    writeFileSync(stale, JSON.stringify({ messages: ['old'] }));
+    writeFileSync(fresh, JSON.stringify({ messages: ['new'] }));
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(stale, twoDaysAgo, twoDaysAgo);
+    const end = runDispatch(root, 'SessionEnd', [['session-end.mjs']], {
+      session_id: sessionId, hooks: { 'session-end.mjs': { stdout: { continue: true } } },
+    }, { COPILOT_HOME: stateDir });
+    expect(end.status, end.stderr).toBe(0);
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
   }, 60_000);
 });
 
