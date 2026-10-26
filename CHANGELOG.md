@@ -2,6 +2,95 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.13.1
+
+## [5.13.1] - 2026-10-26
+
+Fork **v5.13.1** (from v5.13.0) is a patch release. It ports upstream
+oh-my-claudecode `dev` faedfd200..ed9eb4fa8 (upstream v5.7.7 to v5.7.17), so
+the fork is now at upstream dev ed9eb4fa8. The port is bug fixes only: no new
+features and no breaking changes. Most fixes make environment-variable
+timeouts stricter or more predictable, harden the team workers on Windows, and
+tighten the keyword detector.
+
+### Fixed
+
+- **Environment timeouts are read as whole numbers, not truncated.** Values
+  such as `1e3`, `1_000` or `12abc` used to be cut at the first unreadable
+  character (`1e3` became 1) and could silently disable a check or start a
+  1 ms poll loop. They are now parsed in full, and an unreadable value falls
+  back to the default. Affects the host-load gate thresholds
+  (`OMC_FREE_MEMORY_THRESHOLD` and the CPU limit; a negative value still
+  disables that one check; upstream #4510), the LSP timeouts (upstream
+  #4543), the team shell-ready, worker-ready, launch-ack and start-submit
+  timeouts (upstream #4545, #4547, #4546, #4558), the team-dispatch
+  cooldown (upstream #4557), `OMC_NOTIFY_TMUX_TAIL_LINES` (upstream #4556),
+  `OMC_PERSISTENT_MODE_TIMEOUT_MS` (upstream commit 2c3669767) and
+  `OMC_PRE_TOOL_ADVISORY_COOLDOWN_MS` (upstream #4600).
+- **Notification reply settings must be positive.** A zero or negative
+  `OMC_REPLY_RATE_LIMIT` no longer drops every reply, and a zero or negative
+  `OMC_REPLY_POLL_INTERVAL_MS` no longer polls Discord or Slack in a tight
+  loop; the whole value must be a plain positive integer (upstream #4497).
+- **`OMC_DEBUG` has one meaning.** `1` or `true` (any case) turns debug on,
+  a comma-separated list enables named scopes, and unset, empty, `0` and
+  `false` are off. The delegation enforcer, the learner and
+  todo-continuation previously disagreed on the accepted values (upstream
+  #4508).
+- **A leading UTF-8 BOM is accepted** in JSONC config files (upstream #4494)
+  and in the hand-edited `prd.json` and OpenClaw config (upstream #4499).
+- **`omg team` on Windows.** The native Windows worker supervisor is repaired
+  (upstream #4479). Startup trust prompts are guarded (upstream #4502), pane
+  input is refused on every kind of trust prompt (upstream #4528), and
+  Claude's trust dialog is still detected when its question wraps over
+  several lines (upstream #4611).
+- **Team recovery and messages.** Workers whose provider exited inside a
+  surviving pane now count as dead, so all-dead recovery is reached
+  (upstream #4618). Rebase-conflict messages and the `rebase_conflict` event
+  list modify/delete and add conflicts, not only both-modified ones
+  (upstream #4608). The pane-ready timeout hint names
+  `OMC_TEAM_READY_TIMEOUT_MS` (upstream #4568).
+- **tmux sessions with spaces in the name** keep their pane IDs in
+  rate-limit-wait (upstream #4544).
+- **Keyword detector.** An explicit leading mode keyword in a reference
+  prompt keeps working (upstream #4551). Executable commands after a
+  `mode:` prefix are no longer treated as informational, and colon-prefixed
+  help questions in Korean, Japanese and Thai no longer activate a mode
+  (upstream #4553). A bare `ralph:` line followed by a help request, and
+  help requests that merely mention a command word, stay informational
+  (upstream #4564).
+- **Think mode** matches multilingual think keywords as whole words only
+  (upstream #4493).
+- **Stop hook Jev resolver.** The shadow-mode resolver is detached from
+  short-lived hook groups (upstream #4575), and the active parent timeout
+  matches the resolver's (upstream #4515).
+- **Ralph fails closed on an invalid PRD.** A `prd.json` that cannot be read
+  or validated now stops verification instead of passing it (upstream
+  commit e47304859, refs upstream #4526).
+- **Teleport and providers parse URLs more tolerantly.** PR and issue URLs
+  with a trailing slash or sub-page (upstream #4542), PR patch and diff URLs
+  (upstream #4604), and remote URLs ending in a slash (upstream #4549).
+- **Version ranking.** A prerelease now ranks below its own release
+  (upstream #4511).
+- **HUD** shows token counts that round up to 1000k in millions (upstream
+  #4601).
+- **Subagent file summary** keeps the first path of `git status` intact, so
+  an unstaged deletion listed first is no longer reported as modified
+  (upstream #4607).
+- **MCP registry TOML output** escapes unpaired surrogates (upstream #4512).
+
+### Removed
+
+- **Unwired team dispatch hook** (`src/hooks/team-dispatch-hook.ts`, its
+  tests and stale `dist` outputs): it had no caller, registration or package
+  export (upstream #4581).
+
+### Changed
+
+- The upstream docs list the Node.js hooks for macOS and Linux (upstream
+  #4619). Upstream test-only and CI-only changes in this range (deterministic
+  SessionStart timing and workflow-stop tests) are ported with no user-facing
+  effect (upstream #4514, #4561).
+
 # oh-my-copilot v5.13.0
 
 ## [5.13.0] - 2026-10-26

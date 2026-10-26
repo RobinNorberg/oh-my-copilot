@@ -24,6 +24,7 @@ import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmen
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 import { type RecoveryDurableOutcome } from './recovery-request-store.js';
 import { type RecoverDeadWorkerOwnerInput } from './runtime-owner-client.js';
+export declare function buildStartupInboxTrigger(cwd: string, teamName: string, workerName: string, attemptId: string, platform?: NodeJS.Platform): string;
 import type { RecoverDeadWorkerV2Result } from './types.js';
 import { type SdkSessionFile } from './sdk-transport.js';
 import { type HostCliType } from '../utils/host-signal.js';

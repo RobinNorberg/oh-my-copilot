@@ -1,53 +1,49 @@
-# oh-my-copilot v5.13.0
+# oh-my-copilot v5.13.1
 
-A minor release from v5.12.2: OMC's keep-going modes now work on GitHub
-Copilot CLI, with chained Stop continuations, a native ultragoal goal record,
-per-agent models and a hook adapter brought up to Copilot CLI 1.0.103. No
-breaking changes, but on Copilot a prompt can now cost up to 3 extra premium
-requests from OMC continuations (`OMC_COPILOT_STOP_CHAIN_MAX=1` restores the
-old behaviour).
+A patch release from v5.13.0 that ports upstream oh-my-claudecode `dev`
+faedfd200..ed9eb4fa8 (upstream v5.7.7 to v5.7.17). The fork is now at upstream
+dev ed9eb4fa8. Bug fixes only: no new features and no breaking changes.
 
-Install with `npm install -g oh-my-copilot@5.13.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.13.1`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
-
-## Added
-
-- Chained Stop continuation on Copilot (#279): up to 3 OMC continuations per
-  user prompt, each billed as one premium request; `OMC_COPILOT_STOP_CHAIN_MAX`
-  (1 to 7) overrides the cap.
-- OMG goal record for ultragoal on Copilot (#279): `omg ultragoal goal-start`
-  and `goal-evidence` stand in for Claude Code's `/goal`.
-- Per-agent models on Copilot (#281): `omg setup` syncs `agents.<name>.model`
-  overrides into Copilot's `settings.json` using the Copilot 5.5 tier table
-  (settings key not yet verified live; check with `/subagents`).
-- `omg hooks doctor` (#280): checks the Copilot hook wiring and dry-runs every
-  hook entry.
-- Opt-in live smoke scenarios (#280): `omg smoke copilot --tier 2 --scenario
-  continuation,prompt-context,events`.
-
-## Changed
-
-- `context-guard-stop` never blocks on Copilot; it advises once per session
-  instead (#283).
-- Copilot hook payloads gain Claude field names, `systemMessage` reaches the
-  model, and PermissionRequest decisions use Copilot's shape with deny-wins
-  merging (#283).
-- On Copilot, SessionEnd cleanup and the factory-chain link wait for the real
-  session end (#279).
-- `omg release` runs the vitest suite in a new `suite` phase after `commit`,
-  records the suite level and baseline, and refuses a skipped live smoke at
-  `pr` unless `--allow-skipped-smoke` is given (#282).
 
 ## Fixed
 
-- The lowercase `skill` tool on Copilot is recognized, so cancel, ultragoal
-  bootstrap and skill-state hooks fire (#279).
-- A repo nested under a git-less session root is no longer rejected, and
-  state-root lookups are memoized, which removes minutes-long scans on
-  Windows (#282).
-- Copilot subagents: parent-session lookup for the ultragoal guard, oldest-first
-  close of parallel same-type agents, and pruning of stale handoff files
-  (#279, #283).
+- Environment timeouts are read as whole numbers instead of being truncated
+  (`1e3` used to become 1): host-load gate thresholds, LSP, team
+  shell-ready, worker-ready, launch-ack and start-submit timeouts, team-dispatch
+  cooldown, notify tmux tail lines, persistent-mode and pre-tool advisory
+  timeouts (upstream #4510, #4543, #4545 to #4547, #4556 to #4558, #4600).
+- Zero or negative `OMC_REPLY_RATE_LIMIT` and `OMC_REPLY_POLL_INTERVAL_MS` are
+  rejected, so replies are no longer dropped or polled in a tight loop
+  (upstream #4497).
+- `OMC_DEBUG` accepts `1` or `true`, or a comma-separated scope list, the same
+  way everywhere (upstream #4508).
+- A leading UTF-8 BOM is accepted in JSONC config, `prd.json` and the OpenClaw
+  config (upstream #4494, #4499).
+- `omg team` on Windows: repaired worker supervisor and guarded startup trust
+  prompts, including wrapped Claude trust dialogs (upstream #4479, #4502,
+  #4528, #4611).
+- Team recovery: exited providers inside live panes count as dead, and
+  rebase-conflict messages list modify/delete and add conflicts (upstream
+  #4618, #4608).
+- Keyword detector keeps explicit leading modes and treats multilingual help
+  requests as informational; think mode matches whole words (upstream #4551,
+  #4553, #4564, #4493).
+- Stop hook Jev resolver is detached and its timeout aligned (upstream #4575,
+  #4515).
+- Ralph fails closed on an invalid PRD (upstream #4526).
+- Teleport and provider URL parsing accept trailing slashes, sub-pages and
+  patch/diff URLs (upstream #4542, #4549, #4604).
+- Smaller fixes: prerelease versions rank below their release (#4511), HUD
+  token display near 1000k (#4601), tmux session names with spaces in
+  rate-limit-wait (#4544), first `git status` path in the subagent summary
+  (#4607), and unpaired surrogates in MCP registry TOML output (#4512).
+
+## Removed
+
+- The unwired team dispatch hook, which had no caller or registration
+  (upstream #4581).
 
 Upgrade notes are in `docs/MIGRATION.md`. Fork deviations (kept and dropped)
 are listed in `CHANGELOG.md`.

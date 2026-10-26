@@ -11113,13 +11113,23 @@ var init_paths = __esm({
   }
 });
 
+// scripts/lib/utf8-bom.mjs
+function stripLeadingUtf8Bom(content) {
+  return content.startsWith("\uFEFF") ? content.slice(1) : content;
+}
+var init_utf8_bom = __esm({
+  "scripts/lib/utf8-bom.mjs"() {
+    "use strict";
+  }
+});
+
 // src/utils/jsonc.ts
 function parseJsonc(content) {
   const cleaned = stripJsoncComments(content);
   return JSON.parse(cleaned);
 }
 function stripJsoncComments(content) {
-  return stripTrailingCommas(stripComments(content));
+  return stripTrailingCommas(stripComments(stripLeadingUtf8Bom(content)));
 }
 function stripComments(content) {
   let result = "";
@@ -11212,6 +11222,7 @@ function stripTrailingCommas(content) {
 var init_jsonc = __esm({
   "src/utils/jsonc.ts"() {
     "use strict";
+    init_utf8_bom();
   }
 });
 
@@ -11242,6 +11253,13 @@ var init_config_dir = __esm({
     "use strict";
     import_path = require("path");
     import_os = require("os");
+  }
+});
+
+// src/utils/semver-compare.ts
+var init_semver_compare = __esm({
+  "src/utils/semver-compare.ts"() {
+    "use strict";
   }
 });
 
@@ -11284,6 +11302,7 @@ var init_paths2 = __esm({
     import_fs3 = require("fs");
     import_os2 = require("os");
     init_config_dir();
+    init_semver_compare();
     init_cache_occupancy();
     init_plugin_cache_validation();
     OCCUPIED_CODES = new Set(
@@ -13042,19 +13061,40 @@ var init_servers = __esm({
 });
 
 // src/tools/lsp/client.ts
+function parseExactInteger(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const negative = trimmed.startsWith("-");
+  const magnitude = negative || trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+  const match = DECIMAL_INTEGER_TEXT.exec(magnitude);
+  if (!match) return null;
+  const integerDigits = match[1] ?? "";
+  const fractionDigits = match[2] ?? match[3] ?? "";
+  const exponent = match[4] === void 0 ? 0 : Number(match[4]);
+  const shift = fractionDigits.length - exponent;
+  if (shift > 0) {
+    const significand = integerDigits + fractionDigits;
+    if (/[1-9]/.test(significand)) {
+      const trailingZeros = significand.length - significand.replace(/0+$/, "").length;
+      if (trailingZeros < shift) return null;
+    }
+  }
+  const parsed = (negative ? -1 : 1) * Number(magnitude);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+function readPositiveIntEnv(name, fallback) {
+  const env = process.env[name];
+  if (!env || !env.trim()) {
+    return fallback;
+  }
+  const parsed = parseExactInteger(env);
+  return parsed !== null && parsed > 0 && parsed <= MAX_NODE_TIMER_DELAY_MS ? parsed : fallback;
+}
 function getLspRequestTimeout(serverConfig, method, baseTimeout = DEFAULT_LSP_REQUEST_TIMEOUT_MS) {
   if (method === "initialize" && serverConfig.initializeTimeoutMs) {
     return Math.max(baseTimeout, serverConfig.initializeTimeoutMs);
   }
   return baseTimeout;
-}
-function readPositiveIntEnv(name, fallback) {
-  const env = process.env[name];
-  if (!env) {
-    return fallback;
-  }
-  const parsed = parseInt(env, 10);
-  return !isNaN(parsed) && parsed > 0 ? parsed : fallback;
 }
 function fileUri(filePath) {
   return (0, import_url3.pathToFileURL)((0, import_path12.resolve)(filePath)).href;
@@ -13086,7 +13126,7 @@ function createCancellationSignal() {
 async function disconnectAll() {
   return lspClientManager.disconnectAll();
 }
-var import_child_process6, import_fs12, import_path12, import_url3, DEFAULT_LSP_REQUEST_TIMEOUT_MS, LspClient, IDLE_TIMEOUT_MS, IDLE_CHECK_INTERVAL_MS, LspClientManager, LSP_CLIENT_MANAGER_KEY, globalWithLspClientManager, lspClientManager;
+var import_child_process6, import_fs12, import_path12, import_url3, DECIMAL_INTEGER_TEXT, MAX_NODE_TIMER_DELAY_MS, DEFAULT_LSP_REQUEST_TIMEOUT_MS, LspClient, IDLE_TIMEOUT_MS, IDLE_CHECK_INTERVAL_MS, LspClientManager, LSP_CLIENT_MANAGER_KEY, globalWithLspClientManager, lspClientManager;
 var init_client = __esm({
   "src/tools/lsp/client.ts"() {
     "use strict";
@@ -13096,6 +13136,8 @@ var init_client = __esm({
     import_url3 = require("url");
     init_devcontainer();
     init_servers();
+    DECIMAL_INTEGER_TEXT = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+    MAX_NODE_TIMER_DELAY_MS = 2147483647;
     DEFAULT_LSP_REQUEST_TIMEOUT_MS = (() => {
       return readPositiveIntEnv("OMC_LSP_TIMEOUT_MS", 15e3);
     })();
@@ -20526,6 +20568,7 @@ var init_prd = __esm({
     import_crypto5 = require("crypto");
     import_fs22 = require("fs");
     import_path23 = require("path");
+    init_utf8_bom();
     init_worktree_paths();
     init_mode_state_io();
     init_atomic_write();
@@ -26512,16 +26555,6 @@ var init_types7 = __esm({
   }
 });
 
-// scripts/lib/utf8-bom.mjs
-function stripLeadingUtf8Bom(content) {
-  return content.startsWith("\uFEFF") ? content.slice(1) : content;
-}
-var init_utf8_bom = __esm({
-  "scripts/lib/utf8-bom.mjs"() {
-    "use strict";
-  }
-});
-
 // src/utils/frontmatter.ts
 function unquoteYamlScalar(value) {
   if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
@@ -27784,6 +27817,25 @@ var init_team_name = __esm({
   }
 });
 
+// src/utils/debug-flag.ts
+function isDebugEnabled(scope) {
+  const raw = process.env.OMC_DEBUG;
+  if (raw === void 0) return false;
+  const value = raw.trim().toLowerCase();
+  if (DISABLED_VALUES.has(value)) return false;
+  if (value === "1" || value === "true") return true;
+  if (!scope) return false;
+  const wanted = scope.trim().toLowerCase();
+  return value.split(",").some((entry) => entry.trim() === wanted);
+}
+var DISABLED_VALUES;
+var init_debug_flag = __esm({
+  "src/utils/debug-flag.ts"() {
+    "use strict";
+    DISABLED_VALUES = /* @__PURE__ */ new Set(["", "0", "false"]);
+  }
+});
+
 // src/agents/utils.ts
 function getPackageDir() {
   if (typeof __dirname !== "undefined" && __dirname) {
@@ -28834,6 +28886,7 @@ var init_delegation_enforcer = __esm({
   "src/features/delegation-enforcer.ts"() {
     "use strict";
     import_fs43 = require("fs");
+    init_debug_flag();
     import_path52 = require("path");
     init_definitions();
     init_types4();
@@ -37921,13 +37974,14 @@ var init_constants3 = __esm({
     import_os12 = require("os");
     init_config_dir();
     init_worktree_paths();
+    init_debug_flag();
     USER_SKILLS_DIR = (0, import_path81.join)(getCopilotConfigDir(), "skills", "omc-learned");
     GLOBAL_SKILLS_DIR = (0, import_path81.join)((0, import_os12.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
     PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path81.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
-    DEBUG_ENABLED = process.env.OMC_DEBUG === "1";
+    DEBUG_ENABLED = isDebugEnabled("learner");
   }
 });
 

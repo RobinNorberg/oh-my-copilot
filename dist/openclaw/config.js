@@ -6,6 +6,7 @@
  * Config file path can be overridden via OMC_OPENCLAW_CONFIG env var.
  */
 import { readFileSync, existsSync } from "fs";
+import { stripLeadingUtf8Bom } from "../../scripts/lib/utf8-bom.mjs";
 import { join } from "path";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
 const CONFIG_FILE = process.env.OMC_OPENCLAW_CONFIG
@@ -35,7 +36,9 @@ export function getOpenClawConfig() {
         return null;
     }
     try {
-        const raw = JSON.parse(readFileSync(CONFIG_FILE, "utf-8"));
+        // An editor that saves "UTF-8 with BOM" keeps U+FEFF as the first character,
+        // which JSON.parse rejects.
+        const raw = JSON.parse(stripLeadingUtf8Bom(readFileSync(CONFIG_FILE, "utf-8")));
         if (!raw.enabled || !raw.gateways || !raw.hooks) {
             _cachedConfig = undefined;
             return null;

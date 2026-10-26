@@ -63,7 +63,7 @@ import { absPath, TeamPaths } from '../state-paths.js';
 import { IS_WIN, posixOnly, toPosix } from '../../__tests__/helpers/platform.js';
 import { createTeamInstanceBinding, reserveTeamInstance } from '../team-instance.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { getWorkerStartupEvidencePolicy, settleStartupEvidence, promptModeRecoveryRequiresProgressEvidence, waitForStartupEvidenceBudget, } from '../runtime-v2.js';
+import { buildStartupInboxTrigger, getWorkerStartupEvidencePolicy, settleStartupEvidence, promptModeRecoveryRequiresProgressEvidence, waitForStartupEvidenceBudget, } from '../runtime-v2.js';
 const ORIGINAL_INSTANCE_ID = '66666666-6666-4666-8666-666666666666';
 function teamStatePath(cwd, teamName, suffix) {
     return join(absPath(cwd, TeamPaths.root(teamName)), suffix);
@@ -1082,6 +1082,28 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(config.workers[0].launch_descriptor).toMatchObject({ provider: 'claude', binary: '/usr/bin/claude', args: [] });
         expect(manifest.workers[0].launch_descriptor).toEqual(config.workers[0].launch_descriptor);
         expect(config.service_descriptor).toMatchObject({ schema_version: 1, auto_merge_enabled: false, cadence_policy: 'disabled' });
+    });
+    it('shortens only overflowing Windows startup notifications and retains their launch marker', () => {
+        const attemptId = 'attempt-1234567890123456';
+        const originalStateDir = process.env.OMC_STATE_DIR;
+        try {
+            process.env.OMC_STATE_DIR = join(tmpdir(), 'w'.repeat(215));
+            const longWindowsMessage = buildStartupInboxTrigger(process.cwd(), 'dispatch-team', 'worker-1', attemptId, 'win32');
+            expect(longWindowsMessage).toContain('OMC_TEAM_STATE_ROOT environment variable');
+            expect(longWindowsMessage).toContain('workers/worker-1/inbox.md');
+            expect(longWindowsMessage).toContain(`[launch:${attemptId.slice(0, 12)}]`);
+            expect(longWindowsMessage.length).toBeLessThanOrEqual(200);
+            process.env.OMC_STATE_DIR = tmpdir();
+            const shortWindowsMessage = buildStartupInboxTrigger(process.cwd(), 'dispatch-team', 'worker-1', attemptId, 'win32');
+            expect(shortWindowsMessage).not.toContain('OMC_TEAM_STATE_ROOT environment variable');
+            expect(shortWindowsMessage.length).toBeLessThanOrEqual(200);
+        }
+        finally {
+            if (originalStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = originalStateDir;
+        }
     });
     it.each([
         ['cursor executor', 'cursor', undefined],
