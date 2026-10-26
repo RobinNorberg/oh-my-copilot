@@ -21686,7 +21686,34 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
     ...includeLegacy ? [stateRoot] : [],
     ...[...sessionIds ?? listSessionIds(root)].map((sid) => (0, import_path33.join)(stateRoot, "sessions", sid))
   ]);
-  return [...dirs].flatMap((dir) => names.map((name) => (0, import_path33.join)(dir, name)));
+  const paths = [...dirs].flatMap((dir) => names.map((name) => (0, import_path33.join)(dir, name)));
+  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root, sessionIds)] : paths;
+}
+function getUltragoalStatePlanId(root, sessionId) {
+  const legacy = getStatePath("ultragoal", root);
+  for (const path15 of [getSessionStatePath("ultragoal", root, sessionId), legacy]) {
+    try {
+      const state = JSON.parse((0, import_fs30.readFileSync)(path15, "utf-8"));
+      if (path15 === legacy && state.session_id !== sessionId) continue;
+      const planId = state.plan_id ?? state.planId;
+      if (typeof planId === "string" && ULTRAGOAL_PLAN_ID_PATTERN.test(planId)) return planId;
+    } catch {
+    }
+  }
+  return void 0;
+}
+function getOmgGoalRecordPaths(root, sessionIds) {
+  const base = (0, import_path33.join)(getOmcRoot(root), "ultragoal");
+  let plans = [];
+  if (sessionIds) {
+    plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root, sid)).filter((id) => Boolean(id)))].map((id) => (0, import_path33.join)(base, "plans", id));
+  } else {
+    try {
+      plans = (0, import_fs30.readdirSync)((0, import_path33.join)(base, "plans"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => (0, import_path33.join)(base, "plans", entry.name));
+    } catch {
+    }
+  }
+  return [base, ...plans].map((dir) => (0, import_path33.join)(dir, "omg-goal.json"));
 }
 function captureTeamRuntimeArtifacts(root) {
   const captured = /* @__PURE__ */ new Map();
@@ -21898,7 +21925,7 @@ function recoverAutopilotEmergencyTransactions(root, sessionId) {
     if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path15}`);
   }
 }
-var import_crypto10, import_fs30, import_os4, import_path33, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
+var import_crypto10, import_fs30, import_os4, import_path33, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, ULTRAGOAL_PLAN_ID_PATTERN, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
 var init_state_tools = __esm({
   "src/tools/state-tools.ts"() {
     "use strict";
@@ -21947,6 +21974,7 @@ var init_state_tools = __esm({
     CONVERGED_STATE_PATH_MODES = /* @__PURE__ */ new Set(["ralph", "ultrawork"]);
     RETIRED_WORKFLOW_MODES = /* @__PURE__ */ new Set(["ultrawork"]);
     NAMED_WORKFLOW_MARKERS = ["workflow", "workflowRunId", "pipelineTracking"];
+    ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
     stateReadTool = {
       name: "state_read",
       description: "Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.",
@@ -22389,6 +22417,8 @@ ${JSON.stringify(writtenState, null, 2)}
             const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
             const namedPrimaries = mode === "autopilot" ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
             const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+            const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root, [sessionId]);
+            const completedRecordPaths = mode === "ultragoal" ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root, [candidate.completedSessionId]) }] : []) : [];
             let directCleared = 0;
             for (const candidate of namedPrimaries) {
               const success = clearAutopilotMarkerCandidate(candidate, root);
@@ -22402,7 +22432,13 @@ ${JSON.stringify(writtenState, null, 2)}
               completedCandidates.filter((candidate) => !namedPrimaryPaths.has(candidate.path)),
               teamCleanup
             );
-            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearModeRuntimeArtifacts(mode, root, sessionId);
+            const runtimeCleanup2 = mode === "team" ? { cleared: 0, hadFailure: false } : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+            for (const { statePath, recordPaths } of completedRecordPaths) {
+              if ((0, import_fs30.existsSync)(statePath)) continue;
+              const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+              runtimeCleanup2.cleared += recordCleanup.cleared;
+              runtimeCleanup2.hadFailure ||= recordCleanup.hadFailure;
+            }
             const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
             const signaledCandidateDirs = /* @__PURE__ */ new Set();
             for (const candidate of sessionSignalCandidates) {
@@ -22473,7 +22509,7 @@ ${JSON.stringify(writtenState, null, 2)}
                     writeSessionCancelSignal(root, ownerSessionId, mode, ownerDirectCandidate);
                     clearModeState(mode, root, ownerSessionId, ownerDirectCandidate?.state);
                   }
-                  const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+                  const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
                   runtimeCleanup2.cleared += ownerRuntimeCleanup.cleared;
                   runtimeCleanup2.hadFailure ||= ownerRuntimeCleanup.hadFailure;
                   ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));

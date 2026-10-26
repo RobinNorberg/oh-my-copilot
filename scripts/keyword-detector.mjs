@@ -32,6 +32,8 @@ import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/stat
 import { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } from './lib/workflow-profile-runtime.mjs';
 import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
 import { initializeRalphStateForSkill, createPrdScaffold } from './lib/ralph-startup.mjs';
+import { isCopilotHookHost } from './lib/hook-host.mjs';
+import { isCopilotSubagentKickoffPrompt, isOmcContinuationPrompt } from './lib/copilot-continuation.mjs';
 
 // Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
 const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
@@ -437,7 +439,7 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // recognized block header. They must be stripped only in that context —
 // never standalone — because a user might legitimately start a prompt with
 // "Task: …" or similar (Codex automated review P1/P2 on #2795).
-const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-copilot:cancel).*)*';
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|(?:Claude \\/goal objective|Goal objective|Missing evidence|No OMG goal record yet):\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-copilot:cancel).*)*';
 
 // NOTE: each pattern is a SINGLE LOGICAL BLOCK: the block header line +
 // zero-or-more continuation lines that hooks emit right after it. The whole
@@ -452,7 +454,9 @@ const SYSTEM_ECHO_BLOCK_PATTERNS = [
   // persistent-mode.mjs block headers
   buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*ITERATION[^\\]\\n]*\\]'),
   buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*(?:HARD LIMIT|EXTENDED)\\]'),
+  buildEchoBlockRegex('\\[ULTRAGOAL\\s*#[^\\]\\n]*\\]'),
   buildEchoBlockRegex('\\[TEAM\\s*-\\s*Phase:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[OMC TEAMS\\s*-\\s*Phase:[^\\]\\n]*\\]'),
   buildEchoBlockRegex('\\[AUTOPILOT[^\\]\\n]*\\]'),
   buildEchoBlockRegex('\\[ULTRAPILOT[^\\]\\n]*\\]'),
   buildEchoBlockRegex('\\[ULTRAWORK[^\\]\\n]*\\]'),
@@ -753,6 +757,22 @@ function isRalphUltraworkMetaOrBanterContext(context, keywordText) {
   return metaOrBanterPatterns.some((pattern) => pattern.test(context));
 }
 
+// A keyword inside an interrogative sentence ("what goals could we work on to
+// improve the hooks, goal and autopilot ...?") talks about the mode; it is not
+// a request to run it. Only consulted after no direct invocation, activation
+// verb or conversational request ("can you ...") was found for this keyword.
+// Ellipses are not sentence ends; a period ends a sentence only before space.
+const INTERROGATIVE_OPENER = /^(?:what|which|how|why|when|where|who|whose|should|could|would|can|do|does|did|is|are|was|were|will|have|has)\b/i;
+
+function isKeywordInInterrogativeQuestion(text, position, keywordLength) {
+  const flat = text.replace(/\.{2,}|…/g, (dots) => ' '.repeat(dots.length));
+  let start = 0;
+  for (const match of flat.slice(0, position).matchAll(/[!?？\n]|\.(?=\s)/g)) start = match.index + 1;
+  const end = flat.slice(position + keywordLength).match(/[!?？\n]|\.(?=\s|$)/);
+  if (!end || (end[0] !== '?' && end[0] !== '？')) return false;
+  return INTERROGATIVE_OPENER.test(flat.slice(start).trimStart());
+}
+
 function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
   const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
   const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
@@ -834,6 +854,9 @@ function isInformationalKeywordContext(text, position, keywordLength, keywordTex
       return true;
     }
     if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
+      return true;
+    }
+    if (isKeywordInInterrogativeQuestion(text, position, keywordLength)) {
       return true;
     }
   }
@@ -1771,6 +1794,16 @@ async function main() {
 
     const prompt = extractPrompt(input);
     if (!prompt) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    // Copilot CLI delivers a Stop-hook continuation (decision:block reason) as
+    // the next user prompt, so OMC's own continuation text reaches this hook.
+    // It must never re-arm a mode (persistent-mode.mjs counts the stop chain
+    // itself). A subagent's synthetic kickoff prompt is the parent's
+    // delegation text.
+    if (isCopilotHookHost() && (isOmcContinuationPrompt(prompt) || isCopilotSubagentKickoffPrompt(prompt))) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }

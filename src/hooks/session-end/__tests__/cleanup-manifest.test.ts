@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   claimSessionEndAction,
   claimSessionEndJob,
+  deferSessionEndChain,
   finishSessionEndAction,
   isManifestTerminal,
   markSessionEndActionRunner,
@@ -12,6 +13,7 @@ import {
   prepareCoreManifest,
   readSessionEndJob,
   reapStaleSessionEndOwner,
+  rearmUnclaimedSessionEndJob,
   releaseSessionEndJob,
   renewSessionEndLease,
   sealCoreManifest,
@@ -305,6 +307,21 @@ describe('durable SessionEnd cleanup manifest', () => {
     expect(fsControl.afterJobRead).toBeUndefined();
     expect(updated?.actions['team-cleanup'].payload.owned).toBe(true);
     expect(updated?.actions.callback.payload.proof).toBe('during-update');
+  });
+
+  it('defers the chain through a concurrent re-arm of the held job', () => {
+    const directory = project();
+    const sessionId = 'defer-rearm';
+    expect(prepareCoreManifest(directory, sessionId, { transcriptPath: '/tmp/transcript', host: 'copilot' })).not.toBeNull();
+    const before = readSessionEndJob(directory, sessionId)!.revision;
+    fsControl.jobPath = sessionEndJobPath(directory, sessionId);
+    // The previous turn's worker re-arms (every 5 s) between this SessionEnd's revision read and its CAS.
+    fsControl.afterJobRead = () => { expect(rearmUnclaimedSessionEndJob(directory, sessionId)).not.toBeNull(); };
+
+    const deferred = deferSessionEndChain(directory, sessionId, { reason: 'complete' });
+    expect(fsControl.afterJobRead).toBeUndefined();
+    expect(deferred?.revision).toBe(before + 2);
+    expect(deferred?.actions['spawn-next'].payload.deferredChain).toEqual({ reason: 'complete' });
   });
 
   it('undoes a reserved action claim on release so a later worker can run it', () => {

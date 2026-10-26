@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "b3010530-780f-4318-a4a2-c8562ec0e97e",
+  "timestamp": "2026-10-23T02:21:30.104Z",
+  "cwd": "<CWD>",
+  "tool_name": "skill",
+  "tool_input": {
+    "skill": "cancel"
+  }
+}

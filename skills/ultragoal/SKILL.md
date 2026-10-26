@@ -91,6 +91,27 @@ the commands below and in generated handoffs with `oh-my-copilot.js`, or use
    omc ultragoal status
    ```
 
+### On GitHub Copilot CLI
+
+Copilot CLI has no Claude `/goal`, so do not try to invoke one. Use the OMG goal
+record instead; the ultragoal tool guard accepts it, and the Stop hook keeps the
+session going until every acceptance criterion has evidence (or the user cancels):
+
+1. After `create-goals` and `complete-goals`, record the objective and its acceptance criteria:
+   ```
+   omc ultragoal goal-start --criterion "migration runs on a copy of prod" \
+     --criterion "npm test passes"
+   ```
+   The objective defaults to the one the guard expects (the aggregate objective, or
+   the active story in per-story mode). Until the record exists, every tool except
+   the `omc ultragoal` and cancel commands is denied.
+2. As each criterion is met, record its evidence:
+   ```
+   omc ultragoal goal-evidence --criterion C1 --evidence "ran against prod-copy, 0 errors"
+   ```
+3. Checkpoint as above but omit `--claude-goal-json`: on Copilot the record is the
+   goal snapshot (`active` until every criterion has evidence, then `complete`).
+
 </How_To_Use>
 
 <Important_Limitations>

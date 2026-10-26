@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "ece89723-4efa-45e2-8786-92dbe14ac85a",
+  "timestamp": "2026-10-23T02:18:58.672Z",
+  "cwd": "<CWD>",
+  "prompt": "Agent undefined started (undefined)\n\nList the file names in the current directory and reply in one line."
+}
