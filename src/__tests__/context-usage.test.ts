@@ -517,4 +517,12 @@ describe('resolveCopilotTranscriptContext (Copilot CLI events.jsonl)', () => {
     const context = { percent: 42, currentTokens: 1, model: 'claude-sonnet-5.5', compacted: false };
     expect(await resolveContextPercent({}, transcript, tempDir, context)).toBe(42);
   });
+
+  it('does not run the Claude usage parser on a Copilot transcript', async () => {
+    // A Claude-shaped usage frame in events.jsonl would win if the Claude parser ran first.
+    const transcript = writeEvents([shutdown, { usage: { context_window: 1000, input_tokens: 900 }, context_window: 1000, input_tokens: 900 }]);
+    expect(await resolveContextPercent({}, transcript, tempDir)).toBe(50);
+    const context = { percent: 42, currentTokens: 1, model: 'claude-sonnet-5.5', compacted: false };
+    expect(await resolveContextPercent({}, transcript, tempDir, context)).toBe(42);
+  });
 });

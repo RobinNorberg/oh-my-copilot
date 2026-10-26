@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { delimiter, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -307,5 +307,13 @@ describe('context-guard-stop on Copilot CLI transcripts', () => {
       { type: 'session.model_change', data: { newModel: 'some-future-model' } }, compactionStart,
     ]));
     expect(out).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('skips a child-session Stop: no advice and no guard counter file', () => {
+    const transcript = writeCopilotEvents(tempDir, sessionId, [model, compactionStart]);
+    const childId = 'child-session-1';
+    const out = run(transcript, { session_id: childId });
+    expect(out).toEqual({ continue: true, suppressOutput: true });
+    expect(existsSync(join(tempDir, 'projects', '.omc-guards', `context-guard-${childId}.json`))).toBe(false);
   });
 });
