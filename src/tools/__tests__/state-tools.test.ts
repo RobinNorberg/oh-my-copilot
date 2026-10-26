@@ -2063,6 +2063,22 @@ describe('state-tools', () => {
       expect(existsSync(join(ultragoalDir, 'plans', 'plan-b', 'omg-goal.json'))).toBe(false);
     });
 
+    it('retires a completed session\'s plan record with the completed state it clears', async () => {
+      const ultragoalDir = join(TEST_DIR, '.omg', 'ultragoal');
+      const completedSession = 'ultragoal-session-completed';
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', completedSession);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(join(sessionDir, 'ultragoal-state.json'), JSON.stringify({ active: true, session_id: completedSession, current_phase: 'executing', plan_id: 'plan-done' }));
+      markSessionCompleted(join(TEST_DIR, '.omg'), completedSession);
+      mkdirSync(join(ultragoalDir, 'plans', 'plan-done'), { recursive: true });
+      writeFileSync(join(ultragoalDir, 'plans', 'plan-done', 'omg-goal.json'), JSON.stringify({ version: 1, objective: 'done', criteria: [] }));
+
+      await stateClearTool.handler({ mode: 'ultragoal', session_id: 'ultragoal-session-requester', workingDirectory: TEST_DIR });
+
+      expect(existsSync(join(sessionDir, 'ultragoal-state.json'))).toBe(false);
+      expect(existsSync(join(ultragoalDir, 'plans', 'plan-done', 'omg-goal.json'))).toBe(false);
+    });
+
     it('should also remove non-session legacy state files during session clear', async () => {
       const sessionId = 'legacy-cleanup-session';
       const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
