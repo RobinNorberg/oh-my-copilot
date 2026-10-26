@@ -330,13 +330,17 @@ export function takeSessionEndDiscoveryPage(directory: string, limit = 4): strin
  * claimed yet. A Copilot job is created at the first turn's SessionEnd and
  * held while the session goes on (worker.ts); without this its deadlines
  * would lapse mid-session and the real end would expire every action.
+ * `restartGrace: false` (the real end) keeps the grace the holds already ran
+ * and only moves the action deadline past it, so the actions run now instead
+ * of waiting a fresh grace.
  */
-export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string): SessionEndJobV1 | null {
+export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string, { restartGrace = true }: { restartGrace?: boolean } = {}): SessionEndJobV1 | null {
   const current = readSessionEndJob(directory, sessionId);
   if (!current || current.phase !== 'collecting' || current.owner) return null;
   return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
     if (job.phase !== 'collecting' || job.owner) throw new Error('rearm-conflict');
-    Object.assign(job, initialDeadlines());
+    if (restartGrace) Object.assign(job, initialDeadlines());
+    else job.bestEffortDeadlineAt = new Date(Math.max(Date.now(), Date.parse(job.producerGraceExpiresAt)) + REQUIRED_ACTION_EXECUTION_MS + BEST_EFFORT_ACTION_EXECUTION_MS).toISOString();
   });
 }
 

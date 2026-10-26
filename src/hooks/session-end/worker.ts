@@ -126,15 +126,18 @@ const COPILOT_LIVE_MAX_RECHECKS = 6;
 export async function processSessionEndWorker(payload: SessionEndWorkerPayload, liveRechecks = 0): Promise<void> {
   // Copilot fires SessionEnd after every turn; run nothing while the session goes on.
   const pending = readSessionEndJob(payload.directory, payload.sessionId);
-  // A held job's clock starts at this SessionEnd, not the first turn's, so a
-  // long session still gets its full grace and action deadlines at the real end.
-  if (pending?.phase === 'collecting' && isCopilotSessionEndJob(pending)) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
-  if (pending && pending.phase !== 'complete' && isCopilotSessionEndJob(pending) && isCopilotSessionLive(payload.sessionId)) {
+  const copilotJob = Boolean(pending && isCopilotSessionEndJob(pending));
+  if (pending && pending.phase !== 'complete' && copilotJob && isCopilotSessionLive(payload.sessionId)) {
+    // A held job's clock restarts at each mid-session SessionEnd, so a long
+    // session still has its grace and action deadlines when it really ends.
+    if (pending.phase === 'collecting') rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
     if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
       setTimeout(() => { void processSessionEndWorker(payload, liveRechecks + 1); }, COPILOT_LIVE_RECHECK_MS);
     }
     return;
   }
+  // The real end: the holds already ran the grace; refresh only the action deadline.
+  if (pending?.phase === 'collecting' && copilotJob) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId, { restartGrace: false });
   const deadlineAt = Date.now() + MAX_WORKER_MS; const nonce = randomUUID(); const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 2_500));
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
