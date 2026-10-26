@@ -788,7 +788,7 @@ describe("subagent-tracker", () => {
         agentName: "explore",
       } as never);
       const context = start.hookSpecificOutput?.additionalContext ?? "";
-      expect(context).toMatch(/^Agent explore started \(copilot-explore-[a-z0-9]+\)$/);
+      expect(context).toMatch(/^Agent explore started \(copilot-explore-[a-z0-9]+-[a-z0-9]+\)$/);
       expect(context).not.toContain("undefined");
 
       // SubagentStop: snake_case, agent_id is the child session id.
@@ -813,6 +813,29 @@ describe("subagent-tracker", () => {
         output_summary: "No files in the current directory.",
       });
       expect(state.agents[0].synthetic).toBeUndefined();
+    });
+
+    it("closes two parallel same-type agents oldest first, with distinct ids", () => {
+      const startInput = { sessionId, cwd: testDir, transcriptPath: join(testDir, "events.jsonl"), agentName: "explore" };
+      processSubagentStart(startInput as never);
+      processSubagentStart(startInput as never);
+      flushPendingWrites();
+      const [first, second] = readTrackingState(testDir, sessionId).agents.map((agent) => agent.agent_id);
+      expect(first).not.toBe(second);
+
+      for (const [childId, message] of [["child-a", "first done"], ["child-b", "second done"]]) {
+        processSubagentStop({
+          session_id: sessionId, cwd: testDir, agent_id: childId, agent_type: "explore",
+          last_assistant_message: message, stop_reason: "end_turn",
+        } as never);
+      }
+      flushPendingWrites();
+
+      const agents = readTrackingState(testDir, sessionId).agents;
+      expect(agents).toHaveLength(2);
+      expect(agents.find((agent) => agent.agent_id === first)).toMatchObject({ status: "completed", output_summary: "first done" });
+      expect(agents.find((agent) => agent.agent_id === second)).toMatchObject({ status: "completed", output_summary: "second done" });
+      expect(agents.some((agent) => agent.telemetry_status === "unmatched_stop")).toBe(false);
     });
 
     it("accepts the camelCase stop fields (agentId, agentType, response)", () => {

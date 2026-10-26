@@ -672,7 +672,8 @@ function firstString(...values: unknown[]): string | undefined {
  * with no agent id; SubagentStop has `agent_id` (the child session id),
  * `agent_type`, `agent_name` and `last_assistant_message` (camelCase
  * `agentId`, `agentType`, `agentName`, `response`). A start without an id
- * gets a `copilot-<type>-<time>` id; its stop then reconciles by agent_type.
+ * gets a `copilot-<type>-<time>-<random>` id; its stop then reconciles by
+ * agent_type (the oldest running one of that type when several run).
  */
 export function normalizeSubagentInput<T extends SubagentStartInput | SubagentStopInput>(
   input: T,
@@ -688,7 +689,7 @@ export function normalizeSubagentInput<T extends SubagentStartInput | SubagentSt
     agent_type: agentType,
   };
   if (event === "start" && !normalized.agent_id) {
-    normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}`;
+    normalized.agent_id = `copilot-${agentType || "agent"}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
   if (event === "stop" && normalized.output === undefined) {
     const output = firstString(raw.last_assistant_message, raw.response);
@@ -813,7 +814,10 @@ export function processSubagentStart(rawInput: SubagentStartInput): HookOutput {
  * running entry here belongs to the current session. Reconciliation is only
  * considered reliable when there is exactly one candidate (optionally narrowed
  * by agent_type metadata) — otherwise the choice would be ambiguous and could
- * close the wrong agent. Returns the index of the candidate, or -1.
+ * close the wrong agent. The exception is Copilot CLI, whose SubagentStart
+ * carries no agent id: several running `copilot-<type>-*` entries of the
+ * stop's type close oldest first (FIFO). Returns the index of the candidate,
+ * or -1.
  */
 function findReconcilableRunningAgent(
   state: SubagentTrackingState,
@@ -826,7 +830,15 @@ function findReconcilableRunningAgent(
     if (agentType && agent.agent_type !== agentType) continue;
     candidates.push(i);
   }
-  return candidates.length === 1 ? candidates[0] : -1;
+  if (candidates.length === 1) return candidates[0];
+  if (!agentType) return -1;
+  const copilotPrefix = `copilot-${agentType}-`;
+  let oldest = -1;
+  for (const i of candidates) {
+    if (!state.agents[i].agent_id.startsWith(copilotPrefix)) continue;
+    if (oldest === -1 || state.agents[i].started_at < state.agents[oldest].started_at) oldest = i;
+  }
+  return oldest;
 }
 
 /**
