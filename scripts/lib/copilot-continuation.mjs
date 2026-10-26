@@ -60,16 +60,23 @@ export function readCopilotStopChain(stateDir, sessionId) {
   }
 }
 
-/** A continuation prompt reached UserPromptSubmit: count it. Best effort. */
+/** A chained Stop: the previous block was delivered as a continuation, count it. Best effort. */
 export function incrementCopilotStopChain(stateDir, sessionId) {
   const path = stopChainPath(stateDir, sessionId);
   if (!path) return;
   try {
     mkdirSync(join(stateDir, 'sessions', sessionId), { recursive: true });
-    const next = { count: readCopilotStopChain(stateDir, sessionId) + 1, updated_at: new Date().toISOString() };
+    const next = JSON.stringify({ count: readCopilotStopChain(stateDir, sessionId) + 1, updated_at: new Date().toISOString() });
     const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(next), { mode: 0o600 });
-    renameSync(tmp, path);
+    try {
+      writeFileSync(tmp, next, { mode: 0o600 });
+      renameSync(tmp, path);
+    } catch {
+      // Windows rename can fail with EPERM while a reader holds the file;
+      // a direct write still keeps the count.
+      rmSync(tmp, { force: true });
+      writeFileSync(path, next, { mode: 0o600 });
+    }
   } catch {
     // A lost count only makes the chain end at the mode caps or the CLI cap.
   }
@@ -89,8 +96,9 @@ export function resetCopilotStopChain(stateDir, sessionId) {
 // Block-reason headers emitted by OMC Stop hooks (persistent-mode.mjs,
 // context-guard-stop.mjs, workflow-drift-guard.mjs, code-simplifier.mjs,
 // budget-guard.mjs). The dispatcher joins several reasons with blank lines,
-// so the first line carries one of these.
-const OMC_CONTINUATION_HEADER = /^\s*\[(?:RALPH LOOP\b|ULTRAGOAL #|AUTOPILOT\b|ULTRAPILOT\b|ULTRAWORK\b|TEAM - Phase|OMC TEAMS - Phase|SWARM\b|PIPELINE\b|TOOL ERROR\b|CODE SIMPLIFIER\]|WORKFLOW DRIFT GUARD\]|BUDGET\]|OMC(?:\]| ))/;
+// so the first line carries one of these. A named autopilot workflow's next
+// stage arrives as its stage prompt (scripts/lib/workflow-stage-prompts.mjs).
+const OMC_CONTINUATION_HEADER = /^\s*(?:\[(?:RALPH LOOP\b|ULTRAGOAL #|AUTOPILOT\b|ULTRAPILOT\b|ULTRAWORK\b|TEAM - Phase|OMC TEAMS - Phase|SWARM\b|PIPELINE\b|TOOL ERROR\b|CODE SIMPLIFIER\]|WORKFLOW DRIFT GUARD\]|BUDGET\]|OMC(?:\]| ))|## PIPELINE STAGE: )/;
 
 /** The prompt is an OMC Stop-hook continuation reason, not user text. */
 export function isOmcContinuationPrompt(prompt) {

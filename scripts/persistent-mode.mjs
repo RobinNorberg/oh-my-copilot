@@ -155,7 +155,7 @@ const { readStdin } = await import(
 );
 const { resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, "lib", "state-root.mjs")).href);
 const { isCopilotHookHost } = await import(pathToFileURL(join(__dirname, "lib", "hook-host.mjs")).href);
-const { isCopilotNativeAutopilot, readCopilotStopChain, resolveCopilotStopChainMax } = await import(pathToFileURL(join(__dirname, "lib", "copilot-continuation.mjs")).href);
+const { incrementCopilotStopChain, isCopilotNativeAutopilot, readCopilotStopChain, resetCopilotStopChain, resolveCopilotStopChainMax } = await import(pathToFileURL(join(__dirname, "lib", "copilot-continuation.mjs")).href);
 const { goalRecordMatches, isGoalRecordComplete, missingGoalCriteria, readOmgGoalRecord, ultragoalStatePlanId } = await import(pathToFileURL(join(__dirname, "lib", "omg-goal-record.mjs")).href);
 
 function readJsonFile(path) {
@@ -1298,6 +1298,12 @@ async function main() {
     const globalStateDir = join(homedir(), ".omg", "state");
 
     if (copilotHost) {
+      // The chain count lives here, not in keyword-detector: a chained Stop
+      // means the previous Stop's block was delivered as a continuation, and
+      // the first Stop after a genuine prompt starts a new chain. That keeps
+      // the cap working when keyword-detector is skipped or misses a prompt.
+      if (copilotChainedStop) incrementCopilotStopChain(stateDir, sessionId);
+      else resetCopilotStopChain(stateDir, sessionId);
       // Copilot's native autopilot continues on its own until task_complete;
       // a second continuation loop on top would double-bill every turn.
       if (isCopilotNativeAutopilot(data)) {

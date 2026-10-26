@@ -33,7 +33,7 @@ import { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, is
 import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
 import { initializeRalphStateForSkill, createPrdScaffold } from './lib/ralph-startup.mjs';
 import { isCopilotHookHost } from './lib/hook-host.mjs';
-import { incrementCopilotStopChain, isCopilotSubagentKickoffPrompt, isOmcContinuationPrompt, resetCopilotStopChain } from './lib/copilot-continuation.mjs';
+import { isCopilotSubagentKickoffPrompt, isOmcContinuationPrompt } from './lib/copilot-continuation.mjs';
 
 // Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
 const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
@@ -1800,21 +1800,12 @@ async function main() {
 
     // Copilot CLI delivers a Stop-hook continuation (decision:block reason) as
     // the next user prompt, so OMC's own continuation text reaches this hook.
-    // It must never re-arm a mode, and it counts toward the stop-chain cap that
-    // persistent-mode.mjs enforces. A genuine prompt starts a new chain. A
-    // subagent's synthetic kickoff prompt is the parent's delegation text.
-    if (isCopilotHookHost()) {
-      const stateDir = join(omcRoot, 'state');
-      if (isOmcContinuationPrompt(prompt)) {
-        incrementCopilotStopChain(stateDir, sessionId);
-        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
-        return;
-      }
-      if (isCopilotSubagentKickoffPrompt(prompt)) {
-        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
-        return;
-      }
-      resetCopilotStopChain(stateDir, sessionId);
+    // It must never re-arm a mode (persistent-mode.mjs counts the stop chain
+    // itself). A subagent's synthetic kickoff prompt is the parent's
+    // delegation text.
+    if (isCopilotHookHost() && (isOmcContinuationPrompt(prompt) || isCopilotSubagentKickoffPrompt(prompt))) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
     }
 
     // Named profiles are an explicit command surface. Handle them before generic
