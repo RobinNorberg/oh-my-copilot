@@ -34,6 +34,7 @@ import {
   continuationReason,
   COMPACT_PROMPT,
   promptContextLine,
+  runCost,
   RUNTIME_MIN_MAX_CREDITS,
   SCENARIOS,
   ULTRAGOAL_ACTIVATION_PROMPT,
@@ -198,7 +199,11 @@ export async function runCliScenario(input: CliScenarioInput): Promise<Omit<Scen
   }
   if (cli.seed && !cli.seed.ok) return { ...base, events: [], idle: false, timedOut: false, error: `ultragoal seed: ${cli.seed.detail}` };
 
-  const args = [
+  const eventsFile = join(input.home, 'session-state', sessionId, 'events.jsonl');
+  const readEvents = (): CopilotEvent[] => {
+    try { return parseJsonl(readFileSync(eventsFile, 'utf8')).events; } catch { return []; }
+  };
+  const argsFor = (budget: number) => [
     '--plugin-dir', input.root,
     ...(stub ? ['--plugin-dir', stub.dir] : []),
     '--session-id', sessionId,
@@ -207,14 +212,15 @@ export async function runCliScenario(input: CliScenarioInput): Promise<Omit<Scen
     ...SANDBOX_FLAGS,
     '--log-level', 'debug',
     '--log-dir', join(input.home, 'logs'),
-    '--max-ai-credits', String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(input.budget))),
+    '--max-ai-credits', String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(budget))),
   ];
   // `events` resumes the same session id with /compact (preCompact, no premium request).
   const prompts: Array<[string, string]> = [['prompt', SCENARIOS[name].prompt], ...(name === 'events' ? [['compact', COMPACT_PROMPT] as [string, string]] : [])];
   let error: string | undefined;
   let timedOut = false;
+  let budget = input.budget;
   for (const [label, prompt] of prompts) {
-    const plan = buildHostBinarySpawn(input.bin, args);
+    const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
     // The prompt rides stdin, never argv (a piped prompt is non-interactive).
     const res = await runAsync(input.spawn ?? nodeSpawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
@@ -227,11 +233,11 @@ export async function runCliScenario(input: CliScenarioInput): Promise<Omit<Scen
     cli.steps.push(step);
     if (res.timedOut) { timedOut = true; break; }
     if (res.error || res.code !== 0) { error = res.error ?? `copilot (${label}) exited ${String(res.code)}: ${excerpt(res.stderr, 200)}`; break; }
+    // The next step gets only what this one left of the scenario budget.
+    budget = input.budget - runCost({ events: readEvents() }).credits;
   }
 
-  const eventsFile = join(input.home, 'session-state', sessionId, 'events.jsonl');
-  let events: CopilotEvent[] = [];
-  try { events = parseJsonl(readFileSync(eventsFile, 'utf8')).events; } catch { /* not persisted */ }
+  const events = readEvents();
   if (!error && !timedOut && events.length === 0) error = `no events.jsonl for session ${sessionId}`;
   try { writeFileSync(input.eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : '')); } catch { /* best effort */ }
   if (stub && existsSync(stub.log)) {
