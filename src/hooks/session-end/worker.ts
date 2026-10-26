@@ -123,10 +123,24 @@ function reschedulePendingWorker(payload: SessionEndWorkerPayload, job: ReturnTy
 async function planDeferredChain(payload: SessionEndWorkerPayload): Promise<void> {
   const deferred = readSessionEndJob(payload.directory, payload.sessionId)?.actions['spawn-next']?.payload?.deferredChain as Partial<DeferredSessionEndChain> | undefined;
   if (!deferred || typeof deferred !== 'object') return;
-  const [{ planChainEnqueue }, { CHAIN_LINK_ENV }] = await Promise.all([import('./chain-enqueuer.js'), import('./spawn-next.js')]);
-  const env: NodeJS.ProcessEnv = typeof deferred.linkEnv === 'string' ? { [CHAIN_LINK_ENV]: deferred.linkEnv } : {};
+  const [{ planChainEnqueue, recordChainHandoffFailure, resolveChainLink, readChainLedger }, { CHAIN_LINK_ENV }] = await Promise.all([import('./chain-enqueuer.js'), import('./spawn-next.js')]);
+  const env: NodeJS.ProcessEnv = {
+    ...(typeof deferred.linkEnv === 'string' ? { [CHAIN_LINK_ENV]: deferred.linkEnv } : {}),
+    ...(typeof deferred.claudeEntrypoint === 'string' ? { CLAUDE_CODE_ENTRYPOINT: deferred.claudeEntrypoint } : {}),
+  };
   const chain = planChainEnqueue(payload.directory, payload.sessionId, typeof deferred.reason === 'string' ? deferred.reason : 'other', env);
-  resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain as unknown as Record<string, unknown> | null);
+  // A null from a duplicate-session-end (another worker is still deciding the
+  // link: its ledger is open) is no decision: keep the marker for that worker.
+  if (!chain) {
+    const ledger = readChainLedger(payload.directory, resolveChainLink(payload.directory, payload.sessionId, env).linkId);
+    if (ledger && !ledger.closedAt) return;
+  }
+  if (resolveDeferredSessionEndChain(payload.directory, payload.sessionId, chain as unknown as Record<string, unknown> | null) || !chain) return;
+  // Another worker claimed the job first. Unless it carries this link's chain
+  // (it replayed the closeout), the closed ledger says `enqueued` for a chain
+  // nothing will run: name it, as the foreground path does.
+  const landed = readSessionEndJob(payload.directory, payload.sessionId)?.actions['spawn-next']?.payload?.chain as { sessionId?: unknown } | undefined;
+  if (landed?.sessionId !== chain.sessionId) recordChainHandoffFailure(payload.directory, chain, 'manifest-unavailable', { hostSessionId: payload.sessionId });
 }
 
 /** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */

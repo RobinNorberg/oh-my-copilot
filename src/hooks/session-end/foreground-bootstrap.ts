@@ -59,7 +59,8 @@ export async function publishSessionEndBootstrap(input: SessionEndBootstrapInput
   }
   if (hasChain && copilot) {
     const linkEnv = process.env[CHAIN_LINK_ENV]?.trim();
-    deferSessionEndChain(directory, input.session_id, { reason: input.reason, ...(linkEnv ? { linkEnv } : {}) });
+    const claudeEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    deferSessionEndChain(directory, input.session_id, { reason: input.reason, ...(linkEnv ? { linkEnv } : {}), ...(claudeEntrypoint ? { claudeEntrypoint } : {}) });
   }
   const { spawnSessionEndWorker } = await import('./worker.js');
   // A failed worker spawn is equally silent: the chain payload is durable but

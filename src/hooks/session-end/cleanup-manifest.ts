@@ -344,16 +344,25 @@ export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string
   });
 }
 
-/** What a Copilot SessionEnd leaves for the worker to plan the factory-chain link from. */
-export interface DeferredSessionEndChain { reason: string; linkEnv?: string; }
+/**
+ * What a Copilot SessionEnd leaves for the worker to plan the factory-chain
+ * link from. `claudeEntrypoint` carries the deferring SessionEnd's
+ * CLAUDE_CODE_ENTRYPOINT, so the worker still refuses a Claude session's link claim.
+ */
+export interface DeferredSessionEndChain { reason: string; linkEnv?: string; claudeEntrypoint?: string; }
 
+/** Retries a stale revision (a concurrent re-arm or resolve), never a claimed job. */
 function mutateUnclaimedSpawnNext(directory: string, sessionId: string, mutate: (payload: Record<string, unknown>) => Record<string, unknown>): SessionEndJobV1 | null {
-  const current = readSessionEndJob(directory, sessionId);
-  if (!current || current.phase !== 'collecting' || current.owner) return null;
-  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
-    if (job.phase !== 'collecting' || job.owner) throw new Error('spawn-next-conflict');
-    job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
-  });
+  for (let i = 0; i < 8; i++) {
+    const current = readSessionEndJob(directory, sessionId);
+    if (!current || current.phase !== 'collecting' || current.owner) return null;
+    const result = mutateAtRevision(directory, sessionId, current.revision, (job) => {
+      if (job.phase !== 'collecting' || job.owner) throw new Error('spawn-next-conflict');
+      job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
+    });
+    if (result !== REVISION_MISMATCH) return result;
+  }
+  return null;
 }
 
 /**
