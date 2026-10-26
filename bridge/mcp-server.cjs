@@ -21662,7 +21662,17 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
     ...includeLegacy ? [stateRoot] : [],
     ...[...sessionIds ?? listSessionIds(root)].map((sid) => (0, import_path33.join)(stateRoot, "sessions", sid))
   ]);
-  return [...dirs].flatMap((dir) => names.map((name) => (0, import_path33.join)(dir, name)));
+  const paths = [...dirs].flatMap((dir) => names.map((name) => (0, import_path33.join)(dir, name)));
+  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root)] : paths;
+}
+function getOmgGoalRecordPaths(root) {
+  const base = (0, import_path33.join)(getOmcRoot(root), "ultragoal");
+  let plans = [];
+  try {
+    plans = (0, import_fs30.readdirSync)((0, import_path33.join)(base, "plans"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => (0, import_path33.join)(base, "plans", entry.name));
+  } catch {
+  }
+  return [base, ...plans].map((dir) => (0, import_path33.join)(dir, "omg-goal.json"));
 }
 function captureTeamRuntimeArtifacts(root) {
   const captured = /* @__PURE__ */ new Map();

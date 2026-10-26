@@ -9,6 +9,8 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
+// A re-armed job's producer grace expires at once, so the worker runs its actions in-test.
+vi.hoisted(() => { process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '0'; });
 vi.mock('../../../platform/process-utils.js', () => ({
     getProcessStartIdentity: vi.fn(async () => 'test-process-start'),
     isProcessIdentityLive: vi.fn(async () => 'dead'),
@@ -104,6 +106,28 @@ describe('session-end worker on Copilot', () => {
         writeEvents('session-events-shutdown.jsonl');
         await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
         expect(readSessionEndJob(dir, SESSION)?.actions['foreground-cleanup'].status).toBe('completed');
+    });
+    it('re-arms a job held past its deadlines so the real end still runs every action', async () => {
+        const dir = project();
+        writeUltragoal(dir);
+        prepareCopilotJob(dir);
+        // The first turn's SessionEnd created the job an hour ago; the session went on since.
+        const created = readSessionEndJob(dir, SESSION);
+        const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        expect(mutateSessionEndJob(dir, SESSION, created.revision, (next) => {
+            next.producerGraceExpiresAt = hourAgo;
+            next.bestEffortDeadlineAt = hourAgo;
+        })).not.toBeNull();
+        writeEvents('session-events-midsession.jsonl');
+        await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+        expect(Date.parse(readSessionEndJob(dir, SESSION).bestEffortDeadlineAt)).toBeGreaterThan(Date.now());
+        writeEvents('session-events-shutdown.jsonl');
+        await processSessionEndWorker({ directory: dir, sessionId: SESSION }, 6);
+        const ended = readSessionEndJob(dir, SESSION);
+        expect(ended.phase).toBe('complete');
+        expect(Object.values(ended.actions).filter((action) => action.status === 'expired')).toEqual([]);
+        expect(ended.actions['foreground-cleanup'].status).toBe('completed');
+        expect(ended.actions.notification.status).toBe('completed');
     });
     it('runs a Claude Code job without waiting on Copilot events', async () => {
         const dir = project();

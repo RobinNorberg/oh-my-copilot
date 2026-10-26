@@ -10,11 +10,13 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { provisionStandaloneStateLockBridge } from '../installer/index.js';
+import { pathToFileURL } from 'url';
 const ROOT = process.cwd();
 const FIXTURES = join(ROOT, 'src', '__tests__', 'fixtures', 'copilot-live');
 const preToolScript = join(ROOT, 'scripts', 'pre-tool-enforcer.mjs');
 const persistentModeScript = join(ROOT, 'scripts', 'persistent-mode.mjs');
 const keywordScript = join(ROOT, 'scripts', 'keyword-detector.mjs');
+const { resolveCanonicalWorkflowStagePrompt } = await import(pathToFileURL(join(ROOT, 'scripts', 'lib', 'workflow-stage-prompts.mjs')).href);
 let templateKeywordScript = '';
 // The standalone template runs from an installed hooks dir, laid out as the installer does.
 function provisionTemplateKeywordScript() {
@@ -226,6 +228,60 @@ describe('Copilot-native ultragoal goal record', () => {
         writeGoalRecord(cwd, { status: 'complete', criteria: [{ id: 'C1', text: 'tests pass', evidence: 'npm test green' }, { id: 'C2', text: 'docs updated', evidence: 'README' }] });
         expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
     });
+    const done = [{ id: 'C1', text: 'tests pass', evidence: 'npm test green' }];
+    it('keeps continuing when the only complete record is for another objective (a previous run or story)', () => {
+        const cwd = makeProject('omg-goal-stop-stale-');
+        writeModeState(cwd, PARENT, 'ultragoal', { claude_goal_objective: OBJECTIVE });
+        writeGoalRecord(cwd, { objective: 'the previous story', status: 'complete', criteria: done });
+        const output = runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), session_id: PARENT }, 'Stop');
+        expect(output.decision).toBe('block');
+        expect(output.reason).toContain('No OMG goal record yet');
+    });
+    describe('multi-plan runs (plans/<id>/omg-goal.json)', () => {
+        function writePlan(cwd, planId, objective) {
+            const dir = join(cwd, '.omg', 'ultragoal', 'plans', planId);
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, 'goals.json'), JSON.stringify({ version: 1, planId, claudeGoalMode: 'per_story', activeGoalId: 'G001', goals: [{ id: 'G001', objective, status: 'in_progress' }] }));
+            return dir;
+        }
+        function writePlanRecord(dir, objective, overrides = {}) {
+            const now = new Date().toISOString();
+            writeFileSync(join(dir, 'omg-goal.json'), JSON.stringify({ version: 1, objective, status: 'active', host: 'copilot', createdAt: now, updatedAt: now, criteria: [{ id: 'C1', text: 'tests pass' }], ...overrides }));
+        }
+        it('accepts the record of a plan whose current story it matches, and rejects a stale one', () => {
+            const cwd = makeProject('omg-goal-multiplan-');
+            writeModeState(cwd, sessionId, 'ultragoal', { original_prompt: 'use ultragoal on both plans' });
+            writePlan(cwd, 'p1', 'ship plan one');
+            const p2 = writePlan(cwd, 'p2', 'ship plan two');
+            expect(isDenied(runHook(preToolScript, bash(cwd), 'PreToolUse'))).toBe(true);
+            writePlanRecord(p2, 'ship plan two');
+            expect(isDenied(runHook(preToolScript, bash(cwd), 'PreToolUse'))).toBe(false);
+            writePlanRecord(p2, 'an earlier story of plan two');
+            expect(isDenied(runHook(preToolScript, bash(cwd), 'PreToolUse'))).toBe(true);
+        });
+        it('reads only the plan the ultragoal state names (plan_id)', () => {
+            const cwd = makeProject('omg-goal-planid-');
+            writeModeState(cwd, sessionId, 'ultragoal', { plan_id: 'p2' });
+            writePlanRecord(writePlan(cwd, 'p1', 'ship plan one'), 'ship plan one');
+            const p2 = writePlan(cwd, 'p2', 'ship plan two');
+            const output = runHook(preToolScript, bash(cwd), 'PreToolUse');
+            expect(isDenied(output)).toBe(true);
+            expect(output.hookSpecificOutput.permissionDecisionReason).toContain('no OMG goal record exists yet');
+            writePlanRecord(p2, 'ship plan two');
+            expect(isDenied(runHook(preToolScript, bash(cwd), 'PreToolUse'))).toBe(false);
+        });
+        it('ends the Stop chain once the plan record has evidence for every criterion', () => {
+            const cwd = makeProject('omg-goal-multiplan-stop-');
+            writeModeState(cwd, PARENT, 'ultragoal', { plan_id: 'p2' });
+            writePlan(cwd, 'p1', 'ship plan one');
+            const p2 = writePlan(cwd, 'p2', 'ship plan two');
+            const stop = { ...fixture('stop-first.json', cwd), session_id: PARENT };
+            writePlanRecord(p2, 'ship plan two');
+            expect(runHook(persistentModeScript, stop, 'Stop').reason).toContain('Missing evidence: C1 tests pass');
+            writePlanRecord(p2, 'ship plan two', { status: 'complete', criteria: done });
+            expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
+        });
+    });
 });
 describe('chained continuation on Copilot', () => {
     it('blocks a chained Copilot Stop (stop_hook_active) while the mode cap allows it', () => {
@@ -245,7 +301,8 @@ describe('chained continuation on Copilot', () => {
         const sessionId = '61b74574-b97a-4c2c-82f6-4d89613496df';
         writeModeState(cwd, sessionId, 'ultragoal', { claude_goal_objective: OBJECTIVE, max_reinforcements: 50 });
         const stop = fixture('stop-chained.json', cwd);
-        writeFileSync(join(sessionDir(cwd, sessionId), 'copilot-stop-chain.json'), JSON.stringify({ count: 3 }));
+        // Two continuations delivered; this chained Stop counts the third.
+        writeFileSync(join(sessionDir(cwd, sessionId), 'copilot-stop-chain.json'), JSON.stringify({ count: 2 }));
         expect(runHook(persistentModeScript, stop, 'Stop').decision).toBeUndefined();
         expect(runHook(persistentModeScript, stop, 'Stop', { OMC_COPILOT_STOP_CHAIN_MAX: '5' }).decision).toBe('block');
     });
@@ -268,16 +325,28 @@ describe('chained continuation on Copilot', () => {
         writeModeState(cwd, '61b74574-b97a-4c2c-82f6-4d89613496df', 'ultragoal', { claude_goal_objective: OBJECTIVE });
         expect(runHook(persistentModeScript, { ...fixture('stop-first.json', cwd), mode: 'autopilot' }, 'Stop').decision).toBeUndefined();
     });
-    it('counts OMC continuation prompts and resets on a genuine prompt', () => {
+    it('caps the chain at 3 continuations from the Stop hook alone (keyword-detector never runs)', () => {
         const cwd = makeProject('omg-chain-count-');
         const sessionId = '61b74574-b97a-4c2c-82f6-4d89613496df';
-        const prompt = fixture('continuation-userpromptsubmit.json', cwd);
-        const continuation = { ...prompt, prompt: '[ULTRAGOAL #1/50] Ultragoal mode is active. Continue the durable goal workflow.' };
-        runHook(keywordScript, continuation, 'UserPromptSubmit');
-        runHook(keywordScript, continuation, 'UserPromptSubmit');
-        expect(chainCount(cwd, sessionId)).toBe(2);
-        runHook(keywordScript, { ...prompt, prompt: 'thanks, now update the readme' }, 'UserPromptSubmit');
+        writeModeState(cwd, sessionId, 'ultragoal', { claude_goal_objective: OBJECTIVE, max_reinforcements: 50 });
+        const first = fixture('stop-first.json', cwd);
+        const chained = fixture('stop-chained.json', cwd);
+        expect(first.stop_hook_active).not.toBe(true);
+        const decisions = [first, chained, chained, chained].map((stop) => runHook(persistentModeScript, stop, 'Stop').decision);
+        expect(decisions).toEqual(['block', 'block', 'block', undefined]);
+        expect(chainCount(cwd, sessionId)).toBe(3);
+        // The next genuine prompt's Stop starts a new chain.
+        expect(runHook(persistentModeScript, first, 'Stop').decision).toBe('block');
         expect(chainCount(cwd, sessionId)).toBe(0);
+    });
+    it('leaves the chain count to the Stop hook: keyword-detector neither counts nor resets', () => {
+        const cwd = makeProject('omg-chain-kd-');
+        const sessionId = '61b74574-b97a-4c2c-82f6-4d89613496df';
+        writeFileSync(join(sessionDir(cwd, sessionId), 'copilot-stop-chain.json'), JSON.stringify({ count: 2 }));
+        const prompt = fixture('continuation-userpromptsubmit.json', cwd);
+        runHook(keywordScript, { ...prompt, prompt: '[ULTRAGOAL #1/50] Ultragoal mode is active. Continue the durable goal workflow.' }, 'UserPromptSubmit');
+        runHook(keywordScript, { ...prompt, prompt: 'thanks, now update the readme' }, 'UserPromptSubmit');
+        expect(chainCount(cwd, sessionId)).toBe(2);
     });
 });
 describe('keyword detector ignores OMC continuation text on Copilot', () => {
@@ -291,6 +360,15 @@ describe('keyword detector ignores OMC continuation text on Copilot', () => {
     it.each(reasons)('does not arm a mode from %s', (reason) => {
         const cwd = makeProject('omg-kd-cont-');
         const output = runHook(keywordScript, { ...fixture('continuation-userpromptsubmit.json', cwd), prompt: reason }, 'UserPromptSubmit');
+        expect(output.hookSpecificOutput).toBeUndefined();
+        for (const mode of ['ultragoal', 'ralph', 'autopilot'])
+            expect(readModeState(cwd, sessionId, mode)).toBeNull();
+    });
+    it.each(['ralplan', 'execution', 'ralph', 'qa'])('does not run keyword detection on the canonical %s pipeline stage prompt', (stageId) => {
+        const cwd = makeProject('omg-kd-stage-');
+        const prompt = resolveCanonicalWorkflowStagePrompt(stageId, 'use autopilot and ralph to ship the dashboard');
+        expect(prompt).toMatch(/^## PIPELINE STAGE: /);
+        const output = runHook(keywordScript, { ...fixture('continuation-userpromptsubmit.json', cwd), prompt }, 'UserPromptSubmit');
         expect(output.hookSpecificOutput).toBeUndefined();
         for (const mode of ['ultragoal', 'ralph', 'autopilot'])
             expect(readModeState(cwd, sessionId, mode)).toBeNull();

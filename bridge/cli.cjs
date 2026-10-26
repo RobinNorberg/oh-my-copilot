@@ -48758,7 +48758,17 @@ function getModeRuntimeArtifactPaths(mode, root2, sessionIds, includeLegacy = tr
     ...includeLegacy ? [stateRoot2] : [],
     ...[...sessionIds ?? listSessionIds(root2)].map((sid) => (0, import_path44.join)(stateRoot2, "sessions", sid))
   ]);
-  return [...dirs].flatMap((dir) => names.map((name) => (0, import_path44.join)(dir, name)));
+  const paths = [...dirs].flatMap((dir) => names.map((name) => (0, import_path44.join)(dir, name)));
+  return mode === "ultragoal" ? [...paths, ...getOmgGoalRecordPaths(root2)] : paths;
+}
+function getOmgGoalRecordPaths(root2) {
+  const base = (0, import_path44.join)(getOmcRoot(root2), "ultragoal");
+  let plans = [];
+  try {
+    plans = (0, import_fs36.readdirSync)((0, import_path44.join)(base, "plans"), { withFileTypes: true }).filter((entry2) => entry2.isDirectory()).map((entry2) => (0, import_path44.join)(base, "plans", entry2.name));
+  } catch {
+  }
+  return [base, ...plans].map((dir) => (0, import_path44.join)(dir, "omg-goal.json"));
 }
 function captureTeamRuntimeArtifacts(root2) {
   const captured = /* @__PURE__ */ new Map();
@@ -70148,6 +70158,14 @@ function acknowledgeSessionEndDiscoveryTicket(directory, sessionId) {
     });
   } catch {
   }
+}
+function rearmUnclaimedSessionEndJob(directory, sessionId) {
+  const current = readSessionEndJob(directory, sessionId);
+  if (!current || current.phase !== "collecting" || current.owner) return null;
+  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+    if (job.phase !== "collecting" || job.owner) throw new Error("rearm-conflict");
+    Object.assign(job, initialDeadlines());
+  });
 }
 function recoverPreparedCoreProducer(directory, sessionId) {
   return mutateLatest(directory, sessionId, (job) => {
@@ -97438,7 +97456,7 @@ async function startTeamV2(config2) {
   });
 }
 async function writeWatchdogFailedMarker(teamName, cwd2, reason) {
-  const { writeFile: writeFile16 } = await import("fs/promises");
+  const { writeFile: writeFile15 } = await import("fs/promises");
   const marker = {
     failedAt: Date.now(),
     reason,
@@ -97447,7 +97465,7 @@ async function writeWatchdogFailedMarker(teamName, cwd2, reason) {
   const root2 = absPath(cwd2, TeamPaths.root(sanitizeTeamName(teamName)));
   const markerPath = (0, import_path118.join)(root2, "watchdog-failed.json");
   await (0, import_promises26.mkdir)(root2, { recursive: true });
-  await writeFile16(markerPath, JSON.stringify(marker, null, 2), "utf-8");
+  await writeFile15(markerPath, JSON.stringify(marker, null, 2), "utf-8");
 }
 async function requeueDeadWorkerTasks(teamName, deadWorkerNames, cwd2) {
   const sanitized = sanitizeTeamName(teamName);
@@ -101636,6 +101654,7 @@ function reschedulePendingWorker(payload, job) {
 }
 async function processSessionEndWorker(payload, liveRechecks = 0) {
   const pending = readSessionEndJob(payload.directory, payload.sessionId);
+  if (pending?.phase === "collecting" && isCopilotSessionEndJob(pending)) rearmUnclaimedSessionEndJob(payload.directory, payload.sessionId);
   if (pending && pending.phase !== "complete" && isCopilotSessionEndJob(pending) && isCopilotSessionLive(payload.sessionId)) {
     if (liveRechecks < COPILOT_LIVE_MAX_RECHECKS) {
       setTimeout(() => {
@@ -125399,7 +125418,7 @@ function collectRmForceOps(line) {
     const tokens = tokenizeCommand(clause.text);
     const rmIndex = findExecutableIndex(tokens, "rm");
     if (rmIndex < 0) continue;
-    const rm10 = tokens[rmIndex];
+    const rm11 = tokens[rmIndex];
     const xargsIndex = findExecutableIndex(tokens, "xargs");
     const receivesXargsOperands = xargsIndex >= 0 && xargsIndex < rmIndex;
     let destructive = false;
@@ -125450,7 +125469,7 @@ function collectRmForceOps(line) {
       addMatch(
         hits,
         `rm ${optionTokens.map((token) => token.value).join(" ")}`,
-        clause.index + rm10.index
+        clause.index + rm11.index
       );
     }
   }
@@ -138504,6 +138523,7 @@ async function createUltragoalPlan(cwd2, options) {
   };
   if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
   await (0, import_promises32.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
+  await (0, import_promises32.rm)((0, import_node_path35.join)(ultragoalDir(cwd2, planId), "omg-goal.json"), { force: true });
   await (0, import_promises32.writeFile)(ultragoalBriefPath(cwd2, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
 `);
   await writePlan(cwd2, plan);
@@ -138890,6 +138910,7 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
 // src/ultragoal/goal-record.ts
 var import_promises33 = require("node:fs/promises");
 var import_node_path36 = require("node:path");
+init_atomic_write();
 var OMG_GOAL_RECORD = "omg-goal.json";
 function omgGoalRecordPath(cwd2, planId) {
   return (0, import_node_path36.join)(ultragoalDir(cwd2, planId), OMG_GOAL_RECORD);
@@ -138901,16 +138922,19 @@ async function readOmgGoalRecord(cwd2, planId) {
   } catch {
     return null;
   }
-  const parsed = JSON.parse(raw);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new UltragoalError(`Corrupt OMG goal record at ${omgGoalRecordPath(cwd2, planId)}; rerun omg ultragoal goal-start to replace it.`);
+  }
   if (parsed?.version !== 1 || typeof parsed.objective !== "string" || !Array.isArray(parsed.criteria)) {
     throw new UltragoalError(`Invalid OMG goal record at ${omgGoalRecordPath(cwd2, planId)}.`);
   }
   return parsed;
 }
 async function writeOmgGoalRecord(cwd2, record2) {
-  await (0, import_promises33.mkdir)(ultragoalDir(cwd2, record2.planId), { recursive: true });
-  await (0, import_promises33.writeFile)(omgGoalRecordPath(cwd2, record2.planId), `${JSON.stringify(record2, null, 2)}
-`);
+  await atomicWriteJson(omgGoalRecordPath(cwd2, record2.planId), record2);
 }
 function missingGoalCriteria(record2) {
   return record2.criteria.filter((criterion) => !criterion.evidence?.trim());
@@ -138938,7 +138962,10 @@ async function startOmgGoal(cwd2, options) {
     throw new UltragoalError(plan ? "No active ultragoal story; run `omg ultragoal complete-goals` first or pass --objective." : "No ultragoal plan found; run `omg ultragoal create-goals ...` first or pass --objective.");
   }
   const now2 = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  const previous = await readOmgGoalRecord(cwd2, options.planId);
+  const previous = await readOmgGoalRecord(cwd2, options.planId).catch((error2) => {
+    if (error2 instanceof UltragoalError) return null;
+    throw error2;
+  });
   const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
   const criteria = criteriaText.map((text, index) => {
     const old = kept.get(text);

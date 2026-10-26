@@ -576,7 +576,19 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
         ...(includeLegacy ? [stateRoot] : []),
         ...[...(sessionIds ?? listSessionIds(root))].map((sid) => join(stateRoot, 'sessions', sid)),
     ]);
-    return [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+    const paths = [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+    // The Copilot goal record (src/ultragoal/goal-record.ts) is the run's /goal
+    // stand-in: cancelling the run retires it with the guard.
+    return mode === 'ultragoal' ? [...paths, ...getOmgGoalRecordPaths(root)] : paths;
+}
+function getOmgGoalRecordPaths(root) {
+    const base = join(getOmcRoot(root), 'ultragoal');
+    let plans = [];
+    try {
+        plans = readdirSync(join(base, 'plans'), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(base, 'plans', entry.name));
+    }
+    catch { /* single-plan layout */ }
+    return [base, ...plans].map((dir) => join(dir, 'omg-goal.json'));
 }
 function captureTeamRuntimeArtifacts(root) {
     const captured = new Map();

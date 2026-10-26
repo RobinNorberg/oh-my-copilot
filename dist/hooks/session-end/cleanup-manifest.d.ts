@@ -133,6 +133,13 @@ export declare function releaseSessionEndDiscoveryTicket(directory: string, sess
 export declare function acknowledgeSessionEndDiscoveryTicket(directory: string, sessionId: string): void;
 /** Compatibility read-only page retained for callers that do not claim tickets. */
 export declare function takeSessionEndDiscoveryPage(directory: string, limit?: number): string[];
+/**
+ * Restart the producer grace and action deadlines of a job no worker has
+ * claimed yet. A Copilot job is created at the first turn's SessionEnd and
+ * held while the session goes on (worker.ts); without this its deadlines
+ * would lapse mid-session and the real end would expire every action.
+ */
+export declare function rearmUnclaimedSessionEndJob(directory: string, sessionId: string): SessionEndJobV1 | null;
 /** Recovery may seal a prepared core only after foreground cleanup has a durable completed result. */
 export declare function recoverPreparedCoreProducer(directory: string, sessionId: string): SessionEndJobV1 | null;
 /** A prepared core cannot be recovered once its foreground prerequisite is exhausted after grace. */

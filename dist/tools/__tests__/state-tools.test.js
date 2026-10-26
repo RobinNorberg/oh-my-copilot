@@ -1885,6 +1885,24 @@ describe('state-tools', () => {
             });
             expect(readResult.content[0].text).toMatch(/No state found|not found/i);
         });
+        it('retires the Copilot goal records with the ultragoal guard and keeps the plan artifacts', async () => {
+            const sessionId = 'test-session-ultragoal-record';
+            const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
+            mkdirSync(sessionDir, { recursive: true });
+            writeFileSync(join(sessionDir, 'ultragoal-state.json'), JSON.stringify({ active: true, session_id: sessionId, current_phase: 'executing' }));
+            const ultragoalDir = join(TEST_DIR, '.omg', 'ultragoal');
+            const planDir = join(ultragoalDir, 'plans', 'p1');
+            mkdirSync(planDir, { recursive: true });
+            for (const dir of [ultragoalDir, planDir]) {
+                writeFileSync(join(dir, 'goals.json'), '{}');
+                writeFileSync(join(dir, 'omg-goal.json'), JSON.stringify({ version: 1, objective: 'ship', criteria: [] }));
+            }
+            await stateClearTool.handler({ mode: 'ultragoal', session_id: sessionId, workingDirectory: TEST_DIR });
+            for (const dir of [ultragoalDir, planDir]) {
+                expect(existsSync(join(dir, 'omg-goal.json'))).toBe(false);
+                expect(existsSync(join(dir, 'goals.json'))).toBe(true);
+            }
+        });
         it('should also remove non-session legacy state files during session clear', async () => {
             const sessionId = 'legacy-cleanup-session';
             const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
