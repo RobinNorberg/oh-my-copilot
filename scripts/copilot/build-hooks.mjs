@@ -14,6 +14,9 @@
  *     outputs (argv: <Event> <script> [args]... [-- <script> [args]...]...).
  *   - PascalCase event keys are kept (payloads stay snake_case, matchers work).
  *   - The group matcher is copied onto its entry, except "*" and empty.
+ *   - A PermissionRequest matcher also lists the Copilot runtime names of its
+ *     Claude tools (Bash -> Bash|bash|powershell): that payload carries the raw
+ *     `toolName` (live probe, CLI 1.0.91), unlike PreToolUse/PostToolUse.
  *   - SessionStart groups with a non-"*" matcher (init, maintenance) are dropped:
  *     Copilot ignores SessionStart matchers, so they would run every session.
  *   - `async` is dropped; `timeoutSec` is the sum of the group's `timeout`s
@@ -33,6 +36,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = join(dirname(__filename), '..', '..');
@@ -47,6 +51,14 @@ export const HOOK_SEPARATOR = '--';
 const COMMAND_PATTERN = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/(\S+)((?: \S+)*)$/;
 const KNOWN_HOOK_FIELDS = new Set(['type', 'command', 'timeout', 'async']);
 const KNOWN_GROUP_FIELDS = new Set(['matcher', 'hooks']);
+const { CLAUDE_TOOL_NAMES } = createRequire(import.meta.url)('../lib/copilot-payload.cjs');
+
+/** `Bash` -> `Bash|bash|powershell`: each Claude tool name followed by its Copilot runtime names. */
+export function withCopilotToolNames(matcher) {
+  const runtimeNames = Object.keys(CLAUDE_TOOL_NAMES);
+  const names = matcher.split('|').flatMap(name => [name, ...runtimeNames.filter(raw => CLAUDE_TOOL_NAMES[raw] === name)]);
+  return [...new Set(names)].join('|');
+}
 
 /**
  * Fork-owned groups for Copilot events upstream registers no hook for, in the
@@ -82,8 +94,9 @@ export function buildCopilotHooks(source, { preload = true, forkHooks = FORK_HOO
         if (!KNOWN_GROUP_FIELDS.has(key)) throw new Error(`hooks/hooks.json ${event}: unknown group field "${key}"`);
       }
       if (!Array.isArray(group?.hooks)) throw new Error(`hooks/hooks.json ${event}: group has no hooks array`);
-      const matcher = typeof group.matcher === 'string' && group.matcher !== '*' ? group.matcher : '';
+      let matcher = typeof group.matcher === 'string' && group.matcher !== '*' ? group.matcher : '';
       if (event === 'SessionStart' && matcher) continue;
+      if (event === 'PermissionRequest' && matcher) matcher = withCopilotToolNames(matcher);
       const segments = [];
       let timeoutSec = 0;
       let hasTimeout = false;

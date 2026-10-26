@@ -13,6 +13,7 @@ import {
   resolveStatePath,
   ensureOmcDir,
   resolveStateWorkingDirectory,
+  withWorktreePathRenderScope,
   isSensitiveStateLocation,
   probeGitTopLevel,
   resolveSessionStatePath,
@@ -829,7 +830,43 @@ function getModeRuntimeArtifactPaths(mode: StateToolMode, root: string, sessionI
     ...(includeLegacy ? [stateRoot] : []),
     ...[...(sessionIds ?? listSessionIds(root))].map((sid) => join(stateRoot, 'sessions', sid)),
   ]);
-  return [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+  const paths = [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+  // The Copilot goal record (src/ultragoal/goal-record.ts) is the run's /goal
+  // stand-in: cancelling the run retires it with the guard.
+  return mode === 'ultragoal' ? [...paths, ...getOmgGoalRecordPaths(root, sessionIds)] : paths;
+}
+
+const ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+/** The plan_id the session's ultragoal state names (session file, else a legacy file it owns). */
+function getUltragoalStatePlanId(root: string, sessionId: string): string | undefined {
+  const legacy = getStatePath('ultragoal', root);
+  for (const path of [getSessionStatePath('ultragoal', root, sessionId), legacy]) {
+    try {
+      const state = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+      if (path === legacy && state.session_id !== sessionId) continue;
+      const planId = state.plan_id ?? state.planId;
+      if (typeof planId === 'string' && ULTRAGOAL_PLAN_ID_PATTERN.test(planId)) return planId;
+    } catch { /* missing or unreadable state */ }
+  }
+  return undefined;
+}
+
+/**
+ * Without session ids every record goes; with them only the base record and
+ * the plans those sessions' ultragoal state names, so cancelling one session
+ * leaves a parallel session's plan record in place.
+ */
+function getOmgGoalRecordPaths(root: string, sessionIds?: Iterable<string>): string[] {
+  const base = join(getOmcRoot(root), 'ultragoal');
+  let plans: string[] = [];
+  if (sessionIds) {
+    plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root, sid)).filter((id): id is string => Boolean(id)))]
+      .map((id) => join(base, 'plans', id));
+  } else {
+    try { plans = readdirSync(join(base, 'plans'), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(base, 'plans', entry.name)); } catch { /* single-plan layout */ }
+  }
+  return [base, ...plans].map((dir) => join(dir, 'omg-goal.json'));
 }
 
 function captureTeamRuntimeArtifacts(root: string): Map<string, RuntimeArtifactSnapshot> {
@@ -1590,6 +1627,11 @@ export const stateClearTool: ToolDefinition<{
         const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
         const namedPrimaries = mode === 'autopilot' ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
         const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+        // Before any state file goes: the ultragoal record paths come from each cleared state's plan_id.
+        const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root, [sessionId]);
+        const completedRecordPaths = mode === 'ultragoal'
+          ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root, [candidate.completedSessionId]) }] : [])
+          : [];
         let directCleared = 0;
         for (const candidate of namedPrimaries) {
           const success = clearAutopilotMarkerCandidate(candidate, root);
@@ -1605,7 +1647,13 @@ export const stateClearTool: ToolDefinition<{
         );
         const runtimeCleanup = mode === 'team'
           ? { cleared: 0, hadFailure: false }
-          : clearModeRuntimeArtifacts(mode, root, sessionId);
+          : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+        for (const { statePath, recordPaths } of completedRecordPaths) {
+          if (existsSync(statePath)) continue;
+          const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+          runtimeCleanup.cleared += recordCleanup.cleared;
+          runtimeCleanup.hadFailure ||= recordCleanup.hadFailure;
+        }
         const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
         const signaledCandidateDirs = new Set<string>();
         for (const candidate of sessionSignalCandidates) {
@@ -1692,7 +1740,8 @@ export const stateClearTool: ToolDefinition<{
                 writeSessionCancelSignal(root, ownerSessionId, mode, ownerDirectCandidate);
                 clearModeState(mode as ExecutionMode, root, ownerSessionId, ownerDirectCandidate?.state);
               }
-              const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+              // ownerSessionId === sessionId: the paths captured before the primary clear.
+              const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
               runtimeCleanup.cleared += ownerRuntimeCleanup.cleared;
               runtimeCleanup.hadFailure ||= ownerRuntimeCleanup.hadFailure;
               ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));
@@ -2465,3 +2514,11 @@ export const stateTools = [
   stateGetStatusTool,
   stateMigrateNonGitTool,
 ];
+
+// One worktree-path scope per call (withWorktreePathRenderScope, not only the HUD's): the per-session
+// loops resolve the state root thousands of times. Git probes, boundary checks included, and getOmcRoot
+// are memoized for this call only; the next call probes afresh.
+for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+  const handler = tool.handler as (args: never) => Promise<unknown>;
+  tool.handler = ((args: never) => withWorktreePathRenderScope(() => handler(args))) as typeof tool.handler;
+}

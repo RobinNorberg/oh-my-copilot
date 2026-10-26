@@ -166,6 +166,17 @@ export declare function deriveGoalCandidates(brief: string): Array<{
 }>;
 export declare function readUltragoalPlan(cwd: string, planId?: string): Promise<UltragoalPlan>;
 export declare function createUltragoalPlan(cwd: string, options: CreateUltragoalOptions): Promise<UltragoalPlan>;
+/**
+ * Name the plan this session runs in its ultragoal state (`plan_id`): the key
+ * the hooks' goal-record lookup (scripts/lib/omg-goal-record.mjs) and a
+ * session-scoped `state_clear` use. The session is OMC_SESSION_ID, else
+ * Copilot's COPILOT_AGENT_SESSION_ID; without either, the legacy state file,
+ * else the only active session state. No active state, or several candidate
+ * sessions: nothing is written and the hooks fall back to scanning plans.
+ * Best-effort: the plan artifacts are already written. Returns the state path
+ * it stamped, or null.
+ */
+export declare function recordUltragoalStatePlanId(cwd: string, planId: string, env?: NodeJS.ProcessEnv): Promise<string | null>;
 export declare function summarizeUltragoalPlan(plan: UltragoalPlan): {
     total: number;
     pending: number;

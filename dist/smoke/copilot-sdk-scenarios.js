@@ -7,6 +7,7 @@
 import { realpathSync } from 'fs';
 import { basename, join, resolve, sep } from 'path';
 import { assistantText, BENIGN_ADAPTER_NOTES, collectHookRuns, excerpt, SMOKE_TOKEN, } from './copilot-session-eval.js';
+export const CLI_SCENARIOS = ['continuation', 'prompt-context', 'events', 'ultragoal'];
 /** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
 /**
@@ -15,9 +16,21 @@ export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
  * plugin; `chain` spawns two real headless `copilot -p` factory links (about
  * 2 premium requests) outside the SDK runtime's credit cap; `team` starts a
  * real 2-worker `omg team` with sdk workers (about 2 premium requests, one per
- * worker).
+ * worker). The {@link CLI_SCENARIOS}, premium requests measured on Copilot
+ * CLI 1.0.91: `continuation` 2 (the prompt plus one Stop-hook continuation),
+ * `prompt-context` 1, `events` 1 (the `/compact` of the resumed session bills
+ * credits but no premium request), `ultragoal` 2 (the prompt plus one
+ * reinforcement continuation).
  */
-export const OPT_IN_SCENARIOS = ['filetools', 'chain', 'team'];
+export const OPT_IN_SCENARIOS = ['filetools', 'chain', 'team', ...CLI_SCENARIOS];
+/**
+ * Scenarios written to the behaviour another lane delivers: their failing
+ * checks carry this note, so a red run reads as expected until it lands.
+ * Remove the entry once the scenario passes on dev.
+ */
+export const PENDING_SCENARIOS = {
+    ultragoal: 'PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands',
+};
 export const KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
 /** About 2 premium requests (one per scenario). */
 export const DEFAULT_SCENARIOS = ['smoke', 'guardrail'];
@@ -103,6 +116,10 @@ export function permitProjectFiles(req, ctx) {
     const target = req.kind === 'read' ? req.path : req.kind === 'write' ? (req.resolvedPath ?? req.fileName) : undefined;
     return typeof target === 'string' && !!target && isUnder(resolve(ctx.projectDir, target), ctx.projectDir, platform);
 }
+/** CLI scenario fixtures named in their prompts. */
+export const PROMPT_CONTEXT_PREFIX = 'OMG-PROMPT-CONTEXT:';
+export const EVENTS_MISSING_FILE = 'omg-missing-probe.txt';
+export const EVENTS_SHELL_TOKEN = 'omg-events-probe';
 export const SCENARIOS = {
     smoke: {
         name: 'smoke',
@@ -164,7 +181,174 @@ export const SCENARIOS = {
         excludedTools: [],
         permit: denyAll,
     },
+    // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+    // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+    continuation: {
+        name: 'continuation',
+        prompt: 'Reply with exactly the word started and nothing else. Do not call any tools.',
+        excludedTools: [],
+        permit: denyAll,
+    },
+    'prompt-context': {
+        name: 'prompt-context',
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll,
+    },
+    events: {
+        name: 'events',
+        prompt: [
+            'Do these two steps in order, then answer with one short line:',
+            `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+            `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`,
+        ].join('\n'),
+        excludedTools: [],
+        permit: denyAll,
+    },
+    ultragoal: {
+        name: 'ultragoal',
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
+        excludedTools: [],
+        permit: denyAll,
+    },
 };
+// ---------------------------------------------------------------------------
+// CLI scenarios (headless copilot sessions: continuation, prompt-context,
+// events, ultragoal)
+// ---------------------------------------------------------------------------
+/** The prompt the `events` scenario resumes its session with: preCompact at no premium cost. */
+export const COMPACT_PROMPT = '/compact';
+/** The ultragoal activation prompt the seed sends through our UserPromptSubmit hook group. */
+export const ULTRAGOAL_ACTIVATION_PROMPT = 'use ultragoal to write a hello.txt file containing hi';
+/** keyword-detector's confirmation window; the seed backdates the state past it. */
+export const ULTRAGOAL_CONFIRM_TTL_MS = 120_000;
+/** The Stop-hook reason the continuation stub blocks with (once). */
+export function continuationReason(nonce) {
+    return `[OMG-SMOKE-CONT ${nonce}] Stop hook continuation. Reply with exactly ${continuationToken(nonce)} and nothing else. Do not call tools.`;
+}
+export function continuationToken(nonce) {
+    return `CONTINUED_${nonce}`;
+}
+export function promptContextLine(nonce) {
+    return `${PROMPT_CONTEXT_PREFIX} ${nonce}`;
+}
+const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+function hookEnds(events, hookType) {
+    return events.filter((e) => e.type === 'hook.end' && e.data?.hookType === hookType);
+}
+function userMessages(events) {
+    return events.filter((e) => e.type === 'user.message').map((e) => str(e.data?.content));
+}
+function noCliEvidence(name, count, run) {
+    return scenarioCheckIds(name).slice(0, count).map((id) => ({ id, ok: false, detail: run.error ? `no CLI evidence: ${excerpt(run.error, 200)}` : 'no CLI evidence collected' }));
+}
+function evaluateContinuation(run) {
+    const cli = run.cli;
+    if (!cli)
+        return noCliEvidence('continuation', 4, run);
+    const reason = continuationReason(cli.nonce);
+    const token = continuationToken(cli.nonce);
+    const stopStarts = run.events.filter((e) => e.type === 'hook.start' && e.data?.hookType === 'agentStop');
+    const blockIdx = run.events.findIndex((e) => e.type === 'hook.end' && e.data?.hookType === 'agentStop'
+        && isRecord(e.data?.output) && e.data.output.decision === 'block' && str(e.data.output.reason).includes(cli.nonce));
+    const after = blockIdx === -1 ? [] : run.events.slice(blockIdx + 1);
+    const injected = userMessages(after).some((m) => m.includes(reason));
+    const nextStop = after.find((e) => e.type === 'hook.start' && e.data?.hookType === 'agentStop');
+    const nextInput = isRecord(nextStop?.data?.input) ? nextStop.data.input : {};
+    const activeOk = nextInput.stop_hook_active === true;
+    const text = assistantText(after);
+    const echoed = text.includes(token);
+    return [
+        {
+            id: 'scn.continuation.blocked',
+            ok: blockIdx !== -1,
+            detail: blockIdx !== -1 ? 'agentStop hook.end carried the stub decision:block with its reason' : `no agentStop block with the stub reason (${stopStarts.length} agentStop run(s))`,
+            ...(blockIdx !== -1 ? {} : { evidence: excerpt(JSON.stringify(hookEnds(run.events, 'agentStop').map((e) => e.data?.output))) }),
+        },
+        {
+            id: 'scn.continuation.reason_injected',
+            ok: injected,
+            detail: injected ? 'the block reason arrived as the next user.message' : 'no user.message with the block reason after the block',
+            ...(injected ? {} : { evidence: excerpt(userMessages(run.events).join('\n')) }),
+        },
+        {
+            id: 'scn.continuation.stop_hook_active',
+            ok: activeOk,
+            detail: !nextStop ? 'no agentStop after the continuation' : `next agentStop input stop_hook_active=${JSON.stringify(nextInput.stop_hook_active)}`,
+        },
+        {
+            id: 'scn.continuation.echo',
+            ok: echoed,
+            detail: echoed ? `the continuation turn replied ${token}` : `${token} missing from the continuation turn`,
+            ...(echoed ? {} : { evidence: excerpt(text || assistantText(run.events)) }),
+        },
+    ];
+}
+function evaluatePromptContext(run) {
+    const cli = run.cli;
+    if (!cli)
+        return noCliEvidence('prompt-context', 2, run);
+    const line = promptContextLine(cli.nonce);
+    const ends = hookEnds(run.events, 'userPromptSubmitted');
+    const accepted = ends.some((e) => isRecord(e.data?.output) && str(e.data.output.additionalContext).includes(line));
+    const text = assistantText(run.events);
+    const echoed = text.includes(cli.nonce);
+    return [
+        {
+            id: 'scn.prompt-context.accepted',
+            ok: accepted,
+            detail: accepted ? 'userPromptSubmitted hook.end output carried the stub additionalContext' : 'stub additionalContext missing from every userPromptSubmitted hook.end output',
+            ...(accepted ? {} : { evidence: excerpt(JSON.stringify(ends.map((e) => e.data?.output))) }),
+        },
+        {
+            id: 'scn.prompt-context.reached_model',
+            ok: echoed,
+            // docs-audit #4: the current docs say config-file userPromptSubmitted output is dropped.
+            detail: echoed ? 'the model echoed the additionalContext nonce' : 'the model did not echo the nonce: UserPromptSubmit additionalContext did not reach it (keyword and skill injection are lost on this CLI; consider userPromptTransformed)',
+            ...(echoed ? {} : { evidence: excerpt(text) }),
+        },
+    ];
+}
+function evaluateEvents(run) {
+    const compacted = run.events.some((e) => e.type === 'session.compaction_start');
+    const pre = hookCheck('scn.events.pre_compact', run.events, ['preCompact']);
+    return [
+        hookCheck('scn.events.post_tool_use_failure', run.events, ['postToolUseFailure']),
+        hookCheck('scn.events.permission_request', run.events, ['permissionRequest']),
+        {
+            ...pre,
+            ok: pre.ok && compacted,
+            detail: `${pre.detail}; session.compaction_start ${compacted ? 'seen' : 'missing'} after ${COMPACT_PROMPT}`,
+        },
+    ];
+}
+/** A tool call our preToolUse hook denied for the ultragoal gate. */
+export const ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
+function evaluateUltragoal(run) {
+    const cli = run.cli;
+    if (!cli)
+        return noCliEvidence('ultragoal', 2, run);
+    const seed = cli.seed;
+    const done = run.events.filter((e) => e.type === 'tool.execution_complete');
+    const denied = done.filter((e) => ULTRAGOAL_DENY.test(JSON.stringify(e.data?.error ?? '')));
+    const succeeded = done.filter((e) => e.data?.success === true);
+    const allowed = denied.length === 0 && succeeded.length > 0;
+    return [
+        {
+            id: 'scn.ultragoal.seeded',
+            ok: !!seed?.ok,
+            detail: seed ? seed.detail : 'no seed ran',
+            ...(seed?.ok || !seed?.state ? {} : { evidence: excerpt(JSON.stringify(seed.state)) }),
+        },
+        {
+            id: 'scn.ultragoal.tools_allowed',
+            ok: allowed,
+            detail: allowed ? `${succeeded.length} tool call(s) ran, none denied by the ultragoal gate`
+                : denied.length ? `${denied.length} of ${done.length} tool call(s) denied by the ultragoal gate` : 'no tool call completed',
+            ...(denied.length ? { evidence: excerpt(str(isRecord(denied[0].data?.error) ? denied[0].data.error.message : '')) } : {}),
+        },
+    ];
+}
 // ---------------------------------------------------------------------------
 // Team scenario (a real 2-worker `omg team` on the sdk transport)
 // ---------------------------------------------------------------------------
@@ -533,6 +717,10 @@ export function scenarioCheckIds(name) {
         filetools: ['tools', 'hooks', 'pre', 'post', 'matcher', 'payload', 'injected', 'injected_write'],
         chain: ['link1', 'spawned', 'inherited', 'closed', 'premium'],
         team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'premium'],
+        continuation: ['blocked', 'reason_injected', 'stop_hook_active', 'echo'],
+        'prompt-context': ['accepted', 'reached_model'],
+        events: ['post_tool_use_failure', 'permission_request', 'pre_compact'],
+        ultragoal: ['seeded', 'tools_allowed'],
     };
     return [...own[name], 'exit', 'adapter_errors', 'cost'].map((s) => `scn.${name}.${s}`);
 }
@@ -920,9 +1108,18 @@ export function evaluateScenario(run) {
         filetools: evaluateFiletools,
         chain: evaluateChain,
         team: evaluateTeam,
+        continuation: evaluateContinuation,
+        'prompt-context': evaluatePromptContext,
+        events: evaluateEvents,
+        ultragoal: evaluateUltragoal,
     }[run.name](run);
     const cost = runCost(run);
-    return { checks: [...own, ...evaluateCommon(run, cost)], cost: { premiumRequests: cost.premiumRequests, credits: cost.credits } };
+    const checks = [...own, ...evaluateCommon(run, cost)];
+    const pending = PENDING_SCENARIOS[run.name];
+    return {
+        checks: pending ? checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` })) : checks,
+        cost: { premiumRequests: cost.premiumRequests, credits: cost.credits },
+    };
 }
 // ---------------------------------------------------------------------------
 // Model choice

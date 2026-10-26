@@ -4,11 +4,14 @@ import { join } from 'path';
 
 import { formatAutopilotRuntimeInsight } from '../runtime-insight.js';
 import { writeHudState } from '../../../hud/state.js';
+import { useIsolatedCwd } from '../../../__tests__/helpers/isolated-cwd.js';
 
 function writeJson(filePath: string, value: unknown): void {
   mkdirSync(join(filePath, '..'), { recursive: true });
   writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf-8');
 }
+
+useIsolatedCwd();
 
 describe('formatAutopilotRuntimeInsight', () => {
   let cwd: string;

@@ -19,7 +19,7 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
 ## Primary path: `omg release <X.Y.Z>`
 
-The pre-flight, ship sequence and verification below are scripted as ten
+The pre-flight, ship sequence and verification below are scripted as eleven
 resumable phases. Run the script; use an agent only to triage the phase it
 stops at. The manual steps in the rest of this file are the fallback and the
 reference for what each phase asserts.
@@ -33,13 +33,40 @@ reference for what each phase asserts.
    `omg release X.Y.Z --dry-run` to see the plan, then run it:
 
    ```bash
-   omg release X.Y.Z --to gates --suite full --baseline <last good report>   # preflight..gates, no premium requests
-   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): commit, pr, promote, tag (asks), verify
+   omg release X.Y.Z --to suite --suite full --baseline <last good report>   # preflight..suite: release commit + full suite, no premium requests
+   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): pr, promote, tag (asks), verify
+   omg release X.Y.Z --live-smoke --yes    # --yes: required for the tag phase without a terminal (agent lanes, CI)
    ```
 
-   Phases: preflight, bump, build, gates, smoke, commit, pr, promote, tag,
-   verify. State is `.omg/release/X.Y.Z.json`; a run without `--from`
-   resumes at the first phase not yet ok; `--from <phase>` re-runs one.
+   Before any `--yes`, check `phases.smoke.status` is `ok` in
+   `.omg/release/X.Y.Z.json` (`--yes` only logs the skipped-smoke warning).
+
+   Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
+   tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
+   commit: some tests read committed state (npm pack of the committed tree,
+   committed docs/CLAUDE.md, inventory drift) and always fail before it. The
+   live smoke runs after the suite, so a red suite costs no premium requests.
+   `--suite` is recorded for the release: a later run without `--suite` uses
+   the recorded level, a lower `--suite` is refused (start over with
+   `--from preflight` to change it), and `--suite none` records `suite` as
+   skipped with a warning. The level the suite actually ran at is recorded
+   too: raising `--suite` after the suite ran lower (e.g. `--suite none`,
+   then `--suite full`) blocks `pr` until `--from suite --suite full` runs it.
+   `--baseline` is recorded (as an absolute path) and reused by a later run
+   that does not pass it. `--suite` with a `--to` before `suite` warns that
+   the suite does not run in that invocation. If the suite fails, fix, commit
+   and re-run `omg release X.Y.Z --from build --to suite`: every build input
+   (src, scripts, templates, package.json, build config) feeds dist/bridge.
+   Never a bare `--from build`: it continues into smoke and pr, and `pr`
+   refuses a skipped smoke unless `--allow-skipped-smoke` is given. The suite and the live
+   smoke fail if they leave files in the working tree (remove them, re-run),
+   and skipping past `commit` needs a clean tree, so nothing uncommitted is
+   swept into a later release commit or left out of what `pr` pushes. Every
+   child runs under the ship scrub (GIT_NO_REPLACE_OBJECTS=1, redirecting
+   GIT_*/GH_* dropped); the vitest suite drops only GIT_NO_REPLACE_OBJECTS,
+   as in CI. State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   resumes at the first phase not yet ok; `--from <phase>` re-runs one and
+   voids the records of every later phase, so they run again.
    Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 3. Exit 1 = a phase failed or is blocked; the output names the cause (failed
    checks with failing test titles, orphan dist files, missing stamps).
@@ -50,7 +77,12 @@ reference for what each phase asserts.
      yourself and re-run. CI is judged by the `omg ship` merge rule: every
      check outside `ship.advisoryChecks` SUCCESS/SKIPPED; each failed run is
      rerun once automatically, the second failure stops with the test names.
-   - `tag` blocked: no `--yes` and the confirmation was declined (or no TTY).
+   - `tag` blocked: no `--yes` and the confirmation was declined or there is
+     no terminal to ask on. The confirmation is never skipped on its own: pass
+     `--yes` once you have decided to publish.
+   - `verify` failed with "is on npm and GitHub Release … is published": the
+     release is out; a job of the tag run failed afterwards. Triage the named
+     job; do not rerun the run and do not use Release Recovery.
    - `verify` blocked: the tag run or npm propagation is still going; re-run
      `--from verify`.
 4. The script never deletes `.git/index.lock`, never force-pushes, rebases or

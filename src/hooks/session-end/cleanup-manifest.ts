@@ -325,6 +325,60 @@ export function acknowledgeSessionEndDiscoveryTicket(directory: string, sessionI
 export function takeSessionEndDiscoveryPage(directory: string, limit = 4): string[] { return claimSessionEndDiscoveryTickets(directory, limit).map(ticket => ticket.sessionId); }
 
 
+/**
+ * Restart the producer grace and action deadlines of a job no worker has
+ * claimed yet. A Copilot job is created at the first turn's SessionEnd and
+ * held while the session goes on (worker.ts); without this its deadlines
+ * would lapse mid-session and the real end would expire every action.
+ * `restartGrace: false` (the real end) keeps the grace the holds already ran
+ * and only moves the action deadline past it, so the actions run now instead
+ * of waiting a fresh grace.
+ */
+export function rearmUnclaimedSessionEndJob(directory: string, sessionId: string, { restartGrace = true }: { restartGrace?: boolean } = {}): SessionEndJobV1 | null {
+  const current = readSessionEndJob(directory, sessionId);
+  if (!current || current.phase !== 'collecting' || current.owner) return null;
+  return mutateSessionEndJob(directory, sessionId, current.revision, (job) => {
+    if (job.phase !== 'collecting' || job.owner) throw new Error('rearm-conflict');
+    if (restartGrace) Object.assign(job, initialDeadlines());
+    else job.bestEffortDeadlineAt = new Date(Math.max(Date.now(), Date.parse(job.producerGraceExpiresAt)) + REQUIRED_ACTION_EXECUTION_MS + BEST_EFFORT_ACTION_EXECUTION_MS).toISOString();
+  });
+}
+
+/**
+ * What a Copilot SessionEnd leaves for the worker to plan the factory-chain
+ * link from. `claudeEntrypoint` carries the deferring SessionEnd's
+ * CLAUDE_CODE_ENTRYPOINT, so the worker still refuses a Claude session's link claim.
+ */
+export interface DeferredSessionEndChain { reason: string; linkEnv?: string; claudeEntrypoint?: string; }
+
+/** Retries a stale revision (a concurrent re-arm or resolve), never a claimed job. */
+function mutateUnclaimedSpawnNext(directory: string, sessionId: string, mutate: (payload: Record<string, unknown>) => Record<string, unknown>): SessionEndJobV1 | null {
+  for (let i = 0; i < 8; i++) {
+    const current = readSessionEndJob(directory, sessionId);
+    if (!current || current.phase !== 'collecting' || current.owner) return null;
+    const result = mutateAtRevision(directory, sessionId, current.revision, (job) => {
+      if (job.phase !== 'collecting' || job.owner) throw new Error('spawn-next-conflict');
+      job.actions['spawn-next'].payload = mutate(job.actions['spawn-next'].payload);
+    });
+    if (result !== REVISION_MISMATCH) return result;
+  }
+  return null;
+}
+
+/**
+ * Copilot fires SessionEnd after every turn, so the chain link is decided at
+ * the real end (worker.ts), not with the first turn's outcome. Each
+ * SessionEnd records its reason and link claim here; the last one wins.
+ */
+export function deferSessionEndChain(directory: string, sessionId: string, deferred: DeferredSessionEndChain): SessionEndJobV1 | null {
+  return mutateUnclaimedSpawnNext(directory, sessionId, (payload) => ({ ...payload, deferredChain: deferred }));
+}
+
+/** The real end: replace the deferred marker with the planned chain, if any. */
+export function resolveDeferredSessionEndChain(directory: string, sessionId: string, chain: Record<string, unknown> | null): SessionEndJobV1 | null {
+  return mutateUnclaimedSpawnNext(directory, sessionId, ({ deferredChain: _deferred, ...payload }) => (chain ? { ...payload, chain } : payload));
+}
+
 /** Recovery may seal a prepared core only after foreground cleanup has a durable completed result. */
 export function recoverPreparedCoreProducer(directory: string, sessionId: string): SessionEndJobV1 | null {
   return mutateLatest(directory, sessionId, job => {

@@ -2,6 +2,99 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.13.0
+
+## [5.13.0] - 2026-10-26
+
+Fork **v5.13.0** (from v5.12.2) is a minor release. It makes OMC's
+keep-going modes work on GitHub Copilot CLI: Stop continuations now chain,
+ultragoal gets a native goal record, per-agent models reach Copilot, and the
+hook adapter is brought up to Copilot CLI 1.0.103. It also adds
+`omg hooks doctor` and reworks the `omg release` suite phase. There are no
+breaking changes, but **on Copilot a prompt can now cost up to 3 extra
+premium requests** from OMC continuations (see Changed and the
+[migration note](docs/MIGRATION.md#v5122--v5130-chained-stop-continuation-on-copilot)).
+
+### Added
+
+- **Chained Stop continuation on Copilot** (#279): an OMC Stop block
+  continues the session up to 3 times per genuine user prompt, bounded first
+  by the mode's own cap. `OMC_COPILOT_STOP_CHAIN_MAX` (1 to 7) overrides it;
+  1 restores the old single continuation. Ralph is not extended inside a
+  chain, `code-simplifier` honours the cap, and `persistent-mode` does not
+  block when the payload says Copilot's native autopilot is on.
+- **OMG goal record for ultragoal on Copilot** (#279): `omg ultragoal
+  goal-start` and `goal-evidence` write `.omg/ultragoal/omg-goal.json` (or a
+  per-plan record with `--plan-id`), which stands in for Claude Code's
+  `/goal`. Stop keeps going until every criterion has evidence. The session's
+  `plan_id` is recorded in its ultragoal state, a complete record is archived
+  as `omg-goal.<timestamp>.json` instead of deleted, and a session-scoped
+  cancel removes only that session's plan record.
+- **Per-agent models on Copilot** (#281): `omg setup` copies explicit
+  `agents.<name>.model` overrides from the user config into
+  `subagents.agents["oh-my-copilot:<name>"].model` in
+  `$COPILOT_HOME/settings.json` (merge, `.bak` backup, atomic write).
+  Tier aliases resolve through the Copilot 5.5 tier table in
+  `src/config/copilot-models.json`; unknown ids are skipped with a warning.
+  The settings key is not yet verified on a live Copilot; check with
+  `/subagents`. Read-only agents also gain `read_bash`, `read_powershell`,
+  `list_agents` and `read_agent`.
+- **`omg hooks doctor`** (#280): checks `node` on PATH, `copilot/hooks.json`
+  against its generator, hook script paths, a sandboxed dry dispatch of every
+  entry with recorded Copilot payloads, and the Copilot CLI version.
+- **Opt-in live CLI smoke scenarios** (#280): `omg smoke copilot --tier 2
+  --scenario continuation,prompt-context,events` runs headless `copilot`
+  sessions (about 4 premium requests). The `ultragoal` scenario is still
+  marked pending. The default scenario set is unchanged.
+- **Copilot payload normalization** (#283): the hook dispatcher adds the
+  Claude field names to every Copilot payload (camelCase PermissionRequest
+  and SubagentStart, `skill` to `Skill`, plugin MCP names to `mcp__t__x`,
+  Copilot argument names to Claude ones), without removing Copilot's keys.
+
+### Changed
+
+- **`context-guard-stop` never blocks on Copilot** (#283): Copilot's token
+  sample is stale and the model cannot run `/compact`, so the guard sends its
+  advice once per session as a message instead of spending premium requests.
+  Context share is read from `events.jsonl` against a per-model limit table.
+- **`systemMessage` on Copilot** (#283): it is folded into
+  `additionalContext` or the Stop block reason, and a non-blocking Stop's
+  message is handed to the next prompt. User notices such as the update
+  check therefore reach the model.
+- **PermissionRequest on Copilot** (#283): an `allow` or `deny` is emitted at
+  the top level and as `hookSpecificOutput.decision`, deny wins when several
+  hooks answer, and `ask` emits nothing so Copilot's own flow runs. The
+  manifest matcher also lists `bash` and `powershell`.
+- **SessionEnd on Copilot** (#279): Copilot fires SessionEnd after every
+  turn, so the cleanup job is held until `events.jsonl` records
+  `session.shutdown`. The factory-chain link is decided at that real end.
+- **Mode keywords** (#279): OMC continuation text and subagent kickoff
+  prompts never arm a mode on Copilot, and a question that only mentions a
+  mode keyword no longer arms it.
+- **`omg release` suite phase** (#282): the vitest suite now runs in its own
+  `suite` phase after `commit`. The `--suite` level and `--baseline` are
+  recorded per release, `pr` refuses a skipped live smoke unless
+  `--allow-skipped-smoke` is given, skipping past `commit` needs a clean
+  tree, and re-running a phase voids later phase records. Usage errors exit
+  2. See [REFERENCE.md](docs/REFERENCE.md#omg-release).
+
+### Fixed
+
+- **Skill tool on Copilot** (#279): the lowercase `skill` tool name is
+  recognized, so the cancel and ultragoal bootstrap and skill-state hooks
+  fire.
+- **Nested repo under a git-less session root** (#282): a project repo below
+  a git-less workspace folder is no longer rejected as foreign. The state
+  root is memoized per call, so per-session scans no longer take minutes on
+  Windows.
+- **Copilot subagents** (#279, #283): the ultragoal guard resolves a child's
+  parent session, parallel agents of one type close oldest first, a child's
+  Stop skips the context guard and the message handoff, and pending handoff
+  files older than 24 hours are pruned at SessionEnd.
+- **`omg release` messages** (#282): `verify` names the failed CI jobs when
+  npm and the GitHub Release are already published, and `tag` without a
+  terminal says to pass `--yes`.
+
 # oh-my-copilot v5.12.2
 
 ## [5.12.2] - 2026-10-23

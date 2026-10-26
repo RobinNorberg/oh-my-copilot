@@ -30,7 +30,9 @@ export declare const TRUSTED_READ_ENV: Readonly<Record<string, string>>;
 /**
  * The environment every engine child runs with: the parent's, minus the
  * variables above, plus GIT_NO_REPLACE_OBJECTS=1 (no command the engine runs,
- * a merge included, may see replaced objects). Keys compare case-insensitively
+ * a merge included, may see replaced objects). `omg release`
+ * (src/release/engine.ts) runs every child under it too, node scripts
+ * included; only its vitest suite keeps the caller's environment. Keys compare case-insensitively
  * (Windows environment names are). This narrows what a mis-set environment can
  * do; it is not a boundary against a process that controls the environment
  * outright (PATH can name another `git`), see the trust note in ship.ts.

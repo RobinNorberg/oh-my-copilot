@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
 - [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
 - [Unreleased: Rule Glob Brace Alternation](#unreleased-rule-glob-brace-alternation)
@@ -32,6 +33,14 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot
+
+Under Copilot CLI an OMC Stop continuation (ralph, ultragoal and the other keep-going modes) can now chain: up to 3 continuations per genuine user prompt instead of 1. Copilot bills each continuation as one premium request. Under Claude Code nothing changes.
+
+- **To restore the old behaviour**, set `OMC_COPILOT_STOP_CHAIN_MAX=1`. Values from 1 to 7 are accepted. The mode's own cap (ralph `max_iterations`, ultragoal `max_reinforcements`) still applies first.
+- **`context-guard-stop` no longer blocks on Copilot.** It sends its compaction advice once per session with the next prompt instead.
+- **Ultragoal on Copilot** uses the OMG goal record (`omg ultragoal goal-start`, `goal-evidence`) in place of Claude Code's `/goal`. See [HOOKS.md](./HOOKS.md#stop).
 
 ## v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed
 
@@ -700,21 +709,30 @@ could not start any worker.
 - **macOS:** `--madmax` and `--yolo` require tmux on both hosts. The rule is
   judged from the arguments you typed.
 
-### `agents.<name>.model` is a no-op on Copilot
+### `agents.<name>.model` on Copilot
 
-The `agents.<name>.model` override is applied by rewriting the delegation call
-through the PreToolUse `updatedInput` channel. Copilot does not support that
-channel, so the adapter drops it. On Copilot, per-agent models come from the
-generated `models:` lists or from Copilot's own
-`subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json`. Use
-the agent id as Copilot shows it; plugin agents are namespaced
-(`oh-my-copilot:<name>`):
+The `agents.<name>.model` override is applied under Claude Code by rewriting
+the delegation call through the PreToolUse `updatedInput` channel. Copilot does
+not support that channel, so the adapter drops it. `omg setup` therefore copies
+the explicit overrides in your user config (`%APPDATA%\claude-omc\config.jsonc`
+on Windows, `~/.config/claude-omc/config.jsonc` elsewhere) into Copilot's own
+per-agent setting in `$COPILOT_HOME/settings.json`. Project overrides in
+`.copilot/omg.jsonc` are not synced. The key written is
+`subagents.agents["oh-my-copilot:<name>"].model`. That is the expected key, since it
+matches the agent name Copilot reports at runtime, but it has not been confirmed
+as a settings key on a live Copilot; check with `/subagents` that the override
+took effect. Tier aliases (any case) resolve to the Copilot model for that tier,
+dashed Claude Code ids such as `claude-sonnet-5-5` become dotted, and only ids in
+`src/config/copilot-models.json` `knownModels` are written; setup prints a warning
+for every value it skips (`inherit`, unlisted ids). Existing settings keys are
+preserved, a `settings.json.bak` is written first, and an unchanged file is not
+rewritten. Re-run `omg setup` after editing the override. Removing an override
+from the config does not remove it from `settings.json`; delete it there. You can
+still edit the setting by hand:
 
 ```json
-{ "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5" } } } }
+{ "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5.5" } } } }
 ```
-
-Under Claude Code the override works as before.
 
 ### Removed: the safe-command approver
 

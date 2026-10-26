@@ -57,6 +57,19 @@ export function resolveCopilotBinary(
   return { bin: null, source: null };
 }
 
+/** The Copilot CLI the fork's hooks and smoke are verified against. */
+export const TARGET_COPILOT_VERSION = '1.0.91';
+/** The newest Copilot CLI the docs audit read (2026-10-23); not yet verified live. */
+export const LATEST_DOCUMENTED_COPILOT_VERSION = '1.0.103';
+
+/** Numeric x.y.z comparison (prerelease suffixes ignored): <0, 0, >0. */
+export function compareCopilotVersions(a: string, b: string): number {
+  const parts = (v: string) => v.split('-')[0].split('.').map((n) => Number(n) || 0);
+  const [pa, pb] = [parts(a), parts(b)];
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+}
+
 /** Extract `x.y.z` from `copilot --version` output ("GitHub Copilot CLI 1.0.91."). */
 export function parseCopilotVersion(output: string): string | null {
   const match = /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(output);

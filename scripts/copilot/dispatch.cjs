@@ -24,6 +24,9 @@
  *   - additionalContext and systemMessage: joined with "\n" in hook order
  *     (top level and hookSpecificOutput alike).
  *   - PreToolUse: any `deny` wins, and the first deny reason is kept.
+ *   - PermissionRequest: any `behavior:'deny'` wins (top level, and
+ *     hookSpecificOutput.decision alike); behavior/message/interrupt/decision
+ *     all come from the first denying hook.
  *   - decision:'block' (Stop/SubagentStop): a block from any hook survives, and
  *     every hook still runs. Several blocks join their reasons with "\n\n" in
  *     hook order. A block beats another hook's continue:false: the merged
@@ -40,6 +43,21 @@
  *     every code to 0 (one `[omg-hook]` stderr line per failing hook), except
  *     PermissionRequest exit 2, which is kept.
  * A group with a single non-empty output is passed through byte for byte.
+ *
+ * Payload: the stdin JSON object passes through normalizeHookPayload()
+ * (scripts/lib/copilot-payload.cjs) once, so every hook sees Claude field
+ * names next to Copilot's (camelCase PermissionRequest/SubagentStart fields,
+ * `skill` → `Skill`, `t-x` → `mcp__t__x`, tool_input argument names,
+ * tool_response). Non-JSON stdin is passed on unchanged.
+ *
+ * systemMessage handoff: Copilot has no model channel for a Stop that does
+ * not block. A merged Stop systemMessage is then stored in
+ * $COPILOT_HOME/projects/.omg-pending-context/<sessionId>.json, and the next
+ * UserPromptSubmit of that session prepends it to its additionalContext
+ * (which Copilot injects) and deletes the file. A blocking Stop gets it
+ * appended to the block reason instead. A subagent's Stop (child session id,
+ * parent transcript) stores nothing: the child gets no later prompt.
+ * SessionEnd deletes pending files older than 24 hours.
  *
  * Kill switch: OMC_COPILOT_HOOK_DISPATCH=0 runs each hook the old way, as its
  * own `node --require adapter run.cjs <script>` process, one after another,
@@ -58,9 +76,12 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { statSync } = require('fs');
+const { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } = require('fs');
 const { Writable } = require('stream');
 const { transform, parseHookOutput, writeAllSync } = require('../lib/copilot-hook-adapter.cjs');
+const { normalizeHookPayload } = require('../lib/copilot-payload.cjs');
+const { getCopilotConfigDir } = require('../lib/config-dir.cjs');
+const { isChildSessionPayload } = require('../lib/child-session.cjs');
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');
@@ -74,6 +95,10 @@ const EVENT_PATTERN = /^[A-Z][A-Za-z]+$/;
 // dispatcher stops waiting for a run.cjs that failed to enforce its own.
 const LEGACY_OUTER_GRACE_MS = 2000;
 const LEGACY_CLOSE_SETTLE_MS = 300;
+const PENDING_CONTEXT_DIR = '.omg-pending-context';
+// SessionEnd deletes pending files no prompt consumed within this window.
+const PENDING_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -130,6 +155,15 @@ function mergeExitCodes(codes) {
 
 const JOINED_KEYS = new Set(['additionalContext', 'systemMessage']);
 const DECISION_KEYS = new Set(['permissionDecision', 'permissionDecisionReason']);
+// PermissionRequest: Copilot's top-level {behavior, message, interrupt} and the
+// nested Claude-shaped hookSpecificOutput.decision.
+const PERMISSION_KEYS = new Set(['behavior', 'message', 'interrupt', 'decision']);
+
+/** The first PermissionRequest output that denies, at either shape's level. */
+function firstPermissionDeny(objects) {
+  return objects.find(object => object.behavior === 'deny' ||
+    (isPlainObject(object.decision) && object.decision.behavior === 'deny')) || null;
+}
 
 function firstDeny(objects) {
   for (const object of objects) {
@@ -157,6 +191,7 @@ function mergeObjects(event, objects, nested) {
     for (const key of Object.keys(object)) if (!order.includes(key)) order.push(key);
   }
   const deny = event === 'PreToolUse' ? firstDeny(objects) : null;
+  const permissionDeny = event === 'PermissionRequest' ? firstPermissionDeny(objects) : null;
   const blocks = nested ? [] : objects.filter(object => object.decision === 'block');
   const block = blocks.length ? { reason: joinBlockReasons(blocks) } : null;
   // A Stop/SubagentStop block wins over another hook's continue:false.
@@ -172,6 +207,8 @@ function mergeObjects(event, objects, nested) {
     } else if (key === 'hookSpecificOutput') {
       const nestedObjects = holders.map(object => object[key]).filter(isPlainObject);
       merged[key] = nestedObjects.length ? mergeObjects(event, nestedObjects, true) : first;
+    } else if (PERMISSION_KEYS.has(key) && permissionDeny) {
+      merged[key] = permissionDeny[key];
     } else if (DECISION_KEYS.has(key) && deny) {
       merged[key] = key === 'permissionDecision' ? 'deny' : deny.reason;
     } else if (key === 'continue' && stop) {
@@ -439,7 +476,98 @@ function readStdin() {
   });
 }
 
-async function dispatch(event, hooks, input) {
+/** stdin bytes → { input, payload }: the normalized JSON object, or the raw bytes and null. */
+function normalizeInput(event, raw) {
+  let payload;
+  try {
+    payload = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return { input: raw, payload: null };
+  }
+  if (!isPlainObject(payload)) return { input: raw, payload: null };
+  const normalized = normalizeHookPayload(event, payload);
+  return { input: Buffer.from(JSON.stringify(normalized), 'utf8'), payload: normalized };
+}
+
+// Keyed by the (globally unique) session id under the per-user config dir, like
+// context-guard-stop's retry guard: no git probe on every prompt (the project
+// state root costs ~130 ms on Windows).
+function pendingContextPath(payload) {
+  const sessionId = payload && payload.session_id;
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) return null;
+  return path.join(getCopilotConfigDir(), 'projects', PENDING_CONTEXT_DIR, `${sessionId}.json`);
+}
+
+/** Delete pending-context files older than PENDING_CONTEXT_MAX_AGE_MS. Best effort. */
+function prunePendingContext(now = Date.now()) {
+  const dir = path.join(getCopilotConfigDir(), 'projects', PENDING_CONTEXT_DIR);
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    const file = path.join(dir, name);
+    try {
+      if (now - statSync(file).mtimeMs > PENDING_CONTEXT_MAX_AGE_MS) unlinkSync(file);
+    } catch { /* raced or unreadable */ }
+  }
+}
+
+function readPendingMessages(file) {
+  try {
+    const messages = JSON.parse(readFileSync(file, 'utf8')).messages;
+    return Array.isArray(messages) ? messages.filter(nonEmptyString) : [];
+  } catch {
+    return [];
+  }
+}
+
+const objectStdout = value => (Object.keys(value).length ? `${JSON.stringify(value)}\n` : '');
+
+/**
+ * The systemMessage handoff (see the header) applied to the merged output.
+ * Any failure leaves the output as it was, with an `[omg-hook]` note.
+ */
+async function handOffSystemMessage(event, payload, merged) {
+  if (event !== 'Stop' && event !== 'UserPromptSubmit') return merged;
+  const parsed = parseHookOutput(merged.stdout);
+  if (parsed.kind === 'raw') return merged;
+  const value = parsed.kind === 'object' ? { ...parsed.value } : {};
+  try {
+    if (event === 'Stop') {
+      if (!nonEmptyString(value.systemMessage)) return merged;
+      const message = value.systemMessage;
+      delete value.systemMessage;
+      if (value.decision === 'block') {
+        value.reason = nonEmptyString(value.reason) ? `${value.reason}\n\n${message}` : message;
+      } else {
+        if (isChildSessionPayload(payload)) return merged;
+        const file = pendingContextPath(payload);
+        if (!file) return merged;
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify({ messages: [...readPendingMessages(file), message] }), { mode: 0o600 });
+      }
+      return { ...merged, stdout: objectStdout(value) };
+    }
+    const file = pendingContextPath(payload);
+    if (!file) return merged;
+    const messages = readPendingMessages(file);
+    try { unlinkSync(file); } catch { /* absent */ }
+    if (messages.length === 0) return merged;
+    const pending = messages.join('\n');
+    value.additionalContext = nonEmptyString(value.additionalContext) ? `${pending}\n${value.additionalContext}` : pending;
+    return { ...merged, stdout: objectStdout(value) };
+  } catch (error) {
+    const note = `[omg-hook] ${event}: systemMessage handoff failed: ${error && error.message ? error.message : String(error)}\n`;
+    return { ...merged, stderr: `${merged.stderr || ''}${note}` };
+  }
+}
+
+async function dispatch(event, hooks, rawInput) {
+  const { input, payload } = normalizeInput(event, rawInput);
   const legacy = process.env.OMC_COPILOT_HOOK_DISPATCH === '0';
   const debug = Boolean(process.env.OMC_DEBUG_HOOKS);
   const results = [];
@@ -462,7 +590,8 @@ async function dispatch(event, hooks, input) {
     }
     results.push(result);
   }
-  return mergeHookResults(event, results);
+  if (event === 'SessionEnd') prunePendingContext();
+  return handOffSystemMessage(event, payload, mergeHookResults(event, results));
 }
 
 async function main() {
@@ -498,5 +627,6 @@ module.exports = {
   mergeHookResults,
   legacyOuterTimeoutMs,
   groupBudgetMs,
+  normalizeInput,
   dispatch,
 };

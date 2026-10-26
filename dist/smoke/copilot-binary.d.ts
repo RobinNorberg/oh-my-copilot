@@ -16,6 +16,12 @@ export interface BinaryResolverDeps {
     platform?: NodeJS.Platform;
 }
 export declare function resolveCopilotBinary(override: string | undefined, env: NodeJS.ProcessEnv, deps?: BinaryResolverDeps): BinaryResolution;
+/** The Copilot CLI the fork's hooks and smoke are verified against. */
+export declare const TARGET_COPILOT_VERSION = "1.0.91";
+/** The newest Copilot CLI the docs audit read (2026-10-23); not yet verified live. */
+export declare const LATEST_DOCUMENTED_COPILOT_VERSION = "1.0.103";
+/** Numeric x.y.z comparison (prerelease suffixes ignored): <0, 0, >0. */
+export declare function compareCopilotVersions(a: string, b: string): number;
 /** Extract `x.y.z` from `copilot --version` output ("GitHub Copilot CLI 1.0.91."). */
 export declare function parseCopilotVersion(output: string): string | null;
 //# sourceMappingURL=copilot-binary.d.ts.map

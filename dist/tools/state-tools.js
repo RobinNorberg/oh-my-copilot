@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
-import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, isSensitiveStateLocation, probeGitTopLevel, resolveSessionStatePath, resolveSessionStatePaths, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
+import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, withWorktreePathRenderScope, isSensitiveStateLocation, probeGitTopLevel, resolveSessionStatePath, resolveSessionStatePaths, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
 import { resolveSessionId } from '../lib/session-id.js';
 import { validatePayload } from '../lib/payload-limits.js';
 import { canClearStateForSession, findCompletedSessionStateFiles, findCompletedSessionStateCandidates, findSessionOwnedStateCandidates, getStateSessionOwner, writeStateFileLocked, writeStateFileLockedIf, writeStateFileLockedCreateIf, withStateFileMutationLock, clearStateFileLockedIf, emergencyMutateStateFileIf, recoverEmergencyStateFile, getStateMutationLockDiagnostic, getStateMutationLockFailureMessage, } from '../lib/mode-state-io.js';
@@ -576,7 +576,47 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
         ...(includeLegacy ? [stateRoot] : []),
         ...[...(sessionIds ?? listSessionIds(root))].map((sid) => join(stateRoot, 'sessions', sid)),
     ]);
-    return [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+    const paths = [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
+    // The Copilot goal record (src/ultragoal/goal-record.ts) is the run's /goal
+    // stand-in: cancelling the run retires it with the guard.
+    return mode === 'ultragoal' ? [...paths, ...getOmgGoalRecordPaths(root, sessionIds)] : paths;
+}
+const ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/** The plan_id the session's ultragoal state names (session file, else a legacy file it owns). */
+function getUltragoalStatePlanId(root, sessionId) {
+    const legacy = getStatePath('ultragoal', root);
+    for (const path of [getSessionStatePath('ultragoal', root, sessionId), legacy]) {
+        try {
+            const state = JSON.parse(readFileSync(path, 'utf-8'));
+            if (path === legacy && state.session_id !== sessionId)
+                continue;
+            const planId = state.plan_id ?? state.planId;
+            if (typeof planId === 'string' && ULTRAGOAL_PLAN_ID_PATTERN.test(planId))
+                return planId;
+        }
+        catch { /* missing or unreadable state */ }
+    }
+    return undefined;
+}
+/**
+ * Without session ids every record goes; with them only the base record and
+ * the plans those sessions' ultragoal state names, so cancelling one session
+ * leaves a parallel session's plan record in place.
+ */
+function getOmgGoalRecordPaths(root, sessionIds) {
+    const base = join(getOmcRoot(root), 'ultragoal');
+    let plans = [];
+    if (sessionIds) {
+        plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root, sid)).filter((id) => Boolean(id)))]
+            .map((id) => join(base, 'plans', id));
+    }
+    else {
+        try {
+            plans = readdirSync(join(base, 'plans'), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(base, 'plans', entry.name));
+        }
+        catch { /* single-plan layout */ }
+    }
+    return [base, ...plans].map((dir) => join(dir, 'omg-goal.json'));
 }
 function captureTeamRuntimeArtifacts(root) {
     const captured = new Map();
@@ -1258,6 +1298,11 @@ export const stateClearTool = {
                 const directCandidate = requestedSessionCandidates.find((candidate) => candidate.path === directStatePath) ?? requestedSessionCandidates[0];
                 const namedPrimaries = mode === 'autopilot' ? operationCandidates.filter((candidate) => hasNamedWorkflowMarker(candidate.state)) : [];
                 const namedPrimaryPaths = new Set(namedPrimaries.map((candidate) => candidate.path));
+                // Before any state file goes: the ultragoal record paths come from each cleared state's plan_id.
+                const runtimeArtifactPaths = getModeRuntimeArtifactPaths(mode, root, [sessionId]);
+                const completedRecordPaths = mode === 'ultragoal'
+                    ? completedCandidates.flatMap((candidate) => candidate.completedSessionId ? [{ statePath: candidate.path, recordPaths: getOmgGoalRecordPaths(root, [candidate.completedSessionId]) }] : [])
+                    : [];
                 let directCleared = 0;
                 for (const candidate of namedPrimaries) {
                     const success = clearAutopilotMarkerCandidate(candidate, root);
@@ -1268,7 +1313,14 @@ export const stateClearTool = {
                 const completedSessionCleanup = clearCompletedSessionStateCandidates(mode, root, sessionId, completedCandidates.filter((candidate) => !namedPrimaryPaths.has(candidate.path)), teamCleanup);
                 const runtimeCleanup = mode === 'team'
                     ? { cleared: 0, hadFailure: false }
-                    : clearModeRuntimeArtifacts(mode, root, sessionId);
+                    : clearRuntimeArtifactPaths(runtimeArtifactPaths);
+                for (const { statePath, recordPaths } of completedRecordPaths) {
+                    if (existsSync(statePath))
+                        continue;
+                    const recordCleanup = clearRuntimeArtifactPaths(recordPaths);
+                    runtimeCleanup.cleared += recordCleanup.cleared;
+                    runtimeCleanup.hadFailure ||= recordCleanup.hadFailure;
+                }
                 const sessionSignalCandidates = operationCandidates.filter((candidate) => !hasNamedWorkflowMarker(candidate.state));
                 const signaledCandidateDirs = new Set();
                 for (const candidate of sessionSignalCandidates) {
@@ -1348,7 +1400,8 @@ export const stateClearTool = {
                                 writeSessionCancelSignal(root, ownerSessionId, mode, ownerDirectCandidate);
                                 clearModeState(mode, root, ownerSessionId, ownerDirectCandidate?.state);
                             }
-                            const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+                            // ownerSessionId === sessionId: the paths captured before the primary clear.
+                            const ownerRuntimeCleanup = clearRuntimeArtifactPaths(runtimeArtifactPaths);
                             runtimeCleanup.cleared += ownerRuntimeCleanup.cleared;
                             runtimeCleanup.hadFailure ||= ownerRuntimeCleanup.hadFailure;
                             ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId, ownerCandidates.filter((candidate) => candidate.path !== ownerNamedPrimary?.path));
@@ -2079,4 +2132,11 @@ export const stateTools = [
     stateGetStatusTool,
     stateMigrateNonGitTool,
 ];
+// One worktree-path scope per call (withWorktreePathRenderScope, not only the HUD's): the per-session
+// loops resolve the state root thousands of times. Git probes, boundary checks included, and getOmcRoot
+// are memoized for this call only; the next call probes afresh.
+for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
+    const handler = tool.handler;
+    tool.handler = ((args) => withWorktreePathRenderScope(() => handler(args)));
+}
 //# sourceMappingURL=state-tools.js.map

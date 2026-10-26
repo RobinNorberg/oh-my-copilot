@@ -1,8 +1,8 @@
 ---
 name: analyst
 description: Pre-planning consultant for requirements analysis (Opus)
-models: ["claude-opus-5","claude-opus-4.8","gpt-5.5"]
-tools: ["view","rg","grep","glob","bash","powershell","web_fetch","task","skill","ask_user","update_todo","t/*"]
+models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5"]
+tools: ["view","rg","grep","glob","bash","powershell","read_bash","read_powershell","web_fetch","task","list_agents","read_agent","skill","ask_user","update_todo","t/*"]
 include-custom-instructions: true
 ---
 

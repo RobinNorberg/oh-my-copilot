@@ -43,7 +43,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number | und
   return n;
 }
 
-/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `filetools`, `chain` or `team`. */
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in scenarios (OPT_IN_SCENARIOS). */
 export function parseScenarios(raw: string): Scenario[] {
   const names = raw.split(',').map((s) => s.trim()).filter(Boolean);
   if (names.length === 0) throw new Error('--scenario needs at least one name (or `all`)');

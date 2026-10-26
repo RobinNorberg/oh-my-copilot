@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "61b74574-b97a-4c2c-82f6-4d89613496df",
+  "timestamp": "2026-10-23T02:23:19.632Z",
+  "cwd": "<CWD>",
+  "transcript_path": "<COPILOT_HOME>\\session-state\\61b74574-b97a-4c2c-82f6-4d89613496df\\events.jsonl",
+  "stop_reason": "end_turn",
+  "stop_hook_active": false
+}

@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "61b74574-b97a-4c2c-82f6-4d89613496df",
+  "timestamp": "2026-10-23T02:23:21.979Z",
+  "cwd": "<CWD>",
+  "prompt": "[PROBE-CONT 1] Stub stop hook continuation. Reply with exactly the word continued-1 and nothing else. Do not call tools."
+}

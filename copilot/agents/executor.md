@@ -1,7 +1,7 @@
 ---
 name: executor
 description: Focused task executor for implementation work (Sonnet)
-models: ["claude-sonnet-5","claude-sonnet-4.6","gpt-5.5"]
+models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
 include-custom-instructions: true
 ---
 

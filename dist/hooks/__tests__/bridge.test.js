@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { processHook, resetSkipHooksCache, sanitizeHookOutputForSerialization, } from '../bridge.js';
 import { scaleTiming } from '../../__tests__/helpers/platform.js';
+import { useIsolatedCwd } from '../../__tests__/helpers/isolated-cwd.js';
+useIsolatedCwd();
 describe('processHook - Environment Kill-Switches', () => {
     const originalEnv = process.env;
     beforeEach(() => {

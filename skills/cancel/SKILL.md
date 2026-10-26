@@ -227,7 +227,8 @@ if Team fails, Ralph remains protected. Both operations use the selected id.
 - Retired UltraQA: `state_clear(mode="ultraqa", session_id="<session_id>")`
   only for stale pre-5.0.0 state.
 - Ultragoal: `state_clear(mode="ultragoal", session_id="<session_id>")` clears
-  only its runtime guard; preserve `.omg/ultragoal/` artifacts.
+  only its runtime guard and the Copilot goal record (`omg-goal.json`);
+  preserve the other `.omg/ultragoal/` artifacts.
 - Ultrapilot, Pipeline, Plan Consensus, and Self-Improve: use their protected
   session-scoped clear and mode-specific resume/artifact rules.
 - Swarm and other shared state are not guessed from a session; process them in

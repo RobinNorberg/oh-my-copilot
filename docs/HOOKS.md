@@ -63,7 +63,8 @@ Hook output is injected into Claude via `<system-reminder>` tags. Additional con
 - The dispatcher argv is the event name, then one segment per hook: the script path and its extra arguments (`subagent-tracker.mjs stop`). A literal `--` separates the segments, so a hook argument can never be `--`; the generator throws on one.
 - `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the sum of the group's upstream `timeout`s, because the hooks run one after another, each with its own timeout.
 - The group matcher is copied onto its entry, except `*` and empty matchers. Copilot applies it, so PreToolUse has two entries: all tools, and `Bash` for `git-guardrails.mjs`; PostToolUse has all tools, and `Read|Write|Edit|MultiEdit` for the rules and directory-context injectors. `async` is dropped, because Copilot has no such field.
-- Matchers keep Claude tool names. For PascalCase (Claude-format) hooks Copilot CLI matches, and puts into `tool_name`, the Claude name of its native tool: the 1.0.91 runtime (`prebuilds/win32-x64/runtime.node`, offset 91988385) maps `view`→`Read`, `create`→`Write`, `edit`→`Edit` (`str_replace_editor` and `apply_patch` sit in the same table entry), `grep`/`rg`→`Grep`, `glob`→`Glob`, `web_fetch`→`WebFetch`, `ask_user`→`AskUserQuestion`, `update_todo`→`TodoWrite`, `task`→`Agent`/`Task`, and `bash`→`Bash`. Changelog 1.0.62 (Claude-format matchers like `Bash` and `Read`, Claude tool names in payloads) and 1.0.63 (PostToolUse matchers honored). `omg smoke copilot --tier 2 --scenario filetools` confirmed this live on 1.0.91 for `view`, `edit`, `create` and `apply_patch`: PascalCase `PreToolUse`/`PostToolUse` entries fire once per call with `tool_name` `Read`, `Edit`, `Write` and `Edit`, the `Read|Write|Edit|MultiEdit` entry matches all four, and the directory-context injector's `additionalContext` is appended to the tool result the model reads. `apply_patch` sends the patch text itself as `tool_input`; the rules and directory-context injectors take its files from the `*** Add/Update/Delete File:` and `*** Move to:` lines (`scripts/lib/tool-input-paths.mjs`). Only the name is mapped: `tool_input` keeps Copilot's argument names (`path`, `old_str`, `new_str`, `file_text`, not `file_path`, `old_string`, `new_string`, `content`), the result arrives as `tool_result: {result_type, text_result_for_llm}` (no `tool_response`), and no `tool_use_id` is sent.
+- Matchers keep Claude tool names. For PascalCase (Claude-format) hooks Copilot CLI matches, and puts into `tool_name`, the Claude name of its native tool: the 1.0.91 runtime (`prebuilds/win32-x64/runtime.node`, offset 91988385) maps `view`→`Read`, `create`→`Write`, `edit`→`Edit` (`str_replace_editor` and `apply_patch` sit in the same table entry), `grep`/`rg`→`Grep`, `glob`→`Glob`, `web_fetch`→`WebFetch`, `ask_user`→`AskUserQuestion`, `update_todo`→`TodoWrite`, `task`→`Agent`/`Task`, and `bash`→`Bash`. Changelog 1.0.62 (Claude-format matchers like `Bash` and `Read`, Claude tool names in payloads) and 1.0.63 (PostToolUse matchers honored). `omg smoke copilot --tier 2 --scenario filetools` confirmed this live on 1.0.91 for `view`, `edit`, `create` and `apply_patch`: PascalCase `PreToolUse`/`PostToolUse` entries fire once per call with `tool_name` `Read`, `Edit`, `Write` and `Edit`, the `Read|Write|Edit|MultiEdit` entry matches all four, and the directory-context injector's `additionalContext` is appended to the tool result the model reads. `apply_patch` sends the patch text itself as `tool_input`; the rules and directory-context injectors take its files from the `*** Add/Update/Delete File:` and `*** Move to:` lines (`scripts/lib/tool-input-paths.mjs`). Only the name is mapped: `tool_input` keeps Copilot's argument names (`path`, `old_str`, `new_str`, `file_text`, not `file_path`, `old_string`, `new_string`, `content`), the result arrives as `tool_result: {result_type, text_result_for_llm}` (no `tool_response`), and no `tool_use_id` is sent. The [dispatcher](#per-event-dispatcher) adds the Claude names to the payload before any hook reads it (see [Payload normalization](#payload-normalization)).
+- Two exceptions to the name mapping were seen live on 1.0.91 (2026-10-23): the `skill` tool stays lowercase `skill`, and plugin MCP tools arrive as `t-state_read` (`t/state_read` in PermissionRequest). Both PermissionRequest and SubagentStart send their native camelCase payload even for the PascalCase registration (`{hookName, sessionId, toolName: "powershell", toolInput, permissionSuggestions}`, `{sessionId, transcriptPath, agentName}`). The docs say a Claude-format `PermissionRequest` matcher like `Bash` matches a `powershell` request, but the payload carries the raw `toolName`, so the generator also lists the runtime names there (`Bash|bash|powershell`); either reading matches. It never matches an MCP tool, so `permission-handler` does not see those.
 - The generator throws on a hook command form or field it does not recognise. An upstream change then fails the build instead of shipping a no-op.
 
 **Regenerate, never hand-edit.** Run `npm run build:copilot-hooks` (`node scripts/copilot/build-hooks.mjs --write`) after any change to `hooks/hooks.json`; `npm run build` includes it. `npm run verify:copilot-hooks` and `src/__tests__/copilot-hooks-manifest.test.ts` fail when the file drifts. The agents file set has the same rule: `npm run build:copilot-agents`.
@@ -77,13 +78,19 @@ The hook scripts speak the Claude Code hook contract. `scripts/lib/copilot-hook-
 | any | `hookSpecificOutput.additionalContext` | Hoisted to top-level `additionalContext` (Copilot drops the nested copy). An existing top-level value wins. |
 | PreToolUse | `{decision: "block", reason}` or `continue: false` | `permissionDecision: "deny"` with the reason (Copilot ignores `decision: "block"` on PreToolUse). |
 | PreToolUse | `hookSpecificOutput.permissionDecision` | Kept, and also hoisted to top level. |
-| PreToolUse | `hookSpecificOutput.updatedInput` | Dropped. Copilot would replace the tool args with a Claude-shaped object. This is why `agents.<name>.model` overrides are a no-op on Copilot. |
+| PreToolUse | `hookSpecificOutput.updatedInput` | Dropped. Copilot would replace the tool args with a Claude-shaped object. `agents.<name>.model` overrides reach Copilot another way: they are synced into Copilot `settings.json` `subagents.agents`. |
 | PreToolUse | exit 2 + stderr | Deny with the stderr text; exit 0. |
 | Stop / SubagentStop | `{decision: "block", reason}` | Passed through; Copilot re-prompts with the reason. |
 | Stop / SubagentStop | `continue: false` + `decision: "block"` | `{}`, reason to stderr. Claude precedence: `continue: false` wins, so the turn stops. |
 | Stop / SubagentStop | exit 2 + stderr | `{decision: "block", reason: <stderr>}`; exit 0. |
 | PostToolUseFailure | exit 2 + stderr | `{additionalContext: <stderr>}`; exit 0. |
 | PermissionRequest | exit 2 | Kept (exit 2 denies on both hosts). |
+| PermissionRequest | `hookSpecificOutput.decision: {behavior: "allow" \| "deny", reason}` | Top-level `{behavior, message}` (plus `interrupt: true` on a deny that sets it), the shape Copilot is verified to read, and the same decision kept as `hookSpecificOutput.decision` (whether Copilot reads the nested shape is not probed yet). |
+| PermissionRequest | `behavior: "ask"`, or no decision | Nothing is emitted, so Copilot's normal permission flow runs. Copilot has no `ask`. |
+| SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, SubagentStart, Notification | `systemMessage` | Appended to `additionalContext` (Copilot ignores `systemMessage` on every event and injects `additionalContext` on these). Messages meant for the user therefore reach the model context instead, for example `session-start`'s update notice. |
+| Stop / SubagentStop | `systemMessage` with `decision: "block"` | Appended to the block reason, which Copilot sends as the next prompt. |
+| Stop | `systemMessage` without a block | Kept for the dispatcher, which hands it to the next prompt ([systemMessage handoff](#systemmessage-handoff)). |
+| PreToolUse, PermissionRequest, PreCompact, SessionEnd, SubagentStop (no block) | `systemMessage` | Dropped: Copilot has no channel for it. PreCompact output as a whole is discarded by Copilot ("notification only"); the hooks' file side effects still run. |
 | any other | any other non-zero exit | Exit 0 plus one `[omg-hook] <event> internal error: <script> exited <N>; failing open` stderr line. |
 
 The adapter fails **open** on a hook's internal error. Copilot treats a PreToolUse hook that exits non-zero as a deny, so without this one crashing hook would block every tool call.
@@ -96,6 +103,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
 | `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
+| `OMC_COPILOT_STOP_CHAIN_MAX` | Most OMC Stop continuations per genuine user prompt under Copilot, an integer from 1 to 7. Default 3 (see [Stop](#stop)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
 ### Not projected
@@ -148,7 +156,7 @@ PostToolUse shows no saving: its one audited generic entry (`post-tool-directory
 | non-JSON stdout next to JSON | Dropped, with an `[omg-hook]` stderr line. |
 | exit code | `124` if any hook timed out under `OMC_HOOK_FAIL_CLOSED=1`, else the highest per-hook code. Without fail-closed only PermissionRequest exit `2` survives `transform()`. |
 
-A group with one non-empty output passes it through byte for byte. `OMC_COPILOT_HOOK_DISPATCH=0` runs each hook as its own `node --require <adapter> run.cjs <script>` process instead and merges the same way. Each such process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`), and past that its process tree is killed. These merge rules are our contract. How Copilot itself combined several entries' outputs was never observed.
+A group with one non-empty output passes it through byte for byte (apart from the [systemMessage handoff](#systemmessage-handoff)). `OMC_COPILOT_HOOK_DISPATCH=0` runs each hook as its own `node --require <adapter> run.cjs <script>` process instead and merges the same way. Each such process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`), and past that its process tree is killed. These merge rules are our contract. How Copilot itself combined several entries' outputs was never observed.
 
 Interleaved local bench on Windows (old per-hook entries summed vs one dispatcher entry, median of 9, temp git repo, isolated home):
 
@@ -163,6 +171,27 @@ Interleaved local bench on Windows (old per-hook entries summed vs one dispatche
 | SessionEnd (2) | 664 ms | 622 ms | 856 ms |
 
 Each extra hook in a group saves one Node start-up, about 50 to 90 ms. A single-hook entry (PreToolUse, PermissionRequest, PostToolUseFailure, SubagentStart) costs 2 to 18 ms more, for the extra module. The kill switch costs one more Node start-up per entry than the old per-hook entries.
+
+### Payload normalization
+
+The dispatcher parses stdin once and passes the object through `normalizeHookPayload()` (`scripts/lib/copilot-payload.cjs`) before any hook runs, on both runner paths. It only adds keys: every Copilot key stays, and a Claude key is added only when the payload has none, so scripts that already read the Copilot names keep working. Non-JSON stdin is passed on unchanged.
+
+| Copilot field | Added Claude field |
+|---|---|
+| `sessionId`, `transcriptPath`, `stopReason` | `session_id`, `transcript_path`, `stop_reason` |
+| `toolName` / `tool_name` | `tool_name` as the Claude name: `powershell`/`bash` → `Bash` and the rest of the table above, `skill` → `Skill`, plugin MCP `t-x` / `t/x` → `mcp__t__x`. This is the one rewrite of an existing value. |
+| `toolInput`, `toolArgs` | `tool_input` |
+| `tool_input.old_str`, `new_str`, `file_text` | `old_string`, `new_string`, `content` |
+| `tool_input.path` (Read, Write, Edit only; Grep/Glob `path` is a search root on both hosts) | `file_path` |
+| `tool_input.agent_type`, `mode: "background"` (Agent) | `subagent_type`, `run_in_background: true` |
+| `tool_result.text_result_for_llm` (or `toolResult.textResultForLlm`) | `tool_response` |
+| (none) | `hook_event_name` from the dispatched event |
+
+`apply_patch` text input is left alone; `scripts/lib/tool-input-paths.mjs` reads its file lines. The subagent tracker maps the subagent fields itself (see [SubagentStart](#subagentstart)).
+
+### systemMessage handoff
+
+Copilot has no model channel for a Stop that does not block. When the merged Stop output carries a `systemMessage` (the budget-guard 90% warning, for example) and no block, the dispatcher removes it and stores it in `$COPILOT_HOME/projects/.omg-pending-context/<sessionId>.json`. The next UserPromptSubmit of that session prepends it to its `additionalContext`, which Copilot injects (confirmed live on 1.0.91), and deletes the file. A blocking Stop gets the message appended to its block reason instead. The file is keyed by session id under the per-user config dir, like `context-guard-stop`'s retry guard, so a prompt pays no git probe for it. A subagent's Stop carries the child session id next to the parent's `transcript_path`; the child gets no later prompt, so nothing is stored for it. SessionEnd deletes pending files older than 24 hours.
 
 ## Hook Categories
 
@@ -268,6 +297,8 @@ Fires when a permission request arises during Bash tool execution.
 
 Only processes permission requests for the Bash tool.
 
+On Copilot CLI the request arrives camelCase with `toolName: "powershell"` (or `bash`), the handler reads both shapes, and the adapter turns its `allow` into Copilot's top-level `{behavior: "allow", message}`. Anything that is not an auto-approval emits nothing, so Copilot asks as usual. Plugin MCP tools (`t/state_read`) never reach the handler: the `Bash` matcher does not match them.
+
 ### PostToolUse
 
 Fires after a tool use completes.
@@ -302,6 +333,8 @@ Fires when a subagent is spawned.
 
 Records the subagent name, start time, and session information.
 
+On Copilot CLI, SubagentStart carries only `{sessionId, transcriptPath, agentName}` (camelCase, no agent id), and SubagentStop carries `agent_id` (the child session id), `agent_type`, `agent_name` and `last_assistant_message`. The tracker maps these to its own fields, gives a start without an id a `copilot-<type>-<time>` id, and closes it at the stop by agent type when exactly one such agent is running. The built-in `general-purpose` agent emits neither event.
+
 ### SubagentStop
 
 Fires when a subagent completes.
@@ -310,6 +343,8 @@ Fires when a subagent completes.
 |--------|------|---------|
 | `subagent-tracker.mjs stop` | Tracks subagent completion | 5s |
 | `verify-deliverables.mjs` | Verifies subagent deliverables | 5s |
+
+On Copilot, several running agents of one type close oldest first (FIFO). If a newer same-type Copilot agent stops before an older one, the older entry is closed with the newer one's output and duration (and vice versa later); per-type counts stay correct, per-agent attribution may be swapped. This is accepted because Copilot's SubagentStart carries no id.
 
 ### PreCompact
 
@@ -320,7 +355,7 @@ Fires immediately before context compaction.
 | `pre-compact.mjs` | Preserves state before compaction | 10s |
 | `project-memory-precompact.mjs` | Preserves project memory | 5s |
 
-Saves important state and memory before compaction runs because the context window is full. The checkpoint captures active mode states, TODO counts, background job status, and durable plan anchors (PRD/boulder references). After compaction, the `SessionStart` hook (`source: "compact"`) restores the newest matching checkpoint into context so OMC-owned plan detail survives compaction (issue #3730).
+On Copilot CLI the PreCompact output is discarded ("notification only"); only the hooks' file side effects run. `/compact` on a resumed headless session fires it at no premium-request cost (live 1.0.91). Saves important state and memory before compaction runs because the context window is full. The checkpoint captures active mode states, TODO counts, background job status, and durable plan anchors (PRD/boulder references). After compaction, the `SessionStart` hook (`source: "compact"`) restores the newest matching checkpoint into context so OMC-owned plan detail survives compaction (issue #3730).
 
 ### Stop
 
@@ -334,6 +369,21 @@ Fires when Claude finishes a response.
 | `code-simplifier.mjs` | Auto-simplifies modified files (opt-in) | 5s |
 
 `persistent-mode` injects a reinforcement message like "The boulder never stops" when an active execution mode is running, prompting continued work. A fresh unconfirmed ultragoal is exempt while Claude `/goal` confirmation is pending; confirmed runs remain fail-closed.
+
+**On Copilot CLI** (live 1.0.91): a Stop `{decision: "block", reason}` continues the session; the reason is injected as a user message and each continuation is billed as one premium request. Every later Stop of that turn carries `stop_hook_active: true`, and after 8 consecutive blocks the CLI ends the turn anyway. `stopReason` is always `end_turn`, so checks on Claude stop reasons (`context_limit`, `aborted`) never match there. Copilot fires SessionEnd after every Stop, blocked ones included.
+
+**Continuation per host.** A Stop block continues the session on both hosts, but the hosts mark a chained Stop the same way (`stop_hook_active: true`) for different reasons:
+
+| Host | Chained Stop (`stop_hook_active: true`) | Bound |
+|---|---|---|
+| Claude Code | Always allowed to end: another block trips Claude Code's repeated-block override. | One continuation per Stop. |
+| Copilot (`OMC_HOOK_EVENT` set) | Evaluated like any Stop. Copilot sets the flag on every Stop after a blocked one, and the block reason arrives as the next user prompt. | The mode's own cap (ultragoal `max_reinforcements`, ralph `max_iterations`, which is not extended inside a chain), then the stop-chain cap: at most 3 continuations per genuine user prompt. `OMC_COPILOT_STOP_CHAIN_MAX` (1 to 7) overrides it; 1 is the old behaviour. `code-simplifier` does not block a chained Stop once the chain reached the cap either (`workflow-drift-guard` never blocks a chained Stop). The CLI itself ends a turn after 8 blocks. |
+
+Each Copilot continuation is billed as one premium request. The budget governor counts it (the continuation is a `user.message` without an agent source, measured at `session.shutdown`), but it only warns; it does not stop a chain. `persistent-mode` counts the chain itself: every chained Stop adds one delivered continuation, and the first Stop after a genuine prompt (`stop_hook_active` not set) resets the count, so the cap holds when `keyword-detector.mjs` is skipped. `keyword-detector.mjs` never arms a mode from a continuation prompt (OMC block headers such as `[ULTRAGOAL #`, `[RALPH LOOP`, `[AUTOPILOT`, and named-workflow stage prompts starting `## PIPELINE STAGE:`). If the payload says Copilot's native autopilot is on (field names unverified, read defensively), `persistent-mode` does not block, so the two loops do not double-bill.
+
+**Ultragoal on Copilot.** Copilot has no Claude `/goal`. `omg ultragoal goal-start --criterion <text> ...` writes the OMG goal record (`.omg/ultragoal/omg-goal.json`, or `plans/<id>/omg-goal.json` with `--plan-id`: objective, acceptance criteria, one evidence slot each). Under Copilot the PreToolUse guard accepts an active record whose objective matches the ultragoal objective (in a multi-plan run, the objective of the record's own plan; a `plan_id` in the ultragoal state selects the plan; `create-goals --plan-id` and `goal-start` write it into the session's state, the session being `OMC_SESSION_ID`, else `COPILOT_AGENT_SESSION_ID`, else the only active ultragoal state, and without it the hooks scan every plan), and Stop keeps continuing until `omg ultragoal goal-evidence` has filled every slot of a matching record, the stop caps are reached, or the user cancels. A record for another objective (a previous run or story) counts as none. `goal-start` archives a complete record for the same objective (a plan re-run without `create-goals`) as `omg-goal.<timestamp>.json` and starts a fresh one, so the earlier run's evidence cannot complete the new run. `create-goals` drops the plan's record. Cancel (`state_clear` for ultragoal) with a session id removes the base record and the record of the plan that session's state names, leaving a parallel session's plan record; without a session id it removes every record. A `task` subagent runs under its own session id; the guard resolves its parent from a parent field in the payload when there is one, else from the parent's `events.jsonl` (`subagent.started` with the child's id), and applies the parent's ultragoal state. Without either link the child is not guarded.
+
+`context-guard-stop` reads the context share on Copilot from the transcript (`events.jsonl`): the newest `currentTokens` of `session.compaction_start` or `session.shutdown`, over the model's prompt token limit (`COPILOT_PROMPT_TOKEN_LIMITS` in `scripts/lib/context-usage.mjs`, default or `long_context` tier; `OMC_COPILOT_CONTEXT_WINDOW` overrides it). Copilot persists no live token data, so the sample can be old; an unknown model or no sample means unknown, and unknown never blocks. A `session.compaction_complete` newer than the sample means Copilot already compacted a full context, and the guard stays silent, as it does on a `stop_hook_active` continuation. On Copilot the guard never blocks: the sample is effectively always stale (a resumed session only has the previous process's `session.shutdown`), each block costs a premium request, and the model cannot run `/compact`. Above the threshold it sends the advice once per session as a `systemMessage` instead, which the [systemMessage handoff](#systemmessage-handoff) delivers with the next prompt.
 
 ### SessionEnd
 
@@ -353,6 +403,8 @@ Saves agent activity, token usage, and other session data to `.omg/sessions/`. I
 | Copilot (`OMC_HOOK_EVENT=SessionEnd`) | 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
 
 The budget counts Worker boot, stdin, imports and the git root probe. 1500 ms is a chosen value, about 5x the idle foreground cost, not a measured limit. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
+
+**Mid-session SessionEnd on Copilot.** Copilot 1.0.91 fires SessionEnd after every agentStop, so the per-session cleanup job (mode-state cleanup, team cleanup, notifications, callbacks, spawning the next chain link) runs once, and only after the session really ends. The factory-chain link is decided there too: on Copilot the foreground does not plan the chain enqueue; each SessionEnd records its end reason and `OMC_CHAIN_LINK` claim on the job, and the worker plans the link at the real end with the last SessionEnd's outcome. The foreground marks the job `host: copilot`; each mid-session worker restarts the unclaimed job's producer grace and action deadlines, so a long session still gets them in full at the real end. The real end keeps the grace the holds already ran and only moves the action deadline, so the actions run without waiting a fresh grace. The worker holds the job while `$COPILOT_HOME/session-state/<id>/events.jsonl` shows no `session.shutdown` after the session's last activity, rechecking every 5 s for 30 s. The next SessionEnd or a SessionStart reconcile picks it up after that. A missing events file, or one idle for 2 hours, is treated as ended.
 
 ---
 
@@ -461,7 +513,7 @@ When a session ID is present, state is stored in session scope under `.omg/state
 `ultragoal-state.json` is the session-scoped Stop/PreToolUse guard for `$ultragoal` runs. The durable plan and audit trail remain `.omg/ultragoal/goals.json` and `.omg/ultragoal/ledger.jsonl`; the state file only records the active runtime guard.
 
 - **Location**: `.omg/state/sessions/{sessionId}/ultragoal-state.json` when a Claude session id is available; legacy fallback is `.omg/state/ultragoal-state.json`.
-- **Active fields**: `active: true`, `session_id`, `project_path`, `started_at`, `last_checked_at`, `current_phase`, optional `claude_goal_objective`, `reinforcement_count`, `awaiting_confirmation`, and `awaiting_confirmation_set_at`.
+- **Active fields**: `active: true`, `session_id`, `project_path`, `started_at`, `last_checked_at`, `current_phase`, optional `claude_goal_objective`, optional `plan_id` (the multi-plan run the session drives), `reinforcement_count`, `awaiting_confirmation`, and `awaiting_confirmation_set_at`.
 - **Pending confirmation**: a fresh unconfirmed state is exempt from both Stop reinforcement and matching-`/goal` PreToolUse enforcement. Freshness requires `awaiting_confirmation: true` and a timestamp age in `[0, 2 minutes)`; a non-empty `awaiting_confirmation_set_at` is authoritative, while an absent or blank value may fall back to `started_at`. Invalid, future, or expired timestamps fail closed.
 - **Stop hook**: after confirmation, reinforces only when the state is active, fresh (within the normal 2-hour mode-state freshness window), session-matching, and project-matching. Terminal phases (`complete`, `completed`, `done`, `all-done`, `failed`, `cancelled`) and all-done `.omg/ultragoal/goals.json` plans are ignored.
 - **PreToolUse guard**: after confirmation, tools are denied unless the hook can see a matching active Claude `/goal` snapshot. Use `ALLOW_ULTRAGOAL_WITHOUT_GOAL=1` only as an intentional local bypass.
