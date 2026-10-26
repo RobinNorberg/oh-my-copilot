@@ -832,13 +832,39 @@ function getModeRuntimeArtifactPaths(mode: StateToolMode, root: string, sessionI
   const paths = [...dirs].flatMap((dir) => names.map((name) => join(dir, name)));
   // The Copilot goal record (src/ultragoal/goal-record.ts) is the run's /goal
   // stand-in: cancelling the run retires it with the guard.
-  return mode === 'ultragoal' ? [...paths, ...getOmgGoalRecordPaths(root)] : paths;
+  return mode === 'ultragoal' ? [...paths, ...getOmgGoalRecordPaths(root, sessionIds)] : paths;
 }
 
-function getOmgGoalRecordPaths(root: string): string[] {
+const ULTRAGOAL_PLAN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+/** The plan_id the session's ultragoal state names (session file, else a legacy file it owns). */
+function getUltragoalStatePlanId(root: string, sessionId: string): string | undefined {
+  const legacy = getStatePath('ultragoal', root);
+  for (const path of [getSessionStatePath('ultragoal', root, sessionId), legacy]) {
+    try {
+      const state = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+      if (path === legacy && state.session_id !== sessionId) continue;
+      const planId = state.plan_id ?? state.planId;
+      if (typeof planId === 'string' && ULTRAGOAL_PLAN_ID_PATTERN.test(planId)) return planId;
+    } catch { /* missing or unreadable state */ }
+  }
+  return undefined;
+}
+
+/**
+ * Without session ids every record goes; with them only the base record and
+ * the plans those sessions' ultragoal state names, so cancelling one session
+ * leaves a parallel session's plan record in place.
+ */
+function getOmgGoalRecordPaths(root: string, sessionIds?: Iterable<string>): string[] {
   const base = join(getOmcRoot(root), 'ultragoal');
   let plans: string[] = [];
-  try { plans = readdirSync(join(base, 'plans'), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(base, 'plans', entry.name)); } catch { /* single-plan layout */ }
+  if (sessionIds) {
+    plans = [...new Set([...sessionIds].map((sid) => getUltragoalStatePlanId(root, sid)).filter((id): id is string => Boolean(id)))]
+      .map((id) => join(base, 'plans', id));
+  } else {
+    try { plans = readdirSync(join(base, 'plans'), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join(base, 'plans', entry.name)); } catch { /* single-plan layout */ }
+  }
   return [base, ...plans].map((dir) => join(dir, 'omg-goal.json'));
 }
 
