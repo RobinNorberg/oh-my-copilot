@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
 - [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
 - [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
@@ -34,6 +35,20 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ---
 
+## Unreleased: Host Load Gate Threshold Values
+
+Negative values for `OMC_HOST_LOAD_THRESHOLD`, `OMC_FREE_MEMORY_THRESHOLD`, and
+`OMC_MAX_SIBLING_SESSIONS` now fall back to their documented defaults instead of
+disabling individual checks. Existing environment configurations that use `-1`
+can therefore re-enable a check after upgrading.
+
+### Migration
+
+- Remove a negative threshold variable to use its default value.
+- Set `OMC_HOST_LOAD_GATE_DISABLED=1` to disable the entire host load gate.
+- To disable an individual check from code, pass a negative value through a
+  `HostLoadGateConfig` override; negative environment values no longer disable
+  individual checks.
 ## v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot
 
 Under Copilot CLI an OMC Stop continuation (ralph, ultragoal and the other keep-going modes) can now chain: up to 3 continuations per genuine user prompt instead of 1. Copilot bills each continuation as one premium request. Under Claude Code nothing changes.

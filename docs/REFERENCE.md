@@ -143,7 +143,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_GEMINI_DEFAULT_MODEL`       | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                    |
 | `OMC_ANTIGRAVITY_DEFAULT_MODEL`  | _(provider default)_ | Default model for Antigravity CLI (`agy`) workers                                                                                                                                                                                                                       |
 | `OMC_GROK_DEFAULT_MODEL`         | _(provider default)_ | Default model for Grok Build CLI workers                                                                                                                                                                                                                                |
-| `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
+| `OMC_LSP_TIMEOUT_MS`       | `15000`              | LSP timeout in positive whole milliseconds (maximum `2147483647`; invalid or out-of-range values use the default). Increase for large repos or slow language servers                                                                                                                                                                                            |
 | `OMC_MIGRATE_LEGACY_STATE` | _(unset)_            | Set to `1` to enable one-shot legacy→session-scoped state migration on next read. See [Legacy state migration](#legacy-state-migration-omc_migrate_legacy_state) below.                                                                                                      |
 | `OMC_DISABLE_MULTIREPO`    | _(unset)_            | Set to `1` to disable workspace-marker resolution and fall back to git-root + cwd resolution order. `OMC_STATE_DIR` is still honoured. See [Rollback / disable multi-repo](#rollback--disable-multi-repo-omc_disable_multirepo) below.                                       |
 | `DISABLE_OMC`              | _(unset)_            | Set to `1` or `true` to disable all OMC hooks |
@@ -152,9 +152,9 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_BUDGET_GOVERNOR`      | _(unset)_            | `0` turns the [premium-request budget](#omg-budget-premium-request-budget) governor off: no ledger writes, hook messages, HUD element or team fan-out check. |
 | `OMC_RUN_BUDGET_TOKENS`    | _(unset)_            | Opt-in session token budget for unattended modes. Ralph and autopilot compare spend at iteration/phase boundaries (via the `trace_summary` tool): warn at 90%, stop with a resumable budget report at 100%. Advisory today — the model reads the tool output.               |
 | `OMC_STALE_RUN_HOURS`      | `2`                  | Stale-run watchdog threshold in hours. A SessionStart hook reports unattended-mode state files left `active: true` with no mtime progress for this long (the signature of a crashed run). Advisory only — the watchdog never mutates state or resumes runs.                |
-| `OMC_HOST_LOAD_THRESHOLD` | _(dynamic)_ | CPU load threshold (1-minute average). Gate blocks operations when load exceeds this. Default: 80% of available cores. Set to negative value to disable. |
-| `OMC_FREE_MEMORY_THRESHOLD` | `256` | Free memory threshold in MB. Gate blocks operations when free memory falls below this. Set to negative value to disable. |
-| `OMC_MAX_SIBLING_SESSIONS` | `8` | Maximum concurrent OMC sessions before gating expensive operations. Set to negative value to disable. |
+| `OMC_HOST_LOAD_THRESHOLD` | _(dynamic)_ | CPU load threshold (1-minute average). Gate blocks operations when load exceeds this. Default: 80% of available cores. Zero is valid; empty, malformed, negative, or non-finite values use the default. |
+| `OMC_FREE_MEMORY_THRESHOLD` | `256` | Free memory threshold in MB. Gate blocks operations when free memory falls below this. Zero is valid; empty, malformed, negative, fractional, or unsafe integer values use the default. |
+| `OMC_MAX_SIBLING_SESSIONS` | `8` | Maximum concurrent OMC sessions before gating expensive operations. Zero is valid; empty, malformed, negative, fractional, or unsafe integer values use the default. |
 | `OMC_HOST_LOAD_GATE_DISABLED` | _(unset)_ | Set to any value to disable the host load gate entirely. |
 | `OMC_CHAIN_LINK` | _(set by the spawner)_ | Internal. The chain-link id of a Copilot factory link, set on the spawned `copilot` process by the factory listener or the SessionEnd worker. Do not set it yourself: SessionEnd only trusts it when it names a `host: "copilot"` ledger, and a finished link is a no-op. See [Factory chains on Copilot](#factory-chains-on-copilot). |
 
@@ -169,6 +169,7 @@ OMC monitors host resources (CPU load, free memory, concurrent sessions) to prev
 **Behavior**:
 - **Fail-open**: if metrics are unavailable, the gate allows operations immediately (never deadlocks)
 - **Configurable thresholds**: set environment variables or override via code
+- **Invalid environment values**: empty, malformed, negative, non-finite, or out-of-range thresholds use the documented defaults. Negative thresholds supplied through a code config override still disable that individual check.
 - **Disable-able**: set `OMC_HOST_LOAD_GATE_DISABLED=1` to bypass gating entirely
 
 **Example**: limit concurrent sessions to 4 and free memory to 512 MB:
@@ -1617,14 +1618,10 @@ stopomc
 | Platform    | Install Method              | Hook Type      |
 | ----------- | --------------------------- | -------------- |
 | **Windows** | WSL2 recommended (see note) | Node.js (.mjs) |
-| **macOS**   | Claude Code Plugin          | Bash (.sh)     |
-| **Linux**   | Claude Code Plugin          | Bash (.sh)     |
-
-> **Note**: Bash hooks are fully portable across macOS and Linux (no GNU-specific dependencies).
+| **macOS**   | Claude Code Plugin          | Node.js (.mjs) |
+| **Linux**   | Claude Code Plugin          | Node.js (.mjs) |
 
 > **Windows**: Native Windows (win32) support is experimental. Features that launch tmux-backed worker panes require a tmux-compatible binary. OMC supports native [psmux](https://github.com/psmux/psmux) for PowerShell 7+ users who want visible Claude Code teammate panes in interactive team workflows, and recommends WSL2 as the fallback when no compatible `tmux` command is installed or native Windows behavior is insufficient. psmux does not force worktree agents, non-interactive/print-mode agents, or model-selected in-process agents into visible panes. Native Windows issues may have limited support.
-
-> **Advanced**: Set `OMC_USE_NODE_HOOKS=1` to use Node.js hooks on macOS/Linux.
 
 ### Available Tools
 
@@ -1812,7 +1809,7 @@ Available presets: `minimal`, `focused`, `full`, `dense`, `analytics`, `opencode
 | Issue                 | Solution                                                                         |
 | --------------------- | -------------------------------------------------------------------------------- |
 | Commands not found    | Re-run `/oh-my-copilot:omc-setup`                                             |
-| Hooks not executing   | Check hook permissions: `chmod +x ~/.claude/hooks/**/*.sh`                       |
+| Hooks not executing   | Check that `node` 20+ is on `PATH`, then run `/oh-my-copilot:omc-doctor`      |
 | Agents not delegating | Verify CLAUDE.md is loaded: check `./.claude/CLAUDE.md` or `~/.claude/CLAUDE.md` |
 | LSP tools not working | Install language servers: `npm install -g typescript-language-server`            |
 | Token limit errors    | Use `/oh-my-copilot:` for token-efficient execution                           |

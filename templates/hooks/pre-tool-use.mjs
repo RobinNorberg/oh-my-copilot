@@ -1641,6 +1641,63 @@ function checkBashCommand(command, directory) {
   return null;
 }
 
+// Codex identifies plugin hooks with PLUGIN_ROOT and does not accept the
+// common continue/suppressOutput fields on PreToolUse. Its updatedInput shape
+// also requires an explicit allow decision.
+function isCodexPreToolUse(input) {
+  return Boolean(process.env.PLUGIN_ROOT) ||
+    Boolean(input && typeof input === 'object' && typeof input.turn_id === 'string');
+}
+
+function emitPreToolUseOutput(output, input, space = 0) {
+  if (!isCodexPreToolUse(input)) {
+    console.log(JSON.stringify(output, null, space));
+    return;
+  }
+
+  const codexOutput = { ...output };
+  const continueValue = codexOutput.continue;
+  delete codexOutput.continue;
+  delete codexOutput.suppressOutput;
+
+  if (continueValue === false && codexOutput.decision !== 'block') {
+    const existingHookOutput = codexOutput.hookSpecificOutput && typeof codexOutput.hookSpecificOutput === 'object'
+      ? { ...codexOutput.hookSpecificOutput }
+      : {};
+    const reason = typeof existingHookOutput.permissionDecisionReason === 'string'
+      ? existingHookOutput.permissionDecisionReason
+      : typeof codexOutput.message === 'string'
+        ? codexOutput.message
+        : typeof codexOutput.reason === 'string'
+          ? codexOutput.reason
+          : typeof existingHookOutput.additionalContext === 'string'
+            ? existingHookOutput.additionalContext
+            : 'Tool call blocked by hook.';
+    delete existingHookOutput.updatedInput;
+    existingHookOutput.hookEventName = 'PreToolUse';
+    existingHookOutput.permissionDecision = 'deny';
+    existingHookOutput.permissionDecisionReason = reason;
+    delete codexOutput.message;
+    delete codexOutput.reason;
+    codexOutput.hookSpecificOutput = existingHookOutput;
+  }
+
+  const hookSpecificOutput = codexOutput.hookSpecificOutput;
+  if (hookSpecificOutput && typeof hookSpecificOutput === 'object') {
+    const normalizedHookOutput = { ...hookSpecificOutput };
+    if (normalizedHookOutput.updatedInput !== undefined && !normalizedHookOutput.permissionDecision) {
+      normalizedHookOutput.permissionDecision = 'allow';
+    }
+    codexOutput.hookSpecificOutput = normalizedHookOutput;
+  }
+
+  delete codexOutput.message;
+  if (codexOutput.decision !== 'block') delete codexOutput.reason;
+  if (Object.keys(codexOutput).length > 0) {
+    console.log(JSON.stringify(codexOutput, null, space));
+  }
+}
+
 async function main() {
   const input = await readStdin();
 
@@ -1648,7 +1705,7 @@ async function main() {
   try {
     data = JSON.parse(input);
   } catch {
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    emitPreToolUseOutput({ continue: true, suppressOutput: true }, null);
     return;
   }
 
@@ -1659,20 +1716,20 @@ async function main() {
 
   if (worker) {
     if (toolName === 'Task' || toolName === 'task') {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: false,
         reason: 'team-worker-task-blocked',
         message: `Worker ${worker} cannot spawn/delegate Task calls in worker mode.`
-      }));
+      }, data);
       return;
     }
 
     if (toolName === 'Skill' || toolName === 'skill') {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: false,
         reason: 'team-worker-skill-blocked',
         message: `Worker ${worker} cannot invoke Skill tool in worker mode.`
-      }));
+      }, data);
       return;
     }
   }
@@ -1684,25 +1741,25 @@ async function main() {
     if (worker) {
       const violation = workerCommandViolation(command);
       if (violation) {
-        console.log(JSON.stringify({
+        emitPreToolUseOutput({
           continue: false,
           reason: 'team-worker-bash-blocked',
           message: `${violation}\nCommand blocked: ${command}`
-        }));
+        }, data);
         return;
       }
     }
     const warning = checkBashCommand(command, directory);
     if (warning) {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           additionalContext: warning
         }
-      }));
+      }, data);
     } else {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
     }
     return;
   }
@@ -1713,7 +1770,7 @@ async function main() {
     const toolInput = data.tool_input || data.toolInput || {};
     const skillAgentDeny = evaluateSkillAsAgentCall(toolName, toolInput, directory);
     if (skillAgentDeny) {
-      console.log(JSON.stringify(skillAgentDeny));
+      emitPreToolUseOutput(skillAgentDeny, data);
       return;
     }
   }
@@ -1732,7 +1789,7 @@ async function main() {
 
   // Only check Edit and Write tools
   if (!['Edit', 'Write', 'edit', 'write'].includes(toolName)) {
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
     return;
   }
 
@@ -1742,13 +1799,13 @@ async function main() {
 
   // No file path? Allow
   if (!filePath) {
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
     return;
   }
 
   // Check if allowed path
   if (isAllowedPath(filePath, directory)) {
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
     return;
   }
 
@@ -1761,20 +1818,20 @@ Recommended: Delegate to executor agent instead:
 
 This is a soft warning. Operation will proceed.`;
 
-    console.log(JSON.stringify({
+    emitPreToolUseOutput({
       continue: true,
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         additionalContext: warning
       }
-    }));
+    }, data);
     return;
   }
 
   // Not a source file, allow without warning
-  console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+  emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
 }
 
 main().catch(() => {
-  console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+  emitPreToolUseOutput({ continue: true, suppressOutput: true }, null);
 });

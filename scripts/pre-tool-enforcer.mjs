@@ -682,10 +682,9 @@ const ADVISORY_THROTTLE_MIN_PRUNE_WINDOW_MS = 60 * 60 * 1000;
 
 function getAdvisoryThrottleCooldownMs() {
   const raw = process.env.OMC_PRE_TOOL_ADVISORY_COOLDOWN_MS;
-  if (raw == null || raw === '') return ADVISORY_THROTTLE_DEFAULT_COOLDOWN_MS;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return ADVISORY_THROTTLE_DEFAULT_COOLDOWN_MS;
-  return Math.max(0, parsed);
+  if (raw == null || !/^\d+$/.test(raw.trim())) return ADVISORY_THROTTLE_DEFAULT_COOLDOWN_MS;
+  const parsed = Number(raw.trim());
+  return Number.isSafeInteger(parsed) ? parsed : ADVISORY_THROTTLE_DEFAULT_COOLDOWN_MS;
 }
 
 function getAdvisoryThrottleNowMs() {
@@ -1866,14 +1865,76 @@ async function recordToolInvocation(data, directory) {
   } catch { /* best-effort, never block tool execution */ }
 }
 
+// Codex identifies plugin hooks with PLUGIN_ROOT and does not accept the
+// common continue/suppressOutput fields on PreToolUse. Its updatedInput shape
+// also requires an explicit allow decision.
+function isCodexPreToolUse(input) {
+  // fork: Copilot CLI also sets PLUGIN_ROOT; its output goes through
+  // copilot-hook-adapter.cjs, which expects the Claude shape (an added
+  // `allow` would be hoisted to Copilot's top-level permissionDecision).
+  if (isCopilotHookHost()) return false;
+  return Boolean(process.env.PLUGIN_ROOT) ||
+    Boolean(input && typeof input === 'object' && typeof input.turn_id === 'string');
+}
+
+function emitPreToolUseOutput(output, input, space = 0) {
+  if (!isCodexPreToolUse(input)) {
+    console.log(JSON.stringify(output, null, space));
+    return;
+  }
+
+  const codexOutput = { ...output };
+  const continueValue = codexOutput.continue;
+  delete codexOutput.continue;
+  delete codexOutput.suppressOutput;
+
+  if (continueValue === false && codexOutput.decision !== 'block') {
+    const existingHookOutput = codexOutput.hookSpecificOutput && typeof codexOutput.hookSpecificOutput === 'object'
+      ? { ...codexOutput.hookSpecificOutput }
+      : {};
+    const reason = typeof existingHookOutput.permissionDecisionReason === 'string'
+      ? existingHookOutput.permissionDecisionReason
+      : typeof codexOutput.message === 'string'
+        ? codexOutput.message
+        : typeof codexOutput.reason === 'string'
+          ? codexOutput.reason
+          : typeof existingHookOutput.additionalContext === 'string'
+            ? existingHookOutput.additionalContext
+            : 'Tool call blocked by hook.';
+    delete existingHookOutput.updatedInput;
+    existingHookOutput.hookEventName = 'PreToolUse';
+    existingHookOutput.permissionDecision = 'deny';
+    existingHookOutput.permissionDecisionReason = reason;
+    delete codexOutput.message;
+    delete codexOutput.reason;
+    codexOutput.hookSpecificOutput = existingHookOutput;
+  }
+
+  const hookSpecificOutput = codexOutput.hookSpecificOutput;
+  if (hookSpecificOutput && typeof hookSpecificOutput === 'object') {
+    const normalizedHookOutput = { ...hookSpecificOutput };
+    if (normalizedHookOutput.updatedInput !== undefined && !normalizedHookOutput.permissionDecision) {
+      normalizedHookOutput.permissionDecision = 'allow';
+    }
+    codexOutput.hookSpecificOutput = normalizedHookOutput;
+  }
+
+  delete codexOutput.message;
+  if (codexOutput.decision !== 'block') delete codexOutput.reason;
+  if (Object.keys(codexOutput).length > 0) {
+    console.log(JSON.stringify(codexOutput, null, space));
+  }
+}
+
 async function main() {
   // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
   const _skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map(s => s.trim());
   if (process.env.DISABLE_OMC === '1' || _skipHooks.includes('pre-tool-use')) {
-    console.log(JSON.stringify({ continue: true }));
+    emitPreToolUseOutput({ continue: true }, null);
     return;
   }
 
+  let data = {};
   try {
     const input = await readStdin();
 
@@ -1887,7 +1948,7 @@ async function main() {
     const stateDir = join(omcRoot, 'state');
 
     // Record Skill invocations to flow trace
-    let data = {};
+    data = {};
     try { data = JSON.parse(input); } catch {}
     recordToolInvocation(data, directory);
 
@@ -1917,14 +1978,14 @@ async function main() {
 
     const ultragoalDenyReason = evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data, omcRoot);
     if (ultragoalDenyReason) {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason: ultragoalDenyReason
         }
-      }));
+      }, data);
       return;
     }
 
@@ -1948,7 +2009,7 @@ async function main() {
       // error that names the Skill tool and the correct identifier.
       const skillAgentDeny = evaluateSkillAsAgentCall(toolName, toolInput, directory);
       if (skillAgentDeny) {
-        console.log(JSON.stringify(skillAgentDeny));
+        emitPreToolUseOutput(skillAgentDeny, data);
         return;
       }
       const toolModel = toolInput.model;
@@ -1979,14 +2040,14 @@ async function main() {
             const guidance = derivedTier
               ? `Set ANTHROPIC_DEFAULT_${derivedTier}_MODEL=<valid-bedrock-id> in settings.json env, or set OMC_SUBAGENT_MODEL as a global override.`
               : `Remove the \`model\` parameter, or set ANTHROPIC_DEFAULT_SONNET_MODEL=<valid-bedrock-id> in settings.json env.`;
-            console.log(JSON.stringify({
+            emitPreToolUseOutput({
               continue: true,
               hookSpecificOutput: {
                 hookEventName: 'PreToolUse',
                 permissionDecision: 'deny',
                 permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
               }
-            }));
+            }, data);
             return;
           }
           // else: valid provider-specific model ID — fall through to continue.
@@ -2001,14 +2062,14 @@ async function main() {
           const suggestion = resolvedSafe
             ? `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`
             : `Pass model="${tierAlias}" explicitly on this ${toolName} call, and set ANTHROPIC_DEFAULT_${tierAlias.toUpperCase()}_MODEL=<valid-bedrock-id> in settings.json env.`;
-          console.log(JSON.stringify({
+          emitPreToolUseOutput({
             continue: true,
             hookSpecificOutput: {
               hookEventName: 'PreToolUse',
               permissionDecision: 'deny',
               permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
             }
-          }));
+          }, data);
           return;
         }
         // Agent-definition model check: runs for any no-model call with a subagent_type,
@@ -2028,14 +2089,14 @@ async function main() {
               && hasSafeRouting) {
             const guidance = `Add model="${defTierAlias}" to this ${toolName} call — tier aliases resolve to configured provider models (${resolvedModel}).`;
             const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
-            console.log(JSON.stringify({
+            emitPreToolUseOutput({
               continue: true,
               hookSpecificOutput: {
                 hookEventName: 'PreToolUse',
                 permissionDecision: 'deny',
                 permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
               }
-            }));
+            }, data);
             return;
           }
         }
@@ -2105,14 +2166,14 @@ async function main() {
       // Force-delegation preflight returns `{ decision: 'block', reason }` to
       // match the agent-heavy preflight contract. Translate to the
       // Claude Code hookSpecificOutput shape (`permissionDecision: 'deny'`).
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason: delegationBlock.reason,
         },
-      }));
+      }, data);
       return;
     }
 
@@ -2128,24 +2189,24 @@ async function main() {
       cwd: directory,
     });
     if (readBudget?.decision === 'block') {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason: readBudget.reason,
         },
-      }));
+      }, data);
       return;
     }
     if (readBudget?.decision === 'warn') {
-      console.log(JSON.stringify({
+      emitPreToolUseOutput({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           additionalContext: readBudget.reason,
         },
-      }));
+      }, data);
       return;
     }
 
@@ -2157,7 +2218,7 @@ async function main() {
         transcriptPath,
       });
       if (preflightBlock) {
-        console.log(JSON.stringify(preflightBlock));
+        emitPreToolUseOutput(preflightBlock, data);
         return;
       }
     }
@@ -2165,7 +2226,7 @@ async function main() {
     const slopWarning = generateSlopWarning(data, toolName);
     let message;
     if (BUILT_IN_TASK_LIST_TOOL_NAMES.has(toolName)) {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
       return;
     }
 
@@ -2185,34 +2246,36 @@ async function main() {
       : null;
 
     if (!message) {
-      console.log(JSON.stringify(
+      emitPreToolUseOutput(
         modelInjection
           ? { continue: true, suppressOutput: true, ...modelInjection }
-          : { continue: true, suppressOutput: true }
-      ));
+          : { continue: true, suppressOutput: true },
+        data,
+      );
       return;
     }
 
     if (!shouldEmitAdvisoryMessage(stateDir, sessionId, message)) {
-      console.log(JSON.stringify(
+      emitPreToolUseOutput(
         modelInjection
           ? { continue: true, suppressOutput: true, ...modelInjection }
-          : { continue: true, suppressOutput: true }
-      ));
+          : { continue: true, suppressOutput: true },
+        data,
+      );
       return;
     }
 
-    console.log(JSON.stringify({
+    emitPreToolUseOutput({
       continue: true,
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         additionalContext: message,
         ...(updatedToolInput ? { updatedInput: updatedToolInput } : {})
       }
-    }, null, 2));
+    }, data, 2);
   } catch (error) {
     // On error, always continue
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
   }
 }
 
