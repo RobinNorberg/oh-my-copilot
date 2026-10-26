@@ -14,6 +14,7 @@ import {
   readdirSync,
   mkdirSync,
   unlinkSync,
+  renameSync,
   statSync,
   realpathSync,
   openSync,
@@ -1557,10 +1558,14 @@ async function main() {
       const foundGoalRecord = copilotHost ? readOmgGoalRecord([omcRoot, join(directory, ".omg")], { planId: ultragoalStatePlanId(ultragoal.state) }) : null;
       const goalRecord = goalRecordMatches(ultragoal.state, foundGoalRecord) ? foundGoalRecord : null;
       const terminal = isUltragoalTerminalState(ultragoal.state, omcRoot);
-      // The run is over: its goal record goes with it, so a re-run of the
-      // same plan cannot end on the finished run's evidence.
-      if (sessionMatches && terminal && goalRecord) {
-        try { unlinkSync(goalRecord.path); } catch { /* already gone */ }
+      // The run is over: archive its goal record (as goal-start does), so a
+      // re-run of the same plan cannot end on the finished run's evidence. A
+      // record written after the run completed (a new run's goal-start before
+      // the terminal fields were cleared) belongs to the new run: left alone.
+      const finishedRunRecord = goalRecord && (goalRecord.record.status === "complete" || isGoalRecordComplete(goalRecord.record)
+        || Date.parse(goalRecord.record.updatedAt) <= Date.parse(ultragoal.state.completed_at));
+      if (sessionMatches && terminal && finishedRunRecord) {
+        try { renameSync(goalRecord.path, goalRecord.path.replace(/\.json$/, `.${new Date().toISOString().replace(/[:.]/g, "-")}.json`)); } catch { /* already gone */ }
       }
       if (sessionMatches && !terminal && !isGoalRecordComplete(goalRecord?.record)) {
         const newCount = (ultragoal.state.reinforcement_count || 0) + 1;
