@@ -33,18 +33,27 @@ reference for what each phase asserts.
    `omg release X.Y.Z --dry-run` to see the plan, then run it:
 
    ```bash
-   omg release X.Y.Z --to gates --suite full --baseline <last good report>   # preflight..gates, no premium requests
-   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): commit, suite, pr, promote, tag, verify
-   omg release X.Y.Z --yes ...       # required for the tag phase without a terminal (agent lanes, CI)
+   omg release X.Y.Z --to suite --suite full --baseline <last good report>   # preflight..suite: release commit + full suite, no premium requests
+   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): pr, promote, tag (asks), verify
+   omg release X.Y.Z --live-smoke --yes    # --yes: required for the tag phase without a terminal (agent lanes, CI)
    ```
 
-   Phases: preflight, bump, build, gates, smoke, commit, suite, pr, promote,
+   Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
-   committed docs/CLAUDE.md, inventory drift) and always fail before it. So
-   `--to gates --suite full` only runs the static gates; use
-   `--to suite --suite full` for the whole pre-PR check. The suite child
-   inherits your environment, not the ship scrub (no GIT_NO_REPLACE_OBJECTS). State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   committed docs/CLAUDE.md, inventory drift) and always fail before it. The
+   live smoke runs after the suite, so a red suite costs no premium requests.
+   `--suite` is recorded for the release: a later run without `--suite` uses
+   the recorded level, a lower `--suite` is refused (start over with
+   `--from preflight` to change it), and `--suite none` records `suite` as
+   skipped with a warning. `--baseline` is not recorded; pass it again on any
+   run that reaches `suite`. `--suite` with a `--to` before `suite` warns that
+   the suite does not run in that invocation. If the suite fails, fix, commit
+   and re-run: new commits that touch `src/` resume `--from build` (rebuilt
+   dist/bridge), others `--from gates`. Every child runs under the ship scrub
+   (GIT_NO_REPLACE_OBJECTS=1, redirecting GIT_*/GH_* dropped) except the
+   vitest suite, which inherits your environment as in CI. State is
+   `.omg/release/X.Y.Z.json`; a run without `--from`
    resumes at the first phase not yet ok; `--from <phase>` re-runs one.
    Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 3. Exit 1 = a phase failed or is blocked; the output names the cause (failed
