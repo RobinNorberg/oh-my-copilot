@@ -81,6 +81,7 @@ const { Writable } = require('stream');
 const { transform, parseHookOutput, writeAllSync } = require('../lib/copilot-hook-adapter.cjs');
 const { normalizeHookPayload } = require('../lib/copilot-payload.cjs');
 const { getCopilotConfigDir } = require('../lib/config-dir.cjs');
+const { isChildSessionPayload } = require('../lib/child-session.cjs');
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');
@@ -97,8 +98,6 @@ const LEGACY_CLOSE_SETTLE_MS = 300;
 const PENDING_CONTEXT_DIR = '.omg-pending-context';
 // SessionEnd deletes pending files no prompt consumed within this window.
 const PENDING_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-// A subagent's Stop carries the child session id next to the parent's transcript.
-const TRANSCRIPT_SESSION_PATTERN = /[\\/]session-state[\\/]([^\\/]+)[\\/]events\.jsonl$/;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/;
 
 function isPlainObject(value) {
@@ -497,16 +496,6 @@ function pendingContextPath(payload) {
   const sessionId = payload && payload.session_id;
   if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) return null;
   return path.join(getCopilotConfigDir(), 'projects', PENDING_CONTEXT_DIR, `${sessionId}.json`);
-}
-
-/**
- * True for a subagent's Stop (live probe, Copilot CLI 1.0.91): its session_id
- * is the child session, which gets no later prompt, while transcript_path is
- * the parent's `session-state/<parentId>/events.jsonl`.
- */
-function isChildSessionPayload(payload) {
-  const match = payload && typeof payload.transcript_path === 'string' && TRANSCRIPT_SESSION_PATTERN.exec(payload.transcript_path);
-  return Boolean(match) && match[1] !== payload.session_id;
 }
 
 /** Delete pending-context files older than PENDING_CONTEXT_MAX_AGE_MS. Best effort. */

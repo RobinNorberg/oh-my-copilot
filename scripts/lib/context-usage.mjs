@@ -363,11 +363,15 @@ export function resolveCopilotTranscriptContext(transcriptPath) {
  * already has for this transcript, so the events.jsonl is not read twice.
  */
 export async function resolveContextPercent(data, transcriptPath, directory, copilotContext) {
-  const transcriptPercent = resolveTranscriptContextPercent(transcriptPath);
-  if (transcriptPercent !== null) return transcriptPercent;
-
-  const copilotPercent = (copilotContext || resolveCopilotTranscriptContext(transcriptPath)).percent;
-  if (copilotPercent !== null) return copilotPercent;
+  // A Copilot events.jsonl has no usage frame, so the Claude parser would only
+  // scan it up to its read limit.
+  if (copilotContext || isCopilotTranscript(transcriptPath)) {
+    const copilotPercent = (copilotContext || resolveCopilotTranscriptContext(transcriptPath)).percent;
+    if (copilotPercent !== null) return copilotPercent;
+  } else {
+    const transcriptPercent = resolveTranscriptContextPercent(transcriptPath);
+    if (transcriptPercent !== null) return transcriptPercent;
+  }
 
   const hookPercent = resolveHookContextPercent(data);
   if (hookPercent !== null) return hookPercent;

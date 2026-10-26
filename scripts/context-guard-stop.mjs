@@ -30,6 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { readStdin } from './lib/stdin.mjs';
+import childSession from './lib/child-session.cjs';
 import { isCopilotTranscript, resolveContextPercent, resolveCopilotTranscriptContext } from './lib/context-usage.mjs';
 
 const DEFAULT_THRESHOLD = 75;
@@ -228,6 +229,12 @@ async function main() {
 
     // Respect user abort
     if (isUserAbort(data)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    // A subagent's Stop (child session id) gets no later prompt to carry advice.
+    if (childSession.isChildSessionPayload(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
