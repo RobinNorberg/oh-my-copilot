@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-    "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+    "head": "e862bfb44eab19b9c2d6c377a2a455f2eb6d52e5",
+    "sourceSha256": "6d95a02f5a4e11eb73153c91c274bc5e0b313e028a36a21db4b5dbad2e7a24b2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cb40b5d81153608fdac5add8d2c6e18857ae898b",
-  "sourceSha256": "5ed9c45af395a35969b6e79b21cc71c1027664c4f31f60618699a7ca9b45cb1a",
+  "head": "e862bfb44eab19b9c2d6c377a2a455f2eb6d52e5",
+  "sourceSha256": "6d95a02f5a4e11eb73153c91c274bc5e0b313e028a36a21db4b5dbad2e7a24b2",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1621,
-      "total": 1645
+      "srcFiles": 1623,
+      "total": 1647
     },
     "generated": {
       "distFiles": 6223,
@@ -870,6 +870,7 @@
       "scripts/lib/config-dir.sh",
       "scripts/lib/context-usage.mjs",
       "scripts/lib/copilot-hook-adapter.cjs",
+      "scripts/lib/copilot-payload.cjs",
       "scripts/lib/encode-project-path.mjs",
       "scripts/lib/enforcement-log.mjs",
       "scripts/lib/force-agent-delegation-preflight.mjs",
@@ -41056,6 +41057,11 @@
         "path": "scripts/lib/copilot-hook-adapter.cjs"
       },
       {
+        "id": "scripts/lib/copilot-payload.cjs",
+        "kind": "script",
+        "path": "scripts/lib/copilot-payload.cjs"
+      },
+      {
         "id": "scripts/lib/encode-project-path.mjs",
         "kind": "script",
         "path": "scripts/lib/encode-project-path.mjs"
@@ -42301,6 +42307,11 @@
         "path": "src/__tests__/copilot-notification-hook.test.ts"
       },
       {
+        "id": "src/__tests__/copilot-payload.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-payload.test.ts"
+      },
+      {
         "id": "src/__tests__/daemon-module-path.test.ts",
         "kind": "src",
         "path": "src/__tests__/daemon-module-path.test.ts"
@@ -42394,6 +42405,11 @@
         "id": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-live-payloads/cli-1.0.91.json",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-live-payloads/cli-1.0.91.json"
       },
       {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
@@ -51494,6 +51510,11 @@
       },
       {
         "from": "scripts/copilot/build-hooks.mjs",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-hooks.mjs",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -51524,7 +51545,17 @@
       },
       {
         "from": "scripts/copilot/dispatch.cjs",
+        "to": "scripts/lib/config-dir.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/dispatch.cjs",
         "to": "scripts/lib/copilot-hook-adapter.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/dispatch.cjs",
+        "to": "scripts/lib/copilot-payload.cjs",
         "kind": "imports"
       },
       {
@@ -55100,6 +55131,31 @@
       {
         "from": "src/__tests__/copilot-notification-hook.test.ts",
         "to": "src/notifications/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-payload.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-payload.test.ts",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-payload.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-payload.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-payload.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -98834,12 +98890,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8577,
-      "edgeCount": 9633,
-      "importEdgeCount": 8040,
+      "nodeCount": 8580,
+      "edgeCount": 9641,
+      "importEdgeCount": 8048,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a4f8b366ab23d9366ff0e446182d4910035074a14151ef01f8965118a3517eb0",
-  "manifestSha256": "52867796df0cac9ef259dc834eaa41e28851cc93d14082d4f5e0fc248f89bb9f"
+  "inventorySha256": "70c366115b15acf77cf7102599fd71d78254c249dd364102a309ced097d91393",
+  "manifestSha256": "9cb185a0b0c578ce2463acd991b099b23ffe521d459b804f8c3f5fcf2b324d55"
 }
