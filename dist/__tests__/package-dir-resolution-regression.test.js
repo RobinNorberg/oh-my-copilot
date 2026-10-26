@@ -61,12 +61,12 @@ describe('package dir resolution regression (#1322, #1324)', () => {
     });
     it('bridge/cli.cjs keeps builtin skills package-dir resolution bridge-aware', () => {
         const source = readFileSync(join(REPO_ROOT, 'bridge', 'cli.cjs'), 'utf-8');
-        // esbuild emits this binding either as a hoisted `var` or as a bare
-        // assignment inside a lazy-init block, depending on how the surrounding
-        // modules get grouped. Match the assignment itself so the anchor survives
-        // unrelated bundling shifts.
-        const skillsDirIndex = source.search(/(?:var\s+)?SKILLS_DIR2 = /);
-        const helperIndex = source.lastIndexOf('function getPackageDir', skillsDirIndex);
+        // esbuild numbers both the builtin-skills `SKILLS_DIR` binding and its
+        // `getPackageDir` helper by bundle order, and other modules share those
+        // names, so the suffixes shift with unrelated imports. Anchor on the shape
+        // of the builtin-skills assignment and follow the helper it actually calls.
+        const skillsDirMatch = source.match(/SKILLS_DIR\d* = \(0, import_path\d+\.join\)\((getPackageDir\d*)\(\), "skills"\)/);
+        const helperIndex = skillsDirMatch ? source.indexOf(`function ${skillsDirMatch[1]}() {`) : -1;
         const snippet = helperIndex === -1 ? '' : source.slice(helperIndex, helperIndex + 1400);
         expect(snippet).toContain('typeof __dirname !== "undefined"');
         expect(snippet).toContain('currentDirName === "bridge"');
