@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createUltragoalPlan, readUltragoalPlan, startNextUltragoal, UltragoalError } from '../artifacts.js';
+import { createUltragoalPlan, readUltragoalPlan, recordUltragoalStatePlanId, startNextUltragoal, UltragoalError } from '../artifacts.js';
 import { missingGoalCriteria, omgGoalRecordPath, omgGoalRecordSnapshot, readOmgGoalRecord, recordOmgGoalEvidence, startOmgGoal } from '../goal-record.js';
 import { ultragoalCommand } from '../../cli/commands/ultragoal.js';
 
-const ENV_KEYS = ['HOME', 'USERPROFILE', 'OMC_STATE_DIR', 'COPILOT_CLI', 'COPILOT_AGENT_SESSION_ID', 'CLAUDE_CODE_ENTRYPOINT'] as const;
+const ENV_KEYS = ['HOME', 'USERPROFILE', 'OMC_STATE_DIR', 'OMC_SESSION_ID', 'COPILOT_CLI', 'COPILOT_AGENT_SESSION_ID', 'CLAUDE_CODE_ENTRYPOINT'] as const;
 let saved: Record<string, string | undefined>;
 let cwd: string;
 let originalCwd: string;
@@ -17,6 +17,7 @@ beforeEach(async () => {
   process.env.HOME = cwd;
   process.env.USERPROFILE = cwd;
   delete process.env.OMC_STATE_DIR;
+  delete process.env.OMC_SESSION_ID;
   delete process.env.COPILOT_CLI;
   delete process.env.COPILOT_AGENT_SESSION_ID;
   delete process.env.CLAUDE_CODE_ENTRYPOINT;
@@ -58,13 +59,26 @@ describe('OMG goal record', () => {
     expect(JSON.parse(await readFile(omgGoalRecordPath(cwd), 'utf-8')).status).toBe('complete');
   });
 
-  it('keeps evidence for an unchanged criterion when the record is restarted', async () => {
+  it('keeps evidence for an unchanged criterion when an active record is restarted', async () => {
+    await startedPlan();
+    await startOmgGoal(cwd, { criteria: ['tests pass', 'docs updated'] });
+    await recordOmgGoalEvidence(cwd, { criterion: 'C1', evidence: 'green' });
+    const restarted = await startOmgGoal(cwd, { criteria: ['tests pass', 'docs updated', 'lint clean'] });
+    expect(restarted.criteria[0]).toMatchObject({ text: 'tests pass', evidence: 'green' });
+    expect(restarted.status).toBe('active');
+  });
+
+  it('archives a complete record for the same objective and starts fresh (plan re-run without create-goals)', async () => {
     await startedPlan();
     await startOmgGoal(cwd, { criteria: ['tests pass'] });
     await recordOmgGoalEvidence(cwd, { criterion: 'C1', evidence: 'green' });
-    const restarted = await startOmgGoal(cwd, { criteria: ['tests pass', 'lint clean'] });
-    expect(restarted.criteria[0]).toMatchObject({ text: 'tests pass', evidence: 'green' });
-    expect(restarted.status).toBe('active');
+    const rerun = await startOmgGoal(cwd, { criteria: ['tests pass'], now: new Date('2026-10-26T12:00:00.000Z') });
+    expect(rerun.status).toBe('active');
+    expect(rerun.criteria[0]?.evidence).toBeUndefined();
+    const dir = join(omgGoalRecordPath(cwd), '..');
+    const archived = join(dir, 'omg-goal.2026-10-26T12-00-00-000Z.json');
+    expect(JSON.parse(await readFile(archived, 'utf-8'))).toMatchObject({ status: 'complete', criteria: [{ evidence: 'green' }] });
+    expect(JSON.parse(await readFile(omgGoalRecordPath(cwd), 'utf-8')).status).toBe('active');
   });
 
   it('rejects a start without criteria, without a plan or objective, and unknown criteria', async () => {
@@ -98,6 +112,52 @@ describe('OMG goal record', () => {
     await startOmgGoal(cwd, { criteria: ['tests pass'] });
     await createUltragoalPlan(cwd, { brief: 'again', goals: [{ title: 'Again', objective: 'Ship it again' }], force: true });
     expect(await readOmgGoalRecord(cwd)).toBeNull();
+  });
+});
+
+describe('plan_id in the ultragoal state', () => {
+  async function writeState(sessionId: string, state: Record<string, unknown> = {}) {
+    const dir = join(cwd, '.omg', 'state', 'sessions', sessionId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'ultragoal-state.json'), JSON.stringify({ active: true, session_id: sessionId, current_phase: 'executing', ...state }));
+    return join(dir, 'ultragoal-state.json');
+  }
+  const planIdOf = async (path: string) => JSON.parse(await readFile(path, 'utf-8')).plan_id;
+
+  it('create-goals and goal-start write the plan id into the session state named by OMC_SESSION_ID', async () => {
+    const mine = await writeState('session-a');
+    const other = await writeState('session-b');
+    process.env.OMC_SESSION_ID = 'session-a';
+    await createUltragoalPlan(cwd, { brief: 'a', goals: [{ title: 'A', objective: 'ship a' }], planId: 'plan-a' });
+    expect(await planIdOf(mine)).toBe('plan-a');
+    expect(await planIdOf(other)).toBeUndefined();
+
+    await createUltragoalPlan(cwd, { brief: 'c', goals: [{ title: 'C', objective: 'ship c' }], planId: 'plan-c' });
+    await startNextUltragoal(cwd, { planId: 'plan-c' });
+    await startOmgGoal(cwd, { criteria: ['tests pass'], planId: 'plan-c' });
+    expect(await planIdOf(mine)).toBe('plan-c');
+  });
+
+  it('uses COPILOT_AGENT_SESSION_ID, else the only active state, and writes nothing when the session is ambiguous', async () => {
+    const a = await writeState('session-a');
+    process.env.COPILOT_AGENT_SESSION_ID = 'session-a';
+    expect(await recordUltragoalStatePlanId(cwd, 'p1')).toBe(a);
+    delete process.env.COPILOT_AGENT_SESSION_ID;
+
+    expect(await recordUltragoalStatePlanId(cwd, 'p2')).toBe(a);
+    expect(await planIdOf(a)).toBe('p2');
+
+    const b = await writeState('session-b');
+    expect(await recordUltragoalStatePlanId(cwd, 'p3')).toBeNull();
+    expect(await planIdOf(a)).toBe('p2');
+    expect(await planIdOf(b)).toBeUndefined();
+  });
+
+  it('leaves an inactive state alone', async () => {
+    const path = await writeState('session-a', { active: false });
+    process.env.OMC_SESSION_ID = 'session-a';
+    expect(await recordUltragoalStatePlanId(cwd, 'p1')).toBeNull();
+    expect(await planIdOf(path)).toBeUndefined();
   });
 });
 

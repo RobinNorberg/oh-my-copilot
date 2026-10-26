@@ -92,7 +92,7 @@ export function readOmgGoalRecord(roots, { planId } = {}) {
   return found[0] ?? null;
 }
 
-/** The plan id the ultragoal state names (`plan_id`/`planId`), if any. */
+/** The plan id the ultragoal state names (`plan_id`, written by create-goals / goal-start via recordUltragoalStatePlanId), if any. */
 export function ultragoalStatePlanId(state) {
   const value = state?.plan_id ?? state?.planId;
   return typeof value === 'string' && PLAN_ID_PATTERN.test(value) ? value : undefined;

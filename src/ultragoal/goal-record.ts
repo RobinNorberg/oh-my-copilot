@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import {
   readUltragoalPlan,
+  recordUltragoalStatePlanId,
   ultragoalDir,
   UltragoalError,
   type UltragoalItem,
@@ -121,10 +122,17 @@ export async function startOmgGoal(cwd: string, options: StartOmgGoalOptions): P
   }
   const now = (options.now ?? new Date()).toISOString();
   // A corrupt or invalid record is replaced, not kept.
-  const previous = await readOmgGoalRecord(cwd, options.planId).catch((error: unknown) => {
+  let previous = await readOmgGoalRecord(cwd, options.planId).catch((error: unknown) => {
     if (error instanceof UltragoalError) return null;
     throw error;
   });
+  // A completed record for this objective is a finished run (the plan re-run
+  // without create-goals): archive it so its evidence cannot complete the new run.
+  if (previous?.objective === objective && previous.status === 'complete') {
+    const path = omgGoalRecordPath(cwd, options.planId);
+    await rename(path, path.replace(/\.json$/, `.${now.replace(/[:.]/g, '-')}.json`));
+    previous = null;
+  }
   const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
   const criteria = criteriaText.map((text, index): OmgGoalCriterion => {
     const old = kept.get(text);
@@ -143,6 +151,7 @@ export async function startOmgGoal(cwd: string, options: StartOmgGoalOptions): P
     criteria,
   };
   await writeOmgGoalRecord(cwd, record);
+  if (options.planId) await recordUltragoalStatePlanId(cwd, options.planId);
   return record;
 }
 
