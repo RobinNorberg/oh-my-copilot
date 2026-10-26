@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6b91c22eda613864ae77ea69b9b7f5f497b841e9",
-    "sourceSha256": "0f9f49e206baee586d6f4b830141ef3e31e1c806ce13d5fc9f376d710c964ee1",
+    "head": "64dcb9c48cd413a5c711bdb17b44a2c2345a8834",
+    "sourceSha256": "8426ab5f4dd06bcf8d5bc32d03d4db41dc3149932cbfc06a76034d073d4ce729",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6b91c22eda613864ae77ea69b9b7f5f497b841e9",
-  "sourceSha256": "0f9f49e206baee586d6f4b830141ef3e31e1c806ce13d5fc9f376d710c964ee1",
+  "head": "64dcb9c48cd413a5c711bdb17b44a2c2345a8834",
+  "sourceSha256": "8426ab5f4dd06bcf8d5bc32d03d4db41dc3149932cbfc06a76034d073d4ce729",
   "counts": {
     "public": {
       "skills": 63,
@@ -51610,6 +51610,16 @@
       },
       {
         "from": "scripts/code-simplifier.mjs",
+        "to": "scripts/lib/copilot-continuation.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/code-simplifier.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/code-simplifier.mjs",
         "to": "scripts/lib/jev-shadow.mjs",
         "kind": "imports"
       },
@@ -76685,6 +76695,11 @@
       },
       {
         "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/copilot-liveness.test.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "imports"
       },
@@ -99276,11 +99291,11 @@
     ],
     "stats": {
       "nodeCount": 8615,
-      "edgeCount": 9677,
-      "importEdgeCount": 8082,
+      "edgeCount": 9680,
+      "importEdgeCount": 8085,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "88b1023edb47f8e9651748eeff0b4db6a856b4d9b76402faecfde9b0a0b2d039",
-  "manifestSha256": "903497d3b9860f7cf7d78ca438a17c53f41b2859c9c1d7e63dd8c9d1b6dbe282"
+  "manifestSha256": "0dd79e4905adbdd17ff1be454a40d8092376540acdc71d96583b6b46e65e2309"
 }
