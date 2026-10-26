@@ -38,6 +38,9 @@ reference for what each phase asserts.
    omg release X.Y.Z --live-smoke --yes    # --yes: required for the tag phase without a terminal (agent lanes, CI)
    ```
 
+   Before any `--yes`, check `phases.smoke.status` is `ok` in
+   `.omg/release/X.Y.Z.json` (`--yes` only logs the skipped-smoke warning).
+
    Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
@@ -52,8 +55,10 @@ reference for what each phase asserts.
    `--baseline` is recorded (as an absolute path) and reused by a later run
    that does not pass it. `--suite` with a `--to` before `suite` warns that
    the suite does not run in that invocation. If the suite fails, fix, commit
-   and re-run `--from build`: every build input (src, scripts, templates,
-   package.json, build config) feeds dist/bridge. The suite and the live
+   and re-run `omg release X.Y.Z --from build --to suite`: every build input
+   (src, scripts, templates, package.json, build config) feeds dist/bridge.
+   Never a bare `--from build`: it continues into smoke and pr, and `pr`
+   refuses a skipped smoke unless `--allow-skipped-smoke` is given. The suite and the live
    smoke fail if they leave files in the working tree (remove them, re-run),
    and skipping past `commit` needs a clean tree, so nothing uncommitted is
    swept into a later release commit or left out of what `pr` pushes. Every
