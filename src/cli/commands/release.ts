@@ -75,11 +75,12 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none')
     .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
     .option('--live-smoke', 'Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise')
+    .option('--allow-skipped-smoke', 'Let the pr phase run although the live smoke was skipped')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
     .option('--timeout <minutes>', 'Minutes the pr / promote / verify phases wait on CI per run', '60')
     .action(async (versionRaw: string, o: {
       from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
-      liveSmoke?: boolean; fixOrphans?: boolean; timeout: string;
+      liveSmoke?: boolean; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
     }) => {
       const json = Boolean(o.json);
       try {
@@ -127,6 +128,7 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           suite: o.suite as SuiteLevel | undefined,
           baseline: o.baseline,
           liveSmoke: o.liveSmoke,
+          allowSkippedSmoke: o.allowSkippedSmoke,
           fixOrphans: o.fixOrphans,
           timeoutMinutes,
         });
