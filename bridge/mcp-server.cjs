@@ -23513,11 +23513,11 @@ function getNotepadStats(directory) {
     /<\!-- WM:\d{4}-\d{2}-\d{2} \d{2}:\d{2} -->/g
   );
   const legacyMatches = workingMemory.match(/### \d{4}-\d{2}-\d{2} \d{2}:\d{2}/g);
-  const entryMatches = wmMatches ?? legacyMatches;
-  const entryCount = entryMatches ? entryMatches.length : 0;
+  const entryMatches2 = wmMatches ?? legacyMatches;
+  const entryCount = entryMatches2 ? entryMatches2.length : 0;
   let oldestEntry = null;
-  if (entryMatches && entryMatches.length > 0) {
-    const timestamps = entryMatches.map(
+  if (entryMatches2 && entryMatches2.length > 0) {
+    const timestamps = entryMatches2.map(
       (m) => m.startsWith("<!--") ? m.replace(/^<\!-- WM:| -->$/g, "") : m.replace("### ", "")
     );
     timestamps.sort();
@@ -29324,6 +29324,124 @@ function permitProjectFiles(req, ctx) {
   const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
   return typeof target === "string" && !!target && isUnder((0, import_path58.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
 }
+function continuationReason(nonce) {
+  return `[OMG-SMOKE-CONT ${nonce}] Stop hook continuation. Reply with exactly ${continuationToken(nonce)} and nothing else. Do not call tools.`;
+}
+function continuationToken(nonce) {
+  return `CONTINUED_${nonce}`;
+}
+function promptContextLine(nonce) {
+  return `${PROMPT_CONTEXT_PREFIX} ${nonce}`;
+}
+function hookEnds(events, hookType) {
+  return events.filter((e) => e.type === "hook.end" && e.data?.hookType === hookType);
+}
+function userMessages(events) {
+  return events.filter((e) => e.type === "user.message").map((e) => str2(e.data?.content));
+}
+function noCliEvidence(name, count, run) {
+  return scenarioCheckIds(name).slice(0, count).map((id) => ({ id, ok: false, detail: run.error ? `no CLI evidence: ${excerpt(run.error, 200)}` : "no CLI evidence collected" }));
+}
+function evaluateContinuation(run) {
+  const cli = run.cli;
+  if (!cli) return noCliEvidence("continuation", 4, run);
+  const reason = continuationReason(cli.nonce);
+  const token = continuationToken(cli.nonce);
+  const stopStarts = run.events.filter((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
+  const blockIdx = run.events.findIndex((e) => e.type === "hook.end" && e.data?.hookType === "agentStop" && isRecord2(e.data?.output) && e.data.output.decision === "block" && str2(e.data.output.reason).includes(cli.nonce));
+  const after = blockIdx === -1 ? [] : run.events.slice(blockIdx + 1);
+  const injected = userMessages(after).some((m) => m.includes(reason));
+  const nextStop = after.find((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
+  const nextInput = isRecord2(nextStop?.data?.input) ? nextStop.data.input : {};
+  const activeOk = nextInput.stop_hook_active === true;
+  const text = assistantText(after);
+  const echoed = text.includes(token);
+  return [
+    {
+      id: "scn.continuation.blocked",
+      ok: blockIdx !== -1,
+      detail: blockIdx !== -1 ? "agentStop hook.end carried the stub decision:block with its reason" : `no agentStop block with the stub reason (${stopStarts.length} agentStop run(s))`,
+      ...blockIdx !== -1 ? {} : { evidence: excerpt(JSON.stringify(hookEnds(run.events, "agentStop").map((e) => e.data?.output))) }
+    },
+    {
+      id: "scn.continuation.reason_injected",
+      ok: injected,
+      detail: injected ? "the block reason arrived as the next user.message" : "no user.message with the block reason after the block",
+      ...injected ? {} : { evidence: excerpt(userMessages(run.events).join("\n")) }
+    },
+    {
+      id: "scn.continuation.stop_hook_active",
+      ok: activeOk,
+      detail: !nextStop ? "no agentStop after the continuation" : `next agentStop input stop_hook_active=${JSON.stringify(nextInput.stop_hook_active)}`
+    },
+    {
+      id: "scn.continuation.echo",
+      ok: echoed,
+      detail: echoed ? `the continuation turn replied ${token}` : `${token} missing from the continuation turn`,
+      ...echoed ? {} : { evidence: excerpt(text || assistantText(run.events)) }
+    }
+  ];
+}
+function evaluatePromptContext(run) {
+  const cli = run.cli;
+  if (!cli) return noCliEvidence("prompt-context", 2, run);
+  const line = promptContextLine(cli.nonce);
+  const ends = hookEnds(run.events, "userPromptSubmitted");
+  const accepted = ends.some((e) => isRecord2(e.data?.output) && str2(e.data.output.additionalContext).includes(line));
+  const text = assistantText(run.events);
+  const echoed = text.includes(cli.nonce);
+  return [
+    {
+      id: "scn.prompt-context.accepted",
+      ok: accepted,
+      detail: accepted ? "userPromptSubmitted hook.end output carried the stub additionalContext" : "stub additionalContext missing from every userPromptSubmitted hook.end output",
+      ...accepted ? {} : { evidence: excerpt(JSON.stringify(ends.map((e) => e.data?.output))) }
+    },
+    {
+      id: "scn.prompt-context.reached_model",
+      ok: echoed,
+      // docs-audit #4: the current docs say config-file userPromptSubmitted output is dropped.
+      detail: echoed ? "the model echoed the additionalContext nonce" : "the model did not echo the nonce: UserPromptSubmit additionalContext did not reach it (keyword and skill injection are lost on this CLI; consider userPromptTransformed)",
+      ...echoed ? {} : { evidence: excerpt(text) }
+    }
+  ];
+}
+function evaluateEvents(run) {
+  const compacted = run.events.some((e) => e.type === "session.compaction_start");
+  const pre = hookCheck("scn.events.pre_compact", run.events, ["preCompact"]);
+  return [
+    hookCheck("scn.events.post_tool_use_failure", run.events, ["postToolUseFailure"]),
+    hookCheck("scn.events.permission_request", run.events, ["permissionRequest"]),
+    {
+      ...pre,
+      ok: pre.ok && compacted,
+      detail: `${pre.detail}; session.compaction_start ${compacted ? "seen" : "missing"} after ${COMPACT_PROMPT}`
+    }
+  ];
+}
+function evaluateUltragoal(run) {
+  const cli = run.cli;
+  if (!cli) return noCliEvidence("ultragoal", 2, run);
+  const seed = cli.seed;
+  const done = run.events.filter((e) => e.type === "tool.execution_complete");
+  const denied = done.filter((e) => ULTRAGOAL_DENY.test(JSON.stringify(e.data?.error ?? "")));
+  const succeeded = done.filter((e) => e.data?.success === true);
+  const allowed = denied.length === 0 && succeeded.length > 0;
+  return [
+    {
+      id: "scn.ultragoal.seeded",
+      ok: !!seed?.ok,
+      detail: seed ? seed.detail : "no seed ran",
+      ...seed?.ok || !seed?.state ? {} : { evidence: excerpt(JSON.stringify(seed.state)) }
+    },
+    {
+      id: "scn.ultragoal.tools_allowed",
+      ok: allowed,
+      detail: allowed ? `${succeeded.length} tool call(s) ran, none denied by the ultragoal gate` : denied.length ? `${denied.length} of ${done.length} tool call(s) denied by the ultragoal gate` : "no tool call completed",
+      ...denied.length ? { evidence: excerpt(str2(isRecord2(denied[0].data?.error) ? denied[0].data.error.message : "")) } : {}
+    }
+  ];
+}
 function evaluateTeam(run) {
   const team = run.team;
   if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : "no team evidence collected" }));
@@ -29582,7 +29700,11 @@ function scenarioCheckIds(name) {
     delegate: ["selected", "hooks", "completed"],
     filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
     chain: ["link1", "spawned", "inherited", "closed", "premium"],
-    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"]
+    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"],
+    continuation: ["blocked", "reason_injected", "stop_hook_active", "echo"],
+    "prompt-context": ["accepted", "reached_model"],
+    events: ["post_tool_use_failure", "permission_request", "pre_compact"],
+    ultragoal: ["seeded", "tools_allowed"]
   };
   return [...own[name], "exit", "adapter_errors", "cost"].map((s) => `scn.${name}.${s}`);
 }
@@ -29879,10 +30001,19 @@ function evaluateScenario(run) {
     delegate: evaluateDelegate,
     filetools: evaluateFiletools,
     chain: evaluateChain,
-    team: evaluateTeam
+    team: evaluateTeam,
+    continuation: evaluateContinuation,
+    "prompt-context": evaluatePromptContext,
+    events: evaluateEvents,
+    ultragoal: evaluateUltragoal
   }[run.name](run);
   const cost = runCost(run);
-  return { checks: [...own, ...evaluateCommon(run, cost)], cost: { premiumRequests: cost.premiumRequests, credits: cost.credits } };
+  const checks = [...own, ...evaluateCommon(run, cost)];
+  const pending = PENDING_SCENARIOS[run.name];
+  return {
+    checks: pending ? checks.map((c) => c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` }) : checks,
+    cost: { premiumRequests: cost.premiumRequests, credits: cost.credits }
+  };
 }
 function chooseModel(listed, requested) {
   const ids = [...new Set(listed)];
@@ -29891,15 +30022,19 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs46, import_path58, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs46, import_path58, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord2, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     import_fs46 = require("fs");
     import_path58 = require("path");
     init_copilot_session_eval();
+    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...CLI_SCENARIOS];
+    PENDING_SCENARIOS = {
+      ultragoal: "PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands"
+    };
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
@@ -29926,6 +30061,9 @@ var init_copilot_sdk_scenarios = __esm({
     };
     FILETOOLS_MARKER = "Context marker:";
     FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
+    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+    EVENTS_SHELL_TOKEN = "omg-events-probe";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -29987,8 +30125,43 @@ var init_copilot_sdk_scenarios = __esm({
         ].join("\n"),
         excludedTools: [],
         permit: denyAll
+      },
+      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+      continuation: {
+        name: "continuation",
+        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      "prompt-context": {
+        name: "prompt-context",
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll
+      },
+      events: {
+        name: "events",
+        prompt: [
+          "Do these two steps in order, then answer with one short line:",
+          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      ultragoal: {
+        name: "ultragoal",
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
+        excludedTools: [],
+        permit: denyAll
       }
     };
+    COMPACT_PROMPT = "/compact";
+    ULTRAGOAL_ACTIVATION_PROMPT = "use ultragoal to write a hello.txt file containing hi";
+    ULTRAGOAL_CONFIRM_TTL_MS = 12e4;
+    isRecord2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
     TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
     TEAM_WORKERS = ["worker-1", "worker-2"];
     TEAM_MAX_PREMIUM_REQUESTS = 2;
@@ -30286,6 +30459,9 @@ function remoteRefs(spawnSync10, remoteDir, env) {
 function runtimeCreditCap(maxCredits) {
   return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
 }
+function isCliScenario(name) {
+  return CLI_SCENARIOS.includes(name);
+}
 async function runSdkTier(input) {
   const events = {};
   let loaded2;
@@ -30380,6 +30556,18 @@ async function runSdkTier(input) {
       }) : name === "team" ? await input.runTeam({
         root: input.root,
         bin: input.bin,
+        env: input.env,
+        projectDir: input.projectDir,
+        home: input.home,
+        timeoutMs: input.timeoutMs,
+        maxCredits: input.maxCredits,
+        budget: input.maxCredits - total.credits,
+        eventsPath: path15,
+        spawnSync: input.spawnSync
+      }) : isCliScenario(name) ? await input.runCli({
+        name,
+        bin,
+        root: input.root,
         env: input.env,
         projectDir: input.projectDir,
         home: input.home,
@@ -34144,6 +34332,265 @@ var init_copilot_chain_scenario = __esm({
   }
 });
 
+// src/smoke/copilot-hook-manifest.ts
+function readCopilotHookManifest(root) {
+  const parsed = JSON.parse((0, import_fs52.readFileSync)((0, import_path68.join)(root, COPILOT_HOOKS_PATH), "utf-8"));
+  if (!parsed || typeof parsed !== "object" || !parsed.hooks || typeof parsed.hooks !== "object") {
+    throw new Error(`${COPILOT_HOOKS_PATH} has no "hooks" object`);
+  }
+  return parsed;
+}
+function resolveEntryArgs(entry, root) {
+  return entry.args.map((a) => a.replaceAll(PLUGIN_ROOT_TOKEN, root));
+}
+function entryMatches(entry, toolName) {
+  if (!entry.matcher) return true;
+  if (!toolName) return false;
+  try {
+    return new RegExp(`^(?:${entry.matcher})$`).test(toolName);
+  } catch {
+    return false;
+  }
+}
+function dispatchHookEntry(event, entry, root, payload, opts) {
+  const timeoutMs = (entry.timeoutSec ?? DEFAULT_ENTRY_TIMEOUT_SEC) * 1e3 + GRACE_MS;
+  const started = Date.now();
+  const res = opts.spawnSync(entry.exec, resolveEntryArgs(entry, root), {
+    cwd: opts.cwd,
+    env: { ...opts.env, ...entry.env ?? {} },
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    timeout: timeoutMs,
+    windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024
+  });
+  const err = res.error;
+  const timedOut = err?.code === "ETIMEDOUT";
+  return {
+    event,
+    matcher: entry.matcher ?? null,
+    status: res.status,
+    stdout: String(res.stdout ?? ""),
+    stderr: String(res.stderr ?? ""),
+    durationMs: Date.now() - started,
+    timedOut,
+    ...err && !timedOut ? { error: err.message } : {}
+  };
+}
+var import_fs52, import_path68, PLUGIN_ROOT_TOKEN, COPILOT_HOOKS_PATH, DEFAULT_ENTRY_TIMEOUT_SEC, GRACE_MS;
+var init_copilot_hook_manifest = __esm({
+  "src/smoke/copilot-hook-manifest.ts"() {
+    "use strict";
+    import_fs52 = require("fs");
+    import_path68 = require("path");
+    PLUGIN_ROOT_TOKEN = "${CLAUDE_PLUGIN_ROOT}";
+    COPILOT_HOOKS_PATH = "copilot/hooks.json";
+    DEFAULT_ENTRY_TIMEOUT_SEC = 30;
+    GRACE_MS = 5e3;
+  }
+});
+
+// src/smoke/copilot-cli-scenarios.ts
+function prepareStubPlugin(home, name, text, node = process.execPath) {
+  const reg = STUB_EVENTS[name];
+  if (!reg) return null;
+  const dir = (0, import_path69.join)(home, `${name}-stub`);
+  const log = (0, import_path69.join)(home, `${name}-stub.jsonl`);
+  const config2 = (0, import_path69.join)(dir, "config.json");
+  const script = (0, import_path69.join)(dir, "stub.cjs");
+  (0, import_fs53.mkdirSync)(dir, { recursive: true });
+  (0, import_fs53.writeFileSync)((0, import_path69.join)(dir, "plugin.json"), `${JSON.stringify({ name: `omg-smoke-${name}-stub`, version: "0.0.0", description: `omg smoke ${name} stub hook`, hooks: "./hooks.json" }, null, 2)}
+`);
+  (0, import_fs53.writeFileSync)((0, import_path69.join)(dir, "hooks.json"), `${JSON.stringify({ version: 1, hooks: { [reg.event]: [{ type: "command", exec: node, args: [script, reg.kind, config2, log], timeoutSec: 10 }] } }, null, 2)}
+`);
+  (0, import_fs53.writeFileSync)(config2, JSON.stringify({ text }));
+  (0, import_fs53.writeFileSync)(script, [
+    "'use strict';",
+    "const fs = require('fs');",
+    "const [kind, config, log] = process.argv.slice(2);",
+    "const { text } = JSON.parse(fs.readFileSync(config, 'utf8'));",
+    "const chunks = [];",
+    "process.stdin.on('data', (c) => chunks.push(c));",
+    "process.stdin.on('end', () => {",
+    "  let payload = null;",
+    "  try { payload = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { /* recorded as null */ }",
+    "  let out = {};",
+    "  if (kind === 'prompt') out = { additionalContext: text };",
+    "  if (kind === 'stop') {",
+    "    const count = log + '.count';",
+    "    if (!fs.existsSync(count)) { fs.writeFileSync(count, '1'); out = { decision: 'block', reason: text }; }",
+    "  }",
+    "  fs.appendFileSync(log, JSON.stringify({ kind, payload, out }) + '\\n');",
+    "  process.stdout.write(JSON.stringify(out));",
+    "});",
+    ""
+  ].join("\n"));
+  return { dir, log };
+}
+function readJsonl(path15) {
+  try {
+    return parseJsonl((0, import_fs53.readFileSync)(path15, "utf8")).events;
+  } catch {
+    return [];
+  }
+}
+function ultragoalStatePath(projectDir, sessionId) {
+  const centralized = process.env.OMC_STATE_DIR;
+  delete process.env.OMC_STATE_DIR;
+  try {
+    return resolveSessionStatePaths("ultragoal", sessionId, projectDir).sessionScoped;
+  } finally {
+    if (centralized !== void 0) process.env.OMC_STATE_DIR = centralized;
+  }
+}
+function seedUltragoal(input, sessionId, now) {
+  let entries;
+  try {
+    entries = (readCopilotHookManifest(input.root).hooks.UserPromptSubmit ?? []).filter((e) => entryMatches(e));
+  } catch (err) {
+    return { ok: false, detail: `copilot/hooks.json: ${err.message}` };
+  }
+  if (entries.length === 0) return { ok: false, detail: "copilot/hooks.json registers no UserPromptSubmit entry" };
+  const payload = { hook_event_name: "UserPromptSubmit", session_id: sessionId, timestamp: new Date(now).toISOString(), cwd: input.projectDir, prompt: ULTRAGOAL_ACTIVATION_PROMPT };
+  const runs = entries.map((e) => dispatchHookEntry("UserPromptSubmit", e, input.root, payload, { cwd: input.projectDir, env: input.env, spawnSync: input.spawnSync }));
+  const path15 = ultragoalStatePath(input.projectDir, sessionId);
+  let state;
+  try {
+    state = JSON.parse((0, import_fs53.readFileSync)(path15, "utf8"));
+  } catch {
+    const run = runs.find((r) => r.status !== 0 || r.stderr.trim()) ?? runs[0];
+    return { ok: false, detail: `no ultragoal state after the activation hook (exit ${String(run?.status)}): ${excerpt(run?.stderr || run?.stdout, 200)}` };
+  }
+  if (state.active !== true) return { ok: false, detail: "activation hook wrote an inactive ultragoal state", state };
+  state = { ...state, awaiting_confirmation_set_at: new Date(now - ULTRAGOAL_CONFIRM_TTL_MS - 6e4).toISOString(), max_reinforcements: 1 };
+  (0, import_fs53.writeFileSync)(path15, JSON.stringify(state, null, 2));
+  return { ok: true, detail: `ultragoal activated by our UserPromptSubmit group, confirmation backdated past the ${ULTRAGOAL_CONFIRM_TTL_MS / 1e3} s TTL`, state };
+}
+async function runCliScenario(input) {
+  const { name } = input;
+  const sessionId = (input.randomUUID ?? import_crypto16.randomUUID)();
+  const nonce = (0, import_crypto16.randomBytes)(6).toString("hex");
+  const cli = { sessionId, nonce, steps: [], stub: [] };
+  const base = {
+    name,
+    timeoutMs: input.timeoutMs,
+    model: "cli default (copilot, no --model)",
+    maxCredits: input.maxCredits,
+    budget: input.budget,
+    capped: false,
+    wedged: false,
+    cli
+  };
+  let stub = null;
+  try {
+    stub = prepareStubPlugin(input.home, name, name === "continuation" ? continuationReason(nonce) : promptContextLine(nonce), input.node);
+    if (name === "ultragoal") {
+      (0, import_fs53.writeFileSync)((0, import_path69.join)(input.projectDir, "README.md"), "# omg smoke ultragoal fixture\n");
+      cli.seed = seedUltragoal(input, sessionId, (input.now ?? Date.now)());
+    }
+  } catch (err) {
+    return { ...base, events: [], idle: false, timedOut: false, error: `${name} setup: ${err.message}` };
+  }
+  if (cli.seed && !cli.seed.ok) return { ...base, events: [], idle: false, timedOut: false, error: `ultragoal seed: ${cli.seed.detail}` };
+  const eventsFile = (0, import_path69.join)(input.home, "session-state", sessionId, "events.jsonl");
+  const readEvents = () => {
+    try {
+      return parseJsonl((0, import_fs53.readFileSync)(eventsFile, "utf8")).events;
+    } catch {
+      return [];
+    }
+  };
+  const argsFor = (budget2) => [
+    "--plugin-dir",
+    input.root,
+    ...stub ? ["--plugin-dir", stub.dir] : [],
+    "--session-id",
+    sessionId,
+    "--output-format",
+    "json",
+    ...CLI_SCENARIO_PERMISSIONS[name],
+    ...SANDBOX_FLAGS,
+    "--log-level",
+    "debug",
+    "--log-dir",
+    (0, import_path69.join)(input.home, "logs"),
+    "--max-ai-credits",
+    String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(budget2)))
+  ];
+  const prompts = [["prompt", SCENARIOS[name].prompt], ...name === "events" ? [["compact", COMPACT_PROMPT]] : []];
+  let error2;
+  let timedOut = false;
+  let capped = false;
+  let budget = input.budget;
+  for (const [label, prompt] of prompts) {
+    if (budget <= 0) {
+      capped = true;
+      break;
+    }
+    const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
+    const res = await runAsync(input.spawn ?? import_child_process19.spawn, input.spawnSync, plan.command, plan.args, {
+      cwd: input.projectDir,
+      env: input.env,
+      input: `${prompt}
+`,
+      timeoutMs: input.timeoutMs,
+      windowsVerbatimArguments: plan.windowsVerbatimArguments
+    });
+    const step = { label, code: res.code, timedOut: res.timedOut, durationMs: res.durationMs, ...res.error ? { error: res.error } : {} };
+    cli.steps.push(step);
+    if (res.timedOut) {
+      timedOut = true;
+      break;
+    }
+    if (res.error || res.code !== 0) {
+      error2 = res.error ?? `copilot (${label}) exited ${String(res.code)}: ${excerpt(res.stderr, 200)}`;
+      break;
+    }
+    budget = input.budget - runCost({ events: readEvents() }).credits;
+  }
+  const events = readEvents();
+  if (!error2 && !timedOut && events.length === 0) error2 = `no events.jsonl for session ${sessionId}`;
+  try {
+    (0, import_fs53.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+  } catch {
+  }
+  if (stub && (0, import_fs53.existsSync)(stub.log)) {
+    cli.stub = readJsonl(stub.log).map((r) => ({
+      kind: String(r.kind ?? ""),
+      payload: r.payload && typeof r.payload === "object" ? r.payload : null,
+      out: r.out && typeof r.out === "object" ? r.out : {}
+    }));
+  }
+  return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
+}
+var import_crypto16, import_child_process19, import_fs53, import_path69, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var init_copilot_cli_scenarios = __esm({
+  "src/smoke/copilot-cli-scenarios.ts"() {
+    "use strict";
+    import_crypto16 = require("crypto");
+    import_child_process19 = require("child_process");
+    import_fs53 = require("fs");
+    import_path69 = require("path");
+    init_worktree_paths();
+    init_tmux_utils();
+    init_copilot_session_eval();
+    init_copilot_hook_manifest();
+    init_copilot_sdk_scenarios();
+    init_process_utils2();
+    CLI_SCENARIO_PERMISSIONS = {
+      continuation: ["--allow-all-tools", "--no-ask-user", "--deny-tool", "shell", "--deny-tool", "write"],
+      "prompt-context": ["--allow-all-tools", "--no-ask-user", "--deny-tool", "shell", "--deny-tool", "write"],
+      events: ["--allow-tool", "view", "--no-ask-user", "--deny-tool", "write"],
+      ultragoal: ["--allow-tool", "view", "--no-ask-user", "--deny-tool", "shell", "--deny-tool", "write"]
+    };
+    SANDBOX_FLAGS = ["--deny-tool", "t(host_smoke)", "--disable-builtin-mcps", "--no-auto-update"];
+    STUB_EVENTS = {
+      continuation: { event: "Stop", kind: "stop" },
+      "prompt-context": { event: "UserPromptSubmit", kind: "prompt" }
+    };
+  }
+});
+
 // src/smoke/copilot-team-scenario.ts
 function pidAlive2(pid) {
   try {
@@ -34160,7 +34607,7 @@ function teamLeaderEnv(base, bin, budget) {
   const key = pathKey2(base);
   const env = {
     ...base,
-    [key]: [(0, import_path68.dirname)(bin), base[key]].filter(Boolean).join(import_path68.delimiter),
+    [key]: [(0, import_path70.dirname)(bin), base[key]].filter(Boolean).join(import_path70.delimiter),
     COPILOT_CLI: "1",
     OMC_RUNTIME_V2: "1",
     OMC_TEAM_WORKTREE_MODE: "detached",
@@ -34186,7 +34633,7 @@ function lastJsonObject(stdout) {
 }
 function readJson2(path15) {
   try {
-    const value = JSON.parse((0, import_fs52.readFileSync)(path15, "utf8"));
+    const value = JSON.parse((0, import_fs54.readFileSync)(path15, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -34230,17 +34677,17 @@ function tasksSettled(status) {
   return total > 0 && num2(t.completed) + num2(t.failed) === total;
 }
 function leftoverReservations(projectDir, teamName) {
-  const base = (0, import_path68.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
+  const base = (0, import_path70.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
   let hashes = [];
   try {
-    hashes = (0, import_fs52.readdirSync)(base);
+    hashes = (0, import_fs54.readdirSync)(base);
   } catch {
     return [];
   }
-  return hashes.map((h) => (0, import_path68.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs52.existsSync)(p));
+  return hashes.map((h) => (0, import_path70.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs54.existsSync)(p));
 }
 function sessionUsage(stateRoot, worker) {
-  const session = readJson2((0, import_path68.join)(stateRoot, "workers", worker, "sdk-session.json"));
+  const session = readJson2((0, import_path70.join)(stateRoot, "workers", worker, "sdk-session.json"));
   const usage = session?.usage;
   if (!usage) return null;
   const finalPremium = usage.shutdown_premium_requests;
@@ -34277,8 +34724,8 @@ async function runTeamScenario(input) {
   const started = now();
   const deadline = started + budgetMs;
   const env = teamLeaderEnv(input.env, input.bin, input.budget);
-  const cli = (0, import_path68.join)(input.root, "bridge", "cli.cjs");
-  const spawnFn = input.spawn ?? import_child_process19.spawn;
+  const cli = (0, import_path70.join)(input.root, "bridge", "cli.cjs");
+  const spawnFn = input.spawn ?? import_child_process20.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env, timeoutMs });
   const base = {
     name: "team",
@@ -34322,7 +34769,7 @@ async function runTeamScenario(input) {
     await sleep6(pollMs);
   }
   const stateRoot = str3(evidence.status?.team_state_root);
-  const stateDir = stateRoot && (0, import_path68.isAbsolute)(stateRoot) ? stateRoot : (0, import_path68.join)(getOmcRoot(input.projectDir), "state", "team", teamName);
+  const stateDir = stateRoot && (0, import_path70.isAbsolute)(stateRoot) ? stateRoot : (0, import_path70.join)(getOmcRoot(input.projectDir), "state", "team", teamName);
   const workers = sdkWorkers(evidence.status).map((w) => str3(w.name)).filter(Boolean);
   evidence.tasks = parseApiTasks(lastJsonObject((await omg(["team", "api", "list-tasks", "--input", JSON.stringify({ team_name: teamName }), "--json"], 6e4)).stdout));
   const git3 = (args, cwd) => input.spawnSync("git", args, { cwd, encoding: "utf8", timeout: 3e4, windowsHide: true });
@@ -34340,16 +34787,16 @@ async function runTeamScenario(input) {
     evidence.commits.push({ worker: name, worktree, subjects, files, head, survived: null });
   }
   const eventsByWorker = /* @__PURE__ */ new Map();
-  const logDir = (0, import_path68.join)(input.home, "logs");
+  const logDir = (0, import_path70.join)(input.home, "logs");
   for (const worker of workers) {
     try {
-      eventsByWorker.set(worker, parseJsonl((0, import_fs52.readFileSync)((0, import_path68.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
+      eventsByWorker.set(worker, parseJsonl((0, import_fs54.readFileSync)((0, import_path70.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
     } catch {
     }
-    const workerLogs = (0, import_path68.join)(stateDir, "workers", worker, "copilot-home", "logs");
+    const workerLogs = (0, import_path70.join)(stateDir, "workers", worker, "copilot-home", "logs");
     try {
-      (0, import_fs52.mkdirSync)(logDir, { recursive: true });
-      for (const f of (0, import_fs52.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs52.copyFileSync)((0, import_path68.join)(workerLogs, f), (0, import_path68.join)(logDir, `team-${worker}-${f}`));
+      (0, import_fs54.mkdirSync)(logDir, { recursive: true });
+      for (const f of (0, import_fs54.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs54.copyFileSync)((0, import_path70.join)(workerLogs, f), (0, import_path70.join)(logDir, `team-${worker}-${f}`));
     } catch {
     }
   }
@@ -34378,7 +34825,7 @@ async function runTeamScenario(input) {
   while (pids.some(isAlive) && now() < reapDeadline) await sleep6(250);
   evidence.orphans = pids.filter(isAlive);
   evidence.reservationsLeft = leftoverReservations(input.projectDir, teamName);
-  evidence.stateLeft = (0, import_fs52.existsSync)(stateDir);
+  evidence.stateLeft = (0, import_fs54.existsSync)(stateDir);
   if (evidence.commits.some((c) => c.subjects.length > 0)) {
     const after = lastJsonObject((await omg(["team", "status", teamName, "--json"], 6e4)).stdout);
     const preserved = Array.isArray(after?.preserved_worktrees) ? after.preserved_worktrees.map((p) => samePathKey2(str3(p.path))) : [];
@@ -34394,7 +34841,7 @@ async function runTeamScenario(input) {
   evidence.cost = teamCost(usage, eventsByWorker);
   const events = [...eventsByWorker.values()].flat();
   try {
-    (0, import_fs52.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs54.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
   const error2 = timedOut ? `tasks did not settle within ${budgetMs} ms; the team was shut down with --force` : shutdown.code !== 0 ? `omg team shutdown exited ${String(shutdown.code)}: ${excerpt(shutdown.stderr.slice(-300), 300)}` : void 0;
@@ -34407,13 +34854,13 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process19, import_fs52, import_path68, sleep6;
+var import_child_process20, import_fs54, import_path70, sleep6;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
-    import_child_process19 = require("child_process");
-    import_fs52 = require("fs");
-    import_path68 = require("path");
+    import_child_process20 = require("child_process");
+    import_fs54 = require("fs");
+    import_path70 = require("path");
     init_worktree_paths();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
@@ -34456,7 +34903,7 @@ function isStrippedEnvKey(key) {
 }
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path69.resolve)(fromEnv);
+  if (fromEnv) return (0, import_path71.resolve)(fromEnv);
   return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
 }
 function resolvePackageRoot() {
@@ -34466,17 +34913,17 @@ function moduleDirs() {
   const starts = [];
   if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
   try {
-    starts.push((0, import_path69.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
+    starts.push((0, import_path71.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
   } catch {
   }
   return starts;
 }
 function findPluginRoot(starts) {
   for (const start of starts) {
-    let dir = (0, import_path69.resolve)(start);
+    let dir = (0, import_path71.resolve)(start);
     for (let i = 0; i < 8; i++) {
       if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path69.dirname)(dir);
+      const parent = (0, import_path71.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -34485,8 +34932,8 @@ function findPluginRoot(starts) {
 }
 function isPluginRoot(dir) {
   try {
-    const manifest = JSON.parse((0, import_fs53.readFileSync)((0, import_path69.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME2 && (0, import_fs53.existsSync)((0, import_path69.join)(dir, "package.json"));
+    const manifest = JSON.parse((0, import_fs55.readFileSync)((0, import_path71.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME2 && (0, import_fs55.existsSync)((0, import_path71.join)(dir, "package.json"));
   } catch {
     return false;
   }
@@ -34505,7 +34952,7 @@ function buildSessionEnv(base, home, opts = {}) {
 }
 function loginIdentity(userConfigDir) {
   try {
-    const parsed = parseJsonc((0, import_fs53.readFileSync)((0, import_path69.join)(userConfigDir, "config.json"), "utf-8"));
+    const parsed = parseJsonc((0, import_fs55.readFileSync)((0, import_path71.join)(userConfigDir, "config.json"), "utf-8"));
     if (!parsed || typeof parsed !== "object") return {};
     const out = {};
     for (const key of ["loggedInUsers", "lastLoggedInUser"]) if (parsed[key] !== void 0) out[key] = parsed[key];
@@ -34514,12 +34961,12 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs53, import_path69, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
+var import_fs55, import_path71, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs53 = require("fs");
-    import_path69 = require("path");
+    import_fs55 = require("fs");
+    import_path71 = require("path");
     import_url8 = require("url");
     init_names2();
     init_env_vars();
@@ -34560,6 +35007,7 @@ __export(copilot_smoke_exports, {
   DELEGATE_AGENT: () => DELEGATE_AGENT2,
   DELEGATE_SMOKE_PROMPT: () => DELEGATE_SMOKE_PROMPT,
   KNOWN_SCENARIOS: () => KNOWN_SCENARIOS,
+  LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL: () => LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL,
   LIVE_RUN_REFUSED_DETAIL: () => LIVE_RUN_REFUSED_DETAIL,
   LOGIN_SHADOWING_TOKENS: () => LOGIN_SHADOWING_TOKENS,
   MCP_LIST_TIMEOUT_MS: () => MCP_LIST_TIMEOUT_MS,
@@ -34604,21 +35052,21 @@ function tier1Ids(delegate) {
 }
 function readJson3(path15) {
   try {
-    return JSON.parse((0, import_fs54.readFileSync)(path15, "utf-8"));
+    return JSON.parse((0, import_fs56.readFileSync)(path15, "utf-8"));
   } catch {
     return null;
   }
 }
 function countDirsWith(dir, file) {
   try {
-    return (0, import_fs54.readdirSync)(dir).filter((name) => (0, import_fs54.existsSync)((0, import_path70.join)(dir, name, file))).sort();
+    return (0, import_fs56.readdirSync)(dir).filter((name) => (0, import_fs56.existsSync)((0, import_path72.join)(dir, name, file))).sort();
   } catch {
     return [];
   }
 }
 function countFiles(dir, ext) {
   try {
-    return (0, import_fs54.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
+    return (0, import_fs56.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
   } catch {
     return -1;
   }
@@ -34635,18 +35083,18 @@ function extractJsonArray(text) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs54.mkdtempSync)((0, import_path70.join)((0, import_os8.tmpdir)(), prefix));
+  return (0, import_fs56.mkdtempSync)((0, import_path72.join)((0, import_os8.tmpdir)(), prefix));
 }
 function removeDir(path15) {
   if (!path15) return;
   try {
-    (0, import_fs54.rmSync)(path15, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    (0, import_fs56.rmSync)(path15, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   } catch {
   }
 }
 function checkManifest(root) {
-  const manifest = readJson3((0, import_path70.join)(root, "plugin.json"));
-  const pkg = readJson3((0, import_path70.join)(root, "package.json"));
+  const manifest = readJson3((0, import_path72.join)(root, "plugin.json"));
+  const pkg = readJson3((0, import_path72.join)(root, "package.json"));
   const pluginVersion = typeof manifest?.version === "string" ? manifest.version : null;
   const packageVersion = typeof pkg?.version === "string" ? pkg.version : null;
   const problems = [];
@@ -34692,8 +35140,8 @@ function checkGeneratedHooks(ctx) {
   };
 }
 function checkAgents(root) {
-  const source = countFiles((0, import_path70.join)(root, "agents"), ".md");
-  const generated = countFiles((0, import_path70.join)(root, "copilot", "agents"), ".md");
+  const source = countFiles((0, import_path72.join)(root, "agents"), ".md");
+  const generated = countFiles((0, import_path72.join)(root, "copilot", "agents"), ".md");
   const ok = source > 0 && source === generated;
   return {
     id: "copilot.agents",
@@ -34730,22 +35178,22 @@ function checkPluginList(ctx, bin, env, cwd, packageVersion) {
   };
 }
 function normalizePath(p) {
-  let out = (0, import_path70.resolve)(p);
+  let out = (0, import_path72.resolve)(p);
   try {
-    out = import_fs54.realpathSync.native(out);
+    out = import_fs56.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
 }
 function checkSkillList(ctx, bin, env, cwd) {
-  const expected = countDirsWith((0, import_path70.join)(ctx.root, "skills"), "SKILL.md");
+  const expected = countDirsWith((0, import_path72.join)(ctx.root, "skills"), "SKILL.md");
   const res = runCopilotSync(ctx, bin, ["--plugin-dir", ctx.root, "--no-auto-update", "skill", "list", "--json"], env, cwd);
   const stdout = String(res.stdout ?? "");
   const list = extractJsonArray(stdout);
   if (res.status !== 0 || !list) {
     return { id: "copilot.skill_list", ok: false, detail: `skill list exit ${res.status}${list ? "" : ", no JSON array"}`, evidence: excerpt(`${stdout}${res.stderr ?? ""}`) };
   }
-  const skillsDir = normalizePath((0, import_path70.join)(ctx.root, "skills")) + import_path70.sep;
+  const skillsDir = normalizePath((0, import_path72.join)(ctx.root, "skills")) + import_path72.sep;
   const pluginSkills = list.filter((s) => s.source === "plugin");
   const fromSkillsDir = new Set(pluginSkills.filter((s) => typeof s.path === "string" && normalizePath(s.path).startsWith(skillsDir)).map((s) => normalizePath(s.path).slice(skillsDir.length).split(/[\\/]/)[0]));
   const missing = expected.filter((d) => !fromSkillsDir.has(process.platform === "win32" ? d.toLowerCase() : d));
@@ -34763,8 +35211,8 @@ async function defaultExpectedToolCount() {
 }
 async function checkMcpListTools(ctx) {
   const id = "mcp.list_tools";
-  const server2 = (0, import_path70.join)(ctx.root, "dist", "mcp", "standalone-server.js");
-  if (!(0, import_fs54.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
+  const server2 = (0, import_path72.join)(ctx.root, "dist", "mcp", "standalone-server.js");
+  if (!(0, import_fs56.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
   let expected;
   try {
     expected = await (ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount)();
@@ -34854,11 +35302,11 @@ async function checkMcpListTools(ctx) {
 }
 function initProject(ctx, projectDir, env) {
   const res = ctx.spawnSyncFn("git", ["init", "-q"], { cwd: projectDir, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  if (res.status !== 0 || !(0, import_fs54.existsSync)((0, import_path70.join)(projectDir, ".git"))) (0, import_fs54.mkdirSync)((0, import_path70.join)(projectDir, ".git"), { recursive: true });
+  if (res.status !== 0 || !(0, import_fs56.existsSync)((0, import_path72.join)(projectDir, ".git"))) (0, import_fs56.mkdirSync)((0, import_path72.join)(projectDir, ".git"), { recursive: true });
 }
 function readText(path15) {
   try {
-    return (0, import_fs54.readFileSync)(path15, "utf-8");
+    return (0, import_fs56.readFileSync)(path15, "utf-8");
   } catch {
     return null;
   }
@@ -34866,33 +35314,33 @@ function readText(path15) {
 function readDebugLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs54.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path70.join)(logDir, f));
+    files = (0, import_fs56.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path72.join)(logDir, f));
   } catch {
     return { text: null };
   }
   if (files.length === 0) return { text: null };
-  files.sort((a, b) => (0, import_fs54.statSync)(a).mtimeMs - (0, import_fs54.statSync)(b).mtimeMs);
+  files.sort((a, b) => (0, import_fs56.statSync)(a).mtimeMs - (0, import_fs56.statSync)(b).mtimeMs);
   return { text: files.map((f) => readText(f) ?? "").join("\n"), path: files[files.length - 1] };
 }
 function mcpServerNames(root) {
-  const mcp = readJson3((0, import_path70.join)(root, ".mcp.json"));
+  const mcp = readJson3((0, import_path72.join)(root, ".mcp.json"));
   const servers = mcp?.mcpServers;
   return servers && typeof servers === "object" ? Object.keys(servers) : [];
 }
 async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-");
   cleanup.push(parent);
-  const home = (0, import_path70.join)(parent, "home");
+  const home = (0, import_path72.join)(parent, "home");
   artifacts.copilotHome = home;
-  const projectDir = (0, import_path70.join)(parent, "project");
-  (0, import_fs54.mkdirSync)(home);
-  (0, import_fs54.mkdirSync)(projectDir);
-  const logDir = (0, import_path70.join)(home, "logs");
-  const sessionId = (ctx.deps.randomUUID ?? import_crypto16.randomUUID)();
+  const projectDir = (0, import_path72.join)(parent, "project");
+  (0, import_fs56.mkdirSync)(home);
+  (0, import_fs56.mkdirSync)(projectDir);
+  const logDir = (0, import_path72.join)(home, "logs");
+  const sessionId = (ctx.deps.randomUUID ?? import_crypto17.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
-  (0, import_fs54.writeFileSync)((0, import_path70.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
+  (0, import_fs56.writeFileSync)((0, import_path72.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
 `);
   initProject(ctx, projectDir, env);
   const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
@@ -34924,12 +35372,12 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
     timeoutMs,
     windowsVerbatimArguments: plan.windowsVerbatimArguments
   });
-  const stdoutPath = (0, import_path70.join)(home, "smoke-stdout.jsonl");
+  const stdoutPath = (0, import_path72.join)(home, "smoke-stdout.jsonl");
   try {
-    (0, import_fs54.writeFileSync)(stdoutPath, run.stdout);
+    (0, import_fs56.writeFileSync)(stdoutPath, run.stdout);
   } catch {
   }
-  const eventsPath = (0, import_path70.join)(home, "session-state", sessionId, "events.jsonl");
+  const eventsPath = (0, import_path72.join)(home, "session-state", sessionId, "events.jsonl");
   const logs = readDebugLogs(logDir);
   Object.assign(artifacts, { eventsLog: eventsPath, debugLog: logs.path, stdout: stdoutPath });
   return evaluateTier1({
@@ -34973,7 +35421,11 @@ function liveRunRefusal(tier, scenarios, deps, env = process.env) {
   const billable = tier === 1 || tier === 2 && (scenarios ?? DEFAULT_SCENARIOS).length > 0;
   if (!billable) return null;
   if (env.OMC_LIVE_SMOKE === String(tier)) return null;
-  if (tier === 1 && deps.spawn || tier === 2 && deps.loadSdk) return null;
+  if (tier === 1 && deps.spawn) return null;
+  if (tier === 2 && deps.loadSdk) {
+    const real = (scenarios ?? DEFAULT_SCENARIOS).filter((s) => s === "chain" && !deps.runChain || s === "team" && !deps.runTeam || CLI_SCENARIOS.includes(s) && !deps.runCli);
+    return real.length > 0 ? `${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${real.join(", ")}` : null;
+  }
   return LIVE_RUN_REFUSED_DETAIL;
 }
 async function runCopilotSmoke(input = {}) {
@@ -34981,7 +35433,7 @@ async function runCopilotSmoke(input = {}) {
   const env = input.env ?? process.env;
   const deps = input.deps ?? {};
   const tier = input.tier === 1 || input.tier === 2 ? input.tier : 0;
-  const root = (0, import_path70.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
+  const root = (0, import_path72.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
   const opts = { ...input, pluginRoot: root, tier };
   if (opts.prompt !== void 0 && /\0/.test(opts.prompt)) throw new Error("smoke prompt must not contain NUL");
   const unknown2 = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
@@ -35003,8 +35455,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env },
-    spawnFn: deps.spawn ?? import_child_process20.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process20.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process21.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process21.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS
   };
@@ -35088,18 +35540,18 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
 async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-sdk-");
   cleanup.push(parent);
-  const home = (0, import_path70.join)(parent, "home");
-  const projectDir = (0, import_path70.join)(parent, "project");
-  (0, import_fs54.mkdirSync)(home);
+  const home = (0, import_path72.join)(parent, "home");
+  const projectDir = (0, import_path72.join)(parent, "project");
+  (0, import_fs56.mkdirSync)(home);
   artifacts.copilotHome = home;
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env.OMC_GIT_GUARDRAILS = "1";
-  (0, import_fs54.writeFileSync)((0, import_path70.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
+  (0, import_fs56.writeFileSync)((0, import_path72.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
   try {
-    agentFiles = (0, import_fs54.readdirSync)((0, import_path70.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
+    agentFiles = (0, import_fs56.readdirSync)((0, import_path72.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
   const result = await runSdkTier({
@@ -35109,7 +35561,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     packageVersion,
     home,
     projectDir,
-    remoteDir: (0, import_path70.join)(parent, "remote.git"),
+    remoteDir: (0, import_path72.join)(parent, "remote.git"),
     env,
     scenarios,
     model: opts.model,
@@ -35119,26 +35571,27 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
     loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
     spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path70.join)(ctx.root, "skills"), "SKILL.md"),
+    skillDirs: countDirsWith((0, import_path72.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: runChainScenario,
-    runTeam: runTeamScenario
+    runChain: ctx.deps.runChain ?? runChainScenario,
+    runTeam: ctx.deps.runTeam ?? runTeamScenario,
+    runCli: ctx.deps.runCli ?? runCliScenario
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
-  const logs = readDebugLogs((0, import_path70.join)(home, "logs"));
+  const logs = readDebugLogs((0, import_path72.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process20, import_crypto16, import_fs54, import_os8, import_path70, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process21, import_crypto17, import_fs56, import_os8, import_path72, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process20 = require("child_process");
-    import_crypto16 = require("crypto");
-    import_fs54 = require("fs");
+    import_child_process21 = require("child_process");
+    import_crypto17 = require("crypto");
+    import_fs56 = require("fs");
     import_os8 = require("os");
-    import_path70 = require("path");
+    import_path72 = require("path");
     init_tmux_utils();
     init_config_dir();
     init_copilot_binary();
@@ -35146,6 +35599,7 @@ var init_copilot_smoke = __esm({
     init_process_utils2();
     init_copilot_sdk_driver();
     init_copilot_chain_scenario();
+    init_copilot_cli_scenarios();
     init_copilot_team_scenario();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
@@ -35164,14 +35618,15 @@ var init_copilot_smoke = __esm({
     SMOKE_PERMISSION_FLAGS = ["--allow-all-tools", "--no-ask-user"];
     TIER0_COPILOT_IDS = ["copilot.binary", "copilot.plugin_list", "copilot.skill_list"];
     LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
+    LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli or set OMC_LIVE_SMOKE=2";
   }
 });
 
 // src/tools/host-smoke-tool.ts
 function canonical(p) {
-  let out = (0, import_path71.resolve)(p);
+  let out = (0, import_path73.resolve)(p);
   try {
-    out = import_fs55.realpathSync.native(out);
+    out = import_fs57.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
@@ -35179,12 +35634,12 @@ function canonical(p) {
 function errorResult(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-var import_fs55, import_path71, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
+var import_fs57, import_path73, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
 var init_host_smoke_tool = __esm({
   "src/tools/host-smoke-tool.ts"() {
     "use strict";
-    import_fs55 = require("fs");
-    import_path71 = require("path");
+    import_fs57 = require("fs");
+    import_path73 = require("path");
     init_zod();
     init_names();
     SMOKE_ALLOW_LIVE_ENV = "OMC_SMOKE_ALLOW_LIVE";
@@ -35541,11 +35996,11 @@ var init_governor = __esm({
 });
 
 // src/ship/exec.ts
-var import_child_process21, TRUSTED_READ_ENV;
+var import_child_process22, TRUSTED_READ_ENV;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
-    import_child_process21 = require("child_process");
+    import_child_process22 = require("child_process");
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
   }
 });
@@ -35561,11 +36016,11 @@ function shipBlock(config2, source) {
   return ship;
 }
 function trustedUserConfigPath(home = (0, import_os9.userInfo)().homedir) {
-  const configDir = process.platform === "win32" ? (0, import_path72.join)(home, "AppData", "Roaming") : (0, import_path72.join)(home, ".config");
-  return (0, import_path72.join)(configDir, "claude-omc", "config.jsonc");
+  const configDir = process.platform === "win32" ? (0, import_path74.join)(home, "AppData", "Roaming") : (0, import_path74.join)(home, ".config");
+  return (0, import_path74.join)(configDir, "claude-omc", "config.jsonc");
 }
 function samePath(a, b) {
-  const norm = (p) => process.platform === "win32" ? (0, import_path72.resolve)(p).toLowerCase() : (0, import_path72.resolve)(p);
+  const norm = (p) => process.platform === "win32" ? (0, import_path74.resolve)(p).toLowerCase() : (0, import_path74.resolve)(p);
   return norm(a) === norm(b);
 }
 function userConfigLayers(envPath = getConfigPaths().user, trustedPath) {
@@ -35587,7 +36042,7 @@ function configuredProtectedPaths(root) {
     [() => userConfigLayers().trustedUser, "user config (default location)"],
     [() => {
       const path15 = resolveProjectConfigPath(root);
-      return (0, import_fs56.existsSync)(path15) ? parseJsonc((0, import_fs56.readFileSync)(path15, "utf8")) : void 0;
+      return (0, import_fs58.existsSync)(path15) ? parseJsonc((0, import_fs58.readFileSync)(path15, "utf8")) : void 0;
     }, "project config"]
   ];
   for (const [read, source] of layers) {
@@ -35599,13 +36054,13 @@ function configuredProtectedPaths(root) {
   }
   return [...paths];
 }
-var import_fs56, import_os9, import_path72, DEFAULT_SHIP_CONFIG;
+var import_fs58, import_os9, import_path74, DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
-    import_fs56 = require("fs");
+    import_fs58 = require("fs");
     import_os9 = require("os");
-    import_path72 = require("path");
+    import_path74 = require("path");
     init_jsonc();
     init_loader();
     init_project_config_path();
@@ -35660,13 +36115,13 @@ var init_config2 = __esm({
 });
 
 // src/ship/state.ts
-var import_crypto17, import_fs57, import_path73;
+var import_crypto18, import_fs59, import_path75;
 var init_state3 = __esm({
   "src/ship/state.ts"() {
     "use strict";
-    import_crypto17 = require("crypto");
-    import_fs57 = require("fs");
-    import_path73 = require("path");
+    import_crypto18 = require("crypto");
+    import_fs59 = require("fs");
+    import_path75 = require("path");
     init_atomic_write();
     init_file_lock();
     init_worktree_paths();
@@ -35698,48 +36153,48 @@ var init_merge = __esm({
 
 // src/team/fs-utils.ts
 function atomicWriteJson2(filePath, data, mode = 384) {
-  const dir = (0, import_path74.dirname)(filePath);
-  if (!(0, import_fs58.existsSync)(dir)) (0, import_fs58.mkdirSync)(dir, { recursive: true, mode: 448 });
+  const dir = (0, import_path76.dirname)(filePath);
+  if (!(0, import_fs60.existsSync)(dir)) (0, import_fs60.mkdirSync)(dir, { recursive: true, mode: 448 });
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  (0, import_fs58.writeFileSync)(tmpPath, JSON.stringify(data, null, 2) + "\n", { encoding: "utf-8", mode });
-  (0, import_fs58.renameSync)(tmpPath, filePath);
+  (0, import_fs60.writeFileSync)(tmpPath, JSON.stringify(data, null, 2) + "\n", { encoding: "utf-8", mode });
+  (0, import_fs60.renameSync)(tmpPath, filePath);
 }
 function ensureDirWithMode(dirPath, mode = 448) {
-  if (!(0, import_fs58.existsSync)(dirPath)) (0, import_fs58.mkdirSync)(dirPath, { recursive: true, mode });
+  if (!(0, import_fs60.existsSync)(dirPath)) (0, import_fs60.mkdirSync)(dirPath, { recursive: true, mode });
 }
 function safeRealpath(p) {
   try {
-    return (0, import_fs58.realpathSync)(p);
+    return (0, import_fs60.realpathSync)(p);
   } catch {
     const segments = [];
-    let current = (0, import_path74.resolve)(p);
-    while (!(0, import_fs58.existsSync)(current)) {
-      segments.unshift((0, import_path74.basename)(current));
-      const parent = (0, import_path74.dirname)(current);
+    let current = (0, import_path76.resolve)(p);
+    while (!(0, import_fs60.existsSync)(current)) {
+      segments.unshift((0, import_path76.basename)(current));
+      const parent = (0, import_path76.dirname)(current);
       if (parent === current) break;
       current = parent;
     }
     try {
-      return (0, import_path74.join)((0, import_fs58.realpathSync)(current), ...segments);
+      return (0, import_path76.join)((0, import_fs60.realpathSync)(current), ...segments);
     } catch {
-      return (0, import_path74.resolve)(p);
+      return (0, import_path76.resolve)(p);
     }
   }
 }
 function validateResolvedPath(resolvedPath, expectedBase) {
   const absResolved = safeRealpath(resolvedPath);
   const absBase = safeRealpath(expectedBase);
-  const rel = (0, import_path74.relative)(absBase, absResolved);
-  if (rel.startsWith("..") || (0, import_path74.resolve)(absBase, rel) !== absResolved) {
+  const rel = (0, import_path76.relative)(absBase, absResolved);
+  if (rel.startsWith("..") || (0, import_path76.resolve)(absBase, rel) !== absResolved) {
     throw new Error(`Path traversal detected: "${resolvedPath}" escapes base "${expectedBase}"`);
   }
 }
-var import_fs58, import_path74;
+var import_fs60, import_path76;
 var init_fs_utils = __esm({
   "src/team/fs-utils.ts"() {
     "use strict";
-    import_fs58 = require("fs");
-    import_path74 = require("path");
+    import_fs60 = require("fs");
+    import_path76 = require("path");
   }
 });
 
@@ -35848,13 +36303,13 @@ var init_pane_readiness = __esm({
 });
 
 // src/lib/host-load-gate.ts
-var import_os10, import_fs59, import_path75;
+var import_os10, import_fs61, import_path77;
 var init_host_load_gate = __esm({
   "src/lib/host-load-gate.ts"() {
     "use strict";
     import_os10 = require("os");
-    import_fs59 = require("fs");
-    import_path75 = require("path");
+    import_fs61 = require("fs");
+    import_path77 = require("path");
     init_paths2();
   }
 });
@@ -35882,13 +36337,13 @@ var init_worker_launch_ack = __esm({
 });
 
 // src/team/recovery-request-store.ts
-var import_crypto18, import_fs60, import_path76, RETENTION_MS;
+var import_crypto19, import_fs62, import_path78, RETENTION_MS;
 var init_recovery_request_store = __esm({
   "src/team/recovery-request-store.ts"() {
     "use strict";
-    import_crypto18 = require("crypto");
-    import_fs60 = require("fs");
-    import_path76 = require("path");
+    import_crypto19 = require("crypto");
+    import_fs62 = require("fs");
+    import_path78 = require("path");
     init_types9();
     init_state_paths();
     init_process_identity_lock();
@@ -35931,13 +36386,13 @@ var init_worker_canonicalization = __esm({
 });
 
 // src/team/monitor.ts
-var import_fs61, import_promises6, import_path77;
+var import_fs63, import_promises6, import_path79;
 var init_monitor = __esm({
   "src/team/monitor.ts"() {
     "use strict";
-    import_fs61 = require("fs");
+    import_fs63 = require("fs");
     import_promises6 = require("fs/promises");
-    import_path77 = require("path");
+    import_path79 = require("path");
     init_types3();
     init_contracts();
     init_state_paths();
@@ -35974,15 +36429,15 @@ function sanitizeName(name) {
   }
   return sanitized.slice(0, 50);
 }
-var import_fs62, import_crypto19, import_child_process22, import_util10, import_path78, import_os11, execFileAsync4;
+var import_fs64, import_crypto20, import_child_process23, import_util10, import_path80, import_os11, execFileAsync4;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
-    import_fs62 = require("fs");
-    import_crypto19 = require("crypto");
-    import_child_process22 = require("child_process");
+    import_fs64 = require("fs");
+    import_crypto20 = require("crypto");
+    import_child_process23 = require("child_process");
     import_util10 = require("util");
-    import_path78 = require("path");
+    import_path80 = require("path");
     import_os11 = require("os");
     init_team_name();
     init_tmux_utils();
@@ -35993,7 +36448,7 @@ var init_tmux_session = __esm({
     init_worker_launch_ack();
     init_runtime_owner_client();
     init_psmux_adapter();
-    execFileAsync4 = (0, import_util10.promisify)(import_child_process22.execFile);
+    execFileAsync4 = (0, import_util10.promisify)(import_child_process23.execFile);
   }
 });
 
@@ -37394,18 +37849,18 @@ var init_copilot_run_tools = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path79, import_os12, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path81, import_os12, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
-    import_path79 = require("path");
+    import_path81 = require("path");
     import_os12 = require("os");
     init_config_dir();
     init_worktree_paths();
-    USER_SKILLS_DIR = (0, import_path79.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path79.join)((0, import_os12.homedir)(), ".omg", "skills");
+    USER_SKILLS_DIR = (0, import_path81.join)(getCopilotConfigDir(), "skills", "omc-learned");
+    GLOBAL_SKILLS_DIR = (0, import_path81.join)((0, import_os12.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
-    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path79.join)(".agents", "skills");
+    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path81.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
     DEBUG_ENABLED = process.env.OMC_DEBUG === "1";
@@ -37414,12 +37869,12 @@ var init_constants3 = __esm({
 
 // src/hooks/learner/finder.ts
 function findSkillFilesRecursive(dir, results, depth = 0) {
-  if (!(0, import_fs63.existsSync)(dir)) return;
+  if (!(0, import_fs65.existsSync)(dir)) return;
   if (depth > MAX_RECURSION_DEPTH) return;
   try {
-    const entries = (0, import_fs63.readdirSync)(dir, { withFileTypes: true });
+    const entries = (0, import_fs65.readdirSync)(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = (0, import_path80.join)(dir, entry.name);
+      const fullPath = (0, import_path82.join)(dir, entry.name);
       if (entry.isDirectory()) {
         findSkillFilesRecursive(fullPath, results, depth + 1);
       } else if (entry.isFile() && entry.name.endsWith(SKILL_EXTENSION)) {
@@ -37434,15 +37889,15 @@ function findSkillFilesRecursive(dir, results, depth = 0) {
 }
 function safeRealpathSync(filePath) {
   try {
-    return (0, import_fs63.realpathSync)(filePath);
+    return (0, import_fs65.realpathSync)(filePath);
   } catch {
     return filePath;
   }
 }
 function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = (0, import_path80.normalize)(realPath);
-  const normalizedBoundary = (0, import_path80.normalize)(safeRealpathSync(boundary));
-  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path80.sep);
+  const normalizedReal = (0, import_path82.normalize)(realPath);
+  const normalizedBoundary = (0, import_path82.normalize)(safeRealpathSync(boundary));
+  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path82.sep);
 }
 function findSkillFiles(projectRoot, options) {
   const candidates = [];
@@ -37450,8 +37905,8 @@ function findSkillFiles(projectRoot, options) {
   const scope = options?.scope ?? "all";
   if (projectRoot && (scope === "project" || scope === "all")) {
     const projectSkillDirs = [
-      (0, import_path80.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
-      (0, import_path80.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
+      (0, import_path82.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
+      (0, import_path82.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
     ];
     for (const projectSkillsDir of projectSkillDirs) {
       const projectFiles = [];
@@ -37501,12 +37956,12 @@ function findSkillFiles(projectRoot, options) {
   }
   return candidates;
 }
-var import_fs63, import_path80;
+var import_fs65, import_path82;
 var init_finder2 = __esm({
   "src/hooks/learner/finder.ts"() {
     "use strict";
-    import_fs63 = require("fs");
-    import_path80 = require("path");
+    import_fs65 = require("fs");
+    import_path82 = require("path");
     init_constants3();
   }
 });
@@ -37666,14 +38121,14 @@ var init_parser = __esm({
 
 // src/hooks/learner/loader.ts
 function createContentHash(content) {
-  return (0, import_crypto20.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_crypto21.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function loadAllSkills(projectRoot) {
   const candidates = findSkillFiles(projectRoot);
   const seenIds = /* @__PURE__ */ new Map();
   for (const candidate of candidates) {
     try {
-      const rawContent = (0, import_fs64.readFileSync)(candidate.path, "utf-8");
+      const rawContent = (0, import_fs66.readFileSync)(candidate.path, "utf-8");
       const { metadata, content, valid, errors } = parseSkillFile(rawContent);
       if (!valid) {
         if (DEBUG_ENABLED) {
@@ -37682,7 +38137,7 @@ function loadAllSkills(projectRoot) {
         continue;
       }
       const skillId = metadata.id;
-      const relativePath = (0, import_path81.normalize)((0, import_path81.relative)(candidate.sourceDir, candidate.path));
+      const relativePath = (0, import_path83.normalize)((0, import_path83.relative)(candidate.sourceDir, candidate.path));
       const skill = {
         path: candidate.path,
         relativePath,
@@ -37704,13 +38159,13 @@ function loadAllSkills(projectRoot) {
   }
   return Array.from(seenIds.values()).sort((a, b) => b.priority - a.priority);
 }
-var import_fs64, import_crypto20, import_path81;
+var import_fs66, import_crypto21, import_path83;
 var init_loader2 = __esm({
   "src/hooks/learner/loader.ts"() {
     "use strict";
-    import_fs64 = require("fs");
-    import_crypto20 = require("crypto");
-    import_path81 = require("path");
+    import_fs66 = require("fs");
+    import_crypto21 = require("crypto");
+    import_path83 = require("path");
     init_finder2();
     init_parser();
     init_constants3();
@@ -37719,13 +38174,13 @@ var init_loader2 = __esm({
 
 // src/tools/skills-tools.ts
 function validateProjectRoot(input) {
-  const normalized = (0, import_path82.normalize)((0, import_path82.resolve)(input));
+  const normalized = (0, import_path84.normalize)((0, import_path84.resolve)(input));
   if (input.includes("..")) {
     throw new Error("Invalid project root: path traversal not allowed");
   }
   const isWithinAllowed = ALLOWED_BOUNDARIES.some((boundary) => {
-    const normalizedBoundary = (0, import_path82.normalize)(boundary);
-    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path82.sep);
+    const normalizedBoundary = (0, import_path84.normalize)(boundary);
+    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path84.sep);
   });
   if (!isWithinAllowed) {
     throw new Error("Invalid project root: path is outside allowed directories");
@@ -37751,12 +38206,12 @@ function formatSkillOutput(skills) {
   }
   return lines2.join("\n");
 }
-var import_path82, import_os13, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path84, import_os13, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
-    import_path82 = require("path");
+    import_path84 = require("path");
     import_os13 = require("os");
     init_config_dir();
     init_loader2();

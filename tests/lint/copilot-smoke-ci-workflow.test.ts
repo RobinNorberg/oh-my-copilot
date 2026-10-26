@@ -2,8 +2,9 @@
  * Pins the `smoke` job in .github/workflows/ci.yml (docs/DEVELOPERS.md,
  * "Tier 2 in CI"): static tier 2 checks on every run, billed scenarios on v*
  * tags only, a clean skip without the COPILOT_GITHUB_TOKEN secret, the secret
- * only through step env and never printed, and a token-leak scan that must
- * pass before any artifact upload.
+ * only through step env and never printed, opt-in scenarios only from the
+ * dispatch input or the tag variable, a stable snapshot of the artifacts, and
+ * a token-leak scan of that snapshot that must pass before any upload.
  */
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -16,6 +17,8 @@ const GATE = "steps.gate.outputs.enabled == 'true'";
 const TAG_ONLY = "github.event_name == 'push' && github.ref_type == 'tag'";
 const STATIC_CMD = "node bridge/cli.cjs smoke copilot --tier 2 --sdk-static --keep-home --json";
 const SCENARIO_CMD = "node bridge/cli.cjs smoke copilot --tier 2 --keep-home --json";
+const OPT_IN_CMD = 'node bridge/cli.cjs smoke copilot --tier 2 --scenario "$SMOKE_OPT_IN" --keep-home --json';
+const OPT_IN_STEP = "Tier 2 opt-in scenarios (smoke_scenarios input / COPILOT_SMOKE_OPT_IN on tags)";
 
 const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
 
@@ -103,8 +106,37 @@ describe("copilot smoke CI workflow", () => {
     expect(scn.run).toContain('exit "$status"');
     expect(steps.indexOf(stat)).toBeLessThan(steps.indexOf(scn));
 
+    const optIn = step(OPT_IN_STEP);
     const billed = steps.filter((s) => /smoke copilot/.test(s.run) && !/--sdk-static/.test(s.run));
-    expect(billed, "only the tag-gated step may run billed scenarios").toEqual([scn]);
+    expect(billed, "only the tag-gated and the opt-in step may run billed scenarios").toEqual([scn, optIn]);
+  });
+
+  it("runs opt-in scenarios only from the dispatch input or, on tags, the repository variable", () => {
+    expect(ci).toMatch(/^ {2}workflow_dispatch:\n {4}inputs:\n {6}smoke_scenarios:\n/m);
+    expect(job).toContain(
+      "SMOKE_OPT_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_scenarios || (github.event_name == 'push' && github.ref_type == 'tag' && vars.COPILOT_SMOKE_OPT_IN) || '' }}",
+    );
+    const optIn = step(OPT_IN_STEP);
+    expect(optIn.if).toBe(`${GATE} && env.SMOKE_OPT_IN != ''`);
+    expect(optIn.raw).toContain("OMC_LIVE_SMOKE: '2'");
+    expect(optIn.run).toContain(OPT_IN_CMD);
+    // The list never reaches an expression inside `run`; the shell validates it first.
+    expect(optIn.run).not.toContain("${{");
+    expect(optIn.run.indexOf("grep -Eq '^[a-z][a-z,-]*$'")).toBeLessThan(optIn.run.indexOf(OPT_IN_CMD));
+    expect(optIn.run).toContain('exit "$status"');
+  });
+
+  it("snapshots the artifacts after the hook children exit, without volatile caches", () => {
+    const stage = step("Stage smoke artifacts");
+    expect(stage.if).toBe(`always() && ${GATE}`);
+    expect(stage.run).toContain('STAGE="$RUNNER_TEMP/copilot-smoke-upload"');
+    expect(stage.run).toMatch(/pgrep -f "\$GITHUB_WORKSPACE\/\(scripts\|dist\|bridge\)\/"/);
+    expect(stage.run).toContain("--exclude='cache-occupancy/'");
+    expect(stage.run).toMatch(/rsync -a [^\n]*"\$SMOKE_ROOT\/" "\$STAGE\/"/);
+    // rsync 24: files vanished mid-copy, tolerated; any other failure fails the step.
+    expect(stage.run).toContain('[ "$status" -ne 24 ]');
+    const last = steps.filter((s) => /smoke copilot/.test(s.run)).at(-1)!;
+    expect(steps.indexOf(last)).toBeLessThan(steps.indexOf(stage));
   });
 
   it("passes the secret only as step env and never prints it", () => {
@@ -120,7 +152,7 @@ describe("copilot smoke CI workflow", () => {
       for (const line of uses) {
         expect([
           'if [ -n "$COPILOT_GITHUB_TOKEN" ]; then',
-          `if printf '%s\\n' "$COPILOT_GITHUB_TOKEN" | grep -rlF -f - "$SMOKE_ROOT"; then leaked=1; fi`,
+          `if printf '%s\\n' "$COPILOT_GITHUB_TOKEN" | grep -rlF -f - "$STAGE"; then leaked=1; fi`,
         ], `step "${s.name}" uses the token in an unexpected way: ${line.trim()}`).toContain(line.trim());
       }
     }
@@ -128,24 +160,26 @@ describe("copilot smoke CI workflow", () => {
     expect(extractJob(ci, "release")).not.toContain("COPILOT_GITHUB_TOKEN");
   });
 
-  it("scans for leaked tokens before uploading, and uploads only when the scan passed", () => {
+  it("scans the snapshot for leaked tokens before uploading it, and uploads only when the scan passed", () => {
     const leak = step("Check smoke artifacts for token leaks");
     expect(leak.id).toBe("leak-check");
     expect(leak.if).toBe(`always() && ${GATE}`);
-    const pattern = leak.run.match(/grep -rlE '([^']+)' "\$SMOKE_ROOT"/)?.[1];
+    expect(leak.run).toContain('STAGE="$RUNNER_TEMP/copilot-smoke-upload"');
+    const pattern = leak.run.match(/grep -rlE '([^']+)' "\$STAGE"/)?.[1];
     expect(pattern, "leak scan must grep token shapes recursively").toBeTruthy();
     const re = new RegExp(pattern!);
     for (const sample of [`gho_${"a".repeat(36)}`, `ghu_${"B".repeat(36)}`, `ghp_${"1".repeat(36)}`, `github_pat_${"x".repeat(22)}_${"y".repeat(59)}`]) {
       expect(re.test(sample), `leak scan must catch ${sample.slice(0, 12)}...`).toBe(true);
     }
     expect(leak.run).not.toMatch(/grep -[a-zA-Z]*I/);
-    expect(leak.run).toContain('rm -rf "$SMOKE_ROOT"');
+    expect(leak.run).toContain('rm -rf "$STAGE"');
     expect(leak.run).toMatch(/exit 1\n/);
 
     const upload = step("Upload smoke report and artifacts");
     expect(upload.raw).toContain("uses: actions/upload-artifact@v4");
     expect(upload.if).toBe(`always() && ${GATE} && steps.leak-check.outcome == 'success'`);
-    expect(upload.raw).toContain("path: ${{ runner.temp }}/copilot-smoke/");
+    expect(upload.raw).toContain("path: ${{ runner.temp }}/copilot-smoke-upload/");
+    expect(steps.indexOf(step("Stage smoke artifacts"))).toBeLessThan(steps.indexOf(leak));
     expect(steps.indexOf(leak)).toBeLessThan(steps.indexOf(upload));
     expect(steps.indexOf(step("Tier 2 default scenarios (tags only, ~2 premium requests)"))).toBeLessThan(steps.indexOf(leak));
   });

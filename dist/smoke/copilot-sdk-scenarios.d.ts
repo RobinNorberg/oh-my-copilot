@@ -5,7 +5,13 @@
  * event streams through the same functions the live driver uses.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team';
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | CliScenario;
+/**
+ * Headless `copilot` CLI sessions (copilot-cli-scenarios.ts), not SDK
+ * sessions: a stub plugin next to ours, a resumed session, or a seeded state.
+ */
+export type CliScenario = 'continuation' | 'prompt-context' | 'events' | 'ultragoal';
+export declare const CLI_SCENARIOS: readonly CliScenario[];
 /** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export declare const ALL_SCENARIOS: readonly Scenario[];
 /**
@@ -14,9 +20,19 @@ export declare const ALL_SCENARIOS: readonly Scenario[];
  * plugin; `chain` spawns two real headless `copilot -p` factory links (about
  * 2 premium requests) outside the SDK runtime's credit cap; `team` starts a
  * real 2-worker `omg team` with sdk workers (about 2 premium requests, one per
- * worker).
+ * worker). The {@link CLI_SCENARIOS}, premium requests measured on Copilot
+ * CLI 1.0.91: `continuation` 2 (the prompt plus one Stop-hook continuation),
+ * `prompt-context` 1, `events` 1 (the `/compact` of the resumed session bills
+ * credits but no premium request), `ultragoal` 2 (the prompt plus one
+ * reinforcement continuation).
  */
 export declare const OPT_IN_SCENARIOS: readonly Scenario[];
+/**
+ * Scenarios written to the behaviour another lane delivers: their failing
+ * checks carry this note, so a red run reads as expected until it lands.
+ * Remove the entry once the scenario passes on dev.
+ */
+export declare const PENDING_SCENARIOS: Partial<Record<Scenario, string>>;
 export declare const KNOWN_SCENARIOS: readonly Scenario[];
 /** About 2 premium requests (one per scenario). */
 export declare const DEFAULT_SCENARIOS: readonly Scenario[];
@@ -81,7 +97,49 @@ export declare const FILETOOLS_MARKER = "Context marker:";
 export declare const FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
 /** File reads and writes, only under the sandbox project. */
 export declare function permitProjectFiles(req: PermissionRequestLike, ctx: PermitContext): boolean;
+/** CLI scenario fixtures named in their prompts. */
+export declare const PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+export declare const EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+export declare const EVENTS_SHELL_TOKEN = "omg-events-probe";
 export declare const SCENARIOS: Record<Scenario, ScenarioSpec>;
+/** The prompt the `events` scenario resumes its session with: preCompact at no premium cost. */
+export declare const COMPACT_PROMPT = "/compact";
+/** The ultragoal activation prompt the seed sends through our UserPromptSubmit hook group. */
+export declare const ULTRAGOAL_ACTIVATION_PROMPT = "use ultragoal to write a hello.txt file containing hi";
+/** keyword-detector's confirmation window; the seed backdates the state past it. */
+export declare const ULTRAGOAL_CONFIRM_TTL_MS = 120000;
+/** The Stop-hook reason the continuation stub blocks with (once). */
+export declare function continuationReason(nonce: string): string;
+export declare function continuationToken(nonce: string): string;
+export declare function promptContextLine(nonce: string): string;
+/** One headless `copilot` process of a CLI scenario. */
+export interface CliStepRecord {
+    label: string;
+    code: number | null;
+    timedOut: boolean;
+    durationMs: number;
+    error?: string;
+}
+export interface CliEvidence {
+    sessionId: string;
+    /** Random token in the stub plugin's output, never in the prompt. */
+    nonce: string;
+    steps: CliStepRecord[];
+    /** Stub plugin records: what each stub run read on stdin and printed. */
+    stub: Array<{
+        kind: string;
+        payload: Record<string, unknown> | null;
+        out: Record<string, unknown>;
+    }>;
+    /** ultragoal: the activation seed (our UserPromptSubmit group, then the TTL backdate). */
+    seed?: {
+        ok: boolean;
+        detail: string;
+        state?: Record<string, unknown> | null;
+    };
+}
+/** A tool call our preToolUse hook denied for the ultragoal gate. */
+export declare const ULTRAGOAL_DENY: RegExp;
 /** The file each task commits; a task's subject names its file. */
 export declare const TEAM_FILES: readonly string[];
 /** One user prompt per worker. */
@@ -291,6 +349,8 @@ export interface ScenarioRun {
     team?: TeamEvidence;
     /** filetools: the probe plugin's hook records and the fixture's state after the turn. */
     filetools?: FiletoolsEvidence;
+    /** CLI scenarios: the session id, stub nonce, per-process results, stub records and seed. */
+    cli?: CliEvidence;
 }
 /** What one scenario run cost: chain and team span several sessions with their own totals. */
 export declare function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): ScenarioCost & {

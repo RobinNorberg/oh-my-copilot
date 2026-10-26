@@ -28,6 +28,7 @@ import { pathToFileURL } from 'url';
 import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import {
   chooseModel,
+  CLI_SCENARIOS,
   CREDIT_CAP_SKIP_DETAIL,
   evaluateScenario,
   evaluateSdkAgents,
@@ -51,6 +52,7 @@ import {
   sliceLogByTime,
   usageCredits,
   type FiletoolsEvidence,
+  type CliScenario,
   type PermissionRequestLike,
   type ProbeRecord,
   type Rpc,
@@ -63,6 +65,7 @@ import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
 // chain scenario pulls in the factory CLI (commander). The smoke entry injects
 // the runners as `runChain` and `runTeam`.
 import type { runChainScenario } from './copilot-chain-scenario.js';
+import type { runCliScenario } from './copilot-cli-scenarios.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
 
 // ---------------------------------------------------------------------------
@@ -455,6 +458,8 @@ export interface SdkTierInput {
   runChain: typeof runChainScenario;
   /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
   runTeam: typeof runTeamScenario;
+  /** The CLI scenarios' runner ({@link runCliScenario}, headless copilot sessions), injected by the smoke entry. */
+  runCli: typeof runCliScenario;
 }
 
 export interface SdkTierResult {
@@ -469,6 +474,10 @@ export interface SdkTierResult {
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export function runtimeCreditCap(maxCredits: number): number {
   return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
+}
+
+function isCliScenario(name: Scenario): name is CliScenario {
+  return (CLI_SCENARIOS as readonly Scenario[]).includes(name);
 }
 
 export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
@@ -592,7 +601,22 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
             eventsPath: path,
             spawnSync: input.spawnSync,
           })
-          : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+          // The CLI scenarios drive headless `copilot` sessions, not this client's session.
+          : isCliScenario(name)
+            ? await input.runCli({
+              name,
+              bin,
+              root: input.root,
+              env: input.env,
+              projectDir: input.projectDir,
+              home: input.home,
+              timeoutMs: input.timeoutMs,
+              maxCredits: input.maxCredits,
+              budget: input.maxCredits - total.credits,
+              eventsPath: path,
+              spawnSync: input.spawnSync,
+            })
+            : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
       const cost = runCost(run);
       total.premiumRequests += cost.premiumRequests;

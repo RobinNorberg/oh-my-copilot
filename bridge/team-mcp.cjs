@@ -18676,15 +18676,16 @@ function canon(p, platform = process.platform) {
   const out = (0, import_path36.resolve)(p).split(import_path36.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs31, import_path36, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, SCENARIOS;
+var import_fs31, import_path36, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     import_fs31 = require("fs");
     import_path36 = require("path");
     init_copilot_session_eval();
+    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...CLI_SCENARIOS];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
     SDK_PACKAGE = "@github/copilot-sdk";
@@ -18707,6 +18708,9 @@ var init_copilot_sdk_scenarios = __esm({
       writeContext: `${FILETOOLS_DIR}/new/README.md`
     };
     FILETOOLS_MARKER = "Context marker:";
+    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+    EVENTS_SHELL_TOKEN = "omg-events-probe";
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -18766,6 +18770,36 @@ var init_copilot_sdk_scenarios = __esm({
           "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
           "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
         ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+      continuation: {
+        name: "continuation",
+        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      "prompt-context": {
+        name: "prompt-context",
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll
+      },
+      events: {
+        name: "events",
+        prompt: [
+          "Do these two steps in order, then answer with one short line:",
+          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      ultragoal: {
+        name: "ultragoal",
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
         excludedTools: [],
         permit: denyAll
       }

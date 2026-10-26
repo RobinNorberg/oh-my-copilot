@@ -18,7 +18,7 @@ function parsePositiveInt(value, flag) {
         throw new Error(`${flag} must be a positive integer, got ${JSON.stringify(value)}`);
     return n;
 }
-/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `filetools`, `chain` or `team`. */
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in scenarios (OPT_IN_SCENARIOS). */
 export function parseScenarios(raw) {
     const names = raw.split(',').map((s) => s.trim()).filter(Boolean);
     if (names.length === 0)
