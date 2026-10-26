@@ -77,6 +77,9 @@ export interface HooksDoctorDeps extends BinaryResolverDeps {
   /** The generator's rendering of hooks/hooks.json (default: scripts/copilot/build-hooks.mjs). */
   renderHooks?: (root: string, sourceText: string) => Promise<string>;
   randomUUID?: () => string;
+  /** Sandbox removal and the detached remover spawn (default: fs.rmSync, child_process.spawn). */
+  rmSync?: typeof rmSync;
+  spawn?: typeof nodeSpawn;
 }
 
 const EVIDENCE_MAX = 600;
@@ -243,12 +246,16 @@ function dispatchChecks(manifest: CopilotHookManifest, root: string, env: NodeJS
     // hold the dir on win32: retry with a linear backoff (~5 s in total), then hand the removal to
     // a detached process that outlives the worker, and report the leftover instead of hiding it.
     try {
-      rmSync(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
+      (deps.rmSync ?? rmSync)(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
     } catch (err) {
       try {
         const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
-        nodeSpawn(process.execPath, ['-e', script, parent], { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
-        checks.push({ id: 'dispatch.cleanup', status: 'ok', detail: `hook workers still hold the sandbox (${(err as Error).message}); a background process removes ${parent} once they exit` });
+        // Run from tmpdir with a minimal env: the remover must not pin the user's cwd (a handle blocks
+        // removing a worktree on win32) nor inherit the session's secrets for up to 2 min.
+        const minimalEnv: NodeJS.ProcessEnv = {};
+        for (const key of ['PATH', 'Path', 'SystemRoot', 'TEMP', 'TMP']) if (env[key] !== undefined) minimalEnv[key] = env[key];
+        (deps.spawn ?? nodeSpawn)(process.execPath, ['-e', script, parent], { detached: true, stdio: 'ignore', windowsHide: true, cwd: tmpdir(), env: minimalEnv }).on('error', () => {}).unref();
+        checks.push({ id: 'dispatch.cleanup', status: 'ok', detail: `hook workers still hold the sandbox (${(err as Error).message}); a background process is scheduled to remove ${parent} once they exit` });
       } catch {
         checks.push({ id: 'dispatch.cleanup', status: 'warn', detail: `could not remove the sandbox ${parent}: ${(err as Error).message}` });
       }
