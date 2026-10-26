@@ -343,6 +343,8 @@ Fires when a subagent completes.
 | `subagent-tracker.mjs stop` | Tracks subagent completion | 5s |
 | `verify-deliverables.mjs` | Verifies subagent deliverables | 5s |
 
+On Copilot, several running agents of one type close oldest first (FIFO). If a newer same-type Copilot agent stops before an older one, the older entry is closed with the newer one's output and duration (and vice versa later); per-type counts stay correct, per-agent attribution may be swapped. This is accepted because Copilot's SubagentStart carries no id.
+
 ### PreCompact
 
 Fires immediately before context compaction.

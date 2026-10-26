@@ -816,8 +816,11 @@ export function processSubagentStart(rawInput: SubagentStartInput): HookOutput {
  * by agent_type metadata) — otherwise the choice would be ambiguous and could
  * close the wrong agent. The exception is Copilot CLI, whose SubagentStart
  * carries no agent id: several running `copilot-<type>-*` entries of the
- * stop's type close oldest first (FIFO). Returns the index of the candidate,
- * or -1.
+ * stop's type close oldest first (FIFO). If a newer same-type Copilot agent
+ * stops before an older one, the older entry is closed with the newer one's output and duration (and vice versa
+ * later); per-type counts stay correct, per-agent attribution may be
+ * swapped. This is accepted because Copilot's SubagentStart carries no id.
+ * Returns the index of the candidate, or -1.
  */
 function findReconcilableRunningAgent(
   state: SubagentTrackingState,
