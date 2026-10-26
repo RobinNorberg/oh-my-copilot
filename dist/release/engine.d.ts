@@ -15,8 +15,9 @@
  *   suite      optional vitest suite (targeted, or full against a baseline),
  *              run on the committed tree: some tests (npm pack, committed
  *              docs/CLAUDE.md, inventory drift) read committed state and
- *              always fail on the uncommitted release tree. The level is
- *              recorded in the state and a later run never lowers it
+ *              always fail on the uncommitted release tree. The level (and
+ *              the baseline) is recorded in the state and a later run never
+ *              lowers it; a suite that ran below the recorded level runs again
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
  *              a red suite costs no premium requests
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
@@ -30,6 +31,8 @@
  * resume or --from) its recorded postconditions are re-checked, and a state
  * recorded on another branch or an unrelated HEAD is refused unless --from
  * preflight (tag / verify after the main merge need no release checkout).
+ * Running a phase voids the records of every later phase, and skipping past
+ * commit needs a clean working tree (HEAD is what pr pushes).
  * Every external command goes through one injectable runner (ReleaseExec).
  */
 import { type LoadedShipConfig } from '../ship/config.js';
@@ -61,6 +64,10 @@ export interface ReleaseState {
     suiteSha?: string;
     /** Highest --suite requested for this release (a later run without --suite keeps it, a lower one is refused). */
     suite?: SuiteLevel;
+    /** Level the suite phase actually ran at on suiteSha; below `suite` the suite must run again. */
+    suiteRan?: SuiteLevel;
+    /** Absolute --baseline of the full suite, reused by a later run that does not pass it. */
+    baseline?: string;
     devPr?: number;
     devMergeSha?: string;
     mainPr?: number;
@@ -70,11 +77,14 @@ export interface ReleaseState {
     reruns: Record<string, number>;
 }
 export type SuiteLevel = 'none' | 'targeted' | 'full';
-/** `inheritEnv`: run with the caller's environment instead of the ship scrub (the vitest suite only). */
+/** `suiteEnv`: the ship scrub without GIT_NO_REPLACE_OBJECTS, as in CI (the vitest suite only). */
 export type ReleaseExecOptions = ExecOptions & {
     timeoutMs?: number;
-    inheritEnv?: boolean;
+    suiteEnv?: boolean;
 };
+/** A usage error (bad flag combination); the CLI exits 2 on it. */
+export declare class UsageError extends Error {
+}
 export type ReleaseExec = (cmd: string, args: string[], opts?: ReleaseExecOptions) => ExecResult;
 /** Files the release prose lives in; uncommitted edits to them are folded into the release commit. */
 export declare const PROSE_FILES: string[];

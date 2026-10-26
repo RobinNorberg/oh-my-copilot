@@ -60,8 +60,8 @@ describe('omg release CLI', () => {
         expect(err.join('\n')).toMatch(message);
         expect(calls).toEqual([]);
     });
-    it('--baseline without --suite needs a full suite recorded for the release', async () => {
-        expect(await run('5.12.2', '--baseline', 'x.json', '--dry-run')).toBe(1);
+    it('--baseline without --suite needs a full suite recorded for the release: a usage error (exit 2)', async () => {
+        expect(await run('5.12.2', '--baseline', 'x.json', '--dry-run')).toBe(2);
         expect(err.join('\n')).toMatch(/--baseline needs --suite full \(this release's suite is none\)/);
     });
     it('warns when --suite is passed with a --to that ends before the suite phase', async () => {

@@ -11,10 +11,8 @@ import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { parseReleaseVersion } from '../../release/checks.js';
-import { defaultReleaseExec, isPhaseId, PHASES, runRelease, } from '../../release/engine.js';
+import { defaultReleaseExec, isPhaseId, PHASES, runRelease, UsageError, } from '../../release/engine.js';
 import { emitReleaseProgress } from '../../release/progress.js';
-class UsageError extends Error {
-}
 function phaseOption(raw, flag) {
     if (raw === undefined)
         return undefined;

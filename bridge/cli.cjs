@@ -14215,7 +14215,7 @@ var init_sdk = __esm({
         const schOrFunc = root2.refs[ref];
         if (schOrFunc)
           return schOrFunc;
-        let _sch = resolve58.call(this, root2, ref);
+        let _sch = resolve59.call(this, root2, ref);
         if (_sch === void 0) {
           const schema = (_a = root2.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
           const { schemaId } = this.opts;
@@ -14242,7 +14242,7 @@ var init_sdk = __esm({
       function sameSchemaEnv(s1, s2) {
         return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
       }
-      function resolve58(root2, ref) {
+      function resolve59(root2, ref) {
         let sch;
         while (typeof (sch = this.refs[ref]) == "string")
           ref = sch;
@@ -14740,7 +14740,7 @@ var init_sdk = __esm({
         }
         return uri;
       }
-      function resolve58(baseURI, relativeURI, options) {
+      function resolve59(baseURI, relativeURI, options) {
         const schemelessOptions = Object.assign({ scheme: "null" }, options);
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
@@ -14973,7 +14973,7 @@ var init_sdk = __esm({
       var fastUri = {
         SCHEMES,
         normalize: normalize12,
-        resolve: resolve58,
+        resolve: resolve59,
         resolveComponents,
         equal,
         serialize,
@@ -18387,7 +18387,7 @@ var init_sdk = __esm({
           }
           return;
         }
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           const exitHandler = (code, signal) => {
             if (this.abortController.signal.aborted) {
               reject2(new AbortError("Operation aborted"));
@@ -18397,7 +18397,7 @@ var init_sdk = __esm({
             if (error2) {
               reject2(error2);
             } else {
-              resolve58();
+              resolve59();
             }
           };
           this.process.once("exit", exitHandler);
@@ -18443,17 +18443,17 @@ var init_sdk = __esm({
         if (this.hasError) {
           return Promise.reject(this.hasError);
         }
-        return new Promise((resolve58, reject2) => {
-          this.readResolve = resolve58;
+        return new Promise((resolve59, reject2) => {
+          this.readResolve = resolve59;
           this.readReject = reject2;
         });
       }
       enqueue(value) {
         if (this.readResolve) {
-          const resolve58 = this.readResolve;
+          const resolve59 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve58({ done: false, value });
+          resolve59({ done: false, value });
         } else {
           this.queue.push(value);
         }
@@ -18461,10 +18461,10 @@ var init_sdk = __esm({
       done() {
         this.isDone = true;
         if (this.readResolve) {
-          const resolve58 = this.readResolve;
+          const resolve59 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve58({ done: true, value: void 0 });
+          resolve59({ done: true, value: void 0 });
         }
       }
       error(error2) {
@@ -18797,10 +18797,10 @@ var init_sdk = __esm({
           type: "control_request",
           request
         };
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           this.pendingControlResponses.set(requestId, (response) => {
             if (response.subtype === "success") {
-              resolve58(response);
+              resolve59(response);
             } else {
               reject2(new Error(response.error));
               if (response.pending_permission_requests) {
@@ -18890,15 +18890,15 @@ var init_sdk = __esm({
           logForDebugging(`[Query.waitForFirstResult] Result already received, returning immediately`);
           return Promise.resolve();
         }
-        return new Promise((resolve58) => {
+        return new Promise((resolve59) => {
           if (this.abortController?.signal.aborted) {
-            resolve58();
+            resolve59();
             return;
           }
-          this.abortController?.signal.addEventListener("abort", () => resolve58(), {
+          this.abortController?.signal.addEventListener("abort", () => resolve59(), {
             once: true
           });
-          this.firstResultReceivedResolve = resolve58;
+          this.firstResultReceivedResolve = resolve59;
         });
       }
       handleHookCallbacks(callbackId, input, toolUseID, abortSignal) {
@@ -18949,13 +18949,13 @@ var init_sdk = __esm({
       handleMcpControlRequest(serverName, mcpRequest, transport) {
         const messageId = "id" in mcpRequest.message ? mcpRequest.message.id : null;
         const key = `${serverName}:${messageId}`;
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           const cleanup = () => {
             this.pendingMcpResponses.delete(key);
           };
           const resolveAndCleanup = (response) => {
             cleanup();
-            resolve58(response);
+            resolve59(response);
           };
           const rejectAndCleanup = (error2) => {
             cleanup();
@@ -27192,7 +27192,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               return;
             }
             const pollInterval = (_c = (_a = task2.pollInterval) !== null && _a !== void 0 ? _a : (_b = this._options) === null || _b === void 0 ? void 0 : _b.defaultTaskPollInterval) !== null && _c !== void 0 ? _c : 1e3;
-            await new Promise((resolve58) => setTimeout(resolve58, pollInterval));
+            await new Promise((resolve59) => setTimeout(resolve59, pollInterval));
             (_d = options === null || options === void 0 ? void 0 : options.signal) === null || _d === void 0 || _d.throwIfAborted();
           }
         } catch (error2) {
@@ -27204,7 +27204,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options !== null && options !== void 0 ? options : {};
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           var _a, _b, _c, _d, _e, _f, _g;
           const earlyReject = (error2) => {
             reject2(error2);
@@ -27285,7 +27285,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (!parseResult.success) {
                 reject2(parseResult.error);
               } else {
-                resolve58(parseResult.data);
+                resolve59(parseResult.data);
               }
             } catch (error2) {
               reject2(error2);
@@ -27482,12 +27482,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           }
         } catch (_d) {
         }
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           if (signal.aborted) {
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve58, interval);
+          const timeoutId = setTimeout(resolve59, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -28158,7 +28158,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         let task = createTaskResult.task;
         const pollInterval = (_a = task.pollInterval) !== null && _a !== void 0 ? _a : 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve58) => setTimeout(resolve58, pollInterval));
+          await new Promise((resolve59) => setTimeout(resolve59, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -33608,7 +33608,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process4.spawn)(command, args, {
@@ -33656,7 +33656,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve58();
+            resolve59();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -33915,13 +33915,13 @@ ${content}`;
         const message2 = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve58,
+            resolve: resolve59,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -34101,7 +34101,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve58) => setTimeout(resolve58, 100));
+        await new Promise((resolve59) => setTimeout(resolve59, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -34333,7 +34333,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve58, reject2) => {
+        return new Promise((resolve59, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -34352,7 +34352,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve58();
+                resolve59();
               }
             }
           };
@@ -34360,7 +34360,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve58();
+              resolve59();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -38912,7 +38912,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep(ms) {
-  return new Promise((resolve58) => setTimeout(resolve58, ms));
+  return new Promise((resolve59) => setTimeout(resolve59, ms));
 }
 var fs4, fsSync2, path5, os3, crypto4, import_child_process8, import_util5, execFileAsync2, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -39104,7 +39104,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve58, reject2) => {
+  return new Promise((resolve59, reject2) => {
     const id = (0, import_crypto6.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -39194,7 +39194,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve58(response.result);
+            resolve59(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -39713,7 +39713,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve58) => setTimeout(resolve58, ms));
+  return new Promise((resolve59) => setTimeout(resolve59, ms));
 }
 var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -48191,7 +48191,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve58) => setTimeout(resolve58, 25));
+        await new Promise((resolve59) => setTimeout(resolve59, 25));
         continue;
       }
       try {
@@ -48212,7 +48212,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve58) => setTimeout(resolve58, 25));
+        await new Promise((resolve59) => setTimeout(resolve59, 25));
       }
     }
     return await fn();
@@ -50362,7 +50362,7 @@ function withFileLockSync(lockPath2, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve58) => setTimeout(resolve58, ms));
+  return new Promise((resolve59) => setTimeout(resolve59, ms));
 }
 async function acquireFileLock(lockPath2, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -51406,7 +51406,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve58) {
+function mergeByKey(base, incoming, keyFn, resolve59) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -51415,7 +51415,7 @@ function mergeByKey(base, incoming, keyFn, resolve58) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve58(existing, item));
+      seen.set(key, resolve59(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -70298,24 +70298,24 @@ async function runSessionEndAction(context, _execute) {
     let settled = false;
     let exitCode = null;
     let settleChild = () => void 0;
-    const childExit = new Promise((resolve58) => {
+    const childExit = new Promise((resolve59) => {
       settleChild = (code2) => {
         if (settled) return;
         settled = true;
         exitCode = code2;
-        resolve58(code2);
+        resolve59(code2);
       };
       child.once("exit", settleChild);
       child.once("error", () => settleChild(null));
     });
     let deadlineTermination;
     let resolveTermination;
-    const terminationFinished = new Promise((resolve58) => {
-      resolveTermination = resolve58;
+    const terminationFinished = new Promise((resolve59) => {
+      resolveTermination = resolve59;
     });
     const terminate = async () => {
-      const postKillWait = new Promise((resolve58) => {
-        const timer = setTimeout(resolve58, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
+      const postKillWait = new Promise((resolve59) => {
+        const timer = setTimeout(resolve59, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
         timer.unref();
       });
       if (identity && child.pid) {
@@ -70329,7 +70329,7 @@ async function runSessionEndAction(context, _execute) {
       await Promise.race([childExit, postKillWait]);
     };
     if (!identity || !child.pid) {
-      await Promise.race([childExit, new Promise((resolve58) => setTimeout(resolve58, POST_KILL_SETTLE_MS))]);
+      await Promise.race([childExit, new Promise((resolve59) => setTimeout(resolve59, POST_KILL_SETTLE_MS))]);
       return { code: "runner-identity-unavailable", completed: false };
     }
     const timeout = setTimeout(() => {
@@ -70380,7 +70380,7 @@ async function runActionRunnerEntrypoint() {
       } catch {
       }
       if (armed) break;
-      await new Promise((resolve58) => setTimeout(resolve58, 10));
+      await new Promise((resolve59) => setTimeout(resolve59, 10));
     }
     if (Date.now() >= input.deadlineAt) throw new Error("runner-arm-deadline");
     const deadlineTimer = setTimeout(() => {
@@ -72334,7 +72334,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve58) => {
+    const result = await new Promise((resolve59) => {
       const req = (0, import_https.request)(
         telegramRequestOptions(Buffer.byteLength(body), config2.botToken),
         (res) => {
@@ -72350,9 +72350,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve58({ platform: "telegram", success: true, messageId });
+              resolve59({ platform: "telegram", success: true, messageId });
             } else {
-              resolve58({
+              resolve59({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -72362,11 +72362,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve58({ platform: "telegram", success: false, error: e.message });
+        resolve59({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve58({
+        resolve59({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -72657,9 +72657,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve58) => {
+      new Promise((resolve59) => {
         timer = setTimeout(
-          () => resolve58([
+          () => resolve59([
             {
               platform: "unknown",
               success: false,
@@ -77036,10 +77036,10 @@ async function runWithinDeadline(deadlineAt, run) {
   const controller = new AbortController();
   let timer;
   try {
-    return await Promise.race([run(controller.signal), new Promise((resolve58) => {
+    return await Promise.race([run(controller.signal), new Promise((resolve59) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve58(void 0);
+        resolve59(void 0);
       }, remaining);
     })]);
   } finally {
@@ -80592,7 +80592,7 @@ async function writeAtomic3(path30, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error2.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error2;
-        await new Promise((resolve58) => setTimeout(resolve58, delay));
+        await new Promise((resolve59) => setTimeout(resolve59, delay));
       }
     }
   } finally {
@@ -80712,7 +80712,7 @@ async function withMailboxLock(teamName, workerName, cwd2, fn) {
   while (Date.now() < deadline) {
     const result = await withLock2(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve58) => setTimeout(resolve58, delayMs));
+    await new Promise((resolve59) => setTimeout(resolve59, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -80875,7 +80875,7 @@ async function teamCreateTask(teamName, task, cwd2) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve58) => setTimeout(resolve58, delayMs));
+    await new Promise((resolve59) => setTimeout(resolve59, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -80941,7 +80941,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd2) {
       return normalized;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve58) => setTimeout(resolve58, delayMs));
+    await new Promise((resolve59) => setTimeout(resolve59, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -81859,7 +81859,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto8.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep4(ms) {
-  return new Promise((resolve58) => setTimeout(resolve58, ms));
+  return new Promise((resolve59) => setTimeout(resolve59, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -83737,7 +83737,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== childPid)) return false;
-    await new Promise((resolve58) => setTimeout(resolve58, 25));
+    await new Promise((resolve59) => setTimeout(resolve59, 25));
   }
   return false;
 }
@@ -83900,7 +83900,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve58) => setTimeout(resolve58, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve59) => setTimeout(resolve59, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical2.recovery_id);
     }
@@ -87719,7 +87719,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve58) => setTimeout(resolve58, Math.floor(pollMs * jitter)));
+      await new Promise((resolve59) => setTimeout(resolve59, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -91058,8 +91058,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve58) => {
-            const t = setTimeout(() => resolve58(false), remaining);
+          new Promise((resolve59) => {
+            const t = setTimeout(() => resolve59(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -91559,7 +91559,7 @@ async function waitForRecoveryGateRecord(path30, expected, timeoutMs, pollInterv
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve58) => setTimeout(resolve58, pollIntervalMs));
+    await new Promise((resolve59) => setTimeout(resolve59, pollIntervalMs));
   }
   return false;
 }
@@ -92607,7 +92607,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -92616,7 +92616,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve58({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve59({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -92629,7 +92629,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve58({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve59({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -93024,7 +93024,7 @@ async function runSdkTier(input) {
       }
       const path30 = (0, import_path116.join)(input.home, `events-${name}.jsonl`);
       events[name] = path30;
-      if (entries.length > 0) await new Promise((resolve58) => setTimeout(resolve58, 2));
+      if (entries.length > 0) await new Promise((resolve59) => setTimeout(resolve59, 2));
       const start = Date.now();
       const { wedged: stuck, ...run } = name === "chain" ? await input.runChain({
         bin,
@@ -94047,7 +94047,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve58) => setTimeout(resolve58, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve59) => setTimeout(resolve59, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd2, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -94997,14 +94997,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve58, reject2) => {
+  return new Promise((resolve59, reject2) => {
     if (signal?.aborted) {
       reject2(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve58();
+      resolve59();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -99359,7 +99359,7 @@ function createRemoteApprovalGate(options) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS3;
   const timeoutPolicy = options.timeoutPolicy ?? DEFAULT_TIMEOUT_POLICY;
   const now2 = options.now ?? (() => Date.now());
-  const sleep12 = options.sleep ?? ((ms) => new Promise((resolve58) => setTimeout(resolve58, ms)));
+  const sleep12 = options.sleep ?? ((ms) => new Promise((resolve59) => setTimeout(resolve59, ms)));
   return {
     async prompt(request) {
       const runDir = resolveRunDirHandle(options.runsRoot, options.runId);
@@ -99842,7 +99842,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path30 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve58, reject2) => {
+    const updates = await new Promise((resolve59, reject2) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -99859,7 +99859,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve58(body.result || []);
+                resolve59(body.result || []);
               } else {
                 reject2(new Error(`HTTP ${res.statusCode}`));
               }
@@ -99910,7 +99910,7 @@ async function pollTelegram(config2, state, rateLimiter) {
               text: `Approval recorded: ${decision}`,
               reply_to_message_id: msg.message_id
             });
-            await new Promise((resolve58) => {
+            await new Promise((resolve59) => {
               const confirmReq = (0, import_https2.request)(
                 {
                   hostname: "api.telegram.org",
@@ -99925,13 +99925,13 @@ async function pollTelegram(config2, state, rateLimiter) {
                 },
                 (res) => {
                   res.resume();
-                  resolve58();
+                  resolve59();
                 }
               );
-              confirmReq.on("error", () => resolve58());
+              confirmReq.on("error", () => resolve59());
               confirmReq.on("timeout", () => {
                 confirmReq.destroy();
-                resolve58();
+                resolve59();
               });
               confirmReq.write(confirmBody);
               confirmReq.end();
@@ -99968,7 +99968,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Claude Code session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve58) => {
+          await new Promise((resolve59) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -99983,13 +99983,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve58();
+                resolve59();
               }
             );
-            replyReq.on("error", () => resolve58());
+            replyReq.on("error", () => resolve59());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve58();
+              resolve59();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -100141,13 +100141,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve58) => setTimeout(resolve58, config2.pollIntervalMs));
+      await new Promise((resolve59) => setTimeout(resolve59, config2.pollIntervalMs));
     } catch (error2) {
       state.errors++;
       state.lastError = redactTokens(error2 instanceof Error ? error2.message : String(error2));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve58) => setTimeout(resolve58, config2.pollIntervalMs * 2));
+      await new Promise((resolve59) => setTimeout(resolve59, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -109371,7 +109371,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -109399,7 +109399,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed = JSON.parse(data);
               if (parsed.access_token) {
-                resolve58({
+                resolve59({
                   accessToken: parsed.access_token,
                   refreshToken: parsed.refresh_token || refreshToken,
                   expiresAt: parsed.expires_in ? Date.now() + parsed.expires_in * 1e3 : parsed.expires_at
@@ -109412,14 +109412,14 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve58(null);
+          resolve59(null);
         });
       }
     );
-    req.on("error", () => resolve58(null));
+    req.on("error", () => resolve59(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve58(null);
+      resolve59(null);
     });
     req.end(body);
   });
@@ -109432,7 +109432,7 @@ function buildUserAgent(clientVersion) {
 }
 function fetchUsageFromApi(accessToken, clientVersion) {
   const userAgent = buildUserAgent(clientVersion);
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -109454,27 +109454,27 @@ function fetchUsageFromApi(accessToken, clientVersion) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve58({ data: JSON.parse(data) });
+              resolve59({ data: JSON.parse(data) });
             } catch {
-              resolve58({ data: null });
+              resolve59({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve58({ data: null, rateLimited: true });
+            resolve59({ data: null, rateLimited: true });
           } else if (res.statusCode === 403) {
-            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve58);
+            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve59);
           } else {
-            resolve58({ data: null });
+            resolve59({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve58({ data: null }));
+    req.on("error", () => resolve59({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve58({ data: null });
+      resolve59({ data: null });
     });
     req.end();
   });
@@ -109517,7 +109517,7 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
     max_tokens: 1,
     messages: [{ role: "user", content: "." }]
   });
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -109538,34 +109538,34 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
         });
         res.on("end", () => {
           if (res.statusCode === 200) {
-            resolve58({ data: rateLimitHeadersToUsage(res.headers) });
+            resolve59({ data: rateLimitHeadersToUsage(res.headers) });
           } else {
-            resolve58({ data: null, rateLimited: res.statusCode === 429 });
+            resolve59({ data: null, rateLimited: res.statusCode === 429 });
           }
         });
       }
     );
-    req.on("error", () => resolve58({ data: null }));
+    req.on("error", () => resolve59({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve58({ data: null });
+      resolve59({ data: null });
     });
     req.write(body);
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     try {
@@ -109593,29 +109593,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve58({ data: JSON.parse(data) });
+                resolve59({ data: JSON.parse(data) });
               } catch {
-                resolve58({ data: null });
+                resolve59({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve58({ data: null, rateLimited: true });
+              resolve59({ data: null, rateLimited: true });
             } else {
-              resolve58({ data: null });
+              resolve59({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve58({ data: null }));
+      req.on("error", () => resolve59({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve58({ data: null });
+        resolve59({ data: null });
       });
       req.end();
     } catch {
-      resolve58({ data: null });
+      resolve59({ data: null });
     }
   });
 }
@@ -109881,16 +109881,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     try {
@@ -109917,29 +109917,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve58({ data: JSON.parse(data) });
+                resolve59({ data: JSON.parse(data) });
               } catch {
-                resolve58({ data: null });
+                resolve59({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve58({ data: null, rateLimited: true });
+              resolve59({ data: null, rateLimited: true });
             } else {
-              resolve58({ data: null });
+              resolve59({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve58({ data: null }));
+      req.on("error", () => resolve59({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve58({ data: null });
+        resolve59({ data: null });
       });
       req.end();
     } catch {
-      resolve58({ data: null });
+      resolve59({ data: null });
     }
   });
 }
@@ -109979,16 +109979,16 @@ function parseMinimaxResponse(response) {
   };
 }
 function fetchUsageFromKimi(apiKey) {
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve58({ data: null });
+      resolve59({ data: null });
       return;
     }
     try {
@@ -109999,7 +109999,7 @@ function fetchUsageFromKimi(apiKey) {
             `[usage-api] Refusing to send Kimi credentials to non-canonical host '${hostname4}'`
           );
         }
-        resolve58({ data: null });
+        resolve59({ data: null });
         return;
       }
       const req = import_https3.default.request(
@@ -110015,37 +110015,37 @@ function fetchUsageFromKimi(apiKey) {
         },
         (res) => {
           let data = "";
-          res.on("error", () => resolve58({ data: null }));
-          res.on("aborted", () => resolve58({ data: null }));
+          res.on("error", () => resolve59({ data: null }));
+          res.on("aborted", () => resolve59({ data: null }));
           res.on("data", (chunk) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve58({ data: JSON.parse(data) });
+                resolve59({ data: JSON.parse(data) });
               } catch {
-                resolve58({ data: null });
+                resolve59({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] Kimi API returned 429 (rate limited)`);
               }
-              resolve58({ data: null, rateLimited: true });
+              resolve59({ data: null, rateLimited: true });
             } else {
-              resolve58({ data: null });
+              resolve59({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve58({ data: null }));
+      req.on("error", () => resolve59({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve58({ data: null });
+        resolve59({ data: null });
       });
       req.end();
     } catch {
-      resolve58({ data: null });
+      resolve59({ data: null });
     }
   });
 }
@@ -111315,15 +111315,15 @@ var init_governor = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env2, deps = {}) {
   const exists = deps.existsSync ?? import_fs136.existsSync;
-  const resolve58 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve59 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs136.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve58(override);
+    const found = resolve59(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve58("copilot");
+  const onPath = resolve59("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env2.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -111655,14 +111655,14 @@ function startListener(config2, deps = {}) {
       }
     });
   });
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     server.listen(config2.port, host, () => {
       (0, import_fs137.mkdirSync)((0, import_path165.join)(pidFilePath(config2.cwd), ".."), { recursive: true });
       const addr = server.address();
       const portForLog = addr && typeof addr !== "string" ? addr.port : config2.port;
       const hostForLog = addr && typeof addr !== "string" ? addr.address : host;
       (0, import_fs137.writeFileSync)(pidFilePath(config2.cwd), JSON.stringify({ pid: process.pid, port: portForLog, host: hostForLog, startedAt }, null, 2));
-      resolve58(server);
+      resolve59(server);
     });
   });
 }
@@ -119838,7 +119838,7 @@ function isCacheValid2(cache) {
   return Date.now() - cache.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve58, reject2) => {
+  return new Promise((resolve59, reject2) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process55.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -119876,7 +119876,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       if (!timedOut && escalationTimer) clearTimeout(escalationTimer);
       if (!timedOut) {
         if (code === 0) {
-          resolve58(stdout);
+          resolve59(stdout);
         } else {
           reject2(new Error(`Command exited with code ${code}`));
         }
@@ -128219,7 +128219,7 @@ async function runShadowObservation(hookType, legacyOutput, legacyDurationMs) {
       const dispatchResult = await Promise.race([
         dispatcher.dispatch(event, {}),
         new Promise(
-          (resolve58) => setTimeout(() => resolve58(null), SHADOW_OBSERVATION_BUDGET_MS)
+          (resolve59) => setTimeout(() => resolve59(null), SHADOW_OBSERVATION_BUDGET_MS)
         )
       ]);
       shadowDurationMs = performance.now() - started;
@@ -133320,7 +133320,7 @@ async function pollLoop2(config2) {
             log2("Claude usage profile became unavailable during quota check; discarding quota sample", config2);
           }
           writeDaemonState2(state, config2);
-          await new Promise((resolve58) => setTimeout(resolve58, config2.pollIntervalMs));
+          await new Promise((resolve59) => setTimeout(resolve59, config2.pollIntervalMs));
           continue;
         }
       }
@@ -133406,7 +133406,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve58) => setTimeout(resolve58, config2.pollIntervalMs));
+    await new Promise((resolve59) => setTimeout(resolve59, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -138119,7 +138119,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep11(ms) {
-  return new Promise((resolve58) => setTimeout(resolve58, ms));
+  return new Promise((resolve59) => setTimeout(resolve59, ms));
 }
 
 // src/cli/commands/ultragoal.ts
@@ -141831,7 +141831,7 @@ function terminateProcessTree(child, signal) {
   }
 }
 function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotencyKey) {
-  return new Promise((resolve58) => {
+  return new Promise((resolve59) => {
     let child;
     try {
       child = (0, import_node_child_process16.spawn)(command, {
@@ -141845,7 +141845,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
         ...process.platform === "win32" ? {} : { detached: true }
       });
     } catch (error2) {
-      resolve58({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
+      resolve59({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
       return;
     }
     let settled = false;
@@ -141860,7 +141860,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
       settled = true;
       if (timeoutTimer !== void 0) clearTimeout(timeoutTimer);
       if (escalationTimer !== void 0) clearTimeout(escalationTimer);
-      resolve58({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
+      resolve59({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
     };
     if (child.stdout) {
       child.stdout.setEncoding("utf8");
@@ -142013,8 +142013,8 @@ function createStdinApprovalGate(input) {
       return Promise.resolve(queued);
     }
     getInterface();
-    return new Promise((resolve58) => {
-      waitingReader = resolve58;
+    return new Promise((resolve59) => {
+      waitingReader = resolve59;
     });
   }
   return {
@@ -143333,7 +143333,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig) {
           updateShipState(root2, pr, (s) => ({ ...s, reruns: { ...s.reruns, [id]: (s.reruns[id] ?? 0) + 1 }, updatedAt: now() }));
         }
       } : void 0,
-      sleep: (ms) => new Promise((resolve58) => setTimeout(resolve58, ms)),
+      sleep: (ms) => new Promise((resolve59) => setTimeout(resolve59, ms)),
       now: () => Date.now(),
       onReport: (r) => {
         if (o.watch && !o.json) console.error(source_default.gray(`[${now()}] gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`));
@@ -143559,6 +143559,8 @@ function isPhaseId(value) {
   return PHASES2.includes(value);
 }
 var SUITE_RANK = { none: 0, targeted: 1, full: 2 };
+var UsageError2 = class extends Error {
+};
 var PROSE_FILES = ["CHANGELOG.md", ".github/release-body.md", "README.md", "docs/REFERENCE.md", "docs/MIGRATION.md"];
 var SHELL_SAFE_ARG = /^[\w@./:=-]+$/;
 var defaultReleaseExec = (cmd, args, opts) => {
@@ -143566,7 +143568,8 @@ var defaultReleaseExec = (cmd, args, opts) => {
   if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
     return { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
   }
-  const base = opts?.inheritEnv ? process.env : scrubShipEnv(process.env);
+  const base = scrubShipEnv(process.env);
+  if (opts?.suiteEnv) delete base.GIT_NO_REPLACE_OBJECTS;
   const result = (0, import_child_process54.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
     cwd: opts?.cwd,
     env: { ...base, ...opts?.env },
@@ -143603,6 +143606,12 @@ function readReleaseState(stateRoot2, version3) {
   const parsed = JSON.parse((0, import_fs156.readFileSync)(path30, "utf8"));
   if (parsed?.version !== 1 || parsed.release !== version3 || typeof parsed.phases !== "object") {
     throw new Error(`${path30} is not a release state for ${version3}`);
+  }
+  for (const key of ["suite", "suiteRan"]) {
+    const level = parsed[key];
+    if (level !== void 0 && !Object.hasOwn(SUITE_RANK, level)) {
+      throw new Error(`${path30}: ${key} is ${JSON.stringify(level)}, expected none, targeted or full (fix or delete the state file)`);
+    }
   }
   return { ...parsed, reruns: parsed.reruns ?? {} };
 }
@@ -143793,7 +143802,7 @@ ${r.stderr}`));
     if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail2(remoteTag.stderr, 1).join("")}`);
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail6(`${problems.length} preflight problem(s)`, problems);
-    this.save({ branch, headSha: void 0, suiteSha: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
+    this.save({ branch, headSha: void 0, suiteSha: void 0, suiteRan: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
     return { status: "ok", note: `on release/v${v} over origin/dev ${devVersion}` };
   }
   gitProcesses() {
@@ -143854,7 +143863,7 @@ ${r.stderr}`));
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
   suite() {
     const suite = this.opts.suite ?? "none";
-    this.save({ suiteSha: this.git("rev-parse", "HEAD") });
+    this.save({ suiteSha: this.git("rev-parse", "HEAD"), suiteRan: suite });
     if (suite === "targeted") {
       const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
       if (tag.status !== 0) fail6("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
@@ -143862,7 +143871,8 @@ ${r.stderr}`));
       if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       const args = ["node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed];
       this.deps.log(`  node ${args.join(" ")}`);
-      this.must(this.deps.node, args, `node ${args.join(" ")}`, { inheritEnv: true });
+      this.must(this.deps.node, args, `node ${args.join(" ")}`, { suiteEnv: true });
+      this.requireClean("targeted suite");
       return { status: "ok", note: `targeted suite over ${changed.length} changed src file(s)` };
     }
     if (suite === "full") {
@@ -143870,12 +143880,13 @@ ${r.stderr}`));
       (0, import_fs156.mkdirSync)((0, import_path187.join)(this.deps.stateRoot, "release"), { recursive: true });
       (0, import_fs156.rmSync)(out, { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { inheritEnv: true });
+      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { suiteEnv: true });
       if (!(0, import_fs156.existsSync)(out)) fail6(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
       const failing = failingTitlesFromVitestJson((0, import_fs156.readFileSync)(out, "utf8"));
       const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs156.readFileSync)(this.opts.baseline, "utf8")) : [];
       const fresh = newFailures(failing, baseline);
       if (fresh.length > 0) fail6(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
+      this.requireClean("full suite");
       return { status: "ok", note: `full suite: ${failing.length} failing, all in the baseline` };
     }
     this.deps.log("  !! SKIPPED the vitest suite (--suite none). The runbook requires --suite full before the PR: re-run with --from suite --suite full --baseline <report>.");
@@ -143891,7 +143902,13 @@ ${r.stderr}`));
     const problems = smokeProblems(r.stdout);
     if (r.status !== 0 && problems.length === 0) problems.push(`smoke exited ${r.status}${r.status === 2 ? " (copilot binary or SDK missing: not a pass)" : ""}`);
     if (problems.length > 0) fail6("Tier 2 smoke is not green", problems);
+    this.requireClean("live smoke");
     return { status: "ok", note: "Tier 2 smoke green" };
+  }
+  /** Files a suite or smoke run leaves behind would be swept into the release commit by a later --from build / gates. */
+  requireClean(what) {
+    const left = this.git("status", "--porcelain");
+    if (left) fail6(`the ${what} left files in the working tree; remove them (they must not reach the release commit), then re-run`, left.split(/\r?\n/));
   }
   staged(paths = []) {
     return this.run("git", ["diff", "--cached", "--quiet", ...paths.length ? ["--", ...paths] : []]).status !== 0;
@@ -143938,10 +143955,14 @@ ${r.stderr}`));
   skipProblems(start) {
     const problems = [];
     const released = !!this.state.mainMergeSha && PHASES2.indexOf(start) >= PHASES2.indexOf("tag");
-    const checks = [
-      ["state", () => released ? null : this.provenanceProblem()],
-      ...PHASES2.slice(0, PHASES2.indexOf(start)).map((id) => [id, () => this.postconditionProblem(id, released)])
-    ];
+    const checks = [["state", () => released ? null : this.provenanceProblem()]];
+    if (!released && PHASES2.indexOf(start) > PHASES2.indexOf("commit")) {
+      checks.push(["tree", () => {
+        const left = this.git("status", "--porcelain");
+        return left ? `uncommitted changes are not in the release commit (${left.split(/\r?\n/).join(", ")}); commit them and re-run --from build, or remove them` : null;
+      }]);
+    }
+    checks.push(...PHASES2.slice(0, PHASES2.indexOf(start)).map((id) => [id, () => this.postconditionProblem(id, released)]));
     for (const [what, check2] of checks) {
       try {
         const problem = check2();
@@ -143982,13 +144003,14 @@ ${r.stderr}`));
         if (released) return null;
         const head = this.git("rev-parse", "HEAD");
         if (head === s.headSha) return null;
-        const srcChanged = this.run("git", ["diff", "--quiet", s.headSha, "--", "src"]).status !== 0;
-        const from = srcChanged ? "build" : "gates";
-        return `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the ${srcChanged ? "build, the " : ""}gates and the suite (--from ${from})`;
+        return `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the build, the gates and the suite (--from build)`;
       }
       case "suite": {
         if (released) return null;
-        return s.suiteSha && s.suiteSha === s.headSha ? null : `the suite did not run on the recorded release commit (--from suite)`;
+        if (!s.suiteSha || s.suiteSha !== s.headSha) return "the suite did not run on the recorded release commit (--from suite)";
+        const ran = s.suiteRan ?? "none";
+        const required2 = this.opts.suite ?? "none";
+        return SUITE_RANK[ran] < SUITE_RANK[required2] ? `the suite ran at --suite ${ran}, below the --suite ${required2} this release requires (--from suite --suite ${required2})` : null;
       }
       case "pr": {
         if (s.devPr === void 0 || !s.devMergeSha) return "no merged release PR into dev recorded (--from pr)";
@@ -144306,13 +144328,14 @@ async function runRelease(deps, requested) {
   const recorded = start === "preflight" ? void 0 : existing?.suite;
   if (requested.suite && recorded && SUITE_RANK[requested.suite] < SUITE_RANK[recorded]) {
     const note = `--suite ${requested.suite} is below the --suite ${recorded} recorded for ${v}; pass --suite ${recorded} (or omit --suite), or start over with --from preflight`;
-    deps.log(`[${start}] blocked: ${note}`);
+    deps.log(`[${start ?? "verify"}] blocked: ${note}`);
     return { ok: false, version: v, dryRun: Boolean(requested.dryRun), statePath, phases: [{ id: start ?? "verify", status: "blocked", note }] };
   }
-  const opts = { ...requested, suite: requested.suite ?? recorded ?? "none" };
-  if (opts.baseline && opts.suite !== "full") throw new Error(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
+  const baseline = requested.baseline ? (0, import_path187.resolve)(requested.baseline) : start === "preflight" ? void 0 : existing?.baseline;
+  const opts = { ...requested, suite: requested.suite ?? recorded ?? "none", baseline };
+  if (requested.baseline && opts.suite !== "full") throw new UsageError2(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES2.indexOf(opts.to ?? "verify");
-  if (opts.from && PHASES2.indexOf(opts.from) > last) throw new Error(`--from ${opts.from} comes after --to ${opts.to}`);
+  if (opts.from && PHASES2.indexOf(opts.from) > last) throw new UsageError2(`--from ${opts.from} comes after --to ${opts.to}`);
   const selected = start === null ? [] : PHASES2.slice(PHASES2.indexOf(start), last + 1);
   if (opts.dryRun) {
     return { ok: true, version: v, dryRun: true, statePath, phases: selected.map((id) => ({ id, status: "planned", note: "", steps: phasePlan(id, v, opts) })) };
@@ -144331,13 +144354,14 @@ async function runRelease(deps, requested) {
     for (const d of skip) deps.log(`    ${d}`);
     return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: "blocked", note, details: skip }] };
   }
-  if (release.current.suite !== opts.suite) release.save({ suite: opts.suite });
+  if (release.current.suite !== opts.suite || release.current.baseline !== opts.baseline) release.save({ suite: opts.suite, baseline: opts.baseline });
   for (const id of selected) {
     deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
     deps.progress({ phase: id, status: "start" });
     const outcome = await release.phase(id);
     const record2 = { ...outcome, at: new Date(deps.now()).toISOString() };
-    release.save({ phases: { ...release.current.phases, [id]: record2 } });
+    const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES2.indexOf(p) < PHASES2.indexOf(id)));
+    release.save({ phases: { ...kept, [id]: record2 } });
     results.push({ id, ...outcome });
     deps.progress({ phase: id, status: outcome.status === "skipped" ? "ok" : outcome.status, note: outcome.note });
     deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
@@ -144381,8 +144405,6 @@ function emitReleaseProgress(input, stateRoot2) {
 }
 
 // src/cli/commands/release.ts
-var UsageError2 = class extends Error {
-};
 function phaseOption(raw, flag) {
   if (raw === void 0) return void 0;
   if (!isPhaseId(raw)) throw new UsageError2(`${flag} must be one of ${PHASES2.join(", ")}, got ${JSON.stringify(raw)}`);
@@ -144453,7 +144475,7 @@ function releaseCommand(overrides = {}) {
           if (!json) console.error(line);
         }),
         confirm: overrides.confirm ?? ttyConfirm,
-        sleep: overrides.sleep ?? ((ms) => new Promise((resolve58) => setTimeout(resolve58, ms))),
+        sleep: overrides.sleep ?? ((ms) => new Promise((resolve59) => setTimeout(resolve59, ms))),
         now: overrides.now ?? (() => Date.now())
       };
       const result = await runRelease(deps, {
@@ -144666,7 +144688,7 @@ var UsageError3 = class extends Error {
 };
 var defaultDeps = {
   now: () => /* @__PURE__ */ new Date(),
-  sleep: (ms) => new Promise((resolve58) => setTimeout(resolve58, ms)),
+  sleep: (ms) => new Promise((resolve59) => setTimeout(resolve59, ms)),
   out: (line) => process.stdout.write(`${line}
 `),
   err: (line) => process.stderr.write(`${line}
@@ -145077,15 +145099,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve58) => {
+    await new Promise((resolve59) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve58();
+        resolve59();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve58();
+        resolve59();
       };
     });
   }
