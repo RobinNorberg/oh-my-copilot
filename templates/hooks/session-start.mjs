@@ -354,6 +354,22 @@ function resolveSessionPluginOccupancy(deadline) {
   return occupancy;
 }
 
+async function waitForTestFinalArtifactScanRelease() {
+  if (process.env.NODE_ENV !== 'test') return;
+  const readyPath = process.env.OMC_TEST_TOOL_FAILURE_FINAL_SCAN_READY_PATH;
+  const releasePath = process.env.OMC_TEST_TOOL_FAILURE_FINAL_SCAN_RELEASE_PATH;
+  if (!readyPath || !releasePath) return;
+  try {
+    writeFileSync(readyPath, 'ready');
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(releasePath) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  } catch {
+    // Test-only synchronization must not affect cleanup behavior.
+  }
+}
+
 async function stabilizeLegacyToolFailureState(omcRoot, stabilizationMs, maxLifetimeMs = toolFailureCleanupMaxLifetimeMs(stabilizationMs)) {
   const stateDir = join(omcRoot, 'state');
   const lifetimeDeadline = Date.now() + maxLifetimeMs;
@@ -421,6 +437,7 @@ async function stabilizeLegacyToolFailureState(omcRoot, stabilizationMs, maxLife
         olderPluginActive = hasActiveOlderPluginRoot(lifetimeDeadline);
         nextPluginRootCheck = Date.now() + TOOL_FAILURE_PLUGIN_ROOT_RESCAN_MS;
         if (!olderPluginActive) {
+          await waitForTestFinalArtifactScanRelease();
           const finalArtifactSnapshot = legacyToolFailureArtifactSnapshot(omcRoot);
           if (finalArtifactSnapshot !== artifactSnapshot) {
             artifactSnapshot = finalArtifactSnapshot;

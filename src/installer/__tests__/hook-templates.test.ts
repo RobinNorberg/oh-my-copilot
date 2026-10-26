@@ -849,9 +849,7 @@ OMC Ultrawork = "특수부대 작전 반"
       const stabilizeEnd = source.indexOf('\n}\n', stabilizeStart);
       expect(stabilizeStart).toBeGreaterThan(-1);
       expect(stabilizeEnd).toBeGreaterThan(stabilizeStart);
-      // Only the plugin hook carries the test-only final-scan synchronization.
-      const stabilize = source.slice(stabilizeStart, stabilizeEnd).replace(/^\s*await waitForTestFinalArtifactScanRelease\(\);\n/m, '');
-      return [source.slice(lockBlockStart, lockBlockEnd), source.slice(purgeStart, purgeEnd), stabilize];
+      return [source.slice(lockBlockStart, lockBlockEnd), source.slice(purgeStart, purgeEnd), source.slice(stabilizeStart, stabilizeEnd)];
     };
     const [scriptLockBlock, scriptPurge, scriptStabilize] = extract(join(packageRoot, 'scripts', 'session-start.mjs'));
     const [templateLockBlock, templatePurge, templateStabilize] = extract(join(packageRoot, 'templates', 'hooks', 'session-start.mjs'));
