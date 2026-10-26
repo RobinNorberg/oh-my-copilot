@@ -19,7 +19,8 @@ export function useIsolatedCwd(): () => string {
   const original = process.cwd();
   let root = '';
   beforeAll(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'omg-isolated-cwd-')));
+    // .native expands an 8.3 short TEMP (Windows runners), so the root matches git's --show-toplevel.
+    root = realpathSync.native(mkdtempSync(join(tmpdir(), 'omg-isolated-cwd-')));
     execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'ignore' });
     process.chdir(root);
   });
