@@ -551,16 +551,16 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
     const pendingFile = join(stateDir, 'projects', '.omg-pending-context', `${sessionId}.json`);
     const stop = runDispatch(root, 'Stop', [['budget-guard.mjs']], {
       session_id: sessionId, cwd,
-      hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] ralph run at 80%' } } },
+      hooks: { 'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] ralph run at 90%' } } },
     }, env);
     expect(stop.status, stop.stderr).toBe(0);
     expect(JSON.parse(stop.stdout)).toEqual({ continue: true });
-    expect(JSON.parse(readFileSync(pendingFile, 'utf8'))).toEqual({ messages: ['[BUDGET] ralph run at 80%'] });
+    expect(JSON.parse(readFileSync(pendingFile, 'utf8'))).toEqual({ messages: ['[BUDGET] ralph run at 90%'] });
 
     const prompt = { session_id: sessionId, cwd, hooks: { 'prompt-probe.mjs': { stdout: { additionalContext: 'keyword context' } } } };
     const first = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
     expect(first.status, first.stderr).toBe(0);
-    expect(JSON.parse(first.stdout)).toEqual({ additionalContext: '[BUDGET] ralph run at 80%\nkeyword context' });
+    expect(JSON.parse(first.stdout)).toEqual({ additionalContext: '[BUDGET] ralph run at 90%\nkeyword context' });
     expect(existsSync(pendingFile)).toBe(false);
 
     const second = runDispatch(root, 'UserPromptSubmit', [['prompt-probe.mjs']], prompt, env);
@@ -573,11 +573,11 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
       session_id: sessionId,
       hooks: {
         'persistent-mode.mjs': { stdout: { decision: 'block', reason: 'The boulder never stops' } },
-        'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 80%' } },
+        'budget-guard.mjs': { stdout: { continue: true, systemMessage: '[BUDGET] at 90%' } },
       },
     }, { COPILOT_HOME: tempDir('omg-dispatch-handoff-') });
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 80%', continue: true });
+    expect(JSON.parse(result.stdout)).toEqual({ decision: 'block', reason: 'The boulder never stops\n\n[BUDGET] at 90%', continue: true });
   }, 60_000);
 
   it('stores nothing for a subagent Stop (child session id, parent transcript)', () => {
