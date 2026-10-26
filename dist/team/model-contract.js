@@ -185,9 +185,9 @@ const COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(Object.entries(copilotModel
  * Anything else passes through unchanged.
  */
 export function toCopilotModelId(model) {
-    const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
-    if (alias)
-        return alias;
+    const key = model.toLowerCase();
+    if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key))
+        return COPILOT_TIER_ALIAS_MODELS[key];
     if (!/^claude-/.test(model))
         return model;
     return model

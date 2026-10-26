@@ -34,8 +34,14 @@ export function resolveAgentModelOverrides(agents) {
     const overrides = {};
     const skipped = [];
     for (const [key, value] of Object.entries(agents ?? {})) {
-        const model = value?.model?.trim();
-        if (key === 'omc' || !model)
+        if (key === 'omc' || value?.model === undefined)
+            continue;
+        if (typeof value.model !== 'string') {
+            skipped.push(`${key}: ${JSON.stringify(value.model)}`);
+            continue;
+        }
+        const model = value.model.trim();
+        if (!model)
             continue;
         const resolved = toCopilotModelId(model);
         if (KNOWN_MODELS.has(resolved))

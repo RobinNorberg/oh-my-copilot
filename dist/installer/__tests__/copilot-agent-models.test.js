@@ -34,6 +34,15 @@ describe('resolveAgentModelOverrides', () => {
             skipped: ['architect: "claude-opus-4-8"', 'critic: "inherit"', 'writer: "gpt-4o"'],
         });
     });
+    it('skips a non-string model without dropping other valid overrides', () => {
+        expect(resolveAgentModelOverrides({
+            executor: { model: 5 },
+            planner: { model: 'Opus' },
+        })).toEqual({
+            overrides: { planner: 'claude-opus-5.5' },
+            skipped: ['executor: 5'],
+        });
+    });
 });
 describe('mergeSubagentModels', () => {
     it('preserves other keys and sibling fields, and is idempotent', () => {

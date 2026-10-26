@@ -6571,8 +6571,8 @@ function shouldUseClaudeBareMode(env = process.env) {
   return typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim().length > 0;
 }
 function toCopilotModelId(model) {
-  const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
-  if (alias) return alias;
+  const key = model.toLowerCase();
+  if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key)) return COPILOT_TIER_ALIAS_MODELS[key];
   if (!/^claude-/.test(model)) return model;
   return model.replace(/\[1m\]$/i, "").replace(/-\d{8}$/, "").replace(/^(claude-[a-z]+)-(\d+)-(\d+)(?=$|-[a-z])/, "$1-$2.$3");
 }
