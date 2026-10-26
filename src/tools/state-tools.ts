@@ -2467,7 +2467,9 @@ export const stateTools = [
   stateMigrateNonGitTool,
 ];
 
-// One render scope per call: the per-session loops resolve the state root thousands of times.
+// One worktree-path scope per call (withWorktreePathRenderScope, not only the HUD's): the per-session
+// loops resolve the state root thousands of times. Git probes, boundary checks included, and getOmcRoot
+// are memoized for this call only; the next call probes afresh.
 for (const tool of [stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool]) {
   const handler = tool.handler as (args: never) => Promise<unknown>;
   tool.handler = ((args: never) => withWorktreePathRenderScope(() => handler(args))) as typeof tool.handler;

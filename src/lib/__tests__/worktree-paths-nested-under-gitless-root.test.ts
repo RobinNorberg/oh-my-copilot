@@ -12,6 +12,7 @@ import {
   getOmcRoot,
 } from '../worktree-paths.js';
 import { stateListActiveTool, stateWriteTool } from '../../tools/state-tools.js';
+import { wikiAddTool } from '../../tools/wiki-tools.js';
 
 function initRepo(dir: string): void {
   mkdirSync(dir, { recursive: true });
@@ -31,7 +32,8 @@ describe('state working directory: repository nested under a git-less session ro
     originalCwd = process.cwd();
     originalStateDir = process.env.OMC_STATE_DIR;
     delete process.env.OMC_STATE_DIR;
-    temp = realpathSync(mkdtempSync(join(tmpdir(), 'nested-gitless-')));
+    // .native: the long path, so it compares equal to git's --show-toplevel under an 8.3 short TEMP on Windows.
+    temp = realpathSync.native(mkdtempSync(join(tmpdir(), 'nested-gitless-')));
     workspace = join(temp, 'workspace');
     nested = join(workspace, 'project');
     outside = join(temp, 'elsewhere');
@@ -55,6 +57,27 @@ describe('state working directory: repository nested under a git-less session ro
     expect(validateWorkingDirectoryOrLinkedWorktree(join(nested))).toBe(nested);
     expect(resolveWorkingDirectoryOrLinkedWorktree(outside).status).toBe('foreign_repository');
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(temp)).toThrow(/outside the trusted worktree root/);
+    // A child whose name only starts with ".." is still below the session root.
+    const dotted = join(workspace, '..dotted');
+    initRepo(dotted);
+    expect(resolveWorkingDirectoryOrLinkedWorktree(dotted)).toEqual({ status: 'ok', root: dotted });
+  });
+
+  it('the innermost repository holding workingDirectory is the root, so a repository nested in the nested one gets its own state', () => {
+    const inner = join(nested, 'vendor', 'inner');
+    initRepo(inner);
+    expect(resolveWorkingDirectoryOrLinkedWorktree(inner)).toEqual({ status: 'ok', root: inner });
+    expect(resolveStateWorkingDirectory(join(nested, 'vendor'))).toBe(nested);
+  });
+
+  it('wiki tools accept the nested repository too and write its own .omg/wiki', async () => {
+    const added = await wikiAddTool.handler({ title: 'Nested Page', content: 'body', workingDirectory: nested });
+    expect(added.isError).toBeFalsy();
+    expect(existsSync(join(nested, '.omg', 'wiki'))).toBe(true);
+    expect(existsSync(join(workspace, '.omg'))).toBe(false);
+    const foreign = await wikiAddTool.handler({ title: 'Foreign Page', content: 'body', workingDirectory: outside });
+    expect(foreign.isError).toBe(true);
+    expect(existsSync(join(outside, '.omg'))).toBe(false);
   });
 
   it('resolveStateWorkingDirectory returns the nested repository, not the session root', () => {

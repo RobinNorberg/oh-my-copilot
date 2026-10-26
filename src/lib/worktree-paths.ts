@@ -426,10 +426,13 @@ export function withProjectIdentifierScope<T>(fn: () => T): T {
 /**
  * Run path lookups in an isolated render scope.
  *
- * The memo is intentionally opt-in and is discarded when the render settles.
- * Direct callers that enforce security boundaries continue to receive fresh
- * probes, while each HUD render gets a new scope that observes PATH and .git
- * metadata changes made between renders.
+ * The memo is intentionally opt-in and is discarded when the scope settles.
+ * Two callers open one: each HUD render, and each state tool call
+ * (src/tools/state-tools.ts), whose per-session loops would otherwise re-probe
+ * git and re-resolve the state root per session. Inside a scope the git probes
+ * (boundary decisions included) and getOmcRoot are memoized for that one
+ * render or call only; callers outside a scope receive fresh probes, and the
+ * next scope observes PATH and .git metadata changes made in between.
  */
 export function withWorktreePathRenderScope<T>(fn: () => T): T {
   return worktreePathRenderScope.run(
@@ -714,7 +717,7 @@ export function probeGitTopLevel(cwd: string): GitTopLevelProbe {
 
   // Outside an explicit render scope, never cache security decisions: PATH,
   // the git executable, and .git metadata can change between calls in the same
-  // process. A HUD render scope is intentionally limited to one invocation.
+  // process. A scope (one HUD render, one state tool call) is limited to one invocation.
   let result: GitTopLevelProbe;
   try {
     result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
@@ -2447,10 +2450,12 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 
     // A session started in a git-less directory (a workspace folder holding the project) has no
     // repository of its own to protect: a repository nested under that directory is inside the
-    // boundary the session was started with, exactly as a plain subdirectory is.
+    // boundary the session was started with, exactly as a plain subdirectory is. Every caller of
+    // this resolver gets it (state tools, wiki tools), and the root is the innermost repository
+    // holding workingDirectory: a repository nested in a nested one gets its own .omg.
     if (trustedProbe.status === 'not_a_repository') {
       const nestedRel = relative(trustedRootReal, providedRootReal);
-      if (nestedRel !== '' && !nestedRel.startsWith('..') && !isAbsolute(nestedRel)) {
+      if (nestedRel !== '' && nestedRel !== '..' && !nestedRel.startsWith(`..${sep}`) && !isAbsolute(nestedRel)) {
         return { status: 'ok', root: providedRoot };
       }
     }
