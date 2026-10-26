@@ -216,6 +216,7 @@ function dispatchChecks(manifest: CopilotHookManifest, root: string, env: NodeJS
   const events = Object.keys(manifest.hooks).filter((e) => !only || e === only);
   if (only && events.length === 0) return [{ id: `dispatch.${only}`, status: 'fail', detail: `${COPILOT_HOOKS_PATH} registers no ${only} (events: ${Object.keys(manifest.hooks).join(', ')})` }];
   const parent = mkdtempSync(join(tmpdir(), 'omg-hooks-doctor-'));
+  const checks: HooksDoctorCheck[] = [];
   try {
     const home = join(parent, 'home');
     const project = join(parent, 'project');
@@ -225,7 +226,6 @@ function dispatchChecks(manifest: CopilotHookManifest, root: string, env: NodeJS
     writeFileSync(join(project, 'README.md'), '# omg hooks doctor\n');
     const sandboxEnv = { ...buildSessionEnv(env, join(home, '.copilot')), HOME: home, USERPROFILE: home };
     const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? randomUUID)()}`);
-    const checks: HooksDoctorCheck[] = [];
     for (const event of events) {
       for (const entry of manifest.hooks[event]) {
         const variants = payloads[event] ?? [];
@@ -239,8 +239,13 @@ function dispatchChecks(manifest: CopilotHookManifest, root: string, env: NodeJS
     }
     return checks;
   } finally {
-    // A detached SessionEnd worker may still hold the dir on win32: best effort.
-    try { rmSync(parent, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* left in tmpdir */ }
+    // Hook sqlite DBs or a detached SessionEnd worker may still hold the dir on win32: retry
+    // with a linear backoff (~5 s in total), then report the leftover instead of hiding it.
+    try {
+      rmSync(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
+    } catch (err) {
+      checks.push({ id: 'dispatch.cleanup', status: 'warn', detail: `could not remove the sandbox ${parent}: ${(err as Error).message}` });
+    }
   }
 }
 
