@@ -406,6 +406,13 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(PHASES.indexOf('suite')).toBe(PHASES.indexOf('commit') + 1);
     });
 
+    it('rejects a missing --baseline file before the suite runs', async () => {
+      seedState('commit');
+      const baseline = join(root, 'missing-baseline.txt');
+      await expect(release({ from: 'suite', to: 'suite', suite: 'full', baseline })).rejects.toThrow(`baseline report not found: ${baseline} (pass --baseline again)`);
+      expect(calls.some((c) => c.includes('vitest'))).toBe(false);
+    });
+
     it('--suite full never reads a stale report left by an earlier run', async () => {
       seedState('commit');
       handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
@@ -547,6 +554,29 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       });
       const result = await release({ to: 'smoke', liveSmoke: true });
       expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/^the live smoke left files in the working tree/), details: ['?? smoke.log'] });
+    });
+
+    it('a skipped smoke does not hold once --live-smoke is requested', async () => {
+      seedState('smoke', { phases: { ...okPhases('smoke'), smoke: { status: 'skipped', note: '', at: '' } } });
+      const result = await release({ from: 'pr', to: 'pr', liveSmoke: true });
+      expect(result.phases[0]).toMatchObject({ id: 'pr', status: 'blocked' });
+      expect(result.phases[0].details).toContain('smoke: the live smoke was skipped (--from smoke --live-smoke)');
+    });
+
+    it('pr refuses a skipped smoke: --from build without --to no longer reaches the PR', async () => {
+      seedState('suite');
+      handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
+      const result = await release({ from: 'smoke', to: 'pr' });
+      expect(result.phases.map((p) => [p.id, p.status])).toEqual([['smoke', 'skipped'], ['pr', 'blocked']]);
+      expect(result.phases[1].note).toMatch(/live smoke was skipped.*--allow-skipped-smoke/);
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr'))).toBe(false);
+    });
+
+    it('pr runs on a skipped smoke only with --allow-skipped-smoke', async () => {
+      seedState('suite');
+      handlers.push((key) => (key === 'git rev-parse HEAD' ? ok(HEAD) : undefined));
+      await release({ from: 'smoke', to: 'pr', allowSkippedSmoke: true });
+      expect(calls.some((c) => c.startsWith('git push'))).toBe(true);
     });
   });
 
@@ -831,6 +861,13 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       seedState('promote', { ...landedState, phases: { ...okPhases('promote'), smoke: { status: 'skipped', note: '', at: '' } } });
       await release({ from: 'tag', to: 'tag' });
       expect(confirms[0]).toMatch(/WARNING: the live Tier 2 smoke was skipped/);
+    });
+
+    it('logs the skipped-smoke warning when --yes skips the confirmation', async () => {
+      seedState('promote', { ...landedState, phases: { ...okPhases('promote'), smoke: { status: 'skipped', note: '', at: '' } } });
+      await release({ from: 'tag', to: 'tag', yes: true });
+      expect(confirms).toEqual([]);
+      expect(logs.join('\n')).toMatch(/WARNING: the live Tier 2 smoke was skipped/);
     });
 
     it('asks before pushing a matching local tag too', async () => {
