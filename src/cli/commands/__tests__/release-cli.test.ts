@@ -42,7 +42,7 @@ describe('omg release CLI', () => {
     expect(await run('5.12.2', '--dry-run')).toBe(0);
     const text = out.join('\n');
     expect(text).toContain('omg release 5.12.2 --dry-run: plan only, nothing runs');
-    for (const [i, id] of ['preflight', 'bump', 'build', 'gates', 'smoke', 'commit', 'suite', 'pr', 'promote', 'tag', 'verify'].entries()) {
+    for (const [i, id] of ['preflight', 'bump', 'build', 'gates', 'commit', 'suite', 'smoke', 'pr', 'promote', 'tag', 'verify'].entries()) {
       expect(text).toMatch(new RegExp(`${String(i + 1).padStart(2)}\\S* \\S*${id}`));
     }
     expect(calls).toEqual([]);
@@ -62,11 +62,24 @@ describe('omg release CLI', () => {
     [['5.12.2', '--from', 'publish'], /--from must be one of/],
     [['5.12.2', '--from', 'verify', '--to', 'tag'], /--from verify comes after --to tag/],
     [['5.12.2', '--suite', 'all'], /--suite must be none, targeted or full/],
-    [['5.12.2', '--baseline', 'x.json'], /--baseline needs --suite full/],
+    [['5.12.2', '--suite', 'targeted', '--baseline', 'x.json'], /--baseline needs --suite full/],
     [['5.12.2', '--timeout', '0'], /--timeout must be a positive number/],
   ])('usage error %j exits 2', async (argv, message) => {
     expect(await run(...argv, '--dry-run')).toBe(2);
     expect(err.join('\n')).toMatch(message);
     expect(calls).toEqual([]);
+  });
+
+  it('--baseline without --suite needs a full suite recorded for the release', async () => {
+    expect(await run('5.12.2', '--baseline', 'x.json', '--dry-run')).toBe(1);
+    expect(err.join('\n')).toMatch(/--baseline needs --suite full \(this release's suite is none\)/);
+  });
+
+  it('warns when --suite is passed with a --to that ends before the suite phase', async () => {
+    expect(await run('5.12.2', '--to', 'gates', '--suite', 'full', '--dry-run')).toBe(0);
+    expect(err.join('\n')).toMatch(/--to gates stops before the suite phase, so --suite full does not run in this invocation/);
+    err = [];
+    expect(await run('5.12.2', '--to', 'suite', '--suite', 'full', '--dry-run')).toBe(0);
+    expect(err.join('\n')).not.toMatch(/stops before the suite phase/);
   });
 });
