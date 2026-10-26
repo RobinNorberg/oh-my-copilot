@@ -31,7 +31,8 @@
  *     Claude precedence (continue:false beats decision), so the turn stops.
  *   - PermissionRequest exit 2 is kept (exit 2 = deny on both hosts). Its
  *     Claude hookSpecificOutput.decision becomes Copilot's top-level
- *     {behavior, message, interrupt}; `ask` or no decision emits nothing.
+ *     {behavior, message, interrupt}, and the same decision is kept nested
+ *     (unprobed on Copilot); `ask` or no decision emits nothing.
  *   - systemMessage (ignored by Copilot) joins additionalContext on the
  *     events that inject it, joins a Stop/SubagentStop block reason, is kept
  *     on a non-blocking Stop for the dispatcher's next-prompt handoff, and is
@@ -163,9 +164,11 @@ function shapeObject(event, input, notes, debug) {
 }
 
 /**
- * Copilot reads only top-level {behavior: allow|deny, message, interrupt}
- * and has no `ask`. Claude's hookSpecificOutput.decision is translated; `ask`
- * or no decision returns null, so nothing is emitted and Copilot's normal
+ * Copilot reads top-level {behavior: allow|deny, message, interrupt}
+ * (verified) and has no `ask`. Whether it also reads the nested Claude shape
+ * hookSpecificOutput.decision is unprobed, so both are emitted with the same
+ * decision. Claude's hookSpecificOutput.decision is translated; `ask` or no
+ * decision returns null, so nothing is emitted and Copilot's normal
  * permission flow runs.
  */
 function permissionOutput(output, hso) {
@@ -177,7 +180,7 @@ function permissionOutput(output, hso) {
   if (message) result.message = message;
   const interrupt = decision ? decision.interrupt : output.interrupt;
   if (behavior === 'deny' && interrupt === true) result.interrupt = true;
-  return result;
+  return { ...result, hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { ...result } } };
 }
 
 /**

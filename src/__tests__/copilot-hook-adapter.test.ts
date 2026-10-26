@@ -229,17 +229,26 @@ describe('copilot-hook-adapter transform()', () => {
       exitCode: 2,
     },
     {
-      name: 'PermissionRequest Claude decision allow becomes top-level behavior + message',
+      name: 'PermissionRequest Claude decision allow becomes top-level behavior + message, kept nested too',
       event: 'PermissionRequest',
       run: { stdout: json({ continue: true, hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', reason: 'Safe read-only command' } } }) },
-      stdout: { behavior: 'allow', message: 'Safe read-only command' },
+      stdout: {
+        behavior: 'allow',
+        message: 'Safe read-only command',
+        hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', message: 'Safe read-only command' } },
+      },
       exitCode: 0,
     },
     {
       name: 'PermissionRequest deny keeps interrupt',
       event: 'PermissionRequest',
       run: { stdout: json({ hookSpecificOutput: { decision: { behavior: 'deny', reason: 'no', interrupt: true } } }) },
-      stdout: { behavior: 'deny', message: 'no', interrupt: true },
+      stdout: {
+        behavior: 'deny',
+        message: 'no',
+        interrupt: true,
+        hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'no', interrupt: true } },
+      },
       exitCode: 0,
     },
     {
@@ -260,7 +269,7 @@ describe('copilot-hook-adapter transform()', () => {
       name: 'PermissionRequest Copilot-shaped output is kept',
       event: 'PermissionRequest',
       run: { stdout: json({ behavior: 'deny', message: 'm' }) },
-      stdout: { behavior: 'deny', message: 'm' },
+      stdout: { behavior: 'deny', message: 'm', hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'm' } } },
       exitCode: 0,
     },
     {

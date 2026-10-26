@@ -508,7 +508,11 @@ describe('PermissionRequest end to end (real permission-handler, recorded payloa
   it('answers a safe powershell command with the Copilot allow shape', () => {
     const result = runPermission({ ...shell, toolInput: { command: 'git status' } });
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ behavior: 'allow', message: 'Safe read-only command' });
+    expect(JSON.parse(result.stdout)).toEqual({
+      behavior: 'allow',
+      message: 'Safe read-only command',
+      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', message: 'Safe read-only command' } },
+    });
   }, 60_000);
 
   it.each([
