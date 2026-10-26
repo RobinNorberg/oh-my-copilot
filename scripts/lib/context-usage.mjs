@@ -359,12 +359,14 @@ export function resolveCopilotTranscriptContext(transcriptPath) {
 /**
  * Resolve context usage from the best available source, in priority order.
  * null means unknown; callers must not treat it as 0% or 100%.
+ * `copilotContext` is a resolveCopilotTranscriptContext() result the caller
+ * already has for this transcript, so the events.jsonl is not read twice.
  */
-export async function resolveContextPercent(data, transcriptPath, directory) {
+export async function resolveContextPercent(data, transcriptPath, directory, copilotContext) {
   const transcriptPercent = resolveTranscriptContextPercent(transcriptPath);
   if (transcriptPercent !== null) return transcriptPercent;
 
-  const copilotPercent = resolveCopilotTranscriptContext(transcriptPath).percent;
+  const copilotPercent = (copilotContext || resolveCopilotTranscriptContext(transcriptPath)).percent;
   if (copilotPercent !== null) return copilotPercent;
 
   const hookPercent = resolveHookContextPercent(data);
