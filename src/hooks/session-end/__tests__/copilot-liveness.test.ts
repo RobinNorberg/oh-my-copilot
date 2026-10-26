@@ -146,6 +146,44 @@ describe('session-end worker on Copilot', () => {
     expect(ended.actions.notification.status).toBe('completed');
   });
 
+  it('waits out a real producer grace at the true end before running best-effort actions', async () => {
+    // The 1 ms grace above skips the wait; load the modules again with a short real one.
+    // The clock is faked so a slow run cannot cross the grace before the follow-up is scheduled.
+    process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '200';
+    vi.resetModules();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      const manifest = await import('../cleanup-manifest.js');
+      const { processSessionEndWorker: worker } = await import('../worker.js');
+      const dir = project();
+      writeUltragoal(dir);
+      const input = { hook_event_name: 'SessionEnd', session_id: SESSION, cwd: dir, reason: 'complete' };
+      expect(manifest.prepareCoreManifest(dir, SESSION, { cwd: dir, reason: 'complete', input, initialTeamNames: [], host: 'copilot' })).not.toBeNull();
+      writeEvents('session-events-shutdown.jsonl');
+
+      const endedAt = Date.now();
+      await worker({ directory: dir, sessionId: SESSION }, 6);
+      const armed = manifest.readSessionEndJob(dir, SESSION)!;
+      // Re-armed at the true end: the grace runs from this SessionEnd.
+      const graceEndsAt = Date.parse(armed.producerGraceExpiresAt);
+      expect(graceEndsAt).toBeGreaterThanOrEqual(endedAt + 200);
+      expect(armed.actions.notification.status).toBe('pending');
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(manifest.readSessionEndJob(dir, SESSION)?.actions.notification.status).toBe('pending');
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() => expect(manifest.readSessionEndJob(dir, SESSION)?.phase).toBe('complete'), { timeout: 5_000, interval: 50 });
+      const ended = manifest.readSessionEndJob(dir, SESSION)!;
+      expect(ended.actions.notification.status).toBe('completed');
+      expect(Date.parse(ended.actions.notification.claimedAt!)).toBeGreaterThanOrEqual(graceEndsAt);
+      expect(Object.values(ended.actions).filter((action) => action.status === 'expired')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      process.env.OMC_SESSION_END_TEST_PRODUCER_GRACE_MS = '0';
+      vi.resetModules();
+    }
+  });
+
   it('runs a Claude Code job without waiting on Copilot events', async () => {
     const dir = project();
     writeUltragoal(dir);
