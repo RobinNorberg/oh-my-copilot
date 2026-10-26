@@ -17,6 +17,7 @@ import {
   isPhaseId,
   PHASES,
   runRelease,
+  UsageError,
   type PhaseId,
   type ReleaseDeps,
   type ReleaseExec,
@@ -24,8 +25,6 @@ import {
   type SuiteLevel,
 } from '../../release/engine.js';
 import { emitReleaseProgress } from '../../release/progress.js';
-
-class UsageError extends Error {}
 
 function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined {
   if (raw === undefined) return undefined;

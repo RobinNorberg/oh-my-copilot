@@ -15,8 +15,9 @@
  *   suite      optional vitest suite (targeted, or full against a baseline),
  *              run on the committed tree: some tests (npm pack, committed
  *              docs/CLAUDE.md, inventory drift) read committed state and
- *              always fail on the uncommitted release tree. The level is
- *              recorded in the state and a later run never lowers it
+ *              always fail on the uncommitted release tree. The level (and
+ *              the baseline) is recorded in the state and a later run never
+ *              lowers it; a suite that ran below the recorded level runs again
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
  *              a red suite costs no premium requests
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
@@ -30,12 +31,14 @@
  * resume or --from) its recorded postconditions are re-checked, and a state
  * recorded on another branch or an unrelated HEAD is refused unless --from
  * preflight (tag / verify after the main merge need no release checkout).
+ * Running a phase voids the records of every later phase, and skipping past
+ * commit needs a clean working tree (HEAD is what pr pushes).
  * Every external command goes through one injectable runner (ReleaseExec).
  */
 
 import { spawnSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { isAbsolute, join } from 'path';
+import { isAbsolute, join, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
@@ -89,6 +92,10 @@ export interface ReleaseState {
   suiteSha?: string;
   /** Highest --suite requested for this release (a later run without --suite keeps it, a lower one is refused). */
   suite?: SuiteLevel;
+  /** Level the suite phase actually ran at on suiteSha; below `suite` the suite must run again. */
+  suiteRan?: SuiteLevel;
+  /** Absolute --baseline of the full suite, reused by a later run that does not pass it. */
+  baseline?: string;
   devPr?: number;
   devMergeSha?: string;
   mainPr?: number;
@@ -101,8 +108,11 @@ export interface ReleaseState {
 export type SuiteLevel = 'none' | 'targeted' | 'full';
 const SUITE_RANK: Record<SuiteLevel, number> = { none: 0, targeted: 1, full: 2 };
 
-/** `inheritEnv`: run with the caller's environment instead of the ship scrub (the vitest suite only). */
-export type ReleaseExecOptions = ExecOptions & { timeoutMs?: number; inheritEnv?: boolean };
+/** `suiteEnv`: the ship scrub without GIT_NO_REPLACE_OBJECTS, as in CI (the vitest suite only). */
+export type ReleaseExecOptions = ExecOptions & { timeoutMs?: number; suiteEnv?: boolean };
+
+/** A usage error (bad flag combination); the CLI exits 2 on it. */
+export class UsageError extends Error {}
 
 export type ReleaseExec = (cmd: string, args: string[], opts?: ReleaseExecOptions) => ExecResult;
 
@@ -118,8 +128,10 @@ export const defaultReleaseExec: ReleaseExec = (cmd, args, opts) => {
     return { status: 1, stdout: '', stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
   }
   // Every child runs under the ship scrub (GIT_NO_REPLACE_OBJECTS=1, redirecting GIT_* / GH_* dropped),
-  // node scripts included: they call git too. Only the vitest suite keeps the caller's environment, as in CI.
-  const base = opts?.inheritEnv ? process.env : scrubShipEnv(process.env);
+  // node scripts included: they call git too. The vitest suite runs without GIT_NO_REPLACE_OBJECTS, as in CI,
+  // but still without the redirecting GIT_* (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE).
+  const base = scrubShipEnv(process.env);
+  if (opts?.suiteEnv) delete base.GIT_NO_REPLACE_OBJECTS;
   // One command string through the shell (the arguments were checked inert above).
   const result = spawnSync(shell ? ['npm', ...args].join(' ') : cmd, shell ? [] : args, {
     cwd: opts?.cwd,
@@ -204,6 +216,12 @@ export function readReleaseState(stateRoot: string, version: string): ReleaseSta
   const parsed = JSON.parse(readFileSync(path, 'utf8')) as ReleaseState;
   if (parsed?.version !== 1 || parsed.release !== version || typeof parsed.phases !== 'object') {
     throw new Error(`${path} is not a release state for ${version}`);
+  }
+  for (const key of ['suite', 'suiteRan'] as const) {
+    const level = parsed[key];
+    if (level !== undefined && !Object.hasOwn(SUITE_RANK, level)) {
+      throw new Error(`${path}: ${key} is ${JSON.stringify(level)}, expected none, targeted or full (fix or delete the state file)`);
+    }
   }
   return { ...parsed, reruns: parsed.reruns ?? {} };
 }
@@ -413,7 +431,7 @@ class Release {
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail(`${problems.length} preflight problem(s)`, problems);
     // A fresh start never reuses the PRs, merges or tag run of an earlier attempt.
-    this.save({ branch, headSha: undefined, suiteSha: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
+    this.save({ branch, headSha: undefined, suiteSha: undefined, suiteRan: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
     return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}` };
   }
 
@@ -482,7 +500,7 @@ class Release {
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
   private suite(): PhaseOutcome {
     const suite = this.opts.suite ?? 'none';
-    this.save({ suiteSha: this.git('rev-parse', 'HEAD') });
+    this.save({ suiteSha: this.git('rev-parse', 'HEAD'), suiteRan: suite });
     if (suite === 'targeted') {
       const tag = this.run('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']);
       if (tag.status !== 0) fail('no v* tag reachable from HEAD for --suite targeted', tail(tag.stderr, 2));
@@ -491,7 +509,8 @@ class Release {
       if (changed.length === 0) return { status: 'ok', note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       const args = ['node_modules/vitest/vitest.mjs', 'related', '--run', '--exclude', 'tests/perf/**', ...changed];
       this.deps.log(`  node ${args.join(' ')}`);
-      this.must(this.deps.node, args, `node ${args.join(' ')}`, { inheritEnv: true });
+      this.must(this.deps.node, args, `node ${args.join(' ')}`, { suiteEnv: true });
+      this.requireClean('targeted suite');
       return { status: 'ok', note: `targeted suite over ${changed.length} changed src file(s)` };
     }
     if (suite === 'full') {
@@ -500,12 +519,13 @@ class Release {
       // A report left by an earlier run must not pass for this one.
       rmSync(out, { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
-      const r = this.run(this.deps.node, ['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { inheritEnv: true });
+      const r = this.run(this.deps.node, ['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { suiteEnv: true });
       if (!existsSync(out)) fail(`vitest wrote no JSON report (exit ${r.status})`, tail(r.stderr));
       const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));
       const baseline = this.opts.baseline ? parseBaselineTitles(readFileSync(this.opts.baseline, 'utf8')) : [];
       const fresh = newFailures(failing, baseline);
       if (fresh.length > 0) fail(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
+      this.requireClean('full suite');
       return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
     }
     this.deps.log('  !! SKIPPED the vitest suite (--suite none). The runbook requires --suite full before the PR: re-run with --from suite --suite full --baseline <report>.');
@@ -522,7 +542,14 @@ class Release {
     const problems = smokeProblems(r.stdout);
     if (r.status !== 0 && problems.length === 0) problems.push(`smoke exited ${r.status}${r.status === 2 ? ' (copilot binary or SDK missing: not a pass)' : ''}`);
     if (problems.length > 0) fail('Tier 2 smoke is not green', problems);
+    this.requireClean('live smoke');
     return { status: 'ok', note: 'Tier 2 smoke green' };
+  }
+
+  /** Files a suite or smoke run leaves behind would be swept into the release commit by a later --from build / gates. */
+  private requireClean(what: string): void {
+    const left = this.git('status', '--porcelain');
+    if (left) fail(`the ${what} left files in the working tree; remove them (they must not reach the release commit), then re-run`, left.split(/\r?\n/));
   }
 
   private staged(paths: string[] = []): boolean {
@@ -576,10 +603,15 @@ class Release {
     const problems: string[] = [];
     // Once main is merged, tag / verify no longer need the release checkout: the merge and tag checks carry them.
     const released = !!this.state.mainMergeSha && PHASES.indexOf(start) >= PHASES.indexOf('tag');
-    const checks: Array<[string, () => string | null]> = [
-      ['state', () => (released ? null : this.provenanceProblem())],
-      ...PHASES.slice(0, PHASES.indexOf(start)).map((id): [string, () => string | null] => [id, () => this.postconditionProblem(id, released)]),
-    ];
+    const checks: Array<[string, () => string | null]> = [['state', () => (released ? null : this.provenanceProblem())]];
+    // Past commit, HEAD is the release: uncommitted changes (a rebuilt dist, a src edit) would be left out of what pr pushes.
+    if (!released && PHASES.indexOf(start) > PHASES.indexOf('commit')) {
+      checks.push(['tree', () => {
+        const left = this.git('status', '--porcelain');
+        return left ? `uncommitted changes are not in the release commit (${left.split(/\r?\n/).join(', ')}); commit them and re-run --from build, or remove them` : null;
+      }]);
+    }
+    checks.push(...PHASES.slice(0, PHASES.indexOf(start)).map((id): [string, () => string | null] => [id, () => this.postconditionProblem(id, released)]));
     for (const [what, check] of checks) {
       try {
         const problem = check();
@@ -623,14 +655,15 @@ class Release {
         if (released) return null;
         const head = this.git('rev-parse', 'HEAD');
         if (head === s.headSha) return null;
-        // A src fix needs a rebuild, or the release commits stale dist/ and bridge/.
-        const srcChanged = this.run('git', ['diff', '--quiet', s.headSha, '--', 'src']).status !== 0;
-        const from = srcChanged ? 'build' : 'gates';
-        return `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the ${srcChanged ? 'build, the ' : ''}gates and the suite (--from ${from})`;
+        // Always back through build: src, scripts, templates, package.json and the build config all feed dist/ and bridge/.
+        return `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the build, the gates and the suite (--from build)`;
       }
       case 'suite': {
         if (released) return null;
-        return s.suiteSha && s.suiteSha === s.headSha ? null : `the suite did not run on the recorded release commit (--from suite)`;
+        if (!s.suiteSha || s.suiteSha !== s.headSha) return 'the suite did not run on the recorded release commit (--from suite)';
+        const ran = s.suiteRan ?? 'none';
+        const required = this.opts.suite ?? 'none';
+        return SUITE_RANK[ran] < SUITE_RANK[required] ? `the suite ran at --suite ${ran}, below the --suite ${required} this release requires (--from suite --suite ${required})` : null;
       }
       case 'pr': {
         if (s.devPr === undefined || !s.devMergeSha) return 'no merged release PR into dev recorded (--from pr)';
@@ -976,13 +1009,15 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
   const recorded = start === 'preflight' ? undefined : existing?.suite;
   if (requested.suite && recorded && SUITE_RANK[requested.suite] < SUITE_RANK[recorded]) {
     const note = `--suite ${requested.suite} is below the --suite ${recorded} recorded for ${v}; pass --suite ${recorded} (or omit --suite), or start over with --from preflight`;
-    deps.log(`[${start}] blocked: ${note}`);
+    deps.log(`[${start ?? 'verify'}] blocked: ${note}`);
     return { ok: false, version: v, dryRun: Boolean(requested.dryRun), statePath, phases: [{ id: start ?? 'verify', status: 'blocked', note }] };
   }
-  const opts: ReleaseOptions = { ...requested, suite: requested.suite ?? recorded ?? 'none' };
-  if (opts.baseline && opts.suite !== 'full') throw new Error(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
+  // The baseline is recorded like the level, so a resume that re-runs the full suite reuses it.
+  const baseline = requested.baseline ? resolve(requested.baseline) : start === 'preflight' ? undefined : existing?.baseline;
+  const opts: ReleaseOptions = { ...requested, suite: requested.suite ?? recorded ?? 'none', baseline };
+  if (requested.baseline && opts.suite !== 'full') throw new UsageError(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES.indexOf(opts.to ?? 'verify');
-  if (opts.from && PHASES.indexOf(opts.from) > last) throw new Error(`--from ${opts.from} comes after --to ${opts.to}`);
+  if (opts.from && PHASES.indexOf(opts.from) > last) throw new UsageError(`--from ${opts.from} comes after --to ${opts.to}`);
   // A resume point past --to means the selected range is already done.
   const selected = start === null ? [] : PHASES.slice(PHASES.indexOf(start), last + 1);
   if (opts.dryRun) {
@@ -1003,13 +1038,15 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
     for (const d of skip) deps.log(`    ${d}`);
     return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: 'blocked', note, details: skip }] };
   }
-  if (release.current.suite !== opts.suite) release.save({ suite: opts.suite });
+  if (release.current.suite !== opts.suite || release.current.baseline !== opts.baseline) release.save({ suite: opts.suite, baseline: opts.baseline });
   for (const id of selected) {
     deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
     deps.progress({ phase: id, status: 'start' });
     const outcome = await release.phase(id);
     const record: PhaseRecord = { ...outcome, at: new Date(deps.now()).toISOString() };
-    release.save({ phases: { ...release.current.phases, [id]: record } });
+    // A re-run phase voids every later record: they were built on its previous result.
+    const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES.indexOf(p as PhaseId) < PHASES.indexOf(id)));
+    release.save({ phases: { ...kept, [id]: record } });
     results.push({ id, ...outcome });
     deps.progress({ phase: id, status: outcome.status === 'skipped' ? 'ok' : outcome.status, note: outcome.note });
     deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
