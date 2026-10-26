@@ -254,8 +254,8 @@ const COPILOT_TIER_ALIAS_MODELS: Record<string, string> = Object.fromEntries(
  * Anything else passes through unchanged.
  */
 export function toCopilotModelId(model: string): string {
-  const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
-  if (alias) return alias;
+  const key = model.toLowerCase();
+  if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key)) return COPILOT_TIER_ALIAS_MODELS[key];
   if (!/^claude-/.test(model)) return model;
   return model
     .replace(/\[1m\]$/i, '')

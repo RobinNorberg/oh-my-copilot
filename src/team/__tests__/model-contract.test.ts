@@ -645,6 +645,11 @@ describe('model-contract', () => {
       expect(toCopilotModelId('gpt-5.4-mini')).toBe('gpt-5.4-mini');
     });
 
+    it('does not treat prototype keys as tier aliases', () => {
+      expect(toCopilotModelId('constructor')).toBe('constructor');
+      expect(toCopilotModelId('__proto__')).toBe('__proto__');
+    });
+
     it('copilot tier alias table matches build-agents.mjs MODEL_TABLE', async () => {
       // @ts-expect-error -- untyped .mjs build script (TS7016)
       const { MODEL_TABLE } = await import('../../../scripts/copilot/build-agents.mjs') as { MODEL_TABLE: Record<string, string[]> };
