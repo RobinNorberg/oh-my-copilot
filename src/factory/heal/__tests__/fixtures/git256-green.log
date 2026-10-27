@@ -1,0 +1,155 @@
+Test	Set up job	﻿2026-10-27T21:11:22.1046542Z Current runner version: '2.338.0'
+Test	Set up job	2026-10-27T21:11:22.1086183Z ##[group]Runner Image Provisioner
+Test	Set up job	2026-10-27T21:11:22.1087532Z Hosted Compute Agent
+Test	Set up job	2026-10-27T21:11:22.1088708Z Version: 20261021.618
+Test	Set up job	2026-10-27T21:11:22.1089801Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+Test	Set up job	2026-10-27T21:11:22.1091080Z Build Date: 2026-10-21T00:45:21Z
+Test	Set up job	2026-10-27T21:11:22.1092263Z Worker ID: {dc341aa3-7631-4501-82a8-da14f4437755}
+Test	Set up job	2026-10-27T21:11:22.1093421Z Region: eastus
+Test	Set up job	2026-10-27T21:11:22.1094548Z Cloud: Azure
+Test	Set up job	2026-10-27T21:11:22.1095542Z ##[endgroup]
+Test	Set up job	2026-10-27T21:11:22.1098237Z ##[group]Operating System
+Test	Set up job	2026-10-27T21:11:22.1099388Z Ubuntu
+Test	Set up job	2026-10-27T21:11:22.1100310Z 24.04.5
+Test	Set up job	2026-10-27T21:11:22.1101213Z LTS
+Test	Set up job	2026-10-27T21:11:22.1102031Z ##[endgroup]
+Test	Set up job	2026-10-27T21:11:22.1103021Z ##[group]Runner Image
+Test	Set up job	2026-10-27T21:11:22.1104063Z Image: ubuntu-24.04
+Test	Set up job	2026-10-27T21:11:22.1105057Z Version: 20261012.334.1
+Test	Set up job	2026-10-27T21:11:22.1107281Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+Test	Set up job	2026-10-27T21:11:22.1110536Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+Test	Set up job	2026-10-27T21:11:22.1112324Z ##[endgroup]
+Test	Set up job	2026-10-27T21:11:22.1114441Z ##[group]GITHUB_TOKEN Permissions
+Test	Set up job	2026-10-27T21:11:22.1117486Z Contents: read
+Test	Set up job	2026-10-27T21:11:22.1118747Z Metadata: read
+Test	Set up job	2026-10-27T21:11:22.1119729Z ##[endgroup]
+Test	Set up job	2026-10-27T21:11:22.1123128Z Secret source: Actions
+Test	Set up job	2026-10-27T21:11:22.1124685Z Cache mode: write
+Test	Set up job	2026-10-27T21:11:22.1126200Z Prepare workflow directory
+Test	Set up job	2026-10-27T21:11:22.1619329Z Prepare all required actions
+Test	Set up job	2026-10-27T21:11:22.1694466Z Getting action download info
+Test	Set up job	2026-10-27T21:11:22.3300482Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+Test	Set up job	2026-10-27T21:11:22.4378460Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+Test	Set up job	2026-10-27T21:11:22.6351937Z Complete job name: Test
+Test	Run actions/checkout@v4	﻿2026-10-27T21:11:22.7284583Z ##[group]Run actions/checkout@v4
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7286357Z with:
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7287147Z   fetch-depth: 0
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7287975Z   persist-credentials: false
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7289208Z   repository: RobinNorberg/oh-my-copilot
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7298525Z   token: ***
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7299395Z   ssh-strict: true
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7300281Z   ssh-user: git
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7301053Z   clean: true
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7301862Z   sparse-checkout-cone-mode: true
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7302823Z   fetch-tags: false
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7303667Z   show-progress: true
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7304522Z   lfs: false
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7305284Z   submodules: false
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7306414Z   set-safe-directory: true
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7307413Z   allow-unsafe-pr-checkout: false
+Test	Run actions/checkout@v4	2026-10-27T21:11:22.7308817Z ##[endgroup]
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0533244Z Syncing repository: RobinNorberg/oh-my-copilot
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0536076Z ##[group]Getting Git version info
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0537271Z Working directory is '/home/runner/work/oh-my-copilot/oh-my-copilot'
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0538579Z [command]/usr/bin/git version
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0679992Z git version 2.55.0
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0704192Z ##[endgroup]
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0740814Z Temporarily overriding HOME='/home/runner/work/_temp/648b5b0e-304a-4ebd-81fe-5db73e314217' before making global git config changes
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0744030Z Adding repository directory to the temporary git global config as a safe directory
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0747589Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-copilot/oh-my-copilot
+Test	Run actions/checkout@v4	2026-10-27T21:11:23.0825513Z Deleting the contents of '/home/runner/work/oh-my-copilot/oh-my-copilot'
+Test	Setup Node.js	2026-10-27T21:11:34.7968952Z   always-auth: false
+Test	Setup Node.js	2026-10-27T21:11:34.7969166Z   check-latest: false
+Test	Setup Node.js	2026-10-27T21:11:34.7971888Z   token: ***
+Test	Setup Node.js	2026-10-27T21:11:34.7972097Z ##[endgroup]
+Test	Setup Node.js	2026-10-27T21:11:34.9490638Z Attempting to download 20...
+Test	Setup Node.js	2026-10-27T21:11:34.9672806Z (node:2322) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Test	Setup Node.js	2026-10-27T21:11:34.9674080Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Test	Setup Node.js	2026-10-27T21:11:35.5279091Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+Test	Setup Node.js	2026-10-27T21:11:35.8536010Z Extracting ...
+Test	Setup Node.js	2026-10-27T21:11:35.8668583Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/725ad296-07de-4421-81fb-24b8f4e1f14f -f /home/runner/work/_temp/9ebb2b7b-07d3-4bdb-9de6-5ca1e88a2a74
+Test	Setup Node.js	2026-10-27T21:11:36.8841907Z Adding to the cache ...
+Test	Setup Node.js	2026-10-27T21:11:38.7832430Z ##[group]Environment details
+Test	Setup Node.js	2026-10-27T21:11:39.0123976Z node: v20.20.2
+Test	Setup Node.js	2026-10-27T21:11:39.0124436Z npm: 10.8.2
+Test	Setup Node.js	2026-10-27T21:11:39.0124801Z yarn: 1.22.22
+Test	Setup Node.js	2026-10-27T21:11:39.0125488Z ##[endgroup]
+Test	Setup Node.js	2026-10-27T21:11:39.0147252Z [command]/opt/hostedtoolcache/node/20.20.2/x64/bin/npm config get cache
+Test	Setup Node.js	2026-10-27T21:11:39.1209396Z /home/runner/.npm
+Test	Setup Node.js	2026-10-27T21:11:39.1837698Z npm cache is not found
+Test	Install dependencies	﻿2026-10-27T21:11:39.2034704Z ##[group]Run npm ci
+Test	Install dependencies	2026-10-27T21:11:39.2035165Z [36;1mnpm ci[0m
+Test	Run functional tests	2026-10-27T21:18:46.7392588Z ralph skill materialized: /tmp/omc-ralph-afk-WlwO2T/.claude/skills/ralph/SKILL.md (consider gitignoring .claude/)
+Test	Run functional tests	2026-10-27T21:18:46.7393744Z 
+Test	Run functional tests	2026-10-27T21:18:47.4800771Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mjudges clean against its own baseline and fails on a new signature
+Test	Run functional tests	2026-10-27T21:18:47.4814037Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-SPtDr7/.omg/state/sessions/sess-verify/feedback-baseline.json
+Test	Run functional tests	2026-10-27T21:18:47.4827002Z ralph verify: clean vs baseline
+Test	Run functional tests	2026-10-27T21:18:47.4834400Z ralph verify: 1 NEW failure(s) since baseline
+Test	Run functional tests	2026-10-27T21:18:47.4835397Z   new: npm run test: FAIL brand new regression
+Test	Run functional tests	2026-10-27T21:18:47.4836036Z 
+Test	Run functional tests	2026-10-27T21:18:47.9598849Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mreports new test failures even when suite output includes ENOENT
+Test	Run functional tests	2026-10-27T21:18:47.9601505Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-UxHQJS/.omg/state/sessions/sess-enoent/feedback-baseline.json
+Test	Run functional tests	2026-10-27T21:18:47.9602989Z 
+Test	Run functional tests	2026-10-27T21:18:48.5427008Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mstill detects a missing command and does not call a repeatedly unrunnable check clean
+Test	Run functional tests	2026-10-27T21:18:48.5429745Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-8x68AC/.omg/state/sessions/sess-missing-command/feedback-baseline.json
+Test	Run functional tests	2026-10-27T21:18:48.5430849Z 
+Test	Run functional tests	2026-10-27T21:18:48.7451267Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mtreats a missing baseline as a candidate, not a failure
+Test	Run functional tests	2026-10-27T21:18:48.7454033Z [22m[39mralph verify: no baseline for session sess-nobase — current failures can serve as the baseline; run with --write-baseline at startup
+Test	Run functional tests	2026-10-27T21:18:48.7455583Z   candidate: npm run test: > node failer.js
+Test	Run functional tests	2026-10-27T21:18:48.7456729Z   candidate: npm run test: > test
+Test	Run functional tests	2026-10-27T21:18:48.7457564Z   candidate: npm run test: FAIL whatever
+Test	Run functional tests	2026-10-27T21:18:48.7458135Z 
+Test	Run functional tests	2026-10-27T21:18:48.7611039Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mreports no feedback commands as a clean no-op
+Test	Run functional tests	2026-10-27T21:18:48.7614183Z [22m[39mralph verify: no feedback commands: declare feedbackCommands in the PRD or add package.json build/lint/test scripts
+Test	Run functional tests	2026-10-27T21:18:48.7615375Z 
+Test	Run functional tests	2026-10-27T21:24:21.7131748Z [2m      Tests [22m [1m[32m19001 passed[39m[22m[2m | [22m[33m59 skipped[39m[90m (19060)[39m
+Test	Run functional tests	2026-10-27T21:24:21.7133027Z [2m   Start at [22m 21:13:13
+Test	Run functional tests	2026-10-27T21:24:21.7150249Z [2m   Duration [22m 667.94s[2m (transform 27.62s, setup 6.04s, import 184.89s, tests 1636.01s, environment 220ms)[22m
+Test	Run functional tests	2026-10-27T21:24:21.7152944Z 
+Test	Run functional tests	2026-10-27T21:24:21.8744921Z error during close Error: tests wrote fixture session state into the repository's own state dir (1):
+Test	Run functional tests	2026-10-27T21:24:21.8746662Z   .omg/state/sessions/test-session
+Test	Run functional tests	2026-10-27T21:24:21.8747981Z Run the test from a temp repo (useIsolatedCwd in src/__tests__/helpers/isolated-cwd.ts) or point OMC_STATE_DIR at a temp dir.
+Test	Run functional tests	2026-10-27T21:24:21.8749451Z     at Object.teardown (/home/runner/work/oh-my-copilot/oh-my-copilot/src/__tests__/setup/global-state-guard.ts:72:10)
+Test	Run functional tests	2026-10-27T21:24:21.8751617Z     at TestProject._teardownGlobalSetup (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:10825:100)
+Test	Run functional tests	2026-10-27T21:24:21.8753226Z     at file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14004:68
+Test	Run functional tests	2026-10-27T21:24:21.8754740Z     at Vitest.close (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14025:5)
+Test	Run functional tests	2026-10-27T21:24:21.8756446Z     at startVitest (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14643:14)
+Test	Run functional tests	2026-10-27T21:24:21.8757823Z     at start (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cac.uFydS1Z4.js:2340:15)
+Test	Run subagent-lock performance test	﻿2026-10-27T21:24:21.9487635Z ##[group]Run npm exec vitest -- run tests/perf/subagent-lock.bench.ts --fileParallelism=false --maxWorkers=1
+Test	Run subagent-lock performance test	2026-10-27T21:24:21.9488474Z [36;1mnpm exec vitest -- run tests/perf/subagent-lock.bench.ts --fileParallelism=false --maxWorkers=1[0m
+Test	Run subagent-lock performance test	2026-10-27T21:24:21.9555022Z shell: /usr/bin/bash -e {0}
+Test	Run subagent-lock performance test	2026-10-27T21:24:21.9555343Z ##[endgroup]
+Test	Run subagent-lock performance test	2026-10-27T21:24:22.7125631Z 
+Test	Run subagent-lock performance test	2026-10-27T21:24:22.7132593Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/oh-my-copilot/oh-my-copilot[39m
+Test	Run subagent-lock performance test	2026-10-27T21:24:22.7133622Z 
+Test	Run subagent-lock performance test	2026-10-27T21:24:24.8616411Z [90mstdout[2m | tests/perf/subagent-lock.bench.ts[2m > [22m[2msubagent-lock benchmark[2m > [22m[2msequential locked updates stay within Linux latency guardrails
+Test	Run subagent-lock performance test	2026-10-27T21:24:24.8618060Z [22m[39m[subagent-lock bench] Linux CI=true N=100 measuredRuns=5 medianP50=2.288ms medianP95=3.446ms medianP99=7.772ms secondHighestP99=8.316ms p99s=4.817,4.191,9.675,7.772,8.316
+Test	Run subagent-lock performance test	2026-10-27T21:24:24.8618720Z 
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1109040Z [90mstdout[2m | tests/perf/subagent-lock.bench.ts[2m > [22m[2msubagent-lock benchmark[2m > [22m[2mlogs p99 latency on all platforms (informational)
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1111673Z [22m[39m[subagent-lock bench] platform=linux  N=100  p50=2.274ms  p95=2.625ms  p99=3.385ms  max=8.398ms
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1112306Z 
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1126276Z  [32m✓[39m tests/perf/subagent-lock.bench.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1887[2mms[22m[39m
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1127868Z      [33m[2m✓[22m[39m sequential locked updates stay within Linux latency guardrails [33m 1617[2mms[22m[39m
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1162101Z 
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1165881Z [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1166586Z [2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1167540Z [2m   Start at [22m 21:24:22
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1170716Z [2m   Duration [22m 2.35s[2m (transform 226ms, setup 11ms, import 275ms, tests 1.89s, environment 0ms)[22m
+Test	Run subagent-lock performance test	2026-10-27T21:24:25.1172100Z 
+Test	Post Setup Node.js	﻿2026-10-27T21:24:25.1620598Z Post job cleanup.
+Test	Post Setup Node.js	2026-10-27T21:24:25.2933392Z (node:148500) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Test	Post Setup Node.js	2026-10-27T21:24:25.2934669Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Test	Post Setup Node.js	2026-10-27T21:24:25.3185469Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/oh-my-copilot/oh-my-copilot --files-from manifest.txt --use-compress-program zstdmt
+Test	Post Setup Node.js	2026-10-27T21:24:25.7897685Z Failed to save: Unable to reserve cache with key node-cache-Linux-x64-npm-54f19913b3a0b1cdcde4662b6ce973f48d47a08cabf159519a3a6af511e271d3, another job may be creating this cache.
+Test	Post Run actions/checkout@v4	﻿2026-10-27T21:24:25.8231902Z Post job cleanup.
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9219659Z [command]/usr/bin/git version
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9266561Z git version 2.55.0
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9347748Z Temporarily overriding HOME='/home/runner/work/_temp/e6ef5f70-a182-4d48-b1fc-d4548018cef6' before making global git config changes
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9349376Z Adding repository directory to the temporary git global config as a safe directory
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9355887Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-copilot/oh-my-copilot
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9414436Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9466498Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9771424Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:25.9822344Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:26.0127470Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Test	Post Run actions/checkout@v4	2026-10-27T21:24:26.0197516Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
