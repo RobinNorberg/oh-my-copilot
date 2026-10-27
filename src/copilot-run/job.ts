@@ -730,7 +730,9 @@ export class CopilotRunManager {
       job.pid = pid;
       if (pid) {
         const identify = deps.processIdentity ?? ((p: number) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
-        job.pidIdentity = await identify(pid).catch(() => null);
+        // A stop during the read goes straight to the teardown; a late identity is still recorded.
+        const reading = identify(pid).catch(() => null).then((id) => { job.pidIdentity = id; });
+        await Promise.race([reading, job.stopped]);
       }
       if (!job.stopReason) {
         session = await withTimeout(client.createSession({
