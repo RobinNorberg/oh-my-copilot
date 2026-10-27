@@ -138,7 +138,7 @@ describe('HUD OMC-state elements by host (golden)', () => {
     const out = await runHud(payload);
     // `ralph skill:ralph` is the existing skills element (active ralph plus the last skill).
     expect(out).toBe([
-      '[oh-my-copilot#V] | cr:0.42 | autopilot | session:25m | ralph:4/10 | ralph skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
+      '[oh-my-copilot#V] | cr:0.4 | autopilot | session:25m | ralph:4/10 | ralph skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
       '└─ x exec          4m  lane-b: events reader (call_ta)',
     ].join('\n'));
   });

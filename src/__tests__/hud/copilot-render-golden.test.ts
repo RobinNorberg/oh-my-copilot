@@ -103,7 +103,7 @@ describe('HUD renderings by host (golden)', () => {
     const out = await runHud(copilotPayload('copilot-1.0.103-synth-after-prompt.json', true));
     // Before: session:0m and ctx 18% (used_percentage), no events data at all.
     expect(out).toBe([
-      '[oh-my-copilot#V] | cr:0.42 | autopilot | session:25m | skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
+      '[oh-my-copilot#V] | cr:0.4 | autopilot | session:25m | skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
       '└─ x exec          4m  lane-b: events reader (call_ta)',
     ].join('\n'));
   });

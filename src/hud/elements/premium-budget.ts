@@ -20,14 +20,21 @@ export interface SessionAiUsed {
   formatted: string | null;
 }
 
+/** Credits text: 2 decimals from a hundredth to 0.1, `<0.01` below, else 1 decimal. */
+function formatCredits(nanoAiu: number): string {
+  const credits = nanoAiu / NANO_AIU_PER_CREDIT;
+  if (credits >= 0.1) return String(Number(credits.toFixed(1)));
+  return credits < 0.01 ? '<0.01' : credits.toFixed(2);
+}
+
 /**
- * `cr:0.4` from the Copilot payload when no budget applies: Copilot's own
- * `formatted` text, else nano-AIU in credits. Hidden at zero (fresh session).
+ * `cr:0.4` from the Copilot payload when no budget applies: nano-AIU converted
+ * to credits, falling back to Copilot's `formatted` text (format unverified)
+ * only when the number is missing. Hidden at exactly zero (fresh session).
  */
 function renderSessionCredits(aiUsed: SessionAiUsed | null | undefined): string | null {
   if (!aiUsed || aiUsed.nanoAiu === 0) return null;
-  const value = aiUsed.formatted
-    ?? (aiUsed.nanoAiu !== null ? String(Number((aiUsed.nanoAiu / NANO_AIU_PER_CREDIT).toFixed(1))) : null);
+  const value = aiUsed.nanoAiu !== null ? formatCredits(aiUsed.nanoAiu) : aiUsed.formatted;
   return value ? `cr:${GREEN}${value}${RESET}` : null;
 }
 

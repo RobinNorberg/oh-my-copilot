@@ -38,7 +38,7 @@ const RECENT_TOOLS_SKIP = new Set([
 const RELEVANT_TYPES = [
   "tool.execution_start", "tool.execution_complete", "skill.invoked",
   "subagent.started", "subagent.completed", "subagent.failed",
-  "session.start", "session.mode_changed", "session.model_change",
+  "session.start", "session.resume", "session.mode_changed", "session.model_change",
   "session.compaction_start", "session.compaction_complete",
   "session.usage_checkpoint", "session.shutdown",
   "permission.requested", "permission.completed",
@@ -49,7 +49,7 @@ export type CopilotSessionMode = "interactive" | "plan" | "autopilot";
 export interface CopilotEventsData extends TranscriptData {
   /** Last `session.mode_changed` newMode; null before any change (interactive). */
   mode: CopilotSessionMode | null;
-  /** Last `session.model_change` reasoningEffort. */
+  /** Last reasoningEffort from `session.start`, `session.resume` or `session.model_change`. */
   reasoningEffort: string | null;
   /** A `session.compaction_start` without its `compaction_complete` yet. */
   compacting: boolean;
@@ -200,6 +200,10 @@ function parseEvents(text: string, staleMs: number, now: number): CopilotEventsD
     switch (event.type) {
       case "session.start":
         if (at !== epoch) result.sessionStart = at;
+        if ("reasoningEffort" in data) result.reasoningEffort = str(data.reasoningEffort);
+        break;
+      case "session.resume":
+        if ("reasoningEffort" in data) result.reasoningEffort = str(data.reasoningEffort);
         break;
       case "tool.execution_start": {
         const name = str(data.toolName);
