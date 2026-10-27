@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "191133574ac8d828e4aab0a3e57d53442abc661a",
-    "sourceSha256": "9aec87223824eabe5f878b245ecf96561f05cde34f0aa023af05dbe448d04673",
+    "head": "464910cd7162b14fbf0bd4e3e9862ec2dc5fcdf3",
+    "sourceSha256": "5862db923729631bc4d3bab067188117793971d3c232ec0ca707817c114fee9b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "191133574ac8d828e4aab0a3e57d53442abc661a",
-  "sourceSha256": "9aec87223824eabe5f878b245ecf96561f05cde34f0aa023af05dbe448d04673",
+  "head": "464910cd7162b14fbf0bd4e3e9862ec2dc5fcdf3",
+  "sourceSha256": "5862db923729631bc4d3bab067188117793971d3c232ec0ca707817c114fee9b",
   "counts": {
     "public": {
       "skills": 63,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 346,
-      "featureFiles": 88,
+      "featureFiles": 89,
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1669,
-      "total": 1693
+      "srcFiles": 1670,
+      "total": 1694
     },
     "generated": {
-      "distFiles": 6348,
+      "distFiles": 6352,
       "bridgeFiles": 9,
-      "total": 6357
+      "total": 6361
     },
     "prompt": {
       "promptLikeFiles": 64
@@ -560,6 +560,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -3077,6 +3078,10 @@
       "dist/features/jev-slop-warning.d.ts.map",
       "dist/features/jev-slop-warning.js",
       "dist/features/jev-slop-warning.js.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.js",
@@ -7800,6 +7805,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -19520,6 +19526,26 @@
         "id": "dist/features/jev-slop-warning.js.map",
         "kind": "generated-dist",
         "path": "dist/features/jev-slop-warning.js.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map"
       },
       {
         "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
@@ -45682,6 +45708,11 @@
         "path": "src/features/jev-slop-warning.ts"
       },
       {
+        "id": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts"
+      },
+      {
         "id": "src/features/lookout/__tests__/lookout-workspace.test.ts",
         "kind": "feature",
         "path": "src/features/lookout/__tests__/lookout-workspace.test.ts"
@@ -69107,6 +69138,41 @@
         "from": "src/features/jev-slop-warning.ts",
         "to": "src/hooks/jev/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/workspace.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -100980,12 +101046,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8756,
-      "edgeCount": 9855,
-      "importEdgeCount": 8245,
+      "nodeCount": 8761,
+      "edgeCount": 9862,
+      "importEdgeCount": 8252,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
-  "manifestSha256": "ad2d8ff256c88296ce3ce1de0876703c5399242220d437ea4de4b31351d6e56a"
+  "inventorySha256": "fe7671fda6a6847c9fa4706626f5b420a82b40df07d32d5f902de5c2e2b9adfb",
+  "manifestSha256": "b65008508c737c0a18508f371932d38dbec567939157d5d1f90dd82e8e60b312"
 }
