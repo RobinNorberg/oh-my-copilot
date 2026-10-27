@@ -303,6 +303,20 @@ export function reviewPrompt(s: FactoryRunState, head: string, diff: string): st
 
 type LaneRun = { kind: 'done'; result: LaneResult; lane: FactoryLaneRecord; after: RepoSnapshot } | { kind: 'stopped' };
 
+/**
+ * The human gate a lane's sandbox outcome forces, with no fresh retry (a
+ * retry meets the same host): `sandbox-unavailable` when the job refused to
+ * run without a confirmed sandbox, `sandbox-escaped` when a shell call ran
+ * outside it.
+ */
+function sandboxPark(result: LaneResult): { name: 'sandbox-unavailable' | 'sandbox-escaped'; reason: string } | null {
+  const s = result.sandbox;
+  if (!s) return null;
+  if (s.mode === 'refused') return { name: 'sandbox-unavailable', reason: result.error ?? s.reason ?? 'the sandbox is not confirmed' };
+  if (s.unsandboxedCalls > 0 && s.mode !== 'detect-only') return { name: 'sandbox-escaped', reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+  return null;
+}
+
 const usageOf = (r: LaneResult): NonNullable<FactoryLaneRecord['usage']> => ({ credits: r.usage.credits, premiumRequests: r.usage.premiumRequests, source: r.usage.source });
 /** Unknown usage of a lane the engine lost: counted as the whole lane cap. */
 const capUsage = (maxCredits: number): NonNullable<FactoryLaneRecord['usage']> => ({ credits: maxCredits, premiumRequests: 0, source: 'estimated' });
@@ -757,6 +771,11 @@ class FactoryEngine {
   /** A write lane's result: ≥1 new commit on top of `start`, no protected paths, then publish. */
   private acceptWriteLane(out: Extract<LaneRun, { kind: 'done' }>, key: string, start: string): void {
     const { result, lane } = out;
+    const sandbox = sandboxPark(result);
+    if (sandbox) {
+      this.gate(sandbox.name, `${lane.kind} lane ${lane.id}: ${sandbox.reason}; nothing was pushed`);
+      return;
+    }
     if (result.state !== 'completed') return this.laneFailed(key, lane.kind, `lane ${lane.id} ended ${result.state}${result.error ? `: ${result.error}` : ''}`);
     const hit = result.changes?.protectedChanges ?? [];
     if (hit.length > 0) {
@@ -865,6 +884,12 @@ class FactoryEngine {
     if (problems.length > 0) {
       this.markVerdict(lane.id, 'invalid', `tampered: ${problems.join('; ')}`);
       this.gate('review-tampered', `review lane ${lane.id} changed its worktree or reports another one, so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
+      return;
+    }
+    const sandbox = sandboxPark(result);
+    if (sandbox) {
+      this.markVerdict(lane.id, 'invalid', sandbox.name);
+      this.gate(sandbox.name, `review lane ${lane.id}: ${sandbox.reason}`);
       return;
     }
     if (result.state !== 'completed') {

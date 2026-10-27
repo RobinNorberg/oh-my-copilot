@@ -205,6 +205,27 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(h.calls.some((c) => c.startsWith('git push'))).toBe(false);
   });
 
+  it.each([
+    ['refused', 0, 'sandbox-unavailable: MXC is not available', 'sandbox-unavailable'],
+    ['enforced', 1, 'sandbox-escaped: powershell call c1 ran outside the sandbox', 'sandbox-escaped'],
+  ] as const)('a write lane whose sandbox is %s parks at %s without a retry or a push', async (mode, unsandboxedCalls, error, gate) => {
+    const sandbox = { mode, host: { supported: mode !== 'refused', capabilities: {} }, applied: 'none', canary: 'skipped', unsandboxedCalls, cliVersion: 'x', sdkVersion: 'y' } as const;
+    const { lanes, done } = run([() => ({ state: 'failed', error, sandbox })]);
+    const out = await done;
+    expect(out.gate?.name).toBe(gate);
+    expect(out.gate?.reason).toContain(error);
+    expect(lanes.started).toHaveLength(1);
+    expect(remoteHead(h)).toBeNull();
+  });
+
+  it('a review lane that escaped its sandbox parks at sandbox-escaped; its verdict is invalid', async () => {
+    const sandbox = { mode: 'enforced', host: { supported: true, capabilities: { shell: true } }, applied: 'options.update', canary: 'skipped', unsandboxedCalls: 1, cliVersion: 'x', sdkVersion: 'y' } as const;
+    const { done } = run([commitFile('a.ts'), () => ({ state: 'failed', error: 'sandbox-escaped: bash call c ran outside the sandbox', sandbox })]);
+    const out = await done;
+    expect(out.gate?.name).toBe('sandbox-escaped');
+    expect(readFactoryState(h.root, ISSUE)!.lanes[1].verdict).toBe('invalid');
+  });
+
   it('maxRunCredits stops at a step boundary with a resumable awaiting-human: budget', async () => {
     const first = run([commitFile('a.ts', 'a\n', 15)], { limits: limits({ maxRunCredits: 40 }) });
     const out = await first.done;

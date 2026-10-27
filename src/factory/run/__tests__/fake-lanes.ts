@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { summarizeChanges } from '../../../copilot-run/job.js';
+import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { LaneProcessOps } from '../engine.js';
@@ -32,6 +33,7 @@ export interface LaneOutcome {
   error?: string;
   /** wait() throws LaneLostError (the job vanished with its process). */
   lost?: boolean;
+  sandbox?: CopilotRunSandboxState;
 }
 
 export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void;
@@ -97,6 +99,7 @@ export class FakeLanes implements LaneBackend {
       error: o.error ?? null,
       notes: [],
       process: fakeProcess(remoteId),
+      ...(o.sandbox ? { sandbox: o.sandbox } : {}),
     };
   }
 

@@ -25,6 +25,7 @@ import {
   type CopilotRunSnapshot,
   type CopilotRunStatus,
 } from '../../copilot-run/job.js';
+import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 
 export type LaneBackendKind = 'local-sdk' | 'cloud-task' | 'cloud-issue' | 'cloud-sdk';
 export type LaneState = 'queued' | 'running' | 'needs-input' | 'completed' | 'failed' | 'timeout' | 'cancelled';
@@ -46,9 +47,9 @@ export interface LaneStartInput {
   prompt: string;
   /**
    * `write` (default) may commit in its worktree. `review` denies the write
-   * tool and the git commands listed in REVIEW_SHELL_DENY_PATTERNS; that is a
-   * denylist, not a sandbox, so the engine must verify the worktree after the
-   * lane (refs, config and HEAD unchanged; PR 2 adds those checks).
+   * tool and runs only the read-only shell allowlist, and only inside a
+   * confirmed OS sandbox (otherwise without a shell); the engine still
+   * verifies the worktree after the lane (refs, config and HEAD unchanged).
    */
   profile?: LaneProfile;
   model?: string;
@@ -89,6 +90,8 @@ export interface LaneResult {
   notes: string[];
   /** The local Copilot child once it started (pid and start identity), null when unknown or remote. */
   process: LaneProcess | null;
+  /** The local job's OS sandbox (copilot_run snapshot.sandbox); absent for remote backends and before it was decided. */
+  sandbox?: CopilotRunSandboxState;
 }
 
 /** A lane's local child process: the engine checks it is gone before it trusts a lost lane's end. */
@@ -167,7 +170,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}` },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory' },
     );
     return { remoteId: snap.jobId };
   }
@@ -227,6 +230,7 @@ export class CopilotLaneBackend implements LaneBackend {
       error: snap.error,
       notes: snap.notes ?? [],
       process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
+      ...(snap.sandbox ? { sandbox: snap.sandbox } : {}),
     };
   }
 }
