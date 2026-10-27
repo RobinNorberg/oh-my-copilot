@@ -97,8 +97,6 @@ export declare class CopilotRunManager {
     /** Remove a finished job's worktree and branch when nothing in them would be lost. */
     cleanup(jobId: string): Record<string, unknown>;
     private find;
-    /** The governor's one-copilot-worker check; a refusal throws, a governor failure starts anyway (fail-open). */
-    private checkBudget;
     /** Ledger record `copilot-run:<jobId>`; fail-open. False when the lock was busy (retry later). */
     private recordBudget;
     /** Drive the session to its end and tear it down; returns the final status. */

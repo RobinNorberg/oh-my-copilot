@@ -1,15 +1,19 @@
 /**
- * Premium-request ledger: what Copilot billed (or what we estimate it billed)
+ * Usage ledger: the AI Credits Copilot billed (or what we estimate it billed)
  * per session and per team, stored at `<omgRoot>/state/budget-ledger.json`.
+ * Copilot bills usage in AI Credits since 2026-06-01; premium requests are a
+ * legacy field the CLI still reports and the ledger still carries.
  *
  * Data sources, verified on Copilot CLI 1.0.91 and @github/copilot-sdk 1.0.16:
  * - CLI sessions persist `$COPILOT_HOME/session-state/<id>/events.jsonl`. Its
  *   `session.usage_checkpoint` and `session.shutdown` events carry cumulative
- *   `totalPremiumRequests` (multiplier applied) and `totalNanoAiu`
- *   (1e-9 AI credits). They are written at the end of a session, so a running
- *   session has no total yet: until then the ledger keeps an ESTIMATE of one
- *   premium request per top-level user prompt (`user.message` without an
- *   agent `source`) since the period start, multiplier and credits unknown.
+ *   `totalNanoAiu` (1e-9 AI Credits) and the legacy `totalPremiumRequests`.
+ *   They are written at the end of a session (the per-call `assistant.usage`
+ *   events are ephemeral and not persisted), so a running session has no
+ *   total yet: until then the ledger keeps an ESTIMATE of
+ *   ESTIMATED_CREDITS_PER_PROMPT AI Credits (and one premium request) per
+ *   top-level user prompt (`user.message` without an agent `source`) since
+ *   the period start.
  *   The events file is scanned incrementally (byte offset + count kept in the
  *   record), at most MAX_SCAN_BYTES per call.
  * - SDK team workers (`omg team` sdk transport) see live `assistant.usage`
@@ -46,9 +50,10 @@ export interface EventsScan {
     gone?: true;
 }
 export interface UsageRecord {
-    premiumRequests: number;
-    /** AI credits (nano-AIU / 1e9); 0 when unknown. */
+    /** AI Credits (nano-AIU / 1e9), the billed unit. */
     credits: number;
+    /** Legacy: premium requests as the CLI still reports them (multiplier applied). */
+    premiumRequests: number;
     source: UsageSource;
     /** Where the numbers came from, e.g. `session.shutdown` or the estimate rule. */
     detail: string;
@@ -101,6 +106,19 @@ export interface LedgerLockOptions {
     /** Lock wait; 0 tries once (skip on contention). Default 1000 ms. */
     timeoutMs?: number;
 }
+/**
+ * nano-AIU per AI credit. The Copilot SDK documents this division only "as a
+ * convenience (SI nano prefix)"; billing defines the real rate, so treat
+ * credits derived from `totalNanoAiu` as a measured approximation.
+ */
+export declare const NANO_AIU_PER_CREDIT = 1000000000;
+/**
+ * Rough AI Credits per top-level prompt of a running CLI session, used until
+ * its measured total is written. Short smoke prompts measured 0.29 to 0.91
+ * credits (Copilot CLI 1.0.91, small models); real work varies by model and
+ * by the number of model calls, so this is an estimate, not a floor.
+ */
+export declare const ESTIMATED_CREDITS_PER_PROMPT = 1;
 /** Bytes of events.jsonl parsed per call; the rest is picked up by the next call. */
 export declare const MAX_SCAN_BYTES: number;
 /** Tail read for the end-of-session totals. */

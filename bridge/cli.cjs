@@ -5021,24 +5021,6 @@ var init_delegation_routing = __esm({
 });
 
 // src/config/loader.ts
-var loader_exports = {};
-__export(loader_exports, {
-  DEFAULT_CONFIG: () => DEFAULT_CONFIG,
-  buildDefaultConfig: () => buildDefaultConfig,
-  compactOmcStartupGuidance: () => compactOmcStartupGuidance,
-  deepMerge: () => deepMerge,
-  findContextFiles: () => findContextFiles,
-  generateConfigSchema: () => generateConfigSchema,
-  getConfigPaths: () => getConfigPaths,
-  loadConfig: () => loadConfig,
-  loadContextFromFiles: () => loadContextFromFiles,
-  loadEnvConfig: () => loadEnvConfig,
-  loadJsoncFile: () => loadJsoncFile,
-  validateAutopilotConfig: () => validateAutopilotConfig,
-  validateAutopilotWorkflows: () => validateAutopilotWorkflows,
-  validateTeamConfig: () => validateTeamConfig,
-  validateWorkerPermissionsConfig: () => validateWorkerPermissionsConfig
-});
 function buildDefaultConfig() {
   const defaultTierModels = getDefaultTierModels();
   return {
@@ -5754,470 +5736,7 @@ ${content}`;
   }
   return contexts.join(separator);
 }
-function generateConfigSchema() {
-  return {
-    $schema: "http://json-schema.org/draft-07/schema#",
-    title: "Oh-My-Copilot Configuration",
-    type: "object",
-    properties: {
-      agents: {
-        type: "object",
-        description: "Agent model and feature configuration",
-        properties: {
-          omc: {
-            type: "object",
-            properties: {
-              model: {
-                type: "string",
-                description: "Model ID for the main orchestrator"
-              }
-            }
-          },
-          explore: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          analyst: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          planner: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          architect: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          debugger: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          executor: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          verifier: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          securityReviewer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          codeReviewer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          testEngineer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          designer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          writer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          qaTester: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          scientist: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          tracer: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          gitMaster: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          codeSimplifier: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          critic: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          },
-          documentSpecialist: {
-            type: "object",
-            properties: { model: { type: "string" } }
-          }
-        }
-      },
-      features: {
-        type: "object",
-        description: "Feature toggles",
-        properties: {
-          parallelExecution: { type: "boolean", default: true },
-          lspTools: { type: "boolean", default: true },
-          astTools: { type: "boolean", default: true },
-          continuationEnforcement: { type: "boolean", default: true },
-          autoContextInjection: { type: "boolean", default: true }
-        }
-      },
-      mcpServers: {
-        type: "object",
-        description: "MCP server configurations",
-        properties: {
-          exa: {
-            type: "object",
-            properties: {
-              enabled: { type: "boolean" },
-              apiKey: { type: "string" }
-            }
-          },
-          context7: {
-            type: "object",
-            properties: { enabled: { type: "boolean" } }
-          }
-        }
-      },
-      companyContext: {
-        type: "object",
-        description: "Prompt-level company-context MCP contract for workflow skills",
-        properties: {
-          tool: {
-            type: "string",
-            description: "Full MCP tool name to call, for example mcp__vendor__get_company_context"
-          },
-          onError: {
-            type: "string",
-            enum: ["warn", "silent", "fail"],
-            default: "warn",
-            description: "How prompt workflows should react when the configured company-context tool call fails"
-          }
-        }
-      },
-      permissions: {
-        type: "object",
-        description: "Permission settings",
-        properties: {
-          allowBash: { type: "boolean", default: true },
-          allowEdit: { type: "boolean", default: true },
-          allowWrite: { type: "boolean", default: true },
-          maxBackgroundTasks: {
-            type: "integer",
-            default: 5,
-            minimum: MIN_BACKGROUND_TASKS,
-            maximum: MAX_BACKGROUND_TASKS
-          },
-          workerDenyTools: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-            default: [],
-            description: "Copilot team workers: tool patterns passed as --deny-tool=<pattern> (deny wins over the worker allow flags)"
-          },
-          workerDenyUrls: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-            default: [],
-            description: "Copilot team workers: URL patterns passed as --deny-url=<pattern>"
-          }
-        }
-      },
-      magicKeywords: {
-        type: "object",
-        description: "Magic keyword triggers",
-        properties: {
-          search: { type: "array", items: { type: "string" } },
-          analyze: { type: "array", items: { type: "string" } },
-          ultrathink: { type: "array", items: { type: "string" } }
-        }
-      },
-      teleport: {
-        type: "object",
-        description: "Teleport worktree bootstrap settings",
-        properties: {
-          symlinkNodeModules: {
-            type: "boolean",
-            default: true,
-            description: "Symlink node_modules from the parent repo when teleport-created worktrees have a matching package.json"
-          }
-        }
-      },
-      routing: {
-        type: "object",
-        description: "Intelligent model routing configuration",
-        properties: {
-          enabled: {
-            type: "boolean",
-            default: true,
-            description: "Enable intelligent model routing"
-          },
-          defaultTier: {
-            type: "string",
-            enum: ["LOW", "MEDIUM", "HIGH"],
-            default: "MEDIUM",
-            description: "Default tier when no rules match"
-          },
-          forceInherit: {
-            type: "boolean",
-            default: false,
-            description: "Force all agents to inherit the parent model, bypassing OMC model routing. When true, no model parameter is passed to Task/Agent calls, so agents use the user's Claude Code model setting. Auto-enabled for non-Claude providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI."
-          }
-        }
-      },
-      externalModels: {
-        type: "object",
-        description: "External model provider configuration (Codex, Gemini, Grok, Antigravity)",
-        properties: {
-          defaults: {
-            type: "object",
-            description: "Default model settings for external providers",
-            properties: {
-              provider: {
-                type: "string",
-                enum: ["codex", "gemini", "antigravity"],
-                description: "Default external provider"
-              },
-              codexModel: {
-                type: "string",
-                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel,
-                description: "Default Codex model"
-              },
-              geminiModel: {
-                type: "string",
-                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel,
-                description: "Default Gemini model"
-              },
-              grokModel: {
-                type: "string",
-                description: "Default Grok Build model"
-              },
-              antigravityModel: {
-                type: "string",
-                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel,
-                description: "Default Antigravity model"
-              },
-              cursorModel: {
-                type: "string",
-                description: "Default Cursor model (ids from `cursor-agent --list-models`)"
-              }
-            }
-          },
-          rolePreferences: {
-            type: "object",
-            description: "Provider/model preferences by agent role",
-            additionalProperties: {
-              type: "object",
-              properties: {
-                provider: { type: "string", enum: ["codex", "gemini", "antigravity"] },
-                model: { type: "string" }
-              },
-              required: ["provider", "model"]
-            }
-          },
-          taskPreferences: {
-            type: "object",
-            description: "Provider/model preferences by task type",
-            additionalProperties: {
-              type: "object",
-              properties: {
-                provider: { type: "string", enum: ["codex", "gemini", "antigravity"] },
-                model: { type: "string" }
-              },
-              required: ["provider", "model"]
-            }
-          },
-          fallbackPolicy: {
-            type: "object",
-            description: "Fallback behavior on model failure",
-            properties: {
-              onModelFailure: {
-                type: "string",
-                enum: ["provider_chain", "cross_provider", "claude_only"],
-                default: "provider_chain",
-                description: "Fallback strategy when a model fails"
-              },
-              allowCrossProvider: {
-                type: "boolean",
-                default: false,
-                description: "Allow fallback to a different provider"
-              },
-              crossProviderOrder: {
-                type: "array",
-                items: { type: "string", enum: ["codex", "gemini", "antigravity"] },
-                default: ["codex", "gemini"],
-                description: "Order of providers for cross-provider fallback"
-              }
-            }
-          }
-        }
-      },
-      delegationRouting: {
-        type: "object",
-        description: "Delegation routing configuration for external model providers (opt-in feature)",
-        properties: {
-          enabled: {
-            type: "boolean",
-            default: false,
-            description: "Enable delegation routing to external providers (Codex, Gemini)"
-          },
-          defaultProvider: {
-            type: "string",
-            enum: ["claude", "codex", "gemini"],
-            default: "claude",
-            description: "Default provider for delegation routing when no specific role mapping exists"
-          },
-          roles: {
-            type: "object",
-            description: "Provider mappings by agent role",
-            additionalProperties: {
-              type: "object",
-              properties: {
-                provider: {
-                  type: "string",
-                  enum: ["claude", "codex", "gemini"]
-                },
-                tool: { type: "string", enum: ["Task"] },
-                model: { type: "string" },
-                agentType: { type: "string" },
-                fallback: { type: "array", items: { type: "string" } }
-              },
-              required: ["provider", "tool"]
-            }
-          }
-        }
-      },
-      autopilot: {
-        type: "object",
-        description: "/autopilot pipeline and team execution configuration",
-        properties: {
-          planning: {
-            anyOf: [
-              { type: "string", enum: ["ralplan", "direct"] },
-              { type: "boolean", enum: [false] }
-            ],
-            default: "ralplan"
-          },
-          execution: {
-            type: "string",
-            enum: ["team", "solo"],
-            default: "solo"
-          },
-          verification: {
-            anyOf: [
-              {
-                type: "object",
-                properties: {
-                  engine: { type: "string", enum: ["ralph"] },
-                  maxIterations: { type: "integer", minimum: 1 }
-                },
-                required: ["engine", "maxIterations"]
-              },
-              { type: "boolean", enum: [false] }
-            ]
-          },
-          qa: { type: "boolean", default: true },
-          workflows: {
-            type: "object",
-            description: "Named v1 autopilot stage profiles. Project profiles replace same-named user profiles.",
-            propertyNames: {
-              pattern: "^[a-z][a-z0-9-]{0,62}$",
-              not: {
-                enum: [
-                  "autopilot",
-                  "ralplan",
-                  "execution",
-                  "ralph",
-                  "qa",
-                  "autoresearch",
-                  "ultraqa",
-                  "self-improve",
-                  "ultrawork",
-                  "ultrapilot",
-                  "swarm",
-                  "pipeline",
-                  "plan",
-                  "team",
-                  "cancel",
-                  "deep-interview",
-                  "deepsearch",
-                  "ultrathink",
-                  "tdd",
-                  "code-review",
-                  "security-review",
-                  "analyze",
-                  "search"
-                ]
-              }
-            },
-            additionalProperties: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                version: { type: "integer", enum: [1] },
-                stages: {
-                  type: "array",
-                  enum: [
-                    ["ralplan", "execution"],
-                    ["ralplan", "execution", "ralph"],
-                    ["ralplan", "execution", "qa"],
-                    ["ralplan", "execution", "ralph", "qa"]
-                  ]
-                }
-              },
-              required: ["version", "stages"]
-            }
-          },
-          team: {
-            type: "object",
-            properties: {
-              agentTypes: {
-                type: "array",
-                items: {
-                  type: "string",
-                  enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"]
-                },
-                description: "Preferred CLI worker types for executor-style autopilot team execution tasks"
-              }
-            }
-          }
-        }
-      },
-      team: {
-        type: "object",
-        description: "/team runtime configuration",
-        properties: {
-          ops: {
-            type: "object",
-            properties: {
-              maxAgents: { type: "integer", minimum: 1 },
-              defaultAgentType: {
-                type: "string",
-                enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"],
-                description: "Default worker CLI; falls back to the host CLI (copilot, or claude under Claude Code)"
-              },
-              monitorIntervalMs: { type: "integer", minimum: 1 },
-              shutdownTimeoutMs: { type: "integer", minimum: 1 },
-              costMode: { type: "string", enum: ["normal", "downgrade"] }
-            }
-          },
-          roleRouting: {
-            type: "object",
-            description: "Provider/model overrides for canonical /team roles",
-            additionalProperties: {
-              type: "object",
-              properties: {
-                provider: { type: "string", enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"] },
-                model: { type: "string" },
-                agent: { type: "string" }
-              }
-            }
-          }
-        }
-      }
-    }
-  };
-}
-var import_fs5, import_path6, DEFAULT_CONFIG, MIN_BACKGROUND_TASKS, MAX_BACKGROUND_TASKS, CANONICAL_TEAM_ROLE_SET, KNOWN_AGENT_NAME_SET, TEAM_ROLE_PROVIDERS, TEAM_ROLE_TIERS, REASONING_EFFORT_BY_PROVIDER, AUTOPILOT_EXECUTION_BACKENDS, AUTOPILOT_PLANNING_MODES, AUTOPILOT_TEAM_AGENT_TYPES, AUTOPILOT_WORKFLOW_NAME, AUTOPILOT_WORKFLOW_RESERVED_NAMES, AUTOPILOT_WORKFLOW_SEQUENCES, OMC_STARTUP_COMPACTABLE_SECTIONS, OMC_STARTUP_GUIDANCE_MAX_CHARS, OMC_CONTEXT_FILES_MAX_CHARS;
+var import_fs5, import_path6, DEFAULT_CONFIG, MAX_BACKGROUND_TASKS, CANONICAL_TEAM_ROLE_SET, KNOWN_AGENT_NAME_SET, TEAM_ROLE_PROVIDERS, TEAM_ROLE_TIERS, REASONING_EFFORT_BY_PROVIDER, AUTOPILOT_EXECUTION_BACKENDS, AUTOPILOT_PLANNING_MODES, AUTOPILOT_TEAM_AGENT_TYPES, AUTOPILOT_WORKFLOW_NAME, AUTOPILOT_WORKFLOW_RESERVED_NAMES, AUTOPILOT_WORKFLOW_SEQUENCES, OMC_STARTUP_COMPACTABLE_SECTIONS, OMC_STARTUP_GUIDANCE_MAX_CHARS, OMC_CONTEXT_FILES_MAX_CHARS;
 var init_loader = __esm({
   "src/config/loader.ts"() {
     "use strict";
@@ -6231,7 +5750,6 @@ var init_loader = __esm({
     init_types2();
     init_delegation_routing();
     DEFAULT_CONFIG = buildDefaultConfig();
-    MIN_BACKGROUND_TASKS = 1;
     MAX_BACKGROUND_TASKS = 50;
     CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
     KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
@@ -52080,7 +51598,7 @@ function parseSinceSpec(since) {
   if (!trimmed) return void 0;
   const durationMatch = trimmed.match(/^(\d+)\s*([mhdw])$/i);
   if (durationMatch) {
-    const amount = Number.parseInt(durationMatch[1], 10);
+    const amount2 = Number.parseInt(durationMatch[1], 10);
     const unit = durationMatch[2].toLowerCase();
     const multiplierMap = {
       m: 6e4,
@@ -52089,7 +51607,7 @@ function parseSinceSpec(since) {
       w: 6048e5
     };
     const multiplier = multiplierMap[unit];
-    return multiplier ? Date.now() - amount * multiplier : void 0;
+    return multiplier ? Date.now() - amount2 * multiplier : void 0;
   }
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? void 0 : parsed;
@@ -64155,7 +63673,7 @@ var init_types9 = __esm({
         "effort",
         "claudeLabel",
         "enterpriseCost",
-        "premiumBudget",
+        "creditBudget",
         "rateLimits",
         "customBuckets",
         "permission",
@@ -71899,25 +71417,6 @@ var init_action_watchdog = __esm({
 });
 
 // src/budget/ledger.ts
-var ledger_exports = {};
-__export(ledger_exports, {
-  HOOK_LOCK_TIMEOUT_MS: () => HOOK_LOCK_TIMEOUT_MS,
-  MAX_SCAN_BYTES: () => MAX_SCAN_BYTES,
-  TAIL_BYTES: () => TAIL_BYTES,
-  copilotEventsPath: () => copilotEventsPath,
-  emptyLedger: () => emptyLedger,
-  ledgerPath: () => ledgerPath2,
-  ledgerTotals: () => ledgerTotals,
-  mergeRecord: () => mergeRecord,
-  putRecord: () => putRecord,
-  readCopilotSessionUsage: () => readCopilotSessionUsage,
-  readLedger: () => readLedger,
-  readTailTotals: () => readTailTotals,
-  recordUsage: () => recordUsage,
-  resetLedger: () => resetLedger,
-  scanSince: () => scanSince,
-  updateLedger: () => updateLedger
-});
 function isWithin(child, parent) {
   const rel = (0, import_node_path13.relative)((0, import_node_path13.resolve)(parent), (0, import_node_path13.resolve)(child));
   return rel === "" || !rel.startsWith("..") && !rel.startsWith("/") && !/^[A-Za-z]:/.test(rel);
@@ -72002,22 +71501,23 @@ function updateLedger(path30, fn, opts = {}) {
 }
 function mergeRecord(existing, next) {
   if (!existing) return next;
-  const before = num(existing.premiumRequests);
   if (existing.source === "measured" && next.source === "estimated") {
     return next.scan ? { ...existing, scan: next.scan } : existing;
   }
-  if (existing.source === "estimated" && next.source === "estimated" && num(next.premiumRequests) < before) {
-    return { ...next, premiumRequests: before, credits: Math.max(num(existing.credits), num(next.credits)) };
-  }
-  if (existing.source === "measured" && next.source === "measured" && num(next.premiumRequests) < before) {
-    return {
-      ...next,
-      premiumRequests: before,
-      credits: Math.max(num(existing.credits), num(next.credits)),
-      detail: `${next.detail}; total fell from ${before} to ${num(next.premiumRequests)} (resumed session?), kept ${before}`
-    };
-  }
-  return next;
+  if (existing.source !== next.source) return next;
+  const credits = Math.max(num(existing.credits), num(next.credits));
+  const premiumRequests = Math.max(num(existing.premiumRequests), num(next.premiumRequests));
+  if (credits === num(next.credits) && premiumRequests === num(next.premiumRequests)) return next;
+  if (next.source === "estimated") return { ...next, credits, premiumRequests };
+  return {
+    ...next,
+    credits,
+    premiumRequests,
+    detail: `${next.detail}; total fell from ${amount(existing)} to ${amount(next)} (resumed session?), kept ${amount({ credits, premiumRequests })}`
+  };
+}
+function amount(r) {
+  return `${Number(num(r.credits).toFixed(3))} AI credits (${num(r.premiumRequests)} premium requests)`;
 }
 function applyBaseline(usage, baseline) {
   if (!baseline || usage.source !== "measured") return usage;
@@ -72025,7 +71525,7 @@ function applyBaseline(usage, baseline) {
     ...usage,
     premiumRequests: Math.max(0, num(usage.premiumRequests) - num(baseline.premiumRequests)),
     credits: Math.max(0, num(usage.credits) - num(baseline.credits)),
-    detail: `${usage.detail} minus ${num(baseline.premiumRequests)} before the reset`
+    detail: `${usage.detail} minus ${amount(baseline)} before the reset`
   };
   if (baseline.source === "estimated") return { ...net2, source: "estimated", detail: `${net2.detail} (estimated)` };
   return net2;
@@ -72100,109 +71600,7 @@ function copilotEventsPath(sessionId) {
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
-function readRange(path30, start, length) {
-  let fd;
-  try {
-    fd = (0, import_node_fs9.openSync)(path30, "r");
-    const size = (0, import_node_fs9.fstatSync)(fd).size;
-    const len = Math.max(0, Math.min(length, size - start));
-    const buffer = Buffer.alloc(len);
-    let offset = 0;
-    while (offset < len) {
-      const n = (0, import_node_fs9.readSync)(fd, buffer, offset, len - offset, start + offset);
-      if (n === 0) break;
-      offset += n;
-    }
-    return buffer.subarray(0, offset);
-  } catch {
-    return null;
-  } finally {
-    if (fd !== void 0) try {
-      (0, import_node_fs9.closeSync)(fd);
-    } catch {
-    }
-  }
-}
-function scanLines(text, scan) {
-  const sinceMs = Date.parse(scan.since);
-  for (const line of text.split("\n")) {
-    if (!line.includes('"user.message"') && !line.includes('"session.')) continue;
-    let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const data = event.data ?? {};
-    if (event.type === "session.shutdown" || event.type === "session.usage_checkpoint") {
-      if (typeof data.totalPremiumRequests === "number" || typeof data.totalNanoAiu === "number") {
-        scan.totals = { premium: num(data.totalPremiumRequests), nano: num(data.totalNanoAiu), type: event.type };
-      }
-      if (typeof data.currentModel === "string") scan.model = data.currentModel;
-    } else if (event.type === "user.message") {
-      const source = typeof data.source === "string" ? data.source : "";
-      const at = typeof event.timestamp === "string" ? Date.parse(event.timestamp) : Number.NaN;
-      if (!event.agentId && !source.startsWith("agent-") && !(at < sinceMs)) scan.prompts += 1;
-    } else if (event.type === "session.auto_mode_resolved" && typeof data.chosenModel === "string") {
-      scan.model = data.chosenModel;
-    } else if (event.type === "session.model_change" && typeof data.newModel === "string" && data.newModel !== "auto") {
-      scan.model = data.newModel;
-    }
-  }
-}
-function readTailTotals(path30, size) {
-  const start = Math.max(0, size - TAIL_BYTES);
-  const buffer = readRange(path30, start, size - start);
-  if (!buffer) return null;
-  let text = buffer.toString("utf8");
-  if (start > 0) text = text.slice(text.indexOf("\n") + 1);
-  const scan = { since: (/* @__PURE__ */ new Date(0)).toISOString(), offset: 0, prompts: 0 };
-  scanLines(text, scan);
-  return scan.totals ? { ...scan.totals, ...scan.model ? { model: scan.model } : {} } : null;
-}
-function toRecord(scan, partial2, now2, tail3 = null) {
-  const model = tail3?.model ?? scan.model;
-  const base = { updatedAt: now2.toISOString(), ...model ? { model } : {}, scan };
-  const totals = tail3 ?? scan.totals;
-  if (totals) {
-    return { ...base, premiumRequests: totals.premium, credits: totals.nano / NANO, source: "measured", detail: `${totals.type}${tail3 ? " (events tail)" : ""}` };
-  }
-  if (scan.prompts === 0 && !partial2) return null;
-  return {
-    ...base,
-    premiumRequests: scan.prompts,
-    credits: 0,
-    source: "estimated",
-    detail: `estimate: ${scan.prompts} user prompt(s) x1; multiplier and credits unknown until the session ends${partial2 ? ` (read ${scan.offset} bytes so far)` : ""}`
-  };
-}
-function readCopilotSessionUsage(eventsPath, now2 = /* @__PURE__ */ new Date(), opts = {}) {
-  let size;
-  try {
-    size = (0, import_node_fs9.statSync)(eventsPath).size;
-  } catch {
-    return null;
-  }
-  const since = opts.since ?? (/* @__PURE__ */ new Date(0)).toISOString();
-  const prev = opts.prev && opts.prev.since === since && opts.prev.offset <= size ? opts.prev : void 0;
-  if (prev && prev.offset === size) return null;
-  const scan = prev ? { since, offset: prev.offset, prompts: prev.prompts, ...prev.totals ? { totals: prev.totals } : {}, ...prev.model ? { model: prev.model } : {} } : { since, offset: 0, prompts: 0 };
-  const budget = opts.maxScanBytes ?? MAX_SCAN_BYTES;
-  const chunk = readRange(eventsPath, scan.offset, Math.min(budget, size - scan.offset));
-  if (!chunk) return null;
-  const end = scan.offset + chunk.length;
-  const lastNewline = chunk.lastIndexOf(10);
-  if (lastNewline >= 0) {
-    scanLines(chunk.subarray(0, lastNewline + 1).toString("utf8"), scan);
-    scan.offset += lastNewline + 1;
-  } else if (end < size) {
-    scan.offset = end;
-  }
-  const partial2 = end < size;
-  const tail3 = partial2 ? readTailTotals(eventsPath, size) : null;
-  return toRecord(scan, partial2, now2, tail3);
-}
-var import_node_fs9, import_node_os2, import_node_path13, NANO, MAX_SCAN_BYTES, TAIL_BYTES, HOOK_LOCK_TIMEOUT_MS, SAFE_KEY, isObject3, EPOCH, baselineKey;
+var import_node_fs9, import_node_os2, import_node_path13, NANO_AIU_PER_CREDIT, ESTIMATED_CREDITS_PER_PROMPT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject3, EPOCH, baselineKey;
 var init_ledger = __esm({
   "src/budget/ledger.ts"() {
     "use strict";
@@ -72213,10 +71611,10 @@ var init_ledger = __esm({
     init_file_lock();
     init_worktree_paths();
     init_config_dir();
-    NANO = 1e9;
+    NANO_AIU_PER_CREDIT = 1e9;
+    ESTIMATED_CREDITS_PER_PROMPT = 1;
     MAX_SCAN_BYTES = 8 * 1024 * 1024;
     TAIL_BYTES = 64 * 1024;
-    HOOK_LOCK_TIMEOUT_MS = 250;
     SAFE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
     isObject3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
@@ -92897,7 +92295,7 @@ function evaluateTeam(run) {
   const withWork = team.commits.filter((c) => c.subjects.length > 0);
   const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === "merged" || c.survived === "preserved");
   const durationOk = team.durationMs <= team.budgetMs;
-  const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
+  const creditsOk = team.cost.credits > 0 && team.cost.credits <= TEAM_MAX_CREDITS;
   const launch = team.start.launchMs === null ? "" : `, sdk hosts launched in ${team.start.launchMs} ms`;
   return [
     {
@@ -92941,9 +92339,9 @@ ${team.shutdown.stderr}`.trim().slice(-480)) }
       detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`
     },
     {
-      id: "scn.team.premium",
-      ok: premiumOk,
-      detail: `${team.cost.premiumRequests} premium request(s) over ${team.cost.source} (max ${TEAM_MAX_PREMIUM_REQUESTS})`
+      id: "scn.team.credits",
+      ok: creditsOk,
+      detail: `${Number(team.cost.credits.toFixed(3))} AI credits (legacy ${team.cost.premiumRequests} premium request(s)) over ${team.cost.source} (max ${TEAM_MAX_CREDITS} credits)`
     }
   ];
 }
@@ -92978,7 +92376,7 @@ function evaluateChain(run) {
   const inheritedOk = spawnedOk && !!link2Host && link2Host !== link2Id && link2Host !== link1Host && str2(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
   const closedOk = chain.ledgers.length === 2 && open9.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
   const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
-  const premiumOk = sessionsFound && cost.premiumRequests <= CHAIN_MAX_PREMIUM_REQUESTS;
+  const creditsOk = sessionsFound && cost.credits <= CHAIN_MAX_CREDITS;
   return [
     {
       id: "scn.chain.link1",
@@ -93005,9 +92403,9 @@ function evaluateChain(run) {
       ...closedOk ? {} : { evidence: ledgerEvidence }
     },
     {
-      id: "scn.chain.premium",
-      ok: premiumOk,
-      detail: `${cost.premiumRequests} premium request(s) over ${cost.source} (max ${CHAIN_MAX_PREMIUM_REQUESTS})`
+      id: "scn.chain.credits",
+      ok: creditsOk,
+      detail: `${Number(cost.credits.toFixed(3))} AI credits (legacy ${cost.premiumRequests} premium request(s)) over ${cost.source} (max ${CHAIN_MAX_CREDITS} credits)`
     }
   ];
 }
@@ -93136,8 +92534,8 @@ function scenarioCheckIds(name) {
     skill: ["invoked"],
     delegate: ["selected", "hooks", "completed"],
     filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
-    chain: ["link1", "spawned", "inherited", "closed", "premium"],
-    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"],
+    chain: ["link1", "spawned", "inherited", "closed", "credits"],
+    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "credits"],
     continuation: ["blocked", "reason_injected", "stop_hook_active", "echo"],
     "prompt-context": ["accepted", "reached_model"],
     events: ["post_tool_use_failure", "permission_request", "pre_compact"],
@@ -93285,12 +92683,12 @@ function num2(v) {
 }
 function usageCredits(event) {
   if (event.type !== "assistant.usage") return 0;
-  return num2(event.data?.copilotUsage?.totalNanoAiu) / NANO2;
+  return num2(event.data?.copilotUsage?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
 }
 function scenarioCost(events) {
   const shutdown = [...events].reverse().find((e) => e.type === "session.shutdown");
   if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === "number" || typeof shutdown.data.totalNanoAiu === "number")) {
-    return { premiumRequests: num2(shutdown.data.totalPremiumRequests), credits: num2(shutdown.data.totalNanoAiu) / NANO2, source: "session.shutdown" };
+    return { premiumRequests: num2(shutdown.data.totalPremiumRequests), credits: num2(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: "session.shutdown" };
   }
   const usage = events.filter((e) => e.type === "assistant.usage");
   const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);
@@ -93426,7 +92824,7 @@ function evaluateCommon(run, cost) {
     {
       id: `${p}.cost`,
       ok: !overBudget,
-      detail: `${cost.premiumRequests} premium request(s), ${cost.credits.toFixed(3)} AI credits (${cost.source}); model ${run.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run.maxCredits})` : "")
+      detail: `${cost.credits.toFixed(3)} AI credits, legacy ${cost.premiumRequests} premium request(s) (${cost.source}); model ${run.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run.maxCredits})` : "")
     }
   ];
 }
@@ -93459,12 +92857,13 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs94, import_path115, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord6, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO2, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs94, import_path115, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord6, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_CREDITS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_CREDITS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     import_fs94 = require("fs");
     import_path115 = require("path");
+    init_ledger();
     init_copilot_session_eval();
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
@@ -93601,13 +93000,13 @@ var init_copilot_sdk_scenarios = __esm({
     ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
     TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
     TEAM_WORKERS = ["worker-1", "worker-2"];
-    TEAM_MAX_PREMIUM_REQUESTS = 2;
+    TEAM_MAX_CREDITS = 10;
     TEAM_BUDGET_MS = 3e5;
     CHAIN_INTENT_ID = "omg-smoke-chain";
     CHAIN_SKILL = "chain-ack";
     CHAIN_LINK1_STAGE = "link-1";
     CHAIN_LINK2_STAGE = "link-2";
-    CHAIN_MAX_PREMIUM_REQUESTS = 2;
+    CHAIN_MAX_CREDITS = 6;
     ledgerStr = (ledger, key) => str2(ledger?.[key]);
     PROBE_ENTRIES = [
       { event: "PreToolUse", label: "PreToolUse" },
@@ -93622,7 +93021,6 @@ var init_copilot_sdk_scenarios = __esm({
     SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
     RUNTIME_MIN_MAX_CREDITS = 30;
     CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
-    NANO2 = 1e9;
     GUARDRAIL_MARKER = "Git guardrail";
     CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
   }
@@ -98994,6 +98392,7 @@ async function monitorTeamV2(teamName, cwd2, expectedInstanceId) {
         attempt_id: sdkSession.attempt_id,
         updated_at: sdkSession.updated_at,
         credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
+        credits_final: sdkSession.usage.shutdown_credits != null,
         premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
         premium_requests_final: sdkSession.usage.shutdown_premium_requests != null
       } } : {}
@@ -111835,22 +111234,9 @@ var init_formatting = __esm({
 });
 
 // src/budget/governor.ts
-var governor_exports = {};
-__export(governor_exports, {
-  checkThresholds: () => checkThresholds,
-  formatAmount: () => formatAmount,
-  governTeamFanout: () => governTeamFanout,
-  hasLimits: () => hasLimits,
-  loadBudgetSettings: () => loadBudgetSettings,
-  refreshEstimates: () => refreshEstimates,
-  resolveBudgetSettings: () => resolveBudgetSettings,
-  runBudgetHook: () => runBudgetHook,
-  summaryLine: () => summaryLine,
-  usedInUnit: () => usedInUnit
-});
 function resolveBudgetSettings(raw, env2 = process.env) {
   const issues = [];
-  const settings = { enabled: env2.OMC_BUDGET_GOVERNOR !== "0", mode: "warn", unit: "premiumRequests" };
+  const settings = { enabled: env2.OMC_BUDGET_GOVERNOR !== "0", deprecated: [] };
   if (raw === void 0 || raw === null) return { settings, issues };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     issues.push("budget: must be an object");
@@ -111858,24 +111244,21 @@ function resolveBudgetSettings(raw, env2 = process.env) {
   }
   const block = raw;
   for (const key of Object.keys(block)) if (!KNOWN_KEYS.has(key)) issues.push(`budget.${key}: unknown key`);
-  if (block.mode !== void 0) {
-    if (block.mode === "warn" || block.mode === "enforce") settings.mode = block.mode;
-    else issues.push(`budget.mode: must be "warn" or "enforce" (got ${JSON.stringify(block.mode)}); using "warn"`);
+  for (const key of DEPRECATED_KEYS) if (block[key] !== void 0) settings.deprecated.push(`budget.${key}`);
+  if (block.unit === "premiumRequests") settings.deprecated.push('budget.unit "premiumRequests"');
+  else if (block.unit !== void 0 && block.unit !== "credits") {
+    issues.push(`budget.unit: must be "credits" (got ${JSON.stringify(block.unit)}); ignored`);
   }
-  if (block.unit !== void 0) {
-    if (block.unit === "premiumRequests" || block.unit === "credits") settings.unit = block.unit;
-    else issues.push(`budget.unit: must be "premiumRequests" or "credits" (got ${JSON.stringify(block.unit)}); using "premiumRequests"`);
+  if (block.softLimit !== void 0) {
+    const value = block.softLimit;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) settings.softLimit = value;
+    else issues.push(`budget.softLimit: must be a positive number (got ${JSON.stringify(value)}); ignored`);
   }
-  for (const key of LIMIT_KEYS) {
-    const value = block[key];
-    if (value === void 0) continue;
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) settings[key] = value;
-    else issues.push(`budget.${key}: must be a positive number (got ${JSON.stringify(value)}); ignored`);
-  }
-  if (settings.softLimit !== void 0 && settings.hardLimit !== void 0 && settings.softLimit > settings.hardLimit) {
-    issues.push(`budget.softLimit (${settings.softLimit}) is above budget.hardLimit (${settings.hardLimit})`);
-  }
+  if (settings.deprecated.length > 0) issues.push(deprecationNotice(settings.deprecated));
   return { settings, issues };
+}
+function deprecationNotice(keys) {
+  return `${keys.join(", ")}: deprecated and ignored. Budgets are no longer enforced and limits count AI credits only; budget.softLimit still warns. Cap spend with Copilot's per-session maxAiCredits and admin budgets (docs/MIGRATION.md)`;
 }
 function readBudgetBlock(path30) {
   if (!(0, import_node_fs22.existsSync)(path30)) return void 0;
@@ -111902,10 +111285,7 @@ function loadBudgetSettings(cwd2, env2 = process.env) {
   return { settings: resolved.settings, issues: [...issues, ...resolved.issues] };
 }
 function hasLimits(s) {
-  return s.softLimit !== void 0 || s.hardLimit !== void 0 || s.perTeamLimit !== void 0;
-}
-function usedInUnit(totals, unit) {
-  return unit === "credits" ? totals.credits : totals.premiumRequests;
+  return s.softLimit !== void 0;
 }
 function formatAmount(value, unit) {
   const n = Number.isInteger(value) ? String(value) : value.toFixed(unit === "credits" ? 3 : 2);
@@ -111913,179 +111293,12 @@ function formatAmount(value, unit) {
 }
 function summaryLine(ledger, settings) {
   const t = ledgerTotals(ledger);
-  const limits = [
-    settings.softLimit !== void 0 ? `soft ${settings.softLimit}` : "",
-    settings.hardLimit !== void 0 ? `hard ${settings.hardLimit}` : "",
-    settings.perTeamLimit !== void 0 ? `per team ${settings.perTeamLimit}` : ""
-  ].filter(Boolean).join(", ");
   const estimated = t.estimatedRecords > 0 ? `; ${t.estimatedRecords} record(s) estimated` : "";
-  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(t.premiumRequests, "premiumRequests")}, ${formatAmount(Number(t.credits.toFixed(3)), "credits")} (${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). Limits in ${settings.unit}: ${limits || "none"} (${settings.mode} mode). Details: omg budget status.`;
+  const threshold = settings.softLimit !== void 0 ? `soft limit ${formatAmount(settings.softLimit, "credits")}` : "no soft limit";
+  const deprecated = settings.deprecated.length > 0 ? ` ${deprecationNotice(settings.deprecated)}.` : "";
+  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(Number(t.credits.toFixed(3)), "credits")} (${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). Reporting only, ${threshold}.${deprecated} Details: omg budget status.`;
 }
-function checkThresholds(ledger, settings, now2 = /* @__PURE__ */ new Date()) {
-  const totals = ledgerTotals(ledger);
-  const used = usedInUnit(totals, settings.unit);
-  const n = ledger.notified;
-  if (n.hard && n.hardLimit !== void 0 && settings.hardLimit !== void 0 && settings.hardLimit > n.hardLimit) {
-    delete n.hard;
-    delete n.hardLimit;
-  }
-  if (n.soft && n.softLimit !== void 0 && settings.softLimit !== void 0 && settings.softLimit > n.softLimit) {
-    delete n.soft;
-    delete n.softLimit;
-  }
-  const estimated = totals.estimatedRecords > 0 ? ` (${totals.estimatedRecords} record(s) estimated)` : "";
-  const amount = (limit) => `${formatAmount(Number(used.toFixed(3)), settings.unit)} of ${limit} used since ${ledger.since.slice(0, 10)}${estimated}`;
-  if (settings.hardLimit !== void 0 && used >= settings.hardLimit && !n.hard) {
-    n.hard = now2.toISOString();
-    n.hardLimit = settings.hardLimit;
-    if (!n.soft && settings.softLimit !== void 0) {
-      n.soft = n.hard;
-      n.softLimit = settings.softLimit;
-    }
-    const gate = settings.mode === "enforce" ? " New `omg team` fan-out is refused or clamped until `omg budget reset` or a higher budget.hardLimit." : "";
-    return `[BUDGET] Hard limit reached: ${amount(settings.hardLimit)}.${gate} Tell the user before starting more work.`;
-  }
-  if (settings.softLimit !== void 0 && used >= settings.softLimit && !n.soft) {
-    n.soft = now2.toISOString();
-    n.softLimit = settings.softLimit;
-    return `[BUDGET] Soft limit reached: ${amount(settings.softLimit)}. Mention this to the user.`;
-  }
-  return null;
-}
-function payloadString(payload, ...keys) {
-  for (const key of keys) {
-    const v = payload?.[key];
-    if (typeof v === "string" && v.trim()) return v;
-  }
-  return void 0;
-}
-function runBudgetHook(input) {
-  const env2 = input.env ?? process.env;
-  const now2 = input.now ?? /* @__PURE__ */ new Date();
-  const cwd2 = payloadString(input.payload, "cwd") ?? process.cwd();
-  const sessionId = payloadString(input.payload, "session_id", "sessionId");
-  const worker = typeof env2.OMC_TEAM_WORKER === "string" && env2.OMC_TEAM_WORKER.includes("/") ? env2.OMC_TEAM_WORKER : void 0;
-  const ledgerCwd = worker ? env2.OMC_TEAM_LEADER_CWD || cwd2 : cwd2;
-  const { settings } = loadBudgetSettings(ledgerCwd, env2);
-  if (!settings.enabled) return null;
-  const path30 = ledgerPath2(ledgerCwd);
-  const lock = { timeoutMs: HOOK_LOCK_TIMEOUT_MS };
-  const team = worker?.split("/")[0];
-  if (input.phase !== "submit" && sessionId && env2.OMC_BUDGET_HOST_LEDGER !== "1") {
-    const events = copilotEventsPath(sessionId);
-    if (events) {
-      const ledger = readLedger(path30);
-      const stored = team ? ledger.teams[team]?.[sessionId] : ledger.sessions[sessionId];
-      const usage = readCopilotSessionUsage(events, now2, { since: scanSince(ledger), ...stored?.scan ? { prev: stored.scan } : {} });
-      if (usage) recordUsage(path30, sessionId, usage, team, lock);
-    }
-  }
-  if (worker) return null;
-  if (input.phase === "start") {
-    refreshEstimates(path30, now2, lock, input.refreshDeadlineMs);
-    if (!hasLimits(settings)) return null;
-    return { continue: true, hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: summaryLine(readLedger(path30), settings) } };
-  }
-  if (input.phase === "turn") {
-    if (!hasLimits(settings)) return null;
-    const notice2 = updateLedger(path30, (ledger) => {
-      const n = checkThresholds(ledger, settings, now2);
-      if (n) ledger.pendingNotice = n;
-      return n;
-    }, lock);
-    return notice2 ? { continue: true, systemMessage: notice2 } : null;
-  }
-  if (!readLedger(path30).pendingNotice) return null;
-  const notice = updateLedger(path30, (ledger) => {
-    const n = ledger.pendingNotice;
-    delete ledger.pendingNotice;
-    return n;
-  }, lock);
-  return notice ? { continue: true, hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: notice } } : null;
-}
-function refreshEstimates(path30, now2, lock = {}, deadlineMs = REFRESH_DEADLINE_MS) {
-  const ledger = readLedger(path30);
-  const candidates = [];
-  for (const key of Object.keys(ledger.sessions).sort()) candidates.push({ key, record: ledger.sessions[key] });
-  for (const team of Object.keys(ledger.teams).sort()) {
-    for (const key of Object.keys(ledger.teams[team]).sort()) candidates.push({ key, team, record: ledger.teams[team][key] });
-  }
-  const stale = candidates.filter((c) => c.record.source === "estimated" && c.record.scan && !c.record.scan.gone);
-  if (stale.length === 0) return;
-  const start = (ledger.refreshCursor ?? 0) % stale.length;
-  const deadline = Date.now() + deadlineMs;
-  const updates = [];
-  let visited = 0;
-  for (; visited < Math.min(REFRESH_MAX, stale.length) && (visited === 0 || Date.now() < deadline); visited++) {
-    const { key, team, record: record2 } = stale[(start + visited) % stale.length];
-    const scan = record2.scan;
-    const events = copilotEventsPath(key);
-    let stat2 = null;
-    try {
-      stat2 = events ? (0, import_node_fs22.statSync)(events) : null;
-    } catch {
-      stat2 = null;
-    }
-    if (!stat2) {
-      updates.push({ key, team, usage: { ...record2, detail: `${record2.detail}; events file gone, final`, scan: { ...scan, gone: true }, updatedAt: now2.toISOString() } });
-      continue;
-    }
-    const mtimeMs = Math.floor(stat2.mtimeMs);
-    if (scan.checkedSize === stat2.size && scan.checkedMtimeMs === mtimeMs) continue;
-    const checked = { ...scan, checkedSize: stat2.size, checkedMtimeMs: mtimeMs };
-    const tail3 = readTailTotals(events, stat2.size);
-    const usage = tail3 ? { premiumRequests: tail3.premium, credits: tail3.nano / 1e9, source: "measured", detail: `${tail3.type} (events tail)`, ...tail3.model ? { model: tail3.model } : {}, updatedAt: now2.toISOString(), scan: checked } : { ...record2, scan: checked };
-    updates.push({ key, team, usage });
-  }
-  const cursor = (start + visited) % stale.length;
-  if (updates.length === 0 && cursor === (ledger.refreshCursor ?? 0)) return;
-  updateLedger(path30, (fresh) => {
-    if (fresh.since !== ledger.since) return;
-    for (const { key, team, usage } of updates) {
-      const current = team ? fresh.teams[team]?.[key] : fresh.sessions[key];
-      if (!current) continue;
-      if (usage.source === "estimated") {
-        const merged = { ...current, scan: { ...current.scan ?? usage.scan, checkedSize: usage.scan.checkedSize, checkedMtimeMs: usage.scan.checkedMtimeMs, ...usage.scan.gone ? { gone: true } : {} } };
-        if (usage.scan.gone && current.source === "estimated") merged.detail = usage.detail;
-        if (team) fresh.teams[team][key] = merged;
-        else fresh.sessions[key] = merged;
-      } else {
-        putRecord(fresh, key, usage, team);
-      }
-    }
-    fresh.refreshCursor = cursor;
-  }, lock);
-}
-function governTeamFanout(input) {
-  const { settings, agentTypes } = input;
-  const workerCount = agentTypes.length;
-  if (!settings.enabled) return { workerCount };
-  const copilot = agentTypes.filter((t) => t === "copilot").length;
-  const perWorker = settings.unit === "credits" ? input.maxCreditsPerWorker : 1;
-  const used = usedInUnit(input.totals, settings.unit);
-  const bounds = [];
-  if (settings.perTeamLimit !== void 0) bounds.push({ budget: settings.perTeamLimit, label: `budget.perTeamLimit ${settings.perTeamLimit}` });
-  if (settings.hardLimit !== void 0) {
-    bounds.push({ budget: Math.max(0, settings.hardLimit - used), label: `the ${formatAmount(Number(Math.max(0, settings.hardLimit - used).toFixed(3)), settings.unit)} left of budget.hardLimit ${settings.hardLimit}` });
-  }
-  if (copilot === 0 || bounds.length === 0) return { workerCount };
-  const tightest = bounds.reduce((a, b) => b.budget < a.budget ? b : a);
-  const projected = copilot * perWorker;
-  if (projected <= tightest.budget) return { workerCount };
-  const basis = settings.unit === "credits" ? `x ${perWorker} credit cap` : "x 1 premium request for the first prompt, estimated";
-  const amount = settings.unit === "credits" ? formatAmount(projected, settings.unit) : `at least ${formatAmount(projected, settings.unit)}`;
-  const over = `[omg budget] projected ${amount} (${copilot} copilot worker(s) ${basis}) exceeds ${tightest.label}`;
-  if (settings.mode !== "enforce" || input.override) {
-    return { workerCount, notice: `${over}; starting anyway (${input.override ? "--budget-override" : "warn mode"}).` };
-  }
-  const allowed = Math.floor(tightest.budget / perWorker);
-  const fix = "Pass --budget-override, raise the limit in .copilot/omg.jsonc, or run `omg budget reset`.";
-  if (allowed >= 1 && copilot === workerCount && input.clampable) {
-    return { workerCount: allowed, notice: `${over}; clamped to ${allowed} worker(s). ${fix}` };
-  }
-  return { workerCount, refusal: `${over}; team launch refused. ${fix}` };
-}
-var import_node_fs22, import_node_path29, LIMIT_KEYS, KNOWN_KEYS, REFRESH_MAX, REFRESH_DEADLINE_MS;
+var import_node_fs22, import_node_path29, DEPRECATED_KEYS, KNOWN_KEYS;
 var init_governor = __esm({
   "src/budget/governor.ts"() {
     "use strict";
@@ -112095,10 +111308,8 @@ var init_governor = __esm({
     init_paths();
     init_jsonc();
     init_ledger();
-    LIMIT_KEYS = ["softLimit", "hardLimit", "perTeamLimit"];
-    KNOWN_KEYS = /* @__PURE__ */ new Set(["mode", "unit", ...LIMIT_KEYS]);
-    REFRESH_MAX = 20;
-    REFRESH_DEADLINE_MS = 300;
+    DEPRECATED_KEYS = ["mode", "hardLimit", "perTeamLimit"];
+    KNOWN_KEYS = /* @__PURE__ */ new Set(["softLimit", "unit", ...DEPRECATED_KEYS]);
   }
 });
 
@@ -113343,7 +112554,7 @@ function sessionUsage(stateRoot2, worker) {
   return {
     premium: typeof finalPremium === "number" ? finalPremium : num3(usage.premium_requests),
     credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num3(usage.credits),
-    final: typeof finalPremium === "number"
+    final: typeof usage.shutdown_credits === "number" || typeof finalPremium === "number"
   };
 }
 function teamCost(usage, eventsByWorker) {
@@ -113545,10 +112756,10 @@ var init_host_smoke_tool = __esm({
     SCENARIO_NAMES = ["smoke", "guardrail", "skill", "delegate"];
     hostSmokeSchema = {
       tier: external_exports.number().int().min(0).max(2).optional().describe(
-        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one premium request). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
+        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
       ),
       scenarios: external_exports.array(external_exports.enum([...SCENARIO_NAMES, "all"])).optional().describe(
-        "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (~2 premium requests, 1 per scenario). [] = SDK static checks only, no model call, no opt-in needed."
+        "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (one prompt per scenario, billed in AI credits). [] = SDK static checks only, no model call, no opt-in needed."
       ),
       pluginRoot: external_exports.string().optional().describe("Plugin root to load with --plugin-dir. Defaults to, and must equal, the running package root unless OMC_SMOKE_ALLOW_ANY_ROOT=1."),
       model: external_exports.string().optional().describe("Tiers 1-2: model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)."),
@@ -113559,7 +112770,7 @@ var init_host_smoke_tool = __esm({
     };
     hostSmokeTool = {
       name: "host_smoke",
-      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one premium request, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
+      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
       category: TOOL_CATEGORIES.SMOKE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       schema: hostSmokeSchema,
@@ -114666,8 +113877,6 @@ var init_job = __esm({
         }
         const ledgerCwd = repoRoot3 ? (0, import_node_path31.resolve)(repoRoot3) : cwd2;
         const notes = [];
-        const budgetNotice = this.checkBudget(ledgerCwd, maxCredits);
-        if (budgetNotice) notes.push(budgetNotice);
         const id = `cr-${(0, import_node_crypto14.randomBytes)(6).toString("hex")}`;
         let workCwd = cwd2;
         let worktree = null;
@@ -114821,30 +114030,6 @@ var init_job = __esm({
         if (!job) throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
         return job;
       }
-      /** The governor's one-copilot-worker check; a refusal throws, a governor failure starts anyway (fail-open). */
-      checkBudget(ledgerCwd, maxCredits) {
-        let decision;
-        try {
-          const { settings } = loadBudgetSettings(ledgerCwd, this.deps.env);
-          decision = governTeamFanout({
-            settings,
-            totals: ledgerTotals(readLedger(ledgerPath2(ledgerCwd))),
-            agentTypes: ["copilot"],
-            maxCreditsPerWorker: maxCredits,
-            override: false,
-            clampable: false
-          });
-        } catch {
-          return void 0;
-        }
-        if (decision.refusal) {
-          const over = decision.refusal.split("; team launch refused")[0];
-          throw new CopilotRunError(
-            `copilot_run_start refused by the budget governor: ${over}; job refused. Raise the limit in .copilot/omg.jsonc, run \`omg budget reset\`, or (budget.unit "credits") pass a lower maxCredits; copilot_run_start has no budget override.`
-          );
-        }
-        return decision.notice;
-      }
       /** Ledger record `copilot-run:<jobId>`; fail-open. False when the lock was busy (retry later). */
       recordBudget(job, lockTimeoutMs) {
         if (this.deps.env.OMC_BUDGET_GOVERNOR === "0") return true;
@@ -114943,7 +114128,7 @@ var init_job = __esm({
                 job.usage.premiumRequests = data.totalPremiumRequests;
                 job.usage.measured = true;
               }
-              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / 1e9;
+              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
               if (typeof data.currentModel === "string") job.model = data.currentModel;
               onShutdown();
               break;
@@ -115124,7 +114309,7 @@ var init_copilot_run_tools = __esm({
     };
     copilotRunStartTool = {
       name: "copilot_run_start",
-      description: `Delegate a task to GitHub Copilot: start a headless Copilot SDK session on the prompt as a background job and return its jobId at once. By default Copilot works in a new git worktree and branch (isolation "worktree"), never in your working tree. Live and billed (premium requests); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env and passes the budget governor first. Follow with copilot_run_wait or copilot_run_status.`,
+      description: `Delegate a task to GitHub Copilot: start a headless Copilot SDK session on the prompt as a background job and return its jobId at once. By default Copilot works in a new git worktree and branch (isolation "worktree"), never in your working tree. Live and billed (AI Credits); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env. Follow with copilot_run_wait or copilot_run_status.`,
       category: TOOL_CATEGORIES.COPILOT_RUN,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       schema: startSchema,
@@ -115132,7 +114317,7 @@ var init_copilot_run_tools = __esm({
     };
     copilotRunStatusTool = {
       name: "copilot_run_status",
-      description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, premium requests and AI credits spent, and for isolation "worktree" the worktree path, branch and git diff --stat once it has ended.',
+      description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, AI credits (and legacy premium requests) spent, and for isolation "worktree" the worktree path, branch and git diff --stat once it has ended.',
       category: TOOL_CATEGORIES.COPILOT_RUN,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       schema: { jobId: jobIdSchema },
@@ -116139,17 +115324,17 @@ async function runSdkHost(spec, deps) {
   let recordedUsage = "estimated:0:0";
   const recordBudget = () => {
     const u = session.usage;
-    const measured = u.shutdown_premium_requests !== null;
+    const measured = u.shutdown_credits !== null || u.shutdown_premium_requests !== null;
     const premiumRequests = u.shutdown_premium_requests ?? u.premium_requests;
     const credits = u.shutdown_credits ?? u.credits;
     const stamp = `${measured ? "measured" : "estimated"}:${premiumRequests}:${credits}`;
     if (stamp === recordedUsage || deps.env.OMC_BUDGET_GOVERNOR === "0") return true;
     try {
       recordUsage(ledgerPath2(spec.leader_cwd), `${spec.worker_name}:${spec.attempt_id}`, {
-        premiumRequests,
         credits,
+        premiumRequests,
         source: measured ? "measured" : "estimated",
-        detail: measured ? "session.shutdown" : "sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
+        detail: measured ? "session.shutdown" : "sdk assistant.usage: AI credits as billed (legacy premium requests: user-initiated calls x1 each)",
         ...session.model ? { model: session.model } : {},
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       }, spec.team_name, { timeoutMs: 0 });
@@ -116323,7 +115508,7 @@ async function runSdkHost(spec, deps) {
       }
       case "session.shutdown":
         if (typeof data.totalPremiumRequests === "number") session.usage.shutdown_premium_requests = data.totalPremiumRequests;
-        if (typeof data.totalNanoAiu === "number") session.usage.shutdown_credits = data.totalNanoAiu / 1e9;
+        if (typeof data.totalNanoAiu === "number") session.usage.shutdown_credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
         shutdownSeen?.();
         break;
       case "session.error":
@@ -122048,8 +121233,8 @@ function getColor2(percent) {
   if (percent >= WARNING_THRESHOLD2) return YELLOW7;
   return GREEN8;
 }
-function formatMoney(amount, decimals) {
-  const [intPart, decPart] = amount.toFixed(decimals).split(".");
+function formatMoney(amount2, decimals) {
+  const [intPart, decPart] = amount2.toFixed(decimals).split(".");
   const withCommas = (intPart ?? "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return decPart ? `${withCommas}.${decPart}` : withCommas;
 }
@@ -122261,18 +121446,16 @@ function renderPremiumBudget(cwd2) {
     const { settings } = loadBudgetSettings(cwd2);
     if (!settings.enabled || !hasLimits(settings)) return null;
     const totals = ledgerTotals(readLedger(ledgerPath2(cwd2)));
-    const used = usedInUnit(totals, settings.unit);
-    const shown = settings.unit === "credits" ? Number(used.toFixed(1)) : Math.round(used * 100) / 100;
-    const limit = settings.hardLimit ?? settings.softLimit;
-    const color = settings.hardLimit !== void 0 && used >= settings.hardLimit ? RED7 : settings.softLimit !== void 0 && used >= settings.softLimit ? YELLOW9 : GREEN10;
-    const label = settings.unit === "credits" ? "cr" : "prq";
+    const used = totals.credits;
+    const limit = settings.softLimit;
+    const color = used >= limit ? YELLOW9 : GREEN10;
     const approx = totals.estimatedRecords > 0 ? "~" : "";
-    return `${label}:${color}${approx}${shown}${limit !== void 0 ? `/${limit}` : ""}${RESET}`;
+    return `cr:${color}${approx}${Number(used.toFixed(1))}/${limit}${RESET}`;
   } catch {
     return null;
   }
 }
-var GREEN10, YELLOW9, RED7;
+var GREEN10, YELLOW9;
 var init_premium_budget = __esm({
   "src/hud/elements/premium-budget.ts"() {
     "use strict";
@@ -122281,7 +121464,6 @@ var init_premium_budget = __esm({
     init_ledger();
     GREEN10 = "\x1B[32m";
     YELLOW9 = "\x1B[33m";
-    RED7 = "\x1B[31m";
   }
 });
 
@@ -122736,7 +121918,7 @@ function renderContextLimitWarning(contextPercent, threshold, autoCompact) {
     return null;
   }
   const isCritical = safePercent >= 90;
-  const color = isCritical ? RED8 : YELLOW10;
+  const color = isCritical ? RED7 : YELLOW10;
   const icon = isCritical ? "!!" : "!";
   const action = autoCompact ? "(auto-compact queued)" : "run /compact";
   return `${color}${BOLD2}[${icon}] ctx ${safePercent}% >= ${threshold}% threshold - ${action}${RESET}`;
@@ -122746,18 +121928,18 @@ function renderPayloadLimitWarning(payloadEstimate) {
     return null;
   }
   const isCritical = payloadEstimate.pressure === "critical";
-  const color = isCritical ? RED8 : YELLOW10;
+  const color = isCritical ? RED7 : YELLOW10;
   const icon = isCritical ? "!!" : "!";
   const action = isCritical ? "compact may fail; consider new session" : "consider /compact soon";
   return `${color}${BOLD2}[${icon}] ${payloadEstimate.label} - ${action}${RESET}`;
 }
-var YELLOW10, RED8, BOLD2;
+var YELLOW10, RED7, BOLD2;
 var init_context_warning = __esm({
   "src/hud/elements/context-warning.ts"() {
     "use strict";
     init_colors();
     YELLOW10 = "\x1B[33m";
-    RED8 = "\x1B[31m";
+    RED7 = "\x1B[31m";
     BOLD2 = "\x1B[1m";
   }
 });
@@ -122870,7 +122052,7 @@ function buildMainElementOrder(elementOrder) {
   }
   const known = new Set(DEFAULT_ELEMENT_ORDER.main);
   const seen = /* @__PURE__ */ new Set();
-  const configured = elementOrder.filter((name) => {
+  const configured = elementOrder.map((name) => name === "premiumBudget" ? "creditBudget" : name).filter((name) => {
     if (!known.has(name) || seen.has(name)) {
       return false;
     }
@@ -123093,9 +122275,12 @@ async function render(context, config2) {
       if (session) rendered.set("session", session);
     }
   }
-  if (enabledElements.premiumBudget !== false) {
+  if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
     const budget = renderPremiumBudget(context.cwd);
-    if (budget) rendered.set("premiumBudget", budget);
+    if (budget) {
+      rendered.set("creditBudget", budget);
+      rendered.set("premiumBudget", budget);
+    }
   }
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
     const stale = context.rateLimitsResult?.stale;
@@ -127095,11 +126280,11 @@ function scanLookout(options) {
   const brief = options.brief;
   if (brief !== void 0) {
     const scanBrief = brief.replace(/\\\r?\n[ \t]*/g, " ");
-    const scanLines2 = maskHereDocBody(scanBrief);
-    const maskedBrief = scanLines2.join("\n");
+    const scanLines = maskHereDocBody(scanBrief);
+    const maskedBrief = scanLines.join("\n");
     for (const rule of BRIEF_RULES) {
       const evidence = [];
-      const inputLines = rule.id === "lookout.brief.db-destructive" ? [maskedBrief] : scanLines2;
+      const inputLines = rule.id === "lookout.brief.db-destructive" ? [maskedBrief] : scanLines;
       for (const line of inputLines) {
         const negationContext = buildNegationContext(line);
         const re = new RegExp(rule.pattern.source, rule.pattern.flags);
@@ -133407,7 +132592,7 @@ function parseSinceSpec2(since) {
   if (!trimmed) return void 0;
   const durationMatch = trimmed.match(/^(\d+)\s*([mhdw])$/i);
   if (durationMatch) {
-    const amount = Number.parseInt(durationMatch[1], 10);
+    const amount2 = Number.parseInt(durationMatch[1], 10);
     const unit = durationMatch[2].toLowerCase();
     const multiplierMap = {
       m: 6e4,
@@ -133415,7 +132600,7 @@ function parseSinceSpec2(since) {
       d: 864e5,
       w: 6048e5
     };
-    return Date.now() - amount * multiplierMap[unit];
+    return Date.now() - amount2 * multiplierMap[unit];
   }
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? void 0 : parsed;
@@ -135533,10 +134718,10 @@ function formatReport2(report, json) {
     lines3.push("");
   }
   if (report.budgetIssues && report.budgetIssues.length > 0) {
-    lines3.push(colors.bold("\u{1F4B3} Premium-Request Budget"));
+    lines3.push(colors.bold("\u{1F4B3} AI Credits Budget"));
     lines3.push("");
     for (const issue2 of report.budgetIssues) lines3.push(`  ${colors.yellow("\u26A0")} ${issue2}`);
-    lines3.push(`    ${colors.gray('Invalid values are ignored (the governor stays warn-only). Fix the "budget" block in .copilot/omg.jsonc.')}`);
+    lines3.push(`    ${colors.gray('Invalid and deprecated values are ignored (the governor only reports). Fix the "budget" block in .copilot/omg.jsonc.')}`);
     lines3.push("");
   }
   lines3.push(colors.bold("\u{1F9E9} Unified MCP Registry"));
@@ -136697,7 +135882,7 @@ function formatSmokeReport(report) {
     }
   }
   if (report.cost) {
-    lines3.push(`cost: ${report.cost.premiumRequests} premium request(s), ${Number(report.cost.credits.toFixed(3))} credit(s)`);
+    lines3.push(`cost: ${Number(report.cost.credits.toFixed(3))} AI credit(s), legacy ${report.cost.premiumRequests} premium request(s)`);
   }
   for (const [key, value] of Object.entries(report.artifacts)) {
     if (!value) continue;
@@ -136983,9 +136168,9 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
       return 1;
     }
     if (options.json) {
-      console.log(JSON.stringify({ ok: true, ledgerPath: path30, previous: { since: previous.since, premiumRequests: previous.premiumRequests, credits: previous.credits } }));
+      console.log(JSON.stringify({ ok: true, ledgerPath: path30, previous: { since: previous.since, credits: previous.credits, premiumRequests: previous.premiumRequests } }));
     } else {
-      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(previous.premiumRequests, "premiumRequests")}, ${formatAmount(Number(previous.credits.toFixed(3)), "credits")}.`);
+      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(Number(previous.credits.toFixed(3)), "credits")} (legacy ${formatAmount(previous.premiumRequests, "premiumRequests")}).`);
     }
     return 0;
   }
@@ -136995,24 +136180,22 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
   }
   const ledger = readLedger(path30);
   const totals = ledgerTotals(ledger);
-  const used = usedInUnit(totals, settings.unit);
-  const code = settings.hardLimit !== void 0 && used >= settings.hardLimit ? 1 : 0;
   if (options.json) {
-    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
-    return code;
+    console.log(JSON.stringify({ ledgerPath: path30, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
+    return 0;
   }
   console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ""));
   for (const [team, t] of Object.entries(totals.teams)) {
-    const cap = settings.perTeamLimit !== void 0 ? ` (per-team limit ${settings.perTeamLimit} ${settings.unit})` : "";
-    console.log(`  team ${team}: ${formatAmount(t.premiumRequests, "premiumRequests")}, ${formatAmount(Number(t.credits.toFixed(3)), "credits")} over ${t.records} session(s)${cap}`);
+    console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), "credits")} over ${t.records} session(s)`);
   }
   if (totals.estimatedRecords > 0) {
-    console.log(`  ${totals.estimatedRecords} record(s) are estimates (1 premium request per prompt, multiplier unknown); they become measured once the session's totals are written.`);
+    console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);
   }
   if (!settings.enabled) console.log("  Governor disabled (OMC_BUDGET_GOVERNOR=0).");
-  for (const issue2 of issues) console.log(`  config: ${issue2}`);
+  const shown = settings.deprecated.length > 0 ? deprecationNotice(settings.deprecated) : void 0;
+  for (const issue2 of issues) if (issue2 !== shown) console.log(`  config: ${issue2}`);
   console.log(`  ledger: ${path30}`);
-  return code;
+  return 0;
 }
 
 // src/cli/commands/capabilities.ts
@@ -137541,7 +136724,7 @@ Transport:
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
-  --budget-override    Start even when budget.mode "enforce" would refuse or clamp the fan-out.
+  --budget-override    Deprecated no-op: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
   --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
                         Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
@@ -138121,34 +137304,6 @@ async function collectStartRolePromptOptions(parsed) {
     rolePromptByRole
   };
 }
-async function applyBudgetGovernor(parsed, workerCount, clampable, cwd2) {
-  let decision;
-  try {
-    const { loadBudgetSettings: loadBudgetSettings2, governTeamFanout: governTeamFanout2 } = await Promise.resolve().then(() => (init_governor(), governor_exports));
-    const { ledgerPath: ledgerPath3, ledgerTotals: ledgerTotals2, readLedger: readLedger2 } = await Promise.resolve().then(() => (init_ledger(), ledger_exports));
-    const { resolveSdkTeamSettings: resolveSdkTeamSettings2 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
-    const { settings } = loadBudgetSettings2(cwd2);
-    let maxCreditsPerWorker = resolveSdkTeamSettings2({}).maxCreditsPerWorker;
-    try {
-      const { loadConfig: loadConfig3 } = await Promise.resolve().then(() => (init_loader(), loader_exports));
-      maxCreditsPerWorker = resolveSdkTeamSettings2(loadConfig3()).maxCreditsPerWorker;
-    } catch {
-    }
-    decision = governTeamFanout2({
-      settings,
-      totals: ledgerTotals2(readLedger2(ledgerPath3(cwd2))),
-      agentTypes: parsed.agentTypes.slice(0, workerCount),
-      maxCreditsPerWorker,
-      override: parsed.budgetOverride === true,
-      clampable
-    });
-  } catch {
-    return workerCount;
-  }
-  if (decision.notice) console.error(decision.notice);
-  if (decision.refusal) throw new Error(decision.refusal);
-  return decision.workerCount;
-}
 async function handleTeamStart(parsed, cwd2) {
   const { isRuntimeV2Enabled: isRuntimeV2Enabled2, startTeamV2: startTeamV22, monitorTeamV2: monitorTeamV22 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
   if (!isRuntimeV2Enabled2()) {
@@ -138165,8 +137320,10 @@ async function handleTeamStart(parsed, cwd2) {
     decomposition,
     parsed.noDecompose
   );
-  const clampable = parsed.noDecompose || decomposition.subtasks.length <= 1;
-  const effectiveWorkerCount = await applyBudgetGovernor(parsed, fanoutWorkerCount, clampable, cwd2);
+  if (parsed.budgetOverride) {
+    console.error("[omg team] --budget-override is deprecated and does nothing: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).");
+  }
+  const effectiveWorkerCount = fanoutWorkerCount;
   const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
   const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd2);
   const rolePromptOptions = await collectStartRolePromptOptions(parsed);
@@ -138345,9 +137502,10 @@ async function handleTeamStatus(teamName, cwd2, json) {
             state: worker.sdk.state,
             turns: worker.sdk.turns,
             queued: worker.sdk.queued,
+            credits: worker.sdk.credits,
+            credits_final: worker.sdk.credits_final,
             premium_requests: worker.sdk.premium_requests,
             premium_requests_final: worker.sdk.premium_requests_final,
-            credits: worker.sdk.credits,
             model: worker.sdk.model ?? null,
             host_pid: worker.sdk.host_pid,
             runtime_pid: worker.sdk.runtime_pid ?? null,
@@ -138388,7 +137546,7 @@ async function handleTeamStatus(teamName, cwd2, json) {
     for (const worker of snapshot2.workers) {
       if (!worker.sdk) continue;
       const sdk = worker.sdk;
-      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? "n/a"} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? "auto"} last_event=${sdk.last_event_type ?? "n/a"}@${sdk.last_event_at ?? "n/a"}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ""}`);
+      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? "n/a"} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} credits=${sdk.credits.toFixed(2)} premium_requests=${sdk.premium_requests} model=${sdk.model ?? "auto"} last_event=${sdk.last_event_type ?? "n/a"}@${sdk.last_event_at ?? "n/a"}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ""}`);
     }
     console.log(`tasks: total=${snapshot2.tasks.total} pending=${snapshot2.tasks.pending} blocked=${snapshot2.tasks.blocked} in_progress=${snapshot2.tasks.in_progress} completed=${snapshot2.tasks.completed} failed=${snapshot2.tasks.failed}`);
     console.log(`leader_next_action=${leaderGuidance.nextAction}`);
@@ -145232,7 +144390,7 @@ function phasePlan(id, v, opts) {
         "node scripts/ci/check-multirepo-paths.mjs"
       ];
     case "smoke":
-      return opts.liveSmoke ? ["OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (about 2 premium requests); every check must pass"] : ["SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; about 2 premium requests)"];
+      return opts.liveSmoke ? ["OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (two prompts, about 0.6 AI credits); every check must pass"] : ["SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; two prompts, about 0.6 AI credits)"];
     case "commit":
       return [
         `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
@@ -145472,7 +144630,7 @@ ${r.stderr}`));
   }
   smoke() {
     if (!this.opts.liveSmoke) {
-      this.deps.log("  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (about 2 premium requests).");
+      this.deps.log("  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (two prompts, about 0.6 AI credits).");
       return { status: "skipped", note: "live Tier 2 smoke not run (pass --live-smoke)" };
     }
     this.deps.log("  OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json");
@@ -145635,7 +144793,7 @@ ${r.stderr}`));
   async pr() {
     const smoke = this.state.phases.smoke?.status;
     if (smoke !== "ok" && !this.opts.allowSkippedSmoke) {
-      blocked(`the live smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}; run it (--from smoke --live-smoke, about 2 premium requests), or pass --allow-skipped-smoke to release without it`);
+      blocked(`the live smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`);
     }
     const branch = `release/v${this.v}`;
     if (this.state.devPr === void 0 || this.viewPr(this.state.devPr).state !== "MERGED") {
@@ -146024,7 +145182,7 @@ function printResult(result) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
     const json = Boolean(o.json);
     try {
       let version3;
@@ -147530,13 +146688,13 @@ Examples:
   const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
   process.exit(exitCode);
 });
-program2.command("budget [action]").description("Show (status, the default) or reset the premium-request budget ledger").option("--json", "Output as JSON").addHelpText("after", `
+program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").addHelpText("after", `
 Examples:
   $ omg budget                                  Usage since the last reset against budget.* limits
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
   $ omg budget reset                            Start a new accounting period
 
-Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.jsonc ("budget").`).action(async (action, options) => {
+Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`).action(async (action, options) => {
   const exitCode = await budgetCommand(action ?? "status", options);
   process.exit(exitCode);
 });
@@ -147554,15 +146712,15 @@ Examples:
   $ omg smoke copilot --tier 1                  Add one cheap live session
   $ omg smoke copilot --tier 1 --keep-home --json
   $ omg smoke copilot --sdk-static              Tier 2 SDK static checks (no model call)
-  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
+  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (1 prompt each, ~0.6 AI credits in total)
   $ omg smoke copilot --tier 2 --scenario all   All four SDK scenarios
-  $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (~2 premium requests,
+  $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (1 prompt per link,
                                                 real copilot -p links outside the --max-credits cap)
   $ omg smoke copilot --tier 2 --scenario team  2-worker omg team on the default sdk transport, start to clean
-                                                shutdown (~2 premium requests, 1 per worker)
+                                                shutdown (1 prompt per worker, billed in AI credits)
   $ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events
                                                 Live hook-event checks in headless copilot sessions
-                                                (~4 premium requests: 2 + 1 + 1)`).action(async (options) => {
+                                                (~1.4 AI credits measured: 0.31 + 0.29 + 0.76)`).action(async (options) => {
   const exitCode = await smokeCopilotCommand(options);
   process.exit(exitCode);
 });

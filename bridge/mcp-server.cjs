@@ -24864,7 +24864,7 @@ function parseSinceSpec(since) {
   if (!trimmed) return void 0;
   const durationMatch = trimmed.match(/^(\d+)\s*([mhdw])$/i);
   if (durationMatch) {
-    const amount = Number.parseInt(durationMatch[1], 10);
+    const amount2 = Number.parseInt(durationMatch[1], 10);
     const unit = durationMatch[2].toLowerCase();
     const multiplierMap = {
       m: 6e4,
@@ -24873,7 +24873,7 @@ function parseSinceSpec(since) {
       w: 6048e5
     };
     const multiplier = multiplierMap[unit];
-    return multiplier ? Date.now() - amount * multiplier : void 0;
+    return multiplier ? Date.now() - amount2 * multiplier : void 0;
   }
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? void 0 : parsed;
@@ -29401,6 +29401,159 @@ var init_process_utils2 = __esm({
   }
 });
 
+// src/budget/ledger.ts
+function isWithin(child, parent) {
+  const rel = (0, import_node_path5.relative)((0, import_node_path5.resolve)(parent), (0, import_node_path5.resolve)(child));
+  return rel === "" || !rel.startsWith("..") && !rel.startsWith("/") && !/^[A-Za-z]:/.test(rel);
+}
+function ledgerPath2(cwd) {
+  const path15 = (0, import_node_path5.join)(getOmcRoot(cwd), "state", "budget-ledger.json");
+  if (process.env.VITEST && isWithin(path15, (0, import_node_os.homedir)()) && !isWithin(path15, (0, import_node_os.tmpdir)())) {
+    throw new Error(`budget ledger outside the temp dir under test: ${path15} (stub OMC_STATE_DIR)`);
+  }
+  return path15;
+}
+function emptyLedger(now = /* @__PURE__ */ new Date()) {
+  return { version: 1, since: now.toISOString(), sessions: {}, teams: {}, notified: {} };
+}
+function records(raw) {
+  const out = {};
+  if (!isObject2(raw)) return out;
+  for (const [key, value] of Object.entries(raw)) if (isObject2(value)) out[key] = value;
+  return out;
+}
+function parseLedger(path15) {
+  let text;
+  try {
+    text = (0, import_node_fs4.readFileSync)(path15, "utf8");
+  } catch {
+    return { ledger: emptyLedger(), invalid: false };
+  }
+  try {
+    const raw = JSON.parse(text);
+    if (!isObject2(raw) || raw.version !== 1 || typeof raw.since !== "string") return { ledger: emptyLedger(), invalid: true };
+    const teams = {};
+    if (isObject2(raw.teams)) {
+      for (const [team, bucket] of Object.entries(raw.teams)) if (isObject2(bucket)) teams[team] = records(bucket);
+    }
+    const notified = {};
+    if (isObject2(raw.notified)) {
+      for (const k of ["soft", "hard"]) if (typeof raw.notified[k] === "string") notified[k] = raw.notified[k];
+      for (const k of ["softLimit", "hardLimit"]) if (typeof raw.notified[k] === "number") notified[k] = raw.notified[k];
+    }
+    const baselines = {};
+    if (isObject2(raw.baselines)) {
+      for (const [k, v] of Object.entries(raw.baselines)) if (isObject2(v)) baselines[k] = v;
+    }
+    return {
+      ledger: {
+        version: 1,
+        since: raw.since,
+        sessions: records(raw.sessions),
+        teams,
+        notified,
+        ...typeof raw.pendingNotice === "string" ? { pendingNotice: raw.pendingNotice } : {},
+        ...typeof raw.resetAt === "string" ? { resetAt: raw.resetAt } : {},
+        ...Object.keys(baselines).length ? { baselines } : {},
+        ...typeof raw.refreshCursor === "number" ? { refreshCursor: raw.refreshCursor } : {}
+      },
+      invalid: false
+    };
+  } catch {
+    return { ledger: emptyLedger(), invalid: true };
+  }
+}
+function scanSince(ledger) {
+  return ledger.resetAt ?? EPOCH;
+}
+function updateLedger(path15, fn, opts = {}) {
+  ensureDirSync((0, import_node_path5.dirname)(path15));
+  return withFileLockSync(lockPathFor(path15), () => {
+    const { ledger, invalid } = parseLedger(path15);
+    if (invalid) {
+      try {
+        (0, import_node_fs4.copyFileSync)(path15, `${path15}.corrupt`);
+      } catch {
+      }
+    }
+    const result = fn(ledger);
+    atomicWriteJsonSync(path15, ledger);
+    return result;
+  }, { timeoutMs: opts.timeoutMs ?? 1e3 });
+}
+function mergeRecord(existing, next) {
+  if (!existing) return next;
+  if (existing.source === "measured" && next.source === "estimated") {
+    return next.scan ? { ...existing, scan: next.scan } : existing;
+  }
+  if (existing.source !== next.source) return next;
+  const credits = Math.max(num(existing.credits), num(next.credits));
+  const premiumRequests = Math.max(num(existing.premiumRequests), num(next.premiumRequests));
+  if (credits === num(next.credits) && premiumRequests === num(next.premiumRequests)) return next;
+  if (next.source === "estimated") return { ...next, credits, premiumRequests };
+  return {
+    ...next,
+    credits,
+    premiumRequests,
+    detail: `${next.detail}; total fell from ${amount(existing)} to ${amount(next)} (resumed session?), kept ${amount({ credits, premiumRequests })}`
+  };
+}
+function amount(r) {
+  return `${Number(num(r.credits).toFixed(3))} AI credits (${num(r.premiumRequests)} premium requests)`;
+}
+function applyBaseline(usage, baseline) {
+  if (!baseline || usage.source !== "measured") return usage;
+  const net2 = {
+    ...usage,
+    premiumRequests: Math.max(0, num(usage.premiumRequests) - num(baseline.premiumRequests)),
+    credits: Math.max(0, num(usage.credits) - num(baseline.credits)),
+    detail: `${usage.detail} minus ${amount(baseline)} before the reset`
+  };
+  if (baseline.source === "estimated") return { ...net2, source: "estimated", detail: `${net2.detail} (estimated)` };
+  return net2;
+}
+function putRecord(ledger, key, usage, team) {
+  if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return false;
+  if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
+  const net2 = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
+  if (team) {
+    const bucket = ledger.teams[team] ??= {};
+    bucket[key] = mergeRecord(bucket[key], net2);
+  } else {
+    ledger.sessions[key] = mergeRecord(ledger.sessions[key], net2);
+  }
+  return true;
+}
+function recordUsage(path15, key, usage, team, opts = {}) {
+  if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return;
+  updateLedger(path15, (ledger) => {
+    putRecord(ledger, key, usage, team);
+  }, opts);
+}
+function num(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+var import_node_fs4, import_node_os, import_node_path5, NANO_AIU_PER_CREDIT, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject2, EPOCH, baselineKey;
+var init_ledger = __esm({
+  "src/budget/ledger.ts"() {
+    "use strict";
+    import_node_fs4 = require("node:fs");
+    import_node_os = require("node:os");
+    import_node_path5 = require("node:path");
+    init_atomic_write();
+    init_file_lock();
+    init_worktree_paths();
+    init_config_dir();
+    NANO_AIU_PER_CREDIT = 1e9;
+    MAX_SCAN_BYTES = 8 * 1024 * 1024;
+    TAIL_BYTES = 64 * 1024;
+    SAFE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+    isObject2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
+    baselineKey = (key, team) => team ? `t:${team}/${key}` : `s:${key}`;
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 function hostSmokeToolName(mcpServer) {
   return `${mcpServer}-host_smoke`;
@@ -29572,12 +29725,12 @@ function evaluateTeam(run) {
   const expected = team.tasks.map((t) => ({ owner: t.owner, file: TEAM_FILES.find((f) => t.subject.includes(f)) }));
   const commitFor = (worker) => team.commits.find((c) => c.worker === worker);
   const committedOk = expected.length === 2 && expected.every(({ owner, file }) => !!file && !!commitFor(owner)?.files.includes(file));
-  const statusOk = status?.ok === true && transport === "sdk" && sdkWorkers2.length === 2 && sdkWorkers2.every((w) => num(w.host_pid) > 0 && typeof w.session_id === "string" && w.session_id !== "" && w.provider === "alive") && num(statusTasks.total) === 2 && num(statusTasks.completed) === 2;
+  const statusOk = status?.ok === true && transport === "sdk" && sdkWorkers2.length === 2 && sdkWorkers2.every((w) => num2(w.host_pid) > 0 && typeof w.session_id === "string" && w.session_id !== "" && w.provider === "alive") && num2(statusTasks.total) === 2 && num2(statusTasks.completed) === 2;
   const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
   const withWork = team.commits.filter((c) => c.subjects.length > 0);
   const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === "merged" || c.survived === "preserved");
   const durationOk = team.durationMs <= team.budgetMs;
-  const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
+  const creditsOk = team.cost.credits > 0 && team.cost.credits <= TEAM_MAX_CREDITS;
   const launch = team.start.launchMs === null ? "" : `, sdk hosts launched in ${team.start.launchMs} ms`;
   return [
     {
@@ -29599,7 +29752,7 @@ function evaluateTeam(run) {
     {
       id: "scn.team.status",
       ok: statusOk,
-      detail: statusOk ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed` : `status --json: ok ${String(status?.ok)}, transport ${transport || "unknown"}, ${sdkWorkers2.length} sdk worker(s), tasks ${num(statusTasks.completed)}/${num(statusTasks.total)}`,
+      detail: statusOk ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed` : `status --json: ok ${String(status?.ok)}, transport ${transport || "unknown"}, ${sdkWorkers2.length} sdk worker(s), tasks ${num2(statusTasks.completed)}/${num2(statusTasks.total)}`,
       ...statusOk || !status ? {} : { evidence: excerpt(JSON.stringify(status)) }
     },
     {
@@ -29621,9 +29774,9 @@ ${team.shutdown.stderr}`.trim().slice(-480)) }
       detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`
     },
     {
-      id: "scn.team.premium",
-      ok: premiumOk,
-      detail: `${team.cost.premiumRequests} premium request(s) over ${team.cost.source} (max ${TEAM_MAX_PREMIUM_REQUESTS})`
+      id: "scn.team.credits",
+      ok: creditsOk,
+      detail: `${Number(team.cost.credits.toFixed(3))} AI credits (legacy ${team.cost.premiumRequests} premium request(s)) over ${team.cost.source} (max ${TEAM_MAX_CREDITS} credits)`
     }
   ];
 }
@@ -29658,7 +29811,7 @@ function evaluateChain(run) {
   const inheritedOk = spawnedOk && !!link2Host && link2Host !== link2Id && link2Host !== link1Host && str2(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
   const closedOk = chain.ledgers.length === 2 && open3.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
   const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
-  const premiumOk = sessionsFound && cost.premiumRequests <= CHAIN_MAX_PREMIUM_REQUESTS;
+  const creditsOk = sessionsFound && cost.credits <= CHAIN_MAX_CREDITS;
   return [
     {
       id: "scn.chain.link1",
@@ -29685,9 +29838,9 @@ function evaluateChain(run) {
       ...closedOk ? {} : { evidence: ledgerEvidence }
     },
     {
-      id: "scn.chain.premium",
-      ok: premiumOk,
-      detail: `${cost.premiumRequests} premium request(s) over ${cost.source} (max ${CHAIN_MAX_PREMIUM_REQUESTS})`
+      id: "scn.chain.credits",
+      ok: creditsOk,
+      detail: `${Number(cost.credits.toFixed(3))} AI credits (legacy ${cost.premiumRequests} premium request(s)) over ${cost.source} (max ${CHAIN_MAX_CREDITS} credits)`
     }
   ];
 }
@@ -29816,8 +29969,8 @@ function scenarioCheckIds(name) {
     skill: ["invoked"],
     delegate: ["selected", "hooks", "completed"],
     filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
-    chain: ["link1", "spawned", "inherited", "closed", "premium"],
-    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"],
+    chain: ["link1", "spawned", "inherited", "closed", "credits"],
+    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "credits"],
     continuation: ["blocked", "reason_injected", "stop_hook_active", "echo"],
     "prompt-context": ["accepted", "reached_model"],
     events: ["post_tool_use_failure", "permission_request", "pre_compact"],
@@ -29960,17 +30113,17 @@ function runCost(run) {
   if (run.team) return run.team.cost;
   return scenarioCost(run.events);
 }
-function num(v) {
+function num2(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 function usageCredits(event) {
   if (event.type !== "assistant.usage") return 0;
-  return num(event.data?.copilotUsage?.totalNanoAiu) / NANO;
+  return num2(event.data?.copilotUsage?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
 }
 function scenarioCost(events) {
   const shutdown = [...events].reverse().find((e) => e.type === "session.shutdown");
   if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === "number" || typeof shutdown.data.totalNanoAiu === "number")) {
-    return { premiumRequests: num(shutdown.data.totalPremiumRequests), credits: num(shutdown.data.totalNanoAiu) / NANO, source: "session.shutdown" };
+    return { premiumRequests: num2(shutdown.data.totalPremiumRequests), credits: num2(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: "session.shutdown" };
   }
   const usage = events.filter((e) => e.type === "assistant.usage");
   const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);
@@ -30069,7 +30222,7 @@ function evaluateDelegate(run) {
     {
       id: "scn.delegate.completed",
       ok: !!completed,
-      detail: completed ? `subagent.completed ${DELEGATE_AGENT} (${num(completed.data?.totalToolCalls)} tool call(s), ${num(completed.data?.durationMs)} ms)` : `no non-cancelled subagent.completed for ${DELEGATE_AGENT}`,
+      detail: completed ? `subagent.completed ${DELEGATE_AGENT} (${num2(completed.data?.totalToolCalls)} tool call(s), ${num2(completed.data?.durationMs)} ms)` : `no non-cancelled subagent.completed for ${DELEGATE_AGENT}`,
       ...completed || !subagentEvents ? {} : { evidence: excerpt(subagentEvents) }
     }
   ];
@@ -30106,7 +30259,7 @@ function evaluateCommon(run, cost) {
     {
       id: `${p}.cost`,
       ok: !overBudget,
-      detail: `${cost.premiumRequests} premium request(s), ${cost.credits.toFixed(3)} AI credits (${cost.source}); model ${run.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run.maxCredits})` : "")
+      detail: `${cost.credits.toFixed(3)} AI credits, legacy ${cost.premiumRequests} premium request(s) (${cost.source}); model ${run.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run.maxCredits})` : "")
     }
   ];
 }
@@ -30139,12 +30292,13 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs46, import_path58, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord2, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs46, import_path58, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord2, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_CREDITS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_CREDITS, ledgerStr, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
     import_fs46 = require("fs");
     import_path58 = require("path");
+    init_ledger();
     init_copilot_session_eval();
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
@@ -30281,13 +30435,13 @@ var init_copilot_sdk_scenarios = __esm({
     ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
     TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
     TEAM_WORKERS = ["worker-1", "worker-2"];
-    TEAM_MAX_PREMIUM_REQUESTS = 2;
+    TEAM_MAX_CREDITS = 10;
     TEAM_BUDGET_MS = 3e5;
     CHAIN_INTENT_ID = "omg-smoke-chain";
     CHAIN_SKILL = "chain-ack";
     CHAIN_LINK1_STAGE = "link-1";
     CHAIN_LINK2_STAGE = "link-2";
-    CHAIN_MAX_PREMIUM_REQUESTS = 2;
+    CHAIN_MAX_CREDITS = 6;
     ledgerStr = (ledger, key) => str2(ledger?.[key]);
     PROBE_ENTRIES = [
       { event: "PreToolUse", label: "PreToolUse" },
@@ -30302,7 +30456,6 @@ var init_copilot_sdk_scenarios = __esm({
     SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
     RUNTIME_MIN_MAX_CREDITS = 30;
     CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
-    NANO = 1e9;
     GUARDRAIL_MARKER = "Git guardrail";
     CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
   }
@@ -34763,7 +34916,7 @@ function samePathKey2(p) {
   const slashed = p.replace(/\\/g, "/").replace(/\/+$/, "");
   return process.platform === "win32" ? slashed.toLowerCase() : slashed;
 }
-function num2(v) {
+function num3(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 function parseLaunchMs(stderr) {
@@ -34790,8 +34943,8 @@ function workerList(status) {
 }
 function tasksSettled(status) {
   const t = status?.tasks ?? {};
-  const total = num2(t.total);
-  return total > 0 && num2(t.completed) + num2(t.failed) === total;
+  const total = num3(t.total);
+  return total > 0 && num3(t.completed) + num3(t.failed) === total;
 }
 function leftoverReservations(projectDir, teamName) {
   const base = (0, import_path70.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
@@ -34809,9 +34962,9 @@ function sessionUsage(stateRoot, worker) {
   if (!usage) return null;
   const finalPremium = usage.shutdown_premium_requests;
   return {
-    premium: typeof finalPremium === "number" ? finalPremium : num2(usage.premium_requests),
-    credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num2(usage.credits),
-    final: typeof finalPremium === "number"
+    premium: typeof finalPremium === "number" ? finalPremium : num3(usage.premium_requests),
+    credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num3(usage.credits),
+    final: typeof usage.shutdown_credits === "number" || typeof finalPremium === "number"
   };
 }
 function teamCost(usage, eventsByWorker) {
@@ -34917,7 +35070,7 @@ async function runTeamScenario(input) {
     } catch {
     }
   }
-  const pids = sdkWorkers(evidence.status).flatMap((w) => [num2(w.host_pid), num2(w.runtime_pid)]).filter((p) => p > 0);
+  const pids = sdkWorkers(evidence.status).flatMap((w) => [num3(w.host_pid), num3(w.runtime_pid)]).filter((p) => p > 0);
   const usage = /* @__PURE__ */ new Map();
   const readUsage = () => {
     for (const worker of workers) {
@@ -35764,10 +35917,10 @@ var init_host_smoke_tool = __esm({
     SCENARIO_NAMES = ["smoke", "guardrail", "skill", "delegate"];
     hostSmokeSchema = {
       tier: external_exports.number().int().min(0).max(2).optional().describe(
-        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one premium request). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
+        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
       ),
       scenarios: external_exports.array(external_exports.enum([...SCENARIO_NAMES, "all"])).optional().describe(
-        "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (~2 premium requests, 1 per scenario). [] = SDK static checks only, no model call, no opt-in needed."
+        "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (one prompt per scenario, billed in AI credits). [] = SDK static checks only, no model call, no opt-in needed."
       ),
       pluginRoot: external_exports.string().optional().describe("Plugin root to load with --plugin-dir. Defaults to, and must equal, the running package root unless OMC_SMOKE_ALLOW_ANY_ROOT=1."),
       model: external_exports.string().optional().describe("Tiers 1-2: model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)."),
@@ -35778,7 +35931,7 @@ var init_host_smoke_tool = __esm({
     };
     hostSmokeTool = {
       name: "host_smoke",
-      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one premium request, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
+      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
       category: TOOL_CATEGORIES.SMOKE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       schema: hostSmokeSchema,
@@ -35827,288 +35980,21 @@ var init_host_smoke_tool = __esm({
   }
 });
 
-// src/budget/ledger.ts
-function isWithin(child, parent) {
-  const rel = (0, import_node_path5.relative)((0, import_node_path5.resolve)(parent), (0, import_node_path5.resolve)(child));
-  return rel === "" || !rel.startsWith("..") && !rel.startsWith("/") && !/^[A-Za-z]:/.test(rel);
-}
-function ledgerPath2(cwd) {
-  const path15 = (0, import_node_path5.join)(getOmcRoot(cwd), "state", "budget-ledger.json");
-  if (process.env.VITEST && isWithin(path15, (0, import_node_os.homedir)()) && !isWithin(path15, (0, import_node_os.tmpdir)())) {
-    throw new Error(`budget ledger outside the temp dir under test: ${path15} (stub OMC_STATE_DIR)`);
-  }
-  return path15;
-}
-function emptyLedger(now = /* @__PURE__ */ new Date()) {
-  return { version: 1, since: now.toISOString(), sessions: {}, teams: {}, notified: {} };
-}
-function records(raw) {
-  const out = {};
-  if (!isObject2(raw)) return out;
-  for (const [key, value] of Object.entries(raw)) if (isObject2(value)) out[key] = value;
-  return out;
-}
-function parseLedger(path15) {
-  let text;
-  try {
-    text = (0, import_node_fs4.readFileSync)(path15, "utf8");
-  } catch {
-    return { ledger: emptyLedger(), invalid: false };
-  }
-  try {
-    const raw = JSON.parse(text);
-    if (!isObject2(raw) || raw.version !== 1 || typeof raw.since !== "string") return { ledger: emptyLedger(), invalid: true };
-    const teams = {};
-    if (isObject2(raw.teams)) {
-      for (const [team, bucket] of Object.entries(raw.teams)) if (isObject2(bucket)) teams[team] = records(bucket);
-    }
-    const notified = {};
-    if (isObject2(raw.notified)) {
-      for (const k of ["soft", "hard"]) if (typeof raw.notified[k] === "string") notified[k] = raw.notified[k];
-      for (const k of ["softLimit", "hardLimit"]) if (typeof raw.notified[k] === "number") notified[k] = raw.notified[k];
-    }
-    const baselines = {};
-    if (isObject2(raw.baselines)) {
-      for (const [k, v] of Object.entries(raw.baselines)) if (isObject2(v)) baselines[k] = v;
-    }
-    return {
-      ledger: {
-        version: 1,
-        since: raw.since,
-        sessions: records(raw.sessions),
-        teams,
-        notified,
-        ...typeof raw.pendingNotice === "string" ? { pendingNotice: raw.pendingNotice } : {},
-        ...typeof raw.resetAt === "string" ? { resetAt: raw.resetAt } : {},
-        ...Object.keys(baselines).length ? { baselines } : {},
-        ...typeof raw.refreshCursor === "number" ? { refreshCursor: raw.refreshCursor } : {}
-      },
-      invalid: false
-    };
-  } catch {
-    return { ledger: emptyLedger(), invalid: true };
-  }
-}
-function readLedger(path15) {
-  return parseLedger(path15).ledger;
-}
-function scanSince(ledger) {
-  return ledger.resetAt ?? EPOCH;
-}
-function updateLedger(path15, fn, opts = {}) {
-  ensureDirSync((0, import_node_path5.dirname)(path15));
-  return withFileLockSync(lockPathFor(path15), () => {
-    const { ledger, invalid } = parseLedger(path15);
-    if (invalid) {
-      try {
-        (0, import_node_fs4.copyFileSync)(path15, `${path15}.corrupt`);
-      } catch {
-      }
-    }
-    const result = fn(ledger);
-    atomicWriteJsonSync(path15, ledger);
-    return result;
-  }, { timeoutMs: opts.timeoutMs ?? 1e3 });
-}
-function mergeRecord(existing, next) {
-  if (!existing) return next;
-  const before = num3(existing.premiumRequests);
-  if (existing.source === "measured" && next.source === "estimated") {
-    return next.scan ? { ...existing, scan: next.scan } : existing;
-  }
-  if (existing.source === "estimated" && next.source === "estimated" && num3(next.premiumRequests) < before) {
-    return { ...next, premiumRequests: before, credits: Math.max(num3(existing.credits), num3(next.credits)) };
-  }
-  if (existing.source === "measured" && next.source === "measured" && num3(next.premiumRequests) < before) {
-    return {
-      ...next,
-      premiumRequests: before,
-      credits: Math.max(num3(existing.credits), num3(next.credits)),
-      detail: `${next.detail}; total fell from ${before} to ${num3(next.premiumRequests)} (resumed session?), kept ${before}`
-    };
-  }
-  return next;
-}
-function applyBaseline(usage, baseline) {
-  if (!baseline || usage.source !== "measured") return usage;
-  const net2 = {
-    ...usage,
-    premiumRequests: Math.max(0, num3(usage.premiumRequests) - num3(baseline.premiumRequests)),
-    credits: Math.max(0, num3(usage.credits) - num3(baseline.credits)),
-    detail: `${usage.detail} minus ${num3(baseline.premiumRequests)} before the reset`
-  };
-  if (baseline.source === "estimated") return { ...net2, source: "estimated", detail: `${net2.detail} (estimated)` };
-  return net2;
-}
-function putRecord(ledger, key, usage, team) {
-  if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return false;
-  if (usage.scan && usage.scan.since !== scanSince(ledger)) return false;
-  const net2 = applyBaseline(usage, ledger.baselines?.[baselineKey(key, team)]);
-  if (team) {
-    const bucket = ledger.teams[team] ??= {};
-    bucket[key] = mergeRecord(bucket[key], net2);
-  } else {
-    ledger.sessions[key] = mergeRecord(ledger.sessions[key], net2);
-  }
-  return true;
-}
-function recordUsage(path15, key, usage, team, opts = {}) {
-  if (!SAFE_KEY.test(key) || team !== void 0 && !SAFE_KEY.test(team)) return;
-  updateLedger(path15, (ledger) => {
-    putRecord(ledger, key, usage, team);
-  }, opts);
-}
-function ledgerTotals(ledger) {
-  const totals = { premiumRequests: 0, credits: 0, sessions: 0, estimatedRecords: 0, teams: {} };
-  const add = (r) => {
-    totals.premiumRequests += num3(r?.premiumRequests);
-    totals.credits += num3(r?.credits);
-    if (r?.source !== "measured") totals.estimatedRecords += 1;
-  };
-  for (const r of Object.values(ledger.sessions)) {
-    if (!isObject2(r)) continue;
-    add(r);
-    totals.sessions += 1;
-  }
-  for (const [team, bucket] of Object.entries(ledger.teams)) {
-    if (!isObject2(bucket)) continue;
-    const t = { premiumRequests: 0, credits: 0, records: 0 };
-    for (const r of Object.values(bucket)) {
-      if (!isObject2(r)) continue;
-      add(r);
-      t.premiumRequests += num3(r.premiumRequests);
-      t.credits += num3(r.credits);
-      t.records += 1;
-    }
-    totals.teams[team] = t;
-  }
-  return totals;
-}
-function num3(v) {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
-}
-var import_node_fs4, import_node_os, import_node_path5, MAX_SCAN_BYTES, TAIL_BYTES, SAFE_KEY, isObject2, EPOCH, baselineKey;
-var init_ledger = __esm({
-  "src/budget/ledger.ts"() {
-    "use strict";
-    import_node_fs4 = require("node:fs");
-    import_node_os = require("node:os");
-    import_node_path5 = require("node:path");
-    init_atomic_write();
-    init_file_lock();
-    init_worktree_paths();
-    init_config_dir();
-    MAX_SCAN_BYTES = 8 * 1024 * 1024;
-    TAIL_BYTES = 64 * 1024;
-    SAFE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
-    isObject2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
-    baselineKey = (key, team) => team ? `t:${team}/${key}` : `s:${key}`;
-  }
-});
-
 // src/budget/governor.ts
-function resolveBudgetSettings(raw, env = process.env) {
-  const issues = [];
-  const settings = { enabled: env.OMC_BUDGET_GOVERNOR !== "0", mode: "warn", unit: "premiumRequests" };
-  if (raw === void 0 || raw === null) return { settings, issues };
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    issues.push("budget: must be an object");
-    return { settings, issues };
-  }
-  const block = raw;
-  for (const key of Object.keys(block)) if (!KNOWN_KEYS.has(key)) issues.push(`budget.${key}: unknown key`);
-  if (block.mode !== void 0) {
-    if (block.mode === "warn" || block.mode === "enforce") settings.mode = block.mode;
-    else issues.push(`budget.mode: must be "warn" or "enforce" (got ${JSON.stringify(block.mode)}); using "warn"`);
-  }
-  if (block.unit !== void 0) {
-    if (block.unit === "premiumRequests" || block.unit === "credits") settings.unit = block.unit;
-    else issues.push(`budget.unit: must be "premiumRequests" or "credits" (got ${JSON.stringify(block.unit)}); using "premiumRequests"`);
-  }
-  for (const key of LIMIT_KEYS) {
-    const value = block[key];
-    if (value === void 0) continue;
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) settings[key] = value;
-    else issues.push(`budget.${key}: must be a positive number (got ${JSON.stringify(value)}); ignored`);
-  }
-  if (settings.softLimit !== void 0 && settings.hardLimit !== void 0 && settings.softLimit > settings.hardLimit) {
-    issues.push(`budget.softLimit (${settings.softLimit}) is above budget.hardLimit (${settings.hardLimit})`);
-  }
-  return { settings, issues };
-}
-function readBudgetBlock(path15) {
-  if (!(0, import_node_fs5.existsSync)(path15)) return void 0;
-  const parsed = parseJsonc((0, import_node_fs5.readFileSync)(path15, "utf8"));
-  return parsed?.budget;
-}
-function loadBudgetSettings(cwd, env = process.env) {
-  let user;
-  let project;
-  const issues = [];
-  try {
-    user = readBudgetBlock((0, import_node_path6.join)(getConfigDir(), "claude-omc", "config.jsonc"));
-  } catch {
-    issues.push("budget: user config unreadable");
-  }
-  try {
-    project = readBudgetBlock(resolveProjectConfigPath(cwd));
-  } catch {
-    issues.push("budget: project config unreadable");
-  }
-  const isObject3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-  const merged = isObject3(user) && isObject3(project) ? { ...user, ...project } : project ?? user;
-  const resolved = resolveBudgetSettings(merged, env);
-  return { settings: resolved.settings, issues: [...issues, ...resolved.issues] };
-}
-function usedInUnit(totals, unit) {
-  return unit === "credits" ? totals.credits : totals.premiumRequests;
-}
 function formatAmount(value, unit) {
   const n = Number.isInteger(value) ? String(value) : value.toFixed(unit === "credits" ? 3 : 2);
   return `${n} ${unit === "credits" ? "AI credits" : "premium requests"}`;
 }
-function governTeamFanout(input) {
-  const { settings, agentTypes } = input;
-  const workerCount = agentTypes.length;
-  if (!settings.enabled) return { workerCount };
-  const copilot = agentTypes.filter((t) => t === "copilot").length;
-  const perWorker = settings.unit === "credits" ? input.maxCreditsPerWorker : 1;
-  const used = usedInUnit(input.totals, settings.unit);
-  const bounds = [];
-  if (settings.perTeamLimit !== void 0) bounds.push({ budget: settings.perTeamLimit, label: `budget.perTeamLimit ${settings.perTeamLimit}` });
-  if (settings.hardLimit !== void 0) {
-    bounds.push({ budget: Math.max(0, settings.hardLimit - used), label: `the ${formatAmount(Number(Math.max(0, settings.hardLimit - used).toFixed(3)), settings.unit)} left of budget.hardLimit ${settings.hardLimit}` });
-  }
-  if (copilot === 0 || bounds.length === 0) return { workerCount };
-  const tightest = bounds.reduce((a, b) => b.budget < a.budget ? b : a);
-  const projected = copilot * perWorker;
-  if (projected <= tightest.budget) return { workerCount };
-  const basis = settings.unit === "credits" ? `x ${perWorker} credit cap` : "x 1 premium request for the first prompt, estimated";
-  const amount = settings.unit === "credits" ? formatAmount(projected, settings.unit) : `at least ${formatAmount(projected, settings.unit)}`;
-  const over = `[omg budget] projected ${amount} (${copilot} copilot worker(s) ${basis}) exceeds ${tightest.label}`;
-  if (settings.mode !== "enforce" || input.override) {
-    return { workerCount, notice: `${over}; starting anyway (${input.override ? "--budget-override" : "warn mode"}).` };
-  }
-  const allowed = Math.floor(tightest.budget / perWorker);
-  const fix = "Pass --budget-override, raise the limit in .copilot/omg.jsonc, or run `omg budget reset`.";
-  if (allowed >= 1 && copilot === workerCount && input.clampable) {
-    return { workerCount: allowed, notice: `${over}; clamped to ${allowed} worker(s). ${fix}` };
-  }
-  return { workerCount, refusal: `${over}; team launch refused. ${fix}` };
-}
-var import_node_fs5, import_node_path6, LIMIT_KEYS, KNOWN_KEYS;
+var DEPRECATED_KEYS, KNOWN_KEYS;
 var init_governor = __esm({
   "src/budget/governor.ts"() {
     "use strict";
-    import_node_fs5 = require("node:fs");
-    import_node_path6 = require("node:path");
     init_project_config_path();
     init_paths2();
     init_jsonc();
     init_ledger();
-    LIMIT_KEYS = ["softLimit", "hardLimit", "perTeamLimit"];
-    KNOWN_KEYS = /* @__PURE__ */ new Set(["mode", "unit", ...LIMIT_KEYS]);
+    DEPRECATED_KEYS = ["mode", "hardLimit", "perTeamLimit"];
+    KNOWN_KEYS = /* @__PURE__ */ new Set(["softLimit", "unit", ...DEPRECATED_KEYS]);
   }
 });
 
@@ -36318,9 +36204,9 @@ var init_fs_utils = __esm({
 // src/lib/worktree-cleanup-safety.ts
 function realpathOrResolve(path15) {
   try {
-    return (0, import_node_fs6.realpathSync)(path15);
+    return (0, import_node_fs5.realpathSync)(path15);
   } catch {
-    return (0, import_node_path7.resolve)(path15);
+    return (0, import_node_path6.resolve)(path15);
   }
 }
 function assertSafeBoundary(path15, label) {
@@ -36332,7 +36218,7 @@ function assertSafeBoundary(path15, label) {
     throw new Error(`${label}_contains_nul`);
   }
   const resolved = realpathOrResolve(trimmed);
-  const root = (0, import_node_path7.parse)(resolved).root;
+  const root = (0, import_node_path6.parse)(resolved).root;
   const home = realpathOrResolve((0, import_node_os2.homedir)());
   if (resolved === root) {
     throw new Error(`${label}_is_filesystem_root:${resolved}`);
@@ -36343,8 +36229,8 @@ function assertSafeBoundary(path15, label) {
   return resolved;
 }
 function isInside(parent, child) {
-  const rel = (0, import_node_path7.relative)(parent, child);
-  return rel.length > 0 && !rel.startsWith("..") && !(0, import_node_path7.isAbsolute)(rel);
+  const rel = (0, import_node_path6.relative)(parent, child);
+  return rel.length > 0 && !rel.startsWith("..") && !(0, import_node_path6.isAbsolute)(rel);
 }
 function validateWorktreeRemovalTarget(options) {
   const { candidatePath, expectedRoots, mainRepoRoots = [], requireExisting = true } = options;
@@ -36361,13 +36247,13 @@ function validateWorktreeRemovalTarget(options) {
   if (rawCandidate === "." || rawCandidate === ".." || rawCandidate === "~") {
     throw new Error(`worktree_path_suspicious:${rawCandidate}`);
   }
-  const lexicalPath = (0, import_node_path7.resolve)(rawCandidate);
-  if (!(0, import_node_fs6.existsSync)(lexicalPath)) {
+  const lexicalPath = (0, import_node_path6.resolve)(rawCandidate);
+  if (!(0, import_node_fs5.existsSync)(lexicalPath)) {
     if (requireExisting) {
       throw new Error(`worktree_path_missing:${lexicalPath}`);
     }
   } else {
-    const stat = (0, import_node_fs6.lstatSync)(lexicalPath);
+    const stat = (0, import_node_fs5.lstatSync)(lexicalPath);
     if (stat.isSymbolicLink()) {
       throw new Error(`worktree_path_is_symlink:${lexicalPath}`);
     }
@@ -36387,21 +36273,21 @@ function validateWorktreeRemovalTarget(options) {
       throw new Error(`worktree_path_is_main_repo:${resolvedPath}`);
     }
   }
-  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(resolvedPath, ".git"))) {
-    const gitStat = (0, import_node_fs6.lstatSync)((0, import_node_path7.join)(resolvedPath, ".git"));
+  if ((0, import_node_fs5.existsSync)((0, import_node_path6.join)(resolvedPath, ".git"))) {
+    const gitStat = (0, import_node_fs5.lstatSync)((0, import_node_path6.join)(resolvedPath, ".git"));
     if (gitStat.isDirectory()) {
       throw new Error(`worktree_path_is_main_repo:${resolvedPath}`);
     }
   }
   return { resolvedPath, matchedRoot };
 }
-var import_node_fs6, import_node_os2, import_node_path7;
+var import_node_fs5, import_node_os2, import_node_path6;
 var init_worktree_cleanup_safety = __esm({
   "src/lib/worktree-cleanup-safety.ts"() {
     "use strict";
-    import_node_fs6 = require("node:fs");
+    import_node_fs5 = require("node:fs");
     import_node_os2 = require("node:os");
-    import_node_path7 = require("node:path");
+    import_node_path6 = require("node:path");
   }
 });
 
@@ -36571,7 +36457,7 @@ var init_tmux_session = __esm({
 
 // src/team/git-worktree.ts
 function getWorktreePath(repoRoot, teamName, workerName) {
-  return (0, import_node_path8.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
+  return (0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
 }
 function getBranchName(teamName, workerName) {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
@@ -36596,20 +36482,20 @@ function assertCleanLeaderWorktree(repoRoot) {
   }
 }
 function canonicalPathForComparison(path15) {
-  let existing = (0, import_node_path8.resolve)(path15);
+  let existing = (0, import_node_path7.resolve)(path15);
   const missingTail = [];
   let canonical2;
   for (; ; ) {
     try {
-      canonical2 = (0, import_node_path8.join)(import_node_fs7.realpathSync.native(existing), ...missingTail);
+      canonical2 = (0, import_node_path7.join)(import_node_fs6.realpathSync.native(existing), ...missingTail);
       break;
     } catch {
-      const parent = (0, import_node_path8.dirname)(existing);
+      const parent = (0, import_node_path7.dirname)(existing);
       if (parent === existing) {
-        canonical2 = (0, import_node_path8.resolve)(path15);
+        canonical2 = (0, import_node_path7.resolve)(path15);
         break;
       }
-      missingTail.unshift((0, import_node_path8.basename)(existing));
+      missingTail.unshift((0, import_node_path7.basename)(existing));
       existing = parent;
     }
   }
@@ -36685,10 +36571,10 @@ function statusEntryPath(line) {
   return normalizeStatusPath(renameIndex >= 0 ? payload.slice(renameIndex + renameSeparator.length) : payload);
 }
 function worktreeRuntimeStatePrefixes(wtPath) {
-  const root = (0, import_node_path8.resolve)(wtPath);
-  const omcRel = (0, import_node_path8.relative)(root, (0, import_node_path8.resolve)(getOmcRoot(wtPath))).split(import_node_path8.sep).join("/");
-  if (!omcRel || omcRel.startsWith("..") || (0, import_node_path8.isAbsolute)(omcRel) || omcRel.includes("/")) return [];
-  return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${(0, import_node_path8.relative)(root, resolveOmcPath(dir, wtPath)).split(import_node_path8.sep).join("/")}/`, rest]);
+  const root = (0, import_node_path7.resolve)(wtPath);
+  const omcRel = (0, import_node_path7.relative)(root, (0, import_node_path7.resolve)(getOmcRoot(wtPath))).split(import_node_path7.sep).join("/");
+  if (!omcRel || omcRel.startsWith("..") || (0, import_node_path7.isAbsolute)(omcRel) || omcRel.includes("/")) return [];
+  return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${(0, import_node_path7.relative)(root, resolveOmcPath(dir, wtPath)).split(import_node_path7.sep).join("/")}/`, rest]);
 }
 function isWorktreeDirtyExcept(wtPath, ignoredRootPaths = []) {
   try {
@@ -36712,7 +36598,7 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
   const deadline = Date.now() + retryMs;
   for (; ; ) {
     try {
-      (0, import_node_fs7.rmSync)(wtPath, { recursive: true, force: true });
+      (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
       return;
     } catch (err) {
       if (Date.now() >= deadline) {
@@ -36726,33 +36612,33 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
 }
 function unlinkUntrackedWorktreeLinks(wtPath) {
   const tracked = new Set(
-    (gitOrNull(["ls-files", "-z", "--stage"], wtPath) ?? "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => (0, import_node_path8.resolve)(wtPath, entry.slice(entry.indexOf("	") + 1)))
+    (gitOrNull(["ls-files", "-z", "--stage"], wtPath) ?? "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => (0, import_node_path7.resolve)(wtPath, entry.slice(entry.indexOf("	") + 1)))
   );
   const pending = [wtPath];
   while (pending.length > 0) {
     const dir = pending.pop();
     let entries;
     try {
-      entries = (0, import_node_fs7.readdirSync)(dir, { withFileTypes: true });
+      entries = (0, import_node_fs6.readdirSync)(dir, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
-      const path15 = (0, import_node_path8.join)(dir, entry.name);
+      const path15 = (0, import_node_path7.join)(dir, entry.name);
       if (dir === wtPath && entry.name === ".git") continue;
       let stat;
       try {
-        stat = (0, import_node_fs7.lstatSync)(path15);
+        stat = (0, import_node_fs6.lstatSync)(path15);
       } catch {
         continue;
       }
       if (stat.isSymbolicLink()) {
-        if (tracked.has((0, import_node_path8.resolve)(path15))) continue;
+        if (tracked.has((0, import_node_path7.resolve)(path15))) continue;
         try {
-          (0, import_node_fs7.unlinkSync)(path15);
+          (0, import_node_fs6.unlinkSync)(path15);
         } catch {
           try {
-            (0, import_node_fs7.rmdirSync)(path15);
+            (0, import_node_fs6.rmdirSync)(path15);
           } catch (err) {
             const error2 = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; cannot unlink ${path15}: ${err instanceof Error ? err.message : String(err)}`);
             error2.code = "worktree_link_unremovable";
@@ -36783,10 +36669,10 @@ function commitCheckFailedError(message) {
 function branchRefStored(repoRoot, branch) {
   const commonDir = gitOrNull(["rev-parse", "--git-common-dir"], repoRoot);
   if (!commonDir) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot locate the git directory)`);
-  const gitDir = (0, import_node_path8.resolve)(repoRoot, commonDir);
-  if ((0, import_node_fs7.existsSync)((0, import_node_path8.join)(gitDir, "refs", "heads", ...branch.split("/")))) return true;
+  const gitDir = (0, import_node_path7.resolve)(repoRoot, commonDir);
+  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(gitDir, "refs", "heads", ...branch.split("/")))) return true;
   try {
-    return (0, import_node_fs7.readFileSync)((0, import_node_path8.join)(gitDir, "packed-refs"), "utf-8").split("\n").some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
+    return (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(gitDir, "packed-refs"), "utf-8").split("\n").some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
   } catch (err) {
     if (err.code === "ENOENT") return false;
     throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read packed-refs)`);
@@ -36830,16 +36716,16 @@ function countUnmergedCommits(repoRoot, head, baseCommit) {
 }
 function hasInitializedSubmodules(wtPath) {
   const modulesDir = gitOrNull(["rev-parse", "--git-path", "modules"], wtPath);
-  if (modulesDir && (0, import_node_fs7.existsSync)((0, import_node_path8.resolve)(wtPath, modulesDir))) return true;
+  if (modulesDir && (0, import_node_fs6.existsSync)((0, import_node_path7.resolve)(wtPath, modulesDir))) return true;
   const staged = gitOrNull(["ls-files", "--stage"], wtPath) ?? "";
   return staged.split("\n").some((line) => {
     if (!line.startsWith("160000 ")) return false;
     const tab = line.indexOf("	");
-    return tab >= 0 && (0, import_node_fs7.existsSync)((0, import_node_path8.join)(wtPath, normalizeStatusPath(line.slice(tab + 1)), ".git"));
+    return tab >= 0 && (0, import_node_fs6.existsSync)((0, import_node_path7.join)(wtPath, normalizeStatusPath(line.slice(tab + 1)), ".git"));
   });
 }
 function unmergedCommitsError(info) {
-  const what = (0, import_node_fs7.existsSync)(info.path) ? `worker worktree at ${info.path}` : `worker branch of the removed worktree ${info.path}`;
+  const what = (0, import_node_fs6.existsSync)(info.path) ? `worker worktree at ${info.path}` : `worker branch of the removed worktree ${info.path}`;
   const error2 = new Error(
     `worktree_unmerged_commits: preserving ${what} with ${info.commits} commit(s) not merged into the leader HEAD${info.branch ? ` (branch ${info.branch})` : " (detached)"}`
   );
@@ -36847,22 +36733,22 @@ function unmergedCommitsError(info) {
   return error2;
 }
 function getMetadataPath(repoRoot, teamName) {
-  return (0, import_node_path8.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "worktrees.json");
+  return (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "worktrees.json");
 }
 function getLegacyMetadataPath(repoRoot, teamName) {
-  return (0, import_node_path8.join)(getOmcRoot(repoRoot), "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+  return (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
 }
 function getWorkerStateDir(repoRoot, teamName, workerName) {
-  return (0, import_node_path8.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers", sanitizeName(workerName));
+  return (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers", sanitizeName(workerName));
 }
 function getRootAgentsBackupPath(repoRoot, teamName, workerName) {
-  return (0, import_node_path8.join)(getWorkerStateDir(repoRoot, teamName, workerName), "worktree-root-agents.json");
+  return (0, import_node_path7.join)(getWorkerStateDir(repoRoot, teamName, workerName), "worktree-root-agents.json");
 }
 function readRootAgentsBackup(repoRoot, teamName, workerName) {
   const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName);
-  if (!(0, import_node_fs7.existsSync)(backupPath)) return null;
+  if (!(0, import_node_fs6.existsSync)(backupPath)) return null;
   try {
-    return JSON.parse((0, import_node_fs7.readFileSync)(backupPath, "utf-8"));
+    return JSON.parse((0, import_node_fs6.readFileSync)(backupPath, "utf-8"));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[omc] warning: worktree root AGENTS backup parse error: ${msg}
@@ -36880,27 +36766,27 @@ function restoreWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath)
   if (!backup) return { restored: false, reason: "no_backup" };
   const resolvedWorktreePath = worktreePath ?? backup.worktreePath;
   validateResolvedPath(resolvedWorktreePath, omcRoot);
-  if (!(0, import_node_fs7.existsSync)(resolvedWorktreePath)) {
+  if (!(0, import_node_fs6.existsSync)(resolvedWorktreePath)) {
     try {
-      (0, import_node_fs7.unlinkSync)(backupPath);
+      (0, import_node_fs6.unlinkSync)(backupPath);
     } catch {
     }
     return { restored: false, reason: "worktree_missing" };
   }
-  const agentsPath = (0, import_node_path8.join)(resolvedWorktreePath, "AGENTS.md");
+  const agentsPath = (0, import_node_path7.join)(resolvedWorktreePath, "AGENTS.md");
   validateResolvedPath(agentsPath, resolvedWorktreePath);
-  const currentContent = (0, import_node_fs7.existsSync)(agentsPath) ? (0, import_node_fs7.readFileSync)(agentsPath, "utf-8") : void 0;
+  const currentContent = (0, import_node_fs6.existsSync)(agentsPath) ? (0, import_node_fs6.readFileSync)(agentsPath, "utf-8") : void 0;
   const isPartialInstallOriginal = backup.hadOriginal && currentContent === (backup.originalContent ?? "");
   if (currentContent !== void 0 && currentContent !== backup.installedContent && !isPartialInstallOriginal) {
     return { restored: false, reason: "agents_dirty" };
   }
   if (backup.hadOriginal) {
-    (0, import_node_fs7.writeFileSync)(agentsPath, backup.originalContent ?? "", "utf-8");
-  } else if ((0, import_node_fs7.existsSync)(agentsPath)) {
-    (0, import_node_fs7.unlinkSync)(agentsPath);
+    (0, import_node_fs6.writeFileSync)(agentsPath, backup.originalContent ?? "", "utf-8");
+  } else if ((0, import_node_fs6.existsSync)(agentsPath)) {
+    (0, import_node_fs6.unlinkSync)(agentsPath);
   }
   try {
-    (0, import_node_fs7.unlinkSync)(backupPath);
+    (0, import_node_fs6.unlinkSync)(backupPath);
   } catch {
   }
   return { restored: true };
@@ -36910,9 +36796,9 @@ function readMetadataResult(repoRoot, teamName) {
   const byWorker = /* @__PURE__ */ new Map();
   const issues = [];
   for (const metaPath of paths) {
-    if (!(0, import_node_fs7.existsSync)(metaPath)) continue;
+    if (!(0, import_node_fs6.existsSync)(metaPath)) continue;
     try {
-      const entries = JSON.parse((0, import_node_fs7.readFileSync)(metaPath, "utf-8"));
+      const entries = JSON.parse((0, import_node_fs6.readFileSync)(metaPath, "utf-8"));
       for (const entry of entries) byWorker.set(entry.workerName, entry);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -36928,8 +36814,8 @@ function readMetadata(repoRoot, teamName) {
 }
 function writeMetadata(repoRoot, teamName, entries) {
   const metaPath = getMetadataPath(repoRoot, teamName);
-  validateResolvedPath(metaPath, (0, import_node_path8.join)(getOmcRoot(repoRoot), "state", "team"));
-  ensureDirWithMode((0, import_node_path8.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName)));
+  validateResolvedPath(metaPath, (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team"));
+  ensureDirWithMode((0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName)));
   atomicWriteJson2(metaPath, entries);
 }
 function recordMetadata(repoRoot, teamName, info) {
@@ -36977,12 +36863,12 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   }
   const wtPath = getWorktreePath(repoRoot, teamName, workerName);
   const branch = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
-  validateResolvedPath(wtPath, (0, import_node_path8.join)(getOmcRoot(repoRoot), "team"));
+  validateResolvedPath(wtPath, (0, import_node_path7.join)(getOmcRoot(repoRoot), "team"));
   try {
     (0, import_node_child_process2.execFileSync)("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
   } catch {
   }
-  if ((0, import_node_fs7.existsSync)(wtPath)) {
+  if ((0, import_node_fs6.existsSync)(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
     const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     const info2 = {
@@ -37001,7 +36887,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
     recordMetadata(repoRoot, teamName, info2);
     return info2;
   }
-  const wtDir = (0, import_node_path8.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
+  const wtDir = (0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
   (0, import_node_child_process2.execFileSync)("git", args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
@@ -37025,17 +36911,17 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
 function checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, worktreePath) {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
   const backup = readRootAgentsBackup(repoRoot, teamName, workerName);
-  if (!(0, import_node_fs7.existsSync)(wtPath)) return;
+  if (!(0, import_node_fs6.existsSync)(wtPath)) return;
   validateWorktreeRemovalTarget({
     candidatePath: wtPath,
-    expectedRoots: [(0, import_node_path8.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+    expectedRoots: [(0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
     mainRepoRoots: [repoRoot]
   });
   let ignoreRootAgents = false;
   if (backup) {
-    const agentsPath = (0, import_node_path8.join)(wtPath, "AGENTS.md");
+    const agentsPath = (0, import_node_path7.join)(wtPath, "AGENTS.md");
     validateResolvedPath(agentsPath, wtPath);
-    const currentContent = (0, import_node_fs7.existsSync)(agentsPath) ? (0, import_node_fs7.readFileSync)(agentsPath, "utf-8") : void 0;
+    const currentContent = (0, import_node_fs6.existsSync)(agentsPath) ? (0, import_node_fs6.readFileSync)(agentsPath, "utf-8") : void 0;
     const isPartialInstallOriginal = backup.hadOriginal && currentContent === (backup.originalContent ?? "");
     if (currentContent !== void 0 && currentContent !== backup.installedContent && !isPartialInstallOriginal) {
       const error2 = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${agentsPath}`);
@@ -37056,7 +36942,7 @@ function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, worktre
   checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath);
   const agentsRestore = restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
   if (agentsRestore.reason === "agents_dirty") {
-    const error2 = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${(0, import_node_path8.join)(wtPath, "AGENTS.md")}`);
+    const error2 = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${(0, import_node_path7.join)(wtPath, "AGENTS.md")}`);
     error2.code = "agents_dirty";
     throw error2;
   }
@@ -37075,7 +36961,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot list git worktrees)`);
     }
     const wasRegisteredWorktree = registered !== null;
-    if (registered && (0, import_node_fs7.existsSync)(wtPath)) {
+    if (registered && (0, import_node_fs6.existsSync)(wtPath)) {
       const toplevel = gitOrNull(["rev-parse", "--show-toplevel"], wtPath);
       if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
         throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
@@ -37094,15 +36980,15 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       if (commits === null) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }
-    const runtimeOnly = (0, import_node_fs7.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
-    const submodules = (0, import_node_fs7.existsSync)(wtPath) && hasInitializedSubmodules(wtPath);
+    const runtimeOnly = (0, import_node_fs6.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
+    const submodules = (0, import_node_fs6.existsSync)(wtPath) && hasInitializedSubmodules(wtPath);
     const force = runtimeOnly && !submodules;
     if (wasRegisteredWorktree && submodules) {
       const error2 = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
       error2.code = "worktree_remove_failed";
       throw error2;
     }
-    if ((0, import_node_fs7.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
+    if ((0, import_node_fs6.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
     try {
       (0, import_node_child_process2.execFileSync)("git", ["worktree", "remove", ...force ? ["--force"] : [], wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
     } catch (err) {
@@ -37118,24 +37004,24 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
-    if ((0, import_node_fs7.existsSync)(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
+    if ((0, import_node_fs6.existsSync)(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
       validateWorktreeRemovalTarget({
         candidatePath: wtPath,
-        expectedRoots: [(0, import_node_path8.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+        expectedRoots: [(0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
         mainRepoRoots: [repoRoot]
       });
       if (force) removeRuntimeLeftover(wtPath);
-      else (0, import_node_fs7.rmSync)(wtPath, { recursive: true, force: true });
+      else (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
   });
 }
-var import_node_fs7, import_node_path8, import_node_child_process2, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var import_node_fs6, import_node_path7, import_node_child_process2, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
-    import_node_fs7 = require("node:fs");
-    import_node_path8 = require("node:path");
+    import_node_fs6 = require("node:fs");
+    import_node_path7 = require("node:path");
     import_node_child_process2 = require("node:child_process");
     init_fs_utils();
     init_worktree_cleanup_safety();
@@ -37155,9 +37041,9 @@ function normalizeShellCommand(command) {
   return command.replace(/(["'])([^"'\s]+)\1/g, "$2");
 }
 function canon2(p, platform) {
-  let out = (0, import_node_path9.resolve)(p);
+  let out = (0, import_node_path8.resolve)(p);
   try {
-    out = import_node_fs8.realpathSync.native(out);
+    out = import_node_fs7.realpathSync.native(out);
   } catch {
   }
   out = out.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -37173,7 +37059,7 @@ function requestPath(req, cwd) {
   for (const key of ["resolvedPath", "path", "fileName"]) {
     const value = req[key];
     if (typeof value === "string" && value.trim()) {
-      return (0, import_node_path9.isAbsolute)(value) ? value : (0, import_node_path9.resolve)(cwd, value);
+      return (0, import_node_path8.isAbsolute)(value) ? value : (0, import_node_path8.resolve)(cwd, value);
     }
   }
   return null;
@@ -37258,12 +37144,12 @@ function buildSdkExcludedTools(mcpServer, denyTools = []) {
   }
   return [...out];
 }
-var import_node_fs8, import_node_path9, SDK_SHELL_DENY_PATTERNS, KIND_TOOLS, SDK_AGENT_FANOUT_TOOLS;
+var import_node_fs7, import_node_path8, SDK_SHELL_DENY_PATTERNS, KIND_TOOLS, SDK_AGENT_FANOUT_TOOLS;
 var init_sdk_policy = __esm({
   "src/team/sdk-policy.ts"() {
     "use strict";
-    import_node_fs8 = require("node:fs");
-    import_node_path9 = require("node:path");
+    import_node_fs7 = require("node:fs");
+    import_node_path8 = require("node:path");
     init_names2();
     SDK_SHELL_DENY_PATTERNS = [
       // `\s+(?!\s|api\b)`: doubled whitespace must not let `team  api` backtrack into a deny.
@@ -37349,8 +37235,8 @@ function summarizeChanges(cwd, base, extraProtected = []) {
   };
 }
 function relativeInside(path15, root) {
-  const rel = (0, import_node_path10.relative)((0, import_node_path10.resolve)(root), (0, import_node_path10.resolve)(path15));
-  return rel && !rel.startsWith("..") && !(0, import_node_path10.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
+  const rel = (0, import_node_path9.relative)((0, import_node_path9.resolve)(root), (0, import_node_path9.resolve)(path15));
+  return rel && !rel.startsWith("..") && !(0, import_node_path9.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
 }
 function defaultCopilotRunDeps(env = process.env) {
   return {
@@ -37371,14 +37257,14 @@ function defaultCopilotRunDeps(env = process.env) {
     killTree: (pid) => killProcessTree(pid, import_node_child_process3.spawnSync)
   };
 }
-var import_node_child_process3, import_node_crypto2, import_node_fs9, import_node_path10, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS2, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS, DENIED_LOG_MAX, JOB_ID, CopilotRunError, sleep7, errText2, isTerminal2, lines, CopilotRunManager;
+var import_node_child_process3, import_node_crypto2, import_node_fs8, import_node_path9, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS2, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS, DENIED_LOG_MAX, JOB_ID, CopilotRunError, sleep7, errText2, isTerminal2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
     import_node_child_process3 = require("node:child_process");
     import_node_crypto2 = require("node:crypto");
-    import_node_fs9 = require("node:fs");
-    import_node_path10 = require("node:path");
+    import_node_fs8 = require("node:fs");
+    import_node_path9 = require("node:path");
     init_governor();
     init_ledger();
     init_worktree_paths();
@@ -37439,10 +37325,10 @@ var init_job = __esm({
         const maxCredits = input.maxCredits ?? DEFAULT_MAX_CREDITS2;
         if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new CopilotRunError("copilot_run_start: maxCredits must be a positive number.");
         const isolation = input.isolation ?? "worktree";
-        const cwd = (0, import_node_path10.resolve)(input.cwd ?? process.cwd());
+        const cwd = (0, import_node_path9.resolve)(input.cwd ?? process.cwd());
         let isDir = false;
         try {
-          isDir = (0, import_node_fs9.statSync)(cwd).isDirectory();
+          isDir = (0, import_node_fs8.statSync)(cwd).isDirectory();
         } catch {
         }
         if (!isDir) throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not an existing directory.`);
@@ -37454,10 +37340,8 @@ var init_job = __esm({
         if (running >= MAX_RUNNING_JOBS) {
           throw new CopilotRunError(`copilot_run_start: ${running} job(s) already running (limit ${MAX_RUNNING_JOBS}); wait for or cancel one first.`);
         }
-        const ledgerCwd = repoRoot ? (0, import_node_path10.resolve)(repoRoot) : cwd;
+        const ledgerCwd = repoRoot ? (0, import_node_path9.resolve)(repoRoot) : cwd;
         const notes = [];
-        const budgetNotice = this.checkBudget(ledgerCwd, maxCredits);
-        if (budgetNotice) notes.push(budgetNotice);
         const id = `cr-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
         let workCwd = cwd;
         let worktree = null;
@@ -37470,18 +37354,18 @@ var init_job = __esm({
             const path15 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch = getBranchName(WORKTREE_TEAM, id);
             let left = "";
-            if ((0, import_node_fs9.existsSync)(path15)) {
+            if ((0, import_node_fs8.existsSync)(path15)) {
               try {
                 removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
               } catch {
               }
-              if ((0, import_node_fs9.existsSync)(path15)) left = ` The partly created worktree ${path15} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
+              if ((0, import_node_fs8.existsSync)(path15)) left = ` The partly created worktree ${path15} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
             }
             throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText2(err)}.${left}`);
           }
           if (!info) throw new CopilotRunError("copilot_run_start: worktree creation unexpectedly disabled.");
           const sub = relativeInside(cwd, ledgerCwd);
-          workCwd = sub && (0, import_node_fs9.existsSync)((0, import_node_path10.join)(info.path, sub)) ? (0, import_node_path10.join)(info.path, sub) : info.path;
+          workCwd = sub && (0, import_node_fs8.existsSync)((0, import_node_path9.join)(info.path, sub)) ? (0, import_node_path9.join)(info.path, sub) : info.path;
           worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
           baseCommit = info.baseCommit ?? baseCommit;
           if (lines(git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0) {
@@ -37495,7 +37379,7 @@ var init_job = __esm({
           extraProtected = configuredProtectedPaths(ledgerCwd);
         } catch {
         }
-        const jobDir = (0, import_node_path10.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
+        const jobDir = (0, import_node_path9.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
         let requestStop = () => {
         };
         const stopped = new Promise((r) => {
@@ -37516,8 +37400,8 @@ var init_job = __esm({
           maxCredits,
           ledgerCwd,
           jobDir,
-          home: (0, import_node_path10.join)(jobDir, "home"),
-          eventsPath: (0, import_node_path10.join)(jobDir, "events.jsonl"),
+          home: (0, import_node_path9.join)(jobDir, "home"),
+          eventsPath: (0, import_node_path9.join)(jobDir, "events.jsonl"),
           baseCommit,
           worktree,
           extraProtected,
@@ -37599,7 +37483,7 @@ var init_job = __esm({
           }
           job.cleanedUp = true;
           try {
-            (0, import_node_fs9.rmSync)(job.jobDir, { recursive: true, force: true });
+            (0, import_node_fs8.rmSync)(job.jobDir, { recursive: true, force: true });
           } catch {
           }
         }
@@ -37610,30 +37494,6 @@ var init_job = __esm({
         const job = this.jobs.get(jobId);
         if (!job) throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
         return job;
-      }
-      /** The governor's one-copilot-worker check; a refusal throws, a governor failure starts anyway (fail-open). */
-      checkBudget(ledgerCwd, maxCredits) {
-        let decision;
-        try {
-          const { settings } = loadBudgetSettings(ledgerCwd, this.deps.env);
-          decision = governTeamFanout({
-            settings,
-            totals: ledgerTotals(readLedger(ledgerPath2(ledgerCwd))),
-            agentTypes: ["copilot"],
-            maxCreditsPerWorker: maxCredits,
-            override: false,
-            clampable: false
-          });
-        } catch {
-          return void 0;
-        }
-        if (decision.refusal) {
-          const over = decision.refusal.split("; team launch refused")[0];
-          throw new CopilotRunError(
-            `copilot_run_start refused by the budget governor: ${over}; job refused. Raise the limit in .copilot/omg.jsonc, run \`omg budget reset\`, or (budget.unit "credits") pass a lower maxCredits; copilot_run_start has no budget override.`
-          );
-        }
-        return decision.notice;
       }
       /** Ledger record `copilot-run:<jobId>`; fail-open. False when the lock was busy (retry later). */
       recordBudget(job, lockTimeoutMs) {
@@ -37656,7 +37516,7 @@ var init_job = __esm({
       /** Drive the session to its end and tear it down; returns the final status. */
       async run(job) {
         const { deps } = this;
-        (0, import_node_fs9.mkdirSync)(job.home, { recursive: true });
+        (0, import_node_fs8.mkdirSync)(job.home, { recursive: true });
         const loaded2 = await deps.loadSdk().catch(() => null);
         if (!loaded2) {
           job.error = "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
@@ -37670,7 +37530,7 @@ var init_job = __esm({
         }
         const pluginRoot = deps.pluginRoot();
         const ident = loginIdentity(deps.userConfigDir());
-        (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
+        (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
         const env = buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 });
         Object.assign(env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1" });
@@ -37688,7 +37548,7 @@ var init_job = __esm({
           let decision = decideSdkPermission(req, policy);
           if (decision.approve && req.kind === "write") {
             const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
-            const rel = raw ? relativeInside((0, import_node_path10.isAbsolute)(raw) ? raw : (0, import_node_path10.resolve)(job.workCwd, raw), protectedRoot) : null;
+            const rel = raw ? relativeInside((0, import_node_path9.isAbsolute)(raw) ? raw : (0, import_node_path9.resolve)(job.workCwd, raw), protectedRoot) : null;
             if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
           }
           if (decision.approve) return { kind: "approve-once" };
@@ -37709,7 +37569,7 @@ var init_job = __esm({
         });
         const onEvent = (event) => {
           try {
-            (0, import_node_fs9.appendFileSync)(job.eventsPath, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event })}
+            (0, import_node_fs8.appendFileSync)(job.eventsPath, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event })}
 `);
           } catch {
           }
@@ -37733,7 +37593,7 @@ var init_job = __esm({
                 job.usage.premiumRequests = data.totalPremiumRequests;
                 job.usage.measured = true;
               }
-              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / 1e9;
+              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
               if (typeof data.currentModel === "string") job.model = data.currentModel;
               onShutdown();
               break;
@@ -37825,7 +37685,7 @@ var init_job = __esm({
           for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep7(50);
           if (outcome === "completed") {
             try {
-              (0, import_node_fs9.rmSync)(job.home, { recursive: true, force: true });
+              (0, import_node_fs8.rmSync)(job.home, { recursive: true, force: true });
             } catch {
             }
           }
@@ -37917,7 +37777,7 @@ var init_copilot_run_tools = __esm({
     };
     copilotRunStartTool = {
       name: "copilot_run_start",
-      description: `Delegate a task to GitHub Copilot: start a headless Copilot SDK session on the prompt as a background job and return its jobId at once. By default Copilot works in a new git worktree and branch (isolation "worktree"), never in your working tree. Live and billed (premium requests); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env and passes the budget governor first. Follow with copilot_run_wait or copilot_run_status.`,
+      description: `Delegate a task to GitHub Copilot: start a headless Copilot SDK session on the prompt as a background job and return its jobId at once. By default Copilot works in a new git worktree and branch (isolation "worktree"), never in your working tree. Live and billed (AI Credits); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env. Follow with copilot_run_wait or copilot_run_status.`,
       category: TOOL_CATEGORIES.COPILOT_RUN,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       schema: startSchema,
@@ -37925,7 +37785,7 @@ var init_copilot_run_tools = __esm({
     };
     copilotRunStatusTool = {
       name: "copilot_run_status",
-      description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, premium requests and AI credits spent, and for isolation "worktree" the worktree path, branch and git diff --stat once it has ended.',
+      description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, AI credits (and legacy premium requests) spent, and for isolation "worktree" the worktree path, branch and git diff --stat once it has ended.',
       category: TOOL_CATEGORIES.COPILOT_RUN,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       schema: { jobId: jobIdSchema },

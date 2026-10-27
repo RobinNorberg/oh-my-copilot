@@ -18767,6 +18767,21 @@ var init_copilot_session_eval = __esm({
   }
 });
 
+// src/budget/ledger.ts
+var MAX_SCAN_BYTES, TAIL_BYTES, EPOCH;
+var init_ledger = __esm({
+  "src/budget/ledger.ts"() {
+    "use strict";
+    init_atomic_write();
+    init_file_lock();
+    init_worktree_paths();
+    init_config_dir();
+    MAX_SCAN_BYTES = 8 * 1024 * 1024;
+    TAIL_BYTES = 64 * 1024;
+    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
   let out = (0, import_path37.resolve)(p);
@@ -18814,6 +18829,7 @@ var init_copilot_sdk_scenarios = __esm({
     "use strict";
     import_fs33 = require("fs");
     import_path37 = require("path");
+    init_ledger();
     init_copilot_session_eval();
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
@@ -23492,6 +23508,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         attempt_id: sdkSession.attempt_id,
         updated_at: sdkSession.updated_at,
         credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
+        credits_final: sdkSession.usage.shutdown_credits != null,
         premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
         premium_requests_final: sdkSession.usage.shutdown_premium_requests != null
       } } : {}
