@@ -12,7 +12,7 @@
 import { createHash } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { atomicWriteJsonSync, ensureDirSync } from '../lib/atomic-write.js';
+import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 const TRANSITIONS = {
@@ -145,9 +145,13 @@ export function readShipState(repoRoot, pr) {
     const path = shipStatePath(repoRoot, pr);
     if (!existsSync(path))
         return null;
+    return parseShipState(path, pr, readFileSync(path, 'utf8'));
+}
+/** Parse and shape-check the bytes of a ship state file (read once by the caller). */
+export function parseShipState(path, pr, raw) {
     let parsed;
     try {
-        parsed = JSON.parse(readFileSync(path, 'utf8'));
+        parsed = JSON.parse(raw);
     }
     catch (error) {
         throw new ShipStateError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
@@ -173,12 +177,16 @@ export function updateShipState(repoRoot, pr, mutate, options = {}) {
     const path = shipStatePath(repoRoot, pr);
     ensureDirSync(join(path, '..'));
     return withFileLockSync(lockPathFor(path), () => {
-        const current = readShipState(repoRoot, pr);
+        const bytes = existsSync(path) ? readFileSync(path) : null;
+        options.verify?.(bytes);
+        const current = bytes === null ? null : parseShipState(path, pr, bytes.toString('utf8'));
         if (current && !options.allowUnverified && !verifyShipIntegrity(current)) {
             throw new ShipStateError(`${path} fails its integrity check (edited outside omg ship); an owner can replace it with OMG_SHIP_HUMAN=1 omg ship init ${pr} --force`);
         }
         const next = sealShipState(mutate(current));
-        atomicWriteJsonSync(path, next);
+        const content = JSON.stringify(next, null, 2);
+        atomicWriteFileSync(path, content);
+        options.onWrite?.(path, content);
         return next;
     }, { timeoutMs: 5_000 });
 }

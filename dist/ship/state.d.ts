@@ -86,9 +86,19 @@ export declare function sealShipState(state: ShipState): ShipState;
 export declare function verifyShipIntegrity(state: ShipState): boolean;
 /** Read and shape-check the state file; throws ShipStateError on malformed content. */
 export declare function readShipState(repoRoot: string, pr: number): ShipState | null;
+/** Parse and shape-check the bytes of a ship state file (read once by the caller). */
+export declare function parseShipState(path: string, pr: number, raw: string): ShipState;
 export interface UpdateShipStateOptions {
     /** Hand the mutator a state whose integrity check fails (owner-only `init --force`). */
     allowUnverified?: boolean;
+    /** Called with the exact bytes written (omg factory run records them in its engine ledger). */
+    onWrite?: (path: string, content: string) => void;
+    /**
+     * Called under the lock with the exact bytes read (null: no file); throw to
+     * refuse. `mutate` gets the state parsed from these same bytes, never from a
+     * second read (omg factory run compares them with its engine ledger).
+     */
+    verify?: (bytes: Buffer | null) => void;
 }
 /**
  * Read-modify-write under the state file's lock. `mutate` receives the
