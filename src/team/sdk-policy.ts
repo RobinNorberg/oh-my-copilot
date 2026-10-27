@@ -58,7 +58,7 @@ const GIT_GLOBAL_OPTIONS = String.raw`(?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tre
  */
 export function gitSubcommandDeny(tail: string, reason: string): Array<{ re: RegExp; reason: string }> {
   return [
-    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?${GIT_GLOBAL_OPTIONS}\s+${tail}`, 'i'), reason },
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail}`, 'i'), reason },
     { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail}`, 'i'), reason },
   ];
 }
@@ -84,7 +84,7 @@ export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string
   { re: /\bcli\.cjs["']?\s+team\s+(?!\s|api\b)/i, reason: 'team control outside `team api`' },
   { re: /\b(?:omg|omc|oh-my-copilot)(?:\.cmd|\.ps1)?\s+smoke\b/i, reason: '`omg smoke` from a worker' },
   { re: /(?:^|[\s;&|("'])(?:tmux|psmux)(?:\.exe)?\b/i, reason: 'multiplexer control' },
-  ...gitSubcommandDeny(String.raw`push\b`, '`git push` from a worker'),
+  ...gitSubcommandDeny(String.raw`(?:push|send-pack|http-push|subtree\s+push)\b`, '`git push` from a worker'),
   // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
   ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
   ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),

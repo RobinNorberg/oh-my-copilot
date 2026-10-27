@@ -148,13 +148,18 @@ describe('copilot_run review profile', () => {
       'git c""ommit -am x',
       `git "c"''ommit -am x`,
       "git re''set --hard HEAD~1",
+      // A quoted full path to git.
+      '& "C:\\Program Files\\Git\\cmd\\git.exe" commit -am x',
+      '"C:/Program Files/Git/cmd/git.exe" push origin HEAD',
       // A long global option with a separate value.
       'git --git-dir .git commit -am x',
       'git --work-tree . reset --hard',
       ...['switch main', 'restore README.md', 'cherry-pick abc', 'revert HEAD', 'apply x.patch', 'am x.patch', 'branch -D x',
         'tag v1', 'update-ref refs/heads/x HEAD', 'symbolic-ref HEAD refs/heads/x', 'worktree add ../x', 'notes add -m x',
         'replace HEAD abc', 'push origin HEAD', 'fetch origin main:main', 'fetch origin +refs/heads/*:refs/remotes/o/*',
-        'fetch origin :refs/heads/x'].map((sub) => `git ${sub}`),
+        'fetch origin :refs/heads/x', 'pull', 'bisect start', 'remote add x y', 'clean -fd', 'sparse-checkout set x', 'submodule update',
+        'read-tree HEAD', 'update-index --assume-unchanged x', 'checkout-index -a', 'filter-branch --all', 'gc --prune=now',
+        'reflog expire --all'].map((sub) => `git ${sub}`),
     ]) {
       expect(denied(cmd), cmd).toMatch(/^review profile|alias|environment/);
     }

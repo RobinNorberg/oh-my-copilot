@@ -138,7 +138,7 @@ export interface CopilotRunStartOptions {
  */
 export const REVIEW_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
   ...gitSubcommandDeny(
-    String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config)(?![\w-])`,
+    String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config|pull|bisect|remote|clean|sparse-checkout|submodule|read-tree|update-index|checkout-index|filter-branch|gc\s+[^;&|\n]*--prune|reflog\s+expire)(?![\w-])`,
     'review profile: git commands that change the tree, its refs or its config',
   ),
   ...gitSubcommandDeny(String.raw`(?:-c(?:\s|$)|--config-env\b)`, 'review profile: git config overrides (-c, --config-env)'),
