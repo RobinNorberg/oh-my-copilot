@@ -20,7 +20,7 @@ All notable changes to oh-my-copilot will be documented in this file.
   `omg budget status` always exits 0. `budget.mode`, `budget.hardLimit`,
   `budget.perTeamLimit` and `"unit": "premiumRequests"` parse as no-ops with
   one deprecation warning; `--budget-override` is an accepted no-op that
-  warns once. `budget.softLimit` stays as a warn-only threshold. Cap spend
+  warns once. `budget.softLimit` stays as an advisory threshold. Cap spend
   with Copilot's per-session `maxAiCredits` and admin budgets instead.
 
 # oh-my-copilot v5.13.1
