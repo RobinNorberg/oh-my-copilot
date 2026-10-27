@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fb19f0a30cbcdfd7a7942fabb474ecf814e80979",
-    "sourceSha256": "e197680a4d8cd3c2c665abe9ed417e3f7b16d8f3f0d06715e394ee72813a0329",
+    "head": "80001d421fc79792b3019117861e1b4f9ec3518a",
+    "sourceSha256": "75e4e3cfa6a9607b672c2426c5b84a60aab4f7f6bb921f2a5f02be65a712578c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fb19f0a30cbcdfd7a7942fabb474ecf814e80979",
-  "sourceSha256": "e197680a4d8cd3c2c665abe9ed417e3f7b16d8f3f0d06715e394ee72813a0329",
+  "head": "80001d421fc79792b3019117861e1b4f9ec3518a",
+  "sourceSha256": "75e4e3cfa6a9607b672c2426c5b84a60aab4f7f6bb921f2a5f02be65a712578c",
   "counts": {
     "public": {
       "skills": 63,
@@ -69816,6 +69816,16 @@
       },
       {
         "from": "src/factory/heal/__tests__/cli.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/cli.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -69896,6 +69906,11 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/classify.ts",
         "kind": "imports"
       },
@@ -69948,6 +69963,11 @@
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/heal/cli.ts",
@@ -103687,11 +103707,11 @@
     ],
     "stats": {
       "nodeCount": 8937,
-      "edgeCount": 10188,
-      "importEdgeCount": 8502,
+      "edgeCount": 10192,
+      "importEdgeCount": 8506,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "b6153e05b6fb29d73af0aa73d749977f0284837149d30c4fb4ebd6722813cd2b",
-  "manifestSha256": "a12cc96c8c6493618fdcb1aca789b585b7f6b0f1c92b505e7afaf12b4e630af4"
+  "manifestSha256": "7c0134372cb17ebe791900fc57e3a2577f9d81fd682fb875df1ee703afbff1bf"
 }
