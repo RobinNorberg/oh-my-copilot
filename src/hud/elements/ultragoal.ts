@@ -34,7 +34,11 @@ function readPlan(path: string): { plan: UltragoalPlan; mtimeMs: number } | null
     const mtimeMs = statSync(path).mtimeMs;
     const plan = JSON.parse(readFileSync(path, 'utf-8')) as UltragoalPlan;
     if (plan?.version !== 1 || !Array.isArray(plan.goals)) return null;
-    return { plan, mtimeMs };
+    // Drop corrupt entries (null, non-objects, no string status) so the summary never throws.
+    const goals = plan.goals.filter((goal) => (
+      typeof goal === 'object' && goal !== null && typeof goal.status === 'string'
+    ));
+    return { plan: { ...plan, goals }, mtimeMs };
   } catch {
     return null;
   }

@@ -264,6 +264,18 @@ export function limitOutputLines(lines: string[], maxLines?: number): string[] {
 }
 
 /**
+ * Run one element's renderer. A throwing element drops only itself, so the
+ * rest of the statusline still renders instead of the whole-line HUD error.
+ */
+function isolate<T>(renderElement: () => T): T | null {
+  try {
+    return renderElement();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Render the complete statusline (single or multi-line)
  */
 export async function render(
@@ -286,16 +298,16 @@ export async function render(
   // -- line1-group elements (default: git info line) --
 
   if (enabledElements.hostname) {
-    const hostnameElement = renderHostname();
+    const hostnameElement = isolate(() => renderHostname());
     if (hostnameElement) rendered.set("hostname", hostnameElement);
   }
 
   if (enabledElements.cwd) {
-    const cwdElement = renderCwd(
+    const cwdElement = isolate(() => renderCwd(
       context.cwd,
       enabledElements.cwdFormat || "relative",
       enabledElements.useHyperlinks ?? false,
-    );
+    ));
     if (cwdElement) rendered.set("cwd", cwdElement);
   }
 
@@ -303,24 +315,24 @@ export async function render(
   // workspace summary. When cwd is itself a git repo, renderMultiRepo
   // returns null and the normal git elements take over.
   const multiRepoElement = enabledElements.gitRepo
-    ? renderMultiRepo(context.cwd)
+    ? isolate(() => renderMultiRepo(context.cwd))
     : null;
 
   if (multiRepoElement) {
     rendered.set("gitRepo", multiRepoElement);
   } else {
     if (enabledElements.gitRepo) {
-      const gitRepoElement = renderGitRepo(context.cwd);
+      const gitRepoElement = isolate(() => renderGitRepo(context.cwd));
       if (gitRepoElement) rendered.set("gitRepo", gitRepoElement);
     }
 
     if (enabledElements.gitBranch) {
-      const gitBranchElement = renderGitBranch(context.cwd);
+      const gitBranchElement = isolate(() => renderGitBranch(context.cwd));
       if (gitBranchElement) rendered.set("gitBranch", gitBranchElement);
     }
 
     if (enabledElements.gitStatus) {
-      const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
+      const gitStatusElement = isolate(() => renderGitStatus(context.cwd, hudLabels));
       if (gitStatusElement) rendered.set("gitStatus", gitStatusElement);
     }
   }
@@ -330,17 +342,17 @@ export async function render(
     : context.modelName;
   if (enabledElements.model && modelSource) {
     const modelElement = isCopilotHost
-      ? renderCopilotModel(modelSource, hudLabels)
-      : renderModel(
+      ? isolate(() => renderCopilotModel(modelSource, hudLabels))
+      : isolate(() => renderModel(
           modelSource,
           enabledElements.modelFormat,
           hudLabels,
-        );
+        ));
     if (modelElement) rendered.set("model", modelElement);
   }
 
   if (enabledElements.effort) {
-    const effortElement = renderEffort(context.effortLevel);
+    const effortElement = isolate(() => renderEffort(context.effortLevel));
     if (effortElement) rendered.set("effort", effortElement);
   }
 
@@ -363,7 +375,7 @@ export async function render(
   }
 
   if (enabledElements.apiKeySource && context.apiKeySource) {
-    const keySource = renderApiKeySource(context.apiKeySource);
+    const keySource = isolate(() => renderApiKeySource(context.apiKeySource));
     if (keySource) rendered.set("apiKeySource", keySource);
   }
 
@@ -408,62 +420,64 @@ export async function render(
   const enterpriseCostReplacesRateLimits =
     isEnterprise &&
     context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== undefined;
-  if (enabledElements.rateLimits && context.rateLimitsResult && !enterpriseCostReplacesRateLimits) {
-    if (context.rateLimitsResult.rateLimits) {
-      const stale = context.rateLimitsResult.stale;
+  const rateLimitsResult = context.rateLimitsResult;
+  if (enabledElements.rateLimits && rateLimitsResult && !enterpriseCostReplacesRateLimits) {
+    if (rateLimitsResult.rateLimits) {
+      const stale = rateLimitsResult.stale;
       const limits = enabledElements.useBars
-        ? renderRateLimitsWithBar(
-            context.rateLimitsResult.rateLimits,
+        ? isolate(() => renderRateLimitsWithBar(
+            rateLimitsResult.rateLimits,
             undefined,
             stale,
-          )
-        : renderRateLimits(context.rateLimitsResult.rateLimits, stale);
+          ))
+        : isolate(() => renderRateLimits(rateLimitsResult.rateLimits, stale));
       if (limits) rendered.set("rateLimits", limits);
     } else {
-      const errorIndicator = renderRateLimitsError(context.rateLimitsResult);
+      const errorIndicator = isolate(() => renderRateLimitsError(rateLimitsResult));
       if (errorIndicator) {
         rendered.set("rateLimits", errorIndicator);
       } else {
-        const hint = renderApiKeyUsageHint(
-          context.rateLimitsResult,
+        const hint = isolate(() => renderApiKeyUsageHint(
+          rateLimitsResult,
           context.apiKeyMode ?? false,
           config.rateLimitsProvider?.type === "custom",
-        );
+        ));
         if (hint) rendered.set("rateLimits", hint);
       }
     }
   }
 
-  if (context.customBuckets) {
+  const customBuckets = context.customBuckets;
+  if (customBuckets) {
     const thresholdPercent =
       config.rateLimitsProvider?.resetsAtDisplayThresholdPercent;
-    const custom = renderCustomBuckets(context.customBuckets, thresholdPercent);
+    const custom = isolate(() => renderCustomBuckets(customBuckets, thresholdPercent));
     if (custom) rendered.set("customBuckets", custom);
   }
 
   if (enabledElements.permissionStatus && context.pendingPermission) {
-    const permission = renderPermission(context.pendingPermission);
+    const permission = isolate(() => renderPermission(context.pendingPermission));
     if (permission) rendered.set("permission", permission);
   }
 
   if (enabledElements.thinking && context.thinkingState) {
-    const thinking = renderThinking(
+    const thinking = isolate(() => renderThinking(
       context.thinkingState,
       enabledElements.thinkingFormat,
       hudLabels,
-    );
+    ));
     if (thinking) rendered.set("thinking", thinking);
   }
 
   if (enabledElements.promptTime) {
-    const prompt = renderPromptTime(context.promptTime, new Date());
+    const prompt = isolate(() => renderPromptTime(context.promptTime, new Date()));
     if (prompt) rendered.set("promptTime", prompt);
   }
 
   if (enabledElements.sessionHealth && context.sessionHealth) {
     const showDuration = enabledElements.showSessionDuration ?? true;
     if (showDuration) {
-      const session = renderSession(context.sessionHealth);
+      const session = isolate(() => renderSession(context.sessionHealth));
       if (session) rendered.set("session", session);
     }
   }
@@ -471,8 +485,8 @@ export async function render(
   // `premiumBudget` is the deprecated name of the element and its toggle.
   if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
     const budget = isCopilotHost
-      ? renderPremiumBudget(context.cwd, context.aiUsed ?? null)
-      : renderPremiumBudget(context.cwd);
+      ? isolate(() => renderPremiumBudget(context.cwd, context.aiUsed ?? null))
+      : isolate(() => renderPremiumBudget(context.cwd));
     if (budget) {
       rendered.set("creditBudget", budget);
       rendered.set("premiumBudget", budget);
@@ -481,89 +495,89 @@ export async function render(
 
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
     const stale = context.rateLimitsResult?.stale;
-    const cost = renderEnterpriseCost(
+    const cost = isolate(() => renderEnterpriseCost(
       context.rateLimitsResult?.rateLimits,
       stale,
-    );
+    ));
     if (cost) {
       rendered.set("enterpriseCost", cost);
     } else if (enabledElements.showTokens === true) {
       // Enterprise but no cost data — fall back to token usage
-      const tokenUsage = renderTokenUsage(
+      const tokenUsage = isolate(() => renderTokenUsage(
         context.lastRequestTokenUsage,
         context.sessionTotalTokens,
         hudLabels,
-      );
+      ));
       if (tokenUsage) rendered.set("tokens", tokenUsage);
     }
   } else if (enabledElements.showTokens === true) {
-    const tokenUsage = renderTokenUsage(
+    const tokenUsage = isolate(() => renderTokenUsage(
       context.lastRequestTokenUsage,
       context.sessionTotalTokens,
       hudLabels,
-    );
+    ));
     if (tokenUsage) rendered.set("tokens", tokenUsage);
   }
 
   if (enabledElements.ralph && context.ralph) {
-    const ralph = renderRalph(context.ralph, config.thresholds, hudLabels);
+    const ralph = isolate(() => renderRalph(context.ralph, config.thresholds, hudLabels));
     if (ralph) rendered.set("ralph", ralph);
   }
 
   if (enabledElements.autopilot && context.autopilot) {
-    const autopilot = renderAutopilot(context.autopilot, config.thresholds);
+    const autopilot = isolate(() => renderAutopilot(context.autopilot, config.thresholds));
     if (autopilot) rendered.set("autopilot", autopilot);
   }
 
   if (enabledElements.copilotMode === true) {
-    const mode = renderCopilotMode(context.copilotMode, context.copilotAllowAll);
+    const mode = isolate(() => renderCopilotMode(context.copilotMode, context.copilotAllowAll));
     if (mode) rendered.set("copilotMode", mode);
   }
 
   if (enabledElements.team === true) {
-    const team = renderTeam(context.team);
+    const team = isolate(() => renderTeam(context.team));
     if (team) rendered.set("team", team);
   }
 
   if (enabledElements.ultragoal === true) {
-    const ultragoal = renderUltragoal(context.ultragoal);
+    const ultragoal = isolate(() => renderUltragoal(context.ultragoal));
     if (ultragoal) rendered.set("ultragoal", ultragoal);
   }
 
   if (enabledElements.prdStory && context.prd) {
-    const prd = renderPrd(context.prd);
+    const prd = isolate(() => renderPrd(context.prd));
     if (prd) rendered.set("prd", prd);
   }
 
   if (enabledElements.activeSkills) {
-    const skills = renderSkills(
+    const skills = isolate(() => renderSkills(
       context.ultrawork,
       context.ralph,
       (enabledElements.lastSkill ?? true) ? context.lastSkill : null,
-    );
+    ));
     if (skills) rendered.set("skills", skills);
   }
 
   if ((enabledElements.lastSkill ?? true) && !enabledElements.activeSkills) {
-    const lastSkillElement = renderLastSkill(context.lastSkill);
+    const lastSkillElement = isolate(() => renderLastSkill(context.lastSkill));
     if (lastSkillElement) rendered.set("lastSkill", lastSkillElement);
   }
 
   if (enabledElements.contextBar) {
     const ctx = enabledElements.useBars
-      ? renderContextWithBar(
+      ? isolate(() => renderContextWithBar(
           context.contextPercent,
           config.thresholds,
           10,
           context.contextDisplayScope,
           hudLabels,
-        )
-      : renderContext(
+        ))
+      : isolate(() => renderContext(
           context.contextPercent,
           config.thresholds,
           context.contextDisplayScope,
           hudLabels,
-        );
+        ));
     if (ctx) rendered.set("contextBar", ctx);
   }
 
@@ -573,88 +587,90 @@ export async function render(
 
     if (format === "multiline") {
       const maxLines = enabledElements.agentsMaxLines || 5;
-      const result = renderAgentsMultiLine(context.activeAgents, maxLines);
+      const result = isolate(() => renderAgentsMultiLine(context.activeAgents, maxLines))
+        ?? { headerPart: null, detailLines: [] };
       if (result.headerPart) rendered.set("agents", result.headerPart);
       if (result.detailLines.length > 0) {
         renderedDetail.set("agents", result.detailLines);
       }
     } else {
-      const agents = renderAgentsByFormat(context.activeAgents, format);
+      const agents = isolate(() => renderAgentsByFormat(context.activeAgents, format));
       if (agents) rendered.set("agents", agents);
     }
   }
 
   if (enabledElements.backgroundTasks) {
-    const bg = renderBackground(context.backgroundTasks, hudLabels);
+    const bg = isolate(() => renderBackground(context.backgroundTasks, hudLabels));
     if (bg) rendered.set("background", bg);
   }
 
   const showCounts = enabledElements.showCallCounts ?? true;
   if (showCounts) {
-    const counts = renderCallCounts(
+    const counts = isolate(() => renderCallCounts(
       context.toolCallCount,
       context.agentCallCount,
       context.skillCallCount,
       enabledElements.callCountsFormat ?? 'auto',
       hudLabels,
-    );
+    ));
     if (counts) rendered.set("callCounts", counts);
   }
 
   if (enabledElements.showLastTool === true) {
-    const tool = renderLastTool(context.lastToolName ?? null);
+    const tool = isolate(() => renderLastTool(context.lastToolName ?? null));
     if (tool) rendered.set("lastTool", tool);
   }
 
   if (enabledElements.showRecentTools === true) {
-    const tools = renderRecentTools(
+    const tools = isolate(() => renderRecentTools(
       context.recentTools ?? [],
       enabledElements.recentToolsMax ?? 5,
       enabledElements.recentToolsShowTarget !== false,
       enabledElements.safeMode,
-    );
+    ));
     if (tools) rendered.set("recentTools", tools);
   }
 
   if (enabledElements.sessionSummary && context.sessionSummary) {
-    const summary = renderSessionSummary(context.sessionSummary);
+    const summary = isolate(() => renderSessionSummary(context.sessionSummary));
     if (summary) rendered.set("sessionSummary", summary);
   }
 
   // -- detail-group elements --
 
+  const missionBoard = context.missionBoard;
   if (
-    context.missionBoard &&
+    missionBoard &&
     (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)
   ) {
-    const mbLines = renderMissionBoard(context.missionBoard, config.missionBoard);
+    const mbLines = isolate(() => renderMissionBoard(missionBoard, config.missionBoard)) ?? [];
     if (mbLines.length > 0) renderedDetail.set("missionBoard", mbLines);
   }
 
-  const ctxWarning = renderContextLimitWarning(
+  const ctxWarning = isolate(() => renderContextLimitWarning(
     context.contextPercent,
     config.contextLimitWarning.threshold,
     config.contextLimitWarning.autoCompact,
-  );
+  ));
   if (ctxWarning) renderedDetail.set("contextWarning", [ctxWarning]);
 
   const payloadWarning = isCopilotHost
     ? null
-    : renderPayloadLimitWarning(context.payloadEstimate);
+    : isolate(() => renderPayloadLimitWarning(context.payloadEstimate));
   if (payloadWarning) renderedDetail.set("payloadWarning", [payloadWarning]);
 
   if (enabledElements.updateNotification !== false) {
-    const updateHints = renderUpdateHints({
+    const updateHints = isolate(() => renderUpdateHints({
       omcUpdateAvailable: context.updateAvailable,
       omcUpdateSource: context.omcUpdateSource ?? null,
       claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null,
       host: context.host,
-    });
+    })) ?? [];
     if (updateHints.length > 0) renderedDetail.set("updateHint", updateHints);
   }
 
   if (enabledElements.todos) {
-    const todos = renderTodosWithCurrent(context.todos);
+    const todos = isolate(() => renderTodosWithCurrent(context.todos));
     if (todos) renderedDetail.set("todos", [todos]);
   }
 

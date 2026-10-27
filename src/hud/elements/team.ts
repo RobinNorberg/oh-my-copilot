@@ -40,8 +40,15 @@ export function readTeamStateForHud(directory: string, now: number = Date.now())
   let missions: MissionBoardMission[];
   try {
     // Every worker counts towards the running total, not only the board's top 3.
-    missions = readTeamMissions(directory, { enabled: true, maxAgentsPerMission: Number.MAX_SAFE_INTEGER });
+    // Stale dirs are skipped unread; a corrupt team is dropped on its own.
+    missions = readTeamMissions(
+      directory,
+      { enabled: true, maxAgentsPerMission: Number.MAX_SAFE_INTEGER },
+      MAX_TEAM_AGE_MS,
+      now,
+    );
   } catch {
+    // The teams root itself is unreadable.
     return null;
   }
   const live = missions
