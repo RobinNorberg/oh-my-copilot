@@ -497,6 +497,8 @@ export interface HudElementConfig {
     showTokens?: boolean;
     enterpriseMode?: boolean;
     showEnterpriseCost?: boolean;
+    creditBudget?: boolean;
+    /** @deprecated Use `creditBudget`; still honoured when `creditBudget` is unset. */
     premiumBudget?: boolean;
     useBars: boolean;
     showCallCounts?: boolean;

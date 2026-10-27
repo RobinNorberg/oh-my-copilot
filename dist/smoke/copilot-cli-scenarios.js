@@ -194,7 +194,7 @@ export async function runCliScenario(input) {
         '--log-dir', join(input.home, 'logs'),
         '--max-ai-credits', String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(budget))),
     ];
-    // `events` resumes the same session id with /compact (preCompact, no premium request).
+    // `events` resumes the same session id with /compact (preCompact, no user prompt; the summary bills AI credits).
     const prompts = [['prompt', SCENARIOS[name].prompt], ...(name === 'events' ? [['compact', COMPACT_PROMPT]] : [])];
     let error;
     let timedOut = false;

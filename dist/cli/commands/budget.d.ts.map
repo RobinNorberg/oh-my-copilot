@@ -1,1 +1,1 @@
-{"version":3,"file":"budget.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/budget.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAKH,wBAAsB,aAAa,CAAC,MAAM,EAAE,MAAM,EAAE,OAAO,EAAE;IAAE,IAAI,CAAC,EAAE,OAAO,CAAA;CAAE,EAAE,GAAG,GAAE,MAAsB,GAAG,OAAO,CAAC,MAAM,CAAC,CAgD7H"}
+{"version":3,"file":"budget.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/budget.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AAKH,wBAAsB,aAAa,CAAC,MAAM,EAAE,MAAM,EAAE,OAAO,EAAE;IAAE,IAAI,CAAC,EAAE,OAAO,CAAA;CAAE,EAAE,GAAG,GAAE,MAAsB,GAAG,OAAO,CAAC,MAAM,CAAC,CA8C7H"}

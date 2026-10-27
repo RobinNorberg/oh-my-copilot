@@ -56,9 +56,12 @@ function primaryGitRoot(gitRoot) {
   return gitRoot;
 }
 
+// Git >= 2.56 says "gitfile does not point to a valid repository" where older git said "not a git repository" (git 54a441bcea).
+const GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
+
 function probeGitRoot(directory) {
   try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 5000, env: gitEnv() }).trim() || null; }
-  catch (error) { if (error?.code === 'ENOENT' || (error?.status === 128 && /not a git repository/i.test(String(error?.stderr ?? '')))) return null; throw error; }
+  catch (error) { if (error?.code === 'ENOENT' || (error?.status === 128 && GIT_NOT_A_REPOSITORY_STDERR.test(String(error?.stderr ?? '')))) return null; throw error; }
 }
 
 function isSafeWorkspaceRoot(workspaceRoot) {

@@ -216,6 +216,14 @@ export function readWorkspaceMarkerConfig(workspaceRoot: string): WorkspaceMarke
 }
 
 /**
+ * Git's exit-128 answer for "this path is not a repository". Git 2.56.0
+ * (54a441bcea) reworded the case of a `.git` file pointing at a non-repository
+ * from "not a git repository: <gitdir>" to "gitfile does not point to a valid
+ * repository: <gitfile>"; both mean the same to every caller.
+ */
+export const GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
+
+/**
  * If `cwd` is inside a git submodule, return the outermost superproject working
  * tree; otherwise return null. A submodule is a full git repo, so
  * `git rev-parse --show-toplevel` stops at the submodule and `.omg/` would be
@@ -233,7 +241,7 @@ function isDefinitiveNonGitError(error: unknown): boolean {
       : Buffer.isBuffer(stderr)
         ? stderr.toString()
         : '';
-  return /not a git repository/i.test(output);
+  return GIT_NOT_A_REPOSITORY_STDERR.test(output);
 }
 
 function resolveSuperprojectRoot(cwd: string): string | null {
@@ -531,7 +539,8 @@ function isNotAGitRepositoryError(error: unknown): boolean {
   // tree, not an unreadable git, so it must classify as not_a_repository instead
   // of probe_failed — otherwise every fail-closed caller (HUD statusline, state
   // resolution) throws from a legitimate container root (#3990).
-  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+  // GIT_NOT_A_REPOSITORY_STDERR covers both git <= 2.55 and >= 2.56 wordings.
+  return err.status === 128 && (GIT_NOT_A_REPOSITORY_STDERR.test(stderr) || /must be run in a work tree/i.test(stderr));
 }
 
 /**
