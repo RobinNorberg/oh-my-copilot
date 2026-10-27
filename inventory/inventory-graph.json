@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "9fe2287c6f6226ea358b8ee5bff77eb046b5df14",
-    "sourceSha256": "4c869ec050492a8faa815fd8f43b30ea1324e85e134a8db7977cbab64187eb5c",
+    "head": "1742522bdbb0b39ba14c5527ef410d1599a799ce",
+    "sourceSha256": "1b125c2e6ab0c05a2b73ccf56813a1a935aa0bc34e87462e25d4500f334ad885",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "9fe2287c6f6226ea358b8ee5bff77eb046b5df14",
-  "sourceSha256": "4c869ec050492a8faa815fd8f43b30ea1324e85e134a8db7977cbab64187eb5c",
+  "head": "1742522bdbb0b39ba14c5527ef410d1599a799ce",
+  "sourceSha256": "1b125c2e6ab0c05a2b73ccf56813a1a935aa0bc34e87462e25d4500f334ad885",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1711
     },
     "generated": {
-      "distFiles": 6352,
+      "distFiles": 6420,
       "bridgeFiles": 9,
-      "total": 6361
+      "total": 6429
     },
     "prompt": {
       "promptLikeFiles": 64
@@ -2620,6 +2620,10 @@
       "dist/cli/commands/__tests__/factory-listen-port.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-listen-port.test.js",
       "dist/cli/commands/__tests__/factory-listen-port.test.js.map",
+      "dist/cli/commands/__tests__/factory-run-cli.test.d.ts",
+      "dist/cli/commands/__tests__/factory-run-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-run-cli.test.js",
+      "dist/cli/commands/__tests__/factory-run-cli.test.js.map",
       "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
       "dist/cli/commands/__tests__/hooks-doctor.test.d.ts.map",
       "dist/cli/commands/__tests__/hooks-doctor.test.js",
@@ -2866,6 +2870,14 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/copilot-run/__tests__/fake-sdk.d.ts",
+      "dist/copilot-run/__tests__/fake-sdk.d.ts.map",
+      "dist/copilot-run/__tests__/fake-sdk.js",
+      "dist/copilot-run/__tests__/fake-sdk.js.map",
+      "dist/copilot-run/__tests__/job.test.d.ts",
+      "dist/copilot-run/__tests__/job.test.d.ts.map",
+      "dist/copilot-run/__tests__/job.test.js",
+      "dist/copilot-run/__tests__/job.test.js.map",
       "dist/copilot-run/job.d.ts",
       "dist/copilot-run/job.d.ts.map",
       "dist/copilot-run/job.js",
@@ -2914,6 +2926,62 @@
       "dist/factory/map-run.d.ts.map",
       "dist/factory/map-run.js",
       "dist/factory/map-run.js.map",
+      "dist/factory/run/__tests__/engine.test.d.ts",
+      "dist/factory/run/__tests__/engine.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.test.js",
+      "dist/factory/run/__tests__/engine.test.js.map",
+      "dist/factory/run/__tests__/fake-lanes.d.ts",
+      "dist/factory/run/__tests__/fake-lanes.d.ts.map",
+      "dist/factory/run/__tests__/fake-lanes.js",
+      "dist/factory/run/__tests__/fake-lanes.js.map",
+      "dist/factory/run/__tests__/lane.test.d.ts",
+      "dist/factory/run/__tests__/lane.test.d.ts.map",
+      "dist/factory/run/__tests__/lane.test.js",
+      "dist/factory/run/__tests__/lane.test.js.map",
+      "dist/factory/run/__tests__/review-guard.test.d.ts",
+      "dist/factory/run/__tests__/review-guard.test.d.ts.map",
+      "dist/factory/run/__tests__/review-guard.test.js",
+      "dist/factory/run/__tests__/review-guard.test.js.map",
+      "dist/factory/run/__tests__/units.test.d.ts",
+      "dist/factory/run/__tests__/units.test.d.ts.map",
+      "dist/factory/run/__tests__/units.test.js",
+      "dist/factory/run/__tests__/units.test.js.map",
+      "dist/factory/run/budget.d.ts",
+      "dist/factory/run/budget.d.ts.map",
+      "dist/factory/run/budget.js",
+      "dist/factory/run/budget.js.map",
+      "dist/factory/run/engine.d.ts",
+      "dist/factory/run/engine.d.ts.map",
+      "dist/factory/run/engine.js",
+      "dist/factory/run/engine.js.map",
+      "dist/factory/run/exec.d.ts",
+      "dist/factory/run/exec.d.ts.map",
+      "dist/factory/run/exec.js",
+      "dist/factory/run/exec.js.map",
+      "dist/factory/run/lane.d.ts",
+      "dist/factory/run/lane.d.ts.map",
+      "dist/factory/run/lane.js",
+      "dist/factory/run/lane.js.map",
+      "dist/factory/run/ledger.d.ts",
+      "dist/factory/run/ledger.d.ts.map",
+      "dist/factory/run/ledger.js",
+      "dist/factory/run/ledger.js.map",
+      "dist/factory/run/progress.d.ts",
+      "dist/factory/run/progress.d.ts.map",
+      "dist/factory/run/progress.js",
+      "dist/factory/run/progress.js.map",
+      "dist/factory/run/review-guard.d.ts",
+      "dist/factory/run/review-guard.d.ts.map",
+      "dist/factory/run/review-guard.js",
+      "dist/factory/run/review-guard.js.map",
+      "dist/factory/run/review-output.d.ts",
+      "dist/factory/run/review-output.d.ts.map",
+      "dist/factory/run/review-output.js",
+      "dist/factory/run/review-output.js.map",
+      "dist/factory/run/state.d.ts",
+      "dist/factory/run/state.d.ts.map",
+      "dist/factory/run/state.js",
+      "dist/factory/run/state.js.map",
       "dist/factory/status.d.ts",
       "dist/factory/status.d.ts.map",
       "dist/factory/status.js",
@@ -17238,6 +17306,26 @@
         "path": "dist/cli/commands/__tests__/factory-listen-port.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-run-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-run-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/hooks-doctor.test.d.ts"
@@ -18468,6 +18556,46 @@
         "path": "dist/constants/names.js.map"
       },
       {
+        "id": "dist/copilot-run/__tests__/fake-sdk.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/fake-sdk.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/fake-sdk.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/fake-sdk.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/fake-sdk.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/fake-sdk.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/fake-sdk.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/fake-sdk.js.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.test.js.map"
+      },
+      {
         "id": "dist/copilot-run/job.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/job.d.ts"
@@ -18706,6 +18834,286 @@
         "id": "dist/factory/map-run.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/map-run.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-lanes.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-lanes.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-lanes.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-lanes.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-lanes.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-lanes.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/fake-lanes.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/fake-lanes.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/lane.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/lane.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/review-guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/review-guard.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/review-guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/review-guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/review-guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/review-guard.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/review-guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/review-guard.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/units.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/units.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/units.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/units.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/units.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/units.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/units.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/units.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/budget.d.ts"
+      },
+      {
+        "id": "dist/factory/run/budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/budget.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/budget.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/budget.js"
+      },
+      {
+        "id": "dist/factory/run/budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/budget.js.map"
+      },
+      {
+        "id": "dist/factory/run/engine.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/engine.d.ts"
+      },
+      {
+        "id": "dist/factory/run/engine.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/engine.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/engine.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/engine.js"
+      },
+      {
+        "id": "dist/factory/run/engine.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/engine.js.map"
+      },
+      {
+        "id": "dist/factory/run/exec.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/exec.d.ts"
+      },
+      {
+        "id": "dist/factory/run/exec.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/exec.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/exec.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/exec.js"
+      },
+      {
+        "id": "dist/factory/run/exec.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/exec.js.map"
+      },
+      {
+        "id": "dist/factory/run/lane.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane.d.ts"
+      },
+      {
+        "id": "dist/factory/run/lane.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/lane.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane.js"
+      },
+      {
+        "id": "dist/factory/run/lane.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane.js.map"
+      },
+      {
+        "id": "dist/factory/run/ledger.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/ledger.d.ts"
+      },
+      {
+        "id": "dist/factory/run/ledger.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/ledger.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/ledger.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/ledger.js"
+      },
+      {
+        "id": "dist/factory/run/ledger.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/ledger.js.map"
+      },
+      {
+        "id": "dist/factory/run/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/progress.d.ts"
+      },
+      {
+        "id": "dist/factory/run/progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/progress.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/progress.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/progress.js"
+      },
+      {
+        "id": "dist/factory/run/progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/progress.js.map"
+      },
+      {
+        "id": "dist/factory/run/review-guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-guard.d.ts"
+      },
+      {
+        "id": "dist/factory/run/review-guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-guard.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/review-guard.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-guard.js"
+      },
+      {
+        "id": "dist/factory/run/review-guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-guard.js.map"
+      },
+      {
+        "id": "dist/factory/run/review-output.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-output.d.ts"
+      },
+      {
+        "id": "dist/factory/run/review-output.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-output.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/review-output.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-output.js"
+      },
+      {
+        "id": "dist/factory/run/review-output.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/review-output.js.map"
+      },
+      {
+        "id": "dist/factory/run/state.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/state.d.ts"
+      },
+      {
+        "id": "dist/factory/run/state.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/state.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/state.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/state.js"
+      },
+      {
+        "id": "dist/factory/run/state.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/state.js.map"
       },
       {
         "id": "dist/factory/status.d.ts",
@@ -101941,12 +102349,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8778,
+      "nodeCount": 8846,
       "edgeCount": 10024,
       "importEdgeCount": 8373,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "10c3f0b82ee165f25e438da6664e0b88463283297c511bd05d85e8d9bfb6327f",
-  "manifestSha256": "2c296da3373a9f5c9587ca18593921a8bcb453ebabb0e0eaf82e396b9ecd4803"
+  "manifestSha256": "ffe570930b19d940f1f785a2b1e9e21a84e9d2f6a8f5d92c1419479f9cbf41fd"
 }
