@@ -38,32 +38,49 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Unreleased: Budget Unit Is AI Credits
 
-Applies when upgrading from v5.13.1. GitHub Copilot bills usage in AI Credits since 2026-06-01: one AI Credit is $0.01, priced per input, output and cached token by model. Only Copilot Pro and Pro+ annual plans bought before then keep premium request billing until they end. The budget governor now counts AI Credits. Premium requests stay in the ledger as a legacy field, because Copilot CLI still writes `totalPremiumRequests` next to `totalNanoAiu`.
+Applies when upgrading from v5.13.1. Two changes land together: the budget counts AI Credits instead of premium requests, and the plugin no longer enforces budgets. `omg team` no longer clamps or refuses a launch, whatever the ledger or the config says, and `copilot_run_start` no longer refuses a job. The budget governor only reports.
+
+GitHub Copilot bills usage in AI Credits since 2026-06-01. One AI Credit is $0.01, priced per input, output and cached token by model. Premium requests stay in the ledger as a legacy field, because Copilot CLI still writes `totalPremiumRequests` next to `totalNanoAiu`.
 
 **What changed.**
 
-- `budget.unit` defaults to `"credits"`. `"premiumRequests"` still works and still counts the legacy field, but `omg budget` and `omg doctor` report it as deprecated.
-- `omg budget`, the SessionStart summary, threshold notices and `omg team` fan-out messages lead with AI credits. Premium requests appear only in the legacy unit.
+- Usage, the SessionStart summary and the threshold notice count AI credits only.
+- `budget.softLimit` stays. It is a warn-only threshold in AI credits: one notice per accounting period, shown at the next prompt, in `omg budget` and in the HUD. It never blocks.
+- `budget.mode`, `budget.hardLimit`, `budget.perTeamLimit` and `"unit": "premiumRequests"` still parse, but each one is a no-op. A config that sets any of them gets one deprecation warning naming this section, in `omg budget`, in the SessionStart summary and in `omg doctor conflicts`.
+- `omg team --budget-override` is still accepted. It does nothing and prints one deprecation warning.
+- `omg budget status` always exits 0. It used to exit 1 once `hardLimit` was reached.
 - A running Copilot CLI session is estimated at 1 AI credit per top-level prompt until its measured total is written. It used to count 0 credits until the session ended.
-- The HUD element is `creditBudget` and shows `cr:`. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+- The HUD element is `creditBudget` and shows `cr:used/softLimit`. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 - `omg team status --json` adds `credits_final` per sdk worker. `premium_requests` and `premium_requests_final` stay.
 - The smoke checks `scn.team.premium` and `scn.chain.premium` are now `scn.team.credits` (at most 10 AI credits) and `scn.chain.credits` (at most 6). Scripts that look up the old ids need the new ones.
 - The ledger file format is unchanged, so existing ledgers load as before.
 
-**Who must act.** A `budget` block with limits and no `unit` meant premium requests and now means AI Credits:
+**What to set instead.** Cost control now lives with Copilot and, for unattended runs, with the engines:
 
-```jsonc
-// v5.13.1: 300 premium requests. Now: 300 AI credits.
-{ "budget": { "hardLimit": 300 } }
-```
+1. **Per session:** Copilot's AI-credit cap, `copilot --max-ai-credits <n>` on the CLI or `sessionLimits.maxAiCredits` in the SDK. It is a soft cap, checked after each model call, so a session can overshoot by one call. Since Copilot CLI 1.0.67 it cannot be set below 30 credits. `omg team` sdk workers already get one through `team.sdk.maxCreditsPerWorker`, and `copilot_run_start` through `maxCredits`.
+2. **Per user, cost center or organization:** Copilot admin budgets in US dollars, at $0.01 per AI credit. They are hard stops and do not fall back to a cheaper model.
+3. **Per unattended run:** turn, wall-time and retry limits in the unattended engines, once the factory engine ships them.
 
-There is no fixed rate between the units. A premium request was one prompt times a model multiplier; AI Credits follow the tokens and model calls a prompt uses. Convert with your own history:
+**Who must act.**
+
+- **You relied on `"mode": "enforce"` or `--budget-override`.** Nothing stops a team at your limit any more. Set the per-session cap and an admin budget as above, and drop `mode`, `hardLimit` and `perTeamLimit` to silence the warning.
+- **You want a heads-up.** Keep or set `softLimit` in AI credits. A `softLimit` written for premium requests now counts AI credits.
+- **Scripts gated on `omg budget` exiting 1.** Compare `used` from `omg budget status --json` with your own threshold instead.
+
+There is no fixed rate between the units. A premium request was one prompt times a model multiplier; AI Credits follow the tokens and model calls a prompt uses. To convert an old `softLimit`, use your own history:
 
 1. Run `omg budget status --json` on a ledger with measured records. Each record carries both `credits` and `premiumRequests`.
 2. Divide the summed `credits` by the summed `premiumRequests`. That is your credits per legacy premium request.
-3. Multiply each old limit by that ratio and set `"unit": "credits"` explicitly.
+3. Multiply the old limit by that ratio.
 
-For reference, short smoke prompts on small models measured 0.29 to 0.91 AI credits per legacy premium request on Copilot CLI 1.0.91. At that rate a 300 premium request limit is roughly 90 to 270 AI credits. Larger models and long agentic prompts cost more. To keep the old behaviour while you measure, or on a legacy annual Pro/Pro+ plan that still bills premium requests, set `"unit": "premiumRequests"` and accept the deprecation warning.
+For reference, short smoke prompts on small models measured 0.29 to 0.91 AI credits per legacy premium request on Copilot CLI 1.0.91. At that rate a 300 premium request limit is roughly 90 to 270 AI credits. Larger models and long agentic prompts cost more.
+
+```jsonc
+// Before: counted premium requests and clamped omg team.
+{ "budget": { "mode": "enforce", "unit": "premiumRequests", "softLimit": 150, "hardLimit": 300 } }
+// Now: a warn-only threshold in AI credits; cap spend with maxAiCredits and admin budgets.
+{ "budget": { "softLimit": 80 } }
+```
 
 Older sections of this guide quote costs in premium requests, as Copilot billed them at the time.
 

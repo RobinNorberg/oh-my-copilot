@@ -68,7 +68,7 @@ Then, for example:
 { "tool": "copilot_run_cleanup", "arguments": { "jobId": "<jobId from start>" } }
 ```
 
-Each job passes the budget governor first and lands in its ledger as `copilot-run:<jobId>`. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
+Each job lands in the budget ledger as `copilot-run:<jobId>`; the budget only reports and never refuses a job. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
 
 ### Tier 2 — SDK scenarios
 

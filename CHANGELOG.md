@@ -2,6 +2,27 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **The budget counts AI Credits.** Copilot bills AI Credits since
+  2026-06-01, so `omg budget`, the SessionStart summary, the soft-limit
+  notice and the HUD (`creditBudget`, `cr:`) count AI credits; premium
+  requests stay in the ledger as a legacy field. A `softLimit` written for
+  premium requests now counts AI credits. See
+  [MIGRATION.md](docs/MIGRATION.md#unreleased-budget-unit-is-ai-credits).
+
+### Removed
+
+- **Budget enforcement.** `omg team` no longer clamps or refuses a launch on
+  budget, `copilot_run_start` no longer refuses a job, and
+  `omg budget status` always exits 0. `budget.mode`, `budget.hardLimit`,
+  `budget.perTeamLimit` and `"unit": "premiumRequests"` parse as no-ops with
+  one deprecation warning; `--budget-override` is an accepted no-op that
+  warns once. `budget.softLimit` stays as a warn-only threshold. Cap spend
+  with Copilot's per-session `maxAiCredits` and admin budgets instead.
+
 # oh-my-copilot v5.13.1
 
 ## [5.13.1] - 2026-10-26

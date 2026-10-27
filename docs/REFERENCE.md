@@ -961,10 +961,10 @@ The standalone MCP server can hand a task to GitHub Copilot as a background job:
 | `copilot_run_cancel` | `jobId` | Aborts the turn and stops the session. The worktree and its changes stay. |
 | `copilot_run_cleanup` | `jobId` | Removes a finished job's worktree and branch, only when nothing in them would be lost. |
 
-The report is JSON: `status` (`starting`, `running`, `completed`, `failed`, `timeout`, `cancelled`), `stopRequested` (`cancelled`, `timeout` or `capped` from the moment a stop is asked for, while the teardown may still run; else `null`), `finalText` (the last assistant message), `sessionId`, `model`, `error`, `usage` (`credits` in AI Credits, the legacy `premiumRequests`, `source`: `measured` once the session's `session.shutdown` totals arrived, else `estimated`), `worktree` (`path`, `branch`, `repoRoot`, `baseCommit`, `removed`), and once the job has ended `changes` (`diffStat` from `git diff --stat <baseCommit>`, `changedFiles`, `untrackedFiles`, `protectedChanges`; taken at the repository root with root-relative paths, also when `cwd` is a subdirectory). `deniedPermissions` lists refused requests, `notes` carries budget warnings, and `eventsPath` is the session's event log.
+The report is JSON: `status` (`starting`, `running`, `completed`, `failed`, `timeout`, `cancelled`), `stopRequested` (`cancelled`, `timeout` or `capped` from the moment a stop is asked for, while the teardown may still run; else `null`), `finalText` (the last assistant message), `sessionId`, `model`, `error`, `usage` (`credits` in AI Credits, the legacy `premiumRequests`, `source`: `measured` once the session's `session.shutdown` totals arrived, else `estimated`), `worktree` (`path`, `branch`, `repoRoot`, `baseCommit`, `removed`), and once the job has ended `changes` (`diffStat` from `git diff --stat <baseCommit>`, `changedFiles`, `untrackedFiles`, `protectedChanges`; taken at the repository root with root-relative paths, also when `cwd` is a subdirectory). `deniedPermissions` lists refused requests, `notes` carries setup warnings (uncommitted changes, `isolation: "none"`), and `eventsPath` is the session's event log.
 
 - **Opt-in.** `copilot_run_start` runs a live, billed session and refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the MCP server env. The other tools work on existing jobs and need no opt-in. All five are always listed; `OMC_DISABLE_TOOLS=copilot-run` hides them.
-- **Budget governor.** Before anything is created, the job is checked like an `omg team` launch of one copilot worker ([`omg budget`](#omg-budget-ai-credits-budget)): in enforce mode a projected spend past `budget.hardLimit` or `budget.perTeamLimit` refuses the job, in warn mode the warning lands in `notes`. The spend is recorded in the ledger as session `copilot-run:<jobId>`: a live estimate, replaced by the measured totals at the end.
+- **Budget ledger.** The spend is recorded in the [`omg budget`](#omg-budget-ai-credits-budget) ledger as session `copilot-run:<jobId>`: a live estimate, replaced by the measured totals at the end. The budget never refuses a job; `maxCredits` (below) caps it.
 - **Isolation.** `isolation: "worktree"` (default) creates a git worktree and branch from the repository's `HEAD` at `.omg/team/copilot-run/worktrees/<jobId>`, branch `omc-team/copilot-run/<jobId>`, with the team worktree code. Uncommitted changes in your tree are not in it (a note says so). Copilot works only there; `cwd` must be inside a git repository. `isolation: "none"` lets Copilot edit `cwd` directly, and its `changes` then include edits that were already there.
 - **Permissions.** As for sdk team workers: no allow-all, writes only inside the working directory and the job's state dir, reads also in the plugin root, MCP calls only to the plugin server, the same shell denylist (`git push`, team control, `omg smoke`, multiplexers). Writes to the `omg ship` merge-rule paths (`.copilot/omg.jsonc`, `.copilot/omc.jsonc`, `.github/known-flaky-tests.json`, `.github/workflows/`, plus a non-default `ship.knownFlakyFile` from your user config or the repository's `.copilot/omg.jsonc`) are refused, and `changes.protectedChanges` flags any such file that changed anyway. Only the write tool is confined: the shell denylist is not a sandbox, so a shell command can still reach your working tree. The session cannot start jobs of its own: the `copilot_run_*`, `host_smoke` and sub-agent tools are excluded and `OMG_COPILOT_RUN_ALLOW` is stripped from its env.
 - **Limits.** `timeoutMs` defaults to 900000 (15 min), at most 3600000, counted from start; at the timeout the turn is aborted and the status is `timeout`. `maxCredits` (default 30) aborts the turn once the session's AI credits pass it (status `failed`); the runtime also gets `--max-ai-credits` of at least 30, the CLI minimum. At most 2 jobs run at once per MCP server.
@@ -983,29 +983,32 @@ claude mcp add omg-dev -e OMG_COPILOT_RUN_ALLOW=1 -- node C:/Code/OMC/dist/mcp/s
 
 ### `omg budget` (AI Credits budget)
 
-Copilot bills usage in AI Credits since 2026-06-01 (they replaced premium requests). The budget governor keeps a ledger of the AI Credits this project's Copilot sessions and teams used, warns at your limits, and in enforce mode stops `omg team` from fanning out past them. Premium requests stay in the ledger as a legacy field, because Copilot CLI still reports them.
+Copilot bills usage in AI Credits since 2026-06-01 (they replaced premium requests). The budget governor keeps a ledger of the AI Credits this project's Copilot sessions and teams used and warns once at an optional soft limit. It is reporting only: it never blocks a session, and `omg team` never clamps or refuses a launch on budget. Premium requests stay in the ledger as a legacy field, because Copilot CLI still reports them.
+
+To cap spend, use Copilot's own limits:
+
+- **Per session:** `copilot --max-ai-credits <n>` or the SDK's `sessionLimits.maxAiCredits`. It is a soft cap checked after each model call, and since Copilot CLI 1.0.67 it cannot be below 30. `omg team` sdk workers get it from `team.sdk.maxCreditsPerWorker`, and `copilot_run_start` from `maxCredits`.
+- **Per user, cost center or organization:** Copilot admin budgets in US dollars ($0.01 per AI credit). They are hard stops with no cheaper-model fallback.
 
 ```bash
-omg budget                  # usage since the last reset against the configured limits
+omg budget                  # usage since the last reset against the soft limit
 omg budget status --json    # the full ledger: sessions, teams, measured vs estimated records
 omg budget reset            # start a new accounting period
 ```
 
-Configure it in `.copilot/omg.jsonc` (or the user config). Nothing is limited until you set a limit:
+Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until you set `softLimit`:
 
 ```jsonc
 {
   "budget": {
-    "mode": "warn",              // "warn" (default): report only; "enforce": also refuse or clamp omg team
-    "unit": "credits",           // AI Credits (default); "premiumRequests" is deprecated, see below
-    "softLimit": 150,            // one-time warning
-    "hardLimit": 300,            // one-time alert; in enforce mode it bounds team fan-out
-    "perTeamLimit": 40           // enforce mode: largest projected cost of one omg team launch
+    "softLimit": 150             // AI credits: one warning per period, never a block
   }
 }
 ```
 
-**Units.** The limits count AI Credits. One AI Credit is $0.01, and Copilot prices each model call per input, output and cached token by model ([models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)). One AI Credit is 1e9 nano-AIU, the `totalNanoAiu` unit Copilot writes to its usage events and the unit of the CLI's `--max-ai-credits`. Cost per prompt varies by model, by the tokens sent and received, and by the number of model calls a prompt triggers. There is no fixed figure per prompt. Short smoke prompts measured 0.29 to 0.91 AI credits on Copilot CLI 1.0.91 with small models (`omg smoke copilot`). `"unit": "premiumRequests"` still works and counts the legacy premium request field (only Pro and Pro+ annual plans from before 2026-06-01 are still billed that way), but `omg budget` and `omg doctor` report it as deprecated. A config with limits and no `unit` used to mean premium requests and now means AI Credits; [MIGRATION.md](./MIGRATION.md) shows how to convert old limits.
+`mode`, `hardLimit`, `perTeamLimit` and `"unit": "premiumRequests"` are deprecated no-ops. They still parse, and a config that sets any of them gets one deprecation warning naming [MIGRATION.md](./MIGRATION.md#unreleased-budget-unit-is-ai-credits). `"unit": "credits"` is accepted and changes nothing.
+
+**Units.** Usage and `softLimit` count AI Credits. One AI Credit is $0.01, and Copilot prices each model call per input, output and cached token by model ([models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)). Copilot writes usage as `totalNanoAiu` (nano-AIU); the governor divides it by 1e9 to get AI credits, the same convenience conversion the SDK documents. Cost per prompt varies by model, by the tokens sent and received, and by the number of model calls a prompt triggers. There is no fixed figure per prompt. Short smoke prompts measured 0.29 to 0.91 AI credits on Copilot CLI 1.0.91 with small models (`omg smoke copilot`). A `softLimit` written for premium requests now counts AI Credits; [MIGRATION.md](./MIGRATION.md) shows how to convert it.
 
 **What is measured.** The ledger lives at `.omg/state/budget-ledger.json`. Each record holds `credits` and the legacy `premiumRequests` and is labelled `measured` or `estimated`:
 
@@ -1017,17 +1020,13 @@ Configure it in `.copilot/omg.jsonc` (or the user config). Nothing is limited un
 - A pane team worker started without `OMC_TEAM_LEADER_CWD` records into the ledger of its own working directory (usually its worktree), not the leader's; `omg team` sets the variable for the workers it launches.
 - A corrupt or foreign-version ledger is copied to `budget-ledger.json.corrupt` before it is rebuilt.
 
-**Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when a limit is set. Stop records the turn's usage and, on the first crossing of `softLimit` or `hardLimit` per period, stores a notice that the next prompt delivers as context; raising that limit re-arms its notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output and never blocks. Hooks never block a session in either mode.
+**Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
-**HUD.** The `creditBudget` element shows `cr:4.2/300` (`prq:` in the legacy unit) against the hard limit, else the soft limit: yellow from the soft limit, red from the hard limit. It appears only when a limit is set; `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set; `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 
-**Team fan-out.** Before `omg team` starts, the governor projects the launch cost: `team.sdk.maxCreditsPerWorker` AI Credits per copilot worker (default 10, a ceiling the sdk host enforces), or, in the legacy unit, at least one premium request per copilot worker. Workers of other providers are not billed to Copilot. When the projection exceeds `perTeamLimit` or what is left of `hardLimit`:
+**Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 
-- **warn mode** prints `[omg budget] projected ... exceeds ...; starting anyway (warn mode).` to stderr and starts the team;
-- **enforce mode** clamps an all-copilot team to the workers that fit, and refuses the launch when none fit, when the team mixes providers, or when workers own decomposed subtasks (clamping would drop scope);
-- **`--budget-override`** starts the team unchanged with the warning.
-
-`omg budget` exits `1` once `hardLimit` is reached, so scripts can gate on it. `omg doctor conflicts` warns about invalid and deprecated `budget` values; the governor ignores invalid ones and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
+`omg budget` always exits 0. `omg doctor conflicts` warns about invalid and deprecated `budget` values; the governor ignores both and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
 
 ### Graph approval gates (remote approvals)
 
