@@ -48,7 +48,11 @@ export const PENDING_SCENARIOS: Partial<Record<Scenario, string>> = {
   ultragoal: 'PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands',
 };
 export const KNOWN_SCENARIOS: readonly Scenario[] = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
-/** Two prompts (one per scenario), about 0.6 AI credits measured. */
+/**
+ * Two prompts (one per scenario), about 0.6 AI credits measured: the
+ * tier2-smoke (0.34) and tier2-guardrail (0.29) fixtures' `session.shutdown`
+ * totals on small auto-picked models; other models cost more.
+ */
 export const DEFAULT_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail'];
 
 export const PLUGIN_NAME = 'oh-my-copilot';
