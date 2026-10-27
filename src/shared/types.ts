@@ -287,6 +287,12 @@ export interface PluginConfig {
 
   /** `omg ship` workflow: merge rule, fix-round budget, admin-merge opt-in. */
   ship?: import("../ship/config.js").ShipConfigInput;
+
+  /** Software factory settings; `factory.heal` configures `omg factory heal` (experimental). */
+  factory?: {
+    heal?: import("../factory/heal/config.js").HealConfigInput;
+    [key: string]: unknown;
+  };
 }
 
 export interface SessionState {
