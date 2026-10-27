@@ -83,7 +83,7 @@ describe('renderUpdateHints', () => {
     }).map(stripAnsi);
 
     expect(line).toBe(
-      '[!] omc 4.2.0 - paste: ! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc',
+      '[!] omg 4.2.0 - paste: ! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc',
     );
     expect(line.length).toBeLessThan(110);
   });
@@ -95,7 +95,7 @@ describe('renderUpdateHints', () => {
       claudeCodeUpdateAvailable: null,
     }).map(stripAnsi);
 
-    expect(line).toBe('[!] omc 4.2.0 - paste: ! npm i -g oh-my-copilot@latest');
+    expect(line).toBe('[!] omg 4.2.0 - paste: ! npm i -g oh-my-copilot@latest');
   });
 
   it('renders one line per product', () => {
@@ -152,5 +152,96 @@ describe('Claude Code update label', () => {
     );
 
     expect(output).not.toContain('claude update');
+  });
+});
+
+describe('update hints under the Copilot host', () => {
+  it('uses the in-session Copilot plugin command for Copilot plugin installs', () => {
+    const [line] = renderUpdateHints({
+      omcUpdateAvailable: '5.13.2',
+      omcUpdateSource: 'copilot-plugin',
+      claudeCodeUpdateAvailable: null,
+      host: 'copilot',
+    }).map(stripAnsi);
+
+    expect(line).toBe('[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc');
+  });
+
+  it('never offers the claude plugin command under Copilot', () => {
+    const [line] = renderUpdateHints({
+      omcUpdateAvailable: '5.13.2',
+      omcUpdateSource: 'marketplace',
+      claudeCodeUpdateAvailable: null,
+      host: 'copilot',
+    }).map(stripAnsi);
+
+    expect(line).toBe('[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc');
+  });
+
+  it('uses the npm command for npm installs', () => {
+    const [line] = renderUpdateHints({
+      omcUpdateAvailable: '5.13.2',
+      omcUpdateSource: 'npm',
+      claudeCodeUpdateAvailable: null,
+      host: 'copilot',
+    }).map(stripAnsi);
+
+    expect(line).toBe('[!] omg 5.13.2 - paste: ! npm i -g oh-my-copilot@latest');
+  });
+
+  it('drops the Claude Code line even when the cache reports one', () => {
+    const lines = renderUpdateHints({
+      omcUpdateAvailable: null,
+      omcUpdateSource: 'npm',
+      claudeCodeUpdateAvailable: '2.1.311',
+      host: 'copilot',
+    });
+
+    expect(lines).toEqual([]);
+  });
+});
+
+describe('update-available render golden', () => {
+  const updateState = {
+    omcVersion: '5.13.1',
+    updateAvailable: '5.13.2',
+    claudeCodeVersion: '2.1.230',
+    claudeCodeUpdateAvailable: '2.1.240',
+  } as const;
+
+  it('renders the Claude host byte-for-byte (OMG label, Claude label and line kept)', async () => {
+    const output = await render(
+      createMinimalContext({ ...updateState, omcUpdateSource: 'marketplace' }),
+      createMinimalConfig({ model: false, sessionHealth: false, showCallCounts: false }),
+    );
+
+    expect(stripAnsi(output)).toBe([
+      '[OMG#5.13.1] -> 5.13.2 omg update | [Claude#2.1.230] -> 2.1.240 claude update',
+      '[!] omg 5.13.2 - paste: ! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc',
+      '[!] claude 2.1.240 - paste: ! claude update',
+    ].join('\n'));
+  });
+
+  it('renders the Copilot host with no Claude label, line or command', async () => {
+    const output = stripAnsi(await render(
+      createMinimalContext({ ...updateState, host: 'copilot', omcUpdateSource: 'copilot-plugin' }),
+      createMinimalConfig({ model: false, sessionHealth: false, showCallCounts: false }),
+    ));
+
+    expect(output).toBe([
+      '[OMG#5.13.1] -> 5.13.2',
+      '[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc',
+    ].join('\n'));
+    expect(output).not.toContain('claude');
+  });
+
+  it('accepts omgLabel as the config key and omcLabel as a layout alias', async () => {
+    const config = createMinimalConfig({ omcLabel: false, omgLabel: true, model: false, sessionHealth: false, showCallCounts: false });
+    const output = stripAnsi(await render(
+      createMinimalContext({ omcVersion: '5.13.1' }),
+      { ...config, layout: { main: ['omcLabel'] } },
+    ));
+
+    expect(output).toBe('[OMG#5.13.1]');
   });
 });

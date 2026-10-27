@@ -34,6 +34,7 @@ import { getUsage, getSubscriptionInfo } from "./usage-api.js";
 import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
+import { detectHudHost } from "./host.js";
 import { refreshMissionBoardState } from "./mission-board.js";
 import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
@@ -331,6 +332,8 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     }
 
     const cwd = resolveToWorktreeRoot(stdin.cwd || undefined);
+    const host = detectHudHost(stdin);
+    const isCopilotHost = host === "copilot";
 
     // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
     // Clone to avoid mutating shared DEFAULT_HUD_CONFIG when applying runtime width detection
@@ -361,9 +364,14 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
     });
 
-    const currentSessionId = extractSessionIdFromPath(
-      resolvedTranscriptPath ?? stdin.transcript_path ?? "",
-    );
+    // Copilot's transcript_path is the session-state directory, so its session
+    // id comes from the payload; Claude keeps the transcript-path rule.
+    const currentSessionId =
+      isCopilotHost && stdin.session_id
+        ? stdin.session_id
+        : extractSessionIdFromPath(
+            resolvedTranscriptPath ?? stdin.transcript_path ?? "",
+          );
 
     // Initialize HUD state (cleanup stale/orphaned tasks)
     // Must happen after cwd resolution so cleanup targets the correct project directory
@@ -413,12 +421,13 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
     // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
+    // The Anthropic usage API is meaningless under Copilot (no network there).
     const usageResult =
-      config.elements.rateLimits === false
+      config.elements.rateLimits === false || isCopilotHost
         ? null
         : await getUsage({ clientVersion: stdin.version });
     const rateLimitsResult =
-      config.elements.rateLimits === false
+      config.elements.rateLimits === false || isCopilotHost
         ? null
         : mergeStdinRateLimits(stdinRateLimits, usageResult);
 
@@ -431,8 +440,9 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     // Read OMC version and update check cache
     let omcVersion: string | null = null;
     let updateAvailable: string | null = null;
-    let omcUpdateSource: "npm" | "marketplace" | null = null;
-    const claudeCodeVersion = stdin.version ?? null;
+    let omcUpdateSource: "npm" | "marketplace" | "copilot-plugin" | null = null;
+    // Under Copilot stdin.version is the Copilot CLI version, not Claude Code's.
+    const claudeCodeVersion = isCopilotHost ? null : (stdin.version ?? null);
     let claudeCodeUpdateAvailable: string | null = null;
     try {
       omcVersion = getRuntimePackageVersion();
@@ -459,7 +469,11 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       ) {
         updateAvailable = cached.latestVersion;
       }
-      if (cached?.source === "npm" || cached?.source === "marketplace") {
+      if (
+        cached?.source === "npm" ||
+        cached?.source === "marketplace" ||
+        cached?.source === "copilot-plugin"
+      ) {
         omcUpdateSource = cached.source;
       }
       // claudeCodeLatestVersion is absent on caches written before the
@@ -483,7 +497,9 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
 
     // Session summary: read cached state and trigger background regeneration if needed
     let sessionSummary: SessionSummaryState | null = null;
-    const sessionSummaryEnabled = config.elements.sessionSummary ?? false;
+    // The summary spawns `claude -p`, which Copilot sessions cannot rely on.
+    const sessionSummaryEnabled =
+      !isCopilotHost && (config.elements.sessionSummary ?? false);
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
       const omcStateDir = join(getOmcRoot(cwd), "state");
       sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
@@ -515,6 +531,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     // Read subscription info for enterprise detection (best-effort).
     // Rate-limit rendering must not depend on this metadata being present.
     const subscriptionInfo = (() => {
+      if (isCopilotHost) return { subscriptionType: null, rateLimitTier: null };
       try {
         return getSubscriptionInfo() ?? { subscriptionType: null, rateLimitTier: null };
       } catch {
@@ -524,6 +541,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
 
     // Build render context
     const context: HudRenderContext = {
+      host,
       contextPercent,
       contextDisplayScope: currentSessionId ?? cwd,
       modelName: getModelName(stdin),
@@ -557,10 +575,10 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       promptTime: hudState?.lastPromptTimestamp
         ? new Date(hudState.lastPromptTimestamp)
         : null,
-      apiKeySource: config.elements.apiKeySource
+      apiKeySource: config.elements.apiKeySource && !isCopilotHost
         ? detectApiKeySource(cwd)
         : null,
-      apiKeyMode: detectApiKeySource(cwd) !== null,
+      apiKeyMode: !isCopilotHost && detectApiKeySource(cwd) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
       profileName: process.env.COPILOT_HOME

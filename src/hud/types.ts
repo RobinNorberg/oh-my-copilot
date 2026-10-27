@@ -386,6 +386,9 @@ export interface CustomProviderResult {
 }
 
 export interface HudRenderContext {
+  /** Host CLI that fed the payload (see host.ts); absent means 'claude' */
+  host?: 'claude' | 'copilot';
+
   /** Context window percentage (0-100) */
   contextPercent: number;
 
@@ -462,7 +465,7 @@ export interface HudRenderContext {
   updateAvailable: string | null;
 
   /** Update channel the cached OMC update belongs to (null if unknown) */
-  omcUpdateSource?: 'npm' | 'marketplace' | null;
+  omcUpdateSource?: 'npm' | 'marketplace' | 'copilot-plugin' | null;
 
   /** Installed Claude Code version reported by the statusline stdin payload */
   claudeCodeVersion?: string | null;
@@ -656,7 +659,8 @@ export interface HudElementConfig {
   model: boolean;            // Show current model name
   modelFormat: ModelFormat;   // Model name verbosity level
   effort: boolean;           // Show current effort level (low/medium/high/xhigh/max)
-  omcLabel: boolean;
+  omcLabel: boolean;         // Show the [OMG#version] label (canonical key; layout name `omgLabel`)
+  omgLabel?: boolean;        // Alias of omcLabel; wins when both are set
   updateNotification?: boolean; // Show available-update prompt text in the OMC label
   rateLimits: boolean;  // Show 5h and weekly rate limits
   ralph: boolean;
@@ -743,7 +747,7 @@ export interface LayoutConfig {
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
   line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
   main: [
-    'omcLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'premiumBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'premiumBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
     'callCounts', 'lastTool', 'recentTools', 'sessionSummary',

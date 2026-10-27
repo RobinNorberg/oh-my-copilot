@@ -61,6 +61,13 @@ const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/;
 const PLAIN_SEPARATOR = " | ";
 const DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
 
+/** Layout names kept as aliases of a renamed element. */
+const LAYOUT_ALIASES: Record<string, string> = { omcLabel: "omgLabel" };
+
+function normalizeLayoutNames(names: string[]): string[] {
+  return names.map((name) => LAYOUT_ALIASES[name] ?? name);
+}
+
 function buildMainElementOrder(elementOrder: string[] | undefined): string[] {
   if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
     return DEFAULT_ELEMENT_ORDER.main;
@@ -68,7 +75,7 @@ function buildMainElementOrder(elementOrder: string[] | undefined): string[] {
 
   const known = new Set(DEFAULT_ELEMENT_ORDER.main);
   const seen = new Set<string>();
-  const configured = elementOrder.filter((name) => {
+  const configured = normalizeLayoutNames(elementOrder).filter((name) => {
     if (!known.has(name) || seen.has(name)) {
       return false;
     }
@@ -239,6 +246,7 @@ export async function render(
 ): Promise<string> {
   const { elements: enabledElements } = config;
   const hudLabels = config.labels ?? DEFAULT_HUD_LABELS;
+  const isCopilotHost = context.host === "copilot";
 
   // ── Render all elements into maps ──────────────────────────────────
   // Each element is rendered independently and stored by name.
@@ -305,7 +313,10 @@ export async function render(
     if (effortElement) rendered.set("effort", effortElement);
   }
 
+  // Claude Code update label: Claude host only. Under Copilot, stdin.version is
+  // the Copilot CLI version, so any comparison with claude-code is meaningless.
   if (
+    !isCopilotHost &&
     enabledElements.updateNotification !== false &&
     context.claudeCodeUpdateAvailable
   ) {
@@ -331,18 +342,21 @@ export async function render(
 
   // -- main-group elements (default: main statusline) --
 
-  if (enabledElements.omcLabel) {
+  if (enabledElements.omgLabel ?? enabledElements.omcLabel) {
     const localSuffix = isRuntimePackageLocal() ? "L" : "";
     const versionTag = context.omcVersion
       ? `#${context.omcVersion}${localSuffix}`
       : (localSuffix ? `#${localSuffix}` : "");
     if (enabledElements.updateNotification !== false && context.updateAvailable) {
+      // Under Copilot the updateHint detail line carries the channel-correct
+      // command, so the label only names the version.
+      const suffix = isCopilotHost ? "" : " omg update";
       rendered.set(
-        "omcLabel",
-        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`),
+        "omgLabel",
+        bold(`[OMG${versionTag}] -> ${context.updateAvailable}${suffix}`),
       );
     } else {
-      rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
+      rendered.set("omgLabel", bold(`[OMG${versionTag}]`));
     }
   }
 
@@ -580,6 +594,7 @@ export async function render(
       omcUpdateAvailable: context.updateAvailable,
       omcUpdateSource: context.omcUpdateSource ?? null,
       claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null,
+      host: context.host,
     });
     if (updateHints.length > 0) renderedDetail.set("updateHint", updateHints);
   }
@@ -594,11 +609,11 @@ export async function render(
     Array.isArray(v) ? v : fallback;
 
   const effectiveLayout: Required<LayoutConfig> = {
-    line1: safeArray(config.layout?.line1, DEFAULT_ELEMENT_ORDER.line1),
+    line1: normalizeLayoutNames(safeArray(config.layout?.line1, DEFAULT_ELEMENT_ORDER.line1)),
     // `layout.main` remains the advanced authoritative layout control.
     // `elementOrder` is a narrow convenience alias for the main HUD line only.
-    main: safeArray(config.layout?.main, buildMainElementOrder(config.elementOrder)),
-    detail: safeArray(config.layout?.detail, DEFAULT_ELEMENT_ORDER.detail),
+    main: normalizeLayoutNames(safeArray(config.layout?.main, buildMainElementOrder(config.elementOrder))),
+    detail: normalizeLayoutNames(safeArray(config.layout?.detail, DEFAULT_ELEMENT_ORDER.detail)),
   };
 
   /** Collect inline elements in layout order.
