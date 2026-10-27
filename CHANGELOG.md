@@ -28,6 +28,123 @@ All notable changes to oh-my-copilot will be documented in this file.
   `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc`
   or `npm i -g oh-my-copilot@latest` for your channel.
 
+# oh-my-copilot v5.15.0
+
+## [5.15.0] - 2026-10-27
+
+Fork **v5.15.0** (from v5.14.0) is a minor release. It adds the first part of
+the factory engine, **experimental**: `omg factory run <issue>` drives one
+GitHub issue through plan, implement lane, draft PR, an independent review lane
+and fix rounds, then parks at `prepare` behind a human gate. The prepare step,
+the gates driver and the merge gate arrive in later releases. The run starts
+only when you start it by hand, and merging is always a human step: there is no
+auto-merge anywhere. The release also closes a hole in the team worker push
+rule that was already exploitable.
+
+### Added
+
+- **`omg factory run <issue> [--dry-run] [--json]`** (experimental). The engine
+  reads the issue and its plan, runs an implement lane in its own worktree,
+  pushes `factory/<issue>` and opens a draft PR, then runs a fresh review lane
+  on the exact head sha. A changes-requested verdict starts a fix round on a
+  fresh lane, up to `maxFixRounds`. The run then stops at
+  `awaiting-human: prepare`. `omg factory run status <issue>` shows the
+  persisted state and `omg factory run cancel <issue>` stops the engine and its
+  lane while keeping the PR, branch and worktrees. Rerun the same command to
+  resume after any `awaiting-human` stop. The issue needs an
+  `Acceptance criteria` heading or an `omg-plan: <repo path>` line; the line is
+  honoured only from an OWNER, MEMBER or COLLABORATOR author, otherwise the run
+  stops at `awaiting-human: needs-plan`.
+- **A mandatory AI-credit cap per lane.** `factory.run.laneMaxCredits`
+  (default 30, which is also Copilot CLI's minimum) caps every lane, and the
+  engine refuses to start a run without it. The optional
+  `factory.run.maxRunCredits` stops the run at `awaiting-human: budget`,
+  checked at step boundaries. Both keys come from the user config; the project
+  config can only lower them. Lane credits go to the ledger for reporting only.
+- **Per-run time and retry limits.** Lane and run wall time, retries per phase
+  (a lost lane is respawned once), `maxFixRounds` and a single ci-fix round.
+  The plugin still enforces no budget (see v5.14.0); these are limits on one
+  unattended run.
+- **`copilot_run` additions**, all backwards compatible for MCP callers:
+  - `startRef` creates the job worktree at a validated commit instead of
+    `HEAD`. A ref that starts with `-`, holds whitespace or control characters,
+    is longer than 256 characters or does not resolve to a commit is refused
+    before anything is created; only the resolved sha reaches
+    `git worktree add`.
+  - `profile: "review"` denies the write tool and every git command that
+    changes the tree, its refs or its config, including aliases, `-c` and
+    `--config-env`, and quoted or full-path git binaries. The default profile
+    is `write`.
+  - `allowLive` is an in-process opt-in that the MCP handler cannot pass.
+    Factory lanes use it instead of `OMG_COPILOT_RUN_ALLOW`, which sessions
+    never inherit.
+  - Lanes set `OMC_SKIP_HOOKS=persistent-mode,workflow-drift-guard,code-simplifier`
+    so no Stop block spends an extra billed turn. The `code-simplifier` hook now
+    honours `OMC_SKIP_HOOKS`.
+- **Lane interface** (`LaneBackend`: start, poll, wait, cancel), with
+  `CopilotLaneBackend` on top of the `copilot_run` manager. Ledger records are
+  keyed `factory-lane:<laneId>` and count AI credits.
+
+### Security
+
+The engine assumes any lane may be prompt-injected, because lanes run Copilot
+with a shell and read untrusted issue and PR text. The running engine is the
+only trusted party.
+
+- **Engine-held state record.** The engine keeps the exact bytes of every state
+  file it writes in memory and in a sidecar under `~/.omg/factory-ledger/`
+  (or `$OMC_STATE_DIR/factory-ledger/`). Any other change stops the run at
+  `awaiting-human: state-tampered`, and the engine restores its copy. A ship
+  approve counts only when the engine recorded it from its own review lane
+  (job id, head sha and verdict hash).
+- **Tamper checks around every lane**, write or review, on the common git dir:
+  refs, config, `hooks/`, `info/`, `worktrees/`, `modules/`, alternates, the
+  global git config and its includes, both HEADs, the lane's changes and
+  untracked deletions, and a bounded set of ignored files. Any change stops the
+  run at `review-tampered`, `lane-tampered` or `state-tampered`, drops the
+  verdict and pushes nothing.
+- **Hardened engine git.** The engine's own git runs with an empty
+  `core.hooksPath` and `core.fsmonitor=false`, and the change summary
+  neutralises filter drivers.
+- **Confirmed lane end.** Comparisons run only after a confirmed terminal
+  state. A lost lane's Copilot child must be dead (pid plus start-time
+  identity) or killed, otherwise the run stops at `lane-unconfirmed`. Unknown
+  usage counts as the full lane cap.
+- **Narrow pushes and verdicts.** The engine pushes only
+  `<sha40>:refs/heads/factory/<issue>` to origin, never a name taken from issue
+  text. Draft PRs are created without a shell. A verdict is exactly one
+  trailing JSON block from the review lane's final message on the exact head
+  sha; quoted or fake blocks are rejected, an approve with blocker or major
+  findings becomes changes-requested, and the implementer can never approve.
+- **Lanes are not sandboxed.** A lane whose shell reaches your home directory
+  can still rewrite the engine's record there. The checks narrow that and a
+  human gate always precedes the merge. Running lanes under Copilot CLI's
+  `--sandbox` is a planned follow-up.
+
+### Fixed
+
+- **Team worker push rule.** The `git push` denial in `omg team` sdk workers
+  could be bypassed through git aliases, quote-split spellings, quoted
+  full-path git binaries, `send-pack`, `http-push` and `subtree push`. All are
+  now refused. This was exploitable on v5.14.0 and earlier.
+- **Git 2.56 wording.** Git 2.56 reworded the error for a `.git` file that
+  points at a non-repository (`fatal: gitfile does not point to a valid
+  repository`). The stderr classifiers knew only the old text and failed
+  closed as `probe_failed`, which showed up as the "flaky"
+  `state-tools-nongit-ownership` test in CI. All four matchers now accept both
+  wordings. This fix is also in 5.14.0's build, but 5.14.0's notes did not
+  mention it.
+
+### Known limits
+
+- A regex denylist cannot catch `git $p`, `$(...)` or direct writes to
+  `.git/config`; the engine's tamper checks cover those after each lane.
+- Git include targets are read without an lstat or size cap, so
+  `include.path=/dev/zero` can hang the after-lane snapshot. It fails closed.
+- Global `git/ignore`, `attributes`, `core.excludesFile` and
+  `core.attributesFile` targets are not hashed.
+- The Windows process-tree kill can miss orphaned grandchildren.
+
 # oh-my-copilot v5.14.0
 
 ## [5.14.0] - 2026-10-27
