@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "23bfbab3c9c59b97931840a3a1600c2afa7ee0e3",
-    "sourceSha256": "06d75e29f2e6ffe44e278e60446dbf92380054a7432dc491167a94b786eb06ce",
+    "head": "0fbb6e47f741eefea19c0257fb97437a0fa140b9",
+    "sourceSha256": "b0822216857a3e7b3a894f912db204862e6dcaa6f34b038b72d00c9365a7b5ed",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "23bfbab3c9c59b97931840a3a1600c2afa7ee0e3",
-  "sourceSha256": "06d75e29f2e6ffe44e278e60446dbf92380054a7432dc491167a94b786eb06ce",
+  "head": "0fbb6e47f741eefea19c0257fb97437a0fa140b9",
+  "sourceSha256": "b0822216857a3e7b3a894f912db204862e6dcaa6f34b038b72d00c9365a7b5ed",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1684,
-      "total": 1708
+      "srcFiles": 1685,
+      "total": 1709
     },
     "generated": {
       "distFiles": 6344,
@@ -45493,6 +45493,11 @@
         "path": "src/factory/run/lane.ts"
       },
       {
+        "id": "src/factory/run/ledger.ts",
+        "kind": "src",
+        "path": "src/factory/run/ledger.ts"
+      },
+      {
         "id": "src/factory/run/progress.ts",
         "kind": "src",
         "path": "src/factory/run/progress.ts"
@@ -68521,7 +68526,22 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/factory/run/review-guard.ts",
         "kind": "imports"
       },
       {
@@ -68531,13 +68551,28 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/ship/exec.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
@@ -68716,6 +68751,11 @@
       },
       {
         "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
         "to": "src/factory/run/progress.ts",
         "kind": "imports"
       },
@@ -68796,6 +68836,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/progress.ts",
         "kind": "imports"
       },
@@ -68811,6 +68856,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/review-output.ts",
         "kind": "imports"
       },
@@ -68823,6 +68873,11 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -68861,6 +68916,11 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
@@ -68883,6 +68943,41 @@
         "from": "src/factory/run/lane.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/ledger.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/progress.ts",
@@ -68978,6 +69073,11 @@
         "from": "src/factory/run/state.ts",
         "to": "src/platform/process-utils.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/status.ts",
@@ -101706,12 +101806,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8767,
-      "edgeCount": 9990,
-      "importEdgeCount": 8347,
+      "nodeCount": 8768,
+      "edgeCount": 10009,
+      "importEdgeCount": 8360,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4e23bb19b592cdae1f6e36020d2d0a56943a00e10bad39ba61a24a58682d6d1d",
-  "manifestSha256": "e890bf4247c93a44218db41906b8e6da3446830fa24d1962c5f63eac625e3242"
+  "inventorySha256": "bd16ea0d64e7e429f96a4b90c050905a5197791db5fa970c294ef4234c176799",
+  "manifestSha256": "b8b5da5dca9101c41ad1a34e156c4e5bce3888bccc2b6c29ebcc2598c3ed27f7"
 }
