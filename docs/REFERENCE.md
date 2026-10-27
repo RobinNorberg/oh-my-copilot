@@ -1022,7 +1022,7 @@ Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until y
 
 **Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
-**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set; `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set, except under Copilot CLI, where without a limit it shows the session's credits from the statusline payload (`cr:0.42`, hidden at zero); `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 
 **Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 
@@ -1777,6 +1777,8 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `ralph`      | Show ralph loop status                                                                                               | `true`  |
 | `autopilot`  | Show autopilot status                                                                                                | `true`  |
 | `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
+
+**Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript: session duration, context %, tokens, AI credits, agents, skills, call counts and tools come from there. `model`, `effort`, `cwd` and `gitBranch` default to off, because Copilot's own footer shows them; set them to `true` to show them anyway. `rateLimits`, `enterpriseMode`/`showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary` and the payload warning have no data source under Copilot and stay off there.
 
 **Update hint.** When an OMC update is available, the label reads `[oh-my-copilot#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
 
