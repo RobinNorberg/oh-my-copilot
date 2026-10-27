@@ -1,15 +1,19 @@
 /**
- * Premium-request ledger: what Copilot billed (or what we estimate it billed)
+ * Usage ledger: the AI Credits Copilot billed (or what we estimate it billed)
  * per session and per team, stored at `<omgRoot>/state/budget-ledger.json`.
+ * Copilot bills usage in AI Credits since 2026-06-01; premium requests are a
+ * legacy field the CLI still reports and the ledger still carries.
  *
  * Data sources, verified on Copilot CLI 1.0.91 and @github/copilot-sdk 1.0.16:
  * - CLI sessions persist `$COPILOT_HOME/session-state/<id>/events.jsonl`. Its
  *   `session.usage_checkpoint` and `session.shutdown` events carry cumulative
- *   `totalPremiumRequests` (multiplier applied) and `totalNanoAiu`
- *   (1e-9 AI credits). They are written at the end of a session, so a running
- *   session has no total yet: until then the ledger keeps an ESTIMATE of one
- *   premium request per top-level user prompt (`user.message` without an
- *   agent `source`) since the period start, multiplier and credits unknown.
+ *   `totalNanoAiu` (1e-9 AI Credits) and the legacy `totalPremiumRequests`.
+ *   They are written at the end of a session (the per-call `assistant.usage`
+ *   events are ephemeral and not persisted), so a running session has no
+ *   total yet: until then the ledger keeps an ESTIMATE of
+ *   ESTIMATED_CREDITS_PER_PROMPT AI Credits (and one premium request) per
+ *   top-level user prompt (`user.message` without an agent `source`) since
+ *   the period start.
  *   The events file is scanned incrementally (byte offset + count kept in the
  *   record), at most MAX_SCAN_BYTES per call.
  * - SDK team workers (`omg team` sdk transport) see live `assistant.usage`
@@ -53,9 +57,10 @@ export interface EventsScan {
 }
 
 export interface UsageRecord {
-  premiumRequests: number;
-  /** AI credits (nano-AIU / 1e9); 0 when unknown. */
+  /** AI Credits (nano-AIU / 1e9), the billed unit. */
   credits: number;
+  /** Legacy: premium requests as the CLI still reports them (multiplier applied). */
+  premiumRequests: number;
   source: UsageSource;
   /** Where the numbers came from, e.g. `session.shutdown` or the estimate rule. */
   detail: string;
@@ -105,6 +110,13 @@ export interface LedgerLockOptions {
 }
 
 const NANO = 1e9;
+/**
+ * Rough AI Credits per top-level prompt of a running CLI session, used until
+ * its measured total is written. Short smoke prompts measured 0.29 to 0.91
+ * credits (Copilot CLI 1.0.91, small models); real work varies by model and
+ * by the number of model calls, so this is an estimate, not a floor.
+ */
+export const ESTIMATED_CREDITS_PER_PROMPT = 1;
 /** Bytes of events.jsonl parsed per call; the rest is picked up by the next call. */
 export const MAX_SCAN_BYTES = 8 * 1024 * 1024;
 /** Tail read for the end-of-session totals. */
@@ -218,22 +230,25 @@ export function updateLedger<T>(path: string, fn: (ledger: BudgetLedger) => T, o
  */
 export function mergeRecord(existing: UsageRecord | undefined, next: UsageRecord): UsageRecord {
   if (!existing) return next;
-  const before = num(existing.premiumRequests);
   if (existing.source === 'measured' && next.source === 'estimated') {
     return next.scan ? { ...existing, scan: next.scan } : existing;
   }
-  if (existing.source === 'estimated' && next.source === 'estimated' && num(next.premiumRequests) < before) {
-    return { ...next, premiumRequests: before, credits: Math.max(num(existing.credits), num(next.credits)) };
-  }
-  if (existing.source === 'measured' && next.source === 'measured' && num(next.premiumRequests) < before) {
-    return {
-      ...next,
-      premiumRequests: before,
-      credits: Math.max(num(existing.credits), num(next.credits)),
-      detail: `${next.detail}; total fell from ${before} to ${num(next.premiumRequests)} (resumed session?), kept ${before}`,
-    };
-  }
-  return next;
+  if (existing.source !== next.source) return next;
+  const credits = Math.max(num(existing.credits), num(next.credits));
+  const premiumRequests = Math.max(num(existing.premiumRequests), num(next.premiumRequests));
+  if (credits === num(next.credits) && premiumRequests === num(next.premiumRequests)) return next;
+  if (next.source === 'estimated') return { ...next, credits, premiumRequests };
+  return {
+    ...next,
+    credits,
+    premiumRequests,
+    detail: `${next.detail}; total fell from ${amount(existing)} to ${amount(next)} (resumed session?), kept ${amount({ credits, premiumRequests })}`,
+  };
+}
+
+/** `0.425 AI credits (1 premium request)` for record details. */
+function amount(r: Pick<UsageRecord, 'credits' | 'premiumRequests'>): string {
+  return `${Number(num(r.credits).toFixed(3))} AI credits (${num(r.premiumRequests)} premium requests)`;
 }
 
 const baselineKey = (key: string, team?: string) => (team ? `t:${team}/${key}` : `s:${key}`);
@@ -245,7 +260,7 @@ function applyBaseline(usage: UsageRecord, baseline: UsageBaseline | undefined):
     ...usage,
     premiumRequests: Math.max(0, num(usage.premiumRequests) - num(baseline.premiumRequests)),
     credits: Math.max(0, num(usage.credits) - num(baseline.credits)),
-    detail: `${usage.detail} minus ${num(baseline.premiumRequests)} before the reset`,
+    detail: `${usage.detail} minus ${amount(baseline)} before the reset`,
   };
   // The pre-reset part was itself an estimate, so the split is too.
   if (baseline.source === 'estimated') return { ...net, source: 'estimated', detail: `${net.detail} (estimated)` };
@@ -408,9 +423,9 @@ function toRecord(scan: EventsScan, partial: boolean, now: Date, tail: Totals | 
   return {
     ...base,
     premiumRequests: scan.prompts,
-    credits: 0,
+    credits: scan.prompts * ESTIMATED_CREDITS_PER_PROMPT,
     source: 'estimated',
-    detail: `estimate: ${scan.prompts} user prompt(s) x1; multiplier and credits unknown until the session ends${partial ? ` (read ${scan.offset} bytes so far)` : ''}`,
+    detail: `estimate: ${scan.prompts} user prompt(s) x ${ESTIMATED_CREDITS_PER_PROMPT} AI credit; measured once the session writes its totals${partial ? ` (read ${scan.offset} bytes so far)` : ''}`,
   };
 }
 

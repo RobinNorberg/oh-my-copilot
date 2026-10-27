@@ -1,5 +1,5 @@
 /**
- * Premium-request budget governor: `budget` settings from `.copilot/omg.jsonc`,
+ * AI Credits budget governor: `budget` settings from `.copilot/omg.jsonc`,
  * the hook side (record usage, SessionStart summary, threshold notices) and
  * the `omg team` fan-out check. Everything here is fail-open: a bug or an
  * unreadable ledger yields no message, never a blocked session.
@@ -31,6 +31,7 @@ import {
   type UsageRecord,
 } from './ledger.js';
 
+/** `credits` (AI Credits, the default and the billed unit) or the deprecated legacy `premiumRequests`. */
 export type BudgetUnit = 'premiumRequests' | 'credits';
 
 export interface BudgetSettings {
@@ -52,7 +53,7 @@ const REFRESH_DEADLINE_MS = 300;
 /** Validate a raw `budget` block; invalid values are dropped and reported, never thrown. */
 export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = process.env): { settings: BudgetSettings; issues: string[] } {
   const issues: string[] = [];
-  const settings: BudgetSettings = { enabled: env.OMC_BUDGET_GOVERNOR !== '0', mode: 'warn', unit: 'premiumRequests' };
+  const settings: BudgetSettings = { enabled: env.OMC_BUDGET_GOVERNOR !== '0', mode: 'warn', unit: 'credits' };
   if (raw === undefined || raw === null) return { settings, issues };
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     issues.push('budget: must be an object');
@@ -66,7 +67,10 @@ export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = pro
   }
   if (block.unit !== undefined) {
     if (block.unit === 'premiumRequests' || block.unit === 'credits') settings.unit = block.unit;
-    else issues.push(`budget.unit: must be "premiumRequests" or "credits" (got ${JSON.stringify(block.unit)}); using "premiumRequests"`);
+    else issues.push(`budget.unit: must be "credits" or the legacy "premiumRequests" (got ${JSON.stringify(block.unit)}); using "credits"`);
+    if (block.unit === 'premiumRequests') {
+      issues.push('budget.unit: "premiumRequests" is deprecated (Copilot bills AI Credits since 2026-06-01); the limits still count legacy premium requests. Set "credits" and limits in AI Credits (docs/MIGRATION.md)');
+    }
   }
   for (const key of LIMIT_KEYS) {
     const value = block[key];
@@ -112,6 +116,11 @@ export function formatAmount(value: number, unit: BudgetUnit): string {
   return `${n} ${unit === 'credits' ? 'AI credits' : 'premium requests'}`;
 }
 
+/** The unit name for `Limits in ...`. */
+export function formatUnit(unit: BudgetUnit): string {
+  return unit === 'credits' ? 'AI credits' : 'legacy premium requests';
+}
+
 export function summaryLine(ledger: BudgetLedger, settings: BudgetSettings): string {
   const t = ledgerTotals(ledger);
   const limits = [
@@ -120,9 +129,10 @@ export function summaryLine(ledger: BudgetLedger, settings: BudgetSettings): str
     settings.perTeamLimit !== undefined ? `per team ${settings.perTeamLimit}` : '',
   ].filter(Boolean).join(', ');
   const estimated = t.estimatedRecords > 0 ? `; ${t.estimatedRecords} record(s) estimated` : '';
-  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(t.premiumRequests, 'premiumRequests')}, `
-    + `${formatAmount(Number(t.credits.toFixed(3)), 'credits')} (${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). `
-    + `Limits in ${settings.unit}: ${limits || 'none'} (${settings.mode} mode). Details: omg budget status.`;
+  const legacy = settings.unit === 'premiumRequests' ? `, legacy ${formatAmount(t.premiumRequests, 'premiumRequests')}` : '';
+  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')}${legacy} `
+    + `(${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). `
+    + `Limits in ${formatUnit(settings.unit)}: ${limits || 'none'} (${settings.mode} mode). Details: omg budget status.`;
 }
 
 /** Mark newly crossed thresholds in `ledger` and return the notice, or null. */
@@ -314,9 +324,11 @@ export interface FanoutDecision {
 }
 
 /**
- * Projected cost of a launch, ESTIMATED: one premium request per copilot
- * worker (its first prompt at an assumed x1 multiplier), or the per-worker
- * credit cap in `credits`. Non-copilot workers are not billed to Copilot.
+ * Projected cost of a launch, ESTIMATED: the per-worker AI Credits cap
+ * (`team.sdk.maxCreditsPerWorker`) per copilot worker in `credits`, or, in the
+ * legacy `premiumRequests` unit, one premium request per worker (its first
+ * prompt at an assumed x1 multiplier). Non-copilot workers are not billed to
+ * Copilot.
  */
 export function governTeamFanout(input: FanoutInput): FanoutDecision {
   const { settings, agentTypes } = input;

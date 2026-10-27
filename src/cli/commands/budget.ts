@@ -1,10 +1,10 @@
 /**
- * `omg budget [status|reset] [--json]`: the premium-request ledger
+ * `omg budget [status|reset] [--json]`: the AI Credits usage ledger
  * (src/budget) against the `budget` limits of `.copilot/omg.jsonc`.
  */
 
-import { formatAmount, loadBudgetSettings, summaryLine, usedInUnit } from '../../budget/governor.js';
-import { ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
+import { formatAmount, formatUnit, loadBudgetSettings, summaryLine, usedInUnit } from '../../budget/governor.js';
+import { ESTIMATED_CREDITS_PER_PROMPT, ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
 
 export async function budgetCommand(action: string, options: { json?: boolean }, cwd: string = process.cwd()): Promise<number> {
   const path = ledgerPath(cwd);
@@ -22,9 +22,9 @@ export async function budgetCommand(action: string, options: { json?: boolean },
       return 1;
     }
     if (options.json) {
-      console.log(JSON.stringify({ ok: true, ledgerPath: path, previous: { since: previous.since, premiumRequests: previous.premiumRequests, credits: previous.credits } }));
+      console.log(JSON.stringify({ ok: true, ledgerPath: path, previous: { since: previous.since, credits: previous.credits, premiumRequests: previous.premiumRequests } }));
     } else {
-      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(previous.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(previous.credits.toFixed(3)), 'credits')}.`);
+      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(Number(previous.credits.toFixed(3)), 'credits')} (legacy ${formatAmount(previous.premiumRequests, 'premiumRequests')}).`);
     }
     return 0;
   }
@@ -44,11 +44,12 @@ export async function budgetCommand(action: string, options: { json?: boolean },
   }
   console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ''));
   for (const [team, t] of Object.entries(totals.teams)) {
-    const cap = settings.perTeamLimit !== undefined ? ` (per-team limit ${settings.perTeamLimit} ${settings.unit})` : '';
-    console.log(`  team ${team}: ${formatAmount(t.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} over ${t.records} session(s)${cap}`);
+    const cap = settings.perTeamLimit !== undefined ? ` (per-team limit ${settings.perTeamLimit} ${formatUnit(settings.unit)})` : '';
+    const legacy = settings.unit === 'premiumRequests' ? ` (legacy ${formatAmount(t.premiumRequests, 'premiumRequests')})` : '';
+    console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')}${legacy} over ${t.records} session(s)${cap}`);
   }
   if (totals.estimatedRecords > 0) {
-    console.log(`  ${totals.estimatedRecords} record(s) are estimates (1 premium request per prompt, multiplier unknown); they become measured once the session's totals are written.`);
+    console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);
   }
   if (!settings.enabled) console.log('  Governor disabled (OMC_BUDGET_GOVERNOR=0).');
   for (const issue of issues) console.log(`  config: ${issue}`);

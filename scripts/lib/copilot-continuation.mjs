@@ -4,8 +4,9 @@
  *
  * Live facts (Copilot CLI 1.0.91, recorded payloads):
  *   - agentStop {decision:"block", reason} continues the session: the reason
- *     arrives as the next user prompt (UserPromptSubmit fires with it) and
- *     costs one premium request.
+ *     arrives as the next user prompt (UserPromptSubmit fires with it): an
+ *     extra model turn, billed in AI Credits (it also counts one legacy
+ *     premium request).
  *   - Every later Stop in the chain carries stop_hook_active:true; the CLI
  *     ends the turn itself after 8 consecutive blocks.
  *   - A subagent's own events carry the child sessionId with no parent
@@ -25,8 +26,8 @@ const SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
 /**
  * Consecutive OMC continuations allowed per genuine user prompt on Copilot.
- * Each one is a billed premium request, so the default is conservative: 3
- * continuations (4 requests for the prompt) unless a mode's own cap
+ * Each one is an extra model turn billed in AI Credits, so the default is
+ * conservative: 3 continuations (4 turns for the prompt) unless a mode's own cap
  * (ralph max_iterations, ultragoal max_reinforcements, ...) ends it sooner.
  * OMC_COPILOT_STOP_CHAIN_MAX overrides it (1..7; 1 restores the old
  * one-continuation-per-prompt behaviour, and 7 stays below the CLI's own

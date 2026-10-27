@@ -16,6 +16,7 @@ import {
   emptyLedger,
   ledgerPath,
   ledgerTotals,
+  ESTIMATED_CREDITS_PER_PROMPT,
   MAX_SCAN_BYTES,
   mergeRecord,
   readCopilotSessionUsage,
@@ -91,10 +92,10 @@ describe('readCopilotSessionUsage', () => {
     expect(readCopilotSessionUsage(writeEvents(SID, [PROMPT, CHECKPOINT]))).toMatchObject({ premiumRequests: 1, credits: 0.26866, source: 'measured', detail: 'session.usage_checkpoint' });
   });
 
-  it('estimates one request per top-level prompt, ignoring subagent prompts', () => {
+  it('estimates ESTIMATED_CREDITS_PER_PROMPT credits (and one legacy request) per top-level prompt, ignoring subagent prompts', () => {
     const usage = readCopilotSessionUsage(writeEvents(SID, [PROMPT, SUBAGENT_PROMPT, PROMPT, 'not json']));
-    expect(usage).toMatchObject({ premiumRequests: 2, credits: 0, source: 'estimated' });
-    expect(usage?.detail).toMatch(/^estimate: 2 user prompt\(s\) x1/);
+    expect(usage).toMatchObject({ credits: 2 * ESTIMATED_CREDITS_PER_PROMPT, premiumRequests: 2, source: 'estimated' });
+    expect(usage?.detail).toMatch(/^estimate: 2 user prompt\(s\) x 1 AI credit/);
   });
 
   it('returns null for a missing file or a session without prompts', () => {
@@ -155,8 +156,15 @@ describe('ledger', () => {
   it('never lowers an estimate, and keeps the larger measured total when one drops', () => {
     expect(mergeRecord(record(5, 'estimated'), record(3, 'estimated')).premiumRequests).toBe(5);
     const dropped = mergeRecord(record(7), record(2));
+    expect(mergeRecord(record(1, 'estimated', 4), record(1, 'estimated', 2)).credits).toBe(4);
     expect(dropped.premiumRequests).toBe(7);
-    expect(dropped.detail).toMatch(/total fell from 7 to 2 \(resumed session\?\), kept 7/);
+    expect(dropped.detail).toMatch(/total fell from 0 AI credits \(7 premium requests\) to 0 AI credits \(2 premium requests\) \(resumed session\?\), kept 0 AI credits \(7 premium requests\)/);
+    // Credits are the billed unit: a drop in credits alone is kept too.
+    const fewerCredits = mergeRecord(record(1, 'measured', 0.9), record(1, 'measured', 0.4));
+    expect(fewerCredits).toMatchObject({ credits: 0.9, premiumRequests: 1 });
+    expect(fewerCredits.detail).toMatch(/total fell from 0\.9 AI credits/);
+    // A growing total replaces the record unchanged.
+    expect(mergeRecord(record(1, 'measured', 0.4), record(2, 'measured', 0.9))).toEqual(record(2, 'measured', 0.9));
   });
 
   it('refuses a ledger path in the real home directory under test', () => {
@@ -205,14 +213,22 @@ describe('readCopilotSessionUsage incremental and tail mode', () => {
 });
 
 describe('resolveBudgetSettings', () => {
-  it('defaults to warn mode in premium requests with no limits', () => {
-    expect(resolveBudgetSettings(undefined, {})).toEqual({ settings: settings(), issues: [] });
+  it('defaults to warn mode in AI credits with no limits', () => {
+    expect(resolveBudgetSettings(undefined, {})).toEqual({ settings: settings({ unit: 'credits' }), issues: [] });
+    expect(resolveBudgetSettings({ hardLimit: 50 }, {})).toEqual({ settings: settings({ unit: 'credits', hardLimit: 50 }), issues: [] });
   });
 
   it('drops invalid values with an issue instead of throwing', () => {
     const { settings: s, issues } = resolveBudgetSettings({ mode: 'block', unit: 'usd', softLimit: -1, hardLimit: 10, perTeamLimit: '5', extra: 1 }, {});
-    expect(s).toEqual(settings({ hardLimit: 10 }));
+    expect(s).toEqual(settings({ unit: 'credits', hardLimit: 10 }));
     expect(issues).toHaveLength(5);
+    expect(issues).toContain('budget.unit: must be "credits" or the legacy "premiumRequests" (got "usd"); using "credits"');
+  });
+
+  it('still honours the deprecated premiumRequests unit, with a warning', () => {
+    const { settings: s, issues } = resolveBudgetSettings({ unit: 'premiumRequests', hardLimit: 300 }, {});
+    expect(s).toEqual(settings({ unit: 'premiumRequests', hardLimit: 300 }));
+    expect(issues).toEqual([expect.stringMatching(/^budget\.unit: "premiumRequests" is deprecated \(Copilot bills AI Credits since 2026-06-01\)/)]);
   });
 
   it('flags a soft limit above the hard limit and honours the kill switch', () => {
@@ -282,7 +298,7 @@ describe('runBudgetHook', () => {
     runBudgetHook({ phase: 'turn', payload: payload() });
     writeEvents(SID, [PROMPT, SHUTDOWN]);
     const out = runBudgetHook({ phase: 'start', payload: payload({ session_id: 'new-session' }) }) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/^\[BUDGET\] Copilot usage since .*: 3 premium requests, 0\.617 AI credits \(1 session\(s\), 0 team\(s\)\)\. Limits in premiumRequests: hard 50 \(warn mode\)/);
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/^\[BUDGET\] Copilot usage since .*: 0\.617 AI credits \(1 session\(s\), 0 team\(s\)\)\. Limits in AI credits: hard 50 \(warn mode\)/);
     expect(readLedger(ledgerPath(project)).sessions[SID]?.source).toBe('measured');
   });
 
@@ -430,13 +446,13 @@ describe('governTeamFanout', () => {
 describe('omg budget and the HUD element', () => {
   it('reports status as JSON, exits 1 at the hard limit, and resets', async () => {
     writeBudget({ hardLimit: 2 });
-    recordUsage(ledgerPath(project), 's1', record(2));
+    recordUsage(ledgerPath(project), 's1', record(1, 'measured', 2));
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       expect(await budgetCommand('status', { json: true }, project)).toBe(1);
-      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ used: 2, settings: { hardLimit: 2 }, totals: { sessions: 1 } });
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ used: 2, settings: { unit: 'credits', hardLimit: 2 }, totals: { sessions: 1 } });
       expect(await budgetCommand('reset', { json: true }, project)).toBe(0);
-      expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: true, previous: { premiumRequests: 2 } });
+      expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: true, previous: { credits: 2, premiumRequests: 1 } });
       expect(readLedger(ledgerPath(project)).sessions).toEqual({});
     } finally {
       log.mockRestore();
@@ -459,10 +475,12 @@ describe('omg budget and the HUD element', () => {
     }
   });
 
-  it('renders prq:used/limit, with ~ when part is estimated, only when limits exist', () => {
+  it('renders cr:used/limit (prq: in the legacy unit), with ~ when part is estimated, only when limits exist', () => {
     expect(renderPremiumBudget(project)).toBeNull();
     writeBudget({ softLimit: 2, hardLimit: 5 });
-    recordUsage(ledgerPath(project), 's1', record(3, 'estimated'));
+    recordUsage(ledgerPath(project), 's1', record(3, 'estimated', 2.25));
+    expect(renderPremiumBudget(project)?.replace(/\x1b\[[0-9;]*m/g, '')).toBe('cr:~2.3/5');
+    writeBudget({ unit: 'premiumRequests', softLimit: 2, hardLimit: 5 });
     expect(renderPremiumBudget(project)?.replace(/\x1b\[[0-9;]*m/g, '')).toBe('prq:~3/5');
   });
 });
@@ -478,7 +496,19 @@ describe('applyBudgetGovernor (omg team start)', () => {
   const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
   it('clamps an all-copilot team in enforce mode and prints why', async () => {
-    writeBudget({ mode: 'enforce', perTeamLimit: 2 });
+    vi.stubEnv('OMC_TEAM_SDK_MAX_CREDITS', '10');
+    writeBudget({ mode: 'enforce', perTeamLimit: 20 });
+    const error = quiet();
+    try {
+      expect(await applyBudgetGovernor(parseTeamArgs(['4:copilot', 'fix it']), 4, true, project)).toBe(2);
+      expect(String(error.mock.calls[0]?.[0])).toMatch(/projected 40 AI credits \(4 copilot worker\(s\) x 10 credit cap\) .* clamped to 2 worker\(s\)/);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it('still clamps in the deprecated premiumRequests unit', async () => {
+    writeBudget({ mode: 'enforce', unit: 'premiumRequests', perTeamLimit: 2 });
     const error = quiet();
     try {
       expect(await applyBudgetGovernor(parseTeamArgs(['4:copilot', 'fix it']), 4, true, project)).toBe(2);
