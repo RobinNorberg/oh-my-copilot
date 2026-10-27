@@ -62,9 +62,10 @@ export interface WorkflowRun {
   status: string;
   conclusion?: string;
   workflowName?: string;
+  headSha?: string;
 }
 
-export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName';
+export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName,headSha';
 
 export type GateVerdict = 'green' | 'pending' | 'failed' | 'flaky';
 
@@ -341,34 +342,36 @@ export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string {
   return sha;
 }
 
-/** Run `gh run list --commit <sha> --json ...`: every Actions workflow run for the head sha. */
+/**
+ * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
+ * the head sha. A run whose reported head_sha is another commit is dropped, so
+ * a previous head's failed run never counts against this one.
+ */
 export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] {
   const res = exec('gh', ['run', 'list', '--commit', headSha, '--json', RUN_FIELDS, '--limit', '100'], { cwd });
   if (res.status !== 0) throw new GhChecksError(`gh run list --commit ${headSha.slice(0, 12)} failed (exit ${res.status}): ${res.stderr.trim()}`);
-  return parseRunsJson(res.stdout.trim() || '[]');
+  return parseRunsJson(res.stdout.trim() || '[]').filter((r) => !r.headSha || r.headSha === headSha);
 }
 
 /**
  * One gate evaluation against a single head sha: resolve the head first
  * (unless given), read the checks and the workflow runs for it, then re-read
- * the head; a head that moved in between is pending, never green. Failed
- * Actions jobs' logs are read for known-flaky attribution.
+ * the head; a head that moved in between is pending whatever the verdict
+ * (green, failed or flaky), since the read may mix two heads. Failed Actions
+ * jobs' logs are read for known-flaky attribution.
  */
 export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport {
   const head = headSha ?? fetchHeadSha(exec, pr, cwd);
   const checked = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
-  let report = checked;
-  if (checked.verdict === 'green' || checked.checks.length === 0) {
-    const runs = fetchWorkflowRuns(exec, head, cwd);
-    report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
-    const after = fetchHeadSha(exec, pr, cwd);
-    if (after !== head) {
-      return {
-        ...report,
-        verdict: report.verdict === 'green' ? 'pending' : report.verdict,
-        pending: [...report.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`],
-      };
-    }
+  const runs = fetchWorkflowRuns(exec, head, cwd);
+  const report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
+  const after = fetchHeadSha(exec, pr, cwd);
+  if (after !== head) {
+    return {
+      ...report,
+      verdict: 'pending',
+      pending: [...report.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`],
+    };
   }
   if (report.verdict !== 'failed' || known.length === 0) return report;
   const analyses: FlakyAnalysis[] = [];
