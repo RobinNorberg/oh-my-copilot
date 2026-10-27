@@ -372,8 +372,11 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
       afterEach(() => { vi.restoreAllMocks(); afterHash = undefined; beforeHash = undefined; });
 
       it('a forged state swapped in after the poll check and swapped back is never adopted', async () => {
-        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')], [1]);
+        // Armed at the second running poll: the first one's save (the lane's child pid) is already written.
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')], [2]);
+        let polls = 0;
         lanes.onRunningPoll = () => {
+          if (++polls !== 2) return;
           const path = factoryStatePath(h.root, ISSUE);
           const own = readFileSync(path);
           afterHash = () => forgeState(h.root, { issueTitle: 'FORGED', plan: { source: 'issue-body', text: 'FORGED' } });
