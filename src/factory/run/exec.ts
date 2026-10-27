@@ -145,8 +145,11 @@ export function gitHardeningArgs(hooksDir: string): string[] {
  * The system and global config stay. GIT_CONFIG_NOSYSTEM is not set: Git for
  * Windows keeps `credential.helper` and `core.autocrlf` in the system config,
  * so pushes would lose their credentials and every CRLF checkout would read
- * as modified. The system config needs admin rights to write; the global one
- * is in the user's home (see the residual risks in docs/REFERENCE.md).
+ * as modified, and `credential.helper` cannot be blanked either (pushes need
+ * the credential manager). The system config needs admin rights to write;
+ * the global one and every file a config includes are hashed into the lane
+ * snapshot instead (review-guard.ts), so a lane that plants a helper,
+ * sshCommand, pushInsteadOf or clean filter there parks the run.
  */
 export function hardenedGitExec(exec: Exec, hooksDir: string): Exec {
   return (cmd, args, opts) => {

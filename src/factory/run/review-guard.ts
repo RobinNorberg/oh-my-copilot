@@ -18,6 +18,17 @@
  * - per submodule git dir under `modules/` (nested ones too): `config`,
  *   `config.worktree`, `hooks/`, `info/` and its alternates;
  * - `objects/info/alternates` and `objects/info/http-alternates`;
+ * - the global git config the engine's own git reads (GIT_CONFIG_GLOBAL, else
+ *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`) and every file an
+ *   `include.path` / `includeIf.*.path` in it or in the repository's config
+ *   names, followed {@link MAX_INCLUDE_DEPTH} levels deep: a lane's shell can
+ *   reach the home directory and plant `credential.helper=!cmd`,
+ *   `core.sshCommand`, `url.*.pushInsteadOf` or a `filter.*.clean` there. The
+ *   system config needs admin rights to write and is left out;
+ * - every `worktrees/<id>` and `modules/` entry must be a real directory
+ *   (lstat: a symlink or Windows junction is reported), and an entry that
+ *   disappears is reported unless it was already stale (its worktree gone,
+ *   the kind `git worktree prune` removes);
  * - the main checkout's HEAD (sha and symbolic ref) and its status, untracked
  *   files included, so a deleted untracked file shows;
  * - the content of a bounded list of ignored main-checkout paths that tools
@@ -44,7 +55,8 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync } from 'fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'fs';
+import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import type { LaneResult } from './lane.js';
@@ -57,6 +69,10 @@ export interface WorktreeEntry {
   gitdir: string;
   /** Content of `commondir` (`../..` for every `git worktree add`). */
   commondir: string;
+  /** The worktree its `gitdir` names is gone (`git worktree prune` may drop the entry). */
+  stale?: boolean;
+  /** Set when the entry is not a real directory (symlink, junction, file): what it is instead. */
+  notDir?: string;
 }
 
 export interface RepoSnapshot {
@@ -75,6 +91,8 @@ export interface RepoSnapshot {
   /** Submodule git dir (relative to `modules/`) -> hash of its config, hooks, info and alternates. */
   modules: Record<string, string>;
   alternates: string;
+  /** Hash of the global git config files and every include target (see the module comment). */
+  globalConfig: string;
   /** Hash of the bounded list of ignored main-checkout paths (see the module comment). */
   ignored: string;
   mainHead: string;
@@ -133,28 +151,49 @@ function alternatesHash(gitDir: string): string {
   return `${fileHash(join(gitDir, 'objects', 'info', 'alternates'))} ${fileHash(join(gitDir, 'objects', 'info', 'http-alternates'))}`;
 }
 
+/** What a path is when it is not a real directory (lstat, so a symlink or junction is never followed); null for a directory. */
+function notADirectory(path: string): string | null {
+  let st;
+  try { st = lstatSync(path); } catch { return null; }
+  if (st.isDirectory()) return null;
+  if (st.isSymbolicLink()) {
+    let target = '?';
+    try { target = readlinkSync(path); } catch { /* unreadable link */ }
+    return `a symlink or junction to ${target}`;
+  }
+  return st.isFile() ? 'a file' : 'not a directory';
+}
+
+const NOT_A_DIR = 'not a directory: ';
+
 function worktreeEntries(commonDir: string, ids: readonly string[]): Record<string, WorktreeEntry> {
   const out: Record<string, WorktreeEntry> = {};
   for (const id of ids) {
     const dir = join(commonDir, 'worktrees', id);
-    if (!existsSync(dir) || !lstatSync(dir).isDirectory()) continue;
+    const odd = notADirectory(dir);
+    if (odd) { out[id] = { meta: `${NOT_A_DIR}${odd}`, gitdir: '', commondir: '', notDir: odd }; continue; }
+    if (!existsSync(dir)) continue;
     const head = fileText(join(dir, 'HEAD'));
     const gitdir = fileText(join(dir, 'gitdir'));
     const commondir = fileText(join(dir, 'commondir'));
-    out[id] = { meta: sha([head, gitdir, commondir, treeHash(join(dir, 'refs'))].join('\n')), gitdir, commondir };
+    const stale = !gitdir || !existsSync(isAbsolute(gitdir) ? gitdir : resolve(dir, gitdir));
+    out[id] = { meta: sha([head, gitdir, commondir, treeHash(join(dir, 'refs'))].join('\n')), gitdir, commondir, ...(stale ? { stale } : {}) };
   }
   return out;
 }
 
-/** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest). */
+/** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
 function moduleEntries(commonDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (dir: string, rel: string) => {
+    const oddDir = notADirectory(dir);
+    if (oddDir) { out[rel || '.'] = `${NOT_A_DIR}${oddDir}`; return; }
     if (!existsSync(dir)) return;
     for (const name of readdirSync(dir).sort()) {
       const p = join(dir, name);
       const r = rel ? `${rel}/${name}` : name;
-      if (!lstatSync(p).isDirectory()) continue;
+      const odd = notADirectory(p);
+      if (odd) { out[r] = `${NOT_A_DIR}${odd}`; continue; }
       if (existsSync(join(p, 'HEAD')) || existsSync(join(p, 'config'))) {
         out[r] = sha([fileHash(join(p, 'config')), fileHash(join(p, 'config.worktree')), treeHash(join(p, 'hooks')), treeHash(join(p, 'info')), alternatesHash(p)].join('\n'));
         walk(join(p, 'modules'), `${r}/modules`);
@@ -165,6 +204,80 @@ function moduleEntries(commonDir: string): Record<string, string> {
   };
   walk(join(commonDir, 'modules'), '');
   return out;
+}
+
+/** git's own include depth limit. */
+export const MAX_INCLUDE_DEPTH = 10;
+
+/** The global config files git reads: GIT_CONFIG_GLOBAL when set, else `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`. */
+export function globalConfigFiles(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (env.GIT_CONFIG_GLOBAL?.trim()) return [resolve(env.GIT_CONFIG_GLOBAL)];
+  const home = env.HOME?.trim() || homedir();
+  const xdg = env.XDG_CONFIG_HOME?.trim() || join(home, '.config');
+  return [join(home, '.gitconfig'), join(xdg, 'git', 'config')];
+}
+
+/**
+ * The `path` values of `[include]` and `[includeIf "..."]` sections in a git
+ * config text, resolved like git does (`~/` from the home directory, a
+ * relative path from the including file's directory). Every includeIf is
+ * followed whatever its condition: the snapshot over-approximates.
+ */
+export function includeTargets(text: string, fromFile: string, home: string): string[] {
+  const out: string[] = [];
+  let inInclude = false;
+  for (const raw of text.split(/\r?\n/)) {
+    let line = raw.trim();
+    const section = /^\[([^\]]*)\](.*)$/.exec(line);
+    if (section) {
+      const name = section[1].trim().split(/[\s"]/)[0].toLowerCase();
+      inInclude = name === 'include' || name === 'includeif';
+      line = section[2].trim();
+    }
+    if (!inInclude || !line) continue;
+    const kv = /^path\s*=\s*(.*)$/i.exec(line);
+    if (!kv) continue;
+    let value = kv[1].trim();
+    const quoted = /^"((?:[^"\\]|\\.)*)"/.exec(value);
+    value = quoted ? quoted[1].replace(/\\(.)/g, '$1') : value.replace(/\s*[;#].*$/, '').trim();
+    if (!value) continue;
+    const path = value === '~' || value.startsWith('~/') ? join(home, value.slice(2)) : isAbsolute(value) ? value : join(dirname(fromFile), value);
+    out.push(resolve(path));
+  }
+  return out;
+}
+
+function safeFileHash(path: string): string {
+  try {
+    return existsSync(path) && statSync(path).isDirectory() ? 'a directory' : fileHash(path);
+  } catch (error) {
+    return `unreadable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/**
+ * Hash of the global config files and of every file an include in them, or
+ * in `repoConfigs` (hashed elsewhere themselves), names, up to
+ * {@link MAX_INCLUDE_DEPTH} levels.
+ */
+export function globalConfigHash(repoConfigs: readonly string[], env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.HOME?.trim() || homedir();
+  const seen = new Map<string, string>();
+  const follow = (file: string, depth: number) => {
+    if (depth > MAX_INCLUDE_DEPTH) return;
+    let text: string;
+    try { text = readFileSync(file, 'utf8'); } catch { return; }
+    for (const target of includeTargets(text, file, home)) visit(target, depth);
+  };
+  const visit = (file: string, depth: number) => {
+    const path = resolve(file);
+    if (seen.has(path)) return;
+    seen.set(path, safeFileHash(path));
+    follow(path, depth + 1);
+  };
+  for (const f of globalConfigFiles(env)) visit(f, 0);
+  for (const f of repoConfigs) follow(resolve(f), 1);
+  return sha([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([p, h]) => `${p} ${h}`).join('\n'));
 }
 
 function ignoredHash(root: string): string {
@@ -213,8 +326,10 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
   }
   const worktreeConfigs: Record<string, string> = {};
   const wtDir = join(commonDir, 'worktrees');
-  const worktreeIds = existsSync(wtDir) ? readdirSync(wtDir).sort() : [];
+  // `worktrees/` itself replaced by a symlink or junction: one entry `.` that reports it, nothing read through it.
+  const worktreeIds = notADirectory(wtDir) ? ['.'] : existsSync(wtDir) ? readdirSync(wtDir).sort() : [];
   for (const id of worktreeIds) {
+    if (id === '.') continue;
     const p = join(wtDir, id, 'config.worktree');
     if (existsSync(p)) worktreeConfigs[id] = fileHash(p);
   }
@@ -223,9 +338,13 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     configWorktree: fileHash(join(commonDir, 'config.worktree')),
     info: treeHash(join(commonDir, 'info')),
     modules: moduleEntries(commonDir),
+    globalConfig: globalConfigHash([
+      join(commonDir, 'config'), join(commonDir, 'config.worktree'),
+      ...worktreeIds.filter((id) => id !== '.').map((id) => join(wtDir, id, 'config.worktree')),
+    ]),
   };
   const statusUnsafe = against !== undefined && (files.config !== against.config || files.configWorktree !== against.configWorktree
-    || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules));
+    || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules) || files.globalConfig !== against.globalConfig);
   return {
     commonDir,
     refs,
@@ -291,9 +410,19 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     if (own.id !== undefined && own.id === id) return true;
     return Boolean(own.path) && Boolean(entry.gitdir) && samePath(dirname(entry.gitdir), own.path!);
   };
-  for (const id of Object.keys(after.worktrees ?? {}).sort()) {
+  const entries = new Set([...Object.keys(before.worktrees ?? {}), ...Object.keys(after.worktrees ?? {})]);
+  for (const id of [...entries].sort()) {
     const was = before.worktrees?.[id];
-    const now = after.worktrees[id];
+    const now = after.worktrees?.[id];
+    if (now?.notDir) {
+      problems.push(`worktrees/${id} is not a real directory (${now.notDir})`);
+      continue;
+    }
+    if (!now) {
+      // `git worktree prune` drops an entry whose worktree is gone; any other removal is a change.
+      if (was && !was.stale) problems.push(`worktree entry worktrees/${id} was removed or is no longer a directory`);
+      continue;
+    }
     if (!was) {
       if (!ownNew(id, now)) problems.push(`worktree entry worktrees/${id} was added`);
       else if (now.commondir !== '../..') problems.push(`the lane's worktree entry worktrees/${id} points its commondir at ${now.commondir}`);
@@ -308,9 +437,11 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
     const was = before.modules?.[m];
     const now = after.modules?.[m];
     if (was === now) continue;
+    if (now?.startsWith(NOT_A_DIR)) { problems.push(`modules/${m} is not a real directory (${now.slice(NOT_A_DIR.length)})`); continue; }
     problems.push(was === undefined ? `submodule git dir modules/${m} was added` : now === undefined ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
   }
   if (before.alternates !== after.alternates) problems.push('objects/info/alternates changed');
+  if (before.globalConfig !== after.globalConfig) problems.push('the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)');
   if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(', ')})`);
   if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);
   if (before.mainSymbolic !== after.mainSymbolic) problems.push(`the main checkout's HEAD switched ${before.mainSymbolic} -> ${after.mainSymbolic}`);
