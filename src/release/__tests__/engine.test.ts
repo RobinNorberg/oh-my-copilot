@@ -889,6 +889,31 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
     });
 
+    it('stale promotion view right after the dev merge: waits for the head to contain it, reads no gates for the old head (regression)', async () => {
+      let views = 0;
+      let merged = false;
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr view 302 --json number,state')) {
+          views += 1;
+          const head = views <= 2 ? OTHER : HEAD;
+          return ok(prJson(302, 'main', merged ? 'MERGED' : 'OPEN', merged ? MERGE : null, head));
+        }
+        if (key === 'gh pr view 302 --json headRefOid') return ok(JSON.stringify({ headRefOid: views <= 2 ? OTHER : HEAD }));
+        if (key === `git merge-base --is-ancestor ${DEVMERGE} ${OTHER}`) return no('', 1);
+        if (key.startsWith('gh pr checks 302')) return ok(JSON.stringify([{ name: 'Test', state: views <= 2 ? 'FAILURE' : 'SUCCESS', link: 'https://github.com/o/r/actions/runs/79/job/91' }]));
+        if (key.startsWith(`gh run list --commit ${OTHER}`)) return ok(`[{"databaseId":66,"status":"completed","conclusion":"failure","workflowName":"CI","headSha":"${OTHER}"}]`);
+        if (key.startsWith('gh run list --commit')) return ok('[]');
+        if (key.startsWith('gh pr merge 302')) { merged = true; return ok(); }
+        return undefined;
+      });
+      const result = await release({ to: 'promote' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`gh pr merge 302 --admin --merge --match-head-commit ${HEAD}`);
+      expect(calls.some((c) => c.startsWith('gh run rerun') || c.startsWith(`gh run list --commit ${OTHER}`))).toBe(false);
+      const firstChecks = calls.findIndex((c) => c.startsWith('gh pr checks 302'));
+      expect(calls.slice(0, firstChecks).filter((c) => c.startsWith('gh pr view 302 --json number,state')).length).toBeGreaterThan(2);
+    });
+
     it('records the main merge when it contains the dev merge', async () => {
       const result = await release({ to: 'promote' });
       expect(result.ok).toBe(true);

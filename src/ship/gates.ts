@@ -422,6 +422,8 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
     if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed') {
       return { report, rerun, timedOut: false };
     }
+    // A fixed head that moved will never settle: hand the pending report back so the caller re-views the PR.
+    if (opts.headSha && report.pending.some((p) => p.startsWith('head moved from '))) return { report, rerun, timedOut: false };
     if (report.verdict === 'flaky') {
       const budget = opts.reruns;
       const ready = budget && config.autoRerunFlaky ? report.rerunnable.filter((id) => budget.count(id) < 1) : [];

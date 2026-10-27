@@ -36,6 +36,15 @@ describe('multirepo path gate scans git ls-files, not the folder', () => {
     expect(r.status).toBe(0);
   });
 
+  it('fails on a committed (tracked) violation', () => {
+    write('src/tracked.ts', RAW_JOIN);
+    expect(spawnSync('git', ['add', 'src/tracked.ts'], { cwd: repo }).status).toBe(0);
+    expect(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'x'], { cwd: repo }).status).toBe(0);
+    const r = gate();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/src[\\/]tracked\.ts:\d+/);
+  });
+
   it('still fails on an untracked, unignored source file', () => {
     write('.omc/handoffs/x.ts', RAW_JOIN);
     write('src/x.ts', RAW_JOIN);

@@ -499,9 +499,20 @@ class Release {
     return { status: 'ok', note: `built and staged${orphans.length > 0 ? `; removed ${orphans.length} orphan(s)` : ''}` };
   }
 
+  /** eslint src; a failure keeps the first error lines as well as the summary at the end. */
+  private eslint(): void {
+    const args = ['node_modules/eslint/bin/eslint.js', 'src'];
+    this.deps.log(`  node ${args.join(' ')}`);
+    const r = this.run(this.deps.node, args);
+    if (r.status === 0) return;
+    const lines = `${r.stdout}\n${r.stderr}`.trim().split(/\r?\n/);
+    const errors = lines.filter((l) => /^\s+\d+:\d+\s+error\b/.test(l)).slice(0, 20);
+    fail(`node ${args.join(' ')} failed (exit ${r.status})`, [...errors, ...(errors.length > 0 ? ['...'] : []), ...lines.slice(-5)]);
+  }
+
   private gates(): PhaseOutcome {
     this.script('node_modules/typescript/bin/tsc', '--noEmit');
-    this.script('node_modules/eslint/bin/eslint.js', 'src');
+    this.eslint();
     this.script('scripts/generate-prompt-projections.mjs', '--verify');
     this.script('scripts/copilot/build-hooks.mjs', '--verify');
     this.script('scripts/copilot/build-agents.mjs', '--verify');
@@ -843,8 +854,8 @@ class Release {
       if (view.baseRefName !== base) fail(`PR #${pr} targets ${view.baseRefName}, expected ${base}`);
       if (view.isDraft) fail(`PR #${pr} is a draft`);
       // Right after a push the view can still name the previous head, whose checks and runs are stale.
-      if (expectedHead && view.headRefOid !== expectedHead) {
-        await this.awaitHead(pr, expectedHead, phase);
+      if (expectedHead ? view.headRefOid !== expectedHead : requireAncestor && !this.headContains(requireAncestor, base, view.headRefOid)) {
+        await this.awaitHead(pr, expectedHead, requireAncestor, base, phase);
         continue;
       }
       const config: LoadedShipConfig = this.deps.loadShipConfig({ exec: this.deps.exec, root: this.deps.root, base, baseSha: view.baseRefOid, repoUrl: prRepoUrl(view.url) });
@@ -864,15 +875,6 @@ class Release {
         onReport: (r) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
       });
       if (report.verdict === 'green') {
-        if (expectedHead && view.headRefOid !== expectedHead) {
-          blocked(`PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expectedHead.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`);
-        }
-        if (requireAncestor) {
-          this.must('git', ['fetch', 'origin', 'dev', base]);
-          if (!this.isAncestor(requireAncestor, view.headRefOid)) {
-            blocked(`PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${requireAncestor.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`);
-          }
-        }
         const command = ['pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', view.headRefOid];
         if (!config.allowAdminMerge || !config.trustedBases.includes(base)) {
           blocked(`PR #${pr} is green; ship.allowAdminMerge is off or ${base} is not a trusted base, so run the merge yourself, then re-run omg release ${this.v} --from ${phase}`, [`gh ${command.join(' ')}`]);
@@ -895,13 +897,25 @@ class Release {
     }
   }
 
-  /** Poll until the PR head is `expected` (GitHub lags a push); blocked after HEAD_SYNC_POLLS polls or the --timeout. */
-  private async awaitHead(pr: number, expected: string, phase: PhaseId): Promise<void> {
+  /** Whether the PR head contains `commit` (after fetching dev and the base). */
+  private headContains(commit: string, base: string, head: string): boolean {
+    this.must('git', ['fetch', 'origin', 'dev', base]);
+    return this.isAncestor(commit, head);
+  }
+
+  /**
+   * Poll until the PR head is `expected`, or contains `ancestor` when no exact
+   * head is given (GitHub lags a push); blocked after HEAD_SYNC_POLLS polls or the --timeout.
+   */
+  private async awaitHead(pr: number, expected: string | undefined, ancestor: string | undefined, base: string, phase: PhaseId): Promise<void> {
     for (let polls = 0; ; polls++) {
       const view = this.viewPr(pr);
-      if (view.state !== 'OPEN' || view.headRefOid === expected) return;
+      if (view.state !== 'OPEN') return;
+      if (expected ? view.headRefOid === expected : this.headContains(ancestor!, base, view.headRefOid)) return;
       if (polls >= HEAD_SYNC_POLLS || this.deps.now() >= this.deadline) {
-        blocked(`PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`);
+        blocked(expected
+          ? `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`
+          : `PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${ancestor!.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`);
       }
       await this.deps.sleep(HEAD_SYNC_POLL_MS);
     }

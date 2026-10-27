@@ -439,6 +439,18 @@ describe('watchGates', () => {
     expect(c.now()).toBe(9 * 60_000);
   });
 
+  it('returns early when a given headSha has been left by the PR, instead of polling it until the timeout', async () => {
+    const NEW = 'd'.repeat(40);
+    const { exec, calls } = fakeGh([pending], {}, [COMPLETED_RUNS], [NEW]);
+    const c = clock();
+    const r = await watchGates({ exec, pr: 233, config: CONFIG, known: KNOWN, watch: true, headSha: HEAD_SHA, ...c });
+    expect(r.timedOut).toBe(false);
+    expect(r.report.verdict).toBe('pending');
+    expect(r.report.pending).toContain(`head moved from ${HEAD_SHA.slice(0, 12)} to ${NEW.slice(0, 12)} during the gate read`);
+    expect(calls.filter((x) => x[2] === 'checks')).toHaveLength(1);
+    expect(c.now()).toBe(0);
+  });
+
   it('returns immediately on a real failure', async () => {
     const { exec } = fakeGh([withCheck('Build', { state: 'FAILURE' })]);
     const r = await watchGates({ exec, pr: 233, config: CONFIG, known: KNOWN, watch: true, ...clock() });
