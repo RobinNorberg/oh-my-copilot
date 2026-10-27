@@ -411,10 +411,10 @@ describe('chain scenario (live capture, Copilot CLI 1.0.91, 2026-10-06)', () => 
     expect(KNOWN_SCENARIOS).toContain('chain');
   });
 
-  it('passes the chain checks on the captured two-link run and sums both links into 2 premium requests', () => {
+  it('passes the chain checks on the captured two-link run and sums both links (2 legacy premium requests)', () => {
     const { checks, cost } = evaluateScenario(chainRun());
     const c = byId(checks);
-    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium', 'exit', 'adapter_errors', 'cost']) {
+    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'credits', 'exit', 'adapter_errors', 'cost']) {
       expect(c[`scn.chain.${id}`]?.ok, `scn.chain.${id}: ${c[`scn.chain.${id}`]?.detail}`).toBe(true);
     }
     expect(c['scn.chain.link1'].detail).toContain('66c7ed79-96f2-4b3f-a2f4-290874ee376b');

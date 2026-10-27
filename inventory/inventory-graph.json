@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4ab0ebc425c48cb88a039e3aefa389c430fee4e3",
-    "sourceSha256": "e5f45b0c9fed956192cc0a119e2a2692a9b35a54f640bc0cdc0654e524755ee7",
+    "head": "6aba5484792a575701846ddc27f568d2086fbb74",
+    "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4ab0ebc425c48cb88a039e3aefa389c430fee4e3",
-  "sourceSha256": "e5f45b0c9fed956192cc0a119e2a2692a9b35a54f640bc0cdc0654e524755ee7",
+  "head": "6aba5484792a575701846ddc27f568d2086fbb74",
+  "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1672,
-      "total": 1696
+      "srcFiles": 1669,
+      "total": 1693
     },
     "generated": {
       "distFiles": 6344,
@@ -42903,11 +42903,6 @@
         "path": "src/__tests__/auto-slash-live-data-security.test.ts"
       },
       {
-        "id": "src/__tests__/auto-update-channel.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/auto-update-channel.test.ts"
-      },
-      {
         "id": "src/__tests__/auto-update.test.ts",
         "kind": "src",
         "path": "src/__tests__/auto-update.test.ts"
@@ -43433,6 +43428,11 @@
         "path": "src/__tests__/hud/context.test.ts"
       },
       {
+        "id": "src/__tests__/hud/credit-budget-element.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/credit-budget-element.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/custom-rate-provider.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/custom-rate-provider.test.ts"
@@ -43466,11 +43466,6 @@
         "id": "src/__tests__/hud/git.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/git.test.ts"
-      },
-      {
-        "id": "src/__tests__/hud/host.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/hud/host.test.ts"
       },
       {
         "id": "src/__tests__/hud/labels.test.ts",
@@ -44306,11 +44301,6 @@
         "id": "src/__tests__/session-start-timeout-cleanup.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-start-timeout-cleanup.test.ts"
-      },
-      {
-        "id": "src/__tests__/session-start-update-channel.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/session-start-update-channel.test.ts"
       },
       {
         "id": "src/__tests__/session-start-update-check.test.ts",
@@ -48066,11 +48056,6 @@
         "id": "src/hud/elements/update-hint.ts",
         "kind": "src",
         "path": "src/hud/elements/update-hint.ts"
-      },
-      {
-        "id": "src/hud/host.ts",
-        "kind": "src",
-        "path": "src/hud/host.ts"
       },
       {
         "id": "src/hud/index.ts",
@@ -54241,11 +54226,6 @@
       },
       {
         "from": "scripts/session-start.mjs",
-        "to": "scripts/lib/hook-host.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/session-start.mjs",
         "to": "scripts/lib/model-routing-override-message.mjs",
         "kind": "imports"
       },
@@ -55367,26 +55347,6 @@
       {
         "from": "src/__tests__/auto-slash-live-data-security.test.ts",
         "to": "src/hooks/auto-slash-command/executor.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/auto-update-channel.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/auto-update-channel.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/auto-update-channel.test.ts",
-        "to": "src/features/auto-update.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/auto-update-channel.test.ts",
-        "to": "src/utils/config-dir.ts",
         "kind": "imports"
       },
       {
@@ -57565,6 +57525,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/hud/custom-rate-provider.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -57708,21 +57688,6 @@
         "from": "src/__tests__/hud/git.test.ts",
         "to": "src/hud/elements/git.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hud/host.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hud/host.test.ts",
-        "to": "src/hud/host.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/hud/host.test.ts",
-        "to": "src/hud/types.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/hud/labels.test.ts",
@@ -61970,41 +61935,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:http",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:http",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-update-channel.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/session-start-update-check.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -65946,6 +65876,11 @@
       },
       {
         "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
         "to": "src/cli/commands/team.ts",
         "kind": "imports"
       },
@@ -66762,16 +66697,6 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/agents/utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/budget/governor.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -68562,11 +68487,6 @@
       {
         "from": "src/features/auto-update.ts",
         "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/auto-update.ts",
-        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -81045,16 +80965,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/hud/host.ts",
-        "to": "src/hud/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hud/host.ts",
-        "to": "src/utils/host-signal.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/hud/index.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -81092,16 +81002,6 @@
       {
         "from": "src/hud/index.ts",
         "to": "src/hud/elements/api-key-source.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hud/index.ts",
-        "to": "src/hud/elements/update-hint.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hud/index.ts",
-        "to": "src/hud/host.ts",
         "kind": "imports"
       },
       {
@@ -87907,6 +87807,11 @@
       {
         "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -101051,12 +100956,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8755,
-      "edgeCount": 9871,
-      "importEdgeCount": 8259,
+      "nodeCount": 8752,
+      "edgeCount": 9855,
+      "importEdgeCount": 8245,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "15f179f83bc6ad9767f8da111100f64e70875b9686695e85d507d04af109f455",
-  "manifestSha256": "1cda3b99ac841f3a5e5e11d47039848759136490f8a2bd01125f7225fab024be"
+  "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
+  "manifestSha256": "29a6ca45f6e3a8e3d410038f8c3026aaddeab3ead6ca0c1b14678722ba9d0671"
 }

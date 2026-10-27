@@ -7,10 +7,10 @@
  *
  * - Tier 0 (no model call) runs whenever the copilot binary resolves; it skips
  *   itself when the smoke report says the binary is missing.
- * - Tier 1 spends one premium request and runs only with OMC_LIVE_SMOKE=1.
+ * - Tier 1 spends one prompt (AI credits) and runs only with OMC_LIVE_SMOKE=1.
  * - Tier 2 static (SDK introspection, no model call) runs whenever the copilot
  *   binary and the optional peer `@github/copilot-sdk` resolve; it skips itself
- *   otherwise. Tier 2 default scenarios (smoke, guardrail; ~2 premium requests)
+ *   otherwise. Tier 2 default scenarios (smoke, guardrail; ~0.6 AI credits)
  *   run only with OMC_LIVE_SMOKE=2.
  */
 
@@ -53,7 +53,7 @@ describe('copilot smoke (live)', () => {
     expect(report.ok, failures(report)).toBe(true);
   }, 120_000);
 
-  it.runIf(liveTier1)('tier 1: one live session, prompt on stdin (one premium request)', async (ctx) => {
+  it.runIf(liveTier1)('tier 1: one live session, prompt on stdin (one prompt)', async (ctx) => {
     const report = await runCopilotSmoke({ tier: 1, pluginRoot });
     if (report.skipped) {
       ctx.skip(`copilot binary not resolved: ${report.skipped}`);
@@ -77,7 +77,7 @@ describe('copilot smoke (live)', () => {
     expect(report.ok, failures(report)).toBe(true);
   }, 180_000);
 
-  it.runIf(liveTier2)('tier 2 scenarios: smoke + guardrail through the SDK (~2 premium requests, 1 per scenario)', async (ctx) => {
+  it.runIf(liveTier2)('tier 2 scenarios: smoke + guardrail through the SDK (one prompt per scenario)', async (ctx) => {
     const report = await runCopilotSmoke({ tier: 2, pluginRoot });
     if (report.skipped) {
       ctx.skip(`copilot binary or @github/copilot-sdk not resolved: ${report.skipped}`);

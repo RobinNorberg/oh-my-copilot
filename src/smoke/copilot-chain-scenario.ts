@@ -16,7 +16,7 @@
  * 4. The ledgers, decisions, stop marker, and both link sessions'
  *    events.jsonl are collected for evaluateScenario.
  *
- * Cost: one user prompt per link, so about 2 premium requests. The links run
+ * Cost: one user prompt per link, billed in AI credits. The links run
  * on the CLI's default model without `--max-ai-credits` (a factory link's argv
  * carries no credit cap), so the run's --max-credits does not bound them.
  */
