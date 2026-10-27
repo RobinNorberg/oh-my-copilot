@@ -92,6 +92,8 @@ export const MAX_REVIEW_DIFF_CHARS = 60_000;
 const MAX_TITLE_CHARS = 200;
 /** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
 export const TRUSTED_PLAN_AUTHORS: readonly string[] = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+/** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
+const ISSUE_FIELDS = 'title,body,labels,state,url,author,comments';
 
 export interface FactoryEngineOptions {
   /** Repository root (main checkout): state, lanes' repository, pushes. */
@@ -180,14 +182,38 @@ function errText(error: unknown): string {
 export interface IssueComment {
   body?: unknown;
   authorAssociation?: unknown;
+  author?: unknown;
+}
+
+const loginOf = (author: unknown): string => {
+  const login = (author as { login?: unknown } | null | undefined)?.login;
+  return typeof login === 'string' ? login.toLowerCase() : '';
+};
+const trustedAssociation = (a: unknown): boolean => typeof a === 'string' && TRUSTED_PLAN_AUTHORS.includes(a);
+
+/**
+ * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
+ * view --json` has no authorAssociation for the issue itself, so: the author
+ * owns the repository (the issue URL's owner), or a comment by the same login
+ * carries a trusted association (it is per user and repository). Unknown is
+ * untrusted.
+ */
+export function issueAuthorTrusted(v: { author?: unknown; url?: unknown; comments?: unknown }): boolean {
+  const login = loginOf(v.author);
+  if (!login) return false;
+  const owner = typeof v.url === 'string' ? /^https:\/\/[^/\s]+\/([^/\s]+)\//.exec(v.url)?.[1] : undefined;
+  if (owner && owner.toLowerCase() === login) return true;
+  const comments = Array.isArray(v.comments) ? (v.comments as IssueComment[]) : [];
+  return comments.some((c) => loginOf(c?.author) === login && trustedAssociation(c.authorAssociation));
 }
 
 /**
- * Issue body first, then the newest comment carrying an `omg-plan:` line by
- * an OWNER, MEMBER or COLLABORATOR (anyone else could redirect the plan).
+ * The issue body's `omg-plan:` line when its author is trusted
+ * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
+ * MEMBER or COLLABORATOR (anyone else could redirect the plan).
  */
-export function findPlanLink(body: string, comments: ReadonlyArray<IssueComment> = []): string | undefined {
-  const inBody = PLAN_LINK.exec(body)?.[1];
+export function findPlanLink(body: string, comments: ReadonlyArray<IssueComment> = [], bodyAuthorTrusted = false): string | undefined {
+  const inBody = bodyAuthorTrusted ? PLAN_LINK.exec(body)?.[1] : undefined;
   if (inBody) return inBody;
   for (const c of [...comments].reverse()) {
     if (typeof c.authorAssociation !== 'string' || !TRUSTED_PLAN_AUTHORS.includes(c.authorAssociation)) continue;
@@ -664,8 +690,8 @@ class FactoryEngine {
   }
 
   private async intake(): Promise<void> {
-    const v = this.ghJson<{ title?: unknown; body?: unknown; state?: unknown; url?: unknown; comments?: IssueComment[] }>(
-      ['issue', 'view', String(this.o.issue), '--json', 'title,body,labels,state,url,comments'],
+    const v = this.ghJson<{ title?: unknown; body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] }>(
+      ['issue', 'view', String(this.o.issue), '--json', ISSUE_FIELDS],
     );
     const url = typeof v.url === 'string' ? v.url : '';
     const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
@@ -676,7 +702,7 @@ class FactoryEngine {
       return;
     }
     const body = typeof v.body === 'string' ? v.body : '';
-    const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : []);
+    const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
     if (!this.state.pr) {
       const open = this.ghJson<Array<{ number?: number }>>(['pr', 'list', '--head', this.state.branch, '--json', 'number,state,headRefOid,url']);
       if (Array.isArray(open) && open.length > 0) {
@@ -1242,9 +1268,9 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
       plan: { next: existing.phase, ...caps },
     };
   }
-  const res = exec('gh', ['issue', 'view', String(o.issue), '--json', 'title,body,labels,state,url,comments'], { cwd: o.root });
+  const res = exec('gh', ['issue', 'view', String(o.issue), '--json', ISSUE_FIELDS], { cwd: o.root });
   if (res.status !== 0) throw new FactoryStepError(`gh issue view ${o.issue} failed: ${res.stderr.trim()}`);
-  let v: { body?: unknown; state?: unknown; comments?: IssueComment[] };
+  let v: { body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] };
   try {
     v = JSON.parse(res.stdout) as typeof v;
   } catch {
@@ -1253,7 +1279,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   if (typeof v !== 'object' || v === null) throw new FactoryStepError(`gh issue view ${o.issue} returned no JSON object`);
   const body = typeof v.body === 'string' ? v.body : '';
   if (v.state !== 'OPEN') return { exitCode: 0, phase: null, state: null, message: 'dry run: the issue is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
-  const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : []);
+  const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
   const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? 'issue body (Acceptance criteria)' : undefined;
   return source
     ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }

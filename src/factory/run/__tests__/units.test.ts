@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, oneLine, reviewPrompt } from '../engine.js';
+import { fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { assertFactoryCommand, FactorySafetyError, hardenedGitExec } from '../exec.js';
 import { EngineLedger, LedgerError } from '../ledger.js';
 import { createFactoryProgress } from '../progress.js';
@@ -88,9 +88,24 @@ describe('review output parser and verdict mapping', () => {
 describe('plan resolution', () => {
   it('finds an omg-plan link in the body before comments, and the newest comment otherwise', () => {
     const by = (body: string, authorAssociation = 'MEMBER') => ({ body, authorAssociation });
-    expect(findPlanLink('intro\nomg-plan: docs/a.md\n', [by('omg-plan: docs/b.md')])).toBe('docs/a.md');
+    expect(findPlanLink('intro\nomg-plan: docs/a.md\n', [by('omg-plan: docs/b.md')], true)).toBe('docs/a.md');
     expect(findPlanLink('intro', [by('omg-plan: docs/b.md'), by('omg-plan: docs/c.md', 'OWNER')])).toBe('docs/c.md');
     expect(findPlanLink('intro', [by('no link')])).toBeUndefined();
+  });
+
+  it('reads the body\'s omg-plan line only when the issue author is trusted', () => {
+    const body = 'intro\nomg-plan: docs/evil.md\n';
+    expect(findPlanLink(body, [])).toBeUndefined();
+    expect(findPlanLink(body, [{ body: 'omg-plan: docs/good.md', authorAssociation: 'MEMBER' }])).toBe('docs/good.md');
+    const url = 'https://github.com/o/r/issues/7';
+    // The repository owner, or a login whose own comment carries a trusted association.
+    expect(issueAuthorTrusted({ author: { login: 'O' }, url })).toBe(true);
+    expect(issueAuthorTrusted({ author: { login: 'm' }, url, comments: [{ author: { login: 'M' }, authorAssociation: 'MEMBER', body: 'hi' }] })).toBe(true);
+    // A stranger, a stranger quoting a member's comment, an unknown author.
+    expect(issueAuthorTrusted({ author: { login: 'x' }, url })).toBe(false);
+    expect(issueAuthorTrusted({ author: { login: 'x' }, url, comments: [{ author: { login: 'm' }, authorAssociation: 'MEMBER' }, { author: { login: 'x' }, authorAssociation: 'NONE' }] })).toBe(false);
+    expect(issueAuthorTrusted({ url })).toBe(false);
+    expect(issueAuthorTrusted({ author: { login: 'o' }, url: 'not a url' })).toBe(false);
   });
 
   it('reads an omg-plan comment only from an owner, member or collaborator', () => {

@@ -197,7 +197,8 @@ export interface Harness {
   /** Called with each recorded call before it runs (tests plant late changes here). */
   onCall?: (call: string) => void;
   gh: {
-    issue: { title: string; body: string; state: string; comments: Array<{ body: string; authorAssociation?: string }> };
+    /** `author` defaults to the repository owner (`o`, a trusted body author). */
+    issue: { title: string; body: string; state: string; author?: { login: string }; comments: Array<{ body: string; authorAssociation?: string; author?: { login: string } }> };
     prCreated: boolean;
     /** Override what `gh pr view` reports as the head (default: the bare remote's factory branch). */
     headOverride?: string;
@@ -223,7 +224,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
   gitIn(root, 'push', '-q', 'origin', 'dev');
   const h: Harness = {
     dir, root, bare, ledgerDir: join(dir, 'ledger'), calls: [], raw: [],
-    gh: { issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', comments: [] }, prCreated: false, openPrs: [] },
+    gh: { issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', author: { login: 'o' }, comments: [] }, prCreated: false, openPrs: [] },
     exec: () => ({ status: 1, stdout: '', stderr: '' }),
   };
   const ok = (stdout = ''): ExecResult => ({ status: 0, stdout, stderr: '' });
