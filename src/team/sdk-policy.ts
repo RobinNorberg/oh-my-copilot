@@ -47,16 +47,34 @@ export interface SdkPermissionDecision {
 }
 
 /**
+ * git's global options before the subcommand: `-C <dir>`, `-c <k=v>`, the long
+ * options that take a separate value, and `--flag[=v]`.
+ */
+const GIT_GLOBAL_OPTIONS = String.raw`(?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*`;
+
+/**
+ * Deny patterns for `git <global options> <tail>` (`tail` is a regex source),
+ * spelled directly or through a variable (`$g="git"; & $g push`, `g=git; $g push`).
+ */
+export function gitSubcommandDeny(tail: string, reason: string): Array<{ re: RegExp; reason: string }> {
+  return [
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?${GIT_GLOBAL_OPTIONS}\s+${tail}`, 'i'), reason },
+    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail}`, 'i'), reason },
+  ];
+}
+
+/**
  * Shell commands a worker must never run, whatever the config says:
  * - team control other than `team api` (nested teams, shutdown of its own team);
  * - `omg smoke` (would spend credits from inside a worker);
  * - the multiplexers (the pane transport's control plane);
- * - `git push` (workers commit in their worktree; the leader integrates).
+ * - `git push` (workers commit in their worktree; the leader integrates), and
+ *   the git aliases and config overrides that could rename it.
  *
  * This is a denylist over the command text, not a sandbox: it stops the
  * direct and quoted spellings a model actually writes, but a worker that
- * builds the command indirectly (an alias, a script file, `Invoke-Expression`,
- * an encoded command) is not stopped by it. The real boundaries are the
+ * builds the command indirectly (a script file, `Invoke-Expression`, an
+ * encoded command, a shell escape such as `pu\sh`) is not stopped by it. The real boundaries are the
  * write-path check, the credit cap and the per-worker COPILOT_HOME.
  * Patterns run on {@link normalizeShellCommand}'s output.
  */
@@ -66,15 +84,20 @@ export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string
   { re: /\bcli\.cjs["']?\s+team\s+(?!\s|api\b)/i, reason: 'team control outside `team api`' },
   { re: /\b(?:omg|omc|oh-my-copilot)(?:\.cmd|\.ps1)?\s+smoke\b/i, reason: '`omg smoke` from a worker' },
   { re: /(?:^|[\s;&|("'])(?:tmux|psmux)(?:\.exe)?\b/i, reason: 'multiplexer control' },
-  // `push` as git's subcommand: only global options (`-C <dir>`, `-c <k=v>`, `--flag[=v]`) may sit between.
-  { re: /(?:^|[\s;&|("'/\\])git(?:\.exe)?(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+push\b/i, reason: '`git push` from a worker' },
-  // `$g="git"; & $g push` / `g=git; $g push`: git named, then pushed through a variable.
-  { re: /\bgit\b[\s\S]*\$\{?\w+\}?\s+push\b/i, reason: '`git push` from a worker' },
+  ...gitSubcommandDeny(String.raw`push\b`, '`git push` from a worker'),
+  // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
+  ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
+  ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
+  // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
+  { re: /\bGIT_CONFIG/i, reason: 'git config through the environment from a worker' },
 ];
 
-/** Strip quotes around single tokens (`"omg" 'team'` -> `omg team`) so quoting cannot dodge a pattern. */
+/**
+ * Drop empty quotes (`c''ommit` -> `commit`), then strip quotes around single
+ * tokens (`"omg" 'team'` -> `omg team`), so quoting cannot dodge a pattern.
+ */
 export function normalizeShellCommand(command: string): string {
-  return command.replace(/(["'])([^"'\s]+)\1/g, '$2');
+  return command.replace(/''|""/g, '').replace(/(["'])([^"'\s]+)\1/g, '$2');
 }
 
 function canon(p: string, platform: NodeJS.Platform): string {
