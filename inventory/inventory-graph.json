@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "1b76346ac63310967eed5552744e040f369db15f",
-    "sourceSha256": "5290c2603927710e01ce5d455c5a223401e76d6e2939a1409be2194d5da0b862",
+    "head": "91a6a5692a8c99eefa9ec025d46f3bf7440af980",
+    "sourceSha256": "075d66c8bb2129ee2385cc35e595ac5dddc17bb542f5a6dbae4610b1d05df3bc",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "1b76346ac63310967eed5552744e040f369db15f",
-  "sourceSha256": "5290c2603927710e01ce5d455c5a223401e76d6e2939a1409be2194d5da0b862",
+  "head": "91a6a5692a8c99eefa9ec025d46f3bf7440af980",
+  "sourceSha256": "075d66c8bb2129ee2385cc35e595ac5dddc17bb542f5a6dbae4610b1d05df3bc",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1731
     },
     "generated": {
-      "distFiles": 6420,
+      "distFiles": 6480,
       "bridgeFiles": 9,
-      "total": 6429
+      "total": 6489
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -1013,6 +1013,10 @@
       "dist/__tests__/auto-slash-live-data-security.test.d.ts.map",
       "dist/__tests__/auto-slash-live-data-security.test.js",
       "dist/__tests__/auto-slash-live-data-security.test.js.map",
+      "dist/__tests__/auto-update-channel.test.d.ts",
+      "dist/__tests__/auto-update-channel.test.d.ts.map",
+      "dist/__tests__/auto-update-channel.test.js",
+      "dist/__tests__/auto-update-channel.test.js.map",
       "dist/__tests__/auto-update.test.d.ts",
       "dist/__tests__/auto-update.test.d.ts.map",
       "dist/__tests__/auto-update.test.js",
@@ -1349,6 +1353,30 @@
       "dist/__tests__/hud/context.test.d.ts.map",
       "dist/__tests__/hud/context.test.js",
       "dist/__tests__/hud/context.test.js.map",
+      "dist/__tests__/hud/copilot-elements-golden.test.d.ts",
+      "dist/__tests__/hud/copilot-elements-golden.test.d.ts.map",
+      "dist/__tests__/hud/copilot-elements-golden.test.js",
+      "dist/__tests__/hud/copilot-elements-golden.test.js.map",
+      "dist/__tests__/hud/copilot-events.test.d.ts",
+      "dist/__tests__/hud/copilot-events.test.d.ts.map",
+      "dist/__tests__/hud/copilot-events.test.js",
+      "dist/__tests__/hud/copilot-events.test.js.map",
+      "dist/__tests__/hud/copilot-host-visibility.test.d.ts",
+      "dist/__tests__/hud/copilot-host-visibility.test.d.ts.map",
+      "dist/__tests__/hud/copilot-host-visibility.test.js",
+      "dist/__tests__/hud/copilot-host-visibility.test.js.map",
+      "dist/__tests__/hud/copilot-render-golden.test.d.ts",
+      "dist/__tests__/hud/copilot-render-golden.test.d.ts.map",
+      "dist/__tests__/hud/copilot-render-golden.test.js",
+      "dist/__tests__/hud/copilot-render-golden.test.js.map",
+      "dist/__tests__/hud/copilot-session-credits.test.d.ts",
+      "dist/__tests__/hud/copilot-session-credits.test.d.ts.map",
+      "dist/__tests__/hud/copilot-session-credits.test.js",
+      "dist/__tests__/hud/copilot-session-credits.test.js.map",
+      "dist/__tests__/hud/copilot-stdin.test.d.ts",
+      "dist/__tests__/hud/copilot-stdin.test.d.ts.map",
+      "dist/__tests__/hud/copilot-stdin.test.js",
+      "dist/__tests__/hud/copilot-stdin.test.js.map",
       "dist/__tests__/hud/credit-budget-element.test.d.ts",
       "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
       "dist/__tests__/hud/credit-budget-element.test.js",
@@ -1381,6 +1409,10 @@
       "dist/__tests__/hud/git.test.d.ts.map",
       "dist/__tests__/hud/git.test.js",
       "dist/__tests__/hud/git.test.js.map",
+      "dist/__tests__/hud/host.test.d.ts",
+      "dist/__tests__/hud/host.test.d.ts.map",
+      "dist/__tests__/hud/host.test.js",
+      "dist/__tests__/hud/host.test.js.map",
       "dist/__tests__/hud/labels.test.d.ts",
       "dist/__tests__/hud/labels.test.d.ts.map",
       "dist/__tests__/hud/labels.test.js",
@@ -1405,6 +1437,10 @@
       "dist/__tests__/hud/model.test.d.ts.map",
       "dist/__tests__/hud/model.test.js",
       "dist/__tests__/hud/model.test.js.map",
+      "dist/__tests__/hud/omc-state-elements.test.d.ts",
+      "dist/__tests__/hud/omc-state-elements.test.d.ts.map",
+      "dist/__tests__/hud/omc-state-elements.test.js",
+      "dist/__tests__/hud/omc-state-elements.test.js.map",
       "dist/__tests__/hud/omc-state.test.d.ts",
       "dist/__tests__/hud/omc-state.test.d.ts.map",
       "dist/__tests__/hud/omc-state.test.js",
@@ -2029,6 +2065,10 @@
       "dist/__tests__/session-start-timeout-cleanup.test.d.ts.map",
       "dist/__tests__/session-start-timeout-cleanup.test.js",
       "dist/__tests__/session-start-timeout-cleanup.test.js.map",
+      "dist/__tests__/session-start-update-channel.test.d.ts",
+      "dist/__tests__/session-start-update-channel.test.d.ts.map",
+      "dist/__tests__/session-start-update-channel.test.js",
+      "dist/__tests__/session-start-update-channel.test.js.map",
       "dist/__tests__/session-start-update-check.test.d.ts",
       "dist/__tests__/session-start-update-check.test.d.ts.map",
       "dist/__tests__/session-start-update-check.test.js",
@@ -4920,6 +4960,10 @@
       "dist/hud/colors.d.ts.map",
       "dist/hud/colors.js",
       "dist/hud/colors.js.map",
+      "dist/hud/copilot-events.d.ts",
+      "dist/hud/copilot-events.d.ts.map",
+      "dist/hud/copilot-events.js",
+      "dist/hud/copilot-events.js.map",
       "dist/hud/custom-rate-provider.d.ts",
       "dist/hud/custom-rate-provider.d.ts.map",
       "dist/hud/custom-rate-provider.js",
@@ -4952,6 +4996,10 @@
       "dist/hud/elements/context.d.ts.map",
       "dist/hud/elements/context.js",
       "dist/hud/elements/context.js.map",
+      "dist/hud/elements/copilot-mode.d.ts",
+      "dist/hud/elements/copilot-mode.d.ts.map",
+      "dist/hud/elements/copilot-mode.js",
+      "dist/hud/elements/copilot-mode.js.map",
       "dist/hud/elements/cwd.d.ts",
       "dist/hud/elements/cwd.d.ts.map",
       "dist/hud/elements/cwd.js",
@@ -5032,6 +5080,10 @@
       "dist/hud/elements/skills.d.ts.map",
       "dist/hud/elements/skills.js",
       "dist/hud/elements/skills.js.map",
+      "dist/hud/elements/team.d.ts",
+      "dist/hud/elements/team.d.ts.map",
+      "dist/hud/elements/team.js",
+      "dist/hud/elements/team.js.map",
       "dist/hud/elements/thinking.d.ts",
       "dist/hud/elements/thinking.d.ts.map",
       "dist/hud/elements/thinking.js",
@@ -5044,10 +5096,18 @@
       "dist/hud/elements/token-usage.d.ts.map",
       "dist/hud/elements/token-usage.js",
       "dist/hud/elements/token-usage.js.map",
+      "dist/hud/elements/ultragoal.d.ts",
+      "dist/hud/elements/ultragoal.d.ts.map",
+      "dist/hud/elements/ultragoal.js",
+      "dist/hud/elements/ultragoal.js.map",
       "dist/hud/elements/update-hint.d.ts",
       "dist/hud/elements/update-hint.d.ts.map",
       "dist/hud/elements/update-hint.js",
       "dist/hud/elements/update-hint.js.map",
+      "dist/hud/host.d.ts",
+      "dist/hud/host.d.ts.map",
+      "dist/hud/host.js",
+      "dist/hud/host.js.map",
       "dist/hud/index.d.ts",
       "dist/hud/index.d.ts.map",
       "dist/hud/index.js",
@@ -9268,6 +9328,26 @@
         "path": "dist/__tests__/auto-slash-live-data-security.test.js.map"
       },
       {
+        "id": "dist/__tests__/auto-update-channel.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/auto-update-channel.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/auto-update-channel.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/auto-update-channel.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/auto-update-channel.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/auto-update-channel.test.js"
+      },
+      {
+        "id": "dist/__tests__/auto-update-channel.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/auto-update-channel.test.js.map"
+      },
+      {
         "id": "dist/__tests__/auto-update.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/auto-update.test.d.ts"
@@ -10948,6 +11028,126 @@
         "path": "dist/__tests__/hud/context.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud/copilot-elements-golden.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-elements-golden.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-elements-golden.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-elements-golden.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-elements-golden.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-elements-golden.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-elements-golden.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-elements-golden.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-events.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-events.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-events.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-events.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-events.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-events.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-events.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-events.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-host-visibility.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-host-visibility.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-host-visibility.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-host-visibility.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-host-visibility.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-host-visibility.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-host-visibility.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-host-visibility.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-render-golden.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-render-golden.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-render-golden.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-render-golden.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-render-golden.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-render-golden.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-render-golden.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-render-golden.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-session-credits.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-session-credits.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-session-credits.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-session-credits.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-session-credits.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-session-credits.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-session-credits.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-session-credits.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-stdin.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-stdin.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-stdin.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-stdin.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-stdin.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-stdin.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/copilot-stdin.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/copilot-stdin.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud/credit-budget-element.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/credit-budget-element.test.d.ts"
@@ -11108,6 +11308,26 @@
         "path": "dist/__tests__/hud/git.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud/host.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/host.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/host.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/host.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/host.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/host.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/host.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/host.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud/labels.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/labels.test.d.ts"
@@ -11226,6 +11446,26 @@
         "id": "dist/__tests__/hud/model.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/model.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/omc-state-elements.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/omc-state-elements.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/omc-state-elements.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/omc-state-elements.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/omc-state-elements.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/omc-state-elements.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/omc-state-elements.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/omc-state-elements.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/omc-state.test.d.ts",
@@ -14346,6 +14586,26 @@
         "id": "dist/__tests__/session-start-timeout-cleanup.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/session-start-timeout-cleanup.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-channel.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-channel.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-channel.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-channel.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-channel.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-channel.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-channel.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-channel.test.js.map"
       },
       {
         "id": "dist/__tests__/session-start-update-check.test.d.ts",
@@ -28803,6 +29063,26 @@
         "path": "dist/hud/colors.js.map"
       },
       {
+        "id": "dist/hud/copilot-events.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/copilot-events.d.ts"
+      },
+      {
+        "id": "dist/hud/copilot-events.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/copilot-events.d.ts.map"
+      },
+      {
+        "id": "dist/hud/copilot-events.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/copilot-events.js"
+      },
+      {
+        "id": "dist/hud/copilot-events.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/copilot-events.js.map"
+      },
+      {
         "id": "dist/hud/custom-rate-provider.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/custom-rate-provider.d.ts"
@@ -28961,6 +29241,26 @@
         "id": "dist/hud/elements/context.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/context.js.map"
+      },
+      {
+        "id": "dist/hud/elements/copilot-mode.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/copilot-mode.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/copilot-mode.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/copilot-mode.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/copilot-mode.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/copilot-mode.js"
+      },
+      {
+        "id": "dist/hud/elements/copilot-mode.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/copilot-mode.js.map"
       },
       {
         "id": "dist/hud/elements/cwd.d.ts",
@@ -29363,6 +29663,26 @@
         "path": "dist/hud/elements/skills.js.map"
       },
       {
+        "id": "dist/hud/elements/team.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/team.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/team.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/team.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/team.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/team.js"
+      },
+      {
+        "id": "dist/hud/elements/team.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/team.js.map"
+      },
+      {
         "id": "dist/hud/elements/thinking.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/elements/thinking.d.ts"
@@ -29423,6 +29743,26 @@
         "path": "dist/hud/elements/token-usage.js.map"
       },
       {
+        "id": "dist/hud/elements/ultragoal.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/ultragoal.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/ultragoal.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/ultragoal.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/ultragoal.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/ultragoal.js"
+      },
+      {
+        "id": "dist/hud/elements/ultragoal.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/ultragoal.js.map"
+      },
+      {
         "id": "dist/hud/elements/update-hint.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/elements/update-hint.d.ts"
@@ -29441,6 +29781,26 @@
         "id": "dist/hud/elements/update-hint.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/update-hint.js.map"
+      },
+      {
+        "id": "dist/hud/host.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/host.d.ts"
+      },
+      {
+        "id": "dist/hud/host.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/host.d.ts.map"
+      },
+      {
+        "id": "dist/hud/host.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/host.js"
+      },
+      {
+        "id": "dist/hud/host.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/host.js.map"
       },
       {
         "id": "dist/hud/index.d.ts",
@@ -102931,12 +103291,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8866,
+      "nodeCount": 8926,
       "edgeCount": 10120,
       "importEdgeCount": 8456,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "ca26a3c4a36903e6aef46657effb1798ec448a2c665af24694555fe34c246cd5",
-  "manifestSha256": "bfd1b86c0ffc4bf716fca93f3110037b24ad5d6b8f9630a16417579b196d8282"
+  "manifestSha256": "2e9e7e95052459d6b4dc6f3821abc3b23a93aebd96efb49769b16c7444a0d4a4"
 }
