@@ -34,7 +34,7 @@ import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync 
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
-import { ledgerPath, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
@@ -509,7 +509,7 @@ export class CopilotRunManager {
             job.usage.premiumRequests = data.totalPremiumRequests;
             job.usage.measured = true;
           }
-          if (typeof data.totalNanoAiu === 'number') job.usage.credits = data.totalNanoAiu / 1e9;
+          if (typeof data.totalNanoAiu === 'number') job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
           if (typeof data.currentModel === 'string') job.model = data.currentModel;
           onShutdown();
           break;

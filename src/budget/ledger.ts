@@ -109,7 +109,12 @@ export interface LedgerLockOptions {
   timeoutMs?: number;
 }
 
-const NANO = 1e9;
+/**
+ * nano-AIU per AI credit. The Copilot SDK documents this division only "as a
+ * convenience (SI nano prefix)"; billing defines the real rate, so treat
+ * credits derived from `totalNanoAiu` as a measured approximation.
+ */
+export const NANO_AIU_PER_CREDIT = 1e9;
 /**
  * Rough AI Credits per top-level prompt of a running CLI session, used until
  * its measured total is written. Short smoke prompts measured 0.29 to 0.91
@@ -417,7 +422,7 @@ function toRecord(scan: EventsScan, partial: boolean, now: Date, tail: Totals | 
   const base = { updatedAt: now.toISOString(), ...(model ? { model } : {}), scan };
   const totals = tail ?? scan.totals;
   if (totals) {
-    return { ...base, premiumRequests: totals.premium, credits: totals.nano / NANO, source: 'measured', detail: `${totals.type}${tail ? ' (events tail)' : ''}` };
+    return { ...base, premiumRequests: totals.premium, credits: totals.nano / NANO_AIU_PER_CREDIT, source: 'measured', detail: `${totals.type}${tail ? ' (events tail)' : ''}` };
   }
   if (scan.prompts === 0 && !partial) return null;
   return {

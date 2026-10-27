@@ -279,8 +279,8 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
       ];
     case 'smoke':
       return opts.liveSmoke
-        ? ['OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (two prompts, about 1 AI credit); every check must pass']
-        : ['SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; two prompts, about 1 AI credit)'];
+        ? ['OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (two prompts, about 0.6 AI credits); every check must pass']
+        : ['SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; two prompts, about 0.6 AI credits)'];
     case 'commit':
       return [
         `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
@@ -536,7 +536,7 @@ class Release {
 
   private smoke(): PhaseOutcome {
     if (!this.opts.liveSmoke) {
-      this.deps.log('  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (two prompts, about 1 AI credit).');
+      this.deps.log('  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (two prompts, about 0.6 AI credits).');
       return { status: 'skipped', note: 'live Tier 2 smoke not run (pass --live-smoke)' };
     }
     this.deps.log('  OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json');
@@ -718,7 +718,7 @@ class Release {
   private async pr(): Promise<PhaseOutcome> {
     const smoke = this.state.phases.smoke?.status;
     if (smoke !== 'ok' && !this.opts.allowSkippedSmoke) {
-      blocked(`the live smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}; run it (--from smoke --live-smoke, two prompts, about 1 AI credit), or pass --allow-skipped-smoke to release without it`);
+      blocked(`the live smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}; run it (--from smoke --live-smoke, two prompts, about 0.6 AI credits), or pass --allow-skipped-smoke to release without it`);
     }
     const branch = `release/v${this.v}`;
     // Pushed on every run until merged, so commits added after a failure reach the PR.

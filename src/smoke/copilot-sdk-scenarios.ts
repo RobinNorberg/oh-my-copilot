@@ -7,6 +7,7 @@
 
 import { realpathSync } from 'fs';
 import { basename, join, resolve, sep } from 'path';
+import { NANO_AIU_PER_CREDIT } from '../budget/ledger.js';
 import {
   assistantText,
   BENIGN_ADAPTER_NOTES,
@@ -1090,8 +1091,6 @@ export function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): Sc
 /** AI credits billed, plus the legacy premium request count the CLI still reports. */
 export interface ScenarioCost { credits: number; premiumRequests: number }
 
-/** One nano-AIU is 1e-9 AI credits (the unit of `--max-ai-credits`). */
-const NANO = 1e9;
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -1100,7 +1099,7 @@ function num(v: unknown): number {
 /** AI credits billed by one `assistant.usage` event (0 for any other event). */
 export function usageCredits(event: CopilotEvent): number {
   if (event.type !== 'assistant.usage') return 0;
-  return num((event.data?.copilotUsage as Record<string, unknown> | undefined)?.totalNanoAiu) / NANO;
+  return num((event.data?.copilotUsage as Record<string, unknown> | undefined)?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
 }
 
 /**
@@ -1112,7 +1111,7 @@ export function usageCredits(event: CopilotEvent): number {
 export function scenarioCost(events: CopilotEvent[]): ScenarioCost & { source: string } {
   const shutdown = [...events].reverse().find((e) => e.type === 'session.shutdown');
   if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === 'number' || typeof shutdown.data.totalNanoAiu === 'number')) {
-    return { premiumRequests: num(shutdown.data.totalPremiumRequests), credits: num(shutdown.data.totalNanoAiu) / NANO, source: 'session.shutdown' };
+    return { premiumRequests: num(shutdown.data.totalPremiumRequests), credits: num(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: 'session.shutdown' };
   }
   const usage = events.filter((e) => e.type === 'assistant.usage');
   const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);

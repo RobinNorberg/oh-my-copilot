@@ -24,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 
 import { atomicWriteJson } from '../lib/atomic-write.js';
-import { ledgerPath, recordUsage } from '../budget/ledger.js';
+import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
@@ -483,7 +483,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       }
       case 'session.shutdown':
         if (typeof data.totalPremiumRequests === 'number') session.usage.shutdown_premium_requests = data.totalPremiumRequests;
-        if (typeof data.totalNanoAiu === 'number') session.usage.shutdown_credits = data.totalNanoAiu / 1e9;
+        if (typeof data.totalNanoAiu === 'number') session.usage.shutdown_credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
         shutdownSeen?.();
         break;
       case 'session.error':

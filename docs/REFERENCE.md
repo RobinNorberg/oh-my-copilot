@@ -832,7 +832,7 @@ Maintainer-only release pipeline as ordered, resumable phases. The prose (`CHANG
 ```bash
 omg release 5.13.0 --dry-run                # print the plan, run nothing
 omg release 5.13.0 --to suite --suite full --baseline last-good.json   # release commit + full suite, no AI credits
-omg release 5.13.0 --live-smoke             # resume at smoke (two prompts, about 1 AI credit): pr, promote, tag (confirms), verify
+omg release 5.13.0 --live-smoke             # resume at smoke (two prompts, about 0.6 AI credits): pr, promote, tag (confirms), verify
 omg release 5.13.0 --from verify --json
 ```
 

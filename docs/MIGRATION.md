@@ -46,8 +46,8 @@ GitHub Copilot bills usage in AI Credits since 2026-06-01. One AI Credit is $0.0
 
 - Usage, the SessionStart summary and the threshold notice count AI credits only.
 - `budget.softLimit` stays. It is a warn-only threshold in AI credits: one notice per accounting period, shown at the next prompt, in `omg budget` and in the HUD. It never blocks.
-- `budget.mode`, `budget.hardLimit`, `budget.perTeamLimit` and `"unit": "premiumRequests"` still parse, but each one is a no-op. A config that sets any of them gets one deprecation warning naming this section, in `omg budget`, in the SessionStart summary and in `omg doctor conflicts`.
-- `omg team --budget-override` is still accepted. It does nothing and prints one deprecation warning.
+- `budget.mode`, `budget.hardLimit`, `budget.perTeamLimit` and `"unit": "premiumRequests"` still parse, but each one is a no-op. A config that sets any of them gets a deprecation warning naming this section. It is shown once per surface, not once overall: in the SessionStart summary, `omg budget` and `omg doctor conflicts`.
+- `omg team --budget-override` is still accepted. It does nothing and prints a deprecation warning each time it is used.
 - `omg budget status` always exits 0. It used to exit 1 once `hardLimit` was reached.
 - A running Copilot CLI session is estimated at 1 AI credit per top-level prompt until its measured total is written. It used to count 0 credits until the session ended.
 - The HUD element is `creditBudget` and shows `cr:used/softLimit`. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.

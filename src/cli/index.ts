@@ -1318,7 +1318,7 @@ Examples:
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
   $ omg budget reset                            Start a new accounting period
 
-Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.jsonc ("budget").`)
+Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`)
   .action(async (action: string | undefined, options: { json?: boolean }) => {
     const exitCode = await budgetCommand(action ?? 'status', options);
     process.exit(exitCode);
@@ -1357,7 +1357,7 @@ Examples:
   $ omg smoke copilot --tier 1                  Add one cheap live session
   $ omg smoke copilot --tier 1 --keep-home --json
   $ omg smoke copilot --sdk-static              Tier 2 SDK static checks (no model call)
-  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (1 prompt each, ~0.3-0.9 AI credits per prompt)
+  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (1 prompt each, ~0.6 AI credits in total)
   $ omg smoke copilot --tier 2 --scenario all   All four SDK scenarios
   $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (1 prompt per link,
                                                 real copilot -p links outside the --max-credits cap)

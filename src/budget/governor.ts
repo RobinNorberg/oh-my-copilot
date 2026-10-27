@@ -20,6 +20,7 @@ import {
   HOOK_LOCK_TIMEOUT_MS,
   ledgerPath,
   ledgerTotals,
+  NANO_AIU_PER_CREDIT,
   putRecord,
   readCopilotSessionUsage,
   readLedger,
@@ -248,7 +249,7 @@ export function refreshEstimates(path: string, now: Date, lock: LedgerLockOption
     const checked = { ...scan, checkedSize: stat.size, checkedMtimeMs: mtimeMs };
     const tail = readTailTotals(events!, stat.size);
     const usage: UsageRecord = tail
-      ? { premiumRequests: tail.premium, credits: tail.nano / 1e9, source: 'measured', detail: `${tail.type} (events tail)`, ...(tail.model ? { model: tail.model } : {}), updatedAt: now.toISOString(), scan: checked }
+      ? { premiumRequests: tail.premium, credits: tail.nano / NANO_AIU_PER_CREDIT, source: 'measured', detail: `${tail.type} (events tail)`, ...(tail.model ? { model: tail.model } : {}), updatedAt: now.toISOString(), scan: checked }
       : { ...record, scan: checked };
     updates.push({ key, team, usage });
   }
