@@ -185,12 +185,13 @@ function readWorkspaceMarkerConfig(workspaceRoot) {
     return {};
   }
 }
+var GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
 function isDefinitiveNonGitError(error) {
   if (!error || typeof error !== "object") return false;
   const { status, stderr } = error;
   if (status !== 128) return false;
   const output = typeof stderr === "string" ? stderr : Buffer.isBuffer(stderr) ? stderr.toString() : "";
-  return /not a git repository/i.test(output);
+  return GIT_NOT_A_REPOSITORY_STDERR.test(output);
 }
 function resolveSuperprojectRoot(cwd) {
   const cacheKey = (0, import_path2.resolve)(cwd);
@@ -431,7 +432,7 @@ function isNotAGitRepositoryError(error) {
     return false;
   }
   const stderr = gitErrorStderr(error);
-  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+  return err.status === 128 && (GIT_NOT_A_REPOSITORY_STDERR.test(stderr) || /must be run in a work tree/i.test(stderr));
 }
 function formatGitProbeDetail(error) {
   if (!error || typeof error !== "object") {

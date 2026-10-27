@@ -50,7 +50,7 @@ function buildMainElementOrder(elementOrder) {
     }
     const known = new Set(DEFAULT_ELEMENT_ORDER.main);
     const seen = new Set();
-    const configured = elementOrder.filter((name) => {
+    const configured = elementOrder.map((name) => (name === "premiumBudget" ? "creditBudget" : name)).filter((name) => {
         if (!known.has(name) || seen.has(name)) {
             return false;
         }
@@ -336,10 +336,13 @@ export async function render(context, config) {
                 rendered.set("session", session);
         }
     }
-    if (enabledElements.premiumBudget !== false) {
+    // `premiumBudget` is the deprecated name of the element and its toggle.
+    if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
         const budget = renderPremiumBudget(context.cwd);
-        if (budget)
+        if (budget) {
+            rendered.set("creditBudget", budget);
             rendered.set("premiumBudget", budget);
+        }
     }
     if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
         const stale = context.rateLimitsResult?.stale;

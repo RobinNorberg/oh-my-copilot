@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "dec8320654071802e31017ee55ba9723eaa6f8f4",
-    "sourceSha256": "1c45c9d03351af2c51952e3a7e869f04b1ebc9742eb050481664853a96b8d083",
+    "head": "bfbc5a4940da4018c2f3c3c553a72470d8f68c8d",
+    "sourceSha256": "7ad5ca545734d7e758c32996414c2a4e929f4bac4d930a7fd06827bfcd47bcb2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "dec8320654071802e31017ee55ba9723eaa6f8f4",
-  "sourceSha256": "1c45c9d03351af2c51952e3a7e869f04b1ebc9742eb050481664853a96b8d083",
+  "head": "bfbc5a4940da4018c2f3c3c553a72470d8f68c8d",
+  "sourceSha256": "7ad5ca545734d7e758c32996414c2a4e929f4bac4d930a7fd06827bfcd47bcb2",
   "counts": {
     "public": {
       "skills": 63,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 346,
-      "featureFiles": 88,
+      "featureFiles": 89,
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1685,
-      "total": 1709
+      "srcFiles": 1674,
+      "total": 1698
     },
     "generated": {
-      "distFiles": 6344,
+      "distFiles": 6352,
       "bridgeFiles": 9,
-      "total": 6353
+      "total": 6361
     },
     "prompt": {
       "promptLikeFiles": 64
@@ -560,6 +560,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -1347,6 +1348,10 @@
       "dist/__tests__/hud/context.test.d.ts.map",
       "dist/__tests__/hud/context.test.js",
       "dist/__tests__/hud/context.test.js.map",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+      "dist/__tests__/hud/credit-budget-element.test.js",
+      "dist/__tests__/hud/credit-budget-element.test.js.map",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts.map",
       "dist/__tests__/hud/custom-rate-provider.test.js",
@@ -3073,6 +3078,10 @@
       "dist/features/jev-slop-warning.d.ts.map",
       "dist/features/jev-slop-warning.js",
       "dist/features/jev-slop-warning.js.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.js",
@@ -7796,6 +7805,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -10866,6 +10876,26 @@
         "id": "dist/__tests__/hud/context.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/context.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/custom-rate-provider.test.d.ts",
@@ -19496,6 +19526,26 @@
         "id": "dist/features/jev-slop-warning.js.map",
         "kind": "generated-dist",
         "path": "dist/features/jev-slop-warning.js.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map"
       },
       {
         "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
@@ -43428,6 +43478,11 @@
         "path": "src/__tests__/hud/context.test.ts"
       },
       {
+        "id": "src/__tests__/hud/credit-budget-element.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/credit-budget-element.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/custom-rate-provider.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/custom-rate-provider.test.ts"
@@ -45058,11 +45113,6 @@
         "path": "src/cli/commands/__tests__/factory-listen-port.test.ts"
       },
       {
-        "id": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "kind": "src",
-        "path": "src/cli/commands/__tests__/factory-run-cli.test.ts"
-      },
-      {
         "id": "src/cli/commands/__tests__/hooks-doctor.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/hooks-doctor.test.ts"
@@ -45448,74 +45498,14 @@
         "path": "src/factory/map-run.ts"
       },
       {
-        "id": "src/factory/run/__tests__/engine.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/fake-lanes.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/lane.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/lane.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/review-guard.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/review-guard.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/units.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/units.test.ts"
-      },
-      {
-        "id": "src/factory/run/budget.ts",
-        "kind": "src",
-        "path": "src/factory/run/budget.ts"
-      },
-      {
-        "id": "src/factory/run/engine.ts",
-        "kind": "src",
-        "path": "src/factory/run/engine.ts"
-      },
-      {
-        "id": "src/factory/run/exec.ts",
-        "kind": "src",
-        "path": "src/factory/run/exec.ts"
-      },
-      {
         "id": "src/factory/run/lane.ts",
         "kind": "src",
         "path": "src/factory/run/lane.ts"
-      },
-      {
-        "id": "src/factory/run/ledger.ts",
-        "kind": "src",
-        "path": "src/factory/run/ledger.ts"
-      },
-      {
-        "id": "src/factory/run/progress.ts",
-        "kind": "src",
-        "path": "src/factory/run/progress.ts"
-      },
-      {
-        "id": "src/factory/run/review-guard.ts",
-        "kind": "src",
-        "path": "src/factory/run/review-guard.ts"
-      },
-      {
-        "id": "src/factory/run/review-output.ts",
-        "kind": "src",
-        "path": "src/factory/run/review-output.ts"
-      },
-      {
-        "id": "src/factory/run/state.ts",
-        "kind": "src",
-        "path": "src/factory/run/state.ts"
       },
       {
         "id": "src/factory/status.ts",
@@ -45736,6 +45726,11 @@
         "id": "src/features/jev-slop-warning.ts",
         "kind": "feature",
         "path": "src/features/jev-slop-warning.ts"
+      },
+      {
+        "id": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts"
       },
       {
         "id": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -57605,6 +57600,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/hud/custom-rate-provider.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -65670,51 +65685,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/cli/commands/factory.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/cli/commands/factory.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/cli/commands/__tests__/hooks-doctor.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -65977,6 +65947,11 @@
       {
         "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -66341,63 +66316,8 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/listener.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -66417,26 +66337,6 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
       {
@@ -66872,16 +66772,6 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/agents/utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/budget/governor.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -68066,11 +67956,6 @@
       },
       {
         "from": "src/copilot-run/job.ts",
-        "to": "src/platform/process-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/job.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -68485,151 +68370,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/lib/agent-progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/copilot-run/__tests__/fake-sdk.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/fake-lanes.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/run/__tests__/lane.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -68670,281 +68410,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/review-guard.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/review-output.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/units.test.ts",
-        "to": "src/lib/agent-progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/budget.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/budget.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/budget.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/budget.ts",
-        "to": "src/smoke/copilot-sdk-scenarios.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/ledger.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/progress.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/review-output.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/lib/file-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/platform/process-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/exec.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/exec.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/exec.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/run/lane.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -68957,146 +68422,6 @@
       {
         "from": "src/factory/run/lane.ts",
         "to": "src/copilot-run/job.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "src/factory/run/review-guard.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/ledger.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/progress.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/progress.ts",
-        "to": "src/lib/agent-progress.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/progress.ts",
-        "to": "src/lib/agent-progress.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "src/factory/run/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "src/factory/run/lane.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/review-guard.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/review-output.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/lib/file-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/platform/process-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/ship/state.ts",
         "kind": "type-imports"
       },
       {
@@ -69958,6 +69283,41 @@
         "from": "src/features/jev-slop-warning.ts",
         "to": "src/hooks/jev/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/workspace.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -88686,6 +88046,11 @@
       },
       {
         "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "src/smoke/copilot-session-eval.ts",
         "kind": "imports"
       },
@@ -101826,12 +101191,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8768,
-      "edgeCount": 10013,
-      "importEdgeCount": 8363,
+      "nodeCount": 8765,
+      "edgeCount": 9887,
+      "importEdgeCount": 8271,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "bd16ea0d64e7e429f96a4b90c050905a5197791db5fa970c294ef4234c176799",
-  "manifestSha256": "519f12741f9f07af2770a3e12bbe653f6ced27fcaf4fcef558f8129a6ca51ddd"
+  "inventorySha256": "81c6bdbacb5445f5c84718cea653d17240851cb100c316515a7337b946c33ed7",
+  "manifestSha256": "c5902d3fab58abd4c429594fb5cafc5b4fe485acc2ed061b49e0ef458258b195"
 }

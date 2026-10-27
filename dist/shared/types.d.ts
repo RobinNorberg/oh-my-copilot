@@ -449,17 +449,17 @@ export interface TeamRoleAssignmentSpec {
 }
 /** Orchestrator is pinned to the host CLI; only `model` is user-configurable. */
 export type OrchestratorSpec = Pick<TeamRoleAssignmentSpec, 'model'>;
-/** `budget` config block: premium-request governor (docs/REFERENCE.md#premium-request-budget). */
+/** `budget` config block: AI Credits reporting (docs/REFERENCE.md#omg-budget-ai-credits-budget). Never enforced. */
 export interface BudgetConfig {
-    /** `warn` (default) only reports; `enforce` also refuses or clamps `omg team` fan-out. */
+    /** @deprecated No-op since budgets stopped being enforced; accepted with a warning (docs/MIGRATION.md). */
     mode?: 'warn' | 'enforce';
-    /** Unit of the limits: `premiumRequests` (default) or AI `credits`. */
+    /** Always AI `credits`; `premiumRequests` is a deprecated no-op accepted with a warning. */
     unit?: 'premiumRequests' | 'credits';
-    /** Usage that triggers a one-time warning. */
+    /** AI Credits that trigger a one-time warning. Never blocks. */
     softLimit?: number;
-    /** Usage that triggers a one-time alert; in enforce mode it also bounds team fan-out. */
+    /** @deprecated No-op since budgets stopped being enforced; accepted with a warning. */
     hardLimit?: number;
-    /** Largest projected cost of one `omg team` launch (enforce mode). */
+    /** @deprecated No-op since `omg team` stopped clamping fan-out; accepted with a warning. */
     perTeamLimit?: number;
 }
 /** Cost mode reserved for future downgrade behavior (no implementation yet). */

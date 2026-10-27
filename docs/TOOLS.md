@@ -783,8 +783,8 @@ Runs the same check as `omg smoke copilot` against a plugin root and returns the
 
 | Argument     | Type    | Meaning                                                                 |
 | ------------ | ------- | ----------------------------------------------------------------------- |
-| `tier`       | 0, 1 or 2 | `0` load check without a model call (default); `1` adds one live session, one premium request; `2` adds `@github/copilot-sdk` static checks and SDK scenarios. Tier 1 needs `OMC_SMOKE_ALLOW_LIVE=1` in the server env |
-| `scenarios`  | string[] | Tier 2 only: `smoke`, `guardrail`, `skill`, `delegate`, or `all`. Omitted runs `smoke` and `guardrail`, about two premium requests (one per scenario), and needs `OMC_SMOKE_ALLOW_LIVE=1`. `[]` runs the SDK static checks only, with no model call and no opt-in |
+| `tier`       | 0, 1 or 2 | `0` load check without a model call (default); `1` adds one live session, one prompt billed in AI credits (about 0.4 to 0.9 measured); `2` adds `@github/copilot-sdk` static checks and SDK scenarios. Tier 1 needs `OMC_SMOKE_ALLOW_LIVE=1` in the server env |
+| `scenarios`  | string[] | Tier 2 only: `smoke`, `guardrail`, `skill`, `delegate`, or `all`. Omitted runs `smoke` and `guardrail`, one prompt each (about 0.3 AI credits each measured), and needs `OMC_SMOKE_ALLOW_LIVE=1`. `[]` runs the SDK static checks only, with no model call and no opt-in |
 | `pluginRoot` | string  | Plugin root passed to `--plugin-dir`; defaults to the package root. Any other root needs `OMC_SMOKE_ALLOW_ANY_ROOT=1` |
 | `model`      | string  | Tiers 1-2 model id; omitted means Copilot auto-selects at tier 1 and a cheap listed model, else auto, at tier 2 |
 | `maxCredits` | integer | Tiers 1-2 AI credit cap, default and minimum 30. Tier 1 passes `--max-ai-credits`; tier 2 also aborts a scenario and skips the rest once the run passes it |

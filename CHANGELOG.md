@@ -2,6 +2,50 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.14.0
+
+## [5.14.0] - 2026-10-27
+
+Fork **v5.14.0** (from v5.13.1) is a minor release with a **breaking
+change**. GitHub Copilot has billed in AI Credits since 2026-06-01
+(1 credit = $0.01, charged per token), so the budget now counts AI credits,
+and the plugin no longer enforces a budget. `omg team` does not clamp or
+refuse fan-out, and the old enforcement settings are deprecated no-ops. Cap
+spend with Copilot's own per-session limit (`copilot --max-ai-credits`) and
+Copilot admin budgets instead (see the
+[migration note](docs/MIGRATION.md#unreleased-budget-unit-is-ai-credits)).
+
+### Breaking
+
+- **Budget enforcement is retired.** `omg team` no longer clamps or refuses a
+  launch on budget, `copilot_run_start` no longer refuses a job, the `budget`
+  hook never blocks, and `omg budget status` always exits 0. `budget.mode`
+  `"enforce"`, `budget.hardLimit`, `budget.perTeamLimit` and
+  `"unit": "premiumRequests"` still load, but as deprecated no-ops that warn
+  once per surface (SessionStart summary, `omg budget`,
+  `omg doctor conflicts`). `--budget-override` is an accepted no-op that
+  warns each time it is used. `budget.softLimit` stays as an advisory
+  threshold, and the per-worker `maxCreditsPerWorker` session cap stays.
+  **Set instead:** Copilot's per-session cap, `copilot --max-ai-credits` or
+  SDK `sessionLimits.maxAiCredits` (a soft cap, minimum 30 credits since
+  Copilot CLI 1.0.67), and Copilot admin USD budgets at the user,
+  cost-center or org level.
+
+### Changed
+
+- **The budget counts AI Credits.** The ledger, `omg budget`, the
+  SessionStart summary, the soft-limit notice, the HUD (`creditBudget`,
+  `cr:`; `premiumBudget` is still accepted), the smoke checks
+  (`scn.team.credits`, `scn.chain.credits`), MCP tool text, release messages,
+  docs, runbooks and CI labels all show AI credits. Premium requests remain
+  a read-compatible legacy field, so old ledgers load unchanged, and annual
+  Pro/Pro+ plans still bill them. A `softLimit` written for premium requests
+  now counts AI credits.
+- **SDK nano-AIU conversion.** One labelled constant converts the SDK's
+  `totalNanoAiu` to credits. Billing, not the SDK, defines the real rate.
+- **The default tier-2 smoke costs about 0.6 AI credits**, measured from the
+  recorded fixtures.
+
 # oh-my-copilot v5.13.1
 
 ## [5.13.1] - 2026-10-26
@@ -450,7 +494,7 @@ Copilot, `npm run build`, test commands, git read commands and heredoc
   exceeds the limits (`--budget-override` starts it anyway); `omg budget`
   (`status`, `reset`, `--json`) shows and resets the ledger; `omg doctor
   conflicts` warns about invalid values. `OMC_BUDGET_GOVERNOR=0` turns it
-  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-premium-request-budget).
+  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-ai-credits-budget).
 - **New `session-flow` skill (upstream #4319)**: an evidence-backed map of the
   current session; its Tasks are excluded from the continuation hook. The
   plugin now ships 63 skills.

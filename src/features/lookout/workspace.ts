@@ -43,6 +43,10 @@ function sanitizedGitEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+// Git >= 2.56 says "gitfile does not point to a valid repository" where older git said
+// "not a git repository" (git 54a441bcea); lookout stays self-contained, so it keeps its own copy.
+const GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
+
 function gitArgs(args: string[]): string[] {
   return ["-c", "core.fsmonitor=false", "--no-optional-locks", ...args];
 }
@@ -96,7 +100,7 @@ export function repoRoot(repoArg: string): string | null {
   } catch (error) {
     const failure = error as GitFailure;
     const stderr = String(failure.stderr ?? "");
-    if (/not a git repository/i.test(stderr)) {
+    if (GIT_NOT_A_REPOSITORY_STDERR.test(stderr)) {
       if (hasGitEntry(repoArg)) {
         throw new LookoutError(
           `Cannot scan "${repoArg}": a repository exists here but git could not read it (${stderr.trim()}).`,

@@ -157,7 +157,7 @@ function isDefinitiveNonGitError(error) {
   const { status, stderr } = error;
   if (status !== 128) return false;
   const output = typeof stderr === "string" ? stderr : Buffer.isBuffer(stderr) ? stderr.toString() : "";
-  return /not a git repository/i.test(output);
+  return GIT_NOT_A_REPOSITORY_STDERR.test(output);
 }
 function resolveSuperprojectRoot(cwd) {
   const cacheKey = (0, import_path3.resolve)(cwd);
@@ -363,7 +363,7 @@ function isNotAGitRepositoryError(error) {
     return false;
   }
   const stderr = gitErrorStderr(error);
-  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+  return err.status === 128 && (GIT_NOT_A_REPOSITORY_STDERR.test(stderr) || /must be run in a work tree/i.test(stderr));
 }
 function formatGitProbeDetail(error) {
   if (!error || typeof error !== "object") {
@@ -983,7 +983,7 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var import_crypto, import_node_async_hooks, import_child_process, import_fs2, import_os2, import_path3, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
+var import_crypto, import_node_async_hooks, import_child_process, import_fs2, import_os2, import_path3, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -1040,6 +1040,7 @@ var init_worktree_paths = __esm({
     ];
     MAX_GIT_MARKER_BYTES = 4096;
     workspaceCacheMap = /* @__PURE__ */ new Map();
+    GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
     SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
       ".ssh",
       ".gnupg",

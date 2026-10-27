@@ -485,7 +485,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         });
     });
     describe('smoke', () => {
-        it('runs after the suite, so a red suite costs no premium requests', () => {
+        it('runs after the suite, so a red suite costs no AI credits', () => {
             expect(PHASES.indexOf('smoke')).toBe(PHASES.indexOf('suite') + 1);
         });
         it('is skipped loudly without --live-smoke', async () => {

@@ -379,7 +379,7 @@ describe('runSdkTier (fake SDK)', () => {
     expect(calls[0]).toMatchObject({ projectDir: expect.any(String), home: expect.any(String), eventsPath: expect.stringMatching(/events-chain\.jsonl$/) });
     expect(rec.sessions).toHaveLength(1); // the static-check session only
     const c = byId(result.checks);
-    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium']) expect(c[`scn.chain.${id}`].ok).toBe(true);
+    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'credits']) expect(c[`scn.chain.${id}`].ok).toBe(true);
     expect(result.cost!.premiumRequests).toBe(2);
   });
 
@@ -408,7 +408,7 @@ describe('runSdkTier (fake SDK)', () => {
     expect(order).toEqual(['team', 'chain']);
     expect(rec.sessions).toHaveLength(2); // static checks + smoke; team and chain bring their own sessions
     expect(teamCalls[0]).toMatchObject({ projectDir: expect.any(String), home: expect.any(String), bin: expect.any(String), eventsPath: expect.stringMatching(/events-team\.jsonl$/) });
-    expect(byId(result.checks)['scn.team.premium']).toMatchObject({ ok: true, detail: '2 premium request(s) over fake (max 2)' });
+    expect(byId(result.checks)['scn.team.credits']).toMatchObject({ ok: true, detail: '1.5 AI credits (legacy 2 premium request(s)) over fake (max 10 credits)' });
     expect(result.cost!.premiumRequests).toBeGreaterThanOrEqual(2);
   });
 

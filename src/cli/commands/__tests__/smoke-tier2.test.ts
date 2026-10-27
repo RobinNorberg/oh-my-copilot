@@ -85,7 +85,7 @@ describe('omg smoke copilot — tier 2 exit codes and output', () => {
     expect(idx('── sdk')).toBeGreaterThan(idx('plugin.manifest'));
     expect(idx('── scenario smoke')).toBe(idx('scn.smoke.reply') - 1);
     expect(idx('── scenario guardrail')).toBe(idx('scn.guardrail.denied') - 1);
-    expect(text).toContain('cost: 3 premium request(s), 0.7 credit(s)');
+    expect(text).toContain('cost: 0.7 AI credit(s), legacy 3 premium request(s)');
     expect(text).toContain('events.smoke: /h/smoke.jsonl');
     expect(text).not.toContain('[object Object]');
   });
