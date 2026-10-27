@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0fbb6e47f741eefea19c0257fb97437a0fa140b9",
-    "sourceSha256": "b0822216857a3e7b3a894f912db204862e6dcaa6f34b038b72d00c9365a7b5ed",
+    "head": "dec8320654071802e31017ee55ba9723eaa6f8f4",
+    "sourceSha256": "1c45c9d03351af2c51952e3a7e869f04b1ebc9742eb050481664853a96b8d083",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0fbb6e47f741eefea19c0257fb97437a0fa140b9",
-  "sourceSha256": "b0822216857a3e7b3a894f912db204862e6dcaa6f34b038b72d00c9365a7b5ed",
+  "head": "dec8320654071802e31017ee55ba9723eaa6f8f4",
+  "sourceSha256": "1c45c9d03351af2c51952e3a7e869f04b1ebc9742eb050481664853a96b8d083",
   "counts": {
     "public": {
       "skills": 63,
@@ -68066,6 +68066,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -68601,6 +68606,11 @@
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -68886,6 +68896,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -69002,6 +69017,11 @@
       {
         "from": "src/factory/run/review-guard.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/review-guard.ts",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -101807,11 +101827,11 @@
     ],
     "stats": {
       "nodeCount": 8768,
-      "edgeCount": 10009,
-      "importEdgeCount": 8360,
+      "edgeCount": 10013,
+      "importEdgeCount": 8363,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "bd16ea0d64e7e429f96a4b90c050905a5197791db5fa970c294ef4234c176799",
-  "manifestSha256": "b8b5da5dca9101c41ad1a34e156c4e5bce3888bccc2b6c29ebcc2598c3ed27f7"
+  "manifestSha256": "519f12741f9f07af2770a3e12bbe653f6ced27fcaf4fcef558f8129a6ca51ddd"
 }
