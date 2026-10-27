@@ -1769,7 +1769,7 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `cwd`        | Show current working directory                                                                                       | `false` |
 | `gitRepo`    | Show git repository name                                                                                             | `false` |
 | `gitBranch`  | Show current git branch                                                                                              | `false` |
-| `omcLabel`   | Show the `[OMG#version]` label. `omgLabel` is an alias, and both names work in `layout` and `elementOrder`           | `true`  |
+| `omcLabel`   | Show the `[oh-my-copilot#version]` label. `omgLabel` is an alias, and both names work in `layout` and `elementOrder`  | `true`  |
 | `updateNotification` | Show the available-update arrow after the label and the `updateHint` line with the update command                    | `true`  |
 | `contextBar` | Show context window usage                                                                                            | `true`  |
 | `agents`     | Show active agents count                                                                                             | `true`  |
@@ -1778,7 +1778,7 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `autopilot`  | Show autopilot status                                                                                                | `true`  |
 | `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
 
-**Update hint.** When an OMC update is available, the label reads `[OMG#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
+**Update hint.** When an OMC update is available, the label reads `[oh-my-copilot#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
 
 ```
 [!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc

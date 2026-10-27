@@ -209,14 +209,14 @@ describe('update-available render golden', () => {
     claudeCodeUpdateAvailable: '2.1.240',
   } as const;
 
-  it('renders the Claude host byte-for-byte (OMG label, Claude label and line kept)', async () => {
+  it('renders the Claude host byte-for-byte (oh-my-copilot label, Claude label and line kept)', async () => {
     const output = await render(
       createMinimalContext({ ...updateState, omcUpdateSource: 'marketplace' }),
       createMinimalConfig({ model: false, sessionHealth: false, showCallCounts: false }),
     );
 
     expect(stripAnsi(output)).toBe([
-      '[OMG#5.13.1] -> 5.13.2 omg update | [Claude#2.1.230] -> 2.1.240 claude update',
+      '[oh-my-copilot#5.13.1] -> 5.13.2 omg update | [Claude#2.1.230] -> 2.1.240 claude update',
       '[!] omg 5.13.2 - paste: ! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc',
       '[!] claude 2.1.240 - paste: ! claude update',
     ].join('\n'));
@@ -229,7 +229,7 @@ describe('update-available render golden', () => {
     ));
 
     expect(output).toBe([
-      '[OMG#5.13.1] -> 5.13.2',
+      '[oh-my-copilot#5.13.1] -> 5.13.2',
       '[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc',
     ].join('\n'));
     expect(output).not.toContain('claude');
@@ -242,6 +242,6 @@ describe('update-available render golden', () => {
       { ...config, layout: { main: ['omcLabel'] } },
     ));
 
-    expect(output).toBe('[OMG#5.13.1]');
+    expect(output).toBe('[oh-my-copilot#5.13.1]');
   });
 });

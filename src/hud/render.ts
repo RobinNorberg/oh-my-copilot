@@ -353,10 +353,10 @@ export async function render(
       const suffix = isCopilotHost ? "" : " omg update";
       rendered.set(
         "omgLabel",
-        bold(`[OMG${versionTag}] -> ${context.updateAvailable}${suffix}`),
+        bold(`[oh-my-copilot${versionTag}] -> ${context.updateAvailable}${suffix}`),
       );
     } else {
-      rendered.set("omgLabel", bold(`[OMG${versionTag}]`));
+      rendered.set("omgLabel", bold(`[oh-my-copilot${versionTag}]`));
     }
   }
 

@@ -765,11 +765,11 @@ describe('tmux-detector', () => {
       ]);
     });
 
-    it('ignores the renamed OMG HUD marker when checking the prompt', () => {
+    it('ignores the renamed oh-my-copilot HUD marker when checking the prompt', () => {
       makeTmuxAvailable();
       const livePromptWithOmgHud = [
         livePrompt,
-        '[OMG#5.13.1] | ctx:14%',
+        '[oh-my-copilot#5.13.1] | ctx:14%',
       ].join('\n');
       vi.mocked(tmuxExec)
         .mockReturnValueOnce(paneList)

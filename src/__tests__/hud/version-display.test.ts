@@ -67,29 +67,29 @@ function createMinimalConfig(overrides: Partial<HudConfig['elements']> = {}): Hu
 }
 
 describe('HUD version display and update notification', () => {
-  describe('OMG label without version', () => {
-    it('renders [OMG] when omcVersion is null', async () => {
+  describe('oh-my-copilot label without version', () => {
+    it('renders [oh-my-copilot] when omcVersion is null', async () => {
       const ctx = createMinimalContext({ omcVersion: null });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG]');
+      expect(output).toContain('[oh-my-copilot]');
       expect(output).not.toContain('#');
     });
   });
 
-  describe('OMG label with version', () => {
-    it('renders [OMG#X.Y.Z] when omcVersion is set', async () => {
+  describe('oh-my-copilot label with version', () => {
+    it('renders [oh-my-copilot#X.Y.Z] when omcVersion is set', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG#4.1.10]');
+      expect(output).toContain('[oh-my-copilot#4.1.10]');
     });
 
     it('renders version without update notice when updateAvailable is null', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: null });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG#4.1.10]');
+      expect(output).toContain('[oh-my-copilot#4.1.10]');
       expect(output).not.toContain('->');
       expect(output).not.toContain('omg update');
     });
@@ -100,16 +100,16 @@ describe('HUD version display and update notification', () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG#4.1.10]');
+      expect(output).toContain('[oh-my-copilot#4.1.10]');
       expect(output).toContain('-> 4.2.0');
       expect(output).toContain('omg update');
     });
 
-    it('keeps OMG version label but hides update notification when updateNotification is false', async () => {
+    it('keeps oh-my-copilot version label but hides update notification when updateNotification is false', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
       const config = createMinimalConfig({ updateNotification: false });
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG#4.1.10]');
+      expect(output).toContain('[oh-my-copilot#4.1.10]');
       expect(output).not.toContain('-> 4.2.0');
       expect(output).not.toContain('omg update');
     });
@@ -118,17 +118,17 @@ describe('HUD version display and update notification', () => {
       const ctx = createMinimalContext({ omcVersion: null, updateAvailable: '4.2.0' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMG]');
+      expect(output).toContain('[oh-my-copilot]');
       expect(output).toContain('-> 4.2.0');
     });
   });
 
   describe('omcLabel disabled', () => {
-    it('does not render OMG label when omcLabel is false', async () => {
+    it('does not render oh-my-copilot label when omcLabel is false', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
       const config = createMinimalConfig({ omcLabel: false });
       const output = await render(ctx, config);
-      expect(output).not.toContain('[OMG');
+      expect(output).not.toContain('[oh-my-copilot');
       expect(output).not.toContain('omg update');
     });
   });

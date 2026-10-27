@@ -659,7 +659,7 @@ export interface HudElementConfig {
   model: boolean;            // Show current model name
   modelFormat: ModelFormat;   // Model name verbosity level
   effort: boolean;           // Show current effort level (low/medium/high/xhigh/max)
-  omcLabel: boolean;         // Show the [OMG#version] label (canonical key; layout name `omgLabel`)
+  omcLabel: boolean;         // Show the [oh-my-copilot#version] label (canonical key; layout name `omgLabel`)
   omgLabel?: boolean;        // Alias of omcLabel; wins when both are set
   updateNotification?: boolean; // Show available-update prompt text in the OMC label
   rateLimits: boolean;  // Show 5h and weekly rate limits
