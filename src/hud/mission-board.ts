@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { withFileLockSync } from '../lib/file-lock.js';
@@ -173,6 +173,42 @@ function readJsonSafe<T>(path: string): T | null {
   } catch {
     return null;
   }
+}
+
+function mtimeMsSafe(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+const MAX_ACTIVITY_WORKER_DIRS = 64;
+
+/**
+ * Newest mtime among the files a live team keeps touching: config, both event
+ * logs, and each worker's heartbeat and status. Bounded to a fixed number of
+ * worker dirs and stats only, no file contents.
+ */
+function newestTeamActivityMs(teamRoot: string): number {
+  let newest = Math.max(
+    mtimeMsSafe(join(teamRoot, 'config.json')),
+    mtimeMsSafe(join(teamRoot, 'events.jsonl')),
+    mtimeMsSafe(join(teamRoot, 'sdk-events.jsonl')),
+  );
+  try {
+    const workers = readdirSync(join(teamRoot, 'workers'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .slice(0, MAX_ACTIVITY_WORKER_DIRS);
+    for (const worker of workers) {
+      for (const file of ['heartbeat.json', 'status.json']) {
+        newest = Math.max(newest, mtimeMsSafe(join(teamRoot, 'workers', worker.name, file)));
+      }
+    }
+  } catch {
+    // No workers dir: config and event logs decide.
+  }
+  return newest;
 }
 
 function readJsonLinesSafe<T>(path: string): T[] {
@@ -422,10 +458,13 @@ function deriveWorkerStatus(workerStatus: WorkerStatusLike | null, task?: TeamTa
 }
 
 function collectTeamMission(teamRoot: string, teamName: string, config: Required<MissionBoardConfig>): MissionBoardMission | null {
-  const teamConfig = readJsonSafe<TeamConfigLike>(join(teamRoot, 'config.json'));
+  const configPath = join(teamRoot, 'config.json');
+  const teamConfig = readJsonSafe<TeamConfigLike>(configPath);
   if (!teamConfig) return null;
 
-  const workers = canonicalizeWorkers((Array.isArray(teamConfig.workers) ? teamConfig.workers : []).map((worker, index) => ({
+  const workers = canonicalizeWorkers((Array.isArray(teamConfig.workers) ? teamConfig.workers : [])
+    .filter((worker) => typeof worker === 'object' && worker !== null)
+    .map((worker, index) => ({
     name: worker.name ?? '',
     index: index + 1,
     role: worker.role ?? 'worker',
@@ -450,7 +489,7 @@ function collectTeamMission(teamRoot: string, teamName: string, config: Required
 
   const timeline: MissionBoardTimelineEvent[] = [];
   for (const event of readJsonLinesSafe<TeamEventLike>(join(teamRoot, 'events.jsonl'))) {
-    if (!event.created_at || !event.type) continue;
+    if (!event?.created_at || !event.type) continue;
     if (event.type === 'task_completed' || event.type === 'task_failed') {
       timeline.push({
         id: `event:${event.event_id || `${event.type}:${event.created_at}`}`,
@@ -529,7 +568,10 @@ function collectTeamMission(teamRoot: string, teamName: string, config: Required
     } satisfies MissionBoardAgent;
   });
 
-  const createdAt = teamConfig.created_at || latest(...timeline.map((entry) => entry.at)) || new Date().toISOString();
+  // No timestamps at all: the config's mtime, so a dead team still goes stale.
+  const createdAt = teamConfig.created_at
+    || latest(...timeline.map((entry) => entry.at))
+    || new Date(mtimeMsSafe(configPath) || Date.now()).toISOString();
   const updatedAt = latest(createdAt, ...timeline.map((entry) => entry.at), ...agents.map((agent) => agent.updatedAt)) || createdAt;
 
   return {
@@ -569,17 +611,41 @@ function mergeMissions(previous: MissionBoardState | null, teamMissions: Mission
     .slice(0, config.maxMissions);
 }
 
+/**
+ * Read every team under `.omg/state/team/` as a mission, without writing board state.
+ * With `skipOlderThanMs`, a team dir whose config, event logs and worker
+ * heartbeat/status files are all older than that is skipped before collecting. One unreadable team is dropped alone.
+ */
+export function readTeamMissions(
+  directory: string,
+  rawConfig: MissionBoardConfig = DEFAULT_CONFIG,
+  skipOlderThanMs?: number,
+  now: number = Date.now(),
+): MissionBoardMission[] {
+  const config = resolveConfig(rawConfig);
+  const teamsRoot = join(getOmcRoot(directory), 'state', 'team');
+  if (!existsSync(teamsRoot)) return [];
+  const cutoff = skipOlderThanMs === undefined ? null : now - skipOlderThanMs;
+  const missions: MissionBoardMission[] = [];
+  for (const entry of readdirSync(teamsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const teamRoot = join(teamsRoot, entry.name);
+    if (cutoff !== null && newestTeamActivityMs(teamRoot) < cutoff) continue;
+    try {
+      const mission = collectTeamMission(teamRoot, entry.name, config);
+      if (mission) missions.push(mission);
+    } catch {
+      // Corrupt team state: skip this team only.
+    }
+  }
+  return missions;
+}
+
 export function refreshMissionBoardState(directory: string, rawConfig: MissionBoardConfig = DEFAULT_CONFIG, sessionId?: string): MissionBoardState {
   const effectiveSessionId = sessionId ?? getProcessSessionId();
   const config = resolveConfig(rawConfig);
   const previous = readMissionBoardState(directory, effectiveSessionId);
-  const teamsRoot = join(getOmcRoot(directory), 'state', 'team');
-  const teamMissions = existsSync(teamsRoot)
-    ? readdirSync(teamsRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => collectTeamMission(join(teamsRoot, entry.name), entry.name, config))
-      .filter((mission): mission is MissionBoardMission => Boolean(mission))
-    : [];
+  const teamMissions = readTeamMissions(directory, config);
 
   const state: MissionBoardState = {
     updatedAt: new Date().toISOString(),

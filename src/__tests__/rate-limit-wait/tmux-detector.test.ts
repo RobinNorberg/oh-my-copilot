@@ -765,6 +765,21 @@ describe('tmux-detector', () => {
       ]);
     });
 
+    it('ignores the renamed oh-my-copilot HUD marker when checking the prompt', () => {
+      makeTmuxAvailable();
+      const livePromptWithOmgHud = [
+        livePrompt,
+        '[oh-my-copilot#5.13.1] | ctx:14%',
+      ].join('\n');
+      vi.mocked(tmuxExec)
+        .mockReturnValueOnce(paneList)
+        .mockReturnValueOnce(livePromptWithOmgHud);
+
+      expect(revalidateBlockedPanes([trackedPane])).toMatchObject([
+        { id: '%0', session: 'main', windowName: 'dev' },
+      ]);
+    });
+
     it('ignores the OMC HUD marker when model metadata is unavailable', () => {
       makeTmuxAvailable();
       const livePromptWithoutModelHud = [

@@ -85,3 +85,17 @@ export function renderModel(
   if (!name) return null;
   return cyan(`${labels.model}: ${name}`);
 }
+
+/**
+ * Render the Copilot model verbatim. Copilot display names ("GPT-5.4",
+ * "Claude Sonnet 5.5", "Auto>fast") do not follow the Claude id patterns that
+ * formatModelName shortens, so they are only width-capped.
+ */
+export function renderCopilotModel(
+  name: string | null | undefined,
+  labels: Pick<HudLabels, 'model'> = DEFAULT_HUD_LABELS,
+): string | null {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  return cyan(`${labels.model}: ${truncateToWidth(trimmed, 40)}`);
+}

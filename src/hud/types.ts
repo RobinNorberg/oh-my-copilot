@@ -8,6 +8,8 @@ import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
 import type { SessionSummaryState } from './elements/session-summary.js';
 import type { PayloadEstimate } from './payload-estimate.js';
+import type { TeamStateForHud } from './elements/team.js';
+import type { UltragoalStateForHud } from './elements/ultragoal.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
 
@@ -66,6 +68,10 @@ export interface StatuslineStdin {
   model?: {
     id?: string;
     display_name?: string;
+    /** Copilot only, when id is "auto": the resolved tier */
+    auto_tier?: string | null;
+    /** Copilot only, when id is "auto": the tier the next call switches to */
+    pending_auto_tier?: string | null;
   };
 
   /** Effort level from Claude Code statusline stdin */
@@ -80,10 +86,55 @@ export interface StatuslineStdin {
     used_percentage?: number;
     current_usage?: {
       input_tokens?: number;
+      output_tokens?: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
     };
+    // Copilot CLI fields (1.0.103 statusline builder); all optional.
+    total_output_tokens?: number;
+    total_cache_read_tokens?: number;
+    total_cache_write_tokens?: number;
+    total_reasoning_tokens?: number;
+    total_tokens?: number;
+    remaining_percentage?: number;
+    remaining_tokens?: number;
+    last_call_input_tokens?: number;
+    last_call_output_tokens?: number;
+    current_context_tokens?: number;
+    displayed_context_limit?: number;
+    current_context_used_percentage?: number;
   };
+
+  // ── Copilot CLI only (1.0.103 statusline builder). Every field is optional
+  //    and unknown fields are ignored: the schema is read from the bundle, not
+  //    from captured payloads.
+
+  /** Copilot session name (since 1.0.12) */
+  session_name?: string | null;
+
+  /** Workspace info */
+  workspace?: { current_dir?: string };
+
+  /** GitHub login */
+  username?: string | null;
+
+  /** Remote-session state */
+  remote?: { connected?: boolean; [key: string]: unknown };
+
+  /** Session metrics */
+  cost?: {
+    total_api_duration_ms?: number;
+    total_duration_ms?: number;
+    total_lines_added?: number;
+    total_lines_removed?: number;
+    total_premium_requests?: number;
+  };
+
+  /** AI Credits used this session, in nano-AIU, plus Copilot's own formatting */
+  ai_used?: { total_nano_aiu?: number; formatted?: string };
+
+  /** Allow-all (YOLO) state (since 1.0.62) */
+  allow_all_enabled?: boolean;
 
   /** Rate limits from Claude Code statusline stdin */
   rate_limits?: {
@@ -386,6 +437,9 @@ export interface CustomProviderResult {
 }
 
 export interface HudRenderContext {
+  /** Host CLI that fed the payload (see host.ts); absent means 'claude' */
+  host?: 'claude' | 'copilot';
+
   /** Context window percentage (0-100) */
   contextPercent: number;
 
@@ -462,7 +516,7 @@ export interface HudRenderContext {
   updateAvailable: string | null;
 
   /** Update channel the cached OMC update belongs to (null if unknown) */
-  omcUpdateSource?: 'npm' | 'marketplace' | null;
+  omcUpdateSource?: 'npm' | 'marketplace' | 'copilot-plugin' | null;
 
   /** Installed Claude Code version reported by the statusline stdin payload */
   claudeCodeVersion?: string | null;
@@ -508,6 +562,24 @@ export interface HudRenderContext {
 
   /** Best-effort local transcript-backed request payload pressure estimate. */
   payloadEstimate?: PayloadEstimate | null;
+
+  /** Copilot only: session AI Credits from the payload's `ai_used` */
+  aiUsed?: { nanoAiu: number | null; formatted: string | null } | null;
+
+  /** Copilot only: agent mode from events.jsonl (null = interactive / unknown) */
+  copilotMode?: 'interactive' | 'plan' | 'autopilot' | null;
+
+  /** Copilot only: a conversation compaction is in progress */
+  compacting?: boolean;
+
+  /** Copilot only: allow-all (YOLO) from the payload's `allow_all_enabled` */
+  copilotAllowAll?: boolean;
+
+  /** Live `omg team` run (read only when the `team` element is on) */
+  team?: TeamStateForHud | null;
+
+  /** Open ultragoal plan (read only when the `ultragoal` element is on) */
+  ultragoal?: UltragoalStateForHud | null;
 }
 
 // ============================================================================
@@ -656,11 +728,15 @@ export interface HudElementConfig {
   model: boolean;            // Show current model name
   modelFormat: ModelFormat;   // Model name verbosity level
   effort: boolean;           // Show current effort level (low/medium/high/xhigh/max)
-  omcLabel: boolean;
+  omcLabel: boolean;         // Show the [oh-my-copilot#version] label (canonical key; layout name `omgLabel`)
+  omgLabel?: boolean;        // Alias of omcLabel; wins when both are set
   updateNotification?: boolean; // Show available-update prompt text in the OMC label
   rateLimits: boolean;  // Show 5h and weekly rate limits
   ralph: boolean;
   autopilot: boolean;
+  copilotMode?: boolean;     // Copilot native mode (plan/autopilot) and yolo; on under Copilot, off under Claude
+  team?: boolean;            // Live omg team summary (team:name 3/4w 5/9t); on under Copilot, off under Claude
+  ultragoal?: boolean;       // Open ultragoal plan progress (goal:2/5); on under Copilot, off under Claude
   prdStory: boolean;
   activeSkills: boolean;
   lastSkill: boolean;
@@ -745,8 +821,8 @@ export interface LayoutConfig {
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
   line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
   main: [
-    'omcLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
+    'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
     'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
   ],
@@ -780,6 +856,38 @@ export interface HudConfig {
 }
 
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
+
+/**
+ * Copilot host defaults, applied over the preset and under the user's config:
+ * Copilot's own footer already shows the model, effort, directory and branch,
+ * so these start off and a user `true` turns them back on. The OMC-state
+ * elements (copilotMode, team, ultragoal) start on here; under Claude they are
+ * unset in every preset, so they stay off unless the user turns them on.
+ */
+export const COPILOT_HOST_DEFAULTS: Partial<HudElementConfig> = {
+  model: false,
+  effort: false,
+  cwd: false,
+  gitBranch: false,
+  copilotMode: true,
+  team: true,
+  ultragoal: true,
+};
+
+/**
+ * Elements with no data source under Copilot (Claude usage/enterprise APIs,
+ * Claude transcript, `claude -p`). Forced off on the Copilot host even when the
+ * user config enables them; the payload warning is skipped in index.ts.
+ */
+export const COPILOT_HOST_DROPPED: Partial<HudElementConfig> = {
+  rateLimits: false,
+  enterpriseMode: false,
+  showEnterpriseCost: false,
+  apiKeySource: false,
+  thinking: false,
+  todos: false,
+  sessionSummary: false,
+};
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
   preset: 'focused',

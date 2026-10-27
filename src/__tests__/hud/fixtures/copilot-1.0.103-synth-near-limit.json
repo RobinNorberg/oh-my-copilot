@@ -1,0 +1,30 @@
+{
+  "$comment": "SYNTHETIC: built from the Copilot CLI 1.0.103 statusline payload builder's field list (design 2026-10-27 section 1.1), not captured live. Long session near the context limit; ai_used has no formatted text, so the HUD converts total_nano_aiu.",
+  "cwd": "C:\\Code\\OMC",
+  "session_id": "6f1c0e2a-0000-4000-8000-00000000b003",
+  "transcript_path": "C:\\Users\\u\\.copilot\\session-state\\6f1c0e2a-0000-4000-8000-00000000b003",
+  "model": { "id": "gpt-5.4", "display_name": "GPT-5.4" },
+  "remote": { "connected": false },
+  "version": "1.0.103",
+  "cost": {
+    "total_api_duration_ms": 2100000,
+    "total_lines_added": 410,
+    "total_lines_removed": 96,
+    "total_duration_ms": 7500000,
+    "total_premium_requests": 14
+  },
+  "context_window": {
+    "total_input_tokens": 2950000,
+    "total_output_tokens": 61000,
+    "context_window_size": 272000,
+    "used_percentage": 84,
+    "last_call_input_tokens": 233000,
+    "last_call_output_tokens": 1900,
+    "current_context_tokens": 234000,
+    "displayed_context_limit": 272000,
+    "current_context_used_percentage": 86
+  },
+  "ai_used": { "total_nano_aiu": 9140000000 },
+  "allow_all_enabled": false,
+  "some_future_field": { "ignored": true }
+}

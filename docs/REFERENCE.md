@@ -1044,7 +1044,7 @@ Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until y
 
 **Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
-**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set; `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set, except under Copilot CLI, where without a limit it shows the session's credits from the statusline payload (`cr:0.4`, hidden at zero); `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 
 **Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 
@@ -1791,14 +1791,43 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `cwd`        | Show current working directory                                                                                       | `false` |
 | `gitRepo`    | Show git repository name                                                                                             | `false` |
 | `gitBranch`  | Show current git branch                                                                                              | `false` |
-| `omcLabel`   | Show [OMC] label                                                                                                     | `true`  |
-| `updateNotification` | Show available-update prompt text after the OMC label                                                                  | `true`  |
+| `omcLabel`   | Show the `[oh-my-copilot#version]` label. `omgLabel` is an alias, and both names work in `layout` and `elementOrder`  | `true`  |
+| `updateNotification` | Show the available-update arrow after the label and the `updateHint` line with the update command                    | `true`  |
 | `contextBar` | Show context window usage                                                                                            | `true`  |
 | `agents`     | Show active agents count                                                                                             | `true`  |
 | `todos`      | Show todo progress                                                                                                   | `true`  |
 | `ralph`      | Show ralph loop status                                                                                               | `true`  |
 | `autopilot`  | Show autopilot status                                                                                                | `true`  |
 | `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
+
+**Host matrix.** The HUD detects the host from the statusline payload and applies a Copilot overlay over the preset, under your own config. Claude Code output is unchanged.
+
+| Element | Claude Code | Copilot CLI | Copilot data source |
+| --- | --- | --- | --- |
+| `omcLabel` (`omgLabel`) | on | on | label `[oh-my-copilot#version]` on both hosts |
+| `contextBar` | on | on | payload `context_window` |
+| `sessionHealth` | on | on | payload `cost.total_duration_ms` |
+| `creditBudget` | on | on | payload `ai_used.total_nano_aiu` (`cr:0.4`), or the budget ledger when a `softLimit` is set |
+| `agents`, `activeSkills`, `lastSkill`, call counts (`T:` `A:` `S:`), `showLastTool`, `showRecentTools` | on | on | the tail of the session's `events.jsonl` |
+| `ralph`, `autopilot`, `prdStory`, `backgroundTasks` | on | on | OMC state files |
+| `copilotMode` | off | on | `session.mode_changed` events (`mode:plan` or `mode:autopilot`) and the payload `allow_all_enabled` (`mode:yolo`), combined as `mode:plan+yolo` |
+| `team` | off | on | live `omg team` run state under `.omg/state/team/`, repo-wide |
+| `ultragoal` | off | on | open ultragoal plan in `.omg/ultragoal/goals.json` or `plans/<id>/goals.json`, repo-wide |
+| `model`, `effort`, `cwd`, `gitBranch` | model, effort on; cwd, gitBranch per config | off | Copilot's footer already shows them; set `true` to show them anyway |
+| `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, payload warning | per config | off, forced | no Copilot data source; ignored even when set to `true` |
+
+`copilotMode`, `team` and `ultragoal` are new elements. They are on by default under Copilot and off under Claude Code unless you set them to `true`. `team` and `ultragoal` read repo-wide state, not per session: every session in the repo shows the same live team and the same open plan.
+
+**Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript. Effort, when shown, comes from the `reasoningEffort` of the latest `session.start`, `session.resume` or `session.model_change` event. Session credits come from the payload's nano-AIU total converted to credits, with two decimals below 0.1, and the element is hidden only at exactly zero. `T:`, `A:`, `S:` and the agent counts come from the last 4 MB of `events.jsonl`, so they undercount in long sessions.
+
+**Update hint.** When an OMC update is available, the label reads `[oh-my-copilot#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
+
+```
+[!] omg 5.13.2 - paste: ! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc
+[!] omg 5.13.2 - paste: ! npm i -g oh-my-copilot@latest
+```
+
+The first line is for a Copilot CLI plugin install (`copilot plugin marketplace update` added in Copilot CLI 1.0.27; the chain mirrors the Claude hint. Whether `plugin update` alone refreshes the marketplace clone is not documented, so the hint refreshes first), the second for an npm install. Under Claude Code, a plugin install gets `claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc`, and the label and a `[!] claude ...` line also report a Claude Code update. Under Copilot CLI the HUD shows no Claude Code or Copilot CLI hint, because Copilot updates itself. The session-start hook refreshes the update cache at most every 6 hours, and earlier after an update or a channel switch.
 
 Additional `omcHud` layout and label options (top-level):
 

@@ -59,9 +59,9 @@ const CLAUDE_CODE_PATTERNS = [
   /assistant/i,
 ];
 
-/** Anchored OMC HUD status line, not copied output embedded in logs/tests. */
+/** Anchored OMC HUD status line (`[oh-my-copilot#…]`, or the pre-rename `[OMC#…]`), not copied output embedded in logs/tests. */
 const OMC_HUD_STATUS_LINE_PATTERN =
-  /^\s*\[OMC#[^\]\s]+\](?:\s*\|.*)?\s*$/i;
+  /^\s*\[(?:OMC|oh-my-copilot)#[^\]\s]+\](?:\s*\|.*)?\s*$/i;
 
 /** OMC HUD mode/help line rendered in the captured UI footer. */
 const OMC_HUD_MODE_LINE_PATTERN = /^\s*⏵⏵\s+.*\(shift\+tab to cycle\)/i;

@@ -81,7 +81,7 @@ describe('issue #3867 4.15.7L update display', () => {
       updateAvailable: '5.0.0',
     });
     const output = await render(ctx, createMinimalConfig());
-    expect(output).toContain('[OMC#4.15.7L]');
+    expect(output).toContain('[oh-my-copilot#4.15.7L]');
     expect(output).toContain('-> 5.0.0');
     expect(output).toContain('omg update');
   });
