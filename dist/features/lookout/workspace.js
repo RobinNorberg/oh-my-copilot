@@ -32,6 +32,9 @@ function sanitizedGitEnv() {
     env.LC_ALL = "C";
     return env;
 }
+// Git >= 2.56 says "gitfile does not point to a valid repository" where older git said
+// "not a git repository" (git 54a441bcea); lookout stays self-contained, so it keeps its own copy.
+const GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
 function gitArgs(args) {
     return ["-c", "core.fsmonitor=false", "--no-optional-locks", ...args];
 }
@@ -87,7 +90,7 @@ export function repoRoot(repoArg) {
     catch (error) {
         const failure = error;
         const stderr = String(failure.stderr ?? "");
-        if (/not a git repository/i.test(stderr)) {
+        if (GIT_NOT_A_REPOSITORY_STDERR.test(stderr)) {
             if (hasGitEntry(repoArg)) {
                 throw new LookoutError(`Cannot scan "${repoArg}": a repository exists here but git could not read it (${stderr.trim()}).`, 2);
             }

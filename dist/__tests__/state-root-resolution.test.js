@@ -640,4 +640,42 @@ describe('state-root inline fallback — locale independence (#4033)', () => {
         expect(out).toBe(join(workDir, '.omg'));
     });
 });
+/**
+ * Git 2.56.0 (54a441bcea) reworded the exit-128 answer for a `.git` file that
+ * points at a non-repository from "not a git repository: <gitdir>" to "gitfile
+ * does not point to a valid repository: <gitfile>". A fake git emits each
+ * wording so the cjs inline fallback is covered on any installed git version.
+ */
+describe('state-root.cjs inline fallback — invalid-gitfile wording across git versions', () => {
+    const CJS = join(REPO_ROOT, 'scripts', 'lib', 'state-root.cjs');
+    let shimDir;
+    let workDir;
+    beforeEach(() => {
+        shimDir = mkdtempSync(join(tmpdir(), 'omc-gitfile-shim-'));
+        workDir = mkdtempSync(join(tmpdir(), 'omc-gitfile-work-'));
+    });
+    afterEach(() => {
+        rmSync(shimDir, { recursive: true, force: true });
+        rmSync(workDir, { recursive: true, force: true });
+    });
+    it.each([
+        ['git <= 2.55', 'fatal: not a git repository: /missing-omc-gitdir'],
+        ['git >= 2.56', 'fatal: gitfile does not point to a valid repository: /work/.git'],
+    ])('resolves a broken gitfile dir to the home root under %s', (_version, message) => {
+        writeFileSync(join(shimDir, 'git'), ['#!/bin/sh', `echo ${JSON.stringify(message)} >&2`, 'exit 128', ''].join('\n'), { mode: 0o755 });
+        const program = `const { resolveOmcStateRoot } = require(${JSON.stringify(CJS)});\nresolveOmcStateRoot(${JSON.stringify(workDir)}).then((r) => { console.log(r); }, (e) => { console.error('THREW: ' + e.message); process.exit(3); });`;
+        const out = execFileSync(NODE, ['--input-type=commonjs', '-e', program], {
+            encoding: 'utf-8',
+            env: {
+                ...buildHookEnv(),
+                PATH: `${shimDir}:${process.env.PATH ?? ''}`,
+                HOME: workDir,
+                USERPROFILE: workDir,
+                OMC_DISABLE_MULTIREPO: '1',
+            },
+            timeout: 15000,
+        }).trim();
+        expect(out).toBe(join(workDir, '.omg'));
+    });
+});
 //# sourceMappingURL=state-root-resolution.test.js.map

@@ -22,7 +22,7 @@ import { link, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
-import { ledgerPath, recordUsage } from '../budget/ledger.js';
+import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
 import { runtimePid, } from '../smoke/copilot-sdk-driver.js';
@@ -256,14 +256,15 @@ export async function runSdkHost(spec, deps) {
     let dirty = true;
     const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
     // Budget ledger (src/budget): this worker's live usage under its team. Fail-open.
-    // The live count is x1 per user-initiated call (multiplier unknown), so it is
-    // an estimate until the shutdown totals arrive; the ledger lets measured replace it.
+    // Live AI Credits are summed from `assistant.usage` as billed; the legacy premium
+    // request count is x1 per user-initiated call. The record is an estimate until the
+    // shutdown totals arrive; the ledger lets measured replace it.
     // The lock is tried once (timeoutMs 0) so the event loop never blocks on it:
     // on contention the next flush retries. Returns false when a retry is due.
     let recordedUsage = 'estimated:0:0';
     const recordBudget = () => {
         const u = session.usage;
-        const measured = u.shutdown_premium_requests !== null;
+        const measured = u.shutdown_credits !== null || u.shutdown_premium_requests !== null;
         const premiumRequests = u.shutdown_premium_requests ?? u.premium_requests;
         const credits = u.shutdown_credits ?? u.credits;
         const stamp = `${measured ? 'measured' : 'estimated'}:${premiumRequests}:${credits}`;
@@ -271,10 +272,10 @@ export async function runSdkHost(spec, deps) {
             return true;
         try {
             recordUsage(ledgerPath(spec.leader_cwd), `${spec.worker_name}:${spec.attempt_id}`, {
-                premiumRequests,
                 credits,
+                premiumRequests,
                 source: measured ? 'measured' : 'estimated',
-                detail: measured ? 'session.shutdown' : 'sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)',
+                detail: measured ? 'session.shutdown' : 'sdk assistant.usage: AI credits as billed (legacy premium requests: user-initiated calls x1 each)',
                 ...(session.model ? { model: session.model } : {}),
                 updatedAt: new Date().toISOString(),
             }, spec.team_name, { timeoutMs: 0 });
@@ -468,7 +469,7 @@ export async function runSdkHost(spec, deps) {
                 if (typeof data.totalPremiumRequests === 'number')
                     session.usage.shutdown_premium_requests = data.totalPremiumRequests;
                 if (typeof data.totalNanoAiu === 'number')
-                    session.usage.shutdown_credits = data.totalNanoAiu / 1e9;
+                    session.usage.shutdown_credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
                 shutdownSeen?.();
                 break;
             case 'session.error':

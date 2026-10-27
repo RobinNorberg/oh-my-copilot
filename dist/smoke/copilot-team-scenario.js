@@ -20,7 +20,7 @@
  * Everything runs as child processes of `node <root>/bridge/cli.cjs`, so this
  * module imports no team code; the smoke entry injects it like `chain`.
  *
- * Cost: one user prompt per worker, about 2 premium requests. Each host is
+ * Cost: one user prompt per worker, billed in AI credits. Each host is
  * capped at half of the run's remaining credit budget.
  */
 import { spawn as nodeSpawn } from 'child_process';
@@ -147,7 +147,7 @@ function sessionUsage(stateRoot, worker) {
     return {
         premium: typeof finalPremium === 'number' ? finalPremium : num(usage.premium_requests),
         credits: typeof usage.shutdown_credits === 'number' ? usage.shutdown_credits : num(usage.credits),
-        final: typeof finalPremium === 'number',
+        final: typeof usage.shutdown_credits === 'number' || typeof finalPremium === 'number',
     };
 }
 /** Sum per-worker usage; any worker without a session read falls back to its copied events. */

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "47f9be7c44254c3cb2a94f0abfaf2febd5ec26f4",
-    "sourceSha256": "4216ae1ed314d598809ff9b260c05f200c0faefc4ab1990a12902b165657d156",
+    "head": "464910cd7162b14fbf0bd4e3e9862ec2dc5fcdf3",
+    "sourceSha256": "5862db923729631bc4d3bab067188117793971d3c232ec0ca707817c114fee9b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "47f9be7c44254c3cb2a94f0abfaf2febd5ec26f4",
-  "sourceSha256": "4216ae1ed314d598809ff9b260c05f200c0faefc4ab1990a12902b165657d156",
+  "head": "464910cd7162b14fbf0bd4e3e9862ec2dc5fcdf3",
+  "sourceSha256": "5862db923729631bc4d3bab067188117793971d3c232ec0ca707817c114fee9b",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1694
     },
     "generated": {
-      "distFiles": 6344,
+      "distFiles": 6352,
       "bridgeFiles": 9,
-      "total": 6353
+      "total": 6361
     },
     "prompt": {
       "promptLikeFiles": 64
@@ -1348,6 +1348,10 @@
       "dist/__tests__/hud/context.test.d.ts.map",
       "dist/__tests__/hud/context.test.js",
       "dist/__tests__/hud/context.test.js.map",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+      "dist/__tests__/hud/credit-budget-element.test.js",
+      "dist/__tests__/hud/credit-budget-element.test.js.map",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts.map",
       "dist/__tests__/hud/custom-rate-provider.test.js",
@@ -3074,6 +3078,10 @@
       "dist/features/jev-slop-warning.d.ts.map",
       "dist/features/jev-slop-warning.js",
       "dist/features/jev-slop-warning.js.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+      "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.js",
@@ -10868,6 +10876,26 @@
         "id": "dist/__tests__/hud/context.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/context.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/custom-rate-provider.test.d.ts",
@@ -19498,6 +19526,26 @@
         "id": "dist/features/jev-slop-warning.js.map",
         "kind": "generated-dist",
         "path": "dist/features/jev-slop-warning.js.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace-git-wording.test.js.map"
       },
       {
         "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
@@ -100998,12 +101046,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8753,
+      "nodeCount": 8761,
       "edgeCount": 9862,
       "importEdgeCount": 8252,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "fe7671fda6a6847c9fa4706626f5b420a82b40df07d32d5f902de5c2e2b9adfb",
-  "manifestSha256": "053c7aa78ca452801f73aad977b7bda38d9d95f0e877a6f8eda7bbb60cc2941a"
+  "manifestSha256": "b65008508c737c0a18508f371932d38dbec567939157d5d1f90dd82e8e60b312"
 }

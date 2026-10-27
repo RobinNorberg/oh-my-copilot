@@ -5331,6 +5331,7 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
                     attempt_id: sdkSession.attempt_id,
                     updated_at: sdkSession.updated_at,
                     credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
+                    credits_final: sdkSession.usage.shutdown_credits != null,
                     premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
                     premium_requests_final: sdkSession.usage.shutdown_premium_requests != null,
                 } } : {}),

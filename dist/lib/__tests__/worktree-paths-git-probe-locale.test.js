@@ -63,4 +63,24 @@ describe('probeGitTopLevel locale independence', () => {
         expect(result.status).toBe('not_a_repository');
     });
 });
+// Git 2.56.0 (jk/setup-gitfile-diag-fix, 54a441bcea) reworded the fatal error
+// for a `.git` file whose gitdir is not a repository from "not a git
+// repository: <gitdir>" to "gitfile does not point to a valid repository:
+// <gitfile>". Both are the same exit-128 answer and must classify the same way,
+// whichever git version the host runs.
+describe('probeGitTopLevel invalid gitfile wording across git versions', () => {
+    afterEach(() => {
+        setGitShowToplevelProbeForTests(undefined);
+        clearWorktreeCache();
+    });
+    it.each([
+        ['git <= 2.55', 'fatal: not a git repository: /missing-omc-gitdir\n'],
+        ['git >= 2.56', 'fatal: gitfile does not point to a valid repository: /work/parent/.git\n'],
+    ])('classifies the %s invalid-gitfile answer as not_a_repository', (_version, stderr) => {
+        setGitShowToplevelProbeForTests(() => {
+            throw Object.assign(new Error('Command failed: git rev-parse --show-toplevel'), { status: 128, stderr });
+        });
+        expect(probeGitTopLevel(tmpdir()).status).toBe('not_a_repository');
+    });
+});
 //# sourceMappingURL=worktree-paths-git-probe-locale.test.js.map

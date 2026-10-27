@@ -61,7 +61,7 @@ Transport:
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
-  --budget-override    Start even when budget.mode "enforce" would refuse or clamp the fan-out.
+  --budget-override    Deprecated no-op: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
   --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
                         Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
@@ -717,42 +717,6 @@ async function collectStartRolePromptOptions(parsed) {
         rolePromptByRole,
     };
 }
-/**
- * Premium-request budget governor (src/budget): warn about, clamp or refuse
- * the copilot fan-out. Only a refusal throws; a governor failure starts the
- * team unchanged (fail-open).
- */
-export async function applyBudgetGovernor(parsed, workerCount, clampable, cwd) {
-    let decision;
-    try {
-        const { loadBudgetSettings, governTeamFanout } = await import('../../budget/governor.js');
-        const { ledgerPath, ledgerTotals, readLedger } = await import('../../budget/ledger.js');
-        const { resolveSdkTeamSettings } = await import('../../team/runtime-v2.js');
-        const { settings } = loadBudgetSettings(cwd);
-        let maxCreditsPerWorker = resolveSdkTeamSettings({}).maxCreditsPerWorker;
-        try {
-            const { loadConfig } = await import('../../config/loader.js');
-            maxCreditsPerWorker = resolveSdkTeamSettings(loadConfig()).maxCreditsPerWorker;
-        }
-        catch { /* the default cap */ }
-        decision = governTeamFanout({
-            settings,
-            totals: ledgerTotals(readLedger(ledgerPath(cwd))),
-            agentTypes: parsed.agentTypes.slice(0, workerCount),
-            maxCreditsPerWorker,
-            override: parsed.budgetOverride === true,
-            clampable,
-        });
-    }
-    catch {
-        return workerCount;
-    }
-    if (decision.notice)
-        console.error(decision.notice);
-    if (decision.refusal)
-        throw new Error(decision.refusal);
-    return decision.workerCount;
-}
 async function handleTeamStart(parsed, cwd) {
     const { isRuntimeV2Enabled, startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
     if (!isRuntimeV2Enabled()) {
@@ -762,9 +726,11 @@ async function handleTeamStart(parsed, cwd) {
     // Decompose the task string into subtasks when possible
     const decomposition = splitTaskString(parsed.task);
     const fanoutWorkerCount = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
-    // Clamping drops workers, so only when no worker owns a decomposed subtask.
-    const clampable = parsed.noDecompose || decomposition.subtasks.length <= 1;
-    const effectiveWorkerCount = await applyBudgetGovernor(parsed, fanoutWorkerCount, clampable, cwd);
+    // Budgets are reported, never enforced: the flag survives only for old scripts.
+    if (parsed.budgetOverride) {
+        console.error('[omg team] --budget-override is deprecated and does nothing: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).');
+    }
+    const effectiveWorkerCount = fanoutWorkerCount;
     const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
     const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd);
     const rolePromptOptions = await collectStartRolePromptOptions(parsed);
@@ -978,9 +944,10 @@ async function handleTeamStatus(teamName, cwd, json) {
                         state: worker.sdk.state,
                         turns: worker.sdk.turns,
                         queued: worker.sdk.queued,
+                        credits: worker.sdk.credits,
+                        credits_final: worker.sdk.credits_final,
                         premium_requests: worker.sdk.premium_requests,
                         premium_requests_final: worker.sdk.premium_requests_final,
-                        credits: worker.sdk.credits,
                         model: worker.sdk.model ?? null,
                         host_pid: worker.sdk.host_pid,
                         runtime_pid: worker.sdk.runtime_pid ?? null,
@@ -1024,7 +991,7 @@ async function handleTeamStatus(teamName, cwd, json) {
             if (!worker.sdk)
                 continue;
             const sdk = worker.sdk;
-            console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? 'n/a'} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
+            console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? 'n/a'} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} credits=${sdk.credits.toFixed(2)} premium_requests=${sdk.premium_requests} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
         }
         console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
         console.log(`leader_next_action=${leaderGuidance.nextAction}`);

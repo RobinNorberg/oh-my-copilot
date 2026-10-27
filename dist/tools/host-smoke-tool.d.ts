@@ -3,8 +3,8 @@
  *
  * Runs the headless Copilot CLI smoke check (`omg smoke copilot`) against a
  * plugin root and returns the SmokeReport as JSON. Tier 0 makes no model call;
- * tier 1 spends one premium request; tier 2 drives SDK scenarios (about one
- * premium request each) and is free only with `scenarios: []` (static checks).
+ * tier 1 spends one prompt (about 0.4 to 0.9 AI credits measured); tier 2 drives
+ * SDK scenarios (one prompt each) and is free only with `scenarios: []` (static checks).
  *
  * This tool is also reachable from inside Copilot through the plugin's own `t`
  * MCP server, so it is fenced (the `omg smoke copilot` CLI is not):
