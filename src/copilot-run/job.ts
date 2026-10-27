@@ -13,8 +13,16 @@
  * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env,
  *   or an in-process caller passes `allowLive` (never reachable from MCP);
  *   the session never inherits the env var;
- * - profile `review` denies the write tool and the git commands that move,
- *   rewrite or reconfigure the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
+ * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
+ *   session without a confirmed sandbox gets no shell tool, a write session
+ *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
+ *   and a shell call the runtime reports as not sandboxed stops the session
+ *   (`sandbox-escaped`); every sandbox bypass request is rejected;
+ * - the runtime env is an allowlist with the profile variables relocated to
+ *   the job's home (allowlistSessionEnv);
+ * - profile `review` denies the write tool, runs only shell commands on the
+ *   read-only allowlist (src/team/shell-allowlist.ts), and keeps the
+ *   {@link REVIEW_SHELL_DENY_PATTERNS} denylist as an extra layer;
  * - the budget governor (src/budget) is asked first, like an `omg team`
  *   launch of one copilot worker, and the spend is recorded in the ledger
  *   (live estimate, then the `session.shutdown` totals);
@@ -35,6 +43,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
@@ -48,6 +57,7 @@ import {
   loadCopilotSdk,
   resolveShimTarget,
   runtimePid,
+  sdkCreateSessionAcceptsSandbox,
   type LoadedSdk,
   type PermissionResult,
   type SdkClientLike,
@@ -65,8 +75,26 @@ import {
   normalizeShellCommand,
   type SdkPermissionRequest,
 } from '../team/sdk-policy.js';
+import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
+import {
+  REVIEW_READ_TOOLS,
+  REVIEW_SHELL_TOOLS,
+  SANDBOX_KILL_ENV,
+  SANDBOX_SHELL_TOOLS,
+  allowlistSessionEnv,
+  applySandboxConfig,
+  buildSandboxConfig,
+  loadSandboxSettings,
+  probeHostSupport,
+  readEnforcement,
+  unconfirmedMode,
+  type CopilotRunSandboxState,
+  type SandboxConfig,
+  type SandboxScope,
+  type SandboxSettings,
+} from './sandbox.js';
 
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
@@ -125,7 +153,12 @@ export interface CopilotRunStartOptions {
   disableStopContinuations?: boolean;
   /** The job's budget ledger record key (default `copilot-run:<jobId>`). */
   ledgerKey?: string;
+  /** Which sandbox config block applies: `factory` lanes read `factory.run.sandbox` over `copilotRun.sandbox` (default `copilot-run`). */
+  sandboxScope?: SandboxScope;
 }
+
+/** Why a job stopped early: a caller's stop, the credit cap, or a shell call outside the sandbox. */
+export type CopilotRunStopReason = 'timeout' | 'cancelled' | 'capped' | 'sandbox-escaped';
 
 /**
  * Shell commands a `review` session may not run, on top of the worker policy
@@ -147,7 +180,10 @@ export const REVIEW_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: str
   ...gitSubcommandDeny(String.raw`fetch\b[^;&|\n]*?\s\+?[\w./*-]*:(?!//)`, 'review profile: git fetch with a refspec'),
 ];
 
-/** The review profile's extra refusal for a request the worker policy approved, or null. */
+/**
+ * The review profile's denylist refusal for a request the worker policy
+ * approved, or null. Kept as an extra layer under the shell allowlist.
+ */
 export function reviewProfileDenial(req: SdkPermissionRequest): string | null {
   if (req.kind === 'write') return 'review profile: the write tool is disabled';
   if (req.kind !== 'shell') return null;
@@ -184,6 +220,10 @@ export interface CopilotRunDeps {
   killTree: (pid: number) => void;
   /** The runtime's start identity (pid-reuse guard; default getProcessStartIdentity), null when unknown. */
   processIdentity?: (pid: number) => Promise<string | null>;
+  /** The account's real home for the sandbox's denied paths (default os.userInfo().homedir, never HOME). */
+  realHome?: () => string;
+  /** The sandbox settings for a job in `root` (default loadSandboxSettings: user config, project may only tighten). */
+  sandboxSettings?: (root: string, scope: SandboxScope) => { settings: SandboxSettings; warnings: string[] };
 }
 
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
@@ -199,7 +239,7 @@ export interface WorktreeSummary {
 export type CopilotRunSnapshot = {
   jobId: string;
   status: CopilotRunStatus;
-  stopRequested: 'timeout' | 'cancelled' | 'capped' | null;
+  stopRequested: CopilotRunStopReason | null;
   isolation: CopilotRunIsolation;
   profile: CopilotRunProfile;
   startRef?: string;
@@ -225,6 +265,12 @@ export type CopilotRunSnapshot = {
    * process (omg factory run) uses it to make sure the child is gone.
    */
   runtime?: { pid: number; identity: string | null };
+  /**
+   * The OS sandbox once the job decided it: `refused` ends the job with a
+   * `sandbox-unavailable:` error, an unsandboxed shell call with
+   * `sandbox-escaped:` (unsandboxedCalls > 0).
+   */
+  sandbox?: CopilotRunSandboxState;
 };
 
 export interface ChangeSummary {
@@ -275,8 +321,10 @@ interface Job {
   denied: Array<{ kind: string; reason: string }>;
   changes: ChangeSummary | null;
   cleanedUp: boolean;
-  stopReason: 'timeout' | 'cancelled' | 'capped' | null;
-  requestStop: (reason: 'timeout' | 'cancelled' | 'capped') => void;
+  sandboxSettings: SandboxSettings;
+  sandbox: CopilotRunSandboxState | null;
+  stopReason: CopilotRunStopReason | null;
+  requestStop: (reason: CopilotRunStopReason) => void;
   stopped: Promise<void>;
   done: Promise<void>;
 }
@@ -380,6 +428,18 @@ export function summarizeChanges(cwd: string, base: string | null, extraProtecte
   };
 }
 
+/**
+ * Write the caller's git identity (user.name, user.email as git resolves
+ * them in `repo`) into the relocated global config, so a write session can
+ * still commit. Nothing else (aliases, hooks, credential helpers) is copied.
+ */
+function seedGitIdentity(repo: string, globalConfig: string): void {
+  for (const key of ['user.name', 'user.email']) {
+    const value = git(repo, ['config', '--get', key]);
+    if (value) git(repo, ['config', '--file', globalConfig, key, value]);
+  }
+}
+
 /** The repository-relative path when `path` lies in `root`, else null. */
 function relativeInside(path: string, root: string): string | null {
   const rel = relative(resolve(root), resolve(path));
@@ -439,6 +499,14 @@ export class CopilotRunManager {
 
     // Validated before the budget check and the worktree, so a bad ref creates nothing.
     const startSha = startRef !== null && repoRoot ? resolveStartRef(resolve(repoRoot), startRef) : null;
+    // A malformed sandbox block refuses too, before anything is created.
+    let sandboxSettings: SandboxSettings;
+    let sandboxWarnings: string[];
+    try {
+      ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot ? resolve(repoRoot) : cwd, options.sandboxScope ?? 'copilot-run'));
+    } catch (err) {
+      throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText(err)}`);
+    }
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
     if (running >= MAX_RUNNING_JOBS) {
@@ -446,7 +514,7 @@ export class CopilotRunManager {
     }
 
     const ledgerCwd = repoRoot ? resolve(repoRoot) : cwd;
-    const notes: string[] = [];
+    const notes: string[] = [...sandboxWarnings];
 
     const id = `cr-${randomBytes(6).toString('hex')}`;
     let workCwd = cwd;
@@ -519,6 +587,8 @@ export class CopilotRunManager {
       denied: [],
       changes: null,
       cleanedUp: false,
+      sandboxSettings,
+      sandbox: null,
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
@@ -640,7 +710,10 @@ export class CopilotRunManager {
     const pluginRoot = deps.pluginRoot();
     const ident = loginIdentity(deps.userConfigDir());
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
-    const env = buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined });
+    // An env allowlist with the profile relocated into the job's home (sandbox.ts).
+    const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
+    mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+    seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
     Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
     delete env[COPILOT_RUN_ALLOW_ENV];
@@ -657,7 +730,9 @@ export class CopilotRunManager {
     };
     const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
     const onPermissionRequest = (req: SdkPermissionRequest): PermissionResult => {
-      let decision = decideSdkPermission(req, policy);
+      let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true
+        ? { approve: false, reason: 'sandbox bypass requests are never approved' }
+        : decideSdkPermission(req, policy);
       if (decision.approve && req.kind === 'write') {
         const raw = [req.resolvedPath, req.path, req.fileName].find((v): v is string => typeof v === 'string' && v.trim() !== '');
         const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
@@ -665,7 +740,13 @@ export class CopilotRunManager {
       }
       if (decision.approve && job.profile === 'review') {
         const denial = reviewProfileDenial(req);
+        const mode = job.sandbox?.mode;
         if (denial) decision = { approve: false, reason: denial };
+        else if (req.kind === 'shell') {
+          decision = mode === 'enforced' || mode === 'detect-only'
+            ? reviewShellAllowlist(req, { cwd: job.workCwd, platform: deps.platform })
+            : { approve: false, reason: 'review profile: no shell without a confirmed sandbox' };
+        }
       }
       if (decision.approve) return { kind: 'approve-once' };
       job.denied.push({ kind: String(req.kind), reason: decision.reason });
@@ -678,10 +759,30 @@ export class CopilotRunManager {
     let sent = false;
     let idle = new Promise<void>((r) => { onIdle = r; });
     const shutdown = new Promise<void>((r) => { onShutdown = r; });
+    const toolNames = new Map<string, string>();
     const onEvent = (event: CopilotEvent) => {
       try { appendFileSync(job.eventsPath, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`); } catch { /* evidence only */ }
       const data = (event.data ?? {}) as Record<string, unknown>;
       switch (event.type) {
+        case 'tool.execution_start':
+          if (typeof data.toolCallId === 'string' && typeof data.toolName === 'string') toolNames.set(data.toolCallId, data.toolName);
+          break;
+        case 'tool.execution_complete': {
+          // Attestation (§5): a shell call must report sandboxed: true; an unknown tool must not report false.
+          const id = String(data.toolCallId ?? '');
+          const name = toolNames.get(id) ?? (typeof data.toolName === 'string' ? data.toolName : null);
+          toolNames.delete(id);
+          const sbx = job.sandbox;
+          const escaped = name === null ? data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+          if (sbx && escaped) {
+            sbx.unsandboxedCalls += 1;
+            if (sbx.mode !== 'detect-only' && !job.stopReason) {
+              job.error = `sandbox-escaped: ${name ?? 'a tool'} call ${id || '?'} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
+              job.requestStop('sandbox-escaped');
+            }
+          }
+          break;
+        }
         case 'session.idle':
           if (sent) onIdle();
           break;
@@ -734,7 +835,12 @@ export class CopilotRunManager {
         const reading = identify(pid).catch(() => null).then((id) => { job.pidIdentity = id; });
         await Promise.race([reading, job.stopped]);
       }
-      if (!job.stopReason) {
+      // The sandbox is decided before the session exists: a refused job creates none.
+      const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded, pluginRoot);
+      const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
+      if (!job.stopReason && !refused()) {
+        const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded);
+        const shell = sandboxConfig !== null || job.sandbox?.mode === 'detect-only';
         session = await withTimeout(client.createSession({
           onPermissionRequest,
           onEvent,
@@ -742,11 +848,16 @@ export class CopilotRunManager {
           workingDirectory: job.workCwd,
           disabledMcpServers: ['github-mcp-server'],
           excludedTools: buildSdkExcludedTools(MCP_SERVER),
+          ...(job.profile === 'review' ? { availableTools: [...REVIEW_READ_TOOLS, ...(shell ? REVIEW_SHELL_TOOLS : [])] } : {}),
+          ...(atCreate ? { sandboxConfig } : {}),
           ...(job.model ? { model: job.model } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         job.sessionId = session.sessionId;
+        if (sandboxConfig) await this.confirmSandbox(job, session, sandboxConfig, atCreate);
       }
-      if (session && !job.stopReason) {
+      if (job.sandbox?.mode === 'refused') {
+        job.error = `sandbox-unavailable: ${job.sandbox.reason ?? 'the sandbox is not confirmed'}`;
+      } else if (session && !job.stopReason) {
         job.status = 'running';
         sent = true;
         await withTimeout(session.send({ prompt: job.prompt }), RPC_TIMEOUT_MS, 'send()');
@@ -762,7 +873,7 @@ export class CopilotRunManager {
         ? 'timeout'
         : job.stopReason === 'cancelled'
           ? 'cancelled'
-          : job.stopReason === 'capped'
+          : job.stopReason === 'capped' || job.stopReason === 'sandbox-escaped' || job.sandbox?.mode === 'refused'
             ? 'failed'
             : 'completed';
       if (job.stopReason === 'capped') job.error = `credit cap ${job.maxCredits} reached (${job.usage.credits.toFixed(2)} AI credits); the turn was aborted`;
@@ -794,6 +905,86 @@ export class CopilotRunManager {
       }
     }
     return outcome;
+  }
+
+  /**
+   * Probe the host and set `job.sandbox` (§5). Returns the config to apply
+   * when the host supports the sandbox (the mode stays the unconfirmed one
+   * until confirmSandbox), else null with the final mode: `detect-only` when
+   * the sandbox is switched off, otherwise the fail-closed mode.
+   */
+  private async decideSandbox(job: Job, client: SdkClientLike, loaded: LoadedSdk, pluginRoot: string): Promise<SandboxConfig | null> {
+    const { deps } = this;
+    let cliVersion = 'unknown';
+    try {
+      const status = await withTimeout(client.getStatus(), RPC_TIMEOUT_MS, 'getStatus()');
+      if (typeof status.version === 'string') cliVersion = status.version;
+    } catch { /* recorded as unknown */ }
+    const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+    const base = { host, applied: 'none' as const, canary: 'skipped' as const, unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
+    const settings = job.sandboxSettings;
+    const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
+    if (off) {
+      job.sandbox = { ...base, mode: 'detect-only', reason: off };
+      job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+      return null;
+    }
+    const fallback = (reason: string) => {
+      job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
+      if (job.sandbox.mode === 'detect-only') job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+      if (job.sandbox.mode === 'read-only-no-shell') job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
+    };
+    if (!host.supported) {
+      fallback(host.reason ?? 'the host does not support the sandbox');
+      return null;
+    }
+    const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
+    const commonRaw = git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    try {
+      const config = buildSandboxConfig(job.profile, {
+        worktree: resolve(top),
+        commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
+        pluginRoot,
+        jobHome: job.home,
+        jobDir: job.jobDir,
+        realHome: (deps.realHome ?? (() => userInfo().homedir))(),
+        platform: deps.platform,
+        settings,
+      }, host);
+      job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
+      return config;
+    } catch (err) {
+      fallback(errText(err));
+      return null;
+    }
+  }
+
+  /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+  private async confirmSandbox(job: Job, session: SdkSessionLike, config: SandboxConfig, atCreate: boolean): Promise<void> {
+    const sbx = job.sandbox!;
+    let why = atCreate ? null : await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
+    if (!why) {
+      sbx.applied = atCreate ? 'create' : 'options.update';
+      const enf = await readEnforcement(session, RPC_TIMEOUT_MS);
+      if (typeof enf === 'string') why = enf;
+      else {
+        sbx.enforcement = enf;
+        if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ''}`;
+      }
+    }
+    if (!why) {
+      sbx.mode = 'enforced';
+      delete sbx.reason;
+      return;
+    }
+    sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
+    sbx.reason = why;
+    if (sbx.mode === 'detect-only') job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+    if (sbx.mode === 'read-only-no-shell') {
+      job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+      // The permission handler already refuses every shell call; this also hides the tools.
+      try { await withTimeout<unknown>(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS, 'options.update()'); } catch { /* the handler still refuses */ }
+    }
   }
 
   private snapshot(job: Job): CopilotRunSnapshot {
@@ -828,6 +1019,7 @@ export class CopilotRunManager {
       ...(job.notes.length ? { notes: job.notes } : {}),
       eventsPath: job.eventsPath,
       ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
+      ...(job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}),
     };
   }
 }

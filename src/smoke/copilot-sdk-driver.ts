@@ -84,6 +84,10 @@ export interface SdkSessionConfig {
   model?: string;
   /** SDK session tools (`Tool[]`); the team host's in-process plugin tools. */
   tools?: unknown[];
+  /** Allowlist of tool names; `excludedTools` still wins. */
+  availableTools?: string[];
+  /** Only for an SDK whose createSession forwards it ({@link sdkCreateSessionAcceptsSandbox}); 1.0.16 takes it through `rpc.options.update`. */
+  sandboxConfig?: unknown;
 }
 
 export interface SdkSessionLike {
@@ -98,6 +102,9 @@ export interface SdkSessionLike {
     mcp: { list(): Promise<unknown>; listTools(params: { serverName: string }): Promise<unknown> };
     /** Experimental in SDK 1.0.16; no model call. */
     tools?: { initializeAndValidate?(): Promise<unknown>; getCurrentMetadata?(): Promise<unknown> };
+    /** `sandboxConfig` patch after create (SDK 1.0.16). */
+    options?: { update?(params: Record<string, unknown>): Promise<{ success?: boolean }> };
+    sandbox?: { getEnforcementStatus?(): Promise<{ required?: boolean; blocked?: boolean; reason?: string }> };
   };
 }
 
@@ -109,6 +116,23 @@ export interface SdkClientLike {
   listModels(): Promise<Array<{ id?: unknown }>>;
   createSession(config: SdkSessionConfig): Promise<SdkSessionLike>;
   deleteSession(sessionId: string): Promise<void>;
+  /** Server RPCs; `sandbox.getHostSupport` reports whether the host can run the OS sandbox. */
+  rpc?: { sandbox?: { getHostSupport?(): Promise<unknown> } };
+}
+
+/**
+ * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
+ * than 1.0.16, which takes it only through `rpc.options.update`): its source
+ * names the field. False when it cannot be read; the caller then patches the
+ * session after create, which works on every SDK with the options RPC.
+ */
+export function sdkCreateSessionAcceptsSandbox(loaded: LoadedSdk): boolean {
+  try {
+    const fn = (loaded.module.CopilotClient as unknown as { prototype?: { createSession?: unknown } }).prototype?.createSession;
+    return typeof fn === 'function' && /\bsandboxConfig\b/.test(Function.prototype.toString.call(fn));
+  } catch {
+    return false;
+  }
 }
 
 export interface SdkClientOptions {

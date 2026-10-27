@@ -105,10 +105,12 @@ describe('copilot_run review profile', () => {
       'npm test && git commit -m x',
       'g=git; $g checkout main',
       'git push origin HEAD',
+      // Not on the review allowlist: review lanes do not run PR code.
+      'npm test',
     ]) {
       expect(await decide({ kind: 'shell', fullCommandText: cmd }, ctx), cmd).toMatchObject({ kind: 'reject' });
     }
-    for (const cmd of ['git status', 'git log --oneline -5', 'git diff main...HEAD', 'git merge-base main HEAD', 'npm test']) {
+    for (const cmd of ['git status', 'git log --oneline -5', 'git diff main...HEAD', 'git merge-base main HEAD', 'cat README.md']) {
       expect(await decide({ kind: 'shell', fullCommandText: cmd }, ctx), cmd).toEqual({ kind: 'approve-once' });
     }
     await m.cancel(started.jobId as string);
