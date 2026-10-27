@@ -121,9 +121,12 @@ export interface SdkSessionFile {
   last_event_at: string | null;
   updated_at: string;
   usage: {
+    /** AI Credits summed from `assistant.usage` (the billed unit). */
     credits: number;
+    /** Legacy premium requests: x1 per user-initiated call. */
     premium_requests: number;
     shutdown_premium_requests: number | null;
+    /** `session.shutdown` totalNanoAiu / 1e9. */
     shutdown_credits: number | null;
   };
   hooks: { session_end_runs: number; failed: number };

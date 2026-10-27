@@ -6,21 +6,22 @@
  */
 import { realpathSync } from 'fs';
 import { basename, join, resolve, sep } from 'path';
+import { NANO_AIU_PER_CREDIT } from '../budget/ledger.js';
 import { assistantText, BENIGN_ADAPTER_NOTES, collectHookRuns, excerpt, SMOKE_TOKEN, } from './copilot-session-eval.js';
 export const CLI_SCENARIOS = ['continuation', 'prompt-context', 'events', 'ultragoal'];
-/** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
+/** What `--scenario all` runs: the SDK-session scenarios (one prompt each, about 0.3 to 0.9 AI credits measured). */
 export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
 /**
  * Named explicitly only, never in `all` or the default: `filetools` (one
- * premium request) lets the model write files and loads a second, probe
- * plugin; `chain` spawns two real headless `copilot -p` factory links (about
- * 2 premium requests) outside the SDK runtime's credit cap; `team` starts a
- * real 2-worker `omg team` with sdk workers (about 2 premium requests, one per
- * worker). The {@link CLI_SCENARIOS}, premium requests measured on Copilot
- * CLI 1.0.91: `continuation` 2 (the prompt plus one Stop-hook continuation),
- * `prompt-context` 1, `events` 1 (the `/compact` of the resumed session bills
- * credits but no premium request), `ultragoal` 2 (the prompt plus one
- * reinforcement continuation).
+ * prompt) lets the model write files and loads a second, probe plugin;
+ * `chain` spawns two real headless `copilot -p` factory links (one prompt
+ * each) outside the SDK runtime's credit cap; `team` starts a real 2-worker
+ * `omg team` with sdk workers (one prompt per worker). The
+ * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
+ * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
+ * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
+ * `events` 0.76 [1] (the `/compact` of the resumed session bills credits),
+ * `ultragoal` 0.65 [2] (the prompt plus one reinforcement continuation).
  */
 export const OPT_IN_SCENARIOS = ['filetools', 'chain', 'team', ...CLI_SCENARIOS];
 /**
@@ -32,7 +33,11 @@ export const PENDING_SCENARIOS = {
     ultragoal: 'PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands',
 };
 export const KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
-/** About 2 premium requests (one per scenario). */
+/**
+ * Two prompts (one per scenario), about 0.6 AI credits measured: the
+ * tier2-smoke (0.34) and tier2-guardrail (0.29) fixtures' `session.shutdown`
+ * totals on small auto-picked models; other models cost more.
+ */
 export const DEFAULT_SCENARIOS = ['smoke', 'guardrail'];
 export const PLUGIN_NAME = 'oh-my-copilot';
 export const DELEGATE_AGENT = 'oh-my-copilot:architect';
@@ -216,7 +221,7 @@ export const SCENARIOS = {
 // CLI scenarios (headless copilot sessions: continuation, prompt-context,
 // events, ultragoal)
 // ---------------------------------------------------------------------------
-/** The prompt the `events` scenario resumes its session with: preCompact at no premium cost. */
+/** The prompt the `events` scenario resumes its session with: preCompact, no user prompt (the summary still bills AI credits). */
 export const COMPACT_PROMPT = '/compact';
 /** The ultragoal activation prompt the seed sends through our UserPromptSubmit hook group. */
 export const ULTRAGOAL_ACTIVATION_PROMPT = 'use ultragoal to write a hello.txt file containing hi';
@@ -355,8 +360,12 @@ function evaluateUltragoal(run) {
 /** The file each task commits; a task's subject names its file. */
 export const TEAM_FILES = ['team-alpha.txt', 'team-beta.txt'];
 const TEAM_WORKERS = ['worker-1', 'worker-2'];
-/** One user prompt per worker. */
-export const TEAM_MAX_PREMIUM_REQUESTS = 2;
+/**
+ * AI credits ceiling of the team scenario: one user prompt per worker plus its
+ * tool turns. A generous ceiling (single smoke prompts measured 0.3 to 0.9
+ * credits), not a measured figure; it catches runaway continuations.
+ */
+export const TEAM_MAX_CREDITS = 10;
 /** Wall-clock budget for start → both tasks completed → clean shutdown. */
 export const TEAM_BUDGET_MS = 300_000;
 function evaluateTeam(run) {
@@ -385,7 +394,7 @@ function evaluateTeam(run) {
     const withWork = team.commits.filter((c) => c.subjects.length > 0);
     const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === 'merged' || c.survived === 'preserved');
     const durationOk = team.durationMs <= team.budgetMs;
-    const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
+    const creditsOk = team.cost.credits > 0 && team.cost.credits <= TEAM_MAX_CREDITS;
     const launch = team.start.launchMs === null ? '' : `, sdk hosts launched in ${team.start.launchMs} ms`;
     return [
         {
@@ -442,9 +451,9 @@ function evaluateTeam(run) {
             detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`,
         },
         {
-            id: 'scn.team.premium',
-            ok: premiumOk,
-            detail: `${team.cost.premiumRequests} premium request(s) over ${team.cost.source} (max ${TEAM_MAX_PREMIUM_REQUESTS})`,
+            id: 'scn.team.credits',
+            ok: creditsOk,
+            detail: `${Number(team.cost.credits.toFixed(3))} AI credits (legacy ${team.cost.premiumRequests} premium request(s)) over ${team.cost.source} (max ${TEAM_MAX_CREDITS} credits)`,
         },
     ];
 }
@@ -457,8 +466,12 @@ export const CHAIN_INTENT_ID = 'omg-smoke-chain';
 export const CHAIN_SKILL = 'chain-ack';
 export const CHAIN_LINK1_STAGE = 'link-1';
 export const CHAIN_LINK2_STAGE = 'link-2';
-/** Two links, one user prompt each. */
-export const CHAIN_MAX_PREMIUM_REQUESTS = 2;
+/**
+ * AI credits ceiling of the chain scenario: two links, one user prompt each.
+ * A generous ceiling (single smoke prompts measured 0.3 to 0.9 credits), not a
+ * measured figure; it catches a runaway link.
+ */
+export const CHAIN_MAX_CREDITS = 6;
 const ledgerStr = (ledger, key) => str(ledger?.[key]);
 export function chainCost(chain) {
     let premiumRequests = 0;
@@ -497,7 +510,7 @@ function evaluateChain(run) {
         && str(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
     const closedOk = chain.ledgers.length === 2 && open.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
     const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
-    const premiumOk = sessionsFound && cost.premiumRequests <= CHAIN_MAX_PREMIUM_REQUESTS;
+    const creditsOk = sessionsFound && cost.credits <= CHAIN_MAX_CREDITS;
     return [
         {
             id: 'scn.chain.link1',
@@ -533,9 +546,9 @@ function evaluateChain(run) {
             ...(closedOk ? {} : { evidence: ledgerEvidence }),
         },
         {
-            id: 'scn.chain.premium',
-            ok: premiumOk,
-            detail: `${cost.premiumRequests} premium request(s) over ${cost.source} (max ${CHAIN_MAX_PREMIUM_REQUESTS})`,
+            id: 'scn.chain.credits',
+            ok: creditsOk,
+            detail: `${Number(cost.credits.toFixed(3))} AI credits (legacy ${cost.premiumRequests} premium request(s)) over ${cost.source} (max ${CHAIN_MAX_CREDITS} credits)`,
         },
     ];
 }
@@ -715,8 +728,8 @@ export function scenarioCheckIds(name) {
         skill: ['invoked'],
         delegate: ['selected', 'hooks', 'completed'],
         filetools: ['tools', 'hooks', 'pre', 'post', 'matcher', 'payload', 'injected', 'injected_write'],
-        chain: ['link1', 'spawned', 'inherited', 'closed', 'premium'],
-        team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'premium'],
+        chain: ['link1', 'spawned', 'inherited', 'closed', 'credits'],
+        team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'credits'],
         continuation: ['blocked', 'reason_injected', 'stop_hook_active', 'echo'],
         'prompt-context': ['accepted', 'reached_model'],
         events: ['post_tool_use_failure', 'permission_request', 'pre_compact'],
@@ -903,8 +916,6 @@ export function runCost(run) {
         return run.team.cost;
     return scenarioCost(run.events);
 }
-/** One nano-AIU is 1e-9 AI credits (the unit of `--max-ai-credits`). */
-const NANO = 1e9;
 function num(v) {
     return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
@@ -912,18 +923,18 @@ function num(v) {
 export function usageCredits(event) {
     if (event.type !== 'assistant.usage')
         return 0;
-    return num(event.data?.copilotUsage?.totalNanoAiu) / NANO;
+    return num(event.data?.copilotUsage?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
 }
 /**
  * Prefer `session.shutdown` totals (emitted at disconnect); else sum
- * `assistant.usage`: credits from `copilotUsage.totalNanoAiu`, premium
- * requests counted per user-initiated call (agent-initiated follow-ups of the
- * same turn are not billed again).
+ * `assistant.usage`: AI credits from `copilotUsage.totalNanoAiu` (every model
+ * call bills credits), and the legacy premium requests counted per
+ * user-initiated call.
  */
 export function scenarioCost(events) {
     const shutdown = [...events].reverse().find((e) => e.type === 'session.shutdown');
     if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === 'number' || typeof shutdown.data.totalNanoAiu === 'number')) {
-        return { premiumRequests: num(shutdown.data.totalPremiumRequests), credits: num(shutdown.data.totalNanoAiu) / NANO, source: 'session.shutdown' };
+        return { premiumRequests: num(shutdown.data.totalPremiumRequests), credits: num(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: 'session.shutdown' };
     }
     const usage = events.filter((e) => e.type === 'assistant.usage');
     const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);
@@ -1094,7 +1105,7 @@ function evaluateCommon(run, cost) {
         {
             id: `${p}.cost`,
             ok: !overBudget,
-            detail: `${cost.premiumRequests} premium request(s), ${cost.credits.toFixed(3)} AI credits (${cost.source}); model ${run.model}`
+            detail: `${cost.credits.toFixed(3)} AI credits, legacy ${cost.premiumRequests} premium request(s) (${cost.source}); model ${run.model}`
                 + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run.maxCredits})` : ''),
         },
     ];

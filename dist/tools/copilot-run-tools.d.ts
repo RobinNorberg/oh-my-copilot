@@ -3,7 +3,7 @@
  *
  * - `copilot_run_start` starts a headless Copilot SDK session on the prompt
  *   and returns the job id at once (needs OMG_COPILOT_RUN_ALLOW=1 in the MCP
- *   server env; asks the budget governor first);
+ *   server env);
  * - `copilot_run_status` / `copilot_run_wait` report status, the final
  *   assistant text, session id, spend and, for isolation `worktree`, the
  *   worktree path, branch and `git diff --stat` to review and merge;

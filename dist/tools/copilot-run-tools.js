@@ -3,7 +3,7 @@
  *
  * - `copilot_run_start` starts a headless Copilot SDK session on the prompt
  *   and returns the job id at once (needs OMG_COPILOT_RUN_ALLOW=1 in the MCP
- *   server env; asks the budget governor first);
+ *   server env);
  * - `copilot_run_status` / `copilot_run_wait` report status, the final
  *   assistant text, session id, spend and, for isolation `worktree`, the
  *   worktree path, branch and `git diff --stat` to review and merge;
@@ -91,7 +91,7 @@ export const copilotRunStartTool = {
     name: 'copilot_run_start',
     description: 'Delegate a task to GitHub Copilot: start a headless Copilot SDK session on the prompt as a background job and return its jobId at once. '
         + 'By default Copilot works in a new git worktree and branch (isolation "worktree"), never in your working tree. '
-        + `Live and billed (premium requests); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env and passes the budget governor first. `
+        + `Live and billed (AI Credits); needs ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env. `
         + 'Follow with copilot_run_wait or copilot_run_status.',
     category: TOOL_CATEGORIES.COPILOT_RUN,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -100,7 +100,7 @@ export const copilotRunStartTool = {
 };
 export const copilotRunStatusTool = {
     name: 'copilot_run_status',
-    description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, premium requests and AI credits spent, '
+    description: 'Status of a copilot_run job without waiting: status, final assistant text, session id, AI credits (and legacy premium requests) spent, '
         + 'and for isolation "worktree" the worktree path, branch and git diff --stat once it has ended.',
     category: TOOL_CATEGORIES.COPILOT_RUN,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

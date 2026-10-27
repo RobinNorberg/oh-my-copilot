@@ -149,7 +149,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `DISABLE_OMC`              | _(unset)_            | Set to `1` or `true` to disable all OMC hooks |
 | `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 | `OMC_GIT_GUARDRAILS`       | _(unset)_            | `1` force-enables the destructive-git PreToolUse guard in any session; `0` always disables it (immediate exit, wins over everything). With the variable unset, the guard is on by default while an active unattended mode (ralph/autopilot/team/ultragoal) is detected.      |
-| `OMC_BUDGET_GOVERNOR`      | _(unset)_            | `0` turns the [premium-request budget](#omg-budget-premium-request-budget) governor off: no ledger writes, hook messages, HUD element or team fan-out check. |
+| `OMC_BUDGET_GOVERNOR`      | _(unset)_            | `0` turns the [AI Credits budget](#omg-budget-ai-credits-budget) governor off: no ledger writes, hook messages, HUD element or team fan-out check. |
 | `OMC_RUN_BUDGET_TOKENS`    | _(unset)_            | Opt-in session token budget for unattended modes. Ralph and autopilot compare spend at iteration/phase boundaries (via the `trace_summary` tool): warn at 90%, stop with a resumable budget report at 100%. Advisory today — the model reads the tool output.               |
 | `OMC_STALE_RUN_HOURS`      | `2`                  | Stale-run watchdog threshold in hours. A SessionStart hook reports unattended-mode state files left `active: true` with no mtime progress for this long (the signature of a crashed run). Advisory only — the watchdog never mutates state or resumes runs.                |
 | `OMC_HOST_LOAD_THRESHOLD` | _(dynamic)_ | CPU load threshold (1-minute average). Gate blocks operations when load exceeds this. Default: 80% of available cores. Zero is valid; empty, malformed, negative, or non-finite values use the default. |
@@ -644,7 +644,7 @@ Supported entrypoints: direct start (`omg team [N:agent] "<task>"`), `status`, `
 
 `team status [team-name] --json` prints the same status data as the human-readable
 report (team/instance id, phase, workspace/worktree mode, worker list with worktree
-metadata, SDK worker fields — provider liveness, state, turns, credits, premium
+metadata, SDK worker fields — provider liveness, state, turns, AI credits, legacy premium
 requests — task counts, and leader guidance) as a single JSON document instead of
 text, with `ok: false` when no team state is found. `--json` can appear before or
 after the team name and is never mistaken for one; when the team name is omitted
@@ -731,7 +731,7 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 **In-process tools.** `team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`true` or `0`/`false`; default `false`) runs the plugin MCP tools inside each sdk host instead of a `t` MCP server per worker. Tool names, schemas and results are unchanged. It saves one node process per worker, not start time; see [DEVELOPERS.md](./DEVELOPERS.md#sdk-in-process-tools).
 
-**Status.** `omg team status --json` carries `transport` (`sdk` or `pane`) and, per sdk worker in `workers.sdk`, `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `state`, `updated_at`, `last_event_type`/`last_event_at`, `turns`, `queued`, `task_state`, `current_task_id`, `credits`, `premium_requests` and `premium_requests_final` (true once the runtime's `session.shutdown` totals replaced the running sum). A session file left by an earlier launch attempt is not reported.
+**Status.** `omg team status --json` carries `transport` (`sdk` or `pane`) and, per sdk worker in `workers.sdk`, `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `state`, `updated_at`, `last_event_type`/`last_event_at`, `turns`, `queued`, `task_state`, `current_task_id`, `credits` (AI Credits) and `credits_final` (true once the runtime's `session.shutdown` total replaced the running sum), and the legacy `premium_requests` and `premium_requests_final`. A session file left by an earlier launch attempt is not reported.
 
 **One team per leader session.** The `one_team_per_leader_session` guard counts an sdk team as live while any of its hosts is: its session file belongs to the worker's current launch attempt and is not `closed`/`failed`, and the host pid still has the process start identity recorded in the attempt's `provider-started.json`. A crashed host whose pid was reused does not block a new team.
 
@@ -831,8 +831,8 @@ Maintainer-only release pipeline as ordered, resumable phases. The prose (`CHANG
 
 ```bash
 omg release 5.13.0 --dry-run                # print the plan, run nothing
-omg release 5.13.0 --to suite --suite full --baseline last-good.json   # release commit + full suite, no premium requests
-omg release 5.13.0 --live-smoke             # resume at smoke (about 2 premium requests): pr, promote, tag (confirms), verify
+omg release 5.13.0 --to suite --suite full --baseline last-good.json   # release commit + full suite, no AI credits
+omg release 5.13.0 --live-smoke             # resume at smoke (two prompts, about 0.6 AI credits): pr, promote, tag (confirms), verify
 omg release 5.13.0 --from verify --json
 ```
 
@@ -888,21 +888,21 @@ Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a 
 
 ```bash
 omg smoke copilot                     # tier 0: load check, no model call
-omg smoke copilot --tier 1            # tier 0 + one live session, prompt on stdin (one premium request)
+omg smoke copilot --tier 1            # tier 0 + one live session, prompt on stdin (one prompt, about 0.4 to 0.9 AI credits measured)
 omg smoke copilot --plugin-root /path/to/oh-my-copilot --json
 omg smoke copilot --tier 1 --keep-home --delegate --model <id> --max-credits 30 --timeout 180000
 omg smoke copilot --sdk-static        # tier 2 SDK static checks only, no model call
-omg smoke copilot --tier 2            # tier 2 default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
+omg smoke copilot --tier 2            # tier 2 default scenarios smoke,guardrail (one prompt each, ~0.3 AI credits each measured)
 omg smoke copilot --tier 2 --scenario skill,delegate   # or --scenario all
-omg smoke copilot --tier 2 --scenario chain            # opt-in: a real two-link factory chain (~2 premium requests)
-omg smoke copilot --tier 2 --scenario filetools        # opt-in: pre/postToolUse hooks on the file tools (~1 premium request)
-omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt-in CLI scenarios (4 premium requests)
+omg smoke copilot --tier 2 --scenario chain            # opt-in: a real two-link factory chain (one prompt per link)
+omg smoke copilot --tier 2 --scenario filetools        # opt-in: pre/postToolUse hooks on the file tools (~0.5 AI credits measured)
+omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt-in CLI scenarios (~1.4 AI credits measured)
 ```
 
 - **Tier 0** checks: `plugin.manifest`, `plugin.hooks`, `copilot.binary`, `copilot.plugin_list`, `copilot.skill_list`, `copilot.agents`, `mcp.list_tools`. `mcp.list_tools` spawns `dist/mcp/standalone-server.js`, so run `npm run build` first.
 - **Tier 1** adds `session.exit`, `session.events`, `hooks.*` (including `hooks.adapter_errors`), `plugins.loaded`, `mcp.server_loaded`, `state.written`, and with `--delegate` `subagent.selected`. Hooks run with `OMC_HOOK_FAIL_CLOSED=1`; a `hook.end` without `success: true` fails its check, and `hooks.adapter_errors` fails on any `[omg-hook]` error line.
 - **Tier 2** drives the installed `copilot` binary through the optional peer `@github/copilot-sdk` (install it with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`; a nested `@github/copilot-sdk-<platform>` runtime package is unused and can be deleted, see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios)). It runs the tier 0 checks, then the SDK static checks `sdk.available`, `sdk.runtime`, `sdk.plugins`, `sdk.skills`, `sdk.agents`, `sdk.mcp`, `sdk.tools_excluded` (our `<server>-host_smoke` tool is absent from the session's tool list), then the chosen scenarios. It does not run the tier 1 `-p` session. `--sdk-static` runs no scenario and makes no model call.
-- **Tier 2 scenarios** yield checks prefixed `scn.<name>.`. Each one also gets `scn.<name>.exit`, `scn.<name>.adapter_errors` (fails on any `[omg-hook]` or `[run.cjs]` hook stderr line, such as a hook timeout), and `scn.<name>.cost`. Each scenario costs about one premium request, so the default run costs about two.
+- **Tier 2 scenarios** yield checks prefixed `scn.<name>.`. Each one also gets `scn.<name>.exit`, `scn.<name>.adapter_errors` (fails on any `[omg-hook]` or `[run.cjs]` hook stderr line, such as a hook timeout), and `scn.<name>.cost`. Each scenario sends one prompt, measured at 0.29 to 0.91 AI credits on small models, so the default run costs about 0.6 AI credits.
 
 | Scenario | Prompt exercises | Key checks |
 |---|---|---|
@@ -911,18 +911,18 @@ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt
 | `skill` | `/oh-my-copilot:plan` | `scn.skill.invoked` |
 | `delegate` | a hand-off to `oh-my-copilot:architect` | `scn.delegate.selected`, `scn.delegate.hooks`, `scn.delegate.completed` |
 | `filetools` (opt-in, never in `all`) | view and edit `filetools/notes.txt`, create `filetools/new/created.txt`; each directory holds a `README.md` with a fresh nonce | `scn.filetools.tools`, `scn.filetools.hooks`, `scn.filetools.pre`, `scn.filetools.post`, `scn.filetools.matcher`, `scn.filetools.payload`, `scn.filetools.injected`, `scn.filetools.injected_write` |
-| `chain` (opt-in, never in `all`) | two real `copilot -p` factory links: link 1 replies with one token, link 2 runs the project skill `/chain-ack` | `scn.chain.link1`, `scn.chain.spawned`, `scn.chain.inherited`, `scn.chain.closed`, `scn.chain.premium` |
-| `continuation` (opt-in CLI, 2 premium requests) | a stub Stop hook blocks the first stop once with a nonce reason | `scn.continuation.blocked`, `scn.continuation.reason_injected`, `scn.continuation.stop_hook_active`, `scn.continuation.echo` |
-| `prompt-context` (opt-in CLI, 1) | a stub UserPromptSubmit `additionalContext` nonce the model must echo | `scn.prompt-context.accepted`, `scn.prompt-context.reached_model` |
-| `events` (opt-in CLI, 1) | view a missing file, a shell call under default permissions, then `/compact` on the resumed session | `scn.events.post_tool_use_failure`, `scn.events.permission_request`, `scn.events.pre_compact` |
-| `ultragoal` (opt-in CLI, 2; pending lane g-cont) | ultragoal activated by our UserPromptSubmit group, past the confirmation TTL; tools must not be denied | `scn.ultragoal.seeded`, `scn.ultragoal.tools_allowed` |
+| `chain` (opt-in, never in `all`) | two real `copilot -p` factory links: link 1 replies with one token, link 2 runs the project skill `/chain-ack` | `scn.chain.link1`, `scn.chain.spawned`, `scn.chain.inherited`, `scn.chain.closed`, `scn.chain.credits` |
+| `continuation` (opt-in CLI, 0.31 AI credits measured) | a stub Stop hook blocks the first stop once with a nonce reason | `scn.continuation.blocked`, `scn.continuation.reason_injected`, `scn.continuation.stop_hook_active`, `scn.continuation.echo` |
+| `prompt-context` (opt-in CLI, 0.29) | a stub UserPromptSubmit `additionalContext` nonce the model must echo | `scn.prompt-context.accepted`, `scn.prompt-context.reached_model` |
+| `events` (opt-in CLI, 0.76) | view a missing file, a shell call under default permissions, then `/compact` on the resumed session | `scn.events.post_tool_use_failure`, `scn.events.permission_request`, `scn.events.pre_compact` |
+| `ultragoal` (opt-in CLI, 0.65; pending lane g-cont) | ultragoal activated by our UserPromptSubmit group, past the confirmation TTL; tools must not be denied | `scn.ultragoal.seeded`, `scn.ultragoal.tools_allowed` |
 
 - **CLI scenarios.** `continuation`, `prompt-context`, `events` and `ultragoal` run headless `copilot` sessions with the plugin under test, not SDK sessions; see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios) for what each one sets up. A scenario in `PENDING_SCENARIOS` is written to behaviour another lane delivers: its failing checks start with a `[PENDING …]` note.
 
 - **`filetools` scenario.** The model gets no shell and may read and write only under the sandbox project. The session loads a second plugin next to ours, a probe whose `PreToolUse`, `PostToolUse`, `PostToolUse` with our `Read|Write|Edit|MultiEdit` matcher, `preToolUse` and `postToolUse` entries append their stdin payload to `<home>/filetools-probe.jsonl`. A record belongs to the tool call whose arguments equal its tool input, since neither payload carries the call id. `pre`, `post` and `matcher` fail when a completed file tool call has no record of that entry; `payload` checks that the Claude-format records name the tool `Read`, `Write` or `Edit` and carry its path (for `apply_patch`, the patch text's file lines). `injected` passes when the nonce from `filetools/README.md` is in a `postToolUse` `hook.end` output and in the result of a view call, which is the text the runtime sends the model; `injected_write` does the same for `filetools/new/README.md` and a write call (`create`, `edit` or `apply_patch`). A view of a README itself never counts. Whether the model echoed the nonce is reported, not required. The model picks its tools: `auto` has used `edit` and `create`, or one `apply_patch` for both files.
-- **`chain` scenario.** It does not use an SDK session. It seeds the sandbox with `omg factory init` plus a `success:*` route to stage `link-2`, pre-writes link 1's ledger, and spawns link 1 like a factory link (AFK profile, `--plugin-dir`, `OMC_CHAIN_LINK`). The chain then runs itself through the SessionEnd hook and worker, and stops at the stage-visit cap after link 2. The checks read the ledgers, decisions, stop marker, and both link sessions' `events.jsonl`: link 1 was resolved by `OMC_CHAIN_LINK`, link 2 was spawned and ended under its own inherited identity, the chain closed out (`loop-capped:link-2`, no open ledger), and both links together cost at most 2 premium requests. The links run on the CLI's default model without `--max-ai-credits`, because a factory link's argv carries no credit cap, so `--max-credits` does not bound them. `--timeout` applies to link 1 and again to the wait for link 2.
+- **`chain` scenario.** It does not use an SDK session. It seeds the sandbox with `omg factory init` plus a `success:*` route to stage `link-2`, pre-writes link 1's ledger, and spawns link 1 like a factory link (AFK profile, `--plugin-dir`, `OMC_CHAIN_LINK`). The chain then runs itself through the SessionEnd hook and worker, and stops at the stage-visit cap after link 2. The checks read the ledgers, decisions, stop marker, and both link sessions' `events.jsonl`: link 1 was resolved by `OMC_CHAIN_LINK`, link 2 was spawned and ended under its own inherited identity, the chain closed out (`loop-capped:link-2`, no open ledger), and both links together cost at most 6 AI credits (`scn.chain.credits`, a ceiling against a runaway link). The links run on the CLI's default model without `--max-ai-credits`, because a factory link's argv carries no credit cap, so `--max-credits` does not bound them. `--timeout` applies to link 1 and again to the wait for link 2.
 
-- **Tier 2 report** adds `sdk` (SDK version, runtime version, protocol version), `cost` (premium requests and credits summed over scenarios), and `artifacts.events` with one events JSONL path per scenario. Human output groups the `sdk.*` checks and each scenario's `scn.<name>.*` checks under a heading.
+- **Tier 2 report** adds `sdk` (SDK version, runtime version, protocol version), `cost` (AI credits and legacy premium requests summed over scenarios), and `artifacts.events` with one events JSONL path per scenario. Human output groups the `sdk.*` checks and each scenario's `scn.<name>.*` checks under a heading.
 - **Model:** `--model` is optional. Copilot auto-selects when it is omitted (1.0.91 picked `mai-code-1.1-flash`); explicit ids may be rejected as unavailable.
 - **Auth:** tier 1 reuses the login identity from your Copilot config, so `copilot /login` is enough. When a login is found the session drops `GH_TOKEN` and `GITHUB_TOKEN`, which would otherwise shadow it. `COPILOT_GITHUB_TOKEN` always passes through, and without a stored login (CI) all three do.
 - `--max-credits` must be at least 30, the Copilot CLI minimum. At tier 1 it is passed as `--max-ai-credits`. At tier 2 it caps the whole run: the runtime also gets `--max-ai-credits`, a scenario whose credits pass what is left is aborted, and the remaining scenarios fail with `skipped: credit cap reached`. `--model` applies to tiers 1 and 2. `--timeout` applies per subprocess at tier 0, to the session at tier 1, and per scenario at tier 2; the MCP check is fixed at 10 s.
@@ -961,10 +961,10 @@ The standalone MCP server can hand a task to GitHub Copilot as a background job:
 | `copilot_run_cancel` | `jobId` | Aborts the turn and stops the session. The worktree and its changes stay. |
 | `copilot_run_cleanup` | `jobId` | Removes a finished job's worktree and branch, only when nothing in them would be lost. |
 
-The report is JSON: `status` (`starting`, `running`, `completed`, `failed`, `timeout`, `cancelled`), `stopRequested` (`cancelled`, `timeout` or `capped` from the moment a stop is asked for, while the teardown may still run; else `null`), `finalText` (the last assistant message), `sessionId`, `model`, `error`, `usage` (`premiumRequests`, `credits`, `source`: `measured` once the session's `session.shutdown` totals arrived, else `estimated`), `worktree` (`path`, `branch`, `repoRoot`, `baseCommit`, `removed`), and once the job has ended `changes` (`diffStat` from `git diff --stat <baseCommit>`, `changedFiles`, `untrackedFiles`, `protectedChanges`; taken at the repository root with root-relative paths, also when `cwd` is a subdirectory). `deniedPermissions` lists refused requests, `notes` carries budget warnings, and `eventsPath` is the session's event log.
+The report is JSON: `status` (`starting`, `running`, `completed`, `failed`, `timeout`, `cancelled`), `stopRequested` (`cancelled`, `timeout` or `capped` from the moment a stop is asked for, while the teardown may still run; else `null`), `finalText` (the last assistant message), `sessionId`, `model`, `error`, `usage` (`credits` in AI Credits, the legacy `premiumRequests`, `source`: `measured` once the session's `session.shutdown` totals arrived, else `estimated`), `worktree` (`path`, `branch`, `repoRoot`, `baseCommit`, `removed`), and once the job has ended `changes` (`diffStat` from `git diff --stat <baseCommit>`, `changedFiles`, `untrackedFiles`, `protectedChanges`; taken at the repository root with root-relative paths, also when `cwd` is a subdirectory). `deniedPermissions` lists refused requests, `notes` carries setup warnings (uncommitted changes, `isolation: "none"`), and `eventsPath` is the session's event log.
 
 - **Opt-in.** `copilot_run_start` runs a live, billed session and refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the MCP server env. The other tools work on existing jobs and need no opt-in. All five are always listed; `OMC_DISABLE_TOOLS=copilot-run` hides them.
-- **Budget governor.** Before anything is created, the job is checked like an `omg team` launch of one copilot worker ([`omg budget`](#omg-budget-premium-request-budget)): in enforce mode a projected spend past `budget.hardLimit` or `budget.perTeamLimit` refuses the job, in warn mode the warning lands in `notes`. The spend is recorded in the ledger as session `copilot-run:<jobId>`: a live estimate, replaced by the measured totals at the end.
+- **Budget ledger.** The spend is recorded in the [`omg budget`](#omg-budget-ai-credits-budget) ledger as session `copilot-run:<jobId>`: a live estimate, replaced by the measured totals at the end. The budget never refuses a job; `maxCredits` (below) caps it.
 - **Isolation.** `isolation: "worktree"` (default) creates a git worktree and branch from the repository's `HEAD` at `.omg/team/copilot-run/worktrees/<jobId>`, branch `omc-team/copilot-run/<jobId>`, with the team worktree code. Uncommitted changes in your tree are not in it (a note says so). Copilot works only there; `cwd` must be inside a git repository. `isolation: "none"` lets Copilot edit `cwd` directly, and its `changes` then include edits that were already there.
 - **Permissions.** As for sdk team workers: no allow-all, writes only inside the working directory and the job's state dir, reads also in the plugin root, MCP calls only to the plugin server, the same shell denylist (`git push`, team control, `omg smoke`, multiplexers). Writes to the `omg ship` merge-rule paths (`.copilot/omg.jsonc`, `.copilot/omc.jsonc`, `.github/known-flaky-tests.json`, `.github/workflows/`, plus a non-default `ship.knownFlakyFile` from your user config or the repository's `.copilot/omg.jsonc`) are refused, and `changes.protectedChanges` flags any such file that changed anyway. Only the write tool is confined: the shell denylist is not a sandbox, so a shell command can still reach your working tree. The session cannot start jobs of its own: the `copilot_run_*`, `host_smoke` and sub-agent tools are excluded and `OMG_COPILOT_RUN_ALLOW` is stripped from its env.
 - **Limits.** `timeoutMs` defaults to 900000 (15 min), at most 3600000, counted from start; at the timeout the turn is aborted and the status is `timeout`. `maxCredits` (default 30) aborts the turn once the session's AI credits pass it (status `failed`); the runtime also gets `--max-ai-credits` of at least 30, the CLI minimum. At most 2 jobs run at once per MCP server.
@@ -981,52 +981,52 @@ claude mcp add omg-dev -e OMG_COPILOT_RUN_ALLOW=1 -- node C:/Code/OMC/dist/mcp/s
 { "tool": "copilot_run_wait", "arguments": { "jobId": "cr-3f9a1c2b7d4e", "timeoutMs": 600000 } }
 ```
 
-### `omg budget` (premium-request budget)
+### `omg budget` (AI Credits budget)
 
-Copilot bills per premium request. The budget governor keeps a ledger of what this project's Copilot sessions and teams used, warns at your limits, and in enforce mode stops `omg team` from fanning out past them.
+Copilot bills usage in AI Credits since 2026-06-01 (they replaced premium requests). The budget governor keeps a ledger of the AI Credits this project's Copilot sessions and teams used and warns once at an optional soft limit. It is reporting only: it never blocks a session, and `omg team` never clamps or refuses a launch on budget. Premium requests stay in the ledger as a legacy field, because Copilot CLI still reports them.
+
+To cap spend, use Copilot's own limits:
+
+- **Per session:** `copilot --max-ai-credits <n>` or the SDK's `sessionLimits.maxAiCredits`. It is a soft cap checked after each model call, and since Copilot CLI 1.0.67 it cannot be below 30. `omg team` sdk workers get it from `team.sdk.maxCreditsPerWorker`, and `copilot_run_start` from `maxCredits`.
+- **Per user, cost center or organization:** Copilot admin budgets in US dollars ($0.01 per AI credit). They are hard stops with no cheaper-model fallback.
 
 ```bash
-omg budget                  # usage since the last reset against the configured limits
+omg budget                  # usage since the last reset against the soft limit
 omg budget status --json    # the full ledger: sessions, teams, measured vs estimated records
 omg budget reset            # start a new accounting period
 ```
 
-Configure it in `.copilot/omg.jsonc` (or the user config). Nothing is limited until you set a limit:
+Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until you set `softLimit`:
 
 ```jsonc
 {
   "budget": {
-    "mode": "warn",              // "warn" (default): report only; "enforce": also refuse or clamp omg team
-    "unit": "premiumRequests",   // or "credits" (AI credits)
-    "softLimit": 200,            // one-time warning
-    "hardLimit": 300,            // one-time alert; in enforce mode it bounds team fan-out
-    "perTeamLimit": 20           // enforce mode: largest projected cost of one omg team launch
+    "softLimit": 150             // AI credits: one warning per period, never a block
   }
 }
 ```
 
-**What is measured.** The ledger lives at `.omg/state/budget-ledger.json`. Each record is labelled `measured` or `estimated`:
+`mode`, `hardLimit`, `perTeamLimit` and `"unit": "premiumRequests"` are deprecated no-ops. They still parse, and a config that sets any of them gets one deprecation warning naming [MIGRATION.md](./MIGRATION.md#unreleased-budget-unit-is-ai-credits). `"unit": "credits"` is accepted and changes nothing.
 
-- **Copilot CLI sessions** are read from `$COPILOT_HOME/session-state/<session id>/events.jsonl`. Its `session.shutdown` and `session.usage_checkpoint` events carry `totalPremiumRequests` (model multiplier applied) and `totalNanoAiu` (1e-9 AI credits); those are measured. Copilot CLI 1.0.91 writes them when the session ends, so a running session is an estimate: one premium request per top-level prompt at an assumed x1 multiplier, with credits unknown. The file is read incrementally (the record keeps a byte offset and count, at most 8 MB per hook call), so an estimate only grows. The next SessionStart checks up to 20 estimated records (sessions and pane team workers, in rotation) by reading the last 64 KB of their events file, skips files unchanged since the last check, replaces an estimate with the measured totals once they exist, and marks a record final when its events file is gone.
-- **SDK team workers** (`omg team` sdk transport) are recorded by their host from the live `assistant.usage` events: AI credits as billed and premium requests counted x1 per user-initiated call, an estimate (the multiplier is unknown) until the `session.shutdown` totals replace it when the worker stops. Pane team workers are recorded by their own hooks under the team.
-- A measured record is never replaced by an estimate, and an estimate never goes down. If a session's measured total ever drops (for example a resumed session that restarts its counter), the ledger keeps the larger value and says so in the record's `detail`.
+**Units.** Usage and `softLimit` count AI Credits. One AI Credit is $0.01, and Copilot prices each model call per input, output and cached token by model ([models and pricing](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)). Copilot writes usage as `totalNanoAiu` (nano-AIU); the governor divides it by 1e9 to get AI credits, the same convenience conversion the SDK documents. Cost per prompt varies by model, by the tokens sent and received, and by the number of model calls a prompt triggers. There is no fixed figure per prompt. Short smoke prompts measured 0.29 to 0.91 AI credits on Copilot CLI 1.0.91 with small models (`omg smoke copilot`). A `softLimit` written for premium requests now counts AI Credits; [MIGRATION.md](./MIGRATION.md) shows how to convert it.
+
+**What is measured.** The ledger lives at `.omg/state/budget-ledger.json`. Each record holds `credits` and the legacy `premiumRequests` and is labelled `measured` or `estimated`:
+
+- **Copilot CLI sessions** are read from `$COPILOT_HOME/session-state/<session id>/events.jsonl`. Its `session.shutdown` and `session.usage_checkpoint` events carry `totalNanoAiu` (AI Credits x 1e9) and the legacy `totalPremiumRequests`; those are measured. Copilot CLI 1.0.91 writes them when the session ends and does not persist the per-call `assistant.usage` events, so a running session is an estimate: 1 AI credit (and one legacy premium request) per top-level prompt. The file is read incrementally (the record keeps a byte offset and count, at most 8 MB per hook call), so an estimate only grows. The next SessionStart checks up to 20 estimated records (sessions and pane team workers, in rotation) by reading the last 64 KB of their events file, skips files unchanged since the last check, replaces an estimate with the measured totals once they exist, and marks a record final when its events file is gone.
+- **SDK team workers** (`omg team` sdk transport) are recorded by their host from the live `assistant.usage` events: AI Credits as billed, and legacy premium requests counted x1 per user-initiated call. The record is an estimate until the `session.shutdown` totals replace it when the worker stops. Pane team workers are recorded by their own hooks under the team.
+- A measured record is never replaced by an estimate, and an estimate never goes down. If a session's measured total ever drops (for example a resumed session that restarts its counter), the ledger keeps the larger credits and premium request values and says so in the record's `detail`.
 - `omg budget reset` starts a new period for running sessions too: prompts before the reset no longer count, and a session's later cumulative totals have its pre-reset usage subtracted (an estimate when that pre-reset part was estimated).
 - A non-zero `estimatedRecords` means part of the total is estimated: the summary line and threshold notices add `; N record(s) estimated` / `(N record(s) estimated)`, and the HUD value gets a leading `~`.
-- With `"unit": "credits"` a still-running estimated session counts 0 credits (its credits are unknown until the session ends), so the credits total lags behind until then.
 - A pane team worker started without `OMC_TEAM_LEADER_CWD` records into the ledger of its own working directory (usually its worktree), not the leader's; `omg team` sets the variable for the workers it launches.
 - A corrupt or foreign-version ledger is copied to `budget-ledger.json.corrupt` before it is rebuilt.
 
-**Hooks.** `scripts/premium-budget.mjs` runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when a limit is set. Stop records the turn's usage and, on the first crossing of `softLimit` or `hardLimit` per period, stores a notice that the next prompt delivers as context; raising that limit re-arms its notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output and never blocks. Hooks never block a session in either mode.
+**Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
-**HUD.** The `premiumBudget` element shows `prq:12/300` (`cr:` in credits) against the hard limit, else the soft limit: yellow from the soft limit, red from the hard limit. It appears only when a limit is set; `"premiumBudget": false` under `elements` hides it.
+**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set; `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 
-**Team fan-out.** Before `omg team` starts, the governor projects the launch cost: at least one premium request per copilot worker (its first prompt at x1, a floor; follow-up turns and multipliers add to it), or `team.sdk.maxCreditsPerWorker` per copilot worker with `"unit": "credits"` (a ceiling the sdk host enforces). Workers of other providers are not billed to Copilot. When the projection exceeds `perTeamLimit` or what is left of `hardLimit`:
+**Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 
-- **warn mode** prints `[omg budget] projected ... exceeds ...; starting anyway (warn mode).` to stderr and starts the team;
-- **enforce mode** clamps an all-copilot team to the workers that fit, and refuses the launch when none fit, when the team mixes providers, or when workers own decomposed subtasks (clamping would drop scope);
-- **`--budget-override`** starts the team unchanged with the warning.
-
-`omg budget` exits `1` once `hardLimit` is reached, so scripts can gate on it. `omg doctor conflicts` warns about invalid `budget` values; the governor ignores them and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
+`omg budget` always exits 0. `omg doctor conflicts` warns about invalid and deprecated `budget` values; the governor ignores both and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
 
 ### Graph approval gates (remote approvals)
 

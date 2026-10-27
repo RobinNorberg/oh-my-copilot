@@ -3,18 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const governor = vi.hoisted(() => ({ fail: false }));
-vi.mock('../../budget/governor.js', async (importOriginal) => {
-    const actual = await importOriginal();
-    return {
-        ...actual,
-        governTeamFanout: (...args) => {
-            if (governor.fail)
-                throw new Error('governor exploded');
-            return actual.governTeamFanout(...args);
-        },
-    };
-});
 import { CopilotRunManager, summarizeChanges } from '../../copilot-run/job.js';
 import { COPILOT_RUN_TOOL_NAMES } from '../../copilot-run/names.js';
 import { copilotRunCleanupTool, copilotRunStartTool, copilotRunWaitTool, setCopilotRunManagerForTests, } from '../../tools/copilot-run-tools.js';
@@ -110,7 +98,6 @@ beforeEach(() => {
     gitIn(repo, 'commit', '-q', '-m', 'init');
 });
 afterEach(() => {
-    governor.fail = false;
     vi.useRealTimers();
     setCopilotRunManagerForTests(null);
     rmSync(root, { recursive: true, force: true });
@@ -165,28 +152,20 @@ describe('copilot_run_start gate and validation', () => {
         expect(done.worktree).toBeUndefined();
         expect(calls.sessions[0].workingDirectory).toBe(resolve(plain));
     });
-    it('refuses when the budget governor (enforce mode) is over the hard limit', () => {
+    it('starts past a deprecated enforce-mode hard limit: budgets are never enforced', async () => {
         mkdirSync(join(repo, '.copilot'));
-        writeFileSync(join(repo, '.copilot', 'omg.jsonc'), JSON.stringify({ budget: { mode: 'enforce', hardLimit: 1 } }));
+        writeFileSync(join(repo, '.copilot', 'omg.jsonc'), JSON.stringify({ budget: { mode: 'enforce', hardLimit: 1, perTeamLimit: 1 } }));
         mkdirSync(join(repo, '.omg', 'state'), { recursive: true });
         writeFileSync(join(repo, '.omg', 'state', 'budget-ledger.json'), JSON.stringify({
             version: 1,
             since: new Date().toISOString(),
-            sessions: { s1: { premiumRequests: 1, credits: 0, source: 'measured', detail: 'test', updatedAt: new Date().toISOString() } },
+            sessions: { s1: { premiumRequests: 500, credits: 500, source: 'measured', detail: 'test', updatedAt: new Date().toISOString() } },
             teams: {},
             notified: {},
         }));
         const m = new CopilotRunManager(deps('complete'));
-        expect(() => m.start({ prompt: 'x', cwd: repo })).toThrow(/refused by the budget governor.*budget\.hardLimit 1/);
-        expect(() => m.start({ prompt: 'x', cwd: repo })).toThrow(/has no budget override/);
-        expect(() => m.start({ prompt: 'x', cwd: repo })).not.toThrow(/--budget-override/);
-        expect(calls.connections).toHaveLength(0);
-        expect(existsSync(join(repo, '.omg', 'team'))).toBe(false);
-    });
-    it('starts anyway when the budget governor itself fails (fail-open)', async () => {
-        governor.fail = true;
-        const m = new CopilotRunManager(deps('complete'));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
+        expect(started.notes ?? []).not.toContainEqual(expect.stringMatching(/budget/));
         const done = await m.wait(started.jobId, 10_000);
         expect(done.status).toBe('completed');
         expect(calls.connections).toHaveLength(1);

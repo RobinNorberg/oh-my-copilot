@@ -143,7 +143,7 @@ function isDefinitiveNonGitError(error) {
   const { status, stderr } = error;
   if (status !== 128) return false;
   const output = typeof stderr === "string" ? stderr : Buffer.isBuffer(stderr) ? stderr.toString() : "";
-  return /not a git repository/i.test(output);
+  return GIT_NOT_A_REPOSITORY_STDERR.test(output);
 }
 function resolveSuperprojectRoot(cwd) {
   const cacheKey = (0, import_path2.resolve)(cwd);
@@ -349,7 +349,7 @@ function isNotAGitRepositoryError(error) {
     return false;
   }
   const stderr = gitErrorStderr(error);
-  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+  return err.status === 128 && (GIT_NOT_A_REPOSITORY_STDERR.test(stderr) || /must be run in a work tree/i.test(stderr));
 }
 function formatGitProbeDetail(error) {
   if (!error || typeof error !== "object") {
@@ -998,7 +998,7 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var import_crypto, import_node_async_hooks, import_child_process, import_fs, import_os2, import_path2, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
+var import_crypto, import_node_async_hooks, import_child_process, import_fs, import_os2, import_path2, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -1055,6 +1055,7 @@ var init_worktree_paths = __esm({
     ];
     MAX_GIT_MARKER_BYTES = 4096;
     workspaceCacheMap = /* @__PURE__ */ new Map();
+    GIT_NOT_A_REPOSITORY_STDERR = /(?:not a git repository|gitfile does not point to a valid repository)/i;
     SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
       ".ssh",
       ".gnupg",
@@ -18767,6 +18768,21 @@ var init_copilot_session_eval = __esm({
   }
 });
 
+// src/budget/ledger.ts
+var MAX_SCAN_BYTES, TAIL_BYTES, EPOCH;
+var init_ledger = __esm({
+  "src/budget/ledger.ts"() {
+    "use strict";
+    init_atomic_write();
+    init_file_lock();
+    init_worktree_paths();
+    init_config_dir();
+    MAX_SCAN_BYTES = 8 * 1024 * 1024;
+    TAIL_BYTES = 64 * 1024;
+    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
   let out = (0, import_path37.resolve)(p);
@@ -18814,6 +18830,7 @@ var init_copilot_sdk_scenarios = __esm({
     "use strict";
     import_fs33 = require("fs");
     import_path37 = require("path");
+    init_ledger();
     init_copilot_session_eval();
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
@@ -23492,6 +23509,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         attempt_id: sdkSession.attempt_id,
         updated_at: sdkSession.updated_at,
         credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
+        credits_final: sdkSession.usage.shutdown_credits != null,
         premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
         premium_requests_final: sdkSession.usage.shutdown_premium_requests != null
       } } : {}

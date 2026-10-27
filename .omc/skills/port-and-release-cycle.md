@@ -57,7 +57,7 @@ from `agent-progress-events.md`, and the lead arms one Monitor on
    `generate:inventory` + `--verify` LAST → release commit → `git status
    --short` empty → full `vitest --reporter=verbose` to a log → title diff
    vs the last GOOD baseline → `OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke
-   copilot --tier 2 --json` (2 premium requests) → plain push → `gh pr
+   copilot --tier 2 --json` (2 prompts, ~1 AI credit) → plain push → `gh pr
    create` → poll until no non-artifact check is pending → **merge only when
    every check except `No Committed Build Artifacts` and `Authorize generated
    artifacts…` is SUCCESS/SKIPPED** → `gh pr merge --admin --merge`.

@@ -640,7 +640,11 @@ export interface TeamSnapshotV2 {
     sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model'
       | 'host_pid' | 'runtime_pid' | 'attempt_id' | 'updated_at'>
       & {
+        /** AI Credits: the running `assistant.usage` sum, then the `session.shutdown` total. */
         credits: number;
+        /** True once the runtime's `session.shutdown` AI Credits total replaced the running sum. */
+        credits_final: boolean;
+        /** Legacy premium requests (x1 per user-initiated call until the shutdown total). */
         premium_requests: number;
         /** True once the runtime's `session.shutdown` totals replaced the running sum. */
         premium_requests_final: boolean;
@@ -6340,6 +6344,7 @@ export async function monitorTeamV2(
         attempt_id: sdkSession.attempt_id,
         updated_at: sdkSession.updated_at,
         credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
+        credits_final: sdkSession.usage.shutdown_credits != null,
         premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
         premium_requests_final: sdkSession.usage.shutdown_premium_requests != null,
       } } : {}),

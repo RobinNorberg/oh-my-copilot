@@ -126,7 +126,7 @@ export function formatSmokeReport(report) {
         }
     }
     if (report.cost) {
-        lines.push(`cost: ${report.cost.premiumRequests} premium request(s), ${Number(report.cost.credits.toFixed(3))} credit(s)`);
+        lines.push(`cost: ${Number(report.cost.credits.toFixed(3))} AI credit(s), legacy ${report.cost.premiumRequests} premium request(s)`);
     }
     for (const [key, value] of Object.entries(report.artifacts)) {
         if (!value)

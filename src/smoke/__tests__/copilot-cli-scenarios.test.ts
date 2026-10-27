@@ -92,7 +92,7 @@ describe('CLI scenario registry', () => {
 });
 
 describe('evaluateScenario on the live CLI fixtures', () => {
-  it('continuation: block, injected reason, stop_hook_active on the next stop, echoed token, 2 premium requests', () => {
+  it('continuation: block, injected reason, stop_hook_active on the next stop, echoed token, 2 legacy premium requests', () => {
     const { checks, cost } = evaluateScenario(cliRun('continuation', fixtureEvents('continuation')));
     expect(checks.filter((c) => !c.ok)).toEqual([]);
     expect(cost.premiumRequests).toBe(2);
@@ -111,7 +111,7 @@ describe('evaluateScenario on the live CLI fixtures', () => {
     expect(c['scn.continuation.stop_hook_active'].ok).toBe(false);
   });
 
-  it('prompt-context: accepted by the runtime and echoed by the model, 1 premium request', () => {
+  it('prompt-context: accepted by the runtime and echoed by the model, 1 legacy premium request', () => {
     const { checks, cost } = evaluateScenario(cliRun('prompt-context', fixtureEvents('prompt-context')));
     expect(checks.filter((c) => !c.ok)).toEqual([]);
     expect(cost.premiumRequests).toBe(1);
@@ -124,7 +124,7 @@ describe('evaluateScenario on the live CLI fixtures', () => {
     expect(c['scn.prompt-context.reached_model'].detail).toContain('userPromptTransformed');
   });
 
-  it('events: postToolUseFailure, permissionRequest and preCompact ran; the /compact resume costs no premium request', () => {
+  it('events: postToolUseFailure, permissionRequest and preCompact ran; the /compact resume adds no legacy premium request', () => {
     const { checks, cost } = evaluateScenario(cliRun('events', fixtureEvents('events')));
     expect(checks.filter((c) => !c.ok)).toEqual([]);
     expect(cost.premiumRequests).toBe(1);

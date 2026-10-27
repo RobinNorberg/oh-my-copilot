@@ -1,8 +1,10 @@
 /**
- * Premium-request budget governor: `budget` settings from `.copilot/omg.jsonc`,
- * the hook side (record usage, SessionStart summary, threshold notices) and
- * the `omg team` fan-out check. Everything here is fail-open: a bug or an
- * unreadable ledger yields no message, never a blocked session.
+ * AI Credits budget reporting: `budget` settings from `.copilot/omg.jsonc`
+ * and the hook side (record usage, SessionStart summary, the warn-only
+ * `softLimit` notice). It never blocks, clamps or refuses anything: cost
+ * control is Copilot's per-session `maxAiCredits` cap and admin budgets
+ * (docs/MIGRATION.md). Everything here is fail-open: a bug or an unreadable
+ * ledger yields no message, never a blocked session.
  *
  * Kill switch: `OMC_BUDGET_GOVERNOR=0` turns every part off.
  */
@@ -18,6 +20,7 @@ import {
   HOOK_LOCK_TIMEOUT_MS,
   ledgerPath,
   ledgerTotals,
+  NANO_AIU_PER_CREDIT,
   putRecord,
   readCopilotSessionUsage,
   readLedger,
@@ -27,23 +30,23 @@ import {
   updateLedger,
   type BudgetLedger,
   type LedgerLockOptions,
-  type LedgerTotals,
   type UsageRecord,
 } from './ledger.js';
 
+/** `credits` (AI Credits, the billed unit) or legacy `premiumRequests`, for display. */
 export type BudgetUnit = 'premiumRequests' | 'credits';
 
 export interface BudgetSettings {
   enabled: boolean;
-  mode: 'warn' | 'enforce';
-  unit: BudgetUnit;
+  /** Warn-only threshold in AI Credits: one notice per period, never a block. */
   softLimit?: number;
-  hardLimit?: number;
-  perTeamLimit?: number;
+  /** Retired keys found in the config (`budget.mode`, ...); each one is a no-op. */
+  deprecated: string[];
 }
 
-const LIMIT_KEYS = ['softLimit', 'hardLimit', 'perTeamLimit'] as const;
-const KNOWN_KEYS = new Set<string>(['mode', 'unit', ...LIMIT_KEYS]);
+/** Retired with budget enforcement; they parse, warn once and do nothing. */
+const DEPRECATED_KEYS = ['mode', 'hardLimit', 'perTeamLimit'] as const;
+const KNOWN_KEYS = new Set<string>(['softLimit', 'unit', ...DEPRECATED_KEYS]);
 /** Estimated records re-read per SessionStart to pick up their final totals. */
 const REFRESH_MAX = 20;
 /** Time budget of that refresh; the rotation picks up the rest next time. */
@@ -52,7 +55,7 @@ const REFRESH_DEADLINE_MS = 300;
 /** Validate a raw `budget` block; invalid values are dropped and reported, never thrown. */
 export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = process.env): { settings: BudgetSettings; issues: string[] } {
   const issues: string[] = [];
-  const settings: BudgetSettings = { enabled: env.OMC_BUDGET_GOVERNOR !== '0', mode: 'warn', unit: 'premiumRequests' };
+  const settings: BudgetSettings = { enabled: env.OMC_BUDGET_GOVERNOR !== '0', deprecated: [] };
   if (raw === undefined || raw === null) return { settings, issues };
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     issues.push('budget: must be an object');
@@ -60,24 +63,24 @@ export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = pro
   }
   const block = raw as Record<string, unknown>;
   for (const key of Object.keys(block)) if (!KNOWN_KEYS.has(key)) issues.push(`budget.${key}: unknown key`);
-  if (block.mode !== undefined) {
-    if (block.mode === 'warn' || block.mode === 'enforce') settings.mode = block.mode;
-    else issues.push(`budget.mode: must be "warn" or "enforce" (got ${JSON.stringify(block.mode)}); using "warn"`);
+  for (const key of DEPRECATED_KEYS) if (block[key] !== undefined) settings.deprecated.push(`budget.${key}`);
+  if (block.unit === 'premiumRequests') settings.deprecated.push('budget.unit "premiumRequests"');
+  else if (block.unit !== undefined && block.unit !== 'credits') {
+    issues.push(`budget.unit: must be "credits" (got ${JSON.stringify(block.unit)}); ignored`);
   }
-  if (block.unit !== undefined) {
-    if (block.unit === 'premiumRequests' || block.unit === 'credits') settings.unit = block.unit;
-    else issues.push(`budget.unit: must be "premiumRequests" or "credits" (got ${JSON.stringify(block.unit)}); using "premiumRequests"`);
+  if (block.softLimit !== undefined) {
+    const value = block.softLimit;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) settings.softLimit = value;
+    else issues.push(`budget.softLimit: must be a positive number (got ${JSON.stringify(value)}); ignored`);
   }
-  for (const key of LIMIT_KEYS) {
-    const value = block[key];
-    if (value === undefined) continue;
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) settings[key] = value;
-    else issues.push(`budget.${key}: must be a positive number (got ${JSON.stringify(value)}); ignored`);
-  }
-  if (settings.softLimit !== undefined && settings.hardLimit !== undefined && settings.softLimit > settings.hardLimit) {
-    issues.push(`budget.softLimit (${settings.softLimit}) is above budget.hardLimit (${settings.hardLimit})`);
-  }
+  if (settings.deprecated.length > 0) issues.push(deprecationNotice(settings.deprecated));
   return { settings, issues };
+}
+
+/** The one deprecation warning for every retired key present. */
+export function deprecationNotice(keys: readonly string[]): string {
+  return `${keys.join(', ')}: deprecated and ignored. Budgets are no longer enforced and limits count AI credits only; `
+    + 'budget.softLimit still warns. Cap spend with Copilot\'s per-session maxAiCredits and admin budgets (docs/MIGRATION.md)';
 }
 
 function readBudgetBlock(path: string): BudgetConfig | undefined {
@@ -100,11 +103,7 @@ export function loadBudgetSettings(cwd: string, env: NodeJS.ProcessEnv = process
 }
 
 export function hasLimits(s: BudgetSettings): boolean {
-  return s.softLimit !== undefined || s.hardLimit !== undefined || s.perTeamLimit !== undefined;
-}
-
-export function usedInUnit(totals: { premiumRequests: number; credits: number }, unit: BudgetUnit): number {
-  return unit === 'credits' ? totals.credits : totals.premiumRequests;
+  return s.softLimit !== undefined;
 }
 
 export function formatAmount(value: number, unit: BudgetUnit): string {
@@ -114,49 +113,29 @@ export function formatAmount(value: number, unit: BudgetUnit): string {
 
 export function summaryLine(ledger: BudgetLedger, settings: BudgetSettings): string {
   const t = ledgerTotals(ledger);
-  const limits = [
-    settings.softLimit !== undefined ? `soft ${settings.softLimit}` : '',
-    settings.hardLimit !== undefined ? `hard ${settings.hardLimit}` : '',
-    settings.perTeamLimit !== undefined ? `per team ${settings.perTeamLimit}` : '',
-  ].filter(Boolean).join(', ');
   const estimated = t.estimatedRecords > 0 ? `; ${t.estimatedRecords} record(s) estimated` : '';
-  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(t.premiumRequests, 'premiumRequests')}, `
-    + `${formatAmount(Number(t.credits.toFixed(3)), 'credits')} (${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). `
-    + `Limits in ${settings.unit}: ${limits || 'none'} (${settings.mode} mode). Details: omg budget status.`;
+  const threshold = settings.softLimit !== undefined ? `soft limit ${formatAmount(settings.softLimit, 'credits')}` : 'no soft limit';
+  const deprecated = settings.deprecated.length > 0 ? ` ${deprecationNotice(settings.deprecated)}.` : '';
+  return `[BUDGET] Copilot usage since ${ledger.since.slice(0, 10)}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} `
+    + `(${t.sessions} session(s), ${Object.keys(t.teams).length} team(s)${estimated}). `
+    + `Reporting only, ${threshold}.${deprecated} Details: omg budget status.`;
 }
 
-/** Mark newly crossed thresholds in `ledger` and return the notice, or null. */
+/** Mark a newly crossed soft limit in `ledger` and return the notice, or null. */
 export function checkThresholds(ledger: BudgetLedger, settings: BudgetSettings, now = new Date()): string | null {
   const totals = ledgerTotals(ledger);
-  const used = usedInUnit(totals, settings.unit);
+  const used = totals.credits;
   const n = ledger.notified;
   // A raised limit re-arms its notice.
-  if (n.hard && n.hardLimit !== undefined && settings.hardLimit !== undefined && settings.hardLimit > n.hardLimit) {
-    delete n.hard;
-    delete n.hardLimit;
-  }
   if (n.soft && n.softLimit !== undefined && settings.softLimit !== undefined && settings.softLimit > n.softLimit) {
     delete n.soft;
     delete n.softLimit;
   }
+  if (settings.softLimit === undefined || used < settings.softLimit || n.soft) return null;
+  n.soft = now.toISOString();
+  n.softLimit = settings.softLimit;
   const estimated = totals.estimatedRecords > 0 ? ` (${totals.estimatedRecords} record(s) estimated)` : '';
-  const amount = (limit: number) => `${formatAmount(Number(used.toFixed(3)), settings.unit)} of ${limit} used since ${ledger.since.slice(0, 10)}${estimated}`;
-  if (settings.hardLimit !== undefined && used >= settings.hardLimit && !n.hard) {
-    n.hard = now.toISOString();
-    n.hardLimit = settings.hardLimit;
-    if (!n.soft && settings.softLimit !== undefined) {
-      n.soft = n.hard;
-      n.softLimit = settings.softLimit;
-    }
-    const gate = settings.mode === 'enforce' ? ' New `omg team` fan-out is refused or clamped until `omg budget reset` or a higher budget.hardLimit.' : '';
-    return `[BUDGET] Hard limit reached: ${amount(settings.hardLimit)}.${gate} Tell the user before starting more work.`;
-  }
-  if (settings.softLimit !== undefined && used >= settings.softLimit && !n.soft) {
-    n.soft = now.toISOString();
-    n.softLimit = settings.softLimit;
-    return `[BUDGET] Soft limit reached: ${amount(settings.softLimit)}. Mention this to the user.`;
-  }
-  return null;
+  return `[BUDGET] Soft limit reached: ${formatAmount(Number(used.toFixed(3)), 'credits')} of ${settings.softLimit} used since ${ledger.since.slice(0, 10)}${estimated}. Mention this to the user.`;
 }
 
 /** CLI argv phases; not the hook type names (the registry shadow matches those in args). */
@@ -211,7 +190,7 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
 
   if (input.phase === 'start') {
     refreshEstimates(path, now, lock, input.refreshDeadlineMs);
-    if (!hasLimits(settings)) return null;
+    if (!hasLimits(settings) && settings.deprecated.length === 0) return null;
     return { continue: true, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: summaryLine(readLedger(path), settings) } };
   }
   if (input.phase === 'turn') {
@@ -270,7 +249,7 @@ export function refreshEstimates(path: string, now: Date, lock: LedgerLockOption
     const checked = { ...scan, checkedSize: stat.size, checkedMtimeMs: mtimeMs };
     const tail = readTailTotals(events!, stat.size);
     const usage: UsageRecord = tail
-      ? { premiumRequests: tail.premium, credits: tail.nano / 1e9, source: 'measured', detail: `${tail.type} (events tail)`, ...(tail.model ? { model: tail.model } : {}), updatedAt: now.toISOString(), scan: checked }
+      ? { premiumRequests: tail.premium, credits: tail.nano / NANO_AIU_PER_CREDIT, source: 'measured', detail: `${tail.type} (events tail)`, ...(tail.model ? { model: tail.model } : {}), updatedAt: now.toISOString(), scan: checked }
       : { ...record, scan: checked };
     updates.push({ key, team, usage });
   }
@@ -292,59 +271,4 @@ export function refreshEstimates(path: string, now: Date, lock: LedgerLockOption
     }
     fresh.refreshCursor = cursor;
   }, lock);
-}
-
-export interface FanoutInput {
-  settings: BudgetSettings;
-  totals: LedgerTotals;
-  agentTypes: readonly string[];
-  /** `team.sdk.maxCreditsPerWorker`: the per-worker cap an sdk host enforces. */
-  maxCreditsPerWorker: number;
-  override: boolean;
-  /** False when workers own decomposed subtasks: clamping would drop scope, so enforce refuses. */
-  clampable: boolean;
-}
-
-export interface FanoutDecision {
-  workerCount: number;
-  /** Warning or clamp message for stderr. */
-  notice?: string;
-  /** Set when the launch must not start. */
-  refusal?: string;
-}
-
-/**
- * Projected cost of a launch, ESTIMATED: one premium request per copilot
- * worker (its first prompt at an assumed x1 multiplier), or the per-worker
- * credit cap in `credits`. Non-copilot workers are not billed to Copilot.
- */
-export function governTeamFanout(input: FanoutInput): FanoutDecision {
-  const { settings, agentTypes } = input;
-  const workerCount = agentTypes.length;
-  if (!settings.enabled) return { workerCount };
-  const copilot = agentTypes.filter((t) => t === 'copilot').length;
-  const perWorker = settings.unit === 'credits' ? input.maxCreditsPerWorker : 1;
-  const used = usedInUnit(input.totals, settings.unit);
-  const bounds: Array<{ budget: number; label: string }> = [];
-  if (settings.perTeamLimit !== undefined) bounds.push({ budget: settings.perTeamLimit, label: `budget.perTeamLimit ${settings.perTeamLimit}` });
-  if (settings.hardLimit !== undefined) {
-    bounds.push({ budget: Math.max(0, settings.hardLimit - used), label: `the ${formatAmount(Number(Math.max(0, settings.hardLimit - used).toFixed(3)), settings.unit)} left of budget.hardLimit ${settings.hardLimit}` });
-  }
-  if (copilot === 0 || bounds.length === 0) return { workerCount };
-  const tightest = bounds.reduce((a, b) => (b.budget < a.budget ? b : a));
-  const projected = copilot * perWorker;
-  if (projected <= tightest.budget) return { workerCount };
-  const basis = settings.unit === 'credits' ? `x ${perWorker} credit cap` : 'x 1 premium request for the first prompt, estimated';
-  // A floor: each worker's first prompt at x1; follow-ups and multipliers add to it.
-  const amount = settings.unit === 'credits' ? formatAmount(projected, settings.unit) : `at least ${formatAmount(projected, settings.unit)}`;
-  const over = `[omg budget] projected ${amount} (${copilot} copilot worker(s) ${basis}) exceeds ${tightest.label}`;
-  if (settings.mode !== 'enforce' || input.override) {
-    return { workerCount, notice: `${over}; starting anyway (${input.override ? '--budget-override' : 'warn mode'}).` };
-  }
-  const allowed = Math.floor(tightest.budget / perWorker);
-  const fix = 'Pass --budget-override, raise the limit in .copilot/omg.jsonc, or run `omg budget reset`.';
-  if (allowed >= 1 && copilot === workerCount && input.clampable) {
-    return { workerCount: allowed, notice: `${over}; clamped to ${allowed} worker(s). ${fix}` };
-  }
-  return { workerCount, refusal: `${over}; team launch refused. ${fix}` };
 }

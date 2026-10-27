@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       smoke_scenarios:
-        description: 'Opt-in tier 2 Copilot smoke scenarios, comma-separated (e.g. continuation,prompt-context,events: ~4 premium requests). Empty: none.'
+        description: 'Opt-in tier 2 Copilot smoke scenarios, comma-separated (e.g. continuation,prompt-context,events: ~1.4 AI credits). Empty: none.'
         required: false
         default: ''
 
@@ -460,7 +460,7 @@ jobs:
 
   # Headless smoke against the real Copilot CLI on Linux (docs/DEVELOPERS.md
   # "Tier 2 in CI"). Every run: tier 2 SDK static checks, zero model calls.
-  # v* tags add the default scenarios (smoke, guardrail: ~2 premium requests).
+  # v* tags add the default scenarios (smoke, guardrail: ~0.6 AI credits).
   # Opt-in scenarios (billed, never by default) come from the manual run's
   # `smoke_scenarios` input, or on v* tags from the repository variable
   # COPILOT_SMOKE_OPT_IN (same comma-separated list; a tag push takes no inputs).
@@ -548,7 +548,7 @@ jobs:
           echo "omg smoke copilot --sdk-static exit $status"
           exit "$status"
 
-      - name: Tier 2 default scenarios (tags only, ~2 premium requests)
+      - name: Tier 2 default scenarios (tags only, ~0.6 AI credits)
         if: steps.gate.outputs.enabled == 'true' && github.event_name == 'push' && github.ref_type == 'tag'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
@@ -560,7 +560,7 @@ jobs:
           status=$?
           set -e
           jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/scenarios.json" || cat "$SMOKE_ROOT/reports/scenarios.json"
-          jq -r '"cost: \(.cost.premiumRequests // "?") premium request(s), \(.cost.credits // "?") credit(s)"' "$SMOKE_ROOT/reports/scenarios.json" || true
+          jq -r '"cost: \(.cost.credits // "?") AI credit(s), legacy \(.cost.premiumRequests // "?") premium request(s)"' "$SMOKE_ROOT/reports/scenarios.json" || true
           echo "omg smoke copilot --tier 2 exit $status"
           exit "$status"
 
@@ -580,7 +580,7 @@ jobs:
           status=$?
           set -e
           jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/opt-in.json" || cat "$SMOKE_ROOT/reports/opt-in.json"
-          jq -r '"cost: \(.cost.premiumRequests // "?") premium request(s), \(.cost.credits // "?") credit(s)"' "$SMOKE_ROOT/reports/opt-in.json" || true
+          jq -r '"cost: \(.cost.credits // "?") AI credit(s), legacy \(.cost.premiumRequests // "?") premium request(s)"' "$SMOKE_ROOT/reports/opt-in.json" || true
           echo "omg smoke copilot --tier 2 --scenario $SMOKE_OPT_IN exit $status"
           exit "$status"
 
