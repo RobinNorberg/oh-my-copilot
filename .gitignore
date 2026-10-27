@@ -2,6 +2,8 @@ node_modules/
 *.log
 # Captured Copilot debug-log excerpts used as smoke-test fixtures
 !src/smoke/__tests__/fixtures/*.log
+# Trimmed CI job logs used as heal classifier fixtures
+!src/factory/heal/__tests__/fixtures/*.log
 .DS_Store
 !.omc/
 .omc/*

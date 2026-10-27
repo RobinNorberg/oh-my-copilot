@@ -1,0 +1,68 @@
+No Committed Build Artifacts	UNKNOWN STEP	﻿2026-10-27T21:11:27.8956322Z Current runner version: '2.338.0'
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8986315Z ##[group]Runner Image Provisioner
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8987382Z Hosted Compute Agent
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8988124Z Version: 20261021.618
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8989009Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8989901Z Build Date: 2026-10-21T00:45:21Z
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8990755Z Worker ID: {e9760039-75ea-4b62-b77a-f6776ebbd785}
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8991725Z Region: eastus
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8992414Z Cloud: Azure
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8993303Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8995052Z ##[group]Operating System
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8995886Z Ubuntu
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8996523Z 24.04.5
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8997163Z LTS
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8997915Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8998618Z ##[group]Runner Image
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.8999452Z Image: ubuntu-24.04
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9000166Z Version: 20261012.334.1
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9001807Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9003983Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9005346Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9006738Z ##[group]GITHUB_TOKEN Permissions
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9009390Z Contents: read
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9010093Z Metadata: read
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9010833Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9013837Z Secret source: Actions
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9015119Z Cache mode: write
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9015969Z Prepare workflow directory
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9393938Z Prepare all required actions
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:27.9450218Z Getting action download info
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.1100146Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.2163189Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.3993481Z Complete job name: No Committed Build Artifacts
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4714301Z ##[group]Run actions/checkout@v4
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4715107Z with:
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4715438Z   fetch-depth: 0
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4715813Z   persist-credentials: false
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4716245Z   ref: c375fe0788c0d458da14b9fd440856085ab6543e
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4716719Z   repository: RobinNorberg/oh-my-copilot
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:28.4719998Z   token: ***
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:42.8080327Z ##[group]Environment details
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0025255Z node: v20.20.2
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0025544Z npm: 10.8.2
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0025712Z yarn: 1.22.22
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0026175Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0219713Z ##[group]Run node scripts/ci/check-no-committed-build-artifacts.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0220382Z [36;1mnode scripts/ci/check-no-committed-build-artifacts.mjs --base "$BASE_SHA" --head "$HEAD_SHA"[0m
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0445834Z shell: /usr/bin/bash -e {0}
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0446085Z env:
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0446309Z   BASE_SHA: 690f7942f4ad1f7daccae71cda75e103b86723c7
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0446587Z   HEAD_SHA: c375fe0788c0d458da14b9fd440856085ab6543e
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.0446822Z ##[endgroup]
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.1077440Z OWNER_CONFIRMATION_REQUIRED: candidate generated delta: "bridge/claude-md-coordinator.cjs", "bridge/cli.cjs", "dist/__tests__/auto-update-channel.test.d.ts", "dist/__tests__/auto-update-channel.test.d.ts.map", "dist/__tests__/auto-update-channel.test.js", "dist/__tests__/auto-update-channel.test.js.map", "dist/__tests__/hud/copilot-elements-golden.test.d.ts", "dist/__tests__/hud/copilot-elements-golden.test.d.ts.map", "dist/__tests__/hud/copilot-elements-golden.test.js", "dist/__tests__/hud/copilot-elements-golden.test.js.map", "dist/__tests__/hud/copilot-events.test.d.ts", "dist/__tests__/hud/copilot-events.test.d.ts.map", "dist/__tests__/hud/copilot-events.test.js", "dist/__tests__/hud/copilot-events.test.js.map", "dist/__tests__/hud/copilot-host-visibility.test.d.ts", "dist/__tests__/hud/copilot-host-visibility.test.d.ts.map", "dist/__tests__/hud/copilot-host-visibility.test.js", "dist/__tests__/hud/copilot-host-visibility.test.js.map", "dist/__tests__/hud/copilot-render-golden.test.d.ts", "dist/__tests__/hud/copilot-render-golden.test.d.ts.map", "dist/__tests__/hud/copilot-render-golden.test.js", "dist/__tests__/hud/copilot-render-golden.test.js.map", "dist/__tests__/hud/copilot-session-credits.test.d.ts", "dist/__tests__/hud/copilot-session-credits.test.d.ts.map", "dist/__tests__/hud/copilot-session-credits.test.js", "dist/__tests__/hud/copilot-session-credits.test.js.map", "dist/__tests__/hud/copilot-stdin.test.d.ts", "dist/__tests__/hud/copilot-stdin.test.d.ts.map", "dist/__tests__/hud/copilot-stdin.test.js", "dist/__tests__/hud/copilot-stdin.test.js.map", "dist/__tests__/hud/credit-budget-element.test.js", "dist/__tests__/hud/credit-budget-element.test.js.map", "dist/__tests__/hud/host.test.d.ts", "dist/__tests__/hud/host.test.d.ts.map", "dist/__tests__/hud/host.test.js", "dist/__tests__/hud/host.test.js.map", "dist/__tests__/hud/mission-board.test.js", "dist/__tests__/hud/mission-board.test.js.map", "dist/__tests__/hud/omc-state-elements.test.d.ts", "dist/__tests__/hud/omc-state-elements.test.d.ts.map", "dist/__tests__/hud/omc-state-elements.test.js", "dist/__tests__/hud/omc-state-elements.test.js.map", "dist/__tests__/hud/render.test.js", "dist/__tests__/hud/render.test.js.map", "dist/__tests__/hud/update-hint.test.js", "dist/__tests__/hud/update-hint.test.js.map", "dist/__tests__/hud/version-display.test.js", "dist/__tests__/hud/version-display.test.js.map", "dist/__tests__/issue-3867-legacy-l-update.test.js", "dist/__tests__/issue-3867-legacy-l-update.test.js.map", "dist/__tests__/rate-limit-wait/tmux-detector.test.js", "dist/__tests__/rate-limit-wait/tmux-detector.test.js.map", "dist/__tests__/session-start-update-channel.test.d.ts", "dist/__tests__/session-start-update-channel.test.d.ts.map", "dist/__tests__/session-start-update-channel.test.js", "dist/__tests__/session-start-update-channel.test.js.map", "dist/features/auto-update.d.ts", "dist/features/auto-update.d.ts.map", "dist/features/auto-update.js", "dist/features/auto-update.js.map", "dist/features/rate-limit-wait/tmux-detector.js", "dist/features/rate-limit-wait/tmux-detector.js.map", "dist/graph/schema.d.ts", "dist/hud/copilot-events.d.ts", "dist/hud/copilot-events.d.ts.map", "dist/hud/copilot-events.js", "dist/hud/copilot-events.js.map", "dist/hud/elements/copilot-mode.d.ts", "dist/hud/elements/copilot-mode.d.ts.map", "dist/hud/elements/copilot-mode.js", "dist/hud/elements/copilot-mode.js.map", "dist/hud/elements/model.d.ts", "dist/hud/elements/model.d.ts.map", "dist/hud/elements/model.js", "dist/hud/elements/model.js.map", "dist/hud/elements/premium-budget.d.ts", "dist/hud/elements/premium-budget.d.ts.map", "dist/hud/elements/premium-budget.js", "dist/hud/elements/premium-budget.js.map", "dist/hud/elements/team.d.ts", "dist/hud/elements/team.d.ts.map", "dist/hud/elements/team.js", "dist/hud/elements/team.js.map", "dist/hud/elements/ultragoal.d.ts", "dist/hud/elements/ultragoal.d.ts.map", "dist/hud/elements/ultragoal.js", "dist/hud/elements/ultragoal.js.map", "dist/hud/elements/update-hint.d.ts", "dist/hud/elements/update-hint.d.ts.map", "dist/hud/elements/update-hint.js", "dist/hud/elements/update-hint.js.map", "dist/hud/host.d.ts", "dist/hud/host.d.ts.map", "dist/hud/host.js", "dist/hud/host.js.map", "dist/hud/index.d.ts.map", "dist/hud/index.js", "dist/hud/index.js.map", "dist/hud/mission-board.d.ts", "dist/hud/mission-board.d.ts.map", "dist/hud/mission-board.js", "dist/hud/mission-board.js.map", "dist/hud/render.d.ts.map", "dist/hud/render.js", "dist/hud/render.js.map", "dist/hud/state.d.ts", "dist/hud/state.d.ts.map", "dist/hud/state.js", "dist/hud/state.js.map", "dist/hud/stdin.d.ts", "dist/hud/stdin.d.ts.map", "dist/hud/stdin.js", "dist/hud/stdin.js.map", "dist/hud/types.d.ts", "dist/hud/types.d.ts.map", "dist/hud/types.js", "dist/hud/types.js.map", "dist/installer/__tests__/session-start-template.test.js", "dist/installer/__tests__/session-start-template.test.js.map"
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.1115086Z ##[error]Process completed with exit code 1.
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.1237306Z Post job cleanup.
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.1929990Z [command]/usr/bin/git version
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.1967913Z git version 2.55.0
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2002124Z Temporarily overriding HOME='/home/runner/work/_temp/02679c8d-72df-4166-ae65-ddeeb2db38e6' before making global git config changes
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2003288Z Adding repository directory to the temporary git global config as a safe directory
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2006746Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-copilot/oh-my-copilot
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2042228Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2075850Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2305952Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2337091Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2565879Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2639538Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.2978634Z Cleaning up orphan processes
+No Committed Build Artifacts	UNKNOWN STEP	2026-10-27T21:11:43.3313631Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
