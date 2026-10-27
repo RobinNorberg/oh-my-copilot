@@ -531,7 +531,13 @@ function isNotAGitRepositoryError(error: unknown): boolean {
   // tree, not an unreadable git, so it must classify as not_a_repository instead
   // of probe_failed — otherwise every fail-closed caller (HUD statusline, state
   // resolution) throws from a legitimate container root (#3990).
-  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+  // Git 2.56.0 reworded the `.git` file pointing at a non-repository from "not a
+  // git repository: <gitdir>" to "gitfile does not point to a valid repository:
+  // <gitfile>" (git 54a441bcea); both versions must classify alike.
+  return (
+    err.status === 128 &&
+    /(?:not a git repository|must be run in a work tree|gitfile does not point to a valid repository)/i.test(stderr)
+  );
 }
 
 /**
