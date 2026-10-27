@@ -63,6 +63,28 @@ describe('CopilotLaneBackend', () => {
     const { sessions } = readLedger(ledgerPath(repo));
     expect(Object.keys(sessions)).toEqual(['factory-lane:implement-1']);
     expect(sessions['factory-lane:implement-1']).toMatchObject({ premiumRequests: 1, credits: 2, source: 'measured' });
+    expect(result.process).toBeNull();
+  });
+
+  it('reports the Copilot child (pid and start identity) once the runtime started', async () => {
+    const deps = fakeDeps(root, 'commit', calls, {});
+    const sdk = (await deps.loadSdk())!;
+    const Base = sdk.module.CopilotClient as unknown as new (o: unknown) => { cliProcess: unknown };
+    class WithChild extends Base {
+      constructor(o: unknown) { super(o); this.cliProcess = { pid: 4321 }; }
+    }
+    const identified: number[] = [];
+    const manager = new CopilotRunManager({
+      ...deps,
+      loadSdk: async () => ({ ...sdk, module: { ...sdk.module, CopilotClient: WithChild as never } }),
+      processIdentity: async (pid) => { identified.push(pid); return `ticks:${pid}`; },
+    });
+    const lanes = new CopilotLaneBackend(manager, { allowLive: true });
+    const { remoteId } = await lanes.start(input());
+    const result = await lanes.wait(remoteId, 10_000);
+    expect(result.state).toBe('completed');
+    expect(result.process).toEqual({ pid: 4321, identity: 'ticks:4321' });
+    expect(identified).toEqual([4321]);
   });
 
   it('passes the review profile and baseRef through to the job', async () => {

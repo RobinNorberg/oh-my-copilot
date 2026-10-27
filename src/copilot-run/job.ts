@@ -40,6 +40,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -181,7 +182,12 @@ export interface CopilotRunDeps {
   userConfigDir: () => string;
   isAlive: (pid: number) => boolean;
   killTree: (pid: number) => void;
+  /** The runtime's start identity (pid-reuse guard; default getProcessStartIdentity), null when unknown. */
+  processIdentity?: (pid: number) => Promise<string | null>;
 }
+
+/** How long the runtime's start identity may take to read (PowerShell on Windows). */
+const IDENTITY_TIMEOUT_MS = 10_000;
 
 export interface WorktreeSummary {
   path: string;
@@ -213,6 +219,12 @@ export type CopilotRunSnapshot = {
   deniedPermissions?: Array<{ kind: string; reason: string }>;
   notes?: string[];
   eventsPath: string;
+  /**
+   * The copilot runtime child once it started: its pid and start identity
+   * (null when it could not be read). A caller that outlives a crash of this
+   * process (omg factory run) uses it to make sure the child is gone.
+   */
+  runtime?: { pid: number; identity: string | null };
 };
 
 export interface ChangeSummary {
@@ -251,6 +263,8 @@ interface Job {
   extraProtected: string[];
   /** The runtime's pid once the client started (stopAll's kill fallback). */
   pid: number | undefined;
+  /** The runtime's start identity once read (null: not read or unknown). */
+  pidIdentity: string | null;
   startedAt: string;
   endedAt: string | null;
   sessionId: string | null;
@@ -288,10 +302,15 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
   ]).finally(() => clearTimeout(timer));
 }
 
-/** One git command as an argv array (never a shell); trimmed stdout, or null on failure. */
+/**
+ * One git command as an argv array (never a shell); trimmed stdout, or null
+ * on failure. fsmonitor is off: these run in the caller's process on a job
+ * worktree the job's agent could configure (omg factory run reads the
+ * change summary before its tamper check).
+ */
 function git(cwd: string, args: string[]): string | null {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
+    return execFileSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
   } catch {
     return null;
   }
@@ -300,16 +319,56 @@ function git(cwd: string, args: string[]): string | null {
 const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 /**
+ * `-c` pairs that switch off every filter driver a config level the job's
+ * agent can write (local, worktree, global, an include, the command line)
+ * defines: empty `clean`, `smudge` and `process`, `required=false`. Git runs
+ * a driver only when its command is non-empty, so a diff against the working
+ * tree then reads file bytes as they are. A driver set only in the system
+ * config (admin rights to write; Git for Windows ships `filter.lfs` there) is
+ * kept. Listing the config runs nothing. Null when the drivers cannot be
+ * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
+ * the caller fails closed.
+ */
+export function filterDriverOverrides(cwd: string): string[] | null {
+  let out: string;
+  try {
+    out = execFileSync('git', ['-c', 'core.fsmonitor=false', 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
+  } catch (err) {
+    // Exit 1: no key matches.
+    return (err as { status?: number }).status === 1 ? [] : null;
+  }
+  const parts = out.split('\0');
+  const names = new Set<string>();
+  // `--show-scope --null`: scope NUL key NUL, per entry.
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [scope, key] = [parts[i], parts[i + 1]];
+    const dot = key.lastIndexOf('.');
+    if (!key.startsWith('filter.') || dot <= 'filter'.length) return null;
+    const name = key.slice('filter.'.length, dot);
+    if (/[=\r\n]/.test(name)) return null;
+    if (scope !== 'system') names.add(name);
+  }
+  return [...names].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`]));
+}
+
+/**
  * What changed in the repository around `cwd` since `base`; null when git
  * cannot tell. Run at the toplevel (cwd may be a subdirectory), so every path
  * is root-relative and untracked files outside the subdirectory count too.
+ *
+ * The job's agent may have written the worktree's attributes and config, and
+ * omg factory run reads this summary before its tamper check, so the diff
+ * runs no external diff driver, no textconv, no fsmonitor and no filter
+ * driver (filterDriverOverrides).
  */
 export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = []): ChangeSummary | null {
   if (!base) return null;
   const top = git(cwd, ['rev-parse', '--show-toplevel']);
   if (!top) return null;
-  const stat = git(top, ['diff', '--stat', base, '--']);
-  const names = git(top, ['diff', '--name-only', base, '--']);
+  const noFilters = filterDriverOverrides(top);
+  if (noFilters === null) return null;
+  const stat = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+  const names = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
   const untrackedFiles = lines(git(top, ['ls-files', '--others', '--exclude-standard']));
@@ -449,6 +508,7 @@ export class CopilotRunManager {
       worktree,
       extraProtected,
       pid: undefined,
+      pidIdentity: null,
       startedAt: new Date().toISOString(),
       endedAt: null,
       sessionId: null,
@@ -668,6 +728,12 @@ export class CopilotRunManager {
       await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
       pid = runtimePid(client);
       job.pid = pid;
+      if (pid) {
+        const identify = deps.processIdentity ?? ((p: number) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
+        // A stop during the read goes straight to the teardown; a late identity is still recorded.
+        const reading = identify(pid).catch(() => null).then((id) => { job.pidIdentity = id; });
+        await Promise.race([reading, job.stopped]);
+      }
       if (!job.stopReason) {
         session = await withTimeout(client.createSession({
           onPermissionRequest,
@@ -761,6 +827,7 @@ export class CopilotRunManager {
       ...(job.denied.length ? { deniedPermissions: job.denied } : {}),
       ...(job.notes.length ? { notes: job.notes } : {}),
       eventsPath: job.eventsPath,
+      ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
     };
   }
 }

@@ -87,6 +87,15 @@ export interface LaneResult {
   remoteId: string | null;
   error: string | null;
   notes: string[];
+  /** The local Copilot child once it started (pid and start identity), null when unknown or remote. */
+  process: LaneProcess | null;
+}
+
+/** A lane's local child process: the engine checks it is gone before it trusts a lost lane's end. */
+export interface LaneProcess {
+  pid: number;
+  /** Start identity (pid-reuse guard, platform/process-utils.ts); null when it could not be read. */
+  identity: string | null;
 }
 
 export interface LaneBackend {
@@ -217,6 +226,7 @@ export class CopilotLaneBackend implements LaneBackend {
       remoteId: snap.jobId,
       error: snap.error,
       notes: snap.notes ?? [],
+      process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
     };
   }
 }
