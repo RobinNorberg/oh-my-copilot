@@ -188,11 +188,14 @@ Absent compared with Claude Code: `effort`, `rate_limits`, `output_style`, `thin
 
 **`transcript_path` is the session state directory**, not a file. On disk it is `~/.copilot/session-state/<id>/` and holds `events.jsonl`. The HUD resolves `events.jsonl` from it (`resolveCopilotEventsPath` accepts the directory, the file, or a sibling), and reads only the last 4 MB, so counts derived from it undercount in long sessions. Whether a future CLI passes a file inside the directory instead is unverified.
 
-**Capturing a real payload.** The HUD already writes each payload to `<worktree>/.omg/state/sessions/<session_id>/hud-stdin-cache.json`. Open `copilot` in a scratch repo with the plugin HUD, wait for the footer, run `/model` to switch to auto and back (no prompt, no premium request), exit, and copy the file. Capture again after one cheap prompt to get non-zero context and cost. For a raw capture without the HUD, point `statusLine.command` at:
+**Capturing a real payload.** The HUD already writes each payload to `<worktree>/.omg/state/sessions/<session_id>/hud-stdin-cache.json`. Open `copilot` in a scratch repo with the plugin HUD, wait for the footer, run `/model` to switch to auto and back (no prompt, no premium request), exit, and copy the file. Capture again after one cheap prompt to get non-zero context and cost. For a raw capture without the HUD, point `statusLine.command` at one of these. The first is Windows (`USERPROFILE`), the second Unix (`HOME`). Inside `settings.json` the command is a JSON string, so escape every double quote as `\"` (and backslashes as `\`).
 
 ```
 node -e "process.stdin.pipe(require('fs').createWriteStream(process.env.USERPROFILE+'/sl.json'))"
+node -e "process.stdin.pipe(require('fs').createWriteStream(process.env.HOME+'/sl.json'))"
 ```
+
+As a `settings.json` value, the Windows one reads `"command": "node -e \"process.stdin.pipe(require('fs').createWriteStream(process.env.USERPROFILE+'/sl.json'))\""`.
 
 Scrub the user name and paths before committing a capture to `src/__tests__/hud/fixtures/`. Statusline rendering in `-p` mode is unverified, so do not rely on headless capture.
 

@@ -183,6 +183,34 @@ function mtimeMsSafe(path: string): number {
   }
 }
 
+const MAX_ACTIVITY_WORKER_DIRS = 64;
+
+/**
+ * Newest mtime among the files a live team keeps touching: config, both event
+ * logs, and each worker's heartbeat and status. Bounded to a fixed number of
+ * worker dirs and stats only, no file contents.
+ */
+function newestTeamActivityMs(teamRoot: string): number {
+  let newest = Math.max(
+    mtimeMsSafe(join(teamRoot, 'config.json')),
+    mtimeMsSafe(join(teamRoot, 'events.jsonl')),
+    mtimeMsSafe(join(teamRoot, 'sdk-events.jsonl')),
+  );
+  try {
+    const workers = readdirSync(join(teamRoot, 'workers'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .slice(0, MAX_ACTIVITY_WORKER_DIRS);
+    for (const worker of workers) {
+      for (const file of ['heartbeat.json', 'status.json']) {
+        newest = Math.max(newest, mtimeMsSafe(join(teamRoot, 'workers', worker.name, file)));
+      }
+    }
+  } catch {
+    // No workers dir: config and event logs decide.
+  }
+  return newest;
+}
+
 function readJsonLinesSafe<T>(path: string): T[] {
   if (!existsSync(path)) return [];
   try {
@@ -585,8 +613,8 @@ function mergeMissions(previous: MissionBoardState | null, teamMissions: Mission
 
 /**
  * Read every team under `.omg/state/team/` as a mission, without writing board state.
- * With `skipOlderThanMs`, a team dir whose config.json and events.jsonl are both
- * older than that is skipped before collecting. One unreadable team is dropped alone.
+ * With `skipOlderThanMs`, a team dir whose config, event logs and worker
+ * heartbeat/status files are all older than that is skipped before collecting. One unreadable team is dropped alone.
  */
 export function readTeamMissions(
   directory: string,
@@ -602,9 +630,7 @@ export function readTeamMissions(
   for (const entry of readdirSync(teamsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const teamRoot = join(teamsRoot, entry.name);
-    if (cutoff !== null
-      && mtimeMsSafe(join(teamRoot, 'config.json')) < cutoff
-      && mtimeMsSafe(join(teamRoot, 'events.jsonl')) < cutoff) continue;
+    if (cutoff !== null && newestTeamActivityMs(teamRoot) < cutoff) continue;
     try {
       const mission = collectTeamMission(teamRoot, entry.name, config);
       if (mission) missions.push(mission);

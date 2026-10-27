@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -9,8 +9,16 @@ const plain = (s: string | null) => s?.replace(/\x1b\[[0-9;]*m/g, '') ?? null;
 
 describe('Copilot session credits (cr:)', () => {
   let cwd: string;
-  beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'hud-credits-')); });
-  afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'hud-credits-'));
+    // getConfigDir() reads APPDATA on Windows and XDG_CONFIG_HOME elsewhere: keep the real user budget config out.
+    vi.stubEnv('APPDATA', join(cwd, 'config'));
+    vi.stubEnv('XDG_CONFIG_HOME', join(cwd, 'config'));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(cwd, { recursive: true, force: true });
+  });
 
   const cr = (nanoAiu: number | null, formatted: string | null = null) =>
     plain(renderPremiumBudget(cwd, { nanoAiu, formatted }));
@@ -26,7 +34,8 @@ describe('Copilot session credits (cr:)', () => {
 
   it('shows 2 decimals below 0.1 credit and hides only at exactly zero', () => {
     expect(cr(40_000_000)).toBe('cr:0.04');
-    expect(cr(99_000_000)).toBe('cr:0.10');
+    expect(cr(99_000_000)).toBe('cr:0.1');
+    expect(cr(100_000_000)).toBe('cr:0.1');
     expect(cr(3_000_000)).toBe('cr:<0.01');
     expect(cr(0)).toBeNull();
   });

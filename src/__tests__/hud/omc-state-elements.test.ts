@@ -59,6 +59,7 @@ function writeTeam(
   });
   for (const worker of workers) {
     writeJson(join(root, 'workers', worker.name, 'status.json'), { state: worker.state, updated_at: updatedAt });
+    setMtime(join(root, 'workers', worker.name, 'status.json'), Date.parse(updatedAt));
   }
   for (const task of tasks) writeJson(join(root, 'tasks', `${task.id}.json`), task);
   // The reader skips dirs by mtime against NOW, so pin it to the team's own clock.
@@ -148,9 +149,11 @@ describe('team element', () => {
     // created_at says live, but the files are old: skipped before collecting.
     writeTeam('old-files', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
     setMtime(join(teams, 'old-files', 'config.json'), NOW - 3 * 60 * 60 * 1000);
+    setMtime(join(teams, 'old-files', 'workers', 'w', 'status.json'), NOW - 3 * 60 * 60 * 1000);
     // Old config but a fresh events.jsonl: still read.
     writeTeam('fresh-events', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
     setMtime(join(teams, 'fresh-events', 'config.json'), NOW - 3 * 60 * 60 * 1000);
+    setMtime(join(teams, 'fresh-events', 'workers', 'w', 'status.json'), NOW - 3 * 60 * 60 * 1000);
     writeFileSync(join(teams, 'fresh-events', 'events.jsonl'), '');
     setMtime(join(teams, 'fresh-events', 'events.jsonl'), NOW - 60_000);
 
@@ -158,6 +161,24 @@ describe('team element', () => {
     expect(strip(renderTeam(readTeamStateForHud(project, NOW)))).toBe('team:fresh-events 1/1w 0/1t');
     // Without the window the board still sees both.
     expect(readTeamMissions(project).map((mission) => mission.name).sort()).toEqual(['fresh-events', 'old-files']);
+  });
+
+  it('keeps a long-running team visible when only a worker heartbeat or sdk-events.jsonl is fresh', () => {
+    const teams = join(getOmcRoot(project), 'state', 'team');
+    const old = NOW - 3 * 60 * 60 * 1000;
+    writeTeam('heartbeat', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
+    writeJson(join(teams, 'heartbeat', 'workers', 'w', 'heartbeat.json'), { alive: true });
+    writeTeam('sdk-log', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
+    writeFileSync(join(teams, 'sdk-log', 'sdk-events.jsonl'), '');
+    writeTeam('idle-old', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
+    for (const dir of ['heartbeat', 'sdk-log', 'idle-old']) {
+      setMtime(join(teams, dir, 'config.json'), old);
+      setMtime(join(teams, dir, 'workers', 'w', 'status.json'), old);
+    }
+    setMtime(join(teams, 'heartbeat', 'workers', 'w', 'heartbeat.json'), NOW - 60_000);
+    setMtime(join(teams, 'sdk-log', 'sdk-events.jsonl'), NOW - 60_000);
+
+    expect(readTeamMissions(project, undefined, 2 * 60 * 60 * 1000, NOW).map((mission) => mission.name).sort()).toEqual(['heartbeat', 'sdk-log']);
   });
 
   it('dates a team without created_at or events by its config.json mtime, so it goes stale', () => {

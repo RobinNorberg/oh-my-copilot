@@ -20,11 +20,11 @@ export interface SessionAiUsed {
   formatted: string | null;
 }
 
-/** Credits text: 2 decimals from a hundredth to 0.1, `<0.01` below, else 1 decimal. */
+/** Credits text: up to 2 decimals from a hundredth to 0.1 (0.099 shows as 0.1), `<0.01` below, else 1 decimal. */
 function formatCredits(nanoAiu: number): string {
   const credits = nanoAiu / NANO_AIU_PER_CREDIT;
   if (credits >= 0.1) return String(Number(credits.toFixed(1)));
-  return credits < 0.01 ? '<0.01' : credits.toFixed(2);
+  return credits < 0.01 ? '<0.01' : String(Number(credits.toFixed(2)));
 }
 
 /**

@@ -1,4 +1,13 @@
 ---
+name: copilot-cli-statusline-windows-expertise
+description: How Copilot CLI runs the statusLine command on Windows (stdin payload, stdout lines, 10 s timeout, failure blanks the line) and how to configure the HUD for it
+triggers:
+  - copilot statusline
+  - statusLine blank
+  - copilot hud windows
+  - omg-hud.mjs
+---
+
 # Copilot CLI StatusLine on Windows
 
 ## The Insight
@@ -19,9 +28,9 @@ When a status line is blank, the cause is almost always the command failing, not
 2. **No experimental flag.** The bundle has no `STATUS_LINE` gate. `"experimental": true` is not needed.
 3. **Command**: `{"type": "command", "command": "node C:/Users/<you>/.copilot/hud/omg-hud.mjs"}`. Use forward slashes. `~` and `$VAR` are expanded by Copilot, but write absolute paths on Windows.
 4. **Input**: the payload JSON on stdin, then stdin is closed. The script must not wait for more input.
-5. **Timeout**: 10 s, then SIGKILL on Windows.
+5. **Timeout**: 10 s, then SIGKILL on Windows (from the 1.0.103 bundle, not verified live).
 6. **Failure blanks the line**: a non-zero exit, a signal or a timeout blanks the status line. Keep the HUD fast and have it exit 0 even on internal errors. Run Copilot with `--log-level all` to see stderr (capped at 2048 chars).
-7. **Output**: stdout is trimmed and split on newlines. Each line is left-padded by `padding`.
+7. **Output**: stdout is trimmed and split on newlines. Each line is left-padded by `padding` (from the 1.0.103 bundle, not verified live).
 8. **Cadence**: re-runs on payload changes, debounced 200 ms. Set `refreshInterval` (seconds) to add a timer.
 
 ## Example

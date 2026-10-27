@@ -1022,7 +1022,7 @@ Configure it in `.copilot/omg.jsonc` (or the user config). Nothing warns until y
 
 **Hooks.** `scripts/premium-budget.mjs` (the file keeps its name) runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when `softLimit` or a deprecated key is set; the line carries the deprecation warning. Stop records the turn's usage and, on the first crossing of `softLimit` per period, stores a notice that the next prompt delivers as context; raising the limit re-arms the notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output. It never blocks a session.
 
-**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set, except under Copilot CLI, where without a limit it shows the session's credits from the statusline payload (`cr:0.42`, hidden at zero); `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+**HUD.** The `creditBudget` element shows `cr:4.2/150`, AI credits used against `softLimit`, yellow once the soft limit is reached. It appears only when `softLimit` is set, except under Copilot CLI, where without a limit it shows the session's credits from the statusline payload (`cr:0.4`, hidden at zero); `"creditBudget": false` under `elements` hides it. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
 
 **Teams.** `omg team` starts every requested worker whatever the ledger holds. It does not project, clamp or refuse a launch. `--budget-override` is a deprecated no-op that prints one warning.
 
@@ -1785,7 +1785,7 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `omcLabel` (`omgLabel`) | on | on | label `[oh-my-copilot#version]` on both hosts |
 | `contextBar` | on | on | payload `context_window` |
 | `sessionHealth` | on | on | payload `cost.total_duration_ms` |
-| `creditBudget` | on | on | payload `ai_used.total_nano_aiu` (`cr:0.42`), or the budget ledger when a `softLimit` is set |
+| `creditBudget` | on | on | payload `ai_used.total_nano_aiu` (`cr:0.4`), or the budget ledger when a `softLimit` is set |
 | `agents`, `activeSkills`, `lastSkill`, call counts (`T:` `A:` `S:`), `showLastTool`, `showRecentTools` | on | on | the tail of the session's `events.jsonl` |
 | `ralph`, `autopilot`, `prdStory`, `backgroundTasks` | on | on | OMC state files |
 | `copilotMode` | off | on | `session.mode_changed` events (`mode:plan` or `mode:autopilot`) and the payload `allow_all_enabled` (`mode:yolo`), combined as `mode:plan+yolo` |

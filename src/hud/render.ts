@@ -270,7 +270,8 @@ export function limitOutputLines(lines: string[], maxLines?: number): string[] {
 function isolate<T>(renderElement: () => T): T | null {
   try {
     return renderElement();
-  } catch {
+  } catch (err) {
+    if (process.env.OMC_DEBUG) console.error('[HUD] element failed:', err);
     return null;
   }
 }
