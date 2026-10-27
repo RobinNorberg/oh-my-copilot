@@ -9,13 +9,13 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full developer guide.
 ```bash
 npm run build
 omg smoke copilot --tier 0        # free: no model call
-omg smoke copilot --tier 1        # costs one premium request
+omg smoke copilot --tier 1        # one prompt, about 0.4 to 0.9 AI credits measured
 ```
 
 ### The two tiers
 
 - **Tier 0 is a free load check.** It verifies the manifest and version, the generated hooks and agents, `plugin list` and `skill list` as Copilot sees them, and the MCP server's tool count. Run it after every generator change.
-- **Tier 1 adds one live session with the prompt on stdin.** It asserts the session exits cleanly, the session events log parses, our hooks fired, the plugin and MCP server loaded, and the hooks wrote state under `.omg/` in a temp project. Each run is one premium request capped by `--max-credits` (default 30, which is Copilot's minimum).
+- **Tier 1 adds one live session with the prompt on stdin.** It asserts the session exits cleanly, the session events log parses, our hooks fired, the plugin and MCP server loaded, and the hooks wrote state under `.omg/` in a temp project. Each run is one prompt billed in AI credits (0.43 measured on a small model), capped by `--max-credits` (default 30, which is Copilot's minimum).
 
 **Model.** `--model` is optional. Without it Copilot auto-selects a model; 1.0.91 picked `mai-code-1.1-flash`. Explicit ids may be rejected as unavailable for your account, and the `session.exit` detail then says to omit `--model`.
 
@@ -68,7 +68,7 @@ Then, for example:
 { "tool": "copilot_run_cleanup", "arguments": { "jobId": "<jobId from start>" } }
 ```
 
-Each job passes the budget governor first and lands in its ledger as `copilot-run:<jobId>`. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
+Each job lands in the budget ledger as `copilot-run:<jobId>`; the budget only reports and never refuses a job. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
 
 ### Tier 2 — SDK scenarios
 
@@ -77,13 +77,13 @@ Tier 2 drives Copilot through `@github/copilot-sdk` instead of `copilot -p`. The
 ```bash
 npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
 omg smoke copilot --sdk-static                # free: SDK static checks, no model call
-omg smoke copilot --tier 2                    # smoke + guardrail, about 2 premium requests (1 per scenario)
+omg smoke copilot --tier 2                    # smoke + guardrail, one prompt each (0.34 + 0.29 AI credits measured)
 omg smoke copilot --tier 2 --scenario all     # adds skill + delegate
-omg smoke copilot --tier 2 --scenario chain   # opt-in: real two-link factory chain, about 2 premium requests
-omg smoke copilot --tier 2 --scenario team    # opt-in: real 2-worker sdk team, about 2 premium requests
-omg smoke copilot --tier 2 --scenario filetools  # opt-in: pre/postToolUse hooks on view/edit/create, 1 premium request
-omg smoke copilot --tier 2 --scenario continuation,prompt-context,events  # opt-in CLI scenarios, 4 premium requests
-omg smoke copilot --tier 2 --scenario ultragoal  # opt-in, pending lane g-cont: 2 premium requests
+omg smoke copilot --tier 2 --scenario chain   # opt-in: real two-link factory chain, one prompt per link
+omg smoke copilot --tier 2 --scenario team    # opt-in: real 2-worker sdk team, one prompt per worker
+omg smoke copilot --tier 2 --scenario filetools  # opt-in: pre/postToolUse hooks on view/edit/create, ~0.5 AI credits
+omg smoke copilot --tier 2 --scenario continuation,prompt-context,events  # opt-in CLI scenarios, ~1.4 AI credits
+omg smoke copilot --tier 2 --scenario ultragoal  # opt-in, pending lane g-cont: ~0.65 AI credits
 ```
 
 **Install.** The SDK is an optional peer dependency, so `npm i -g oh-my-copilot` never installs it. Install it next to `omg` with the command above. `--ignore-scripts` is required on Windows with `--omit=optional`, because koffi's install script otherwise falls back to a source build that needs CMake. Without the SDK every `sdk.*` check fails with that install hint and the run exits `2`.
@@ -96,7 +96,7 @@ npm i --no-save --omit=optional --ignore-scripts @github/copilot-sdk
 
 **Installed-exe policy.** Tier 2 always connects the SDK to the installed `copilot` binary, resolved exactly as for tier 0 and 1. It never uses the SDK's bundled runtime, because the installed CLI is what users run and plugin loading differs between the two. `sdk.runtime` checks that the runtime reports the tier 0 binary version and protocol 3 or later.
 
-**Scenarios.** `smoke` and `guardrail` are the default; `--scenario` takes a comma-separated list or `all`. Each scenario runs in its own session in a temp git repo with an isolated `COPILOT_HOME`, a per-scenario timeout, and its full event stream kept as `artifacts.events.<name>`. `scn.<name>.cost` reports premium requests and credits. `chain` is the exception: it is opt-in (never in `all`), uses no SDK session, and spawns two real `copilot -p` factory links that hand off through `OMC_CHAIN_LINK` and the SessionEnd worker (see [REFERENCE.md](./REFERENCE.md#factory-chains-on-copilot)). Its links run without `--max-ai-credits`, so `--max-credits` does not bound them, and a link-2 process still running after the timeout is not killed.
+**Scenarios.** `smoke` and `guardrail` are the default; `--scenario` takes a comma-separated list or `all`. Each scenario runs in its own session in a temp git repo with an isolated `COPILOT_HOME`, a per-scenario timeout, and its full event stream kept as `artifacts.events.<name>`. `scn.<name>.cost` reports AI credits and the legacy premium requests. `chain` is the exception: it is opt-in (never in `all`), uses no SDK session, and spawns two real `copilot -p` factory links that hand off through `OMC_CHAIN_LINK` and the SessionEnd worker (see [REFERENCE.md](./REFERENCE.md#factory-chains-on-copilot)). Its links run without `--max-ai-credits`, so `--max-credits` does not bound them, and a link-2 process still running after the timeout is not killed.
 
 **The `team` scenario.** Also opt-in and outside `all`. It runs the plugin's own `bridge/cli.cjs` as child processes, so it proves the default transport end to end:
 
@@ -104,16 +104,16 @@ npm i --no-save --omit=optional --ignore-scripts @github/copilot-sdk
 2. `omg team status --json` is polled until both tasks settle. Then `omg team api list-tasks` and each worker worktree's commits are read.
 3. `omg team shutdown`, while each worker's `sdk-session.json` is polled for the final `session.shutdown` totals.
 
-Its checks: `scn.team.started` (exit 0, transport `sdk`, the host launch time), `completed` (both tasks completed, one per worker), `committed` (each owner committed its task's file in its own worktree), `status` (2 sdk workers alive with host pid and session id, tasks 2/2), `shutdown` (exit 0 without `--force`, no host or runtime pid left, instance reservation released, team state gone), `retained` (each worker's committed HEAD survives the shutdown, merged into the leader HEAD or kept in a worktree that `omg team status --json` lists under `preserved_worktrees`), `duration` (start to closeout within 300 s or `--timeout`, whichever is larger), and `premium` (1 to 2 premium requests). Worker runtime logs are copied into the smoke home before shutdown, so `scn.team.adapter_errors` covers them. `team` runs after the SDK scenarios and before `chain`. Set `OMC_TEAM_SDK_LAUNCH_CONCURRENCY=1` in the smoke's environment to measure the serial launch path.
+Its checks: `scn.team.started` (exit 0, transport `sdk`, the host launch time), `completed` (both tasks completed, one per worker), `committed` (each owner committed its task's file in its own worktree), `status` (2 sdk workers alive with host pid and session id, tasks 2/2), `shutdown` (exit 0 without `--force`, no host or runtime pid left, instance reservation released, team state gone), `retained` (each worker's committed HEAD survives the shutdown, merged into the leader HEAD or kept in a worktree that `omg team status --json` lists under `preserved_worktrees`), `duration` (start to closeout within 300 s or `--timeout`, whichever is larger), and `credits` (above 0 and at most 10 AI credits, a ceiling against runaway continuations; the legacy premium requests are in the detail). Worker runtime logs are copied into the smoke home before shutdown, so `scn.team.adapter_errors` covers them. `team` runs after the SDK scenarios and before `chain`. Set `OMC_TEAM_SDK_LAUNCH_CONCURRENCY=1` in the smoke's environment to measure the serial launch path.
 
-**The CLI scenarios.** `continuation`, `prompt-context`, `events` and `ultragoal` are opt-in and outside `all`. Each one runs headless `copilot` processes (`src/smoke/copilot-cli-scenarios.ts`), not an SDK session, with the tier 2 home and env, `--plugin-dir` for the plugin under test, `--max-ai-credits`, a fresh `--session-id`, the prompt on stdin, and the session's persisted `events.jsonl` as its event stream. Shell-free scenarios deny `shell`; none may write files. Premium requests measured on Copilot CLI 1.0.91 (2026-10-23):
+**The CLI scenarios.** `continuation`, `prompt-context`, `events` and `ultragoal` are opt-in and outside `all`. Each one runs headless `copilot` processes (`src/smoke/copilot-cli-scenarios.ts`), not an SDK session, with the tier 2 home and env, `--plugin-dir` for the plugin under test, `--max-ai-credits`, a fresh `--session-id`, the prompt on stdin, and the session's persisted `events.jsonl` as its event stream. Shell-free scenarios deny `shell`; none may write files. AI credits (and legacy premium requests) measured on Copilot CLI 1.0.91 (2026-10-23):
 
-| Scenario | What it proves | Premium requests |
+| Scenario | What it proves | AI credits measured (legacy premium requests) |
 |---|---|---|
-| `continuation` | A stub plugin next to ours blocks the first Stop (PascalCase, like ours) with a reason that carries a nonce. The reason arrives as the next `user.message` (`reason_injected`), the next `agentStop` input has `stop_hook_active: true`, and the model answers the reason's token (`echo`). The stub is independent of OMC's persistent-mode. | 2 (the prompt and one continuation) |
+| `continuation` | A stub plugin next to ours blocks the first Stop (PascalCase, like ours) with a reason that carries a nonce. The reason arrives as the next `user.message` (`reason_injected`), the next `agentStop` input has `stop_hook_active: true`, and the model answers the reason's token (`echo`). The stub is independent of OMC's persistent-mode. | 0.31 (2: the prompt and one continuation) |
 | `prompt-context` | A stub UserPromptSubmit hook returns a top-level `additionalContext` line with a nonce, the shape our adapter emits. `accepted`: the runtime's `hook.end` output carries it; `reached_model`: the model echoes the nonce. The current docs say config-file `userPromptSubmitted` output is dropped; a failure here means every keyword and skill injection is lost on that CLI. | 1 |
-| `events` | A view of a missing file fires `postToolUseFailure`, a shell call under default permissions (`--allow-tool view` only) fires `permissionRequest`, and the same session resumed with `/compact` fires `preCompact` and `session.compaction_start`. Each OMC hook must end `success: true`. | 1 (the `/compact` bills credits, no premium request) |
-| `ultragoal` | Our UserPromptSubmit group activates ultragoal for the session id; the state is backdated past the 2-minute confirmation TTL with `max_reinforcements: 1`. No tool call may then be denied by the ultragoal gate. **Pending lane g-cont:** on 1.0.91 the gate denies every call, so `tools_allowed` fails with a `PENDING` note (`PENDING_SCENARIOS`). Drop the entry once it passes on dev. | 2 (the prompt and one reinforcement) |
+| `events` | A view of a missing file fires `postToolUseFailure`, a shell call under default permissions (`--allow-tool view` only) fires `permissionRequest`, and the same session resumed with `/compact` fires `preCompact` and `session.compaction_start`. Each OMC hook must end `success: true`. | 0.76 (1: the `/compact` bills credits, no premium request) |
+| `ultragoal` | Our UserPromptSubmit group activates ultragoal for the session id; the state is backdated past the 2-minute confirmation TTL with `max_reinforcements: 1`. No tool call may then be denied by the ultragoal gate. **Pending lane g-cont:** on 1.0.91 the gate denies every call, so `tools_allowed` fails with a `PENDING` note (`PENDING_SCENARIOS`). Drop the entry once it passes on dev. | 0.65 (2: the prompt and one reinforcement) |
 
 **Credit cap.** `--max-credits` (default and minimum 30) caps the whole tier 2 run. The runtime gets `--max-ai-credits` with the same value; the headless runtime accepts and validates the flag (CLI 1.0.91), but whether it enforces it on SDK sessions is unverified. The smoke therefore enforces the cap itself: it sums `assistant.usage` credits per scenario, aborts an SDK scenario that passes what is left (`scn.<name>.exit` and `.cost` fail), and reports the remaining scenarios as `skipped: credit cap reached`. The CLI scenarios (`continuation`, `prompt-context`, `events`, `ultragoal`) cannot be aborted mid-run: each copilot process is capped by its own `--max-ai-credits` (what is left of the run, at least 30; the `events` compact step gets what the prompt step left, and is skipped, marking the run capped, when nothing is left) and its cost is counted only after the scenario ends, so the cap holds from the next scenario on.
 
@@ -135,14 +135,14 @@ Its checks: `scn.team.started` (exit 0, transport `sdk`, the host launch time), 
 
 The `smoke` job in `.github/workflows/ci.yml` runs the smoke on `ubuntu-latest` against the real Copilot CLI, so every PR and tag is checked on Linux and not only on a maintainer's machine.
 
-- **Every run after `Build`** (PRs, pushes to `main` and `dev`, manual runs): `omg smoke copilot --tier 2 --sdk-static`. Zero model calls, zero premium requests.
-- **Pushed `v*` tags** additionally run `omg smoke copilot --tier 2`, the default scenarios `smoke` and `guardrail`. That costs about 2 premium requests per tag, capped by the default `--max-credits 30`.
-- **Opt-in scenarios** run only when named: the manual run's `smoke_scenarios` input (Actions, CI, Run workflow), or on `v*` tags the repository variable `COPILOT_SMOKE_OPT_IN` (a tag push takes no inputs). Both take the `--scenario` list, for example `continuation,prompt-context,events` (4 premium requests). The step validates the list as `^[a-z][a-z,-]*$` and writes `reports/opt-in.json`.
+- **Every run after `Build`** (PRs, pushes to `main` and `dev`, manual runs): `omg smoke copilot --tier 2 --sdk-static`. Zero model calls, zero AI credits.
+- **Pushed `v*` tags** additionally run `omg smoke copilot --tier 2`, the default scenarios `smoke` and `guardrail`. That costs two prompts per tag, about 0.6 AI credits measured, capped by the default `--max-credits 30`.
+- **Opt-in scenarios** run only when named: the manual run's `smoke_scenarios` input (Actions, CI, Run workflow), or on `v*` tags the repository variable `COPILOT_SMOKE_OPT_IN` (a tag push takes no inputs). Both take the `--scenario` list, for example `continuation,prompt-context,events` (about 1.4 AI credits). The step validates the list as `^[a-z][a-z,-]*$` and writes `reports/opt-in.json`.
 - **The release job does not wait for it.** On a tag both jobs run in parallel; check the smoke result before announcing a release. The job is not a required check yet.
 
 **Install.** The job runs `npm i -g @github/copilot`, the CLI's documented npm install. Its `copilot` bin is a node loader that runs the native binary from the `@github/copilot-linux-x64` optional dependency. The SDK is installed with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`, so its bundled runtime is never downloaded; the installed-exe policy above applies unchanged. The job builds first, because a PR branch need not carry rebuilt bundles.
 
-**Secret.** Add a repository secret named `COPILOT_GITHUB_TOKEN` under Settings, Secrets and variables, Actions. Its value is a fine-grained personal access token of a user with an active Copilot subscription, with the account permission "Copilot Requests" (see "Authenticate with a Personal Access Token" in the `@github/copilot` README). Create it at <https://github.com/settings/personal-access-tokens/new>. It needs no repository permissions. Premium requests are billed to that user.
+**Secret.** Add a repository secret named `COPILOT_GITHUB_TOKEN` under Settings, Secrets and variables, Actions. Its value is a fine-grained personal access token of a user with an active Copilot subscription, with the account permission "Copilot Requests" (see "Authenticate with a Personal Access Token" in the `@github/copilot` README). Create it at <https://github.com/settings/personal-access-tokens/new>. It needs no repository permissions. AI Credits are billed to that user.
 
 **Static checks need the token too.** A fresh `COPILOT_HOME` has no login, and without auth the runtime skips loading custom agents, so `sdk.agents` would fail. The whole job is therefore gated on the secret.
 
@@ -180,7 +180,7 @@ These were verified against Copilot CLI 1.0.91.
 | `subagentStart` | `SubagentStart` | subagent-tracker start | `SubagentStart` | mapped. Live: camelCase `{sessionId, transcriptPath, agentName}`, no agent id; `additionalContext` is prepended to the subagent's first message |
 | `subagentStop` | `SubagentStop` | subagent-tracker stop, verify-deliverables | `SubagentStop` | mapped. Live: carries the parent `session_id` plus `agent_id` (the child session id), `agent_type`, `agent_name`, `last_assistant_message`. Output may add `modifiedResponse`, which replaces the response returned to the parent (a block wins over it); unused |
 | `preCompact` | `PreCompact` | pre-compact, project-memory-precompact, wiki-pre-compact | `PreCompact` | mapped; output discarded ("notification only"), file side effects only. Live: `/compact` on a resumed headless session fires it at no cost |
-| `agentStop` | `Stop` | context-guard-stop, workflow-drift-guard, persistent-mode, budget-guard, premium-budget, code-simplifier | `Stop` | mapped. Live: `{decision: "block", reason}` continues the session (reason injected as a user message, 1 premium request each); every later stop carries `stop_hook_active: true`; `stopReason` is always `end_turn`. The CLI ends the turn after 8 consecutive blocks |
+| `agentStop` | `Stop` | context-guard-stop, workflow-drift-guard, persistent-mode, budget-guard, premium-budget, code-simplifier | `Stop` | mapped. Live: `{decision: "block", reason}` continues the session (reason injected as a user message, an extra model turn billed in AI Credits each); every later stop carries `stop_hook_active: true`; `stopReason` is always `end_turn`. The CLI ends the turn after 8 consecutive blocks |
 | `notification` | `Notification` (fork-owned `FORK_HOOKS`) | copilot/notification.mjs | none in upstream `hooks/hooks.json` (Claude Code has `Notification`; upstream sends `ask-user-question` from PreToolUse `AskUserQuestion` instead) | mapped: `permission_prompt` and `elicitation_dialog` send the `ask-user-question` notification; other types and team workers are ignored |
 | `errorOccurred` | none | none | none | rejected: no OMC consumer. A failed turn already reaches `sessionEnd` with `reason: "error"` and `error`, and SDK workers record `session.error`. The `errorHandling: retry` output would duplicate the runtime's own retries |
 | `preMcpToolCall` | none | none | none | rejected: the only output is `metaToUse`, the outgoing MCP request `_meta`, which OMC has no use for. `PreToolUse` already sees and can deny MCP tools |
@@ -193,7 +193,7 @@ Every upstream event is projected. `FORK_HOOKS` in `build-hooks.mjs` adds Copilo
 
 **Fields in every hook fired inside a subagent** (1.0.103 reference): `agentId`, `agentType`, `parentAgentId` (`agent_id`, `agent_type`, `parent_agent_id` for PascalCase). Live on 1.0.91, subagent tool events carry the child `sessionId`, and a subagent's `permissionRequest` carries the parent `sessionId`. `systemMessage` is not part of any Copilot event's output; see the adapter table in [HOOKS.md](./HOOKS.md#output-adapter) for where OMC routes it.
 
-**Input and output contracts of the four events.** Inputs as a probe plugin received them from Copilot CLI 1.0.91 in one SDK session on 2026-10-11 (1 premium request). Outputs are from the SDK's `dist/types.d.ts`.
+**Input and output contracts of the four events.** Inputs as a probe plugin received them from Copilot CLI 1.0.91 in one SDK session on 2026-10-11 (one prompt). Outputs are from the SDK's `dist/types.d.ts`.
 
 | Event | Input (beyond `sessionId`, `timestamp`, `cwd`) | Output |
 |---|---|---|

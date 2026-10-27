@@ -98,7 +98,7 @@ describe("copilot smoke CI workflow", () => {
     expect(stat.run).toContain(STATIC_CMD);
     expect(stat.run).toContain('exit "$status"');
 
-    const scn = step("Tier 2 default scenarios (tags only, ~2 premium requests)");
+    const scn = step("Tier 2 default scenarios (tags only, ~0.6 AI credits)");
     expect(scn.if).toBe(`${GATE} && ${TAG_ONLY}`);
     expect(scn.raw).toContain("OMC_LIVE_SMOKE: '2'");
     expect(scn.run).toContain(SCENARIO_CMD);
@@ -181,6 +181,6 @@ describe("copilot smoke CI workflow", () => {
     expect(upload.raw).toContain("path: ${{ runner.temp }}/copilot-smoke-upload/");
     expect(steps.indexOf(step("Stage smoke artifacts"))).toBeLessThan(steps.indexOf(leak));
     expect(steps.indexOf(leak)).toBeLessThan(steps.indexOf(upload));
-    expect(steps.indexOf(step("Tier 2 default scenarios (tags only, ~2 premium requests)"))).toBeLessThan(steps.indexOf(leak));
+    expect(steps.indexOf(step("Tier 2 default scenarios (tags only, ~0.6 AI credits)"))).toBeLessThan(steps.indexOf(leak));
   });
 });

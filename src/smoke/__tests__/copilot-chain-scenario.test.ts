@@ -139,7 +139,7 @@ describe('runChainScenario', () => {
     const run = await runChainScenario(baseInput(project, home, fakeChain(project, home, {}, { link2: false })));
     const { checks } = evaluateScenario({ ...run, logText: '' });
     const failed = checks.filter((c) => !c.ok).map((c) => c.id);
-    expect(failed).toEqual(['scn.chain.link1', 'scn.chain.spawned', 'scn.chain.inherited', 'scn.chain.closed', 'scn.chain.premium']);
+    expect(failed).toEqual(['scn.chain.link1', 'scn.chain.spawned', 'scn.chain.inherited', 'scn.chain.closed', 'scn.chain.credits']);
   });
 
   it('on timeout closes the open link ledgers so they cannot enqueue, and reports them', async () => {

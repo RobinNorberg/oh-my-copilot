@@ -1306,11 +1306,11 @@ Examples:
   });
 
 /**
- * Budget command - premium-request ledger and limits (src/budget)
+ * Budget command - AI Credits ledger and limits (src/budget)
  */
 program
   .command('budget [action]')
-  .description('Show (status, the default) or reset the premium-request budget ledger')
+  .description('Show (status, the default) or reset the AI Credits budget ledger')
   .option('--json', 'Output as JSON')
   .addHelpText('after', `
 Examples:
@@ -1318,7 +1318,7 @@ Examples:
   $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
   $ omg budget reset                            Start a new accounting period
 
-Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.jsonc ("budget").`)
+Reporting only: always exits 0, so compare "used" from --json against your own limit. Configure the warn threshold in .copilot/omg.jsonc ("budget").`)
   .action(async (action: string | undefined, options: { json?: boolean }) => {
     const exitCode = await budgetCommand(action ?? 'status', options);
     process.exit(exitCode);
@@ -1357,15 +1357,15 @@ Examples:
   $ omg smoke copilot --tier 1                  Add one cheap live session
   $ omg smoke copilot --tier 1 --keep-home --json
   $ omg smoke copilot --sdk-static              Tier 2 SDK static checks (no model call)
-  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
+  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (1 prompt each, ~0.6 AI credits in total)
   $ omg smoke copilot --tier 2 --scenario all   All four SDK scenarios
-  $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (~2 premium requests,
+  $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (1 prompt per link,
                                                 real copilot -p links outside the --max-credits cap)
   $ omg smoke copilot --tier 2 --scenario team  2-worker omg team on the default sdk transport, start to clean
-                                                shutdown (~2 premium requests, 1 per worker)
+                                                shutdown (1 prompt per worker, billed in AI credits)
   $ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events
                                                 Live hook-event checks in headless copilot sessions
-                                                (~4 premium requests: 2 + 1 + 1)`)
+                                                (~1.4 AI credits measured: 0.31 + 0.29 + 0.76)`)
   .action(async (options) => {
     const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);

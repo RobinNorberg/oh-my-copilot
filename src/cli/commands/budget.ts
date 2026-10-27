@@ -1,10 +1,11 @@
 /**
- * `omg budget [status|reset] [--json]`: the premium-request ledger
- * (src/budget) against the `budget` limits of `.copilot/omg.jsonc`.
+ * `omg budget [status|reset] [--json]`: the AI Credits usage ledger
+ * (src/budget) against the warn-only `budget.softLimit` of `.copilot/omg.jsonc`.
+ * Reporting only: status always exits 0.
  */
 
-import { formatAmount, loadBudgetSettings, summaryLine, usedInUnit } from '../../budget/governor.js';
-import { ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
+import { deprecationNotice, formatAmount, loadBudgetSettings, summaryLine } from '../../budget/governor.js';
+import { ESTIMATED_CREDITS_PER_PROMPT, ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
 
 export async function budgetCommand(action: string, options: { json?: boolean }, cwd: string = process.cwd()): Promise<number> {
   const path = ledgerPath(cwd);
@@ -22,9 +23,9 @@ export async function budgetCommand(action: string, options: { json?: boolean },
       return 1;
     }
     if (options.json) {
-      console.log(JSON.stringify({ ok: true, ledgerPath: path, previous: { since: previous.since, premiumRequests: previous.premiumRequests, credits: previous.credits } }));
+      console.log(JSON.stringify({ ok: true, ledgerPath: path, previous: { since: previous.since, credits: previous.credits, premiumRequests: previous.premiumRequests } }));
     } else {
-      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(previous.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(previous.credits.toFixed(3)), 'credits')}.`);
+      console.log(`Budget ledger reset. Previous period since ${previous.since.slice(0, 10)}: ${formatAmount(Number(previous.credits.toFixed(3)), 'credits')} (legacy ${formatAmount(previous.premiumRequests, 'premiumRequests')}).`);
     }
     return 0;
   }
@@ -35,23 +36,21 @@ export async function budgetCommand(action: string, options: { json?: boolean },
 
   const ledger = readLedger(path);
   const totals = ledgerTotals(ledger);
-  const used = usedInUnit(totals, settings.unit);
-  /** Exit 1 once the hard limit is reached, so scripts can gate on it. */
-  const code = settings.hardLimit !== undefined && used >= settings.hardLimit ? 1 : 0;
   if (options.json) {
-    console.log(JSON.stringify({ ledgerPath: path, since: ledger.since, settings, issues, used, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
-    return code;
+    console.log(JSON.stringify({ ledgerPath: path, since: ledger.since, settings, issues, used: totals.credits, totals, notified: ledger.notified, sessions: ledger.sessions, teams: ledger.teams }, null, 2));
+    return 0;
   }
+  // The deprecation notice is part of the summary line; the issue list would repeat it.
   console.log(summaryLine(ledger, settings).replace(/ Details: omg budget status\.$/, ''));
   for (const [team, t] of Object.entries(totals.teams)) {
-    const cap = settings.perTeamLimit !== undefined ? ` (per-team limit ${settings.perTeamLimit} ${settings.unit})` : '';
-    console.log(`  team ${team}: ${formatAmount(t.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} over ${t.records} session(s)${cap}`);
+    console.log(`  team ${team}: ${formatAmount(Number(t.credits.toFixed(3)), 'credits')} over ${t.records} session(s)`);
   }
   if (totals.estimatedRecords > 0) {
-    console.log(`  ${totals.estimatedRecords} record(s) are estimates (1 premium request per prompt, multiplier unknown); they become measured once the session's totals are written.`);
+    console.log(`  ${totals.estimatedRecords} record(s) are estimates (about ${ESTIMATED_CREDITS_PER_PROMPT} AI credit per prompt; the real cost varies by model); they become measured once the session's totals are written.`);
   }
   if (!settings.enabled) console.log('  Governor disabled (OMC_BUDGET_GOVERNOR=0).');
-  for (const issue of issues) console.log(`  config: ${issue}`);
+  const shown = settings.deprecated.length > 0 ? deprecationNotice(settings.deprecated) : undefined;
+  for (const issue of issues) if (issue !== shown) console.log(`  config: ${issue}`);
   console.log(`  ledger: ${path}`);
-  return code;
+  return 0;
 }
