@@ -30,6 +30,8 @@ declare const startSchema: {
     timeoutMs: z.ZodOptional<z.ZodNumber>;
     maxCredits: z.ZodOptional<z.ZodNumber>;
     isolation: z.ZodOptional<z.ZodEnum<["worktree", "none"]>>;
+    startRef: z.ZodOptional<z.ZodString>;
+    profile: z.ZodOptional<z.ZodEnum<["write", "review"]>>;
 };
 declare const waitSchema: {
     jobId: z.ZodString;
@@ -53,6 +55,8 @@ export declare const copilotRunTools: (ToolDefinition<{
     timeoutMs: z.ZodOptional<z.ZodNumber>;
     maxCredits: z.ZodOptional<z.ZodNumber>;
     isolation: z.ZodOptional<z.ZodEnum<["worktree", "none"]>>;
+    startRef: z.ZodOptional<z.ZodString>;
+    profile: z.ZodOptional<z.ZodEnum<["write", "review"]>>;
 }> | ToolDefinition<{
     jobId: typeof jobIdSchema;
 }> | ToolDefinition<{

@@ -10,7 +10,11 @@
  * (sdk-policy.ts) with writes confined to the job's working directory.
  *
  * Safety:
- * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env;
+ * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env,
+ *   or an in-process caller passes `allowLive` (never reachable from MCP);
+ *   the session never inherits the env var;
+ * - profile `review` denies the write tool and the git commands that move,
+ *   rewrite or reconfigure the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
  * - the budget governor (src/budget) is asked first, like an `omg team`
  *   launch of one copilot worker, and the spend is recorded in the ledger
  *   (live estimate, then the `session.shutdown` totals);
@@ -32,8 +36,9 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
-import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
+import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -42,7 +47,7 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import { ensureWorkerWorktree, getBranchName, getWorktreePath, removeWorkerWorktree } from '../team/git-worktree.js';
-import { buildSdkExcludedTools, decideSdkPermission } from '../team/sdk-policy.js';
+import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, normalizeShellCommand, } from '../team/sdk-policy.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
@@ -63,8 +68,63 @@ const SERVER_EXIT_GRACE_MS = 3_000;
 const GIT_TIMEOUT_MS = 30_000;
 const DENIED_LOG_MAX = 50;
 const JOB_ID = /^cr-[0-9a-f]{12}$/;
+const MAX_START_REF_CHARS = 256;
+/**
+ * The OMC_SKIP_HOOKS list that turns off the blocking Stop hooks in a session
+ * started with `disableStopContinuations`, so no Stop block silently costs a
+ * request: persistent-mode (continuations), workflow-drift-guard (blocks on
+ * placeholder text, which a review verdict may quote) and code-simplifier.
+ * The scripts the Copilot Stop dispatcher runs each honor their own token;
+ * the other hooks (git guardrails, budget guard) keep running, which
+ * DISABLE_OMC would not allow.
+ */
+export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode,workflow-drift-guard,code-simplifier';
 export class CopilotRunError extends Error {
 }
+/**
+ * Shell commands a `review` session may not run, on top of the worker policy
+ * (which already denies push, aliases and GIT_CONFIG_* env overrides):
+ * - git subcommands that move or rewrite the tree, its refs or its config;
+ *   `merge-base` and other hyphenated read-only subcommands stay allowed;
+ * - any global `-c` or `--config-env` (an alias or `core.*` override);
+ * - `git fetch` with a refspec (`main:main` writes a local ref).
+ * Spelled like the push rule of SDK_SHELL_DENY_PATTERNS, on
+ * normalizeShellCommand's output.
+ */
+export const REVIEW_SHELL_DENY_PATTERNS = [
+    ...gitSubcommandDeny(String.raw `(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config|pull|bisect|remote|clean|sparse-checkout|submodule|read-tree|update-index|checkout-index|filter-branch|gc\s+[^;&|\n]*--prune|reflog\s+expire)(?![\w-])`, 'review profile: git commands that change the tree, its refs or its config'),
+    ...gitSubcommandDeny(String.raw `(?:-c(?:\s|$)|--config-env\b)`, 'review profile: git config overrides (-c, --config-env)'),
+    // A refspec argument (`src:dst`, `+refs/*:refs/*`); a URL's `://` and scp-style `user@host:` are not one.
+    ...gitSubcommandDeny(String.raw `fetch\b[^;&|\n]*?\s\+?[\w./*-]*:(?!//)`, 'review profile: git fetch with a refspec'),
+];
+/** The review profile's extra refusal for a request the worker policy approved, or null. */
+export function reviewProfileDenial(req) {
+    if (req.kind === 'write')
+        return 'review profile: the write tool is disabled';
+    if (req.kind !== 'shell')
+        return null;
+    const normalized = normalizeShellCommand(String(req.fullCommandText ?? ''));
+    return REVIEW_SHELL_DENY_PATTERNS.find(({ re }) => re.test(normalized))?.reason ?? null;
+}
+/**
+ * The commit `ref` names in `repoRoot`, as a full sha. Refuses refs that
+ * git could read as an option, carry whitespace or control characters, or do
+ * not resolve to a commit.
+ */
+export function resolveStartRef(repoRoot, ref) {
+    if (typeof ref !== 'string' || !ref.trim())
+        throw new CopilotRunError('copilot_run_start: startRef must be a non-empty string.');
+    if (ref.length > MAX_START_REF_CHARS || ref.startsWith('-') || /[\s\x00-\x1f\x7f]/.test(ref)) {
+        throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} is not a valid ref.`);
+    }
+    const sha = git(repoRoot, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]);
+    if (!sha || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) {
+        throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} does not resolve to a commit in ${repoRoot}.`);
+    }
+    return sha;
+}
+/** How long the runtime's start identity may take to read (PowerShell on Windows). */
+const IDENTITY_TIMEOUT_MS = 10_000;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const errText = (err) => (err instanceof Error ? err.message : String(err));
 const isTerminal = (s) => s !== 'starting' && s !== 'running';
@@ -83,10 +143,15 @@ function settleWithin(promise, ms) {
         new Promise((r) => { timer = setTimeout(r, ms); }),
     ]).finally(() => clearTimeout(timer));
 }
-/** One git command as an argv array (never a shell); trimmed stdout, or null on failure. */
+/**
+ * One git command as an argv array (never a shell); trimmed stdout, or null
+ * on failure. fsmonitor is off: these run in the caller's process on a job
+ * worktree the job's agent could configure (omg factory run reads the
+ * change summary before its tamper check).
+ */
 function git(cwd, args) {
     try {
-        return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
+        return execFileSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
     }
     catch {
         return null;
@@ -94,9 +159,50 @@ function git(cwd, args) {
 }
 const lines = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 /**
+ * `-c` pairs that switch off every filter driver a config level the job's
+ * agent can write (local, worktree, global, an include, the command line)
+ * defines: empty `clean`, `smudge` and `process`, `required=false`. Git runs
+ * a driver only when its command is non-empty, so a diff against the working
+ * tree then reads file bytes as they are. A driver set only in the system
+ * config (admin rights to write; Git for Windows ships `filter.lfs` there) is
+ * kept. Listing the config runs nothing. Null when the drivers cannot be
+ * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
+ * the caller fails closed.
+ */
+export function filterDriverOverrides(cwd) {
+    let out;
+    try {
+        out = execFileSync('git', ['-c', 'core.fsmonitor=false', 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
+    }
+    catch (err) {
+        // Exit 1: no key matches.
+        return err.status === 1 ? [] : null;
+    }
+    const parts = out.split('\0');
+    const names = new Set();
+    // `--show-scope --null`: scope NUL key NUL, per entry.
+    for (let i = 0; i + 1 < parts.length; i += 2) {
+        const [scope, key] = [parts[i], parts[i + 1]];
+        const dot = key.lastIndexOf('.');
+        if (!key.startsWith('filter.') || dot <= 'filter'.length)
+            return null;
+        const name = key.slice('filter.'.length, dot);
+        if (/[=\r\n]/.test(name))
+            return null;
+        if (scope !== 'system')
+            names.add(name);
+    }
+    return [...names].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`]));
+}
+/**
  * What changed in the repository around `cwd` since `base`; null when git
  * cannot tell. Run at the toplevel (cwd may be a subdirectory), so every path
  * is root-relative and untracked files outside the subdirectory count too.
+ *
+ * The job's agent may have written the worktree's attributes and config, and
+ * omg factory run reads this summary before its tamper check, so the diff
+ * runs no external diff driver, no textconv, no fsmonitor and no filter
+ * driver (filterDriverOverrides).
  */
 export function summarizeChanges(cwd, base, extraProtected = []) {
     if (!base)
@@ -104,8 +210,11 @@ export function summarizeChanges(cwd, base, extraProtected = []) {
     const top = git(cwd, ['rev-parse', '--show-toplevel']);
     if (!top)
         return null;
-    const stat = git(top, ['diff', '--stat', base, '--']);
-    const names = git(top, ['diff', '--name-only', base, '--']);
+    const noFilters = filterDriverOverrides(top);
+    if (noFilters === null)
+        return null;
+    const stat = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+    const names = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
     if (stat === null || names === null)
         return null;
     const changedFiles = lines(names);
@@ -147,8 +256,8 @@ export class CopilotRunManager {
         this.deps = deps;
     }
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
-    start(input) {
-        if (this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
+    start(input, options = {}) {
+        if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
             throw new CopilotRunError(`copilot_run_start runs a live, billed Copilot session and is disabled. Set ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env `
                 + `(claude mcp add omg-dev -e ${COPILOT_RUN_ALLOW_ENV}=1 -- node <oh-my-copilot>/dist/mcp/standalone-server.js).`);
         }
@@ -165,6 +274,14 @@ export class CopilotRunManager {
         if (!Number.isFinite(maxCredits) || maxCredits <= 0)
             throw new CopilotRunError('copilot_run_start: maxCredits must be a positive number.');
         const isolation = input.isolation ?? 'worktree';
+        const profile = input.profile ?? 'write';
+        if (profile !== 'write' && profile !== 'review')
+            throw new CopilotRunError(`copilot_run_start: profile must be "write" or "review", not ${JSON.stringify(profile)}.`);
+        const startRef = input.startRef ?? null;
+        if (startRef !== null && isolation !== 'worktree')
+            throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
+        if (options.ledgerKey !== undefined && !SAFE_KEY.test(options.ledgerKey))
+            throw new CopilotRunError(`copilot_run_start: ledgerKey ${JSON.stringify(options.ledgerKey)} must match ${SAFE_KEY}.`);
         const cwd = resolve(input.cwd ?? process.cwd());
         let isDir = false;
         try {
@@ -177,6 +294,8 @@ export class CopilotRunManager {
         if (isolation === 'worktree' && !repoRoot) {
             throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
         }
+        // Validated before the budget check and the worktree, so a bad ref creates nothing.
+        const startSha = startRef !== null && repoRoot ? resolveStartRef(resolve(repoRoot), startRef) : null;
         const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
         if (running >= MAX_RUNNING_JOBS) {
             throw new CopilotRunError(`copilot_run_start: ${running} job(s) already running (limit ${MAX_RUNNING_JOBS}); wait for or cancel one first.`);
@@ -190,7 +309,7 @@ export class CopilotRunManager {
         if (isolation === 'worktree') {
             let info;
             try {
-                info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false });
+                info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}) });
             }
             catch (err) {
                 // A failure after `git worktree add` leaves a worktree no job id can clean: remove it now (same safety checks), or name it.
@@ -213,8 +332,8 @@ export class CopilotRunManager {
             const sub = relativeInside(cwd, ledgerCwd);
             workCwd = sub && existsSync(join(info.path, sub)) ? join(info.path, sub) : info.path;
             worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
-            baseCommit = info.baseCommit ?? baseCommit;
-            if (lines(git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no'])).length > 0) {
+            baseCommit = info.baseCommit ?? startSha ?? baseCommit;
+            if (!startSha && lines(git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no'])).length > 0) {
                 notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? '?'} without them.`);
             }
         }
@@ -237,6 +356,10 @@ export class CopilotRunManager {
             cwd,
             workCwd,
             isolation,
+            profile,
+            startRef,
+            disableStopContinuations: options.disableStopContinuations === true,
+            ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
             model: input.model ?? null,
             timeoutMs,
             maxCredits,
@@ -248,6 +371,7 @@ export class CopilotRunManager {
             worktree,
             extraProtected,
             pid: undefined,
+            pidIdentity: null,
             startedAt: new Date().toISOString(),
             endedAt: null,
             sessionId: null,
@@ -343,7 +467,7 @@ export class CopilotRunManager {
             throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
         return job;
     }
-    /** Ledger record `copilot-run:<jobId>`; fail-open. False when the lock was busy (retry later). */
+    /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
     recordBudget(job, lockTimeoutMs) {
         if (this.deps.env.OMC_BUDGET_GOVERNOR === '0')
             return true;
@@ -358,7 +482,7 @@ export class CopilotRunManager {
             updatedAt: new Date().toISOString(),
         };
         try {
-            recordUsage(ledgerPath(job.ledgerCwd), `copilot-run:${job.id}`, usage, undefined, { timeoutMs: lockTimeoutMs });
+            recordUsage(ledgerPath(job.ledgerCwd), job.ledgerKey, usage, undefined, { timeoutMs: lockTimeoutMs });
             return true;
         }
         catch (err) {
@@ -387,6 +511,9 @@ export class CopilotRunManager {
         // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
         Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
         delete env[COPILOT_RUN_ALLOW_ENV];
+        // OMC_* from the caller is stripped above, so this is the session's only skip list.
+        if (job.disableStopContinuations)
+            env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
         const policy = {
             cwd: job.workCwd,
             stateRoot: job.jobDir,
@@ -403,6 +530,11 @@ export class CopilotRunManager {
                 const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
                 if (rel && protectedChanges([rel], job.extraProtected).length > 0)
                     decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+            }
+            if (decision.approve && job.profile === 'review') {
+                const denial = reviewProfileDenial(req);
+                if (denial)
+                    decision = { approve: false, reason: denial };
             }
             if (decision.approve)
                 return { kind: 'approve-once' };
@@ -475,6 +607,12 @@ export class CopilotRunManager {
             await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
             pid = runtimePid(client);
             job.pid = pid;
+            if (pid) {
+                const identify = deps.processIdentity ?? ((p) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
+                // A stop during the read goes straight to the teardown; a late identity is still recorded.
+                const reading = identify(pid).catch(() => null).then((id) => { job.pidIdentity = id; });
+                await Promise.race([reading, job.stopped]);
+            }
             if (!job.stopReason) {
                 session = await withTimeout(client.createSession({
                     onPermissionRequest,
@@ -575,6 +713,8 @@ export class CopilotRunManager {
             // Set as soon as a stop is asked for: a cancel that returns while the teardown runs still shows it.
             stopRequested: job.stopReason,
             isolation: job.isolation,
+            profile: job.profile,
+            ...(job.startRef !== null ? { startRef: job.startRef } : {}),
             cwd: job.cwd,
             workingDirectory: job.workCwd,
             model: job.model,
@@ -591,6 +731,7 @@ export class CopilotRunManager {
             ...(job.denied.length ? { deniedPermissions: job.denied } : {}),
             ...(job.notes.length ? { notes: job.notes } : {}),
             eventsPath: job.eventsPath,
+            ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
         };
     }
 }

@@ -39,16 +39,25 @@ export interface SdkPermissionDecision {
     reason: string;
 }
 /**
+ * Deny patterns for `git <global options> <tail>` (`tail` is a regex source),
+ * spelled directly or through a variable (`$g="git"; & $g push`, `g=git; $g push`).
+ */
+export declare function gitSubcommandDeny(tail: string, reason: string): Array<{
+    re: RegExp;
+    reason: string;
+}>;
+/**
  * Shell commands a worker must never run, whatever the config says:
  * - team control other than `team api` (nested teams, shutdown of its own team);
  * - `omg smoke` (would spend credits from inside a worker);
  * - the multiplexers (the pane transport's control plane);
- * - `git push` (workers commit in their worktree; the leader integrates).
+ * - `git push` (workers commit in their worktree; the leader integrates), and
+ *   the git aliases and config overrides that could rename it.
  *
  * This is a denylist over the command text, not a sandbox: it stops the
  * direct and quoted spellings a model actually writes, but a worker that
- * builds the command indirectly (an alias, a script file, `Invoke-Expression`,
- * an encoded command) is not stopped by it. The real boundaries are the
+ * builds the command indirectly (a script file, `Invoke-Expression`, an
+ * encoded command, a shell escape such as `pu\sh`) is not stopped by it. The real boundaries are the
  * write-path check, the credit cap and the per-worker COPILOT_HOME.
  * Patterns run on {@link normalizeShellCommand}'s output.
  */
@@ -56,7 +65,10 @@ export declare const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{
     re: RegExp;
     reason: string;
 }>;
-/** Strip quotes around single tokens (`"omg" 'team'` -> `omg team`) so quoting cannot dodge a pattern. */
+/**
+ * Drop empty quotes (`c''ommit` -> `commit`), then strip quotes around single
+ * tokens (`"omg" 'team'` -> `omg team`), so quoting cannot dodge a pattern.
+ */
 export declare function normalizeShellCommand(command: string): string;
 /** True when `p` is `root` or lies below it (realpath, case-folded on win32). */
 export declare function isUnderRoot(p: string, root: string, platform?: NodeJS.Platform): boolean;
