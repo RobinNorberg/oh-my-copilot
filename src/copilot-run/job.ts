@@ -319,17 +319,56 @@ function git(cwd: string, args: string[]): string | null {
 const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 /**
+ * `-c` pairs that switch off every filter driver a config level the job's
+ * agent can write (local, worktree, global, an include, the command line)
+ * defines: empty `clean`, `smudge` and `process`, `required=false`. Git runs
+ * a driver only when its command is non-empty, so a diff against the working
+ * tree then reads file bytes as they are. A driver set only in the system
+ * config (admin rights to write; Git for Windows ships `filter.lfs` there) is
+ * kept. Listing the config runs nothing. Null when the drivers cannot be
+ * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
+ * the caller fails closed.
+ */
+export function filterDriverOverrides(cwd: string): string[] | null {
+  let out: string;
+  try {
+    out = execFileSync('git', ['-c', 'core.fsmonitor=false', 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
+  } catch (err) {
+    // Exit 1: no key matches.
+    return (err as { status?: number }).status === 1 ? [] : null;
+  }
+  const parts = out.split('\0');
+  const names = new Set<string>();
+  // `--show-scope --null`: scope NUL key NUL, per entry.
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [scope, key] = [parts[i], parts[i + 1]];
+    const dot = key.lastIndexOf('.');
+    if (!key.startsWith('filter.') || dot <= 'filter'.length) return null;
+    const name = key.slice('filter.'.length, dot);
+    if (/[=\r\n]/.test(name)) return null;
+    if (scope !== 'system') names.add(name);
+  }
+  return [...names].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`]));
+}
+
+/**
  * What changed in the repository around `cwd` since `base`; null when git
  * cannot tell. Run at the toplevel (cwd may be a subdirectory), so every path
  * is root-relative and untracked files outside the subdirectory count too.
+ *
+ * The job's agent may have written the worktree's attributes and config, and
+ * omg factory run reads this summary before its tamper check, so the diff
+ * runs no external diff driver, no textconv, no fsmonitor and no filter
+ * driver (filterDriverOverrides).
  */
 export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = []): ChangeSummary | null {
   if (!base) return null;
   const top = git(cwd, ['rev-parse', '--show-toplevel']);
   if (!top) return null;
-  // No external diff driver or textconv: the worktree's attributes are the job's to write.
-  const stat = git(top, ['diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
-  const names = git(top, ['diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
+  const noFilters = filterDriverOverrides(top);
+  if (noFilters === null) return null;
+  const stat = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+  const names = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
   const untrackedFiles = lines(git(top, ['ls-files', '--others', '--exclude-standard']));

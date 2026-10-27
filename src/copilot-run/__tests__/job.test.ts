@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CopilotRunManager,
   STOP_CONTINUATION_SKIP_TOKEN,
+  filterDriverOverrides,
   reviewProfileDenial,
+  summarizeChanges,
 } from '../job.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls } from './fake-sdk.js';
@@ -243,5 +245,39 @@ describe('copilot_run lane skip token in the Stop hook scripts', () => {
     const lane = { ...homeEnv, OMC_SKIP_HOOKS: STOP_CONTINUATION_SKIP_TOKEN };
     expect(runStopHook('workflow-drift-guard.mjs', verdict, lane).decision).toBeUndefined();
     expect(runStopHook('code-simplifier.mjs', {}, lane)).toEqual({ continue: true });
+  });
+});
+
+describe('copilot_run change summary', () => {
+  it('runs no clean filter the job planted (required, or under a dotted name), but still sees the change', () => {
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    const marker = join(root, 'pwned').replace(/\\/g, '/');
+    gitIn(repo, 'config', 'filter.evil.clean', `touch "${marker}"; cat`);
+    gitIn(repo, 'config', 'filter.evil.required', 'true');
+    gitIn(repo, 'config', 'filter.other.name.with.dots.clean', `touch "${marker}"; cat`);
+    writeFileSync(join(repo, '.gitattributes'), 'README.md filter=evil\n*.txt filter=other.name.with.dots\n');
+    writeFileSync(join(repo, 'README.md'), 'changed by the job\n');
+    writeFileSync(join(repo, 'notes.txt'), 'x\n');
+    gitIn(repo, 'add', '-N', 'notes.txt');
+    // Control: a plain diff runs the planted driver.
+    gitIn(repo, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--');
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+
+    const summary = summarizeChanges(repo, base);
+    expect(existsSync(marker)).toBe(false);
+    expect(summary?.changedFiles).toEqual(expect.arrayContaining(['README.md', 'notes.txt']));
+  });
+
+  it('lists every filter driver name and fails closed on one that cannot be overridden', () => {
+    gitIn(repo, 'config', 'filter.a.clean', 'x');
+    gitIn(repo, 'config', 'filter.b.c.smudge', 'y');
+    expect(filterDriverOverrides(repo)).toEqual([
+      '-c', 'filter.a.clean=', '-c', 'filter.a.smudge=', '-c', 'filter.a.process=', '-c', 'filter.a.required=false',
+      '-c', 'filter.b.c.clean=', '-c', 'filter.b.c.smudge=', '-c', 'filter.b.c.process=', '-c', 'filter.b.c.required=false',
+    ]);
+    gitIn(repo, 'config', 'filter.x=y.clean', 'z');
+    expect(filterDriverOverrides(repo)).toBeNull();
+    expect(summarizeChanges(repo, gitIn(repo, 'rev-parse', 'HEAD'))).toBeNull();
   });
 });
