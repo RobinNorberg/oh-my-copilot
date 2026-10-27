@@ -1769,14 +1769,23 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `cwd`        | Show current working directory                                                                                       | `false` |
 | `gitRepo`    | Show git repository name                                                                                             | `false` |
 | `gitBranch`  | Show current git branch                                                                                              | `false` |
-| `omcLabel`   | Show [OMC] label                                                                                                     | `true`  |
-| `updateNotification` | Show available-update prompt text after the OMC label                                                                  | `true`  |
+| `omcLabel`   | Show the `[OMG#version]` label. `omgLabel` is an alias, and both names work in `layout` and `elementOrder`           | `true`  |
+| `updateNotification` | Show the available-update arrow after the label and the `updateHint` line with the update command                    | `true`  |
 | `contextBar` | Show context window usage                                                                                            | `true`  |
 | `agents`     | Show active agents count                                                                                             | `true`  |
 | `todos`      | Show todo progress                                                                                                   | `true`  |
 | `ralph`      | Show ralph loop status                                                                                               | `true`  |
 | `autopilot`  | Show autopilot status                                                                                                | `true`  |
 | `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
+
+**Update hint.** When an OMC update is available, the label reads `[OMG#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
+
+```
+[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc
+[!] omg 5.13.2 - paste: ! npm i -g oh-my-copilot@latest
+```
+
+The first line is for a Copilot CLI plugin install, the second for an npm install. Under Claude Code, a plugin install gets `claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc`, and the label and a `[!] claude ...` line also report a Claude Code update. Under Copilot CLI the HUD shows no Claude Code or Copilot CLI hint, because Copilot updates itself. The session-start hook refreshes the update cache at most every 6 hours, and earlier after an update or a channel switch.
 
 Additional `omcHud` layout and label options (top-level):
 

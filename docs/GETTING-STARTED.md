@@ -157,7 +157,7 @@ This loads agents, skills, and commands directly from your checkout without copy
 
 ### Updates
 
-OMC automatically checks for updates every 24 hours. To update manually, run `copilot plugin update oh-my-copilot@omc` (or re-run the plugin install command).
+OMC checks for updates at session start, at most every 6 hours, and earlier after an update or a switch between plugin and npm installs. A plugin install reads the latest version from the marketplace on `main`, and an npm install reads npm `latest`. To update a plugin install, run `copilot plugin update oh-my-copilot@omc` in a shell or `/plugin update oh-my-copilot@omc` inside Copilot CLI. To update an npm install, run `npm i -g oh-my-copilot@latest`.
 
 > ⚠️ **Warning:** After a plugin update, run `/oh-my-copilot:omc-setup` again to apply the latest configuration.
 
