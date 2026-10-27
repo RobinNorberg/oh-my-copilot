@@ -5,19 +5,24 @@
  * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Claude Code and outputs formatted statusline.
  */
-import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelId, getEffortLevel, getModelName, getRateLimitsFromStdin, stabilizeContextPercent, } from "./stdin.js";
+import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelId, getEffortLevel, getModelName, getRateLimitsFromStdin, stabilizeContextPercent, getAiUsed, getCopilotContextPercent, getCopilotModelName, getCopilotTokenUsage, getSessionDurationMs, } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
+import { readCopilotEvents, resolveCopilotEventsPath } from "./copilot-events.js";
 import { readHudState, readHudConfig, getRunningTasks, writeHudState, initializeHUDState, } from "./state.js";
 import { readRalphStateForHud, readPrdStateForHud, readAutopilotStateForHud, } from "./omc-state.js";
 import { getUsage, getSubscriptionInfo } from "./usage-api.js";
 import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
+import { detectHudHost } from "./host.js";
+import { resolveCachedOmcUpdate } from "./elements/update-hint.js";
 import { refreshMissionBoardState } from "./mission-board.js";
+import { readTeamStateForHud } from "./elements/team.js";
+import { readUltragoalStateForHud } from "./elements/ultragoal.js";
 import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
-import { compareVersions } from "../features/auto-update.js";
+import { compareVersions, getOmcUpdateChannel } from "../features/auto-update.js";
 import { resolveToWorktreeRoot, resolveTranscriptPath, withWorktreePathRenderScope, } from "../lib/worktree-paths.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
@@ -167,8 +172,8 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
 /**
  * Calculate session health from session start time and context usage.
  */
-async function calculateSessionHealth(sessionStart, contextPercent) {
-    const durationMs = sessionStart ? Date.now() - sessionStart.getTime() : 0;
+async function calculateSessionHealth(sessionStart, contextPercent, reportedDurationMs = null) {
+    const durationMs = reportedDurationMs ?? (sessionStart ? Date.now() - sessionStart.getTime() : 0);
     const durationMinutes = Math.floor(durationMs / 60_000);
     let health = "healthy";
     if (durationMinutes > 120 || contextPercent > 85)
@@ -243,9 +248,11 @@ async function mainImpl(watchMode = false, skipInit = false) {
             return;
         }
         const cwd = resolveToWorktreeRoot(stdin.cwd || undefined);
+        const host = detectHudHost(stdin);
+        const isCopilotHost = host === "copilot";
         // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
         // Clone to avoid mutating shared DEFAULT_HUD_CONFIG when applying runtime width detection
-        const config = { ...readHudConfig() };
+        const config = { ...readHudConfig(host) };
         // Auto-detect terminal width if not explicitly configured (#1726)
         // Prefer live TTY columns (responds to resize) over static COLUMNS env var
         if (config.maxWidth === undefined) {
@@ -261,11 +268,20 @@ async function mainImpl(watchMode = false, skipInit = false) {
         }
         // Resolve worktree-mismatched transcript paths (issue #1094)
         const resolvedTranscriptPath = resolveTranscriptPath(stdin.transcript_path, cwd);
-        // Parse transcript for agents and todos
-        const transcriptData = await parseTranscript(resolvedTranscriptPath, {
+        // Parse transcript for agents and todos. Copilot has no transcript: its
+        // session-state events.jsonl feeds the same fields.
+        const copilotEvents = isCopilotHost
+            ? readCopilotEvents(resolveCopilotEventsPath(stdin.transcript_path, stdin.session_id), { staleTaskThresholdMinutes: config.staleTaskThresholdMinutes })
+            : null;
+        const transcriptData = copilotEvents ?? await parseTranscript(resolvedTranscriptPath, {
             staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
         });
-        const currentSessionId = extractSessionIdFromPath(resolvedTranscriptPath ?? stdin.transcript_path ?? "");
+        const copilotTokens = isCopilotHost ? getCopilotTokenUsage(stdin) : null;
+        // Copilot's transcript_path is the session-state directory, so its session
+        // id comes from the payload; Claude keeps the transcript-path rule.
+        const currentSessionId = isCopilotHost && stdin.session_id
+            ? stdin.session_id
+            : extractSessionIdFromPath(resolvedTranscriptPath ?? stdin.transcript_path ?? "");
         // Initialize HUD state (cleanup stale/orphaned tasks)
         // Must happen after cwd resolution so cleanup targets the correct project directory
         if (!skipInit) {
@@ -308,10 +324,11 @@ async function mainImpl(watchMode = false, skipInit = false) {
         // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
         // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
         const stdinRateLimits = getRateLimitsFromStdin(stdin);
-        const usageResult = config.elements.rateLimits === false
+        // The Anthropic usage API is meaningless under Copilot (no network there).
+        const usageResult = config.elements.rateLimits === false || isCopilotHost
             ? null
             : await getUsage({ clientVersion: stdin.version });
-        const rateLimitsResult = config.elements.rateLimits === false
+        const rateLimitsResult = config.elements.rateLimits === false || isCopilotHost
             ? null
             : mergeStdinRateLimits(stdinRateLimits, usageResult);
         // Fetch custom rate limit buckets (if configured)
@@ -322,7 +339,8 @@ async function mainImpl(watchMode = false, skipInit = false) {
         let omcVersion = null;
         let updateAvailable = null;
         let omcUpdateSource = null;
-        const claudeCodeVersion = stdin.version ?? null;
+        // Under Copilot stdin.version is the Copilot CLI version, not Claude Code's.
+        const claudeCodeVersion = isCopilotHost ? null : (stdin.version ?? null);
         let claudeCodeUpdateAvailable = null;
         try {
             omcVersion = getRuntimePackageVersion();
@@ -341,13 +359,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
             await access(updateCacheFile);
             const content = await readFile(updateCacheFile, "utf-8");
             const cached = JSON.parse(content);
-            if (cached?.latestVersion &&
-                omcVersion &&
-                compareVersions(omcVersion, cached.latestVersion) < 0) {
-                updateAvailable = cached.latestVersion;
-            }
-            if (cached?.source === "npm" || cached?.source === "marketplace") {
-                omcUpdateSource = cached.source;
+            const cachedUpdate = resolveCachedOmcUpdate(cached, omcVersion, getOmcUpdateChannel(), compareVersions);
+            if (cachedUpdate) {
+                updateAvailable = cachedUpdate.latestVersion;
+                omcUpdateSource = cachedUpdate.source;
             }
             // claudeCodeLatestVersion is absent on caches written before the
             // Claude Code check existed; treat that as "no update known".
@@ -365,7 +380,8 @@ async function mainImpl(watchMode = false, skipInit = false) {
         }
         // Session summary: read cached state and trigger background regeneration if needed
         let sessionSummary = null;
-        const sessionSummaryEnabled = config.elements.sessionSummary ?? false;
+        // The summary spawns `claude -p`, which Copilot sessions cannot rely on.
+        const sessionSummaryEnabled = !isCopilotHost && (config.elements.sessionSummary ?? false);
         if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
             const omcStateDir = join(getOmcRoot(cwd), "state");
             sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
@@ -382,11 +398,18 @@ async function mainImpl(watchMode = false, skipInit = false) {
         const missionBoard = missionBoardEnabled
             ? await refreshMissionBoardState(cwd, config.missionBoard)
             : null;
-        const contextPercent = getContextPercent(stdin);
-        const payloadEstimate = estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
+        const contextPercent = isCopilotHost
+            ? getCopilotContextPercent(stdin)
+            : getContextPercent(stdin);
+        // The payload estimate reads a Claude transcript; Copilot compacts itself.
+        const payloadEstimate = isCopilotHost
+            ? null
+            : estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
         // Read subscription info for enterprise detection (best-effort).
         // Rate-limit rendering must not depend on this metadata being present.
         const subscriptionInfo = (() => {
+            if (isCopilotHost)
+                return { subscriptionType: null, rateLimitTier: null };
             try {
                 return getSubscriptionInfo() ?? { subscriptionType: null, rateLimitTier: null };
             }
@@ -396,11 +419,12 @@ async function mainImpl(watchMode = false, skipInit = false) {
         })();
         // Build render context
         const context = {
+            host,
             contextPercent,
             contextDisplayScope: currentSessionId ?? cwd,
-            modelName: getModelName(stdin),
+            modelName: isCopilotHost ? getCopilotModelName(stdin) : getModelName(stdin),
             modelId: getModelId(stdin),
-            effortLevel: getEffortLevel(stdin),
+            effortLevel: copilotEvents ? copilotEvents.reasoningEffort : getEffortLevel(stdin),
             ralph,
             ultrawork: null,
             prd,
@@ -415,9 +439,13 @@ async function mainImpl(watchMode = false, skipInit = false) {
             customBuckets,
             pendingPermission: transcriptData.pendingPermission || null,
             thinkingState: transcriptData.thinkingState || null,
-            sessionHealth: await calculateSessionHealth(sessionStart, contextPercent),
-            lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
-            sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
+            sessionHealth: await calculateSessionHealth(sessionStart, contextPercent, isCopilotHost ? getSessionDurationMs(stdin) : null),
+            lastRequestTokenUsage: copilotTokens
+                ? copilotTokens.lastRequest
+                : transcriptData.lastRequestTokenUsage || null,
+            sessionTotalTokens: copilotTokens
+                ? copilotTokens.sessionTotal
+                : transcriptData.sessionTotalTokens ?? null,
             omcVersion,
             updateAvailable,
             omcUpdateSource,
@@ -429,10 +457,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
             promptTime: hudState?.lastPromptTimestamp
                 ? new Date(hudState.lastPromptTimestamp)
                 : null,
-            apiKeySource: config.elements.apiKeySource
+            apiKeySource: config.elements.apiKeySource && !isCopilotHost
                 ? detectApiKeySource(cwd)
                 : null,
-            apiKeyMode: detectApiKeySource(cwd) !== null,
+            apiKeyMode: !isCopilotHost && detectApiKeySource(cwd) !== null,
             subscriptionType: subscriptionInfo.subscriptionType,
             rateLimitTier: subscriptionInfo.rateLimitTier,
             profileName: process.env.COPILOT_HOME
@@ -442,6 +470,16 @@ async function mainImpl(watchMode = false, skipInit = false) {
             lastToolName: transcriptData.lastToolName,
             recentTools: transcriptData.recentTools,
             payloadEstimate,
+            ...(copilotEvents
+                ? {
+                    aiUsed: getAiUsed(stdin),
+                    copilotMode: copilotEvents.mode,
+                    compacting: copilotEvents.compacting,
+                    copilotAllowAll: stdin.allow_all_enabled === true,
+                }
+                : {}),
+            ...(config.elements.team === true ? { team: readTeamStateForHud(cwd) } : {}),
+            ...(config.elements.ultragoal === true ? { ultragoal: readUltragoalStateForHud(cwd) } : {}),
         };
         // Debug: log data if OMC_DEBUG is set
         if (process.env.OMC_DEBUG) {

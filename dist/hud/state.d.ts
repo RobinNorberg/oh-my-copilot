@@ -5,6 +5,7 @@
  * Follows patterns from ultrawork-state.
  */
 import type { OmcHudState, BackgroundTask, HudConfig } from "./types.js";
+import type { HudHost } from "./host.js";
 /**
  * Read HUD state from disk (checks new local and legacy local only)
  */
@@ -31,8 +32,11 @@ export declare function getBackgroundTaskCount(state: OmcHudState | null): {
 /**
  * Read HUD configuration from disk.
  * Priority: settings.json > hud-config.json (legacy) > defaults
+ *
+ * `host: 'copilot'` adds the Copilot overlay (COPILOT_HOST_DEFAULTS and
+ * COPILOT_HOST_DROPPED). Without a host the result is the upstream config.
  */
-export declare function readHudConfig(): HudConfig;
+export declare function readHudConfig(host?: HudHost): HudConfig;
 /**
  * Write HUD configuration to ~/.claude/settings.json (omcHud key)
  */

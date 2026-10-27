@@ -584,14 +584,14 @@ var require_help = __commonJS({
        * @return {string}
        *
        */
-      wrap(str4, width, indent, minColumnWidth = 40) {
+      wrap(str5, width, indent, minColumnWidth = 40) {
         const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
         const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str4.match(manualIndent)) return str4;
+        if (str5.match(manualIndent)) return str5;
         const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str4;
-        const leadingStr = str4.slice(0, indent);
-        const columnText = str4.slice(indent).replace("\r\n", "\n");
+        if (columnWidth < minColumnWidth) return str5;
+        const leadingStr = str5.slice(0, indent);
+        const columnText = str5.slice(indent).replace("\r\n", "\n");
         const indentString = " ".repeat(indent);
         const zeroWidthSpace = "\u200B";
         const breaks = `\\s${zeroWidthSpace}`;
@@ -860,9 +860,9 @@ var require_option = __commonJS({
         return option.negate === (negativeValue === value);
       }
     };
-    function camelcase(str4) {
-      return str4.split("-").reduce((str5, word) => {
-        return str5 + word[0].toUpperCase() + word.slice(1);
+    function camelcase(str5) {
+      return str5.split("-").reduce((str6, word) => {
+        return str6 + word[0].toUpperCase() + word.slice(1);
       });
     }
     function splitOptionFlags(flags) {
@@ -1016,11 +1016,11 @@ var require_command = __commonJS({
         this._showHelpAfterError = false;
         this._showSuggestionAfterError = true;
         this._outputConfiguration = {
-          writeOut: (str4) => process3.stdout.write(str4),
-          writeErr: (str4) => process3.stderr.write(str4),
+          writeOut: (str5) => process3.stdout.write(str5),
+          writeErr: (str5) => process3.stderr.write(str5),
           getOutHelpWidth: () => process3.stdout.isTTY ? process3.stdout.columns : void 0,
           getErrHelpWidth: () => process3.stderr.isTTY ? process3.stderr.columns : void 0,
-          outputError: (str4, write) => write(str4)
+          outputError: (str5, write) => write(str5)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -2656,18 +2656,18 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str4, flags, description) {
-        if (str4 === void 0) return this._version;
-        this._version = str4;
+      version(str5, flags, description) {
+        if (str5 === void 0) return this._version;
+        this._version = str5;
         flags = flags || "-V, --version";
         description = description || "output the version number";
         const versionOption = this.createOption(flags, description);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str4}
+          this._outputConfiguration.writeOut(`${str5}
 `);
-          this._exit(0, "commander.version", str4);
+          this._exit(0, "commander.version", str5);
         });
         return this;
       }
@@ -2678,10 +2678,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {object} [argsDescription]
        * @return {(string|Command)}
        */
-      description(str4, argsDescription) {
-        if (str4 === void 0 && argsDescription === void 0)
+      description(str5, argsDescription) {
+        if (str5 === void 0 && argsDescription === void 0)
           return this._description;
-        this._description = str4;
+        this._description = str5;
         if (argsDescription) {
           this._argsDescription = argsDescription;
         }
@@ -2693,9 +2693,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      summary(str4) {
-        if (str4 === void 0) return this._summary;
-        this._summary = str4;
+      summary(str5) {
+        if (str5 === void 0) return this._summary;
+        this._summary = str5;
         return this;
       }
       /**
@@ -2743,8 +2743,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      usage(str4) {
-        if (str4 === void 0) {
+      usage(str5) {
+        if (str5 === void 0) {
           if (this._usage) return this._usage;
           const args = this.registeredArguments.map((arg) => {
             return humanReadableArgName(arg);
@@ -2755,7 +2755,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             this.registeredArguments.length ? args : []
           ).join(" ");
         }
-        this._usage = str4;
+        this._usage = str5;
         return this;
       }
       /**
@@ -2764,9 +2764,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      name(str4) {
-        if (str4 === void 0) return this._name;
-        this._name = str4;
+      name(str5) {
+        if (str5 === void 0) return this._name;
+        this._name = str5;
         return this;
       }
       /**
@@ -7404,12 +7404,12 @@ function memoize(func, resolver) {
     throw new TypeError(FUNC_ERROR_TEXT);
   }
   var memoized = function() {
-    var args = arguments, key = resolver ? resolver.apply(this, args) : args[0], cache = memoized.cache;
-    if (cache.has(key)) {
-      return cache.get(key);
+    var args = arguments, key = resolver ? resolver.apply(this, args) : args[0], cache2 = memoized.cache;
+    if (cache2.has(key)) {
+      return cache2.get(key);
     }
     var result = func.apply(this, args);
-    memoized.cache = cache.set(key, result) || cache;
+    memoized.cache = cache2.set(key, result) || cache2;
     return result;
   };
   memoized.cache = new (memoize.Cache || _MapCache_default)();
@@ -8123,14 +8123,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str4 = "";
+  let str5 = "";
   for (let i = 0; i < length; i++) {
-    str4 += chars[Math.floor(Math.random() * chars.length)];
+    str5 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str4;
+  return str5;
 }
-function esc(str4) {
-  return JSON.stringify(str4);
+function esc(str5) {
+  return JSON.stringify(str5);
 }
 function isObject2(data) {
   return typeof data === "object" && data !== null && !Array.isArray(data);
@@ -8158,8 +8158,8 @@ function numKeys(data) {
   }
   return keyCount;
 }
-function escapeRegex(str4) {
-  return str4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str5) {
+  return str5.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -11039,7 +11039,7 @@ var init_sdk = __esm({
       }
       exports2._ = _;
       var plus = new _Code("+");
-      function str4(strs, ...args) {
+      function str5(strs, ...args) {
         const expr = [safeStringify(strs[0])];
         let i = 0;
         while (i < args.length) {
@@ -11050,7 +11050,7 @@ var init_sdk = __esm({
         optimize(expr);
         return new _Code(expr);
       }
-      exports2.str = str4;
+      exports2.str = str5;
       function addCodeArg(code, arg) {
         if (arg instanceof _Code)
           code.push(...arg._items);
@@ -11093,7 +11093,7 @@ var init_sdk = __esm({
         return;
       }
       function strConcat(c1, c2) {
-        return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str4`${c1}${c2}`;
+        return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str5`${c1}${c2}`;
       }
       exports2.strConcat = strConcat;
       function interpolate(x) {
@@ -12010,22 +12010,22 @@ var init_sdk = __esm({
         return (0, codegen_1._)`${topSchemaRef}${schemaPath}${(0, codegen_1.getProperty)(keyword)}`;
       }
       exports2.schemaRefOrVal = schemaRefOrVal;
-      function unescapeFragment(str4) {
-        return unescapeJsonPointer(decodeURIComponent(str4));
+      function unescapeFragment(str5) {
+        return unescapeJsonPointer(decodeURIComponent(str5));
       }
       exports2.unescapeFragment = unescapeFragment;
-      function escapeFragment(str4) {
-        return encodeURIComponent(escapeJsonPointer(str4));
+      function escapeFragment(str5) {
+        return encodeURIComponent(escapeJsonPointer(str5));
       }
       exports2.escapeFragment = escapeFragment;
-      function escapeJsonPointer(str4) {
-        if (typeof str4 == "number")
-          return `${str4}`;
-        return str4.replace(/~/g, "~0").replace(/\//g, "~1");
+      function escapeJsonPointer(str5) {
+        if (typeof str5 == "number")
+          return `${str5}`;
+        return str5.replace(/~/g, "~0").replace(/\//g, "~1");
       }
       exports2.escapeJsonPointer = escapeJsonPointer;
-      function unescapeJsonPointer(str4) {
-        return str4.replace(/~1/g, "/").replace(/~0/g, "~");
+      function unescapeJsonPointer(str5) {
+        return str5.replace(/~1/g, "/").replace(/~0/g, "~");
       }
       exports2.unescapeJsonPointer = unescapeJsonPointer;
       function eachItem(xs, f) {
@@ -12987,8 +12987,8 @@ var init_sdk = __esm({
           post(schema, jsonPtr, rootSchema, parentJsonPtr, parentKeyword, parentSchema, keyIndex);
         }
       }
-      function escapeJsonPtr(str4) {
-        return str4.replace(/~/g, "~0").replace(/\//g, "~1");
+      function escapeJsonPtr(str5) {
+        return str5.replace(/~/g, "~0").replace(/\//g, "~1");
       }
     });
     require_resolve = __commonJS2((exports2) => {
@@ -14043,14 +14043,14 @@ var init_sdk = __esm({
           return { host, isIPV6: false };
         }
       }
-      function stripLeadingZeros(str4, token) {
+      function stripLeadingZeros(str5, token) {
         let out = "";
         let skip = true;
-        const l = str4.length;
+        const l = str5.length;
         for (let i = 0; i < l; i++) {
-          const c = str4[i];
+          const c = str5[i];
           if (c === "0" && skip) {
-            if (i + 1 <= l && str4[i + 1] === token || i + 1 === l) {
+            if (i + 1 <= l && str5[i + 1] === token || i + 1 === l) {
               out += c;
               skip = false;
             }
@@ -14065,10 +14065,10 @@ var init_sdk = __esm({
         }
         return out;
       }
-      function findToken(str4, token) {
+      function findToken(str5, token) {
         let ind = 0;
-        for (let i = 0; i < str4.length; i++) {
-          if (str4[i] === token)
+        for (let i = 0; i < str5.length; i++) {
+          if (str5[i] === token)
             ind++;
         }
         return ind;
@@ -14597,7 +14597,7 @@ var init_sdk = __esm({
       var util_1 = require_util();
       var $dataRefSchema = require_data();
       var uri_1 = require_uri();
-      var defaultRegExp = (str4, flags) => new RegExp(str4, flags);
+      var defaultRegExp = (str5, flags) => new RegExp(str5, flags);
       defaultRegExp.code = "new RegExp";
       var META_IGNORE_OPTIONS = ["removeAdditional", "useDefaults", "coerceTypes"];
       var EXT_SCOPE_NAMES = /* @__PURE__ */ new Set([
@@ -15349,16 +15349,16 @@ var init_sdk = __esm({
     });
     require_ucs2length = __commonJS2((exports2) => {
       Object.defineProperty(exports2, "__esModule", { value: true });
-      function ucs2length(str4) {
-        const len = str4.length;
+      function ucs2length(str5) {
+        const len = str5.length;
         let length = 0;
         let pos = 0;
         let value;
         while (pos < len) {
           length++;
-          value = str4.charCodeAt(pos++);
+          value = str5.charCodeAt(pos++);
           if (value >= 55296 && value <= 56319 && pos < len) {
-            value = str4.charCodeAt(pos);
+            value = str5.charCodeAt(pos);
             if ((value & 64512) === 56320)
               pos++;
           }
@@ -17017,8 +17017,8 @@ var init_sdk = __esm({
       }
       var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
       var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-      function date4(str4) {
-        const matches = DATE.exec(str4);
+      function date4(str5) {
+        const matches = DATE.exec(str5);
         if (!matches)
           return false;
         const year = +matches[1];
@@ -17037,8 +17037,8 @@ var init_sdk = __esm({
       }
       var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
       function getTime(strictTimeZone) {
-        return function time3(str4) {
-          const matches = TIME.exec(str4);
+        return function time3(str5) {
+          const matches = TIME.exec(str5);
           if (!matches)
             return false;
           const hr = +matches[1];
@@ -17084,8 +17084,8 @@ var init_sdk = __esm({
       var DATE_TIME_SEPARATOR = /t|\s/i;
       function getDateTime(strictTimeZone) {
         const time3 = getTime(strictTimeZone);
-        return function date_time(str4) {
-          const dateTime = str4.split(DATE_TIME_SEPARATOR);
+        return function date_time(str5) {
+          const dateTime = str5.split(DATE_TIME_SEPARATOR);
           return dateTime.length === 2 && date4(dateTime[0]) && time3(dateTime[1]);
         };
       }
@@ -17110,13 +17110,13 @@ var init_sdk = __esm({
       }
       var NOT_URI_FRAGMENT = /\/|:/;
       var URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-      function uri(str4) {
-        return NOT_URI_FRAGMENT.test(str4) && URI.test(str4);
+      function uri(str5) {
+        return NOT_URI_FRAGMENT.test(str5) && URI.test(str5);
       }
       var BYTE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
-      function byte(str4) {
+      function byte(str5) {
         BYTE.lastIndex = 0;
-        return BYTE.test(str4);
+        return BYTE.test(str5);
       }
       var MIN_INT32 = -(2 ** 31);
       var MAX_INT32 = 2 ** 31 - 1;
@@ -17130,11 +17130,11 @@ var init_sdk = __esm({
         return true;
       }
       var Z_ANCHOR = /[^\\]\\Z/;
-      function regex(str4) {
-        if (Z_ANCHOR.test(str4))
+      function regex(str5) {
+        if (Z_ANCHOR.test(str5))
           return false;
         try {
-          new RegExp(str4);
+          new RegExp(str5);
           return true;
         } catch (e) {
           return false;
@@ -61480,6 +61480,7 @@ __export(auto_update_exports, {
   formatUpdateNotification: () => formatUpdateNotification,
   getInstalledVersion: () => getInstalledVersion,
   getOMCConfig: () => getOMCConfig,
+  getOmcUpdateChannel: () => getOmcUpdateChannel,
   getPendingUpdateVersion: () => getPendingUpdateVersion,
   hasPendingUpdateRestart: () => hasPendingUpdateRestart,
   initSilentAutoUpdate: () => initSilentAutoUpdate,
@@ -62254,9 +62255,35 @@ Error: ${npmError instanceof Error ? npmError.message : npmError}`
     };
   }
 }
+function toSlashPath(pathValue) {
+  return pathValue.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+function getOmcUpdateChannel(env2 = process.env, packageRoot2 = getRuntimePackageRoot()) {
+  const envRoot = env2.CLAUDE_PLUGIN_ROOT || env2.PLUGIN_ROOT;
+  const claudeCacheBase = toSlashPath((0, import_path72.join)(getCopilotConfigDir(), "plugins", "cache", "omc", "oh-my-copilot"));
+  if (envRoot) {
+    const root2 = toSlashPath(envRoot);
+    if (root2 === claudeCacheBase || root2.startsWith(`${claudeCacheBase}/`) || /\/plugins\/cache\/omc\/oh-my-copilot\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(root2)) {
+      return "marketplace";
+    }
+  }
+  const isCopilotPluginRoot = (root2) => !!root2 && `${toSlashPath(root2)}/`.includes("/installed-plugins/");
+  return isCopilotPluginRoot(envRoot) || isCopilotPluginRoot(packageRoot2) ? "copilot-plugin" : "npm";
+}
 function formatUpdateNotification(checkResult) {
   if (!checkResult.updateAvailable) {
     return `oh-my-copilot is up to date (v${checkResult.currentVersion ?? "unknown"})`;
+  }
+  const channel = getOmcUpdateChannel();
+  let commandLines = ["  To update, run: /update", "  Or reinstall via: /plugin install oh-my-copilot"];
+  const copilotHost = detectHostCliSignal() === "copilot";
+  if (channel === "copilot-plugin" || channel === "marketplace" && copilotHost) {
+    commandLines = [
+      "  To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc",
+      "  Or inside Copilot CLI: /plugin update oh-my-copilot@omc"
+    ];
+  } else if (channel === "npm" && copilotHost) {
+    commandLines = ["  To update, run: npm i -g oh-my-copilot@latest"];
   }
   const lines3 = [
     "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557",
@@ -62266,8 +62293,7 @@ function formatUpdateNotification(checkResult) {
     `  Current version: ${checkResult.currentVersion ?? "unknown"}`,
     `  Latest version:  ${checkResult.latestVersion}`,
     "",
-    "  To update, run: /update",
-    "  Or reinstall via: /plugin install oh-my-copilot",
+    ...commandLines,
     ""
   ];
   if (checkResult.releaseNotes && checkResult.releaseNotes !== "No release notes available.") {
@@ -62466,10 +62492,11 @@ var init_auto_update = __esm({
     init_semver_compare();
     init_installer();
     init_config_dir();
+    init_host_signal();
     init_paths();
     init_security_config();
     init_paths3();
-    REPO_OWNER = "Yeachan-Heo";
+    REPO_OWNER = "RobinNorberg";
     REPO_NAME = "oh-my-copilot";
     GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
     GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
@@ -63048,36 +63075,36 @@ function getCharWidth(char) {
   if (isCJKCharacter(codePoint)) return 2;
   return 1;
 }
-function stringWidth(str4) {
-  if (!str4) return 0;
-  const stripped = stripAnsi(str4);
+function stringWidth(str5) {
+  if (!str5) return 0;
+  const stripped = stripAnsi(str5);
   let width = 0;
   for (const char of stripped) {
     width += getCharWidth(char);
   }
   return width;
 }
-function stripAnsi(str4) {
-  return str4.replace(
+function stripAnsi(str5) {
+  return str5.replace(
     /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
     ""
   );
 }
-function truncateToWidth(str4, maxWidth, suffix = "...") {
-  if (!str4 || maxWidth <= 0) return "";
-  const strWidth = stringWidth(str4);
-  if (strWidth <= maxWidth) return str4;
+function truncateToWidth(str5, maxWidth, suffix = "...") {
+  if (!str5 || maxWidth <= 0) return "";
+  const strWidth = stringWidth(str5);
+  if (strWidth <= maxWidth) return str5;
   const suffixWidth = stringWidth(suffix);
   const targetWidth = maxWidth - suffixWidth;
   if (targetWidth <= 0) {
     return truncateToWidthNoSuffix(suffix, maxWidth);
   }
-  return truncateToWidthNoSuffix(str4, targetWidth) + suffix;
+  return truncateToWidthNoSuffix(str5, targetWidth) + suffix;
 }
-function truncateToWidthNoSuffix(str4, maxWidth) {
+function truncateToWidthNoSuffix(str5, maxWidth) {
   let width = 0;
   let result = "";
-  for (const char of stripAnsi(str4)) {
+  for (const char of stripAnsi(str5)) {
     const charWidth = getCharWidth(char);
     if (width + charWidth > maxWidth) break;
     result += char;
@@ -63196,6 +63223,7 @@ var mission_board_exports = {};
 __export(mission_board_exports, {
   DEFAULT_MISSION_BOARD_CONFIG: () => DEFAULT_MISSION_BOARD_CONFIG,
   readMissionBoardState: () => readMissionBoardState,
+  readTeamMissions: () => readTeamMissions,
   recordMissionAgentStart: () => recordMissionAgentStart,
   recordMissionAgentStop: () => recordMissionAgentStop,
   refreshMissionBoardState: () => refreshMissionBoardState,
@@ -63215,6 +63243,30 @@ function readJsonSafe(path30) {
   } catch {
     return null;
   }
+}
+function mtimeMsSafe(path30) {
+  try {
+    return (0, import_node_fs6.statSync)(path30).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+function newestTeamActivityMs(teamRoot) {
+  let newest = Math.max(
+    mtimeMsSafe((0, import_node_path9.join)(teamRoot, "config.json")),
+    mtimeMsSafe((0, import_node_path9.join)(teamRoot, "events.jsonl")),
+    mtimeMsSafe((0, import_node_path9.join)(teamRoot, "sdk-events.jsonl"))
+  );
+  try {
+    const workers = (0, import_node_fs6.readdirSync)((0, import_node_path9.join)(teamRoot, "workers"), { withFileTypes: true }).filter((entry2) => entry2.isDirectory()).slice(0, MAX_ACTIVITY_WORKER_DIRS);
+    for (const worker of workers) {
+      for (const file of ["heartbeat.json", "status.json"]) {
+        newest = Math.max(newest, mtimeMsSafe((0, import_node_path9.join)(teamRoot, "workers", worker.name, file)));
+      }
+    }
+  } catch {
+  }
+  return newest;
 }
 function readJsonLinesSafe(path30) {
   if (!(0, import_node_fs6.existsSync)(path30)) return [];
@@ -63419,9 +63471,10 @@ function deriveWorkerStatus(workerStatus, task) {
   return "waiting";
 }
 function collectTeamMission(teamRoot, teamName, config2) {
-  const teamConfig = readJsonSafe((0, import_node_path9.join)(teamRoot, "config.json"));
+  const configPath = (0, import_node_path9.join)(teamRoot, "config.json");
+  const teamConfig = readJsonSafe(configPath);
   if (!teamConfig) return null;
-  const workers = canonicalizeWorkers((Array.isArray(teamConfig.workers) ? teamConfig.workers : []).map((worker, index) => ({
+  const workers = canonicalizeWorkers((Array.isArray(teamConfig.workers) ? teamConfig.workers : []).filter((worker) => typeof worker === "object" && worker !== null).map((worker, index) => ({
     name: worker.name ?? "",
     index: index + 1,
     role: worker.role ?? "worker",
@@ -63440,7 +63493,7 @@ function collectTeamMission(teamRoot, teamName, config2) {
   };
   const timeline = [];
   for (const event of readJsonLinesSafe((0, import_node_path9.join)(teamRoot, "events.jsonl"))) {
-    if (!event.created_at || !event.type) continue;
+    if (!event?.created_at || !event.type) continue;
     if (event.type === "task_completed" || event.type === "task_failed") {
       timeline.push({
         id: `event:${event.event_id || `${event.type}:${event.created_at}`}`,
@@ -63504,7 +63557,7 @@ function collectTeamMission(teamRoot, teamName, config2) {
       updatedAt: latest(workerStatus?.updated_at, heartbeat?.last_turn_at, latestTimeline?.at, completedTask?.completed_at)
     };
   });
-  const createdAt = teamConfig.created_at || latest(...timeline.map((entry2) => entry2.at)) || (/* @__PURE__ */ new Date()).toISOString();
+  const createdAt = teamConfig.created_at || latest(...timeline.map((entry2) => entry2.at)) || new Date(mtimeMsSafe(configPath) || Date.now()).toISOString();
   const updatedAt = latest(createdAt, ...timeline.map((entry2) => entry2.at), ...agents.map((agent) => agent.updatedAt)) || createdAt;
   return {
     id: `team:${teamName}`,
@@ -63533,12 +63586,29 @@ function mergeMissions(previous, teamMissions, config2) {
     return parseTime(right.updatedAt) - parseTime(left.updatedAt);
   }).slice(0, config2.maxMissions);
 }
+function readTeamMissions(directory, rawConfig = DEFAULT_CONFIG4, skipOlderThanMs, now2 = Date.now()) {
+  const config2 = resolveConfig(rawConfig);
+  const teamsRoot = (0, import_node_path9.join)(getOmcRoot(directory), "state", "team");
+  if (!(0, import_node_fs6.existsSync)(teamsRoot)) return [];
+  const cutoff = skipOlderThanMs === void 0 ? null : now2 - skipOlderThanMs;
+  const missions = [];
+  for (const entry2 of (0, import_node_fs6.readdirSync)(teamsRoot, { withFileTypes: true })) {
+    if (!entry2.isDirectory()) continue;
+    const teamRoot = (0, import_node_path9.join)(teamsRoot, entry2.name);
+    if (cutoff !== null && newestTeamActivityMs(teamRoot) < cutoff) continue;
+    try {
+      const mission = collectTeamMission(teamRoot, entry2.name, config2);
+      if (mission) missions.push(mission);
+    } catch {
+    }
+  }
+  return missions;
+}
 function refreshMissionBoardState(directory, rawConfig = DEFAULT_CONFIG4, sessionId) {
   const effectiveSessionId = sessionId ?? getProcessSessionId();
   const config2 = resolveConfig(rawConfig);
   const previous = readMissionBoardState(directory, effectiveSessionId);
-  const teamsRoot = (0, import_node_path9.join)(getOmcRoot(directory), "state", "team");
-  const teamMissions = (0, import_node_fs6.existsSync)(teamsRoot) ? (0, import_node_fs6.readdirSync)(teamsRoot, { withFileTypes: true }).filter((entry2) => entry2.isDirectory()).map((entry2) => collectTeamMission((0, import_node_path9.join)(teamsRoot, entry2.name), entry2.name, config2)).filter((mission) => Boolean(mission)) : [];
+  const teamMissions = readTeamMissions(directory, config2);
   const state = {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     missions: mergeMissions(previous, teamMissions, config2)
@@ -63573,7 +63643,7 @@ function renderMissionBoard(state, rawConfig = DEFAULT_CONFIG4) {
   }
   return lines3;
 }
-var import_node_fs6, import_node_path9, DEFAULT_CONFIG4, STATUS_ORDER, DEFAULT_MISSION_BOARD_CONFIG;
+var import_node_fs6, import_node_path9, DEFAULT_CONFIG4, STATUS_ORDER, DEFAULT_MISSION_BOARD_CONFIG, MAX_ACTIVITY_WORKER_DIRS;
 var init_mission_board = __esm({
   "src/hud/mission-board.ts"() {
     "use strict";
@@ -63598,6 +63668,7 @@ var init_mission_board = __esm({
       done: 3
     };
     DEFAULT_MISSION_BOARD_CONFIG = DEFAULT_CONFIG4;
+    MAX_ACTIVITY_WORKER_DIRS = 64;
   }
 });
 
@@ -63623,7 +63694,7 @@ function resolveHudLabels(locale, labels) {
     ...sanitizeHudLabels(labels)
   };
 }
-var DEFAULT_HUD_LABELS, HUD_LOCALE_LABELS, HUD_LABEL_KEYS, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_USAGE_POLL_INTERVAL_MS, DEFAULT_HUD_CONFIG, PRESET_CONFIGS;
+var DEFAULT_HUD_LABELS, HUD_LOCALE_LABELS, HUD_LABEL_KEYS, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_USAGE_POLL_INTERVAL_MS, COPILOT_HOST_DEFAULTS, COPILOT_HOST_DROPPED, DEFAULT_HUD_CONFIG, PRESET_CONFIGS;
 var init_types9 = __esm({
   "src/hud/types.ts"() {
     "use strict";
@@ -63669,12 +63740,13 @@ var init_types9 = __esm({
     DEFAULT_ELEMENT_ORDER = {
       line1: ["hostname", "cwd", "gitRepo", "gitBranch", "gitStatus", "apiKeySource", "profile"],
       main: [
-        "omcLabel",
+        "omgLabel",
         "model",
         "effort",
         "claudeLabel",
         "enterpriseCost",
         "creditBudget",
+        "copilotMode",
         "rateLimits",
         "customBuckets",
         "permission",
@@ -63684,6 +63756,8 @@ var init_types9 = __esm({
         "tokens",
         "ralph",
         "autopilot",
+        "team",
+        "ultragoal",
         "prd",
         "skills",
         "lastSkill",
@@ -63698,6 +63772,24 @@ var init_types9 = __esm({
       detail: ["missionBoard", "agents", "contextWarning", "payloadWarning", "updateHint", "todos"]
     };
     DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1e3;
+    COPILOT_HOST_DEFAULTS = {
+      model: false,
+      effort: false,
+      cwd: false,
+      gitBranch: false,
+      copilotMode: true,
+      team: true,
+      ultragoal: true
+    };
+    COPILOT_HOST_DROPPED = {
+      rateLimits: false,
+      enterpriseMode: false,
+      showEnterpriseCost: false,
+      apiKeySource: false,
+      thinking: false,
+      todos: false,
+      sessionSummary: false
+    };
     DEFAULT_HUD_CONFIG = {
       preset: "focused",
       locale: "en",
@@ -64290,7 +64382,7 @@ function getRunningTasks(state) {
   if (!state) return [];
   return state.backgroundTasks.filter((task) => task.status === "running");
 }
-function readHudConfig() {
+function readHudConfig(host) {
   const settingsFile = getSettingsFilePath();
   const legacyConfig = getLegacyHudConfig();
   if ((0, import_fs64.existsSync)(settingsFile)) {
@@ -64322,7 +64414,7 @@ function readHudConfig() {
             ...sanitizeHudLabels(legacyConfig?.labels),
             ...sanitizeHudLabels(settings.omcHud.labels)
           }
-        });
+        }, host);
       }
     } catch (error2) {
       console.error(
@@ -64332,11 +64424,27 @@ function readHudConfig() {
     }
   }
   if (legacyConfig) {
-    return mergeWithDefaults(legacyConfig);
+    return mergeWithDefaults(legacyConfig, host);
   }
-  return mergeWithDefaults({});
+  return mergeWithDefaults({}, host);
 }
-function mergeWithDefaults(config2) {
+function copilotElements(presetElements, userElements) {
+  if (process.env.OMC_DEBUG) {
+    for (const key of Object.keys(COPILOT_HOST_DROPPED)) {
+      if (userElements?.[key] === true) {
+        console.error(`[HUD] ${key} is ignored on Copilot (no data source)`);
+      }
+    }
+  }
+  return {
+    ...DEFAULT_HUD_CONFIG.elements,
+    ...presetElements,
+    ...COPILOT_HOST_DEFAULTS,
+    ...userElements,
+    ...COPILOT_HOST_DROPPED
+  };
+}
+function mergeWithDefaults(config2, host) {
   const preset = config2.preset ?? DEFAULT_HUD_CONFIG.preset;
   const presetElements = PRESET_CONFIGS[preset] ?? {};
   const missionBoardEnabled = config2.missionBoard?.enabled ?? config2.elements?.missionBoard ?? DEFAULT_HUD_CONFIG.missionBoard?.enabled ?? false;
@@ -64351,7 +64459,7 @@ function mergeWithDefaults(config2) {
     preset,
     locale,
     labels: resolveHudLabels(locale, config2.labels),
-    elements: {
+    elements: host === "copilot" ? copilotElements(presetElements, config2.elements) : {
       ...DEFAULT_HUD_CONFIG.elements,
       // Base defaults
       ...presetElements,
@@ -75722,7 +75830,7 @@ var init_tmux_detector = __esm({
       /conversation/i,
       /assistant/i
     ];
-    OMC_HUD_STATUS_LINE_PATTERN = /^\s*\[OMC#[^\]\s]+\](?:\s*\|.*)?\s*$/i;
+    OMC_HUD_STATUS_LINE_PATTERN = /^\s*\[(?:OMC|oh-my-copilot)#[^\]\s]+\](?:\s*\|.*)?\s*$/i;
     OMC_HUD_MODE_LINE_PATTERN = /^\s*⏵⏵\s+.*\(shift\+tab to cycle\)/i;
     SAVED_TRANSCRIPT_COMMAND_PATTERN = /^\s*(?:[$#%]|❯)\s*(?:cat|bat|less|more|tail|head|sed|awk)\b.*(?:hud|transcript|terminal|output|copied|\.txt)\b/i;
     SAVED_TRANSCRIPT_LABEL_PATTERN = /\b(?:copied\s+from|saved\s+terminal\s+output|terminal\s+transcript|copied\s+hud)\b/i;
@@ -90959,8 +91067,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync152 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync152(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync153 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync153(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -91405,8 +91513,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync152 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync152(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync153 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync153(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -97714,7 +97822,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename9 } = await import("fs/promises");
-  const { renameSync: renameSync21, readFileSync: readFileSync152, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync21, readFileSync: readFileSync153, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -97795,7 +97903,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync152(outputFile, "utf-8");
+          const raw = readFileSync153(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync21(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -109374,8 +109482,8 @@ function migrateLegacyCache(source) {
     if (!(0, import_fs132.existsSync)(legacyPath)) return;
     if ((0, import_fs132.existsSync)(getCachePath(source))) return;
     const content = (0, import_fs132.readFileSync)(legacyPath, "utf-8");
-    const cache = JSON.parse(content);
-    if (cache.source !== source) return;
+    const cache2 = JSON.parse(content);
+    if (cache2.source !== source) return;
     const newPath = getCachePath(source);
     const cacheDir = (0, import_path156.dirname)(newPath);
     if (!(0, import_fs132.existsSync)(cacheDir)) {
@@ -109390,28 +109498,28 @@ function readCache(source) {
     const cachePath = getCachePath(source);
     if (!(0, import_fs132.existsSync)(cachePath)) return null;
     const content = (0, import_fs132.readFileSync)(cachePath, "utf-8");
-    const cache = JSON.parse(content);
-    if (cache.data) {
-      if (cache.data.fiveHourResetsAt) {
-        cache.data.fiveHourResetsAt = new Date(cache.data.fiveHourResetsAt);
+    const cache2 = JSON.parse(content);
+    if (cache2.data) {
+      if (cache2.data.fiveHourResetsAt) {
+        cache2.data.fiveHourResetsAt = new Date(cache2.data.fiveHourResetsAt);
       }
-      if (cache.data.weeklyResetsAt) {
-        cache.data.weeklyResetsAt = new Date(cache.data.weeklyResetsAt);
+      if (cache2.data.weeklyResetsAt) {
+        cache2.data.weeklyResetsAt = new Date(cache2.data.weeklyResetsAt);
       }
-      if (cache.data.sonnetWeeklyResetsAt) {
-        cache.data.sonnetWeeklyResetsAt = new Date(cache.data.sonnetWeeklyResetsAt);
+      if (cache2.data.sonnetWeeklyResetsAt) {
+        cache2.data.sonnetWeeklyResetsAt = new Date(cache2.data.sonnetWeeklyResetsAt);
       }
-      if (cache.data.opusWeeklyResetsAt) {
-        cache.data.opusWeeklyResetsAt = new Date(cache.data.opusWeeklyResetsAt);
+      if (cache2.data.opusWeeklyResetsAt) {
+        cache2.data.opusWeeklyResetsAt = new Date(cache2.data.opusWeeklyResetsAt);
       }
-      if (cache.data.monthlyResetsAt) {
-        cache.data.monthlyResetsAt = new Date(cache.data.monthlyResetsAt);
+      if (cache2.data.monthlyResetsAt) {
+        cache2.data.monthlyResetsAt = new Date(cache2.data.monthlyResetsAt);
       }
-      if (cache.data.extraUsageResetsAt) {
-        cache.data.extraUsageResetsAt = new Date(cache.data.extraUsageResetsAt);
+      if (cache2.data.extraUsageResetsAt) {
+        cache2.data.extraUsageResetsAt = new Date(cache2.data.extraUsageResetsAt);
       }
-      if (Array.isArray(cache.data.scopedWeeklyBuckets)) {
-        for (const bucket of cache.data.scopedWeeklyBuckets) {
+      if (Array.isArray(cache2.data.scopedWeeklyBuckets)) {
+        for (const bucket of cache2.data.scopedWeeklyBuckets) {
           const rawResetsAt = bucket?.resetsAt;
           if (rawResetsAt == null || rawResetsAt instanceof Date) continue;
           const parsedResetsAt = new Date(rawResetsAt);
@@ -109419,7 +109527,7 @@ function readCache(source) {
         }
       }
     }
-    return cache;
+    return cache2;
   } catch {
     return null;
   }
@@ -109431,7 +109539,7 @@ function writeCache(opts) {
     if (!(0, import_fs132.existsSync)(cacheDir)) {
       (0, import_fs132.mkdirSync)(cacheDir, { recursive: true });
     }
-    const cache = {
+    const cache2 = {
       timestamp: Date.now(),
       data: opts.data,
       error: opts.error,
@@ -109445,7 +109553,7 @@ function writeCache(opts) {
       credentialIdentity: opts.credentialIdentity,
       rateLimitBackoffs: opts.rateLimitBackoffs
     };
-    (0, import_fs132.writeFileSync)(cachePath, JSON.stringify(cache, null, 2));
+    (0, import_fs132.writeFileSync)(cachePath, JSON.stringify(cache2, null, 2));
   } catch {
   }
 }
@@ -109472,33 +109580,33 @@ function getRateLimitedBackoffMs(pollIntervalMs, count) {
 function getTransientNetworkBackoffMs(pollIntervalMs) {
   return Math.max(CACHE_TTL_TRANSIENT_NETWORK_MS, sanitizePollIntervalMs(pollIntervalMs));
 }
-function getRateLimitBackoff(cache, rateLimitIdentity) {
+function getRateLimitBackoff(cache2, rateLimitIdentity) {
   const identity = rateLimitIdentity ?? "anonymous";
-  const stored = cache?.rateLimitBackoffs?.[identity];
+  const stored = cache2?.rateLimitBackoffs?.[identity];
   if (stored) return stored;
-  if (cache?.rateLimited && (cache.rateLimitIdentity ?? "anonymous") === identity) {
+  if (cache2?.rateLimited && (cache2.rateLimitIdentity ?? "anonymous") === identity) {
     return {
-      timestamp: cache.timestamp,
-      rateLimitedCount: cache.rateLimitedCount || 1,
-      rateLimitedUntil: cache.rateLimitedUntil
+      timestamp: cache2.timestamp,
+      rateLimitedCount: cache2.rateLimitedCount || 1,
+      rateLimitedUntil: cache2.rateLimitedUntil
     };
   }
   return null;
 }
-function getRateLimitBackoffs(cache) {
-  const backoffs = { ...cache?.rateLimitBackoffs ?? {} };
-  if (cache?.rateLimited) {
-    const identity = cache.rateLimitIdentity ?? "anonymous";
+function getRateLimitBackoffs(cache2) {
+  const backoffs = { ...cache2?.rateLimitBackoffs ?? {} };
+  if (cache2?.rateLimited) {
+    const identity = cache2.rateLimitIdentity ?? "anonymous";
     backoffs[identity] ??= {
-      timestamp: cache.timestamp,
-      rateLimitedCount: cache.rateLimitedCount || 1,
-      rateLimitedUntil: cache.rateLimitedUntil
+      timestamp: cache2.timestamp,
+      rateLimitedCount: cache2.rateLimitedCount || 1,
+      rateLimitedUntil: cache2.rateLimitedUntil
     };
   }
   return backoffs;
 }
-function clearRateLimitBackoff(cache, rateLimitIdentity) {
-  const backoffs = getRateLimitBackoffs(cache);
+function clearRateLimitBackoff(cache2, rateLimitIdentity) {
+  const backoffs = getRateLimitBackoffs(cache2);
   delete backoffs[rateLimitIdentity ?? "anonymous"];
   return Object.keys(backoffs).length > 0 ? backoffs : void 0;
 }
@@ -109617,14 +109725,14 @@ function getOAuthAccountProfileIdentity(credentials) {
   }
   return tokenHash ?? null;
 }
-function isCacheForCredential(cache, credentialIdentity) {
-  if (!cache) return false;
-  if (credentialIdentity !== void 0) return cache.credentialIdentity === credentialIdentity;
-  return cache.credentialIdentity === void 0 && cache.data === null;
+function isCacheForCredential(cache2, credentialIdentity) {
+  if (!cache2) return false;
+  if (credentialIdentity !== void 0) return cache2.credentialIdentity === credentialIdentity;
+  return cache2.credentialIdentity === void 0 && cache2.data === null;
 }
-function isCacheValid(cache, pollIntervalMs, rateLimitIdentity) {
-  if (cache.source === "anthropic") {
-    const backoff = getRateLimitBackoff(cache, rateLimitIdentity);
+function isCacheValid(cache2, pollIntervalMs, rateLimitIdentity) {
+  if (cache2.source === "anthropic") {
+    const backoff = getRateLimitBackoff(cache2, rateLimitIdentity);
     if (backoff) {
       if (backoff.rateLimitedUntil != null) {
         return Date.now() < backoff.rateLimitedUntil;
@@ -109634,47 +109742,47 @@ function isCacheValid(cache, pollIntervalMs, rateLimitIdentity) {
         backoff.rateLimitedCount
       );
     }
-    if (cache.rateLimited) return false;
-  } else if (cache.rateLimited) {
-    if (cache.rateLimitedUntil != null) {
-      return Date.now() < cache.rateLimitedUntil;
+    if (cache2.rateLimited) return false;
+  } else if (cache2.rateLimited) {
+    if (cache2.rateLimitedUntil != null) {
+      return Date.now() < cache2.rateLimitedUntil;
     }
-    const count = cache.rateLimitedCount || 1;
-    return Date.now() - cache.timestamp < getRateLimitedBackoffMs(pollIntervalMs, count);
+    const count = cache2.rateLimitedCount || 1;
+    return Date.now() - cache2.timestamp < getRateLimitedBackoffMs(pollIntervalMs, count);
   }
-  const ttl = cache.error ? cache.errorReason === "network" ? getTransientNetworkBackoffMs(pollIntervalMs) : CACHE_TTL_FAILURE_MS : sanitizePollIntervalMs(pollIntervalMs);
-  return Date.now() - cache.timestamp < ttl;
+  const ttl = cache2.error ? cache2.errorReason === "network" ? getTransientNetworkBackoffMs(pollIntervalMs) : CACHE_TTL_FAILURE_MS : sanitizePollIntervalMs(pollIntervalMs);
+  return Date.now() - cache2.timestamp < ttl;
 }
-function hasUsableStaleData(cache) {
-  if (!cache?.data) {
+function hasUsableStaleData(cache2) {
+  if (!cache2?.data) {
     return false;
   }
-  if (cache.lastSuccessAt && Date.now() - cache.lastSuccessAt > MAX_STALE_DATA_MS) {
+  if (cache2.lastSuccessAt && Date.now() - cache2.lastSuccessAt > MAX_STALE_DATA_MS) {
     return false;
   }
   return true;
 }
-function getCachedUsageResult(cache, rateLimitIdentity) {
-  if (cache.source === "anthropic" && getRateLimitBackoff(cache, rateLimitIdentity)) {
-    if (!hasUsableStaleData(cache) && cache.data) {
+function getCachedUsageResult(cache2, rateLimitIdentity) {
+  if (cache2.source === "anthropic" && getRateLimitBackoff(cache2, rateLimitIdentity)) {
+    if (!hasUsableStaleData(cache2) && cache2.data) {
       return { rateLimits: null, error: "rate_limited" };
     }
-    return { rateLimits: cache.data, error: "rate_limited", stale: cache.data ? true : void 0 };
+    return { rateLimits: cache2.data, error: "rate_limited", stale: cache2.data ? true : void 0 };
   }
-  if (cache.rateLimited) {
-    if (!hasUsableStaleData(cache) && cache.data) {
+  if (cache2.rateLimited) {
+    if (!hasUsableStaleData(cache2) && cache2.data) {
       return { rateLimits: null, error: "rate_limited" };
     }
-    return { rateLimits: cache.data, error: "rate_limited", stale: cache.data ? true : void 0 };
+    return { rateLimits: cache2.data, error: "rate_limited", stale: cache2.data ? true : void 0 };
   }
-  if (cache.error) {
-    const errorReason = cache.errorReason || "network";
-    if (hasUsableStaleData(cache)) {
-      return { rateLimits: cache.data, error: errorReason, stale: true };
+  if (cache2.error) {
+    const errorReason = cache2.errorReason || "network";
+    if (hasUsableStaleData(cache2)) {
+      return { rateLimits: cache2.data, error: errorReason, stale: true };
     }
     return { rateLimits: null, error: errorReason };
   }
-  return { rateLimits: cache.data };
+  return { rateLimits: cache2.data };
 }
 function createRateLimitedCacheEntry(source, data, pollIntervalMs, previousCount, lastSuccessAt, rateLimitIdentity, previousBackoffs) {
   const timestamp2 = Date.now();
@@ -110670,21 +110778,21 @@ async function fetchAndCacheUsage(opts) {
     source,
     fetchFn,
     parseFn,
-    cache,
+    cache: cache2,
     pollIntervalMs,
     rateLimitIdentity,
     credentialIdentity
   } = opts;
   const result = await fetchFn();
   if (result.rateLimited) {
-    const prevLastSuccess = cache?.lastSuccessAt;
-    const previousBackoffs = source === "anthropic" ? getRateLimitBackoffs(cache) : void 0;
-    const previousBackoff = source === "anthropic" ? getRateLimitBackoff(cache, rateLimitIdentity) : null;
+    const prevLastSuccess = cache2?.lastSuccessAt;
+    const previousBackoffs = source === "anthropic" ? getRateLimitBackoffs(cache2) : void 0;
+    const previousBackoff = source === "anthropic" ? getRateLimitBackoff(cache2, rateLimitIdentity) : null;
     const rateLimitedCache = createRateLimitedCacheEntry(
       source,
-      cache?.data || null,
+      cache2?.data || null,
       pollIntervalMs,
-      source === "anthropic" ? previousBackoff?.rateLimitedCount || 0 : cache?.rateLimitedCount || 0,
+      source === "anthropic" ? previousBackoff?.rateLimitedCount || 0 : cache2?.rateLimitedCount || 0,
       prevLastSuccess,
       rateLimitIdentity,
       previousBackoffs
@@ -110711,15 +110819,15 @@ async function fetchAndCacheUsage(opts) {
     return { rateLimits: null, error: "rate_limited" };
   }
   if (!result.data) {
-    const fallbackData = hasUsableStaleData(cache) ? cache.data : null;
+    const fallbackData = hasUsableStaleData(cache2) ? cache2.data : null;
     writeCache({
       data: fallbackData,
       error: true,
       source,
       errorReason: "network",
-      lastSuccessAt: cache?.lastSuccessAt,
+      lastSuccessAt: cache2?.lastSuccessAt,
       credentialIdentity,
-      rateLimitBackoffs: source === "anthropic" ? getRateLimitBackoffs(cache) : void 0
+      rateLimitBackoffs: source === "anthropic" ? getRateLimitBackoffs(cache2) : void 0
     });
     if (fallbackData) {
       return { rateLimits: fallbackData, error: "network", stale: true };
@@ -110733,7 +110841,7 @@ async function fetchAndCacheUsage(opts) {
     source,
     lastSuccessAt: Date.now(),
     credentialIdentity,
-    rateLimitBackoffs: source === "anthropic" ? clearRateLimitBackoff(cache, rateLimitIdentity) : void 0
+    rateLimitBackoffs: source === "anthropic" ? clearRateLimitBackoff(cache2, rateLimitIdentity) : void 0
   });
   return { rateLimits: usage };
 }
@@ -110750,12 +110858,12 @@ function getWarmAnthropicUsageCache(pollIntervalMs, rateLimitIdentity) {
     profileIdentity
   ]));
   migrateLegacyCache("anthropic");
-  const cache = readCache("anthropic");
-  const hasCacheOutcome = !!cache?.data || cache?.error === true || getRateLimitBackoff(cache, rateLimitIdentity) !== null;
-  if (!cache || !hasCacheOutcome || cache.source !== "anthropic" || !isCacheForCredential(cache, credentialIdentity) || !isCacheValid(cache, pollIntervalMs, rateLimitIdentity)) {
+  const cache2 = readCache("anthropic");
+  const hasCacheOutcome = !!cache2?.data || cache2?.error === true || getRateLimitBackoff(cache2, rateLimitIdentity) !== null;
+  if (!cache2 || !hasCacheOutcome || cache2.source !== "anthropic" || !isCacheForCredential(cache2, credentialIdentity) || !isCacheValid(cache2, pollIntervalMs, rateLimitIdentity)) {
     return void 0;
   }
-  return getCachedUsageResult(cache, rateLimitIdentity);
+  return getCachedUsageResult(cache2, rateLimitIdentity);
 }
 async function getUsage(opts) {
   const pollIntervalMs = getUsagePollIntervalMs();
@@ -110784,8 +110892,8 @@ async function getUsage(opts) {
   }
   try {
     return await withFileLock(lockPathFor(getCachePath(currentSource)), async () => {
-      const cache = readCache(currentSource);
-      const matchingCache = isCacheForCredential(cache, credentialIdentity) ? cache : null;
+      const cache2 = readCache(currentSource);
+      const matchingCache = isCacheForCredential(cache2, credentialIdentity) ? cache2 : null;
       if (matchingCache && isCacheValid(matchingCache, pollIntervalMs, rateLimitIdentity) && matchingCache.source === currentSource) {
         return getCachedUsageResult(matchingCache, rateLimitIdentity);
       }
@@ -111197,6 +111305,46 @@ function getModelName(stdin) {
   const displayName = stdin.model?.display_name?.trim();
   return displayName || getModelId(stdin);
 }
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function trimmedString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function getSessionDurationMs(stdin) {
+  const ms = finiteNumber(stdin.cost?.total_duration_ms);
+  return ms !== null && ms >= 0 ? ms : null;
+}
+function getCopilotContextPercent(stdin) {
+  const contextWindow = stdin.context_window;
+  const native = finiteNumber(contextWindow?.current_context_used_percentage) ?? finiteNumber(contextWindow?.used_percentage);
+  if (native !== null) return Math.min(100, Math.max(0, Math.round(native)));
+  return getContextPercent(stdin);
+}
+function getAiUsed(stdin) {
+  const aiUsed = stdin.ai_used;
+  if (!aiUsed || typeof aiUsed !== "object") return null;
+  const nanoAiu = finiteNumber(aiUsed.total_nano_aiu);
+  const formatted = trimmedString(aiUsed.formatted);
+  return nanoAiu === null && formatted === null ? null : { nanoAiu, formatted };
+}
+function getCopilotModelName(stdin) {
+  const id = trimmedString(stdin.model?.id);
+  const tier = trimmedString(stdin.model?.auto_tier);
+  if (id?.toLowerCase() === "auto" && tier) return `Auto>${tier}`;
+  return trimmedString(stdin.model?.display_name) ?? id;
+}
+function getCopilotTokenUsage(stdin) {
+  const contextWindow = stdin.context_window;
+  const input = finiteNumber(contextWindow?.last_call_input_tokens);
+  const output = finiteNumber(contextWindow?.last_call_output_tokens);
+  const totalIn = finiteNumber(contextWindow?.total_input_tokens);
+  const totalOut = finiteNumber(contextWindow?.total_output_tokens);
+  return {
+    lastRequest: input === null && output === null ? null : { inputTokens: input ?? 0, outputTokens: output ?? 0 },
+    sessionTotal: totalIn === null && totalOut === null ? null : (totalIn ?? 0) + (totalOut ?? 0)
+  };
+}
 var import_fs133, import_path157, TRANSIENT_CONTEXT_PERCENT_TOLERANCE, SESSION_ID_ENV_VARS, HUD_STDIN_CACHE_STATE_NAME, HUD_STDIN_CACHE_FILE_NAME;
 var init_stdin = __esm({
   "src/hud/stdin.ts"() {
@@ -111280,8 +111428,8 @@ function loadBudgetSettings(cwd2, env2 = process.env) {
   } catch {
     issues.push("budget: project config unreadable");
   }
-  const isObject4 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-  const merged = isObject4(user) && isObject4(project) ? { ...user, ...project } : project ?? user;
+  const isObject5 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  const merged = isObject5(user) && isObject5(project) ? { ...user, ...project } : project ?? user;
   const resolved = resolveBudgetSettings(merged, env2);
   return { settings: resolved.settings, issues: [...issues, ...resolved.issues] };
 }
@@ -118535,6 +118683,780 @@ var init_sdk_inprocess_tools = __esm({
   }
 });
 
+// src/goal-workflows/claude-goal-snapshot.ts
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function safeString3(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function safeNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function normalizeStatus(value) {
+  const status = safeString3(value).toLowerCase();
+  if (status === "complete" || status === "completed" || status === "done") return "complete";
+  if (status === "cancelled" || status === "canceled" || status === "cleared") return "cancelled";
+  if (status === "failed" || status === "failure") return "failed";
+  if (status === "active" || status === "in_progress" || status === "pending" || status === "running") return "active";
+  return "unknown";
+}
+function normalizeObjective(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+function parseClaudeGoalSnapshot(value) {
+  const root2 = safeObject(value);
+  const goalValue = Object.hasOwn(root2, "goal") ? root2.goal : value;
+  if (goalValue === null || goalValue === void 0 || goalValue === false) {
+    return { available: false, raw: value };
+  }
+  const goal = safeObject(goalValue);
+  const objective = safeString3(
+    goal.objective ?? goal.condition ?? goal.goal ?? goal.description ?? root2.objective ?? root2.condition
+  );
+  const status = normalizeStatus(goal.status ?? root2.status);
+  const tokenBudget = safeNumber(
+    goal.token_budget ?? goal.tokenBudget ?? root2.token_budget ?? root2.tokenBudget
+  );
+  const remainingTokens = safeNumber(root2.remainingTokens ?? root2.remaining_tokens);
+  return {
+    available: Boolean(objective || status !== "unknown"),
+    ...objective ? { objective } : {},
+    status,
+    ...tokenBudget !== void 0 ? { tokenBudget } : {},
+    remainingTokens: remainingTokens ?? null,
+    raw: value
+  };
+}
+async function readClaudeGoalSnapshotInput(raw, cwd2 = process.cwd()) {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  try {
+    return parseClaudeGoalSnapshot(JSON.parse(trimmed));
+  } catch {
+    const path30 = (0, import_node_path34.resolve)(cwd2, trimmed);
+    if (!(0, import_node_fs27.existsSync)(path30)) {
+      throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
+    }
+    try {
+      return parseClaudeGoalSnapshot(JSON.parse(await (0, import_promises31.readFile)(path30, "utf-8")));
+    } catch (error2) {
+      throw new ClaudeGoalSnapshotError(`Claude goal snapshot path does not contain valid JSON: ${trimmed}${error2 instanceof Error ? ` (${error2.message})` : ""}`);
+    }
+  }
+}
+function reconcileClaudeGoalSnapshot(snapshot, options) {
+  const effectiveSnapshot = snapshot ?? { available: false, raw: null };
+  const errors = [];
+  const warnings = [];
+  if (!effectiveSnapshot.available) {
+    const message2 = "Claude goal snapshot is absent or reports no active goal; ask the active Claude agent to share the current /goal condition and pass its JSON with --claude-goal-json.";
+    if (options.requireSnapshot) errors.push(message2);
+    else warnings.push(message2);
+    return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
+  }
+  const expected = normalizeObjective(options.expectedObjective);
+  const actual = normalizeObjective(effectiveSnapshot.objective ?? "");
+  if (!actual) {
+    errors.push("Claude goal snapshot is missing objective text.");
+  } else if (actual !== expected) {
+    errors.push(`Claude goal objective mismatch: expected "${expected}", got "${actual}".`);
+  }
+  const allowed = options.allowedStatuses ?? (options.requireComplete ? ["complete"] : ["active", "complete"]);
+  const actualStatus = effectiveSnapshot.status ?? "unknown";
+  if (!allowed.includes(actualStatus)) {
+    errors.push(`Claude goal status mismatch: expected ${allowed.join(" or ")}, got ${actualStatus}.`);
+  }
+  if (options.requireComplete && actualStatus !== "complete") {
+    errors.push(`Claude goal is not complete; only after the active condition is genuinely satisfied (the /goal hook auto-clears, or you run /goal clear), share the fresh snapshot.`);
+  }
+  return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
+}
+function formatClaudeGoalReconciliation(reconciliation) {
+  const parts = [...reconciliation.errors, ...reconciliation.warnings];
+  return parts.join(" ");
+}
+var import_node_fs27, import_promises31, import_node_path34, ClaudeGoalSnapshotError;
+var init_claude_goal_snapshot = __esm({
+  "src/goal-workflows/claude-goal-snapshot.ts"() {
+    "use strict";
+    import_node_fs27 = require("node:fs");
+    import_promises31 = require("node:fs/promises");
+    import_node_path34 = require("node:path");
+    ClaudeGoalSnapshotError = class extends Error {
+    };
+  }
+});
+
+// src/ultragoal/artifacts.ts
+function iso(now2 = /* @__PURE__ */ new Date()) {
+  return now2.toISOString();
+}
+function ultragoalDir(cwd2, planId) {
+  const omcRoot = getOmcRoot(cwd2);
+  if (planId) return (0, import_node_path35.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
+  return (0, import_node_path35.join)(omcRoot, "ultragoal");
+}
+function ultragoalBriefPath(cwd2, planId) {
+  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_BRIEF);
+}
+function ultragoalGoalsPath(cwd2, planId) {
+  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_GOALS);
+}
+function ultragoalLedgerPath(cwd2, planId) {
+  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_LEDGER);
+}
+async function listUltragoalPlanIds(cwd2) {
+  const dir = (0, import_node_path35.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
+  try {
+    const entries = await (0, import_promises32.readdir)(dir, { withFileTypes: true });
+    return entries.filter((entry2) => entry2.isDirectory()).filter((entry2) => /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry2.name)).map((entry2) => entry2.name).sort();
+  } catch {
+    return [];
+  }
+}
+async function resolveActivePlanId(cwd2, explicitPlanId) {
+  if (explicitPlanId) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(explicitPlanId)) {
+      throw new UltragoalError(`Invalid --plan-id: ${explicitPlanId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
+    }
+    return explicitPlanId;
+  }
+  if ((0, import_node_fs28.existsSync)((0, import_node_path35.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
+  const plans = await listUltragoalPlanIds(cwd2);
+  if (plans.length === 1) return plans[0];
+  if (plans.length === 0) return void 0;
+  throw new UltragoalError(
+    `Multiple ultragoal plans exist; pass --plan-id <id>. Available plans: ${plans.join(", ")}`
+  );
+}
+function makePlanId(brief, now2) {
+  const ts = now2.getTime();
+  const firstLine = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "plan";
+  const slug = firstLine.toLowerCase().replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "") || "plan";
+  return `${ts}-${slug}`;
+}
+function repoRelative(cwd2, path30) {
+  return (0, import_node_path35.relative)(cwd2, path30).split("\\").join("/");
+}
+function cleanLine(line) {
+  return line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").trim();
+}
+function normalizeObjective2(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+function textMentionsUltragoalPlanArtifact(value) {
+  const normalized = (value ?? "").toLowerCase();
+  return normalized.includes(ULTRAGOAL_DIR.toLowerCase()) || normalized.includes(ULTRAGOAL_GOALS.toLowerCase()) || normalized.includes(ULTRAGOAL_LEDGER.toLowerCase());
+}
+function textMentionsGoalId(value, goalId) {
+  return (value ?? "").toLowerCase().includes(goalId.toLowerCase());
+}
+function textHasCompletionValidationEvidence(value) {
+  const normalized = (value ?? "").toLowerCase();
+  const hasImplementationCompletion = /\b(?:planned work|implementation|deliverables?|scope|task|work)\b/.test(normalized) && /\b(?:done|complete|completed|finished|shipped)\b/.test(normalized);
+  const hasValidation = /\b(?:validation|verification|tests?|build|lint|review|quality gate|code-review)\b/.test(normalized) && /\b(?:passed|complete|completed|clean|green|approve|approved|clear)\b/.test(normalized);
+  return hasImplementationCompletion && hasValidation;
+}
+async function snapshotObjectiveMapsToUltragoalPlan(cwd2, snapshotObjective, planId) {
+  const actual = normalizeObjective2(snapshotObjective).toLowerCase();
+  if (textMentionsUltragoalPlanArtifact(actual)) return true;
+  if (actual.length < 24) return false;
+  try {
+    const brief = normalizeObjective2(await (0, import_promises32.readFile)(ultragoalBriefPath(cwd2, planId), "utf-8")).toLowerCase();
+    if (!brief || brief.length < 24) return false;
+    return brief.includes(actual) || actual.includes(brief);
+  } catch {
+    return false;
+  }
+}
+async function canReconcileCompletedTaskScopedAggregateSnapshot(cwd2, plan, goal, snapshotObjective, evidence) {
+  if (claudeGoalMode(plan) !== "aggregate") return false;
+  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) return false;
+  if (!textMentionsUltragoalPlanArtifact(evidence)) return false;
+  if (!textMentionsGoalId(evidence, goal.id)) return false;
+  if (!textHasCompletionValidationEvidence(evidence)) return false;
+  return snapshotObjectiveMapsToUltragoalPlan(cwd2, snapshotObjective, plan.planId);
+}
+function assertActiveInProgressCheckpoint(plan, goal, checkpointKind) {
+  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) {
+    throw new UltragoalError(`Cannot record a ${checkpointKind} checkpoint for ${goal.id} while it is ${goal.status}; start or resume the active ultragoal before checkpointing it.`);
+  }
+}
+function buildCompletedLegacyGoalRemediation(goal) {
+  return [
+    "If the active /goal condition is a different completed legacy goal, do not repeat --status complete in this session.",
+    `Record a non-terminal blocker with: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks setting a new /goal in this session>" --claude-goal-json "<different completed goal snapshot JSON or path>".`,
+    "Then continue this ultragoal in a fresh Claude Code session in the same repo/worktree and set the intended /goal there."
+  ].join(" ");
+}
+function claudeGoalMode(plan) {
+  return plan.claudeGoalMode ?? "per_story";
+}
+function isResolvedStatus(status) {
+  return status === "complete" || status === "review_blocked";
+}
+function planDirRelative(planId) {
+  return planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}` : ULTRAGOAL_DIR;
+}
+function aggregateClaudeObjective(goals, planId) {
+  const planDir = planDirRelative(planId);
+  const prefix = `Complete all ultragoal stories in ${planDir}/${ULTRAGOAL_GOALS}: `;
+  const suffix = goals.map((goal) => `${goal.id} ${goal.title}`).join("; ");
+  const full = `${prefix}${suffix}`;
+  if (full.length <= 4e3) return full;
+  const fallback = `Complete all ultragoal stories listed in ${planDir}/${ULTRAGOAL_GOALS}. Use ${planDir}/${ULTRAGOAL_LEDGER} as the durable audit trail.`;
+  if (fallback.length <= 4e3) return fallback;
+  throw new UltragoalError("Generated aggregate Claude /goal objective exceeds the 4,000 character limit.");
+}
+function expectedClaudeObjective(plan, goal) {
+  return claudeGoalMode(plan) === "aggregate" ? plan.claudeObjective ?? aggregateClaudeObjective(plan.goals, plan.planId) : goal.objective;
+}
+function isFinalRunCompletionCandidate(plan, goal) {
+  return plan.goals.every((candidate) => candidate.id === goal.id || isResolvedStatus(candidate.status));
+}
+function isUltragoalDone(plan) {
+  if (plan.aggregateCompletion?.status === "complete") return true;
+  if (plan.goals.length === 0) return true;
+  if (plan.goals.some((goal) => goal.status === "pending" || goal.status === "in_progress" || goal.status === "failed")) return false;
+  if (!plan.goals.every((goal) => isResolvedStatus(goal.status))) return false;
+  const latestNonReviewBlocked = [...plan.goals].reverse().find((goal) => goal.status !== "review_blocked");
+  return latestNonReviewBlocked?.status === "complete";
+}
+function titleFromObjective(objective, fallback) {
+  const firstLine = objective.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? fallback;
+  return firstLine.length > 72 ? `${firstLine.slice(0, 69).trimEnd()}...` : firstLine;
+}
+function deriveGoalCandidates(brief) {
+  const lines3 = brief.split(/\r?\n/);
+  const bulletGoals = lines3.map((line) => ({ original: line, cleaned: cleanLine(line) })).filter(({ cleaned }) => cleaned.length > 0 && cleaned.length <= 1200).filter(({ original, cleaned }, index, all) => /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(original) && all.findIndex((candidate) => candidate.cleaned === cleaned) === index).map(({ cleaned }) => cleaned);
+  const objectives = bulletGoals.length > 0 ? bulletGoals : brief.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith("#"));
+  const selected = objectives.length > 0 ? objectives : [brief.trim() || "Complete the requested project objective."];
+  return selected.map((objective, index) => ({
+    title: titleFromObjective(objective, `Goal ${index + 1}`),
+    objective
+  }));
+}
+function normalizeGoalId(title, index) {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36).replace(/-+$/g, "");
+  return `G${String(index + 1).padStart(3, "0")}${slug ? `-${slug}` : ""}`;
+}
+async function appendLedger(cwd2, entry2, planId) {
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
+  const path30 = ultragoalLedgerPath(cwd2, planId);
+  await (0, import_promises32.appendFile)(path30, `${JSON.stringify(entry2)}
+`);
+}
+async function readUltragoalPlan(cwd2, planId) {
+  const path30 = ultragoalGoalsPath(cwd2, planId);
+  let raw;
+  try {
+    raw = await (0, import_promises32.readFile)(path30, "utf-8");
+  } catch {
+    const hint = planId ? `Pass --plan-id ${planId} to a previously-created plan, or run \`omg ultragoal create-goals --plan-id ${planId} ...\`.` : "Run `omg ultragoal create-goals ...` first.";
+    throw new UltragoalError(`No ultragoal plan found at ${repoRelative(cwd2, path30)}. ${hint}`);
+  }
+  const parsed = JSON.parse(raw);
+  if (parsed.version !== 1 || !Array.isArray(parsed.goals)) {
+    throw new UltragoalError(`Invalid ultragoal plan at ${repoRelative(cwd2, path30)}.`);
+  }
+  if (planId && !parsed.planId) parsed.planId = planId;
+  return parsed;
+}
+async function writePlan(cwd2, plan) {
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, plan.planId), { recursive: true });
+  await (0, import_promises32.writeFile)(ultragoalGoalsPath(cwd2, plan.planId), `${JSON.stringify(plan, null, 2)}
+`);
+}
+async function createUltragoalPlan(cwd2, options) {
+  if (options.planId && options.autoPlanId) {
+    throw new UltragoalError("Pass either --plan-id or --auto-plan-id, not both.");
+  }
+  const now2 = iso(options.now);
+  const nowDate = options.now ?? /* @__PURE__ */ new Date();
+  const planId = options.planId ?? (options.autoPlanId ? makePlanId(options.brief, nowDate) : void 0);
+  if (planId && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(planId)) {
+    throw new UltragoalError(`Invalid plan id: ${planId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
+  }
+  if (!options.force && (0, import_node_fs28.existsSync)(ultragoalGoalsPath(cwd2, planId))) {
+    const label = planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}/${ULTRAGOAL_GOALS}` : `${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}`;
+    throw new UltragoalError(`Refusing to overwrite existing ${label}; pass --force to recreate it.`);
+  }
+  const sourceGoals = options.goals?.length ? options.goals : deriveGoalCandidates(options.brief);
+  const candidates = sourceGoals.map((goal, index) => ({
+    id: normalizeGoalId(goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`), index),
+    title: goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`),
+    objective: goal.objective.trim(),
+    status: "pending",
+    tokenBudget: goal.tokenBudget,
+    attempt: 0,
+    createdAt: now2,
+    updatedAt: now2
+  }));
+  const planDir = planDirRelative(planId);
+  const plan = {
+    version: 1,
+    ...planId ? { planId } : {},
+    createdAt: now2,
+    updatedAt: now2,
+    briefPath: `${planDir}/${ULTRAGOAL_BRIEF}`,
+    goalsPath: `${planDir}/${ULTRAGOAL_GOALS}`,
+    ledgerPath: `${planDir}/${ULTRAGOAL_LEDGER}`,
+    claudeGoalMode: options.claudeGoalMode ?? "aggregate",
+    goals: candidates
+  };
+  if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
+  await (0, import_promises32.rm)((0, import_node_path35.join)(ultragoalDir(cwd2, planId), "omg-goal.json"), { force: true });
+  await (0, import_promises32.writeFile)(ultragoalBriefPath(cwd2, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
+`);
+  await writePlan(cwd2, plan);
+  await (0, import_promises32.writeFile)(ultragoalLedgerPath(cwd2, planId), "");
+  await appendLedger(cwd2, { ts: now2, event: "plan_created", message: `${candidates.length} goal(s) created` }, planId);
+  if (planId) await recordUltragoalStatePlanId(cwd2, planId);
+  return plan;
+}
+async function readActiveUltragoalState(path30) {
+  try {
+    const state = JSON.parse(await (0, import_promises32.readFile)(path30, "utf-8"));
+    return state && typeof state === "object" && state.active === true ? state : null;
+  } catch {
+    return null;
+  }
+}
+async function recordUltragoalStatePlanId(cwd2, planId, env2 = process.env) {
+  const stateDir = (0, import_node_path35.join)(getOmcRoot(cwd2), "state");
+  const legacy = (0, import_node_path35.join)(stateDir, "ultragoal-state.json");
+  const sessionId = [env2.OMC_SESSION_ID, env2.COPILOT_AGENT_SESSION_ID].map((value) => value?.trim()).find((value) => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
+  let target;
+  if (sessionId) {
+    const sessionPath = (0, import_node_path35.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
+    const sessionState = await readActiveUltragoalState(sessionPath);
+    const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
+    if (sessionState) target = { path: sessionPath, state: sessionState };
+    else if (legacyState && (legacyState.session_id === void 0 || legacyState.session_id === sessionId)) target = { path: legacy, state: legacyState };
+  } else {
+    const legacyState = await readActiveUltragoalState(legacy);
+    if (legacyState) target = { path: legacy, state: legacyState };
+    else {
+      let sessions = [];
+      try {
+        sessions = (await (0, import_promises32.readdir)((0, import_node_path35.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path35.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
+      } catch {
+      }
+      const active = [];
+      for (const path30 of sessions) {
+        const state = await readActiveUltragoalState(path30);
+        if (state) active.push({ path: path30, state });
+      }
+      if (active.length === 1) target = active[0];
+    }
+  }
+  if (!target) return null;
+  if (target.state.plan_id === planId) return target.path;
+  try {
+    await atomicWriteJson(target.path, { ...target.state, plan_id: planId });
+  } catch {
+    return null;
+  }
+  return target.path;
+}
+function summarizeUltragoalPlan(plan) {
+  return {
+    total: plan.goals.length,
+    pending: plan.goals.filter((goal) => goal.status === "pending").length,
+    inProgress: plan.goals.filter((goal) => goal.status === "in_progress").length,
+    complete: plan.goals.filter((goal) => goal.status === "complete").length,
+    failed: plan.goals.filter((goal) => goal.status === "failed").length,
+    reviewBlocked: plan.goals.filter((goal) => goal.status === "review_blocked").length,
+    aggregateComplete: plan.aggregateCompletion?.status === "complete",
+    activeGoalId: plan.activeGoalId
+  };
+}
+function assertNonEmpty(value, label) {
+  const trimmed = value?.trim();
+  if (!trimmed) throw new UltragoalError(`Missing ${label}.`);
+  return trimmed;
+}
+function appendGoalToPlan(plan, options, now2) {
+  const title = assertNonEmpty(options.title, "--title");
+  const objective = assertNonEmpty(options.objective, "--objective");
+  const goal = {
+    id: normalizeGoalId(title, plan.goals.length),
+    title,
+    objective,
+    status: "pending",
+    attempt: 0,
+    createdAt: now2,
+    updatedAt: now2,
+    evidence: options.evidence
+  };
+  plan.goals.push(goal);
+  plan.updatedAt = now2;
+  return goal;
+}
+async function addUltragoalGoal(cwd2, options) {
+  const plan = await readUltragoalPlan(cwd2, options.planId);
+  const now2 = iso(options.now);
+  const goal = appendGoalToPlan(plan, options, now2);
+  await writePlan(cwd2, plan);
+  await appendLedger(cwd2, {
+    ts: now2,
+    event: "goal_added",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    message: goal.title
+  }, plan.planId);
+  return { plan, goal };
+}
+function validateQualityGate(value) {
+  if (!value || typeof value !== "object") {
+    throw new UltragoalError("Final ultragoal completion requires --quality-gate-json with ai-slop-cleaner, verification, and code-review evidence.");
+  }
+  const gate = value;
+  const cleaner = gate.aiSlopCleaner;
+  const verification = gate.verification;
+  const review = gate.codeReview;
+  if (!cleaner || typeof cleaner !== "object") throw new UltragoalError("Final quality gate is missing aiSlopCleaner evidence.");
+  if (cleaner.status !== "passed") {
+    throw new UltragoalError('Final quality gate requires aiSlopCleaner.status="passed"; run ai-slop-cleaner even when it is a no-op.');
+  }
+  assertNonEmpty(cleaner.evidence, "aiSlopCleaner.evidence");
+  if (!verification || typeof verification !== "object") throw new UltragoalError("Final quality gate is missing verification evidence.");
+  if (verification.status !== "passed") throw new UltragoalError('Final quality gate requires verification.status="passed".');
+  if (!Array.isArray(verification.commands) || verification.commands.length === 0 || verification.commands.some((command) => typeof command !== "string" || command.trim() === "")) {
+    throw new UltragoalError("Final quality gate requires non-empty verification.commands.");
+  }
+  assertNonEmpty(verification.evidence, "verification.evidence");
+  if (!review || typeof review !== "object") throw new UltragoalError("Final quality gate is missing codeReview evidence.");
+  if (review.recommendation !== "APPROVE") {
+    throw new UltragoalError("Final code-review must be clean: codeReview.recommendation must be APPROVE; use record-review-blockers for COMMENT or REQUEST CHANGES.");
+  }
+  if (review.architectStatus !== "CLEAR") {
+    throw new UltragoalError("Final code-review must be clean: codeReview.architectStatus must be CLEAR; use record-review-blockers for WATCH or BLOCK.");
+  }
+  assertNonEmpty(review.evidence, "codeReview.evidence");
+  return gate;
+}
+async function startNextUltragoal(cwd2, options = {}) {
+  const plan = await readUltragoalPlan(cwd2, options.planId);
+  const now2 = iso(options.now);
+  const named = options.goalId ? plan.goals.find((goal) => goal.id === options.goalId) : void 0;
+  if (options.goalId && !named) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+  if (named?.status === "complete") throw new UltragoalError(`Cannot start ultragoal ${named.id}: it is already complete.`);
+  if (named?.status === "review_blocked") throw new UltragoalError(`Cannot start ultragoal ${named.id}: it is review-blocked.`);
+  if (plan.aggregateCompletion?.status === "complete") return { plan, goal: null, resumed: false, done: true };
+  const existing = plan.goals.find((goal) => goal.status === "in_progress");
+  if (existing) {
+    if (options.goalId && options.goalId !== existing.id) {
+      throw new UltragoalError(`Cannot start ultragoal ${options.goalId}: active goal ${existing.id} is already in progress.`);
+    }
+    await appendLedger(cwd2, { ts: now2, event: "goal_resumed", goalId: existing.id, status: existing.status, message: "Resuming active ultragoal" }, plan.planId);
+    return { plan, goal: existing, resumed: true, done: false };
+  }
+  let next;
+  if (options.goalId) {
+    next = named;
+    if (!next) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+    if (next.status === "failed" && !options.retryFailed) {
+      throw new UltragoalError(`Cannot start failed ultragoal ${next.id} without --retry-failed.`);
+    }
+    if (next.status !== "pending" && next.status !== "failed") {
+      throw new UltragoalError(`Cannot start ultragoal ${next.id} while it is ${next.status}.`);
+    }
+  } else {
+    next = plan.goals.find((goal) => goal.status === "pending");
+    if (!next && options.retryFailed) next = plan.goals.find((goal) => goal.status === "failed");
+  }
+  if (next?.status === "failed") {
+    await appendLedger(cwd2, { ts: now2, event: "goal_retried", goalId: next.id, status: "pending", message: next.failureReason }, plan.planId);
+  }
+  if (!next) return { plan, goal: null, resumed: false, done: isUltragoalDone(plan) };
+  next.status = "in_progress";
+  next.attempt += 1;
+  next.startedAt = now2;
+  next.failedAt = void 0;
+  next.failureReason = void 0;
+  next.updatedAt = now2;
+  plan.activeGoalId = next.id;
+  plan.updatedAt = now2;
+  await writePlan(cwd2, plan);
+  await appendLedger(cwd2, { ts: now2, event: "goal_started", goalId: next.id, status: next.status, message: `Attempt ${next.attempt}` }, plan.planId);
+  return { plan, goal: next, resumed: false, done: false };
+}
+async function checkpointUltragoal(cwd2, options) {
+  const plan = await readUltragoalPlan(cwd2, options.planId);
+  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
+  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+  const now2 = iso(options.now);
+  if (options.status === "blocked") {
+    assertActiveInProgressCheckpoint(plan, goal, "blocked");
+    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
+    if (!snapshot?.available) {
+      throw new UltragoalError("Blocked ultragoal checkpoints require a Claude /goal snapshot for the completed legacy goal that blocked a new /goal directive; pass --claude-goal-json.");
+    }
+    if (snapshot.status !== "complete") {
+      throw new UltragoalError(`Cannot record a blocked ultragoal checkpoint while the existing Claude /goal is ${snapshot.status ?? "unknown"}; strict objective mismatch protection remains required for active or incomplete goals.`);
+    }
+    if (!snapshot.objective) {
+      throw new UltragoalError("Blocked ultragoal checkpoint Claude snapshot is missing objective text.");
+    }
+    if (normalizeObjective2(snapshot.objective) === normalizeObjective2(expectedClaudeObjective(plan, goal))) {
+      throw new UltragoalError("Blocked ultragoal checkpoint is only for a different completed legacy Claude goal; complete this ultragoal with --status complete after its audit passes.");
+    }
+    goal.updatedAt = now2;
+    plan.activeGoalId = goal.id;
+    plan.updatedAt = now2;
+    await writePlan(cwd2, plan);
+    await appendLedger(cwd2, {
+      ts: now2,
+      event: "goal_blocked",
+      goalId: goal.id,
+      status: goal.status,
+      evidence: options.evidence,
+      claudeGoal: options.claudeGoal
+    }, plan.planId);
+    return plan;
+  }
+  if (options.status === "failed") {
+    assertActiveInProgressCheckpoint(plan, goal, "failed");
+  }
+  let aggregateCompletion;
+  if (options.status === "complete") {
+    assertActiveInProgressCheckpoint(plan, goal, "complete");
+    const expectedObjective2 = expectedClaudeObjective(plan, goal);
+    const aggregateMode = claudeGoalMode(plan) === "aggregate";
+    const finalRunCheckpoint = isFinalRunCompletionCandidate(plan, goal);
+    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
+    const reconciliation = reconcileClaudeGoalSnapshot(
+      snapshot,
+      {
+        expectedObjective: expectedObjective2,
+        allowedStatuses: aggregateMode ? finalRunCheckpoint && !options.allowActiveFinalClaudeGoal ? ["complete"] : ["active"] : ["complete"],
+        requireSnapshot: true,
+        requireComplete: !aggregateMode || finalRunCheckpoint && !options.allowActiveFinalClaudeGoal
+      }
+    );
+    if (!reconciliation.ok) {
+      const completedTaskScopedAggregateSnapshot = snapshot?.available && snapshot.status === "complete" && Boolean(snapshot.objective) && normalizeObjective2(snapshot.objective ?? "") !== normalizeObjective2(expectedObjective2) && await canReconcileCompletedTaskScopedAggregateSnapshot(cwd2, plan, goal, snapshot.objective ?? "", options.evidence);
+      if (completedTaskScopedAggregateSnapshot) {
+        aggregateCompletion = {
+          status: "complete",
+          completedAt: now2,
+          evidence: assertNonEmpty(options.evidence, "--evidence"),
+          claudeGoal: options.claudeGoal
+        };
+      } else {
+        const taskScopedRequirement = aggregateMode && snapshot?.status === "complete" && Boolean(snapshot.objective) ? " Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omg/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact." : "";
+        const remediation = reconciliation.snapshot.available && reconciliation.snapshot.status === "complete" && Boolean(reconciliation.snapshot.objective) && normalizeObjective2(reconciliation.snapshot.objective ?? "") !== normalizeObjective2(expectedObjective2) ? ` ${buildCompletedLegacyGoalRemediation(goal)}` : "";
+        throw new UltragoalError(`${formatClaudeGoalReconciliation(reconciliation)}${taskScopedRequirement}${remediation}`);
+      }
+    }
+    if (finalRunCheckpoint && !options.allowActiveFinalClaudeGoal) goal.evidence = options.evidence;
+  }
+  const qualityGate = options.status === "complete" && (aggregateCompletion !== void 0 || isFinalRunCompletionCandidate(plan, goal) && !options.allowActiveFinalClaudeGoal) ? validateQualityGate(options.qualityGate) : void 0;
+  if (aggregateCompletion) {
+    plan.aggregateCompletion = aggregateCompletion;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+    plan.updatedAt = now2;
+    await writePlan(cwd2, plan);
+    await appendLedger(cwd2, {
+      ts: now2,
+      event: "aggregate_completed",
+      goalId: goal.id,
+      status: goal.status,
+      evidence: options.evidence,
+      claudeGoal: options.claudeGoal,
+      qualityGate,
+      message: "Aggregate ultragoal plan completed via task-scoped Claude /goal snapshot; microgoal ledger progress remains independent."
+    }, plan.planId);
+    return plan;
+  }
+  goal.status = options.status;
+  goal.updatedAt = now2;
+  if (options.status === "complete") {
+    goal.completedAt = now2;
+    goal.evidence = options.evidence;
+    goal.failureReason = void 0;
+    goal.failedAt = void 0;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  } else {
+    goal.failedAt = now2;
+    goal.failureReason = options.evidence;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  }
+  plan.updatedAt = now2;
+  await writePlan(cwd2, plan);
+  await appendLedger(cwd2, {
+    ts: now2,
+    event: options.status === "complete" ? "goal_completed" : "goal_failed",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal,
+    qualityGate
+  }, plan.planId);
+  return plan;
+}
+async function recordFinalReviewBlockers(cwd2, options) {
+  const plan = await readUltragoalPlan(cwd2, options.planId);
+  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
+  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+  assertNonEmpty(options.evidence, "--evidence");
+  if (goal.status !== "in_progress") {
+    throw new UltragoalError(`Cannot record final review blockers for ${goal.id} while it is ${goal.status}; start or resume the ultragoal first.`);
+  }
+  if (!isFinalRunCompletionCandidate(plan, goal)) {
+    throw new UltragoalError(`Cannot record final review blockers for ${goal.id}; it is not the only unresolved ultragoal story.`);
+  }
+  const now2 = iso(options.now);
+  const expectedObjective2 = expectedClaudeObjective(plan, goal);
+  const aggregateMode = claudeGoalMode(plan) === "aggregate";
+  const reconciliation = reconcileClaudeGoalSnapshot(
+    options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal),
+    {
+      expectedObjective: expectedObjective2,
+      allowedStatuses: ["active"],
+      requireSnapshot: true,
+      requireComplete: false
+    }
+  );
+  if (!reconciliation.ok) {
+    throw new UltragoalError(formatClaudeGoalReconciliation(reconciliation));
+  }
+  const addedGoal = appendGoalToPlan(plan, options, now2);
+  goal.status = "review_blocked";
+  goal.reviewBlockedAt = now2;
+  goal.updatedAt = now2;
+  goal.completedAt = void 0;
+  goal.failedAt = void 0;
+  goal.failureReason = void 0;
+  goal.evidence = options.evidence;
+  if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  plan.updatedAt = now2;
+  await writePlan(cwd2, plan);
+  await appendLedger(cwd2, {
+    ts: now2,
+    event: "final_review_failed",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal,
+    message: aggregateMode ? "Final aggregate code-review was not clean; blocker story was appended while Claude /goal remains active." : "Final per-story code-review was not clean; blocker story was appended and may require a fresh/available Claude /goal context."
+  }, plan.planId);
+  await appendLedger(cwd2, {
+    ts: now2,
+    event: "goal_added",
+    goalId: addedGoal.id,
+    status: addedGoal.status,
+    evidence: options.evidence,
+    message: addedGoal.title
+  }, plan.planId);
+  await appendLedger(cwd2, {
+    ts: now2,
+    event: "goal_review_blocked",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal
+  }, plan.planId);
+  return { plan, blockedGoal: goal, addedGoal };
+}
+function buildClaudeGoalInstruction(goal, plan) {
+  if (claudeGoalMode(plan) === "aggregate") return buildAggregateClaudeGoalInstruction(goal, plan);
+  return buildPerStoryClaudeGoalInstruction(goal, plan);
+}
+function buildPerStoryClaudeGoalInstruction(goal, plan) {
+  const createPayload = {
+    condition: goal.objective,
+    ...goal.tokenBudget ? { token_budget: goal.tokenBudget } : {}
+  };
+  const finalStory = isFinalRunCompletionCandidate(plan, goal);
+  return [
+    "Ultragoal active-goal handoff",
+    `Plan: ${plan.goalsPath}`,
+    `Ledger: ${plan.ledgerPath}`,
+    `Goal: ${goal.id} \u2014 ${goal.title}`,
+    "",
+    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
+    "- If `omc` is not on PATH on a plugin-only install, replace the `omc` prefix in these commands with `oh-my-copilot.js` or `node <plugin-root>/bin/oh-my-copilot.js`.",
+    "- First confirm the active Claude /goal for this session; if none is active, invoke /goal <condition> with the payload below. If you cannot invoke /goal in this session (e.g. standalone Claude Code), ask the user to type it and wait; --claude-goal-json reconciles the ledger only and does not satisfy the PreToolUse /goal guard.",
+    "- If a different active Claude /goal exists, finish or clear that /goal before starting this ultragoal.",
+    "- If the active /goal is a different completed legacy goal and the Claude session refuses to set a new /goal, continue this ultragoal in a fresh Claude Code session (same repo/worktree) and invoke /goal there.",
+    `- To preserve the durable ledger before switching sessions, record the non-terminal blocker without failing this goal: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks new /goal in this session>" --claude-goal-json "<goal snapshot JSON or path>"`,
+    "- Work only this goal until its completion audit passes.",
+    finalStory ? "- Final mandatory quality gate: run ai-slop-cleaner on changed files even when it is a no-op, rerun verification, then run $code-review." : "- This is not the final ultragoal story; do not run the final ai-slop-cleaner/$code-review gate yet.",
+    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record blockers with:" : "- After the goal is actually complete, clear or update the active /goal (run /goal clear once the auto-clear has not already fired), then share a fresh /goal snapshot and checkpoint the ledger with:",
+    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    finalStory ? "- In legacy per-story mode, the blocker story may require a fresh/available Claude /goal context because this story remains an active incomplete /goal; do not claim it is complete." : null,
+    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or wait for the auto-clear), then checkpoint with --quality-gate-json:" : null,
+    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : null,
+    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
+    "",
+    "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
+    JSON.stringify(createPayload, null, 2),
+    "",
+    "Objective (use as the /goal condition):",
+    goal.objective
+  ].filter((line) => line !== null).join("\n");
+}
+function buildAggregateClaudeGoalInstruction(goal, plan) {
+  const objective = plan.claudeObjective ?? aggregateClaudeObjective(plan.goals, plan.planId);
+  const finalStory = isFinalRunCompletionCandidate(plan, goal);
+  const createPayload = { condition: objective };
+  const checkpointStatus = finalStory ? "complete" : "active";
+  return [
+    "Ultragoal aggregate-goal handoff",
+    `Plan: ${plan.goalsPath}`,
+    `Ledger: ${plan.ledgerPath}`,
+    `Goal: ${goal.id} \u2014 ${goal.title}`,
+    "",
+    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
+    "- If `omc` is not on PATH on a plugin-only install, replace the `omc` prefix in these commands with `oh-my-copilot.js` or `node <plugin-root>/bin/oh-my-copilot.js`.",
+    "- Claude /goal = the whole ultragoal run; OMC G001/G002/etc. = ledger stories.",
+    "- First confirm the active Claude /goal for this session; if none is active, invoke /goal <condition> with the aggregate payload below. If you cannot invoke /goal in this session (e.g. standalone Claude Code), ask the user to type it and wait; --claude-goal-json reconciles the ledger only and does not satisfy the PreToolUse /goal guard.",
+    "- If the active /goal already reports the same aggregate objective as active, continue this OMC story without setting a new /goal.",
+    "- If a different active or incomplete Claude /goal exists, finish or clear that /goal before starting this ultragoal; do not claim a shell command can replace Claude /goal state.",
+    finalStory ? "- This is the final pending story: run the mandatory final ai-slop-cleaner pass, rerun verification, and run $code-review before any /goal clear." : "- This is not the final story: do not clear the /goal yet; the aggregate Claude /goal must remain active while later OMC stories remain.",
+    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record durable blocker work first:" : null,
+    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : null,
+    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or let the auto-clear fire when the condition holds), share a fresh complete /goal snapshot, then checkpoint with --quality-gate-json." : null,
+    `- Checkpoint this OMC story with a fresh /goal snapshot whose objective matches the aggregate payload and whose status is ${checkpointStatus}:`,
+    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
+    "",
+    "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
+    JSON.stringify(createPayload, null, 2),
+    "",
+    "Aggregate /goal condition:",
+    objective,
+    "",
+    "Current OMC story objective:",
+    goal.objective
+  ].filter((line) => line !== null).join("\n");
+}
+var import_node_fs28, import_promises32, import_node_path35, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
+var init_artifacts = __esm({
+  "src/ultragoal/artifacts.ts"() {
+    "use strict";
+    import_node_fs28 = require("node:fs");
+    import_promises32 = require("node:fs/promises");
+    import_node_path35 = require("node:path");
+    init_claude_goal_snapshot();
+    init_atomic_write();
+    init_worktree_paths();
+    ULTRAGOAL_DIR = ".omg/ultragoal";
+    ULTRAGOAL_BRIEF = "brief.md";
+    ULTRAGOAL_GOALS = "goals.json";
+    ULTRAGOAL_LEDGER = "ledger.jsonl";
+    ULTRAGOAL_PLANS_SUBDIR = "plans";
+    UltragoalError = class extends Error {
+    };
+    STATE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+  }
+});
+
 // src/graph/schema.ts
 function parseGraphDescriptorShape(input) {
   return graphDescriptorSchema.parse(input);
@@ -122538,10 +123460,279 @@ var init_transcript = __esm({
   }
 });
 
+// src/hud/copilot-events.ts
+function emptyResult() {
+  return {
+    agents: [],
+    todos: [],
+    toolCallCount: 0,
+    agentCallCount: 0,
+    skillCallCount: 0,
+    lastToolName: null,
+    recentTools: [],
+    mode: null,
+    reasoningEffort: null,
+    compacting: false,
+    compactionCount: 0,
+    usage: null
+  };
+}
+function str4(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function isFile2(path30) {
+  try {
+    return (0, import_fs171.statSync)(path30).isFile();
+  } catch {
+    return false;
+  }
+}
+function resolveCopilotEventsPath(transcriptPath, sessionId) {
+  if (transcriptPath) {
+    try {
+      const stat2 = (0, import_fs171.statSync)(transcriptPath);
+      const candidate = stat2.isDirectory() ? (0, import_path200.join)(transcriptPath, "events.jsonl") : (0, import_path200.basename)(transcriptPath) === "events.jsonl" ? transcriptPath : (0, import_path200.join)((0, import_path200.dirname)(transcriptPath), "events.jsonl");
+      if (isFile2(candidate)) return candidate;
+    } catch {
+    }
+  }
+  if (sessionId) {
+    const candidate = copilotEventsPath(sessionId);
+    if (candidate && isFile2(candidate)) return candidate;
+  }
+  return null;
+}
+function readTail(path30, size) {
+  const start = Math.max(0, size - MAX_TAIL_BYTES2);
+  const length = size - start;
+  const buffer = Buffer.alloc(length);
+  const fd = (0, import_fs171.openSync)(path30, "r");
+  try {
+    let offset = 0;
+    while (offset < length) {
+      const n = (0, import_fs171.readSync)(fd, buffer, offset, length - offset, start + offset);
+      if (n === 0) break;
+      offset += n;
+    }
+  } finally {
+    (0, import_fs171.closeSync)(fd);
+  }
+  const text = buffer.toString("utf8");
+  return start > 0 ? text.slice(text.indexOf("\n") + 1) : text;
+}
+function toDate(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const date3 = new Date(value);
+  return Number.isNaN(date3.getTime()) ? fallback : date3;
+}
+function toolTarget(args) {
+  if (!args || typeof args !== "object") return null;
+  const input = args;
+  const path30 = str4(input.path) ?? str4(input.file_path) ?? str4(input.fileName);
+  if (path30) return import_path200.win32.basename(path30) || path30;
+  const command = str4(input.command);
+  if (command) return command.length > 20 ? `${command.slice(0, 20)}...` : command;
+  return null;
+}
+function permissionTarget(request) {
+  return (str4(request.fullCommandText) ?? str4(request.fileName) ?? str4(request.path) ?? str4(request.url) ?? str4(request.toolName) ?? "...").slice(0, 40);
+}
+function parseEvents(text, staleMs, now2) {
+  const result = emptyResult();
+  const agents = /* @__PURE__ */ new Map();
+  const tools = /* @__PURE__ */ new Map();
+  const permissions = /* @__PURE__ */ new Map();
+  const epoch = /* @__PURE__ */ new Date(0);
+  for (const line of text.split("\n")) {
+    if (!line.trim() || !RELEVANT_TYPES.some((type) => line.includes(`"${type}"`))) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!event || typeof event !== "object" || typeof event.type !== "string") continue;
+    const data = event.data && typeof event.data === "object" ? event.data : {};
+    const at = toDate(event.timestamp, epoch);
+    switch (event.type) {
+      case "session.start":
+        if (at !== epoch) result.sessionStart = at;
+        if ("reasoningEffort" in data) result.reasoningEffort = str4(data.reasoningEffort);
+        break;
+      case "session.resume":
+        if ("reasoningEffort" in data) result.reasoningEffort = str4(data.reasoningEffort);
+        break;
+      case "tool.execution_start": {
+        const name = str4(data.toolName);
+        if (!name) break;
+        result.toolCallCount++;
+        result.lastToolName = name;
+        const id = str4(data.toolCallId);
+        if (id && !RECENT_TOOLS_SKIP2.has(name)) {
+          if (tools.size >= MAX_RECENT_TOOLS2) {
+            const oldest = tools.keys().next().value;
+            if (oldest !== void 0) tools.delete(oldest);
+          }
+          tools.set(id, { name, target: toolTarget(data.arguments), status: "running", timestamp: at });
+        }
+        break;
+      }
+      case "tool.execution_complete": {
+        const tool2 = tools.get(str4(data.toolCallId) ?? "");
+        if (tool2) tool2.status = data.success === false ? "failure" : "success";
+        break;
+      }
+      case "skill.invoked": {
+        const name = str4(data.name);
+        if (!name) break;
+        result.skillCallCount++;
+        result.lastActivatedSkill = { name, timestamp: at };
+        break;
+      }
+      case "subagent.started": {
+        const id = str4(data.toolCallId);
+        if (!id) break;
+        result.agentCallCount++;
+        agents.set(id, {
+          id,
+          type: str4(data.agentName) ?? str4(data.agentDisplayName) ?? "agent",
+          model: str4(data.model) ?? void 0,
+          description: str4(data.agentDescription) ?? void 0,
+          status: "running",
+          startTime: at
+        });
+        break;
+      }
+      case "subagent.completed":
+      case "subagent.failed": {
+        const agent = agents.get(str4(data.toolCallId) ?? "");
+        if (agent) {
+          agent.status = "completed";
+          agent.endTime = at;
+        }
+        break;
+      }
+      case "session.mode_changed": {
+        const mode = data.newMode;
+        if (mode === "interactive" || mode === "plan" || mode === "autopilot") result.mode = mode;
+        break;
+      }
+      case "session.model_change":
+        if ("reasoningEffort" in data) result.reasoningEffort = str4(data.reasoningEffort);
+        break;
+      case "session.compaction_start":
+        result.compacting = true;
+        break;
+      case "session.compaction_complete":
+        result.compacting = false;
+        result.compactionCount++;
+        break;
+      case "session.usage_checkpoint":
+      case "session.shutdown":
+        if (typeof data.totalNanoAiu === "number" && Number.isFinite(data.totalNanoAiu)) {
+          result.usage = {
+            totalNanoAiu: data.totalNanoAiu,
+            totalPremiumRequests: typeof data.totalPremiumRequests === "number" ? data.totalPremiumRequests : null
+          };
+        }
+        break;
+      case "permission.requested": {
+        const requestId = str4(data.requestId);
+        const request = data.permissionRequest;
+        if (!requestId || !request || typeof request !== "object") break;
+        const req = request;
+        permissions.set(requestId, {
+          toolName: str4(req.kind) ?? "tool",
+          targetSummary: permissionTarget(req),
+          timestamp: at
+        });
+        break;
+      }
+      case "permission.completed":
+        permissions.delete(str4(data.requestId) ?? "");
+        break;
+    }
+  }
+  for (const agent of agents.values()) {
+    if (agent.status === "running" && now2 - agent.startTime.getTime() > staleMs) {
+      agent.status = "completed";
+      agent.endTime = new Date(agent.startTime.getTime() + staleMs);
+    }
+  }
+  const all = Array.from(agents.values());
+  const running = all.filter((a) => a.status === "running");
+  const completed = all.filter((a) => a.status === "completed");
+  result.agents = [...running, ...completed.slice(-(MAX_AGENTS - running.length))].slice(0, MAX_AGENTS);
+  result.recentTools = Array.from(tools.values());
+  result.pendingPermission = Array.from(permissions.values()).pop();
+  return result;
+}
+function readCopilotEvents(eventsPath, options = {}) {
+  if (!eventsPath) return emptyResult();
+  const now2 = options.now ?? Date.now();
+  const staleMs = (options.staleTaskThresholdMinutes ?? 30) * 6e4;
+  try {
+    const stat2 = (0, import_fs171.statSync)(eventsPath);
+    if (!stat2.isFile()) return emptyResult();
+    const key = `${stat2.size}:${stat2.mtimeMs}:${staleMs}:${Math.floor(now2 / 6e4)}`;
+    const cached2 = cache.get(eventsPath);
+    if (cached2?.key === key) return structuredClone(cached2.result);
+    const result = parseEvents(readTail(eventsPath, stat2.size), staleMs, now2);
+    if (cache.size >= CACHE_MAX_SIZE) cache.clear();
+    cache.set(eventsPath, { key, result: structuredClone(result) });
+    return result;
+  } catch {
+    return emptyResult();
+  }
+}
+var import_fs171, import_path200, MAX_TAIL_BYTES2, MAX_AGENTS, MAX_RECENT_TOOLS2, CACHE_MAX_SIZE, RECENT_TOOLS_SKIP2, RELEVANT_TYPES, cache;
+var init_copilot_events = __esm({
+  "src/hud/copilot-events.ts"() {
+    "use strict";
+    import_fs171 = require("fs");
+    import_path200 = require("path");
+    init_ledger();
+    MAX_TAIL_BYTES2 = 4 * 1024 * 1024;
+    MAX_AGENTS = 10;
+    MAX_RECENT_TOOLS2 = 20;
+    CACHE_MAX_SIZE = 20;
+    RECENT_TOOLS_SKIP2 = /* @__PURE__ */ new Set([
+      "skill",
+      "task",
+      "report_intent",
+      "task_complete",
+      "thinking",
+      "read_agent",
+      "list_agents",
+      "write_agent",
+      "update_todo"
+    ]);
+    RELEVANT_TYPES = [
+      "tool.execution_start",
+      "tool.execution_complete",
+      "skill.invoked",
+      "subagent.started",
+      "subagent.completed",
+      "subagent.failed",
+      "session.start",
+      "session.resume",
+      "session.mode_changed",
+      "session.model_change",
+      "session.compaction_start",
+      "session.compaction_complete",
+      "session.usage_checkpoint",
+      "session.shutdown",
+      "permission.requested",
+      "permission.completed"
+    ];
+    cache = /* @__PURE__ */ new Map();
+  }
+});
+
 // src/hud/omc-state.ts
 function isStateFileStale(filePath) {
   try {
-    const stat2 = (0, import_fs171.statSync)(filePath);
+    const stat2 = (0, import_fs172.statSync)(filePath);
     const age = Date.now() - stat2.mtimeMs;
     return age > MAX_STATE_AGE_MS2;
   } catch {
@@ -122551,21 +123742,21 @@ function isStateFileStale(filePath) {
 function resolveStatePath2(directory, filename, sessionId) {
   const omcRoot = getOmcRoot(directory);
   if (sessionId) {
-    const sessionPath = (0, import_path200.join)(omcRoot, "state", "sessions", sessionId, filename);
-    return (0, import_fs171.existsSync)(sessionPath) ? sessionPath : null;
+    const sessionPath = (0, import_path201.join)(omcRoot, "state", "sessions", sessionId, filename);
+    return (0, import_fs172.existsSync)(sessionPath) ? sessionPath : null;
   }
   let bestPath = null;
   let bestMtime = 0;
-  const sessionsDir = (0, import_path200.join)(omcRoot, "state", "sessions");
-  if ((0, import_fs171.existsSync)(sessionsDir)) {
+  const sessionsDir = (0, import_path201.join)(omcRoot, "state", "sessions");
+  if ((0, import_fs172.existsSync)(sessionsDir)) {
     try {
-      const entries = (0, import_fs171.readdirSync)(sessionsDir, { withFileTypes: true });
+      const entries = (0, import_fs172.readdirSync)(sessionsDir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
-        const sessionFile = (0, import_path200.join)(sessionsDir, entry2.name, filename);
-        if ((0, import_fs171.existsSync)(sessionFile)) {
+        const sessionFile = (0, import_path201.join)(sessionsDir, entry2.name, filename);
+        if ((0, import_fs172.existsSync)(sessionFile)) {
           try {
-            const mtime = (0, import_fs171.statSync)(sessionFile).mtimeMs;
+            const mtime = (0, import_fs172.statSync)(sessionFile).mtimeMs;
             if (mtime > bestMtime) {
               bestMtime = mtime;
               bestPath = sessionFile;
@@ -122577,10 +123768,10 @@ function resolveStatePath2(directory, filename, sessionId) {
     } catch {
     }
   }
-  const newPath = (0, import_path200.join)(omcRoot, "state", filename);
-  if ((0, import_fs171.existsSync)(newPath)) {
+  const newPath = (0, import_path201.join)(omcRoot, "state", filename);
+  if ((0, import_fs172.existsSync)(newPath)) {
     try {
-      const mtime = (0, import_fs171.statSync)(newPath).mtimeMs;
+      const mtime = (0, import_fs172.statSync)(newPath).mtimeMs;
       if (mtime > bestMtime) {
         bestMtime = mtime;
         bestPath = newPath;
@@ -122589,10 +123780,10 @@ function resolveStatePath2(directory, filename, sessionId) {
       if (!bestPath) bestPath = newPath;
     }
   }
-  const legacyPath = (0, import_path200.join)(omcRoot, filename);
-  if ((0, import_fs171.existsSync)(legacyPath)) {
+  const legacyPath = (0, import_path201.join)(omcRoot, filename);
+  if ((0, import_fs172.existsSync)(legacyPath)) {
     try {
-      const mtime = (0, import_fs171.statSync)(legacyPath).mtimeMs;
+      const mtime = (0, import_fs172.statSync)(legacyPath).mtimeMs;
       if (mtime > bestMtime) {
         bestPath = legacyPath;
       }
@@ -122611,7 +123802,7 @@ function readRalphStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs171.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs172.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -122628,15 +123819,15 @@ function readRalphStateForHud(directory, sessionId) {
   }
 }
 function readPrdStateForHud(directory) {
-  let prdPath = (0, import_path200.join)(directory, "prd.json");
-  if (!(0, import_fs171.existsSync)(prdPath)) {
-    prdPath = (0, import_path200.join)(getOmcRoot(directory), "prd.json");
-    if (!(0, import_fs171.existsSync)(prdPath)) {
+  let prdPath = (0, import_path201.join)(directory, "prd.json");
+  if (!(0, import_fs172.existsSync)(prdPath)) {
+    prdPath = (0, import_path201.join)(getOmcRoot(directory), "prd.json");
+    if (!(0, import_fs172.existsSync)(prdPath)) {
       return null;
     }
   }
   try {
-    const content = (0, import_fs171.readFileSync)(prdPath, "utf-8");
+    const content = (0, import_fs172.readFileSync)(prdPath, "utf-8");
     const prd = JSON.parse(content);
     if (!prd.userStories || !Array.isArray(prd.userStories)) {
       return null;
@@ -122689,7 +123880,7 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs171.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs172.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -122712,12 +123903,12 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
 }
-var import_fs171, import_path200, MAX_STATE_AGE_MS2;
+var import_fs172, import_path201, MAX_STATE_AGE_MS2;
 var init_omc_state = __esm({
   "src/hud/omc-state.ts"() {
     "use strict";
-    import_fs171 = require("fs");
-    import_path200 = require("path");
+    import_fs172 = require("fs");
+    import_path201 = require("path");
     init_worktree_paths();
     init_named_workflow_resume_validator();
     MAX_STATE_AGE_MS2 = 2 * 60 * 60 * 1e3;
@@ -122726,7 +123917,7 @@ var init_omc_state = __esm({
 
 // src/hud/custom-rate-provider.ts
 function getCachePath2() {
-  return (0, import_path201.join)(
+  return (0, import_path202.join)(
     getCopilotConfigDir(),
     "plugins",
     "oh-my-copilot",
@@ -122736,8 +123927,8 @@ function getCachePath2() {
 function readCache2() {
   try {
     const p = getCachePath2();
-    if (!(0, import_fs172.existsSync)(p)) return null;
-    return JSON.parse((0, import_fs172.readFileSync)(p, "utf-8"));
+    if (!(0, import_fs173.existsSync)(p)) return null;
+    return JSON.parse((0, import_fs173.readFileSync)(p, "utf-8"));
   } catch {
     return null;
   }
@@ -122745,15 +123936,15 @@ function readCache2() {
 function writeCache2(buckets, identity) {
   try {
     const p = getCachePath2();
-    const dir = (0, import_path201.dirname)(p);
-    if (!(0, import_fs172.existsSync)(dir)) (0, import_fs172.mkdirSync)(dir, { recursive: true });
-    const cache = { timestamp: Date.now(), buckets, identity };
-    (0, import_fs172.writeFileSync)(p, JSON.stringify(cache, null, 2));
+    const dir = (0, import_path202.dirname)(p);
+    if (!(0, import_fs173.existsSync)(dir)) (0, import_fs173.mkdirSync)(dir, { recursive: true });
+    const cache2 = { timestamp: Date.now(), buckets, identity };
+    (0, import_fs173.writeFileSync)(p, JSON.stringify(cache2, null, 2));
   } catch {
   }
 }
-function isCacheValid2(cache) {
-  return Date.now() - cache.timestamp < CACHE_TTL_MS2;
+function isCacheValid2(cache2) {
+  return Date.now() - cache2.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
   return new Promise((resolve63, reject2) => {
@@ -122838,9 +124029,9 @@ async function executeCustomProvider(config2) {
     periods: [...new Set(config2.periods ?? [])].sort()
   })).digest("hex");
   const storedCache = readCache2();
-  const cache = storedCache?.identity === identity ? storedCache : null;
-  if (cache && isCacheValid2(cache)) {
-    return { buckets: cache.buckets, stale: false };
+  const cache2 = storedCache?.identity === identity ? storedCache : null;
+  if (cache2 && isCacheValid2(cache2)) {
+    return { buckets: cache2.buckets, stale: false };
   }
   const timeoutMs = config2.timeoutMs ?? DEFAULT_TIMEOUT_MS4;
   try {
@@ -122850,7 +124041,7 @@ async function executeCustomProvider(config2) {
       if (process.env.OMC_DEBUG) {
         console.error("[custom-rate-provider] Invalid output format from command");
       }
-      if (cache) return { buckets: cache.buckets, stale: true };
+      if (cache2) return { buckets: cache2.buckets, stale: true };
       return { buckets: [], stale: false, error: "invalid output" };
     }
     writeCache2(buckets, identity);
@@ -122862,18 +124053,18 @@ async function executeCustomProvider(config2) {
         err instanceof Error ? err.message : err
       );
     }
-    if (cache) return { buckets: cache.buckets, stale: true };
+    if (cache2) return { buckets: cache2.buckets, stale: true };
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process57, import_node_crypto18, import_fs172, import_path201, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process57, import_node_crypto18, import_fs173, import_path202, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
     import_child_process57 = require("child_process");
     import_node_crypto18 = require("node:crypto");
-    import_fs172 = require("fs");
-    import_path201 = require("path");
+    import_fs173 = require("fs");
+    import_path202 = require("path");
     init_config_dir();
     CACHE_TTL_MS2 = 3e4;
     DEFAULT_TIMEOUT_MS4 = 800;
@@ -123401,8 +124592,8 @@ var init_todos = __esm({
 });
 
 // src/hud/elements/skills.ts
-function truncate3(str4, maxWidth) {
-  return truncateToWidth(str4, maxWidth);
+function truncate3(str5, maxWidth) {
+  return truncateToWidth(str5, maxWidth);
 }
 function getSkillDisplayName(skillName) {
   return skillName.split(":").pop() || skillName;
@@ -123798,8 +124989,8 @@ function renderCustomBuckets(result, thresholdPercent = 85) {
     if (bucket.resetsAt && pct != null && pct >= thresholdPercent) {
       const d = new Date(bucket.resetsAt);
       if (!isNaN(d.getTime())) {
-        const str4 = formatResetTime(d);
-        if (str4) resetPart = `${DIM4}(${str4})${RESET}`;
+        const str5 = formatResetTime(d);
+        if (str5) resetPart = `${DIM4}(${str5})${RESET}`;
       }
     }
     return `${DIM4}${bucket.label}:${RESET}${color}${usageStr}${colorReset}${staleMarker}${resetPart}`;
@@ -124044,6 +125235,133 @@ var init_autopilot2 = __esm({
   }
 });
 
+// src/hud/elements/copilot-mode.ts
+function renderCopilotMode(mode, allowAll) {
+  const parts = [];
+  if (mode === "plan") parts.push(`${CYAN8}plan${RESET}`);
+  if (mode === "autopilot") parts.push(`${MAGENTA4}autopilot${RESET}`);
+  if (allowAll === true) parts.push(`${RED7}yolo${RESET}`);
+  return parts.length > 0 ? `mode:${parts.join("+")}` : null;
+}
+var CYAN8, MAGENTA4, RED7;
+var init_copilot_mode = __esm({
+  "src/hud/elements/copilot-mode.ts"() {
+    "use strict";
+    init_colors();
+    CYAN8 = "\x1B[36m";
+    MAGENTA4 = "\x1B[35m";
+    RED7 = "\x1B[31m";
+  }
+});
+
+// src/hud/elements/team.ts
+function readTeamStateForHud(directory, now2 = Date.now()) {
+  let missions;
+  try {
+    missions = readTeamMissions(
+      directory,
+      { enabled: true, maxAgentsPerMission: Number.MAX_SAFE_INTEGER },
+      MAX_TEAM_AGE_MS,
+      now2
+    );
+  } catch {
+    return null;
+  }
+  const live = missions.filter((mission) => mission.status !== "done").filter((mission) => now2 - (Date.parse(mission.updatedAt) || 0) <= MAX_TEAM_AGE_MS).sort((left, right) => STATUS_RANK[left.status] - STATUS_RANK[right.status] || (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0));
+  const top = live[0];
+  if (!top) return null;
+  return {
+    name: top.teamName ?? top.name,
+    status: top.status,
+    runningWorkers: top.agents.filter((agent) => agent.status === "running").length,
+    workerCount: top.workerCount,
+    completedTasks: top.taskCounts.completed,
+    totalTasks: top.taskCounts.total,
+    otherTeams: live.length - 1
+  };
+}
+function renderTeam(state) {
+  if (!state) return null;
+  const parts = [
+    `team:${CYAN9}${state.name}${RESET}`,
+    `${state.runningWorkers}/${state.workerCount}w`,
+    `${state.completedTasks}/${state.totalTasks}t`
+  ];
+  if (state.status === "blocked") parts.push(`${YELLOW9}blocked${RESET}`);
+  if (state.otherTeams > 0) parts.push(`+${state.otherTeams}`);
+  return parts.join(" ");
+}
+var CYAN9, YELLOW9, MAX_TEAM_AGE_MS, STATUS_RANK;
+var init_team = __esm({
+  "src/hud/elements/team.ts"() {
+    "use strict";
+    init_mission_board();
+    init_colors();
+    CYAN9 = "\x1B[36m";
+    YELLOW9 = "\x1B[33m";
+    MAX_TEAM_AGE_MS = 2 * 60 * 60 * 1e3;
+    STATUS_RANK = {
+      running: 0,
+      blocked: 1,
+      waiting: 2,
+      done: 3
+    };
+  }
+});
+
+// src/hud/elements/ultragoal.ts
+function readPlan(path30) {
+  try {
+    const mtimeMs = (0, import_fs174.statSync)(path30).mtimeMs;
+    const plan = JSON.parse((0, import_fs174.readFileSync)(path30, "utf-8"));
+    if (plan?.version !== 1 || !Array.isArray(plan.goals)) return null;
+    const goals = plan.goals.filter((goal) => typeof goal === "object" && goal !== null && typeof goal.status === "string");
+    return { plan: { ...plan, goals }, mtimeMs };
+  } catch {
+    return null;
+  }
+}
+function readUltragoalStateForHud(directory, now2 = Date.now()) {
+  const root2 = (0, import_path203.join)(getOmcRoot(directory), "ultragoal");
+  if (!(0, import_fs174.existsSync)(root2)) return null;
+  const paths = [(0, import_path203.join)(root2, ULTRAGOAL_GOALS)];
+  try {
+    for (const entry2 of (0, import_fs174.readdirSync)((0, import_path203.join)(root2, ULTRAGOAL_PLANS_SUBDIR), { withFileTypes: true })) {
+      if (entry2.isDirectory()) paths.push((0, import_path203.join)(root2, ULTRAGOAL_PLANS_SUBDIR, entry2.name, ULTRAGOAL_GOALS));
+    }
+  } catch {
+  }
+  let best = null;
+  for (const path30 of paths) {
+    const candidate = readPlan(path30);
+    if (!candidate || candidate.plan.goals.length === 0) continue;
+    if (now2 - candidate.mtimeMs > MAX_PLAN_AGE_MS || isUltragoalDone(candidate.plan)) continue;
+    if (!best || candidate.mtimeMs > best.mtimeMs) best = candidate;
+  }
+  if (!best) return null;
+  const summary = summarizeUltragoalPlan(best.plan);
+  return { complete: summary.complete, total: summary.total, failed: summary.failed };
+}
+function renderUltragoal(state) {
+  if (!state) return null;
+  const color = state.failed > 0 ? YELLOW10 : GREEN10;
+  return `goal:${color}${state.complete}/${state.total}${RESET}`;
+}
+var import_fs174, import_path203, GREEN10, YELLOW10, MAX_PLAN_AGE_MS;
+var init_ultragoal = __esm({
+  "src/hud/elements/ultragoal.ts"() {
+    "use strict";
+    import_fs174 = require("fs");
+    import_path203 = require("path");
+    init_worktree_paths();
+    init_artifacts();
+    init_colors();
+    GREEN10 = "\x1B[32m";
+    YELLOW10 = "\x1B[33m";
+    MAX_PLAN_AGE_MS = 24 * 60 * 60 * 1e3;
+  }
+});
+
 // src/hud/elements/cwd.ts
 function osc8Link(url, text) {
   return `\x1B]8;;${url}\x1B\\${text}\x1B]8;;\x1B\\`;
@@ -124109,29 +125427,41 @@ var init_cwd = __esm({
 });
 
 // src/hud/elements/premium-budget.ts
-function renderPremiumBudget(cwd2) {
+function formatCredits(nanoAiu) {
+  const credits = nanoAiu / NANO_AIU_PER_CREDIT;
+  if (credits >= 0.1) return String(Number(credits.toFixed(1)));
+  return credits < 0.01 ? "<0.01" : String(Number(credits.toFixed(2)));
+}
+function renderSessionCredits(aiUsed) {
+  if (!aiUsed || aiUsed.nanoAiu === 0) return null;
+  const value = aiUsed.nanoAiu !== null ? formatCredits(aiUsed.nanoAiu) : aiUsed.formatted;
+  return value ? `cr:${GREEN11}${value}${RESET}` : null;
+}
+function renderPremiumBudget(cwd2, sessionAiUsed) {
   try {
     const { settings } = loadBudgetSettings(cwd2);
-    if (!settings.enabled || !hasLimits(settings)) return null;
+    if (!settings.enabled || !hasLimits(settings)) {
+      return sessionAiUsed === void 0 ? null : renderSessionCredits(sessionAiUsed);
+    }
     const totals = ledgerTotals(readLedger(ledgerPath2(cwd2)));
     const used = totals.credits;
     const limit = settings.softLimit;
-    const color = used >= limit ? YELLOW9 : GREEN10;
+    const color = used >= limit ? YELLOW11 : GREEN11;
     const approx = totals.estimatedRecords > 0 ? "~" : "";
     return `cr:${color}${approx}${Number(used.toFixed(1))}/${limit}${RESET}`;
   } catch {
     return null;
   }
 }
-var GREEN10, YELLOW9;
+var GREEN11, YELLOW11;
 var init_premium_budget = __esm({
   "src/hud/elements/premium-budget.ts"() {
     "use strict";
     init_colors();
     init_governor();
     init_ledger();
-    GREEN10 = "\x1B[32m";
-    YELLOW9 = "\x1B[33m";
+    GREEN11 = "\x1B[32m";
+    YELLOW11 = "\x1B[33m";
   }
 });
 
@@ -124471,6 +125801,11 @@ function renderModel(modelId, format = "versioned", labels = DEFAULT_HUD_LABELS)
   if (!name) return null;
   return cyan(`${labels.model}: ${name}`);
 }
+function renderCopilotModel(name, labels = DEFAULT_HUD_LABELS) {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  return cyan(`${labels.model}: ${truncateToWidth(trimmed, 40)}`);
+}
 var init_model = __esm({
   "src/hud/elements/model.ts"() {
     "use strict";
@@ -124508,8 +125843,8 @@ var init_effort = __esm({
 // src/hud/elements/api-key-source.ts
 function settingsFileHasApiKey(filePath) {
   try {
-    if (!(0, import_fs173.existsSync)(filePath)) return false;
-    const content = (0, import_fs173.readFileSync)(filePath, "utf-8");
+    if (!(0, import_fs175.existsSync)(filePath)) return false;
+    const content = (0, import_fs175.readFileSync)(filePath, "utf-8");
     const settings = JSON.parse(content);
     const env2 = settings?.env;
     if (typeof env2 !== "object" || env2 === null) return false;
@@ -124520,10 +125855,10 @@ function settingsFileHasApiKey(filePath) {
 }
 function detectApiKeySource(cwd2) {
   if (cwd2) {
-    const projectSettings = (0, import_path202.join)(cwd2, ".copilot", "settings.local.json");
+    const projectSettings = (0, import_path204.join)(cwd2, ".copilot", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
-  const globalSettings = (0, import_path202.join)(getCopilotConfigDir(), "settings.json");
+  const globalSettings = (0, import_path204.join)(getCopilotConfigDir(), "settings.json");
   if (settingsFileHasApiKey(globalSettings)) return "global";
   if (process.env.ANTHROPIC_API_KEY) return "env";
   return null;
@@ -124532,12 +125867,12 @@ function renderApiKeySource(source) {
   if (!source) return null;
   return `${dim("key:")}${cyan(source)}`;
 }
-var import_fs173, import_path202;
+var import_fs175, import_path204;
 var init_api_key_source = __esm({
   "src/hud/elements/api-key-source.ts"() {
     "use strict";
-    import_fs173 = require("fs");
-    import_path202 = require("path");
+    import_fs175 = require("fs");
+    import_path204 = require("path");
     init_colors();
     init_config_dir();
   }
@@ -124586,7 +125921,7 @@ function renderContextLimitWarning(contextPercent, threshold, autoCompact) {
     return null;
   }
   const isCritical = safePercent >= 90;
-  const color = isCritical ? RED7 : YELLOW10;
+  const color = isCritical ? RED8 : YELLOW12;
   const icon = isCritical ? "!!" : "!";
   const action = autoCompact ? "(auto-compact queued)" : "run /compact";
   return `${color}${BOLD2}[${icon}] ctx ${safePercent}% >= ${threshold}% threshold - ${action}${RESET}`;
@@ -124596,18 +125931,18 @@ function renderPayloadLimitWarning(payloadEstimate) {
     return null;
   }
   const isCritical = payloadEstimate.pressure === "critical";
-  const color = isCritical ? RED7 : YELLOW10;
+  const color = isCritical ? RED8 : YELLOW12;
   const icon = isCritical ? "!!" : "!";
   const action = isCritical ? "compact may fail; consider new session" : "consider /compact soon";
   return `${color}${BOLD2}[${icon}] ${payloadEstimate.label} - ${action}${RESET}`;
 }
-var YELLOW10, RED7, BOLD2;
+var YELLOW12, RED8, BOLD2;
 var init_context_warning = __esm({
   "src/hud/elements/context-warning.ts"() {
     "use strict";
     init_colors();
-    YELLOW10 = "\x1B[33m";
-    RED7 = "\x1B[31m";
+    YELLOW12 = "\x1B[33m";
+    RED8 = "\x1B[31m";
     BOLD2 = "\x1B[1m";
   }
 });
@@ -124615,24 +125950,39 @@ var init_context_warning = __esm({
 // src/hud/elements/update-hint.ts
 function renderUpdateHints(input) {
   const lines3 = [];
+  const copilot = input.host === "copilot";
   if (input.omcUpdateAvailable) {
-    const command = input.omcUpdateSource === "marketplace" ? "claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc" : "npm i -g oh-my-copilot@latest";
-    lines3.push(`${YELLOW11}${BOLD3}[!] omc ${input.omcUpdateAvailable} - paste: ! ${command}${RESET}`);
+    let command = NPM_UPDATE;
+    if (input.omcUpdateSource === "copilot-plugin" || copilot && input.omcUpdateSource === "marketplace") {
+      command = COPILOT_PLUGIN_UPDATE;
+    } else if (input.omcUpdateSource === "marketplace") {
+      command = "! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc";
+    }
+    lines3.push(`${YELLOW13}${BOLD3}[!] omg ${input.omcUpdateAvailable} - paste: ${command}${RESET}`);
   }
-  if (input.claudeCodeUpdateAvailable) {
+  if (!copilot && input.claudeCodeUpdateAvailable) {
     lines3.push(
-      `${YELLOW11}${BOLD3}[!] claude ${input.claudeCodeUpdateAvailable} - paste: ! claude update${RESET}`
+      `${YELLOW13}${BOLD3}[!] claude ${input.claudeCodeUpdateAvailable} - paste: ! claude update${RESET}`
     );
   }
   return lines3;
 }
-var YELLOW11, BOLD3;
+function resolveCachedOmcUpdate(cached2, installedVersion, channel, compareVersions4) {
+  if (!cached2?.latestVersion || !installedVersion) return null;
+  const sameChannel = cached2.source === channel || !cached2.source && channel === "npm";
+  if (!sameChannel || cached2.currentVersion !== installedVersion) return null;
+  if (compareVersions4(installedVersion, cached2.latestVersion) >= 0) return null;
+  return { latestVersion: cached2.latestVersion, source: channel };
+}
+var YELLOW13, BOLD3, COPILOT_PLUGIN_UPDATE, NPM_UPDATE;
 var init_update_hint = __esm({
   "src/hud/elements/update-hint.ts"() {
     "use strict";
     init_colors();
-    YELLOW11 = "\x1B[33m";
+    YELLOW13 = "\x1B[33m";
     BOLD3 = "\x1B[1m";
+    COPILOT_PLUGIN_UPDATE = "! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc";
+    NPM_UPDATE = "! npm i -g oh-my-copilot@latest";
   }
 });
 
@@ -124714,13 +126064,29 @@ var init_recent_tools = __esm({
 });
 
 // src/hud/render.ts
+function normalizeLayoutNames(names) {
+  const aliasTargets = new Set(Object.values(LAYOUT_ALIASES));
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const name of names) {
+    const canonical2 = LAYOUT_ALIASES[name] ?? name;
+    if (aliasTargets.has(canonical2)) {
+      if (seen.has(canonical2)) continue;
+      seen.add(canonical2);
+    }
+    result.push(canonical2);
+  }
+  return result;
+}
 function buildMainElementOrder(elementOrder) {
   if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
     return DEFAULT_ELEMENT_ORDER.main;
   }
   const known = new Set(DEFAULT_ELEMENT_ORDER.main);
   const seen = /* @__PURE__ */ new Set();
-  const configured = elementOrder.map((name) => name === "premiumBudget" ? "creditBudget" : name).filter((name) => {
+  const configured = normalizeLayoutNames(
+    elementOrder.map((name) => name === "premiumBudget" ? "creditBudget" : name)
+  ).filter((name) => {
     if (!known.has(name) || seen.has(name)) {
       return false;
     }
@@ -124815,54 +126181,63 @@ function limitOutputLines(lines3, maxLines) {
   const truncatedCount = lines3.length - limit + 1;
   return [...lines3.slice(0, limit - 1), `... (+${truncatedCount} lines)`];
 }
+function isolate(renderElement) {
+  try {
+    return renderElement();
+  } catch (err) {
+    if (process.env.OMC_DEBUG) console.error("[HUD] element failed:", err);
+    return null;
+  }
+}
 async function render(context, config2) {
-  const { elements: enabledElements } = config2;
+  const isCopilotHost = context.host === "copilot";
+  const enabledElements = isCopilotHost ? { ...config2.elements, ...COPILOT_HOST_DROPPED } : config2.elements;
   const hudLabels = config2.labels ?? DEFAULT_HUD_LABELS;
   const rendered = /* @__PURE__ */ new Map();
   const renderedDetail = /* @__PURE__ */ new Map();
   if (enabledElements.hostname) {
-    const hostnameElement = renderHostname();
+    const hostnameElement = isolate(() => renderHostname());
     if (hostnameElement) rendered.set("hostname", hostnameElement);
   }
   if (enabledElements.cwd) {
-    const cwdElement = renderCwd(
+    const cwdElement = isolate(() => renderCwd(
       context.cwd,
       enabledElements.cwdFormat || "relative",
       enabledElements.useHyperlinks ?? false
-    );
+    ));
     if (cwdElement) rendered.set("cwd", cwdElement);
   }
-  const multiRepoElement = enabledElements.gitRepo ? renderMultiRepo(context.cwd) : null;
+  const multiRepoElement = enabledElements.gitRepo ? isolate(() => renderMultiRepo(context.cwd)) : null;
   if (multiRepoElement) {
     rendered.set("gitRepo", multiRepoElement);
   } else {
     if (enabledElements.gitRepo) {
-      const gitRepoElement = renderGitRepo(context.cwd);
+      const gitRepoElement = isolate(() => renderGitRepo(context.cwd));
       if (gitRepoElement) rendered.set("gitRepo", gitRepoElement);
     }
     if (enabledElements.gitBranch) {
-      const gitBranchElement = renderGitBranch(context.cwd);
+      const gitBranchElement = isolate(() => renderGitBranch(context.cwd));
       if (gitBranchElement) rendered.set("gitBranch", gitBranchElement);
     }
     if (enabledElements.gitStatus) {
-      const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
+      const gitStatusElement = isolate(() => renderGitStatus(context.cwd, hudLabels));
       if (gitStatusElement) rendered.set("gitStatus", gitStatusElement);
     }
   }
   const modelSource = enabledElements.modelFormat === "full" ? context.modelId ?? context.modelName : context.modelName;
   if (enabledElements.model && modelSource) {
-    const modelElement = renderModel(
+    const modelElement = isCopilotHost ? isolate(() => renderCopilotModel(modelSource, hudLabels)) : isolate(() => renderModel(
       modelSource,
       enabledElements.modelFormat,
       hudLabels
-    );
+    ));
     if (modelElement) rendered.set("model", modelElement);
   }
   if (enabledElements.effort) {
-    const effortElement = renderEffort(context.effortLevel);
+    const effortElement = isolate(() => renderEffort(context.effortLevel));
     if (effortElement) rendered.set("effort", effortElement);
   }
-  if (enabledElements.updateNotification !== false && context.claudeCodeUpdateAvailable) {
+  if (!isCopilotHost && enabledElements.updateNotification !== false && context.claudeCodeUpdateAvailable) {
     const versionTag = context.claudeCodeVersion ? `#${context.claudeCodeVersion}` : "";
     rendered.set(
       "claudeLabel",
@@ -124872,79 +126247,82 @@ async function render(context, config2) {
     );
   }
   if (enabledElements.apiKeySource && context.apiKeySource) {
-    const keySource = renderApiKeySource(context.apiKeySource);
+    const keySource = isolate(() => renderApiKeySource(context.apiKeySource));
     if (keySource) rendered.set("apiKeySource", keySource);
   }
   if (enabledElements.profile && context.profileName) {
     rendered.set("profile", bold(`profile:${context.profileName}`));
   }
-  if (enabledElements.omcLabel) {
+  if (enabledElements.omgLabel ?? enabledElements.omcLabel) {
     const localSuffix = isRuntimePackageLocal() ? "L" : "";
     const versionTag = context.omcVersion ? `#${context.omcVersion}${localSuffix}` : localSuffix ? `#${localSuffix}` : "";
     if (enabledElements.updateNotification !== false && context.updateAvailable) {
+      const suffix = isCopilotHost ? "" : " omg update";
       rendered.set(
-        "omcLabel",
-        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`)
+        "omgLabel",
+        bold(`[oh-my-copilot${versionTag}] -> ${context.updateAvailable}${suffix}`)
       );
     } else {
-      rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
+      rendered.set("omgLabel", bold(`[oh-my-copilot${versionTag}]`));
     }
   }
   const isEnterprise = enabledElements.enterpriseMode !== void 0 ? enabledElements.enterpriseMode : (context.subscriptionType ?? "").toLowerCase() === "enterprise" || /claude_zero/i.test(context.rateLimitTier ?? "");
   const enterpriseCostReplacesRateLimits = isEnterprise && context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== void 0;
-  if (enabledElements.rateLimits && context.rateLimitsResult && !enterpriseCostReplacesRateLimits) {
-    if (context.rateLimitsResult.rateLimits) {
-      const stale = context.rateLimitsResult.stale;
-      const limits = enabledElements.useBars ? renderRateLimitsWithBar(
-        context.rateLimitsResult.rateLimits,
+  const rateLimitsResult = context.rateLimitsResult;
+  if (enabledElements.rateLimits && rateLimitsResult && !enterpriseCostReplacesRateLimits) {
+    if (rateLimitsResult.rateLimits) {
+      const stale = rateLimitsResult.stale;
+      const limits = enabledElements.useBars ? isolate(() => renderRateLimitsWithBar(
+        rateLimitsResult.rateLimits,
         void 0,
         stale
-      ) : renderRateLimits(context.rateLimitsResult.rateLimits, stale);
+      )) : isolate(() => renderRateLimits(rateLimitsResult.rateLimits, stale));
       if (limits) rendered.set("rateLimits", limits);
     } else {
-      const errorIndicator = renderRateLimitsError(context.rateLimitsResult);
+      const errorIndicator = isolate(() => renderRateLimitsError(rateLimitsResult));
       if (errorIndicator) {
         rendered.set("rateLimits", errorIndicator);
       } else {
-        const hint = renderApiKeyUsageHint(
-          context.rateLimitsResult,
+        const hint = isolate(() => renderApiKeyUsageHint(
+          rateLimitsResult,
           context.apiKeyMode ?? false,
           config2.rateLimitsProvider?.type === "custom"
-        );
+        ));
         if (hint) rendered.set("rateLimits", hint);
       }
     }
   }
-  if (context.customBuckets) {
+  const customBuckets = context.customBuckets;
+  if (customBuckets) {
     const thresholdPercent = config2.rateLimitsProvider?.resetsAtDisplayThresholdPercent;
-    const custom3 = renderCustomBuckets(context.customBuckets, thresholdPercent);
+    const custom3 = isolate(() => renderCustomBuckets(customBuckets, thresholdPercent));
     if (custom3) rendered.set("customBuckets", custom3);
   }
   if (enabledElements.permissionStatus && context.pendingPermission) {
-    const permission = renderPermission(context.pendingPermission);
+    const permission = isolate(() => renderPermission(context.pendingPermission));
     if (permission) rendered.set("permission", permission);
   }
   if (enabledElements.thinking && context.thinkingState) {
-    const thinking = renderThinking(
+    const thinking = isolate(() => renderThinking(
       context.thinkingState,
       enabledElements.thinkingFormat,
       hudLabels
-    );
+    ));
     if (thinking) rendered.set("thinking", thinking);
   }
   if (enabledElements.promptTime) {
-    const prompt = renderPromptTime(context.promptTime, /* @__PURE__ */ new Date());
+    const prompt = isolate(() => renderPromptTime(context.promptTime, /* @__PURE__ */ new Date()));
     if (prompt) rendered.set("promptTime", prompt);
   }
   if (enabledElements.sessionHealth && context.sessionHealth) {
     const showDuration = enabledElements.showSessionDuration ?? true;
     if (showDuration) {
-      const session = renderSession(context.sessionHealth);
+      const session = isolate(() => renderSession(context.sessionHealth));
       if (session) rendered.set("session", session);
     }
   }
   if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
-    const budget = renderPremiumBudget(context.cwd);
+    const budget = isCopilotHost ? isolate(() => renderPremiumBudget(context.cwd, context.aiUsed ?? null)) : isolate(() => renderPremiumBudget(context.cwd));
     if (budget) {
       rendered.set("creditBudget", budget);
       rendered.set("premiumBudget", budget);
@@ -124952,144 +126330,158 @@ async function render(context, config2) {
   }
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
     const stale = context.rateLimitsResult?.stale;
-    const cost = renderEnterpriseCost(
+    const cost = isolate(() => renderEnterpriseCost(
       context.rateLimitsResult?.rateLimits,
       stale
-    );
+    ));
     if (cost) {
       rendered.set("enterpriseCost", cost);
     } else if (enabledElements.showTokens === true) {
-      const tokenUsage = renderTokenUsage(
+      const tokenUsage = isolate(() => renderTokenUsage(
         context.lastRequestTokenUsage,
         context.sessionTotalTokens,
         hudLabels
-      );
+      ));
       if (tokenUsage) rendered.set("tokens", tokenUsage);
     }
   } else if (enabledElements.showTokens === true) {
-    const tokenUsage = renderTokenUsage(
+    const tokenUsage = isolate(() => renderTokenUsage(
       context.lastRequestTokenUsage,
       context.sessionTotalTokens,
       hudLabels
-    );
+    ));
     if (tokenUsage) rendered.set("tokens", tokenUsage);
   }
   if (enabledElements.ralph && context.ralph) {
-    const ralph = renderRalph(context.ralph, config2.thresholds, hudLabels);
+    const ralph = isolate(() => renderRalph(context.ralph, config2.thresholds, hudLabels));
     if (ralph) rendered.set("ralph", ralph);
   }
   if (enabledElements.autopilot && context.autopilot) {
-    const autopilot = renderAutopilot(context.autopilot, config2.thresholds);
+    const autopilot = isolate(() => renderAutopilot(context.autopilot, config2.thresholds));
     if (autopilot) rendered.set("autopilot", autopilot);
   }
+  if (enabledElements.copilotMode === true) {
+    const mode = isolate(() => renderCopilotMode(context.copilotMode, context.copilotAllowAll));
+    if (mode) rendered.set("copilotMode", mode);
+  }
+  if (enabledElements.team === true) {
+    const team = isolate(() => renderTeam(context.team));
+    if (team) rendered.set("team", team);
+  }
+  if (enabledElements.ultragoal === true) {
+    const ultragoal = isolate(() => renderUltragoal(context.ultragoal));
+    if (ultragoal) rendered.set("ultragoal", ultragoal);
+  }
   if (enabledElements.prdStory && context.prd) {
-    const prd = renderPrd(context.prd);
+    const prd = isolate(() => renderPrd(context.prd));
     if (prd) rendered.set("prd", prd);
   }
   if (enabledElements.activeSkills) {
-    const skills = renderSkills(
+    const skills = isolate(() => renderSkills(
       context.ultrawork,
       context.ralph,
       enabledElements.lastSkill ?? true ? context.lastSkill : null
-    );
+    ));
     if (skills) rendered.set("skills", skills);
   }
   if ((enabledElements.lastSkill ?? true) && !enabledElements.activeSkills) {
-    const lastSkillElement = renderLastSkill(context.lastSkill);
+    const lastSkillElement = isolate(() => renderLastSkill(context.lastSkill));
     if (lastSkillElement) rendered.set("lastSkill", lastSkillElement);
   }
   if (enabledElements.contextBar) {
-    const ctx = enabledElements.useBars ? renderContextWithBar(
+    const ctx = enabledElements.useBars ? isolate(() => renderContextWithBar(
       context.contextPercent,
       config2.thresholds,
       10,
       context.contextDisplayScope,
       hudLabels
-    ) : renderContext(
+    )) : isolate(() => renderContext(
       context.contextPercent,
       config2.thresholds,
       context.contextDisplayScope,
       hudLabels
-    );
+    ));
     if (ctx) rendered.set("contextBar", ctx);
   }
   if (enabledElements.agents) {
     const format = enabledElements.agentsFormat || "codes";
     if (format === "multiline") {
       const maxLines = enabledElements.agentsMaxLines || 5;
-      const result = renderAgentsMultiLine(context.activeAgents, maxLines);
+      const result = isolate(() => renderAgentsMultiLine(context.activeAgents, maxLines)) ?? { headerPart: null, detailLines: [] };
       if (result.headerPart) rendered.set("agents", result.headerPart);
       if (result.detailLines.length > 0) {
         renderedDetail.set("agents", result.detailLines);
       }
     } else {
-      const agents = renderAgentsByFormat(context.activeAgents, format);
+      const agents = isolate(() => renderAgentsByFormat(context.activeAgents, format));
       if (agents) rendered.set("agents", agents);
     }
   }
   if (enabledElements.backgroundTasks) {
-    const bg = renderBackground(context.backgroundTasks, hudLabels);
+    const bg = isolate(() => renderBackground(context.backgroundTasks, hudLabels));
     if (bg) rendered.set("background", bg);
   }
   const showCounts = enabledElements.showCallCounts ?? true;
   if (showCounts) {
-    const counts = renderCallCounts(
+    const counts = isolate(() => renderCallCounts(
       context.toolCallCount,
       context.agentCallCount,
       context.skillCallCount,
       enabledElements.callCountsFormat ?? "auto",
       hudLabels
-    );
+    ));
     if (counts) rendered.set("callCounts", counts);
   }
   if (enabledElements.showLastTool === true) {
-    const tool2 = renderLastTool(context.lastToolName ?? null);
+    const tool2 = isolate(() => renderLastTool(context.lastToolName ?? null));
     if (tool2) rendered.set("lastTool", tool2);
   }
   if (enabledElements.showRecentTools === true) {
-    const tools = renderRecentTools(
+    const tools = isolate(() => renderRecentTools(
       context.recentTools ?? [],
       enabledElements.recentToolsMax ?? 5,
       enabledElements.recentToolsShowTarget !== false,
       enabledElements.safeMode
-    );
+    ));
     if (tools) rendered.set("recentTools", tools);
   }
   if (enabledElements.sessionSummary && context.sessionSummary) {
-    const summary = renderSessionSummary(context.sessionSummary);
+    const summary = isolate(() => renderSessionSummary(context.sessionSummary));
     if (summary) rendered.set("sessionSummary", summary);
   }
-  if (context.missionBoard && (config2.missionBoard?.enabled ?? config2.elements.missionBoard ?? false)) {
-    const mbLines = renderMissionBoard(context.missionBoard, config2.missionBoard);
+  const missionBoard = context.missionBoard;
+  if (missionBoard && (config2.missionBoard?.enabled ?? config2.elements.missionBoard ?? false)) {
+    const mbLines = isolate(() => renderMissionBoard(missionBoard, config2.missionBoard)) ?? [];
     if (mbLines.length > 0) renderedDetail.set("missionBoard", mbLines);
   }
-  const ctxWarning = renderContextLimitWarning(
+  const ctxWarning = isolate(() => renderContextLimitWarning(
     context.contextPercent,
     config2.contextLimitWarning.threshold,
     config2.contextLimitWarning.autoCompact
-  );
+  ));
   if (ctxWarning) renderedDetail.set("contextWarning", [ctxWarning]);
-  const payloadWarning = renderPayloadLimitWarning(context.payloadEstimate);
+  const payloadWarning = isCopilotHost ? null : isolate(() => renderPayloadLimitWarning(context.payloadEstimate));
   if (payloadWarning) renderedDetail.set("payloadWarning", [payloadWarning]);
   if (enabledElements.updateNotification !== false) {
-    const updateHints = renderUpdateHints({
+    const updateHints = isolate(() => renderUpdateHints({
       omcUpdateAvailable: context.updateAvailable,
       omcUpdateSource: context.omcUpdateSource ?? null,
-      claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null
-    });
+      claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null,
+      host: context.host
+    })) ?? [];
     if (updateHints.length > 0) renderedDetail.set("updateHint", updateHints);
   }
   if (enabledElements.todos) {
-    const todos = renderTodosWithCurrent(context.todos);
+    const todos = isolate(() => renderTodosWithCurrent(context.todos));
     if (todos) renderedDetail.set("todos", [todos]);
   }
   const safeArray = (v, fallback) => Array.isArray(v) ? v : fallback;
   const effectiveLayout = {
-    line1: safeArray(config2.layout?.line1, DEFAULT_ELEMENT_ORDER.line1),
+    line1: normalizeLayoutNames(safeArray(config2.layout?.line1, DEFAULT_ELEMENT_ORDER.line1)),
     // `layout.main` remains the advanced authoritative layout control.
     // `elementOrder` is a narrow convenience alias for the main HUD line only.
-    main: safeArray(config2.layout?.main, buildMainElementOrder(config2.elementOrder)),
-    detail: safeArray(config2.layout?.detail, DEFAULT_ELEMENT_ORDER.detail)
+    main: normalizeLayoutNames(safeArray(config2.layout?.main, buildMainElementOrder(config2.elementOrder))),
+    detail: normalizeLayoutNames(safeArray(config2.layout?.detail, DEFAULT_ELEMENT_ORDER.detail))
   };
   function collectInline(order) {
     const result = [];
@@ -125152,7 +126544,7 @@ async function render(context, config2) {
   ) : limitedLines;
   return finalLines.join("\n");
 }
-var ANSI_REGEX, PLAIN_SEPARATOR, DIM_SEPARATOR;
+var ANSI_REGEX, PLAIN_SEPARATOR, DIM_SEPARATOR, LAYOUT_ALIASES;
 var init_render = __esm({
   "src/hud/render.ts"() {
     "use strict";
@@ -125175,6 +126567,9 @@ var init_render = __esm({
     init_enterprise_cost();
     init_prompt_time();
     init_autopilot2();
+    init_copilot_mode();
+    init_team();
+    init_ultragoal();
     init_cwd();
     init_premium_budget();
     init_hostname();
@@ -125193,6 +126588,32 @@ var init_render = __esm({
     ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/;
     PLAIN_SEPARATOR = " | ";
     DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
+    LAYOUT_ALIASES = { omcLabel: "omgLabel" };
+  }
+});
+
+// src/hud/host.ts
+function isObject4(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function detectHudHost(stdin, env2 = process.env) {
+  const payload = isObject4(stdin) ? stdin : {};
+  const cost = isObject4(payload.cost) ? payload.cost : {};
+  const contextWindow = isObject4(payload.context_window) ? payload.context_window : {};
+  const remote = isObject4(payload.remote) ? payload.remote : {};
+  if ("ai_used" in payload || "allow_all_enabled" in payload || "connected" in remote || "total_premium_requests" in cost || "current_context_used_percentage" in contextWindow) {
+    return "copilot";
+  }
+  const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path.replace(/\\/g, "/") : "";
+  if ("output_style" in payload || "exceeds_200k_tokens" in payload || "rate_limits" in payload || /\/\.claude\/projects\//.test(transcriptPath) && transcriptPath.endsWith(".jsonl")) {
+    return "claude";
+  }
+  return detectHostCliSignal(env2) ?? "claude";
+}
+var init_host = __esm({
+  "src/hud/host.ts"() {
+    "use strict";
+    init_host_signal();
   }
 });
 
@@ -125273,7 +126694,7 @@ function findByteBackward(fd, fromExclusive, byte) {
   while (end > 0) {
     const start = Math.max(0, end - SCAN_CHUNK_BYTES);
     const length = end - start;
-    (0, import_fs174.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs176.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).lastIndexOf(byte);
     if (index !== -1) return start + index;
     end = start;
@@ -125285,7 +126706,7 @@ function findByteForward(fd, fromInclusive, size, byte) {
   const buffer = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
   while (start < size) {
     const length = Math.min(SCAN_CHUNK_BYTES, size - start);
-    (0, import_fs174.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs176.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).indexOf(byte);
     if (index !== -1) return start + index;
     start += length;
@@ -125300,19 +126721,19 @@ function readLineContainingOffset(fd, size, offset) {
   const length = endOffset - startOffset;
   if (length <= 0 || length > MAX_BOUNDARY_LINE_BYTES) return null;
   const line = Buffer.allocUnsafe(length);
-  (0, import_fs174.readSync)(fd, line, 0, length, startOffset);
+  (0, import_fs176.readSync)(fd, line, 0, length, startOffset);
   return { line, endOffset };
 }
 function findLastCompactBoundaryEndOffset(transcriptPath, size) {
   if (size <= 0) return null;
-  const fd = (0, import_fs174.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs176.openSync)(transcriptPath, "r");
   try {
     let end = size;
     const buffer = Buffer.allocUnsafe(Math.min(SCAN_CHUNK_BYTES, size));
     while (end > 0) {
       const start = Math.max(0, end - SCAN_CHUNK_BYTES);
       const length = end - start;
-      (0, import_fs174.readSync)(fd, buffer, 0, length, start);
+      (0, import_fs176.readSync)(fd, buffer, 0, length, start);
       const chunk = buffer.subarray(0, length);
       let index = chunk.lastIndexOf(COMPACT_BOUNDARY_MARKER_BYTES);
       while (index !== -1) {
@@ -125327,13 +126748,13 @@ function findLastCompactBoundaryEndOffset(transcriptPath, size) {
       end = start + COMPACT_BOUNDARY_MARKER_BYTES.length - 1;
     }
   } finally {
-    (0, import_fs174.closeSync)(fd);
+    (0, import_fs176.closeSync)(fd);
   }
   return null;
 }
 function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
   if (end <= start) return 0;
-  const fd = (0, import_fs174.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs176.openSync)(transcriptPath, "r");
   try {
     const chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
     const prefix = Buffer.allocUnsafe(LOCAL_API_REQUEST_PREFIX.length);
@@ -125342,7 +126763,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     const countLine = (lineEndExclusive) => {
       const lineLength = lineEndExclusive - lineStart;
       if (lineLength >= prefix.length) {
-        const bytesRead = (0, import_fs174.readSync)(fd, prefix, 0, prefix.length, lineStart);
+        const bytesRead = (0, import_fs176.readSync)(fd, prefix, 0, prefix.length, lineStart);
         if (bytesRead === prefix.length && prefix.equals(LOCAL_API_REQUEST_PREFIX)) {
           excludedBytes += lineLength;
         }
@@ -125352,7 +126773,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     let position = start;
     while (position < end) {
       const length = Math.min(SCAN_CHUNK_BYTES, end - position);
-      (0, import_fs174.readSync)(fd, chunk, 0, length, position);
+      (0, import_fs176.readSync)(fd, chunk, 0, length, position);
       const view = chunk.subarray(0, length);
       let newline = view.indexOf(10);
       while (newline !== -1) {
@@ -125364,7 +126785,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     if (lineStart < end) countLine(end);
     return excludedBytes;
   } finally {
-    (0, import_fs174.closeSync)(fd);
+    (0, import_fs176.closeSync)(fd);
   }
 }
 function estimateTranscriptPayloadBytes(transcriptPath, size) {
@@ -125379,9 +126800,9 @@ function estimateTranscriptPayloadBytes(transcriptPath, size) {
   );
 }
 function estimatePayloadFromTranscriptPath(transcriptPath) {
-  if (!transcriptPath || !(0, import_fs174.existsSync)(transcriptPath)) return null;
+  if (!transcriptPath || !(0, import_fs176.existsSync)(transcriptPath)) return null;
   try {
-    const stat2 = (0, import_fs174.statSync)(transcriptPath);
+    const stat2 = (0, import_fs176.statSync)(transcriptPath);
     if (!stat2.isFile()) return null;
     return createPayloadEstimate(
       estimateTranscriptPayloadBytes(transcriptPath, stat2.size)
@@ -125390,11 +126811,11 @@ function estimatePayloadFromTranscriptPath(transcriptPath) {
     return null;
   }
 }
-var import_fs174, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
+var import_fs176, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
 var init_payload_estimate = __esm({
   "src/hud/payload-estimate.ts"() {
     "use strict";
-    import_fs174 = require("fs");
+    import_fs176 = require("fs");
     ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES = 32e6;
     PAYLOAD_WARNING_BYTES = 22e6;
     PAYLOAD_CRITICAL_BYTES = 26e6;
@@ -125453,10 +126874,10 @@ function mergeStdinRateLimits(stdinRateLimits, usageResult) {
   };
 }
 function readSessionSummary(stateDir, sessionId) {
-  const statePath = (0, import_path203.join)(stateDir, `session-summary-${sessionId}.json`);
-  if (!(0, import_fs175.existsSync)(statePath)) return null;
+  const statePath = (0, import_path205.join)(stateDir, `session-summary-${sessionId}.json`);
+  if (!(0, import_fs177.existsSync)(statePath)) return null;
   try {
-    return JSON.parse((0, import_fs175.readFileSync)(statePath, "utf-8"));
+    return JSON.parse((0, import_fs177.readFileSync)(statePath, "utf-8"));
   } catch {
     return null;
   }
@@ -125482,15 +126903,15 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     return;
   }
   lastSummarySpawnTimestamp = now2;
-  const thisDir = (0, import_path203.dirname)((0, import_url27.fileURLToPath)(importMetaUrl));
-  const scriptPath = (0, import_path203.join)(
+  const thisDir = (0, import_path205.dirname)((0, import_url27.fileURLToPath)(importMetaUrl));
+  const scriptPath = (0, import_path205.join)(
     thisDir,
     "..",
     "..",
     "scripts",
     "session-summary.mjs"
   );
-  if (!(0, import_fs175.existsSync)(scriptPath)) {
+  if (!(0, import_fs177.existsSync)(scriptPath)) {
     if (process.env.OMC_DEBUG) {
       console.error("[HUD] session-summary script not found:", scriptPath);
     }
@@ -125518,8 +126939,8 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     }
   }
 }
-async function calculateSessionHealth(sessionStart, contextPercent) {
-  const durationMs = sessionStart ? Date.now() - sessionStart.getTime() : 0;
+async function calculateSessionHealth(sessionStart, contextPercent, reportedDurationMs = null) {
+  const durationMs = reportedDurationMs ?? (sessionStart ? Date.now() - sessionStart.getTime() : 0);
   const durationMinutes = Math.floor(durationMs / 6e4);
   let health = "healthy";
   if (durationMinutes > 120 || contextPercent > 85) health = "critical";
@@ -125529,12 +126950,12 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path203.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
-  const settingsFile = (0, import_path203.join)(configDir, "settings.json");
-  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs175.existsSync)((0, import_path203.join)(configDir, "hud", name)));
+  const hudScript = (0, import_path205.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
+  const settingsFile = (0, import_path205.join)(configDir, "settings.json");
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs177.existsSync)((0, import_path205.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
-    const settings = JSON.parse((0, import_fs175.readFileSync)(settingsFile, "utf-8"));
+    const settings = JSON.parse((0, import_fs177.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     const command = sl && typeof sl === "object" && typeof sl.command === "string" ? sl.command : typeof sl === "string" ? sl : null;
     statusLineOk = command !== null && HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
@@ -125569,7 +126990,9 @@ async function mainImpl(watchMode = false, skipInit = false) {
       return;
     }
     const cwd2 = resolveToWorktreeRoot(stdin.cwd || void 0);
-    const config2 = { ...readHudConfig() };
+    const host = detectHudHost(stdin);
+    const isCopilotHost = host === "copilot";
+    const config2 = { ...readHudConfig(host) };
     if (config2.maxWidth === void 0) {
       const cols = process.stderr.columns || process.stdout.columns || parseInt(process.env.COLUMNS ?? "0", 10) || 0;
       if (cols > 0) {
@@ -125581,10 +127004,15 @@ async function mainImpl(watchMode = false, skipInit = false) {
       stdin.transcript_path,
       cwd2
     );
-    const transcriptData = await parseTranscript(resolvedTranscriptPath, {
+    const copilotEvents = isCopilotHost ? readCopilotEvents(
+      resolveCopilotEventsPath(stdin.transcript_path, stdin.session_id),
+      { staleTaskThresholdMinutes: config2.staleTaskThresholdMinutes }
+    ) : null;
+    const transcriptData = copilotEvents ?? await parseTranscript(resolvedTranscriptPath, {
       staleTaskThresholdMinutes: config2.staleTaskThresholdMinutes
     });
-    const currentSessionId = extractSessionIdFromPath(
+    const copilotTokens = isCopilotHost ? getCopilotTokenUsage(stdin) : null;
+    const currentSessionId = isCopilotHost && stdin.session_id ? stdin.session_id : extractSessionIdFromPath(
       resolvedTranscriptPath ?? stdin.transcript_path ?? ""
     );
     if (!skipInit) {
@@ -125616,13 +127044,13 @@ async function mainImpl(watchMode = false, skipInit = false) {
       writeHudState(stateToWrite, cwd2, currentSessionId ?? void 0);
     }
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
-    const usageResult = config2.elements.rateLimits === false ? null : await getUsage({ clientVersion: stdin.version });
-    const rateLimitsResult = config2.elements.rateLimits === false ? null : mergeStdinRateLimits(stdinRateLimits, usageResult);
+    const usageResult = config2.elements.rateLimits === false || isCopilotHost ? null : await getUsage({ clientVersion: stdin.version });
+    const rateLimitsResult = config2.elements.rateLimits === false || isCopilotHost ? null : mergeStdinRateLimits(stdinRateLimits, usageResult);
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
     let omcUpdateSource = null;
-    const claudeCodeVersion = stdin.version ?? null;
+    const claudeCodeVersion = isCopilotHost ? null : stdin.version ?? null;
     let claudeCodeUpdateAvailable = null;
     try {
       omcVersion = getRuntimePackageVersion();
@@ -125640,11 +127068,15 @@ async function mainImpl(watchMode = false, skipInit = false) {
       await (0, import_promises37.access)(updateCacheFile);
       const content = await (0, import_promises37.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content);
-      if (cached2?.latestVersion && omcVersion && compareVersions2(omcVersion, cached2.latestVersion) < 0) {
-        updateAvailable = cached2.latestVersion;
-      }
-      if (cached2?.source === "npm" || cached2?.source === "marketplace") {
-        omcUpdateSource = cached2.source;
+      const cachedUpdate = resolveCachedOmcUpdate(
+        cached2,
+        omcVersion,
+        getOmcUpdateChannel(),
+        compareVersions2
+      );
+      if (cachedUpdate) {
+        updateAvailable = cachedUpdate.latestVersion;
+        omcUpdateSource = cachedUpdate.source;
       }
       if (cached2?.claudeCodeLatestVersion && claudeCodeVersion && compareVersions2(claudeCodeVersion, cached2.claudeCodeLatestVersion) < 0) {
         claudeCodeUpdateAvailable = cached2.claudeCodeLatestVersion;
@@ -125658,9 +127090,9 @@ async function mainImpl(watchMode = false, skipInit = false) {
       }
     }
     let sessionSummary = null;
-    const sessionSummaryEnabled = config2.elements.sessionSummary ?? false;
+    const sessionSummaryEnabled = !isCopilotHost && (config2.elements.sessionSummary ?? false);
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
-      const omcStateDir = (0, import_path203.join)(getOmcRoot(cwd2), "state");
+      const omcStateDir = (0, import_path205.join)(getOmcRoot(cwd2), "state");
       sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
       const shouldSpawn = !sessionSummary?.generatedAt || Date.now() - new Date(sessionSummary.generatedAt).getTime() > 6e4;
       if (shouldSpawn) {
@@ -125673,9 +127105,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     const missionBoardEnabled = config2.missionBoard?.enabled ?? config2.elements.missionBoard ?? false;
     const missionBoard = missionBoardEnabled ? await refreshMissionBoardState(cwd2, config2.missionBoard) : null;
-    const contextPercent = getContextPercent(stdin);
-    const payloadEstimate = estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
+    const contextPercent = isCopilotHost ? getCopilotContextPercent(stdin) : getContextPercent(stdin);
+    const payloadEstimate = isCopilotHost ? null : estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
     const subscriptionInfo = (() => {
+      if (isCopilotHost) return { subscriptionType: null, rateLimitTier: null };
       try {
         return getSubscriptionInfo() ?? { subscriptionType: null, rateLimitTier: null };
       } catch {
@@ -125683,11 +127116,12 @@ async function mainImpl(watchMode = false, skipInit = false) {
       }
     })();
     const context = {
+      host,
       contextPercent,
       contextDisplayScope: currentSessionId ?? cwd2,
-      modelName: getModelName(stdin),
+      modelName: isCopilotHost ? getCopilotModelName(stdin) : getModelName(stdin),
       modelId: getModelId(stdin),
-      effortLevel: getEffortLevel(stdin),
+      effortLevel: copilotEvents ? copilotEvents.reasoningEffort : getEffortLevel(stdin),
       ralph,
       ultrawork: null,
       prd,
@@ -125702,9 +127136,13 @@ async function mainImpl(watchMode = false, skipInit = false) {
       customBuckets,
       pendingPermission: transcriptData.pendingPermission || null,
       thinkingState: transcriptData.thinkingState || null,
-      sessionHealth: await calculateSessionHealth(sessionStart, contextPercent),
-      lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
-      sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
+      sessionHealth: await calculateSessionHealth(
+        sessionStart,
+        contextPercent,
+        isCopilotHost ? getSessionDurationMs(stdin) : null
+      ),
+      lastRequestTokenUsage: copilotTokens ? copilotTokens.lastRequest : transcriptData.lastRequestTokenUsage || null,
+      sessionTotalTokens: copilotTokens ? copilotTokens.sessionTotal : transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
       omcUpdateSource,
@@ -125714,15 +127152,23 @@ async function mainImpl(watchMode = false, skipInit = false) {
       agentCallCount: transcriptData.agentCallCount,
       skillCallCount: transcriptData.skillCallCount,
       promptTime: hudState?.lastPromptTimestamp ? new Date(hudState.lastPromptTimestamp) : null,
-      apiKeySource: config2.elements.apiKeySource ? detectApiKeySource(cwd2) : null,
-      apiKeyMode: detectApiKeySource(cwd2) !== null,
+      apiKeySource: config2.elements.apiKeySource && !isCopilotHost ? detectApiKeySource(cwd2) : null,
+      apiKeyMode: !isCopilotHost && detectApiKeySource(cwd2) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_HOME ? (0, import_path203.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
+      profileName: process.env.COPILOT_HOME ? (0, import_path205.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
       recentTools: transcriptData.recentTools,
-      payloadEstimate
+      payloadEstimate,
+      ...copilotEvents ? {
+        aiUsed: getAiUsed(stdin),
+        copilotMode: copilotEvents.mode,
+        compacting: copilotEvents.compacting,
+        copilotAllowAll: stdin.allow_all_enabled === true
+      } : {},
+      ...config2.elements.team === true ? { team: readTeamStateForHud(cwd2) } : {},
+      ...config2.elements.ultragoal === true ? { ultragoal: readUltragoalStateForHud(cwd2) } : {}
     };
     if (process.env.OMC_DEBUG) {
       console.error(
@@ -125736,10 +127182,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     if (config2.contextLimitWarning.autoCompact && context.contextPercent >= config2.contextLimitWarning.threshold) {
       try {
-        const omcStateDir = (0, import_path203.join)(getOmcRoot(cwd2), "state");
-        (0, import_fs175.mkdirSync)(omcStateDir, { recursive: true });
-        const triggerFile = (0, import_path203.join)(omcStateDir, "compact-requested.json");
-        (0, import_fs175.writeFileSync)(
+        const omcStateDir = (0, import_path205.join)(getOmcRoot(cwd2), "state");
+        (0, import_fs177.mkdirSync)(omcStateDir, { recursive: true });
+        const triggerFile = (0, import_path205.join)(omcStateDir, "compact-requested.json");
+        (0, import_fs177.writeFileSync)(
           triggerFile,
           JSON.stringify({
             requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -125781,27 +127227,32 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs175, import_promises37, import_path203, import_child_process58, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs177, import_promises37, import_path205, import_child_process58, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
     init_stdin();
     init_transcript();
+    init_copilot_events();
     init_state3();
     init_omc_state();
     init_usage_api();
     init_custom_rate_provider();
     init_render();
     init_api_key_source();
+    init_host();
+    init_update_hint();
     init_mission_board();
+    init_team();
+    init_ultragoal();
     init_sanitize();
     init_payload_estimate();
     init_version();
     init_auto_update();
     init_worktree_paths();
-    import_fs175 = require("fs");
+    import_fs177 = require("fs");
     import_promises37 = require("fs/promises");
-    import_path203 = require("path");
+    import_path205 = require("path");
     import_child_process58 = require("child_process");
     import_url27 = require("url");
     init_worktree_paths();
@@ -125824,8 +127275,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 init_esm();
 init_source();
-var import_path204 = require("path");
-var import_fs176 = require("fs");
+var import_path206 = require("path");
+var import_fs178 = require("fs");
 init_config_dir();
 init_env_vars();
 init_loader();
@@ -141314,772 +142765,14 @@ function sleep11(ms) {
 
 // src/cli/commands/ultragoal.ts
 var import_promises34 = require("node:fs/promises");
-
-// src/goal-workflows/claude-goal-snapshot.ts
-var import_node_fs27 = require("node:fs");
-var import_promises31 = require("node:fs/promises");
-var import_node_path34 = require("node:path");
-var ClaudeGoalSnapshotError = class extends Error {
-};
-function safeObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-function safeString3(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-function safeNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
-}
-function normalizeStatus(value) {
-  const status = safeString3(value).toLowerCase();
-  if (status === "complete" || status === "completed" || status === "done") return "complete";
-  if (status === "cancelled" || status === "canceled" || status === "cleared") return "cancelled";
-  if (status === "failed" || status === "failure") return "failed";
-  if (status === "active" || status === "in_progress" || status === "pending" || status === "running") return "active";
-  return "unknown";
-}
-function normalizeObjective(value) {
-  return value.replace(/\s+/g, " ").trim();
-}
-function parseClaudeGoalSnapshot(value) {
-  const root2 = safeObject(value);
-  const goalValue = Object.hasOwn(root2, "goal") ? root2.goal : value;
-  if (goalValue === null || goalValue === void 0 || goalValue === false) {
-    return { available: false, raw: value };
-  }
-  const goal = safeObject(goalValue);
-  const objective = safeString3(
-    goal.objective ?? goal.condition ?? goal.goal ?? goal.description ?? root2.objective ?? root2.condition
-  );
-  const status = normalizeStatus(goal.status ?? root2.status);
-  const tokenBudget = safeNumber(
-    goal.token_budget ?? goal.tokenBudget ?? root2.token_budget ?? root2.tokenBudget
-  );
-  const remainingTokens = safeNumber(root2.remainingTokens ?? root2.remaining_tokens);
-  return {
-    available: Boolean(objective || status !== "unknown"),
-    ...objective ? { objective } : {},
-    status,
-    ...tokenBudget !== void 0 ? { tokenBudget } : {},
-    remainingTokens: remainingTokens ?? null,
-    raw: value
-  };
-}
-async function readClaudeGoalSnapshotInput(raw, cwd2 = process.cwd()) {
-  if (!raw?.trim()) return null;
-  const trimmed = raw.trim();
-  try {
-    return parseClaudeGoalSnapshot(JSON.parse(trimmed));
-  } catch {
-    const path30 = (0, import_node_path34.resolve)(cwd2, trimmed);
-    if (!(0, import_node_fs27.existsSync)(path30)) {
-      throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
-    }
-    try {
-      return parseClaudeGoalSnapshot(JSON.parse(await (0, import_promises31.readFile)(path30, "utf-8")));
-    } catch (error2) {
-      throw new ClaudeGoalSnapshotError(`Claude goal snapshot path does not contain valid JSON: ${trimmed}${error2 instanceof Error ? ` (${error2.message})` : ""}`);
-    }
-  }
-}
-function reconcileClaudeGoalSnapshot(snapshot, options) {
-  const effectiveSnapshot = snapshot ?? { available: false, raw: null };
-  const errors = [];
-  const warnings = [];
-  if (!effectiveSnapshot.available) {
-    const message2 = "Claude goal snapshot is absent or reports no active goal; ask the active Claude agent to share the current /goal condition and pass its JSON with --claude-goal-json.";
-    if (options.requireSnapshot) errors.push(message2);
-    else warnings.push(message2);
-    return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
-  }
-  const expected = normalizeObjective(options.expectedObjective);
-  const actual = normalizeObjective(effectiveSnapshot.objective ?? "");
-  if (!actual) {
-    errors.push("Claude goal snapshot is missing objective text.");
-  } else if (actual !== expected) {
-    errors.push(`Claude goal objective mismatch: expected "${expected}", got "${actual}".`);
-  }
-  const allowed = options.allowedStatuses ?? (options.requireComplete ? ["complete"] : ["active", "complete"]);
-  const actualStatus = effectiveSnapshot.status ?? "unknown";
-  if (!allowed.includes(actualStatus)) {
-    errors.push(`Claude goal status mismatch: expected ${allowed.join(" or ")}, got ${actualStatus}.`);
-  }
-  if (options.requireComplete && actualStatus !== "complete") {
-    errors.push(`Claude goal is not complete; only after the active condition is genuinely satisfied (the /goal hook auto-clears, or you run /goal clear), share the fresh snapshot.`);
-  }
-  return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
-}
-function formatClaudeGoalReconciliation(reconciliation) {
-  const parts = [...reconciliation.errors, ...reconciliation.warnings];
-  return parts.join(" ");
-}
-
-// src/ultragoal/artifacts.ts
-var import_node_fs28 = require("node:fs");
-var import_promises32 = require("node:fs/promises");
-var import_node_path35 = require("node:path");
-init_atomic_write();
-init_worktree_paths();
-var ULTRAGOAL_DIR = ".omg/ultragoal";
-var ULTRAGOAL_BRIEF = "brief.md";
-var ULTRAGOAL_GOALS = "goals.json";
-var ULTRAGOAL_LEDGER = "ledger.jsonl";
-var ULTRAGOAL_PLANS_SUBDIR = "plans";
-var UltragoalError = class extends Error {
-};
-function iso(now2 = /* @__PURE__ */ new Date()) {
-  return now2.toISOString();
-}
-function ultragoalDir(cwd2, planId) {
-  const omcRoot = getOmcRoot(cwd2);
-  if (planId) return (0, import_node_path35.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
-  return (0, import_node_path35.join)(omcRoot, "ultragoal");
-}
-function ultragoalBriefPath(cwd2, planId) {
-  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_BRIEF);
-}
-function ultragoalGoalsPath(cwd2, planId) {
-  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_GOALS);
-}
-function ultragoalLedgerPath(cwd2, planId) {
-  return (0, import_node_path35.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_LEDGER);
-}
-async function listUltragoalPlanIds(cwd2) {
-  const dir = (0, import_node_path35.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
-  try {
-    const entries = await (0, import_promises32.readdir)(dir, { withFileTypes: true });
-    return entries.filter((entry2) => entry2.isDirectory()).filter((entry2) => /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry2.name)).map((entry2) => entry2.name).sort();
-  } catch {
-    return [];
-  }
-}
-async function resolveActivePlanId(cwd2, explicitPlanId) {
-  if (explicitPlanId) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(explicitPlanId)) {
-      throw new UltragoalError(`Invalid --plan-id: ${explicitPlanId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
-    }
-    return explicitPlanId;
-  }
-  if ((0, import_node_fs28.existsSync)((0, import_node_path35.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
-  const plans = await listUltragoalPlanIds(cwd2);
-  if (plans.length === 1) return plans[0];
-  if (plans.length === 0) return void 0;
-  throw new UltragoalError(
-    `Multiple ultragoal plans exist; pass --plan-id <id>. Available plans: ${plans.join(", ")}`
-  );
-}
-function makePlanId(brief, now2) {
-  const ts = now2.getTime();
-  const firstLine = brief.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "plan";
-  const slug = firstLine.toLowerCase().replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "") || "plan";
-  return `${ts}-${slug}`;
-}
-function repoRelative(cwd2, path30) {
-  return (0, import_node_path35.relative)(cwd2, path30).split("\\").join("/");
-}
-function cleanLine(line) {
-  return line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").trim();
-}
-function normalizeObjective2(value) {
-  return value.replace(/\s+/g, " ").trim();
-}
-function textMentionsUltragoalPlanArtifact(value) {
-  const normalized = (value ?? "").toLowerCase();
-  return normalized.includes(ULTRAGOAL_DIR.toLowerCase()) || normalized.includes(ULTRAGOAL_GOALS.toLowerCase()) || normalized.includes(ULTRAGOAL_LEDGER.toLowerCase());
-}
-function textMentionsGoalId(value, goalId) {
-  return (value ?? "").toLowerCase().includes(goalId.toLowerCase());
-}
-function textHasCompletionValidationEvidence(value) {
-  const normalized = (value ?? "").toLowerCase();
-  const hasImplementationCompletion = /\b(?:planned work|implementation|deliverables?|scope|task|work)\b/.test(normalized) && /\b(?:done|complete|completed|finished|shipped)\b/.test(normalized);
-  const hasValidation = /\b(?:validation|verification|tests?|build|lint|review|quality gate|code-review)\b/.test(normalized) && /\b(?:passed|complete|completed|clean|green|approve|approved|clear)\b/.test(normalized);
-  return hasImplementationCompletion && hasValidation;
-}
-async function snapshotObjectiveMapsToUltragoalPlan(cwd2, snapshotObjective, planId) {
-  const actual = normalizeObjective2(snapshotObjective).toLowerCase();
-  if (textMentionsUltragoalPlanArtifact(actual)) return true;
-  if (actual.length < 24) return false;
-  try {
-    const brief = normalizeObjective2(await (0, import_promises32.readFile)(ultragoalBriefPath(cwd2, planId), "utf-8")).toLowerCase();
-    if (!brief || brief.length < 24) return false;
-    return brief.includes(actual) || actual.includes(brief);
-  } catch {
-    return false;
-  }
-}
-async function canReconcileCompletedTaskScopedAggregateSnapshot(cwd2, plan, goal, snapshotObjective, evidence) {
-  if (claudeGoalMode(plan) !== "aggregate") return false;
-  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) return false;
-  if (!textMentionsUltragoalPlanArtifact(evidence)) return false;
-  if (!textMentionsGoalId(evidence, goal.id)) return false;
-  if (!textHasCompletionValidationEvidence(evidence)) return false;
-  return snapshotObjectiveMapsToUltragoalPlan(cwd2, snapshotObjective, plan.planId);
-}
-function assertActiveInProgressCheckpoint(plan, goal, checkpointKind) {
-  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) {
-    throw new UltragoalError(`Cannot record a ${checkpointKind} checkpoint for ${goal.id} while it is ${goal.status}; start or resume the active ultragoal before checkpointing it.`);
-  }
-}
-function buildCompletedLegacyGoalRemediation(goal) {
-  return [
-    "If the active /goal condition is a different completed legacy goal, do not repeat --status complete in this session.",
-    `Record a non-terminal blocker with: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks setting a new /goal in this session>" --claude-goal-json "<different completed goal snapshot JSON or path>".`,
-    "Then continue this ultragoal in a fresh Claude Code session in the same repo/worktree and set the intended /goal there."
-  ].join(" ");
-}
-function claudeGoalMode(plan) {
-  return plan.claudeGoalMode ?? "per_story";
-}
-function isResolvedStatus(status) {
-  return status === "complete" || status === "review_blocked";
-}
-function planDirRelative(planId) {
-  return planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}` : ULTRAGOAL_DIR;
-}
-function aggregateClaudeObjective(goals, planId) {
-  const planDir = planDirRelative(planId);
-  const prefix = `Complete all ultragoal stories in ${planDir}/${ULTRAGOAL_GOALS}: `;
-  const suffix = goals.map((goal) => `${goal.id} ${goal.title}`).join("; ");
-  const full = `${prefix}${suffix}`;
-  if (full.length <= 4e3) return full;
-  const fallback = `Complete all ultragoal stories listed in ${planDir}/${ULTRAGOAL_GOALS}. Use ${planDir}/${ULTRAGOAL_LEDGER} as the durable audit trail.`;
-  if (fallback.length <= 4e3) return fallback;
-  throw new UltragoalError("Generated aggregate Claude /goal objective exceeds the 4,000 character limit.");
-}
-function expectedClaudeObjective(plan, goal) {
-  return claudeGoalMode(plan) === "aggregate" ? plan.claudeObjective ?? aggregateClaudeObjective(plan.goals, plan.planId) : goal.objective;
-}
-function isFinalRunCompletionCandidate(plan, goal) {
-  return plan.goals.every((candidate) => candidate.id === goal.id || isResolvedStatus(candidate.status));
-}
-function isUltragoalDone(plan) {
-  if (plan.aggregateCompletion?.status === "complete") return true;
-  if (plan.goals.length === 0) return true;
-  if (plan.goals.some((goal) => goal.status === "pending" || goal.status === "in_progress" || goal.status === "failed")) return false;
-  if (!plan.goals.every((goal) => isResolvedStatus(goal.status))) return false;
-  const latestNonReviewBlocked = [...plan.goals].reverse().find((goal) => goal.status !== "review_blocked");
-  return latestNonReviewBlocked?.status === "complete";
-}
-function titleFromObjective(objective, fallback) {
-  const firstLine = objective.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? fallback;
-  return firstLine.length > 72 ? `${firstLine.slice(0, 69).trimEnd()}...` : firstLine;
-}
-function deriveGoalCandidates(brief) {
-  const lines3 = brief.split(/\r?\n/);
-  const bulletGoals = lines3.map((line) => ({ original: line, cleaned: cleanLine(line) })).filter(({ cleaned }) => cleaned.length > 0 && cleaned.length <= 1200).filter(({ original, cleaned }, index, all) => /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(original) && all.findIndex((candidate) => candidate.cleaned === cleaned) === index).map(({ cleaned }) => cleaned);
-  const objectives = bulletGoals.length > 0 ? bulletGoals : brief.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith("#"));
-  const selected = objectives.length > 0 ? objectives : [brief.trim() || "Complete the requested project objective."];
-  return selected.map((objective, index) => ({
-    title: titleFromObjective(objective, `Goal ${index + 1}`),
-    objective
-  }));
-}
-function normalizeGoalId(title, index) {
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36).replace(/-+$/g, "");
-  return `G${String(index + 1).padStart(3, "0")}${slug ? `-${slug}` : ""}`;
-}
-async function appendLedger(cwd2, entry2, planId) {
-  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
-  const path30 = ultragoalLedgerPath(cwd2, planId);
-  await (0, import_promises32.appendFile)(path30, `${JSON.stringify(entry2)}
-`);
-}
-async function readUltragoalPlan(cwd2, planId) {
-  const path30 = ultragoalGoalsPath(cwd2, planId);
-  let raw;
-  try {
-    raw = await (0, import_promises32.readFile)(path30, "utf-8");
-  } catch {
-    const hint = planId ? `Pass --plan-id ${planId} to a previously-created plan, or run \`omg ultragoal create-goals --plan-id ${planId} ...\`.` : "Run `omg ultragoal create-goals ...` first.";
-    throw new UltragoalError(`No ultragoal plan found at ${repoRelative(cwd2, path30)}. ${hint}`);
-  }
-  const parsed = JSON.parse(raw);
-  if (parsed.version !== 1 || !Array.isArray(parsed.goals)) {
-    throw new UltragoalError(`Invalid ultragoal plan at ${repoRelative(cwd2, path30)}.`);
-  }
-  if (planId && !parsed.planId) parsed.planId = planId;
-  return parsed;
-}
-async function writePlan(cwd2, plan) {
-  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, plan.planId), { recursive: true });
-  await (0, import_promises32.writeFile)(ultragoalGoalsPath(cwd2, plan.planId), `${JSON.stringify(plan, null, 2)}
-`);
-}
-async function createUltragoalPlan(cwd2, options) {
-  if (options.planId && options.autoPlanId) {
-    throw new UltragoalError("Pass either --plan-id or --auto-plan-id, not both.");
-  }
-  const now2 = iso(options.now);
-  const nowDate = options.now ?? /* @__PURE__ */ new Date();
-  const planId = options.planId ?? (options.autoPlanId ? makePlanId(options.brief, nowDate) : void 0);
-  if (planId && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(planId)) {
-    throw new UltragoalError(`Invalid plan id: ${planId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
-  }
-  if (!options.force && (0, import_node_fs28.existsSync)(ultragoalGoalsPath(cwd2, planId))) {
-    const label = planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}/${ULTRAGOAL_GOALS}` : `${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}`;
-    throw new UltragoalError(`Refusing to overwrite existing ${label}; pass --force to recreate it.`);
-  }
-  const sourceGoals = options.goals?.length ? options.goals : deriveGoalCandidates(options.brief);
-  const candidates = sourceGoals.map((goal, index) => ({
-    id: normalizeGoalId(goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`), index),
-    title: goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`),
-    objective: goal.objective.trim(),
-    status: "pending",
-    tokenBudget: goal.tokenBudget,
-    attempt: 0,
-    createdAt: now2,
-    updatedAt: now2
-  }));
-  const planDir = planDirRelative(planId);
-  const plan = {
-    version: 1,
-    ...planId ? { planId } : {},
-    createdAt: now2,
-    updatedAt: now2,
-    briefPath: `${planDir}/${ULTRAGOAL_BRIEF}`,
-    goalsPath: `${planDir}/${ULTRAGOAL_GOALS}`,
-    ledgerPath: `${planDir}/${ULTRAGOAL_LEDGER}`,
-    claudeGoalMode: options.claudeGoalMode ?? "aggregate",
-    goals: candidates
-  };
-  if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
-  await (0, import_promises32.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
-  await (0, import_promises32.rm)((0, import_node_path35.join)(ultragoalDir(cwd2, planId), "omg-goal.json"), { force: true });
-  await (0, import_promises32.writeFile)(ultragoalBriefPath(cwd2, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
-`);
-  await writePlan(cwd2, plan);
-  await (0, import_promises32.writeFile)(ultragoalLedgerPath(cwd2, planId), "");
-  await appendLedger(cwd2, { ts: now2, event: "plan_created", message: `${candidates.length} goal(s) created` }, planId);
-  if (planId) await recordUltragoalStatePlanId(cwd2, planId);
-  return plan;
-}
-var STATE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
-async function readActiveUltragoalState(path30) {
-  try {
-    const state = JSON.parse(await (0, import_promises32.readFile)(path30, "utf-8"));
-    return state && typeof state === "object" && state.active === true ? state : null;
-  } catch {
-    return null;
-  }
-}
-async function recordUltragoalStatePlanId(cwd2, planId, env2 = process.env) {
-  const stateDir = (0, import_node_path35.join)(getOmcRoot(cwd2), "state");
-  const legacy = (0, import_node_path35.join)(stateDir, "ultragoal-state.json");
-  const sessionId = [env2.OMC_SESSION_ID, env2.COPILOT_AGENT_SESSION_ID].map((value) => value?.trim()).find((value) => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
-  let target;
-  if (sessionId) {
-    const sessionPath = (0, import_node_path35.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
-    const sessionState = await readActiveUltragoalState(sessionPath);
-    const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
-    if (sessionState) target = { path: sessionPath, state: sessionState };
-    else if (legacyState && (legacyState.session_id === void 0 || legacyState.session_id === sessionId)) target = { path: legacy, state: legacyState };
-  } else {
-    const legacyState = await readActiveUltragoalState(legacy);
-    if (legacyState) target = { path: legacy, state: legacyState };
-    else {
-      let sessions = [];
-      try {
-        sessions = (await (0, import_promises32.readdir)((0, import_node_path35.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path35.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
-      } catch {
-      }
-      const active = [];
-      for (const path30 of sessions) {
-        const state = await readActiveUltragoalState(path30);
-        if (state) active.push({ path: path30, state });
-      }
-      if (active.length === 1) target = active[0];
-    }
-  }
-  if (!target) return null;
-  if (target.state.plan_id === planId) return target.path;
-  try {
-    await atomicWriteJson(target.path, { ...target.state, plan_id: planId });
-  } catch {
-    return null;
-  }
-  return target.path;
-}
-function summarizeUltragoalPlan(plan) {
-  return {
-    total: plan.goals.length,
-    pending: plan.goals.filter((goal) => goal.status === "pending").length,
-    inProgress: plan.goals.filter((goal) => goal.status === "in_progress").length,
-    complete: plan.goals.filter((goal) => goal.status === "complete").length,
-    failed: plan.goals.filter((goal) => goal.status === "failed").length,
-    reviewBlocked: plan.goals.filter((goal) => goal.status === "review_blocked").length,
-    aggregateComplete: plan.aggregateCompletion?.status === "complete",
-    activeGoalId: plan.activeGoalId
-  };
-}
-function assertNonEmpty(value, label) {
-  const trimmed = value?.trim();
-  if (!trimmed) throw new UltragoalError(`Missing ${label}.`);
-  return trimmed;
-}
-function appendGoalToPlan(plan, options, now2) {
-  const title = assertNonEmpty(options.title, "--title");
-  const objective = assertNonEmpty(options.objective, "--objective");
-  const goal = {
-    id: normalizeGoalId(title, plan.goals.length),
-    title,
-    objective,
-    status: "pending",
-    attempt: 0,
-    createdAt: now2,
-    updatedAt: now2,
-    evidence: options.evidence
-  };
-  plan.goals.push(goal);
-  plan.updatedAt = now2;
-  return goal;
-}
-async function addUltragoalGoal(cwd2, options) {
-  const plan = await readUltragoalPlan(cwd2, options.planId);
-  const now2 = iso(options.now);
-  const goal = appendGoalToPlan(plan, options, now2);
-  await writePlan(cwd2, plan);
-  await appendLedger(cwd2, {
-    ts: now2,
-    event: "goal_added",
-    goalId: goal.id,
-    status: goal.status,
-    evidence: options.evidence,
-    message: goal.title
-  }, plan.planId);
-  return { plan, goal };
-}
-function validateQualityGate(value) {
-  if (!value || typeof value !== "object") {
-    throw new UltragoalError("Final ultragoal completion requires --quality-gate-json with ai-slop-cleaner, verification, and code-review evidence.");
-  }
-  const gate = value;
-  const cleaner = gate.aiSlopCleaner;
-  const verification = gate.verification;
-  const review = gate.codeReview;
-  if (!cleaner || typeof cleaner !== "object") throw new UltragoalError("Final quality gate is missing aiSlopCleaner evidence.");
-  if (cleaner.status !== "passed") {
-    throw new UltragoalError('Final quality gate requires aiSlopCleaner.status="passed"; run ai-slop-cleaner even when it is a no-op.');
-  }
-  assertNonEmpty(cleaner.evidence, "aiSlopCleaner.evidence");
-  if (!verification || typeof verification !== "object") throw new UltragoalError("Final quality gate is missing verification evidence.");
-  if (verification.status !== "passed") throw new UltragoalError('Final quality gate requires verification.status="passed".');
-  if (!Array.isArray(verification.commands) || verification.commands.length === 0 || verification.commands.some((command) => typeof command !== "string" || command.trim() === "")) {
-    throw new UltragoalError("Final quality gate requires non-empty verification.commands.");
-  }
-  assertNonEmpty(verification.evidence, "verification.evidence");
-  if (!review || typeof review !== "object") throw new UltragoalError("Final quality gate is missing codeReview evidence.");
-  if (review.recommendation !== "APPROVE") {
-    throw new UltragoalError("Final code-review must be clean: codeReview.recommendation must be APPROVE; use record-review-blockers for COMMENT or REQUEST CHANGES.");
-  }
-  if (review.architectStatus !== "CLEAR") {
-    throw new UltragoalError("Final code-review must be clean: codeReview.architectStatus must be CLEAR; use record-review-blockers for WATCH or BLOCK.");
-  }
-  assertNonEmpty(review.evidence, "codeReview.evidence");
-  return gate;
-}
-async function startNextUltragoal(cwd2, options = {}) {
-  const plan = await readUltragoalPlan(cwd2, options.planId);
-  const now2 = iso(options.now);
-  const named = options.goalId ? plan.goals.find((goal) => goal.id === options.goalId) : void 0;
-  if (options.goalId && !named) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
-  if (named?.status === "complete") throw new UltragoalError(`Cannot start ultragoal ${named.id}: it is already complete.`);
-  if (named?.status === "review_blocked") throw new UltragoalError(`Cannot start ultragoal ${named.id}: it is review-blocked.`);
-  if (plan.aggregateCompletion?.status === "complete") return { plan, goal: null, resumed: false, done: true };
-  const existing = plan.goals.find((goal) => goal.status === "in_progress");
-  if (existing) {
-    if (options.goalId && options.goalId !== existing.id) {
-      throw new UltragoalError(`Cannot start ultragoal ${options.goalId}: active goal ${existing.id} is already in progress.`);
-    }
-    await appendLedger(cwd2, { ts: now2, event: "goal_resumed", goalId: existing.id, status: existing.status, message: "Resuming active ultragoal" }, plan.planId);
-    return { plan, goal: existing, resumed: true, done: false };
-  }
-  let next;
-  if (options.goalId) {
-    next = named;
-    if (!next) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
-    if (next.status === "failed" && !options.retryFailed) {
-      throw new UltragoalError(`Cannot start failed ultragoal ${next.id} without --retry-failed.`);
-    }
-    if (next.status !== "pending" && next.status !== "failed") {
-      throw new UltragoalError(`Cannot start ultragoal ${next.id} while it is ${next.status}.`);
-    }
-  } else {
-    next = plan.goals.find((goal) => goal.status === "pending");
-    if (!next && options.retryFailed) next = plan.goals.find((goal) => goal.status === "failed");
-  }
-  if (next?.status === "failed") {
-    await appendLedger(cwd2, { ts: now2, event: "goal_retried", goalId: next.id, status: "pending", message: next.failureReason }, plan.planId);
-  }
-  if (!next) return { plan, goal: null, resumed: false, done: isUltragoalDone(plan) };
-  next.status = "in_progress";
-  next.attempt += 1;
-  next.startedAt = now2;
-  next.failedAt = void 0;
-  next.failureReason = void 0;
-  next.updatedAt = now2;
-  plan.activeGoalId = next.id;
-  plan.updatedAt = now2;
-  await writePlan(cwd2, plan);
-  await appendLedger(cwd2, { ts: now2, event: "goal_started", goalId: next.id, status: next.status, message: `Attempt ${next.attempt}` }, plan.planId);
-  return { plan, goal: next, resumed: false, done: false };
-}
-async function checkpointUltragoal(cwd2, options) {
-  const plan = await readUltragoalPlan(cwd2, options.planId);
-  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
-  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
-  const now2 = iso(options.now);
-  if (options.status === "blocked") {
-    assertActiveInProgressCheckpoint(plan, goal, "blocked");
-    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
-    if (!snapshot?.available) {
-      throw new UltragoalError("Blocked ultragoal checkpoints require a Claude /goal snapshot for the completed legacy goal that blocked a new /goal directive; pass --claude-goal-json.");
-    }
-    if (snapshot.status !== "complete") {
-      throw new UltragoalError(`Cannot record a blocked ultragoal checkpoint while the existing Claude /goal is ${snapshot.status ?? "unknown"}; strict objective mismatch protection remains required for active or incomplete goals.`);
-    }
-    if (!snapshot.objective) {
-      throw new UltragoalError("Blocked ultragoal checkpoint Claude snapshot is missing objective text.");
-    }
-    if (normalizeObjective2(snapshot.objective) === normalizeObjective2(expectedClaudeObjective(plan, goal))) {
-      throw new UltragoalError("Blocked ultragoal checkpoint is only for a different completed legacy Claude goal; complete this ultragoal with --status complete after its audit passes.");
-    }
-    goal.updatedAt = now2;
-    plan.activeGoalId = goal.id;
-    plan.updatedAt = now2;
-    await writePlan(cwd2, plan);
-    await appendLedger(cwd2, {
-      ts: now2,
-      event: "goal_blocked",
-      goalId: goal.id,
-      status: goal.status,
-      evidence: options.evidence,
-      claudeGoal: options.claudeGoal
-    }, plan.planId);
-    return plan;
-  }
-  if (options.status === "failed") {
-    assertActiveInProgressCheckpoint(plan, goal, "failed");
-  }
-  let aggregateCompletion;
-  if (options.status === "complete") {
-    assertActiveInProgressCheckpoint(plan, goal, "complete");
-    const expectedObjective2 = expectedClaudeObjective(plan, goal);
-    const aggregateMode = claudeGoalMode(plan) === "aggregate";
-    const finalRunCheckpoint = isFinalRunCompletionCandidate(plan, goal);
-    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
-    const reconciliation = reconcileClaudeGoalSnapshot(
-      snapshot,
-      {
-        expectedObjective: expectedObjective2,
-        allowedStatuses: aggregateMode ? finalRunCheckpoint && !options.allowActiveFinalClaudeGoal ? ["complete"] : ["active"] : ["complete"],
-        requireSnapshot: true,
-        requireComplete: !aggregateMode || finalRunCheckpoint && !options.allowActiveFinalClaudeGoal
-      }
-    );
-    if (!reconciliation.ok) {
-      const completedTaskScopedAggregateSnapshot = snapshot?.available && snapshot.status === "complete" && Boolean(snapshot.objective) && normalizeObjective2(snapshot.objective ?? "") !== normalizeObjective2(expectedObjective2) && await canReconcileCompletedTaskScopedAggregateSnapshot(cwd2, plan, goal, snapshot.objective ?? "", options.evidence);
-      if (completedTaskScopedAggregateSnapshot) {
-        aggregateCompletion = {
-          status: "complete",
-          completedAt: now2,
-          evidence: assertNonEmpty(options.evidence, "--evidence"),
-          claudeGoal: options.claudeGoal
-        };
-      } else {
-        const taskScopedRequirement = aggregateMode && snapshot?.status === "complete" && Boolean(snapshot.objective) ? " Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omg/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact." : "";
-        const remediation = reconciliation.snapshot.available && reconciliation.snapshot.status === "complete" && Boolean(reconciliation.snapshot.objective) && normalizeObjective2(reconciliation.snapshot.objective ?? "") !== normalizeObjective2(expectedObjective2) ? ` ${buildCompletedLegacyGoalRemediation(goal)}` : "";
-        throw new UltragoalError(`${formatClaudeGoalReconciliation(reconciliation)}${taskScopedRequirement}${remediation}`);
-      }
-    }
-    if (finalRunCheckpoint && !options.allowActiveFinalClaudeGoal) goal.evidence = options.evidence;
-  }
-  const qualityGate = options.status === "complete" && (aggregateCompletion !== void 0 || isFinalRunCompletionCandidate(plan, goal) && !options.allowActiveFinalClaudeGoal) ? validateQualityGate(options.qualityGate) : void 0;
-  if (aggregateCompletion) {
-    plan.aggregateCompletion = aggregateCompletion;
-    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
-    plan.updatedAt = now2;
-    await writePlan(cwd2, plan);
-    await appendLedger(cwd2, {
-      ts: now2,
-      event: "aggregate_completed",
-      goalId: goal.id,
-      status: goal.status,
-      evidence: options.evidence,
-      claudeGoal: options.claudeGoal,
-      qualityGate,
-      message: "Aggregate ultragoal plan completed via task-scoped Claude /goal snapshot; microgoal ledger progress remains independent."
-    }, plan.planId);
-    return plan;
-  }
-  goal.status = options.status;
-  goal.updatedAt = now2;
-  if (options.status === "complete") {
-    goal.completedAt = now2;
-    goal.evidence = options.evidence;
-    goal.failureReason = void 0;
-    goal.failedAt = void 0;
-    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
-  } else {
-    goal.failedAt = now2;
-    goal.failureReason = options.evidence;
-    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
-  }
-  plan.updatedAt = now2;
-  await writePlan(cwd2, plan);
-  await appendLedger(cwd2, {
-    ts: now2,
-    event: options.status === "complete" ? "goal_completed" : "goal_failed",
-    goalId: goal.id,
-    status: goal.status,
-    evidence: options.evidence,
-    claudeGoal: options.claudeGoal,
-    qualityGate
-  }, plan.planId);
-  return plan;
-}
-async function recordFinalReviewBlockers(cwd2, options) {
-  const plan = await readUltragoalPlan(cwd2, options.planId);
-  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
-  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
-  assertNonEmpty(options.evidence, "--evidence");
-  if (goal.status !== "in_progress") {
-    throw new UltragoalError(`Cannot record final review blockers for ${goal.id} while it is ${goal.status}; start or resume the ultragoal first.`);
-  }
-  if (!isFinalRunCompletionCandidate(plan, goal)) {
-    throw new UltragoalError(`Cannot record final review blockers for ${goal.id}; it is not the only unresolved ultragoal story.`);
-  }
-  const now2 = iso(options.now);
-  const expectedObjective2 = expectedClaudeObjective(plan, goal);
-  const aggregateMode = claudeGoalMode(plan) === "aggregate";
-  const reconciliation = reconcileClaudeGoalSnapshot(
-    options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal),
-    {
-      expectedObjective: expectedObjective2,
-      allowedStatuses: ["active"],
-      requireSnapshot: true,
-      requireComplete: false
-    }
-  );
-  if (!reconciliation.ok) {
-    throw new UltragoalError(formatClaudeGoalReconciliation(reconciliation));
-  }
-  const addedGoal = appendGoalToPlan(plan, options, now2);
-  goal.status = "review_blocked";
-  goal.reviewBlockedAt = now2;
-  goal.updatedAt = now2;
-  goal.completedAt = void 0;
-  goal.failedAt = void 0;
-  goal.failureReason = void 0;
-  goal.evidence = options.evidence;
-  if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
-  plan.updatedAt = now2;
-  await writePlan(cwd2, plan);
-  await appendLedger(cwd2, {
-    ts: now2,
-    event: "final_review_failed",
-    goalId: goal.id,
-    status: goal.status,
-    evidence: options.evidence,
-    claudeGoal: options.claudeGoal,
-    message: aggregateMode ? "Final aggregate code-review was not clean; blocker story was appended while Claude /goal remains active." : "Final per-story code-review was not clean; blocker story was appended and may require a fresh/available Claude /goal context."
-  }, plan.planId);
-  await appendLedger(cwd2, {
-    ts: now2,
-    event: "goal_added",
-    goalId: addedGoal.id,
-    status: addedGoal.status,
-    evidence: options.evidence,
-    message: addedGoal.title
-  }, plan.planId);
-  await appendLedger(cwd2, {
-    ts: now2,
-    event: "goal_review_blocked",
-    goalId: goal.id,
-    status: goal.status,
-    evidence: options.evidence,
-    claudeGoal: options.claudeGoal
-  }, plan.planId);
-  return { plan, blockedGoal: goal, addedGoal };
-}
-function buildClaudeGoalInstruction(goal, plan) {
-  if (claudeGoalMode(plan) === "aggregate") return buildAggregateClaudeGoalInstruction(goal, plan);
-  return buildPerStoryClaudeGoalInstruction(goal, plan);
-}
-function buildPerStoryClaudeGoalInstruction(goal, plan) {
-  const createPayload = {
-    condition: goal.objective,
-    ...goal.tokenBudget ? { token_budget: goal.tokenBudget } : {}
-  };
-  const finalStory = isFinalRunCompletionCandidate(plan, goal);
-  return [
-    "Ultragoal active-goal handoff",
-    `Plan: ${plan.goalsPath}`,
-    `Ledger: ${plan.ledgerPath}`,
-    `Goal: ${goal.id} \u2014 ${goal.title}`,
-    "",
-    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
-    "- If `omc` is not on PATH on a plugin-only install, replace the `omc` prefix in these commands with `oh-my-copilot.js` or `node <plugin-root>/bin/oh-my-copilot.js`.",
-    "- First confirm the active Claude /goal for this session; if none is active, invoke /goal <condition> with the payload below. If you cannot invoke /goal in this session (e.g. standalone Claude Code), ask the user to type it and wait; --claude-goal-json reconciles the ledger only and does not satisfy the PreToolUse /goal guard.",
-    "- If a different active Claude /goal exists, finish or clear that /goal before starting this ultragoal.",
-    "- If the active /goal is a different completed legacy goal and the Claude session refuses to set a new /goal, continue this ultragoal in a fresh Claude Code session (same repo/worktree) and invoke /goal there.",
-    `- To preserve the durable ledger before switching sessions, record the non-terminal blocker without failing this goal: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks new /goal in this session>" --claude-goal-json "<goal snapshot JSON or path>"`,
-    "- Work only this goal until its completion audit passes.",
-    finalStory ? "- Final mandatory quality gate: run ai-slop-cleaner on changed files even when it is a no-op, rerun verification, then run $code-review." : "- This is not the final ultragoal story; do not run the final ai-slop-cleaner/$code-review gate yet.",
-    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record blockers with:" : "- After the goal is actually complete, clear or update the active /goal (run /goal clear once the auto-clear has not already fired), then share a fresh /goal snapshot and checkpoint the ledger with:",
-    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
-    finalStory ? "- In legacy per-story mode, the blocker story may require a fresh/available Claude /goal context because this story remains an active incomplete /goal; do not claim it is complete." : null,
-    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or wait for the auto-clear), then checkpoint with --quality-gate-json:" : null,
-    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : null,
-    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
-    "",
-    "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
-    JSON.stringify(createPayload, null, 2),
-    "",
-    "Objective (use as the /goal condition):",
-    goal.objective
-  ].filter((line) => line !== null).join("\n");
-}
-function buildAggregateClaudeGoalInstruction(goal, plan) {
-  const objective = plan.claudeObjective ?? aggregateClaudeObjective(plan.goals, plan.planId);
-  const finalStory = isFinalRunCompletionCandidate(plan, goal);
-  const createPayload = { condition: objective };
-  const checkpointStatus = finalStory ? "complete" : "active";
-  return [
-    "Ultragoal aggregate-goal handoff",
-    `Plan: ${plan.goalsPath}`,
-    `Ledger: ${plan.ledgerPath}`,
-    `Goal: ${goal.id} \u2014 ${goal.title}`,
-    "",
-    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
-    "- If `omc` is not on PATH on a plugin-only install, replace the `omc` prefix in these commands with `oh-my-copilot.js` or `node <plugin-root>/bin/oh-my-copilot.js`.",
-    "- Claude /goal = the whole ultragoal run; OMC G001/G002/etc. = ledger stories.",
-    "- First confirm the active Claude /goal for this session; if none is active, invoke /goal <condition> with the aggregate payload below. If you cannot invoke /goal in this session (e.g. standalone Claude Code), ask the user to type it and wait; --claude-goal-json reconciles the ledger only and does not satisfy the PreToolUse /goal guard.",
-    "- If the active /goal already reports the same aggregate objective as active, continue this OMC story without setting a new /goal.",
-    "- If a different active or incomplete Claude /goal exists, finish or clear that /goal before starting this ultragoal; do not claim a shell command can replace Claude /goal state.",
-    finalStory ? "- This is the final pending story: run the mandatory final ai-slop-cleaner pass, rerun verification, and run $code-review before any /goal clear." : "- This is not the final story: do not clear the /goal yet; the aggregate Claude /goal must remain active while later OMC stories remain.",
-    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record durable blocker work first:" : null,
-    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : null,
-    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or let the auto-clear fire when the condition holds), share a fresh complete /goal snapshot, then checkpoint with --quality-gate-json." : null,
-    `- Checkpoint this OMC story with a fresh /goal snapshot whose objective matches the aggregate payload and whose status is ${checkpointStatus}:`,
-    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
-    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
-    "",
-    "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
-    JSON.stringify(createPayload, null, 2),
-    "",
-    "Aggregate /goal condition:",
-    objective,
-    "",
-    "Current OMC story objective:",
-    goal.objective
-  ].filter((line) => line !== null).join("\n");
-}
+init_claude_goal_snapshot();
+init_artifacts();
 
 // src/ultragoal/goal-record.ts
 var import_promises33 = require("node:fs/promises");
 var import_node_path36 = require("node:path");
 init_atomic_write();
+init_artifacts();
 var OMG_GOAL_RECORD = "omg-goal.json";
 function omgGoalRecordPath(cwd2, planId) {
   return (0, import_node_path36.join)(ultragoalDir(cwd2, planId), OMG_GOAL_RECORD);
@@ -143143,8 +143836,8 @@ function parseRef(ref) {
     name: ref
   };
 }
-function sanitize(str4, maxLen = 30) {
-  return str4.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, maxLen);
+function sanitize(str5, maxLen = 30) {
+  return str5.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, maxLen);
 }
 function getCurrentRepo() {
   try {
@@ -148429,8 +149122,8 @@ Examples:
     console.log(`  User:    ${paths.user}`);
     console.log(`  Project: ${paths.project}`);
     console.log(source_default.blue("\nFile status:"));
-    console.log(`  User:    ${(0, import_fs176.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
-    console.log(`  Project: ${(0, import_fs176.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  User:    ${(0, import_fs178.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  Project: ${(0, import_fs178.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
     return;
   }
   const config2 = loadConfig();
@@ -148473,7 +149166,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omg config-stop-callback file --enable --path ${(0, import_path204.join)(getCopilotConfigDir(), "logs/{date}.md")}
+  $ omg config-stop-callback file --enable --path ${(0, import_path206.join)(getCopilotConfigDir(), "logs/{date}.md")}
   $ omg config-stop-callback telegram --enable --token <token> --chat <id>
   $ omg config-stop-callback discord --enable --webhook <url>
   $ omg config-stop-callback file --disable
@@ -148599,7 +149292,7 @@ Examples:
     }
     config3.notificationProfiles[profileName] = profile;
     try {
-      (0, import_fs176.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
+      (0, import_fs178.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${profileName}" \u2014 ${type} configured`));
       console.log(JSON.stringify(profile[type], null, 2));
     } catch (error2) {
@@ -148658,7 +149351,7 @@ Examples:
       const current = config2.stopHookCallbacks.file;
       config2.stopHookCallbacks.file = {
         enabled: enabled ?? current?.enabled ?? false,
-        path: options.path ?? current?.path ?? (0, import_path204.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
+        path: options.path ?? current?.path ?? (0, import_path206.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
         format: options.format ?? current?.format ?? "markdown"
       };
       break;
@@ -148712,7 +149405,7 @@ Examples:
     }
   }
   try {
-    (0, import_fs176.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+    (0, import_fs178.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
     console.log(source_default.green(`\u2713 Stop callback '${type}' configured`));
     console.log(JSON.stringify(config2.stopHookCallbacks[type], null, 2));
   } catch (error2) {
@@ -148774,7 +149467,7 @@ Active profile (OMC_NOTIFY_PROFILE): ${activeProfile}`));
       delete config2.notificationProfiles;
     }
     try {
-      (0, import_fs176.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+      (0, import_fs178.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${name}" deleted`));
     } catch (error2) {
       console.error(source_default.red("Failed to write configuration:"), error2);

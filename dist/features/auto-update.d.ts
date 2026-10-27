@@ -12,10 +12,10 @@
 import { TaskTool } from '../hooks/beads-context/types.js';
 import type { NotificationConfig } from '../notifications/types.js';
 /** GitHub repository information */
-export declare const REPO_OWNER = "Yeachan-Heo";
+export declare const REPO_OWNER = "RobinNorberg";
 export declare const REPO_NAME = "oh-my-copilot";
-export declare const GITHUB_API_URL = "https://api.github.com/repos/Yeachan-Heo/oh-my-copilot";
-export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot";
+export declare const GITHUB_API_URL = "https://api.github.com/repos/RobinNorberg/oh-my-copilot";
+export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot";
 export declare function shouldBlockStandaloneUpdateInCurrentSession(): boolean;
 export declare function syncPluginCache(verbose?: boolean): {
     synced: boolean;
@@ -235,6 +235,15 @@ export declare function performUpdate(options?: {
     standalone?: boolean;
     clean?: boolean;
 }): Promise<UpdateResult>;
+export type OmcUpdateChannel = 'marketplace' | 'copilot-plugin' | 'npm';
+/**
+ * Update channel of the running install, by the rule scripts/session-start.mjs
+ * getUpdateChannel applies: a Claude Code plugin cache root is 'marketplace',
+ * a Copilot CLI installed plugin (<copilotHome>/installed-plugins/...) is
+ * 'copilot-plugin', anything else 'npm'. The package root counts as well as
+ * the env vars, since Copilot may not export a plugin root to processes.
+ */
+export declare function getOmcUpdateChannel(env?: NodeJS.ProcessEnv, packageRoot?: string): OmcUpdateChannel;
 /**
  * Get a formatted update notification message
  */

@@ -3,7 +3,7 @@
  *
  * Composes statusline output from render context.
  */
-import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS } from "./types.js";
+import { COPILOT_HOST_DROPPED, DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS, } from "./types.js";
 import { bold, dim } from "./colors.js";
 import { isRuntimePackageLocal } from "../lib/version.js";
 import { stringWidth, getCharWidth } from "../utils/string-width.js";
@@ -22,12 +22,15 @@ import { renderTokenUsage } from "./elements/token-usage.js";
 import { renderEnterpriseCost } from "./elements/enterprise-cost.js";
 import { renderPromptTime } from "./elements/prompt-time.js";
 import { renderAutopilot } from "./elements/autopilot.js";
+import { renderCopilotMode } from "./elements/copilot-mode.js";
+import { renderTeam } from "./elements/team.js";
+import { renderUltragoal } from "./elements/ultragoal.js";
 import { renderCwd } from "./elements/cwd.js";
 import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
 import { renderGitRepo, renderGitBranch, renderGitStatus } from "./elements/git.js";
 import { renderMultiRepo } from "./elements/multi-repo.js";
-import { renderModel } from "./elements/model.js";
+import { renderCopilotModel, renderModel } from "./elements/model.js";
 import { renderEffort } from "./elements/effort.js";
 import { renderApiKeySource } from "./elements/api-key-source.js";
 import { renderCallCounts } from "./elements/call-counts.js";
@@ -44,13 +47,35 @@ import { renderRecentTools } from "./elements/recent-tools.js";
 const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/;
 const PLAIN_SEPARATOR = " | ";
 const DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
+/** Layout names kept as aliases of a renamed element. */
+const LAYOUT_ALIASES = { omcLabel: "omgLabel" };
+/**
+ * Map alias names to their canonical element. A canonical name that an alias
+ * produced more than once (omcLabel plus omgLabel) is kept only once, so the
+ * label never renders twice; other repeated names are left as configured.
+ */
+function normalizeLayoutNames(names) {
+    const aliasTargets = new Set(Object.values(LAYOUT_ALIASES));
+    const seen = new Set();
+    const result = [];
+    for (const name of names) {
+        const canonical = LAYOUT_ALIASES[name] ?? name;
+        if (aliasTargets.has(canonical)) {
+            if (seen.has(canonical))
+                continue;
+            seen.add(canonical);
+        }
+        result.push(canonical);
+    }
+    return result;
+}
 function buildMainElementOrder(elementOrder) {
     if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
         return DEFAULT_ELEMENT_ORDER.main;
     }
     const known = new Set(DEFAULT_ELEMENT_ORDER.main);
     const seen = new Set();
-    const configured = elementOrder.map((name) => (name === "premiumBudget" ? "creditBudget" : name)).filter((name) => {
+    const configured = normalizeLayoutNames(elementOrder.map((name) => (name === "premiumBudget" ? "creditBudget" : name))).filter((name) => {
         if (!known.has(name) || seen.has(name)) {
             return false;
         }
@@ -185,10 +210,28 @@ export function limitOutputLines(lines, maxLines) {
     return [...lines.slice(0, limit - 1), `... (+${truncatedCount} lines)`];
 }
 /**
+ * Run one element's renderer. A throwing element drops only itself, so the
+ * rest of the statusline still renders instead of the whole-line HUD error.
+ */
+function isolate(renderElement) {
+    try {
+        return renderElement();
+    }
+    catch (err) {
+        if (process.env.OMC_DEBUG)
+            console.error('[HUD] element failed:', err);
+        return null;
+    }
+}
+/**
  * Render the complete statusline (single or multi-line)
  */
 export async function render(context, config) {
-    const { elements: enabledElements } = config;
+    const isCopilotHost = context.host === "copilot";
+    // Elements without a Copilot data source stay off there whatever the config.
+    const enabledElements = isCopilotHost
+        ? { ...config.elements, ...COPILOT_HOST_DROPPED }
+        : config.elements;
     const hudLabels = config.labels ?? DEFAULT_HUD_LABELS;
     // ── Render all elements into maps ──────────────────────────────────
     // Each element is rendered independently and stored by name.
@@ -197,12 +240,12 @@ export async function render(context, config) {
     const renderedDetail = new Map();
     // -- line1-group elements (default: git info line) --
     if (enabledElements.hostname) {
-        const hostnameElement = renderHostname();
+        const hostnameElement = isolate(() => renderHostname());
         if (hostnameElement)
             rendered.set("hostname", hostnameElement);
     }
     if (enabledElements.cwd) {
-        const cwdElement = renderCwd(context.cwd, enabledElements.cwdFormat || "relative", enabledElements.useHyperlinks ?? false);
+        const cwdElement = isolate(() => renderCwd(context.cwd, enabledElements.cwdFormat || "relative", enabledElements.useHyperlinks ?? false));
         if (cwdElement)
             rendered.set("cwd", cwdElement);
     }
@@ -210,24 +253,24 @@ export async function render(context, config) {
     // workspace summary. When cwd is itself a git repo, renderMultiRepo
     // returns null and the normal git elements take over.
     const multiRepoElement = enabledElements.gitRepo
-        ? renderMultiRepo(context.cwd)
+        ? isolate(() => renderMultiRepo(context.cwd))
         : null;
     if (multiRepoElement) {
         rendered.set("gitRepo", multiRepoElement);
     }
     else {
         if (enabledElements.gitRepo) {
-            const gitRepoElement = renderGitRepo(context.cwd);
+            const gitRepoElement = isolate(() => renderGitRepo(context.cwd));
             if (gitRepoElement)
                 rendered.set("gitRepo", gitRepoElement);
         }
         if (enabledElements.gitBranch) {
-            const gitBranchElement = renderGitBranch(context.cwd);
+            const gitBranchElement = isolate(() => renderGitBranch(context.cwd));
             if (gitBranchElement)
                 rendered.set("gitBranch", gitBranchElement);
         }
         if (enabledElements.gitStatus) {
-            const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
+            const gitStatusElement = isolate(() => renderGitStatus(context.cwd, hudLabels));
             if (gitStatusElement)
                 rendered.set("gitStatus", gitStatusElement);
         }
@@ -236,16 +279,21 @@ export async function render(context, config) {
         ? context.modelId ?? context.modelName
         : context.modelName;
     if (enabledElements.model && modelSource) {
-        const modelElement = renderModel(modelSource, enabledElements.modelFormat, hudLabels);
+        const modelElement = isCopilotHost
+            ? isolate(() => renderCopilotModel(modelSource, hudLabels))
+            : isolate(() => renderModel(modelSource, enabledElements.modelFormat, hudLabels));
         if (modelElement)
             rendered.set("model", modelElement);
     }
     if (enabledElements.effort) {
-        const effortElement = renderEffort(context.effortLevel);
+        const effortElement = isolate(() => renderEffort(context.effortLevel));
         if (effortElement)
             rendered.set("effort", effortElement);
     }
-    if (enabledElements.updateNotification !== false &&
+    // Claude Code update label: Claude host only. Under Copilot, stdin.version is
+    // the Copilot CLI version, so any comparison with claude-code is meaningless.
+    if (!isCopilotHost &&
+        enabledElements.updateNotification !== false &&
         context.claudeCodeUpdateAvailable) {
         const versionTag = context.claudeCodeVersion
             ? `#${context.claudeCodeVersion}`
@@ -253,7 +301,7 @@ export async function render(context, config) {
         rendered.set("claudeLabel", bold(`[Claude${versionTag}] -> ${context.claudeCodeUpdateAvailable} claude update`));
     }
     if (enabledElements.apiKeySource && context.apiKeySource) {
-        const keySource = renderApiKeySource(context.apiKeySource);
+        const keySource = isolate(() => renderApiKeySource(context.apiKeySource));
         if (keySource)
             rendered.set("apiKeySource", keySource);
     }
@@ -261,16 +309,19 @@ export async function render(context, config) {
         rendered.set("profile", bold(`profile:${context.profileName}`));
     }
     // -- main-group elements (default: main statusline) --
-    if (enabledElements.omcLabel) {
+    if (enabledElements.omgLabel ?? enabledElements.omcLabel) {
         const localSuffix = isRuntimePackageLocal() ? "L" : "";
         const versionTag = context.omcVersion
             ? `#${context.omcVersion}${localSuffix}`
             : (localSuffix ? `#${localSuffix}` : "");
         if (enabledElements.updateNotification !== false && context.updateAvailable) {
-            rendered.set("omcLabel", bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`));
+            // Under Copilot the updateHint detail line carries the channel-correct
+            // command, so the label only names the version.
+            const suffix = isCopilotHost ? "" : " omg update";
+            rendered.set("omgLabel", bold(`[oh-my-copilot${versionTag}] -> ${context.updateAvailable}${suffix}`));
         }
         else {
-            rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
+            rendered.set("omgLabel", bold(`[oh-my-copilot${versionTag}]`));
         }
     }
     // Determine effective enterprise mode before rendering limits: only real
@@ -286,59 +337,63 @@ export async function render(context, config) {
     // normal 5h/wk limits.
     const enterpriseCostReplacesRateLimits = isEnterprise &&
         context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== undefined;
-    if (enabledElements.rateLimits && context.rateLimitsResult && !enterpriseCostReplacesRateLimits) {
-        if (context.rateLimitsResult.rateLimits) {
-            const stale = context.rateLimitsResult.stale;
+    const rateLimitsResult = context.rateLimitsResult;
+    if (enabledElements.rateLimits && rateLimitsResult && !enterpriseCostReplacesRateLimits) {
+        if (rateLimitsResult.rateLimits) {
+            const stale = rateLimitsResult.stale;
             const limits = enabledElements.useBars
-                ? renderRateLimitsWithBar(context.rateLimitsResult.rateLimits, undefined, stale)
-                : renderRateLimits(context.rateLimitsResult.rateLimits, stale);
+                ? isolate(() => renderRateLimitsWithBar(rateLimitsResult.rateLimits, undefined, stale))
+                : isolate(() => renderRateLimits(rateLimitsResult.rateLimits, stale));
             if (limits)
                 rendered.set("rateLimits", limits);
         }
         else {
-            const errorIndicator = renderRateLimitsError(context.rateLimitsResult);
+            const errorIndicator = isolate(() => renderRateLimitsError(rateLimitsResult));
             if (errorIndicator) {
                 rendered.set("rateLimits", errorIndicator);
             }
             else {
-                const hint = renderApiKeyUsageHint(context.rateLimitsResult, context.apiKeyMode ?? false, config.rateLimitsProvider?.type === "custom");
+                const hint = isolate(() => renderApiKeyUsageHint(rateLimitsResult, context.apiKeyMode ?? false, config.rateLimitsProvider?.type === "custom"));
                 if (hint)
                     rendered.set("rateLimits", hint);
             }
         }
     }
-    if (context.customBuckets) {
+    const customBuckets = context.customBuckets;
+    if (customBuckets) {
         const thresholdPercent = config.rateLimitsProvider?.resetsAtDisplayThresholdPercent;
-        const custom = renderCustomBuckets(context.customBuckets, thresholdPercent);
+        const custom = isolate(() => renderCustomBuckets(customBuckets, thresholdPercent));
         if (custom)
             rendered.set("customBuckets", custom);
     }
     if (enabledElements.permissionStatus && context.pendingPermission) {
-        const permission = renderPermission(context.pendingPermission);
+        const permission = isolate(() => renderPermission(context.pendingPermission));
         if (permission)
             rendered.set("permission", permission);
     }
     if (enabledElements.thinking && context.thinkingState) {
-        const thinking = renderThinking(context.thinkingState, enabledElements.thinkingFormat, hudLabels);
+        const thinking = isolate(() => renderThinking(context.thinkingState, enabledElements.thinkingFormat, hudLabels));
         if (thinking)
             rendered.set("thinking", thinking);
     }
     if (enabledElements.promptTime) {
-        const prompt = renderPromptTime(context.promptTime, new Date());
+        const prompt = isolate(() => renderPromptTime(context.promptTime, new Date()));
         if (prompt)
             rendered.set("promptTime", prompt);
     }
     if (enabledElements.sessionHealth && context.sessionHealth) {
         const showDuration = enabledElements.showSessionDuration ?? true;
         if (showDuration) {
-            const session = renderSession(context.sessionHealth);
+            const session = isolate(() => renderSession(context.sessionHealth));
             if (session)
                 rendered.set("session", session);
         }
     }
     // `premiumBudget` is the deprecated name of the element and its toggle.
     if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
-        const budget = renderPremiumBudget(context.cwd);
+        const budget = isCopilotHost
+            ? isolate(() => renderPremiumBudget(context.cwd, context.aiUsed ?? null))
+            : isolate(() => renderPremiumBudget(context.cwd));
         if (budget) {
             rendered.set("creditBudget", budget);
             rendered.set("premiumBudget", budget);
@@ -346,51 +401,66 @@ export async function render(context, config) {
     }
     if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
         const stale = context.rateLimitsResult?.stale;
-        const cost = renderEnterpriseCost(context.rateLimitsResult?.rateLimits, stale);
+        const cost = isolate(() => renderEnterpriseCost(context.rateLimitsResult?.rateLimits, stale));
         if (cost) {
             rendered.set("enterpriseCost", cost);
         }
         else if (enabledElements.showTokens === true) {
             // Enterprise but no cost data — fall back to token usage
-            const tokenUsage = renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels);
+            const tokenUsage = isolate(() => renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels));
             if (tokenUsage)
                 rendered.set("tokens", tokenUsage);
         }
     }
     else if (enabledElements.showTokens === true) {
-        const tokenUsage = renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels);
+        const tokenUsage = isolate(() => renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels));
         if (tokenUsage)
             rendered.set("tokens", tokenUsage);
     }
     if (enabledElements.ralph && context.ralph) {
-        const ralph = renderRalph(context.ralph, config.thresholds, hudLabels);
+        const ralph = isolate(() => renderRalph(context.ralph, config.thresholds, hudLabels));
         if (ralph)
             rendered.set("ralph", ralph);
     }
     if (enabledElements.autopilot && context.autopilot) {
-        const autopilot = renderAutopilot(context.autopilot, config.thresholds);
+        const autopilot = isolate(() => renderAutopilot(context.autopilot, config.thresholds));
         if (autopilot)
             rendered.set("autopilot", autopilot);
     }
+    if (enabledElements.copilotMode === true) {
+        const mode = isolate(() => renderCopilotMode(context.copilotMode, context.copilotAllowAll));
+        if (mode)
+            rendered.set("copilotMode", mode);
+    }
+    if (enabledElements.team === true) {
+        const team = isolate(() => renderTeam(context.team));
+        if (team)
+            rendered.set("team", team);
+    }
+    if (enabledElements.ultragoal === true) {
+        const ultragoal = isolate(() => renderUltragoal(context.ultragoal));
+        if (ultragoal)
+            rendered.set("ultragoal", ultragoal);
+    }
     if (enabledElements.prdStory && context.prd) {
-        const prd = renderPrd(context.prd);
+        const prd = isolate(() => renderPrd(context.prd));
         if (prd)
             rendered.set("prd", prd);
     }
     if (enabledElements.activeSkills) {
-        const skills = renderSkills(context.ultrawork, context.ralph, (enabledElements.lastSkill ?? true) ? context.lastSkill : null);
+        const skills = isolate(() => renderSkills(context.ultrawork, context.ralph, (enabledElements.lastSkill ?? true) ? context.lastSkill : null));
         if (skills)
             rendered.set("skills", skills);
     }
     if ((enabledElements.lastSkill ?? true) && !enabledElements.activeSkills) {
-        const lastSkillElement = renderLastSkill(context.lastSkill);
+        const lastSkillElement = isolate(() => renderLastSkill(context.lastSkill));
         if (lastSkillElement)
             rendered.set("lastSkill", lastSkillElement);
     }
     if (enabledElements.contextBar) {
         const ctx = enabledElements.useBars
-            ? renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope, hudLabels)
-            : renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope, hudLabels);
+            ? isolate(() => renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope, hudLabels))
+            : isolate(() => renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope, hudLabels));
         if (ctx)
             rendered.set("contextBar", ctx);
     }
@@ -399,7 +469,8 @@ export async function render(context, config) {
         const format = enabledElements.agentsFormat || "codes";
         if (format === "multiline") {
             const maxLines = enabledElements.agentsMaxLines || 5;
-            const result = renderAgentsMultiLine(context.activeAgents, maxLines);
+            const result = isolate(() => renderAgentsMultiLine(context.activeAgents, maxLines))
+                ?? { headerPart: null, detailLines: [] };
             if (result.headerPart)
                 rendered.set("agents", result.headerPart);
             if (result.detailLines.length > 0) {
@@ -407,72 +478,76 @@ export async function render(context, config) {
             }
         }
         else {
-            const agents = renderAgentsByFormat(context.activeAgents, format);
+            const agents = isolate(() => renderAgentsByFormat(context.activeAgents, format));
             if (agents)
                 rendered.set("agents", agents);
         }
     }
     if (enabledElements.backgroundTasks) {
-        const bg = renderBackground(context.backgroundTasks, hudLabels);
+        const bg = isolate(() => renderBackground(context.backgroundTasks, hudLabels));
         if (bg)
             rendered.set("background", bg);
     }
     const showCounts = enabledElements.showCallCounts ?? true;
     if (showCounts) {
-        const counts = renderCallCounts(context.toolCallCount, context.agentCallCount, context.skillCallCount, enabledElements.callCountsFormat ?? 'auto', hudLabels);
+        const counts = isolate(() => renderCallCounts(context.toolCallCount, context.agentCallCount, context.skillCallCount, enabledElements.callCountsFormat ?? 'auto', hudLabels));
         if (counts)
             rendered.set("callCounts", counts);
     }
     if (enabledElements.showLastTool === true) {
-        const tool = renderLastTool(context.lastToolName ?? null);
+        const tool = isolate(() => renderLastTool(context.lastToolName ?? null));
         if (tool)
             rendered.set("lastTool", tool);
     }
     if (enabledElements.showRecentTools === true) {
-        const tools = renderRecentTools(context.recentTools ?? [], enabledElements.recentToolsMax ?? 5, enabledElements.recentToolsShowTarget !== false, enabledElements.safeMode);
+        const tools = isolate(() => renderRecentTools(context.recentTools ?? [], enabledElements.recentToolsMax ?? 5, enabledElements.recentToolsShowTarget !== false, enabledElements.safeMode));
         if (tools)
             rendered.set("recentTools", tools);
     }
     if (enabledElements.sessionSummary && context.sessionSummary) {
-        const summary = renderSessionSummary(context.sessionSummary);
+        const summary = isolate(() => renderSessionSummary(context.sessionSummary));
         if (summary)
             rendered.set("sessionSummary", summary);
     }
     // -- detail-group elements --
-    if (context.missionBoard &&
+    const missionBoard = context.missionBoard;
+    if (missionBoard &&
         (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)) {
-        const mbLines = renderMissionBoard(context.missionBoard, config.missionBoard);
+        const mbLines = isolate(() => renderMissionBoard(missionBoard, config.missionBoard)) ?? [];
         if (mbLines.length > 0)
             renderedDetail.set("missionBoard", mbLines);
     }
-    const ctxWarning = renderContextLimitWarning(context.contextPercent, config.contextLimitWarning.threshold, config.contextLimitWarning.autoCompact);
+    const ctxWarning = isolate(() => renderContextLimitWarning(context.contextPercent, config.contextLimitWarning.threshold, config.contextLimitWarning.autoCompact));
     if (ctxWarning)
         renderedDetail.set("contextWarning", [ctxWarning]);
-    const payloadWarning = renderPayloadLimitWarning(context.payloadEstimate);
+    const payloadWarning = isCopilotHost
+        ? null
+        : isolate(() => renderPayloadLimitWarning(context.payloadEstimate));
     if (payloadWarning)
         renderedDetail.set("payloadWarning", [payloadWarning]);
     if (enabledElements.updateNotification !== false) {
-        const updateHints = renderUpdateHints({
+        const updateHints = isolate(() => renderUpdateHints({
             omcUpdateAvailable: context.updateAvailable,
             omcUpdateSource: context.omcUpdateSource ?? null,
             claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null,
-        });
+            host: context.host,
+        })) ?? [];
         if (updateHints.length > 0)
             renderedDetail.set("updateHint", updateHints);
     }
     if (enabledElements.todos) {
-        const todos = renderTodosWithCurrent(context.todos);
+        const todos = isolate(() => renderTodosWithCurrent(context.todos));
         if (todos)
             renderedDetail.set("todos", [todos]);
     }
     // ── Assemble output using layout order ─────────────────────────────
     const safeArray = (v, fallback) => Array.isArray(v) ? v : fallback;
     const effectiveLayout = {
-        line1: safeArray(config.layout?.line1, DEFAULT_ELEMENT_ORDER.line1),
+        line1: normalizeLayoutNames(safeArray(config.layout?.line1, DEFAULT_ELEMENT_ORDER.line1)),
         // `layout.main` remains the advanced authoritative layout control.
         // `elementOrder` is a narrow convenience alias for the main HUD line only.
-        main: safeArray(config.layout?.main, buildMainElementOrder(config.elementOrder)),
-        detail: safeArray(config.layout?.detail, DEFAULT_ELEMENT_ORDER.detail),
+        main: normalizeLayoutNames(safeArray(config.layout?.main, buildMainElementOrder(config.elementOrder))),
+        detail: normalizeLayoutNames(safeArray(config.layout?.detail, DEFAULT_ELEMENT_ORDER.detail)),
     };
     /** Collect inline elements in layout order.
      *  Also picks up detail-origin elements moved to an inline group —

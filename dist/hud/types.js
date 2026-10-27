@@ -69,14 +69,44 @@ export function resolveHudLabels(locale, labels) {
 export const DEFAULT_ELEMENT_ORDER = {
     line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
     main: [
-        'omcLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
+        'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
         'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
     ],
     detail: ['missionBoard', 'agents', 'contextWarning', 'payloadWarning', 'updateHint', 'todos'],
 };
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
+/**
+ * Copilot host defaults, applied over the preset and under the user's config:
+ * Copilot's own footer already shows the model, effort, directory and branch,
+ * so these start off and a user `true` turns them back on. The OMC-state
+ * elements (copilotMode, team, ultragoal) start on here; under Claude they are
+ * unset in every preset, so they stay off unless the user turns them on.
+ */
+export const COPILOT_HOST_DEFAULTS = {
+    model: false,
+    effort: false,
+    cwd: false,
+    gitBranch: false,
+    copilotMode: true,
+    team: true,
+    ultragoal: true,
+};
+/**
+ * Elements with no data source under Copilot (Claude usage/enterprise APIs,
+ * Claude transcript, `claude -p`). Forced off on the Copilot host even when the
+ * user config enables them; the payload warning is skipped in index.ts.
+ */
+export const COPILOT_HOST_DROPPED = {
+    rateLimits: false,
+    enterpriseMode: false,
+    showEnterpriseCost: false,
+    apiKeySource: false,
+    thinking: false,
+    todos: false,
+    sessionSummary: false,
+};
 export const DEFAULT_HUD_CONFIG = {
     preset: 'focused',
     locale: 'en',

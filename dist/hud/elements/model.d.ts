@@ -13,4 +13,10 @@ export declare function formatModelName(modelId: string | null | undefined, form
  * Render model element.
  */
 export declare function renderModel(modelId: string | null | undefined, format?: ModelFormat, labels?: Pick<HudLabels, 'model'>): string | null;
+/**
+ * Render the Copilot model verbatim. Copilot display names ("GPT-5.4",
+ * "Claude Sonnet 5.5", "Auto>fast") do not follow the Claude id patterns that
+ * formatModelName shortens, so they are only width-capped.
+ */
+export declare function renderCopilotModel(name: string | null | undefined, labels?: Pick<HudLabels, 'model'>): string | null;
 //# sourceMappingURL=model.d.ts.map

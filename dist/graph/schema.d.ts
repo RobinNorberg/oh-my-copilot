@@ -715,10 +715,10 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     terminal_verification_node_id: z.ZodString;
     descriptor_hash: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
+    goal: string;
     descriptor_version: 1;
     run_id: string;
     revision_id: string;
-    goal: string;
     nodes: ({
         title: string;
         id: string;
@@ -792,10 +792,10 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     terminal_verification_node_id: string;
     descriptor_hash?: string | undefined;
 }, {
+    goal: string;
     descriptor_version: 1;
     run_id: string;
     revision_id: string;
-    goal: string;
     nodes: ({
         title: string;
         id: string;

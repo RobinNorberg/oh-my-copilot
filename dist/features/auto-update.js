@@ -13,13 +13,14 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync 
 import { join, dirname } from 'path';
 import { execSync, execFileSync } from 'child_process';
 import { compareVersions as compareSemver } from '../utils/semver-compare.js';
-import { install as installOmc, HOOKS_DIR, isProjectScopedPlugin, isRunningAsPlugin, copyPluginSyncPayload, syncInstalledPluginPayload, } from '../installer/index.js';
+import { install as installOmc, HOOKS_DIR, isProjectScopedPlugin, isRunningAsPlugin, copyPluginSyncPayload, syncInstalledPluginPayload, getRuntimePackageRoot, } from '../installer/index.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { detectHostCliSignal } from '../utils/host-signal.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import { isAutoUpdateDisabled } from '../lib/security-config.js';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 /** GitHub repository information */
-export const REPO_OWNER = 'Yeachan-Heo';
+export const REPO_OWNER = 'RobinNorberg';
 export const REPO_NAME = 'oh-my-copilot';
 export const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
@@ -921,12 +922,53 @@ export async function performUpdate(options) {
         };
     }
 }
+function toSlashPath(pathValue) {
+    return pathValue.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+/**
+ * Update channel of the running install, by the rule scripts/session-start.mjs
+ * getUpdateChannel applies: a Claude Code plugin cache root is 'marketplace',
+ * a Copilot CLI installed plugin (<copilotHome>/installed-plugins/...) is
+ * 'copilot-plugin', anything else 'npm'. The package root counts as well as
+ * the env vars, since Copilot may not export a plugin root to processes.
+ */
+export function getOmcUpdateChannel(env = process.env, packageRoot = getRuntimePackageRoot()) {
+    const envRoot = env.CLAUDE_PLUGIN_ROOT || env.PLUGIN_ROOT;
+    const claudeCacheBase = toSlashPath(join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot'));
+    if (envRoot) {
+        const root = toSlashPath(envRoot);
+        if (root === claudeCacheBase || root.startsWith(`${claudeCacheBase}/`) ||
+            /\/plugins\/cache\/omc\/oh-my-copilot\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(root)) {
+            return 'marketplace';
+        }
+    }
+    // Path-based on purpose: this matches the `/installed-plugins/` segment of
+    // the given string and does no realpath, so a symlinked or junctioned
+    // install is classified by where it is linked, not where it resolves.
+    const isCopilotPluginRoot = (root) => !!root && `${toSlashPath(root)}/`.includes('/installed-plugins/');
+    return isCopilotPluginRoot(envRoot) || isCopilotPluginRoot(packageRoot) ? 'copilot-plugin' : 'npm';
+}
 /**
  * Get a formatted update notification message
  */
 export function formatUpdateNotification(checkResult) {
     if (!checkResult.updateAvailable) {
         return `oh-my-copilot is up to date (v${checkResult.currentVersion ?? 'unknown'})`;
+    }
+    const channel = getOmcUpdateChannel();
+    let commandLines = ['  To update, run: /update', '  Or reinstall via: /plugin install oh-my-copilot'];
+    const copilotHost = detectHostCliSignal() === 'copilot';
+    if (channel === 'copilot-plugin' || (channel === 'marketplace' && copilotHost)) {
+        // Copilot's /update updates Copilot CLI itself, so the marketplace channel
+        // under Copilot gets the plugin command too.
+        commandLines = [
+            '  To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc',
+            '  Or inside Copilot CLI: /plugin update oh-my-copilot@omc',
+        ];
+    }
+    else if (channel === 'npm' && copilotHost) {
+        // Copilot's /update updates Copilot CLI itself, not this package.
+        commandLines = ['  To update, run: npm i -g oh-my-copilot@latest'];
     }
     const lines = [
         '╔═══════════════════════════════════════════════════════════╗',
@@ -936,8 +978,7 @@ export function formatUpdateNotification(checkResult) {
         `  Current version: ${checkResult.currentVersion ?? 'unknown'}`,
         `  Latest version:  ${checkResult.latestVersion}`,
         '',
-        '  To update, run: /update',
-        '  Or reinstall via: /plugin install oh-my-copilot',
+        ...commandLines,
         ''
     ];
     // Add truncated release notes if available
