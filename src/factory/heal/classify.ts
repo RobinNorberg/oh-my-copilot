@@ -154,7 +154,8 @@ export function classifyJob(input: ClassifyJobInput): JobClassification {
     return { ...withHistory, class: 'env-change', reason: `environment changed (${fields}) and the red sha adds no code the green sha lacks` };
   }
   if (changed.length > 0) return { ...withHistory, class: 'regression-or-env', reason: `environment changed (${fields}) and ${range.commits} commit(s) touch ${codeFiles} code file(s)` };
-  if (codeChanged) return { ...withHistory, class: 'regression', reason: `environment unchanged; ${range.commits} commit(s) touch ${codeFiles} code file(s)` };
+  // Design §3 step 5: an unchanged environment with a non-empty sha range is a regression, whatever the files.
+  if (range.commits > 0) return { ...withHistory, class: 'regression', reason: `environment unchanged; ${range.commits} commit(s) touch ${codeFiles} code file(s)` };
   return { ...withHistory, class: 'intermittent', reason: 'same environment and no code change since the green run' };
 }
 

@@ -108,6 +108,8 @@ describe('heal classifier', () => {
     expect(classifyJob({ red: r, green: g, range: code }).class).toBe('regression-or-env');
     expect(classifyJob({ red: r, green: g, range: { commits: 2, codeFiles: 0, files: ['docs/x.md'] } }).class).toBe('env-change');
     expect(classifyJob({ red: r, green: sameEnv, range: { commits: 0, codeFiles: 0, files: [] } }).class).toBe('intermittent');
+    // Spec §3 step 5: unchanged env plus a non-empty sha range is a regression even with no code file in it.
+    expect(classifyJob({ red: r, green: sameEnv, range: { commits: 2, codeFiles: 0, files: ['docs/x.md'] } }).class).toBe('regression');
     expect(classifyJob({ red: r, green: g }).class).toBe('regression-or-env');
     expect(classifyJob({ red: r, green: sameEnv }).class).toBe('regression');
     expect(classifyJob({ red: r }).class).toBe('unknown');
@@ -118,6 +120,16 @@ describe('heal classifier', () => {
     expect(classifyJob({ red: sample('1', RED_SHA, job) })).toMatchObject({ class: 'infra', infra: ['network'] });
     const run = classifyRun({ signature: 's', sig8: 'abcd1234', firstRed: { runId: '1', sha: RED_SHA }, jobs: [{ red: sample('1', RED_SHA, job) }] });
     expect(run).toMatchObject({ class: 'infra', laneEligible: false, rerun: { issued: false } });
+  });
+
+  it('infra patterns count only inside the failed step', () => {
+    const lines = ['npm error code ETIMEDOUT', '##[error]Process completed with exit code 1.'];
+    const log = [
+      `Test\tInstall dependencies\t2026-10-27T10:00:00.0000000Z ${lines[0]}`,
+      `Test\tRun tests\t2026-10-27T10:00:01.0000000Z ${lines[1]}`,
+    ].join('\n');
+    expect(parseJob({ jobId: '1', name: 'Test', failedSteps: ['Run tests'] }, log, KNOWN).infra).toEqual([]);
+    expect(parseJob({ jobId: '1', name: 'Test', failedSteps: ['Install dependencies'] }, log, KNOWN).infra).toEqual(['network']);
   });
 
   it('known-flaky: a listed test that failed alone -> known-flaky, rerun intent once', () => {

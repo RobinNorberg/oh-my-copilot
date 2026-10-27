@@ -6,7 +6,9 @@
  * healGuardExec, and a rerun probe is recorded as an intent only.
  */
 
+import { join } from 'path';
 import { Command } from 'commander';
+import { withFileLockSync } from '../../lib/file-lock.js';
 import chalk from 'chalk';
 import { parseKnownFlaky, type KnownFlakyTest } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
@@ -15,7 +17,7 @@ import { HEAL_WORKFLOW, type HealConfig } from './config.js';
 import { healGuardExec, jobLog, listRuns, shaRange, viewRunJobs, type HealJob, type HealRun } from './history.js';
 import { parseJob, type ParsedJob } from './logs.js';
 import { runSignature } from './signature.js';
-import { foldSignature, listHealStates, readDailyCounters, readHealState, SIG8, writeHealState, type HealSignatureState } from './state.js';
+import { foldSignature, healStateDir, listHealStates, readDailyCounters, readHealState, SIG8, writeHealState, type HealSignatureState } from './state.js';
 
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
 export const SCAN_LIMITS = Object.freeze({
@@ -138,7 +140,15 @@ function loadKnownFlaky(exec: Exec, root: string, base: string, warn: (m: string
   return parseKnownFlaky(r.stdout, `origin/${base}:${file}`);
 }
 
-export function runHealScan(opts: { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void }): ScanResult {
+type ScanOpts = { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void; lockTimeoutMs?: number };
+
+/** One writing scan at a time: the read-fold-write of heal state is held under a lock file. */
+export function runHealScan(opts: ScanOpts): ScanResult {
+  if (opts.dryRun) return scanOnce(opts);
+  return withFileLockSync(join(healStateDir(opts.root), 'scan.lock'), () => scanOnce(opts), { timeoutMs: opts.lockTimeoutMs ?? 60_000 });
+}
+
+function scanOnce(opts: ScanOpts): ScanResult {
   const exec = healGuardExec(opts.exec);
   const ctx: Ctx = { exec, root: opts.root, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
   const completed = (r: HealRun) => r.status === 'completed';
@@ -170,20 +180,25 @@ export function runHealScan(opts: { exec: Exec; root: string; base: string; conf
   const skip = (run: HealRun, reason: string) => entries.push({ runId: run.id, event: run.event, headBranch: run.headBranch, reason });
 
   // Rule 1: a red push run on the base branch (cancelled, skipped and in-progress runs never count).
-  const redPush = pushRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id)).slice(0, SCAN_LIMITS.pushCandidates);
-  for (const run of redPush) {
+  // Skipped runs never enter seenRuns, so only runs that reach classification use a candidate slot.
+  let pushSlots = SCAN_LIMITS.pushCandidates;
+  for (const run of pushRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id))) {
+    if (pushSlots <= 0) break;
     const { counted, ignored } = failedJobs(ctx, run);
     if (counted.length === 0) { skip(run, ignored.length ? `ignored: only PR-policy job(s) failed (${ignored.join(', ')})` : 'no failed job'); continue; }
+    pushSlots -= 1;
     const older = pushRuns.filter((r) => r.conclusion === 'success' && r.createdAt < run.createdAt);
     record(run, classifyRed(ctx, run, counted, older, allRuns, pushRuns), 'push');
   }
 
   // Rule 2: one signature on PR runs of two or more head branches; a lone PR signature only adds weight to a known one.
   const bySig = new Map<string, { runs: HealRun[]; jobs: ParsedJob[] }>();
-  for (const run of prRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id)).slice(0, SCAN_LIMITS.prRuns)) {
+  // The cap counts distinct signatures; policy-only runs use none.
+  for (const run of prRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id))) {
     const { counted, ignored } = failedJobs(ctx, run);
     if (counted.length === 0) { skip(run, ignored.length ? `ignored: only PR-policy job(s) failed (${ignored.join(', ')})` : 'no failed job'); continue; }
     const { sig8 } = runSignature(counted);
+    if (!bySig.has(sig8) && bySig.size >= SCAN_LIMITS.prRuns) continue;
     const group = bySig.get(sig8) ?? { runs: [], jobs: counted };
     group.runs.push(run);
     bySig.set(sig8, group);

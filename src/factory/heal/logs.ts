@@ -84,9 +84,12 @@ const INFRA_PATTERNS: readonly { name: string; re: RegExp }[] = [
   { name: 'disk-full', re: /\bENOSPC\b|No space left on device/ },
 ];
 
-export function infraMatches(log: string): string[] {
+/** With `failedSteps`, only lines of those steps count: a test that prints `ETIMEDOUT` is not an infra failure. */
+export function infraMatches(log: string, failedSteps: readonly string[] = []): string[] {
   const hits = new Set<string>();
   for (const raw of log.split(/\r?\n/)) {
+    const cols = raw.split('\t');
+    if (failedSteps.length > 0 && cols.length >= 3 && !failedSteps.includes(cols[1])) continue;
     const line = cleanLine(raw);
     for (const p of INFRA_PATTERNS) if (p.re.test(line)) hits.add(p.name);
   }
@@ -126,7 +129,7 @@ export function parseJob(job: { jobId: string; name: string; failedSteps: string
     failingTests: analysis.failingTests,
     blockers: analysis.blockers,
     knownFlaky: analysis.knownFlaky,
-    infra: analysis.failingTests.length === 0 ? infraMatches(log) : [],
+    infra: analysis.failingTests.length === 0 ? infraMatches(log, job.failedSteps) : [],
     ...(firstError ? { firstError } : {}),
     env: parseJobEnv(log),
   };

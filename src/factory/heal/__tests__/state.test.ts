@@ -2,10 +2,10 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HealClassification } from '../classify.js';
 import { DEFAULT_HEAL_CONFIG, resolveHealConfig } from '../config.js';
-import { foldSignature, healLimitReason, healStateDir, healStatePath, readDailyCounters, readHealState, writeHealState, type HealDailyCounters, type HealSignatureState } from '../state.js';
+import { foldSignature, healLimitReason, healStateDir, healStatePath, listHealStates, readDailyCounters, readHealState, writeHealState, type HealDailyCounters, type HealSignatureState } from '../state.js';
 
 const NOW = new Date('2026-10-27T12:00:00Z');
 const ZERO: HealDailyCounters = { day: '2026-10-27', healRuns: 0, debugLanes: 0 };
@@ -70,6 +70,15 @@ describe('heal signature state', () => {
       expect(healStatePath(root, 'ffffffff').replace(/\\/g, '/')).toMatch(/\.omg\/state\/factory\/heal\/ffffffff\.json$/);
       expect(readHealState(root, 'ffffffff')).toMatchObject({ sig8: 'ffffffff', count: 1 });
       expect(() => healStatePath(root, '../x')).toThrow(/8 hex/);
+    });
+
+    it('skips a corrupt signature file with a warning instead of throwing', () => {
+      writeHealState(root, foldSignature(null, { classification: cls(), runId: '1', source: 'push' }, [], ZERO, DEFAULT_HEAL_CONFIG, NOW).state);
+      writeFileSync(join(healStateDir(root), 'deadbeef.json'), '{ not json');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(listHealStates(root).map((s) => s.sig8)).toEqual(['ffffffff']);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('deadbeef.json'));
+      warn.mockRestore();
     });
 
     it('daily counters reset on a new UTC day (fake clock)', () => {

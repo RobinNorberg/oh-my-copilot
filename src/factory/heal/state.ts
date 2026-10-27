@@ -83,7 +83,15 @@ export function listHealStates(root: string): HealSignatureState[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => /^[0-9a-f]{8}\.json$/.test(f))
-    .map((f) => parseState(readFileSync(join(dir, f), 'utf8'), join(dir, f)))
+    .flatMap((f) => {
+      const path = join(dir, f);
+      try {
+        return [parseState(readFileSync(path, 'utf8'), path)];
+      } catch (error) {
+        console.warn(`omg factory heal: skipping corrupt signature file ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
+      }
+    })
     .sort((a, b) => b.lastSeen.at.localeCompare(a.lastSeen.at));
 }
 

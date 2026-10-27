@@ -63,8 +63,10 @@ function gitAllowed(a: string[]): boolean {
   }
 }
 
+const gitBase = (cmd: string): string => cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
+
 export function assertHealCommand(cmd: string, args: string[]): void {
-  const base = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
+  const base = gitBase(cmd);
   const ok = args.every((x) => typeof x === 'string') && (base === 'gh' ? ghAllowed(args) : base === 'git' ? gitAllowed(args) : false);
   if (!ok) throw new HealSafetyError(`omg factory heal refuses \`${base} ${args.join(' ')}\`: not one of its read-only command shapes`);
 }
@@ -73,7 +75,7 @@ export function assertHealCommand(cmd: string, args: string[]): void {
 export function healGuardExec(exec: Exec): Exec {
   return (cmd, args, opts) => {
     assertHealCommand(cmd, args);
-    return exec(cmd, args, cmd === 'git' ? { ...opts, env: TRUSTED_READ_ENV } : opts);
+    return exec(cmd, args, gitBase(cmd) === 'git' ? { ...opts, env: TRUSTED_READ_ENV } : opts);
   };
 }
 

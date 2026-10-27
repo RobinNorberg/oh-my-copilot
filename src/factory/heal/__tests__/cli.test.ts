@@ -8,7 +8,9 @@ import { factoryCommand } from '../../../cli/commands/factory.js';
 import type { Exec } from '../../../ship/exec.js';
 import { healCommand, runHealScan, type HealDeps, type ScanResult } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../config.js';
-import { assertHealCommand, HealSafetyError } from '../history.js';
+import { acquireFileLockSync, releaseFileLockSync } from '../../../lib/file-lock.js';
+import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
+import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
 import { healStateDir, listHealStates } from '../state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +115,27 @@ describe('omg factory heal scan', () => {
     expect(listHealStates(root)[0].count).toBe(1);
   });
 
+  it('policy-only PR failures never starve a real cross-branch failure of a candidate slot', () => {
+    const policy = Array.from({ length: 6 }, (_, i): RunFixture => ({ ...run(40584652986), databaseId: 40600000000 + i, headBranch: `feat/p${i}`, createdAt: `2026-10-27T20:0${i}:00Z` }));
+    const result = scan(fakeExec([run(40584638028)], [...policy, run(40542274776), SECOND_PR]));
+    expect(result.entries.filter((e) => e.reason.startsWith('ignored:'))).toHaveLength(6);
+    expect(result.entries.filter((e) => e.sig8).map((e) => e.runId).sort()).toEqual(['40542274776', '40551187199']);
+    expect(listHealStates(root)).toHaveLength(1);
+  });
+
+  it('a scan holding the heal lock blocks a second writing scan; dry runs do not need it', () => {
+    const exec = fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]);
+    const handle = acquireFileLockSync(join(healStateDir(root), 'scan.lock'))!;
+    try {
+      expect(() => runHealScan({ exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: false, warn: () => {}, lockTimeoutMs: 100 })).toThrow(/Failed to acquire file lock/);
+      expect(() => scan(exec, true)).not.toThrow();
+    } finally {
+      releaseFileLockSync(handle);
+    }
+    expect(() => scan(exec)).not.toThrow();
+    expect(existsSync(join(healStateDir(root), 'scan.lock'))).toBe(false);
+  });
+
   it('--dry-run writes no state', () => {
     const result = scan(fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]), true);
     expect(result.entries.some((e) => e.class === 'env-change' && e.recorded === false)).toBe(true);
@@ -128,6 +151,15 @@ describe('heal command guard', () => {
     expect(() => assertHealCommand('git', ['show', `refs/remotes/origin/dev:../etc/passwd`])).toThrow(HealSafetyError);
     expect(() => assertHealCommand('npm', ['ci'])).toThrow(HealSafetyError);
     expect(() => assertHealCommand('gh', ['run', 'view', '--job', '1', '--log'])).not.toThrow();
+    expect(() => assertHealCommand('C:\\Program Files\\Git\\cmd\\git.exe', ['push'])).toThrow(HealSafetyError);
+  });
+
+  it('applies the trusted git env for any normalized git basename', () => {
+    for (const cmd of ['git', 'git.exe', 'C:\\Program Files\\Git\\cmd\\git.exe', '/usr/bin/git']) {
+      const seen: unknown[] = [];
+      healGuardExec((_c, _a, o) => { seen.push(o?.env); return { status: 0, stdout: '', stderr: '' }; })(cmd, ['rev-parse', '--show-toplevel']);
+      expect(seen[0]).toBe(TRUSTED_READ_ENV);
+    }
     expect(() => assertHealCommand('git', ['rev-list', '--count', `${'b'.repeat(40)}..${RED_SHA}`])).not.toThrow();
   });
 });
