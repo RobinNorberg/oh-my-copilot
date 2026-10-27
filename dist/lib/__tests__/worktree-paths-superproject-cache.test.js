@@ -114,4 +114,28 @@ describe("resolveSuperprojectRoot cache", () => {
         expect(mockedExecFileSync).toHaveBeenCalledTimes(22);
     });
 });
+describe("resolveSuperprojectRoot invalid-gitfile wording across git versions", () => {
+    beforeEach(() => {
+        clearWorktreeCache();
+        mockedExecFileSync.mockReset();
+    });
+    afterEach(() => {
+        clearWorktreeCache();
+    });
+    // Git 2.56.0 (54a441bcea) reworded "not a git repository: <gitdir>" to
+    // "gitfile does not point to a valid repository: <gitfile>". Both are a
+    // definitive non-git answer and must be cached like one.
+    it.each([
+        ["git <= 2.55", "fatal: not a git repository: /missing-gitdir"],
+        ["git >= 2.56", "fatal: gitfile does not point to a valid repository: /work/.git"],
+    ])("caches the %s answer as a definitive non-git result", (_version, stderr) => {
+        const root = resolve("repos", "broken-gitfile");
+        mockedExecFileSync.mockImplementation(() => {
+            throw Object.assign(new Error("probe failed"), { status: 128, stderr });
+        });
+        expect(getOmcRoot(root)).toBe(canonicalRoot);
+        expect(getOmcRoot(root)).toBe(canonicalRoot);
+        expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
+    });
+});
 //# sourceMappingURL=worktree-paths-superproject-cache.test.js.map

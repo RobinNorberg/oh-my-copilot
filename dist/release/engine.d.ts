@@ -19,7 +19,7 @@
  *              the baseline) is recorded in the state and a later run never
  *              lowers it; a suite that ran below the recorded level runs again
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
- *              a red suite costs no premium requests
+ *              a red suite costs no AI credits
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)

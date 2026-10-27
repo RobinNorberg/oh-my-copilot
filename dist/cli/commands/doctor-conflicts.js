@@ -797,11 +797,11 @@ export function formatReport(report, json) {
         lines.push('');
     }
     if (report.budgetIssues && report.budgetIssues.length > 0) {
-        lines.push(colors.bold('💳 Premium-Request Budget'));
+        lines.push(colors.bold('💳 AI Credits Budget'));
         lines.push('');
         for (const issue of report.budgetIssues)
             lines.push(`  ${colors.yellow('⚠')} ${issue}`);
-        lines.push(`    ${colors.gray('Invalid values are ignored (the governor stays warn-only). Fix the "budget" block in .copilot/omg.jsonc.')}`);
+        lines.push(`    ${colors.gray('Invalid and deprecated values are ignored (the governor only reports). Fix the "budget" block in .copilot/omg.jsonc.')}`);
         lines.push('');
     }
     // Unified MCP registry sync

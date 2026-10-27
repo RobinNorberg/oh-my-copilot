@@ -55,7 +55,7 @@ export interface ParsedTeamArgs {
     noDecompose: boolean;
     /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
     transport?: 'pane' | 'sdk' | 'auto';
-    /** `--budget-override`: start even when budget.mode "enforce" would refuse or clamp. */
+    /** `--budget-override`: deprecated no-op, accepted with one warning at start. */
     budgetOverride?: true;
 }
 export declare function assertTeamSpawnAllowed(cwd: string, env?: NodeJS.ProcessEnv): Promise<void>;
@@ -75,12 +75,6 @@ export interface TeamLaunchTask {
     delegation?: TeamTaskDelegationPlan;
 }
 export declare function buildTeamLaunchTasks(parsed: ParsedTeamArgs, decomposition: DecompositionPlan, effectiveWorkerCount: number): TeamLaunchTask[];
-/**
- * Premium-request budget governor (src/budget): warn about, clamp or refuse
- * the copilot fan-out. Only a refusal throws; a governor failure starts the
- * team unchanged (fail-open).
- */
-export declare function applyBudgetGovernor(parsed: ParsedTeamArgs, workerCount: number, clampable: boolean, cwd: string): Promise<number>;
 /**
  * Main team subcommand handler.
  * Routes:

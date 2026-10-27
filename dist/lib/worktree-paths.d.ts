@@ -54,6 +54,13 @@ export declare function findWorkspaceRoot(startDir?: string): string | null;
  * marker is empty or unparseable — callers should not throw on config errors.
  */
 export declare function readWorkspaceMarkerConfig(workspaceRoot: string): WorkspaceMarkerConfig;
+/**
+ * Git's exit-128 answer for "this path is not a repository". Git 2.56.0
+ * (54a441bcea) reworded the case of a `.git` file pointing at a non-repository
+ * from "not a git repository: <gitdir>" to "gitfile does not point to a valid
+ * repository: <gitfile>"; both mean the same to every caller.
+ */
+export declare const GIT_NOT_A_REPOSITORY_STDERR: RegExp;
 /** Return true when state must not be anchored at this directory. */
 export declare function isSensitiveStateLocation(dir: string): boolean;
 /**

@@ -20,7 +20,7 @@
  * Everything runs as child processes of `node <root>/bridge/cli.cjs`, so this
  * module imports no team code; the smoke entry injects it like `chain`.
  *
- * Cost: one user prompt per worker, about 2 premium requests. Each host is
+ * Cost: one user prompt per worker, billed in AI credits. Each host is
  * capped at half of the run's remaining credit budget.
  */
 import { type CopilotEvent } from './copilot-session-eval.js';
