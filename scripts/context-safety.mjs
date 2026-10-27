@@ -22,7 +22,6 @@ async function main() {
     // Ignore malformed input - this hook is intentionally permissive.
   }
 
-  console.log(JSON.stringify({ continue: true, suppressOutput: true }));
 }
 
 main();

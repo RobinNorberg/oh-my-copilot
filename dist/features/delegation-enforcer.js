@@ -13,6 +13,7 @@
  * Claude-specific tier names (sonnet/opus/haiku) that the provider won't recognize.
  */
 import { existsSync, readFileSync } from 'fs';
+import { isDebugEnabled } from '../utils/debug-flag.js';
 import { join } from 'path';
 import { getAgentDefinitions } from '../agents/definitions.js';
 import { normalizeDelegationRole } from './delegation-routing/types.js';
@@ -279,7 +280,7 @@ export function enforceModel(agentInput) {
         model: normalizedModel,
     };
     let warning;
-    if (process.env.OMC_DEBUG === 'true') {
+    if (isDebugEnabled('delegation-enforcer')) {
         const aliasNote = resolvedModel !== agentDef.model && aliasSourceModel
             ? ` (aliased from ${aliasSourceModel})`
             : '';

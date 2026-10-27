@@ -10,6 +10,7 @@ import { absPath, TeamPaths } from './state-paths.js';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLock } from '../lib/file-lock.js';
 import { checkHostLoadGate } from '../lib/host-load-gate.js';
+import { gzipSync } from 'node:zlib';
 const WORKER_LAUNCH_SCHEMA_VERSION = 1;
 const DEFAULT_ACK_TIMEOUT_MS = 8_000;
 const DEFAULT_POLL_INTERVAL_MS = 25;
@@ -63,14 +64,24 @@ export function buildWindowsSupervisorSource() {
         '  $conIn = [O]::CreateFileW(\'CONIN$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); $conOut = [O]::CreateFileW(\'CONOUT$\', [uint32]3221225472, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); if ($conIn -eq [IntPtr]::Zero -or $conIn -eq [IntPtr]::new(-1) -or $conOut -eq [IntPtr]::Zero -or $conOut -eq [IntPtr]::new(-1)) { $conIn = [IntPtr]::Zero; $conOut = [IntPtr]::Zero; throw "worker_launch_console_unavailable" }; if (-not [O]::SetHandleInformation($conIn, 1, 1) -or -not [O]::SetHandleInformation($conOut, 1, 1)) { throw "worker_launch_console_unavailable" }; $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut; $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW($app, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }',
         '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, [NullString]::Value); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; if ([O]::ResumeThread($pi.hThread) -eq [uint32]::MaxValue) { throw "worker_launch_resume_failed" }',
         '  $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
-        '  $stdinReader = New-Object IO.StreamReader([Console]::OpenStandardInput()); $readTask = $stdinReader.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = $stdinReader.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.instance_id -ne $payload.identity.instance_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
+        '  $stdinReader = New-Object IO.StreamReader([Console]::OpenStandardInput()); $readTask = $stdinReader.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = $stdinReader.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.instance_id -ne $payload.identity.instance_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; instance_id=$payload.identity.instance_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true; exit_code=1 } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
         '} catch { if ($pi.hProcess -ne [IntPtr]::Zero) { if ($job -ne [IntPtr]::Zero) { [O]::TerminateJobObject($job, 1) | Out-Null } else { [O]::TerminateProcess($pi.hProcess, 1) | Out-Null }; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null }; throw } finally { if ($envPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }; if ($conIn -ne [IntPtr]::Zero) { [O]::CloseHandle($conIn) | Out-Null }; if ($conOut -ne [IntPtr]::Zero) { [O]::CloseHandle($conOut) | Out-Null }; if ($pi.hThread -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hThread) | Out-Null }; if ($pi.hProcess -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hProcess) | Out-Null }; if ($job -ne [IntPtr]::Zero) { [O]::CloseHandle($job) | Out-Null } }',
         // Fork fix: a real newline. "`n" is only an escape inside PowerShell strings;
         // as a statement separator it is a parse error, so the supervisor never ran.
     ].join('\n');
 }
 function encodePowerShell(source) {
-    return Buffer.from(source, 'utf16le').toString('base64');
+    // Keep the complete, source-bound supervisor below CreateProcessW's command
+    // line limit without putting launch payloads or secrets in argv or a file.
+    const compressed = gzipSync(Buffer.from(source, 'utf8')).toString('base64');
+    const loader = [
+        '$ErrorActionPreference = "Stop"',
+        `$memory = [IO.MemoryStream]::new([Convert]::FromBase64String('${compressed}'))`,
+        '$gzip = [IO.Compression.GZipStream]::new($memory, [IO.Compression.CompressionMode]::Decompress)',
+        '$reader = [IO.StreamReader]::new($gzip, [Text.Encoding]::UTF8)',
+        'try { & ([ScriptBlock]::Create($reader.ReadToEnd())) } finally { $reader.Dispose(); $gzip.Dispose(); $memory.Dispose() }',
+    ].join('\n');
+    return Buffer.from(loader, 'utf16le').toString('base64');
 }
 const WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, 'SystemRoot'].map(key => key.toUpperCase()));
 const SAFE_BASELINE_ENV_KEYS = ['PATH', 'TEMP', 'TMP', 'TERM', 'COLORTERM'];
@@ -366,9 +377,36 @@ async function writeExclusiveTextAtomic(path, value) {
         await unlink(candidate).catch(() => undefined);
     }
 }
+const DECIMAL_INTEGER_TEXT = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+function parseExactInteger(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return null;
+    const negative = trimmed.startsWith('-');
+    const magnitude = negative || trimmed.startsWith('+') ? trimmed.slice(1) : trimmed;
+    const match = DECIMAL_INTEGER_TEXT.exec(magnitude);
+    if (!match)
+        return null;
+    const integerDigits = match[1] ?? '';
+    const fractionDigits = match[2] ?? match[3] ?? '';
+    const exponent = match[4] === undefined ? 0 : Number(match[4]);
+    const shift = fractionDigits.length - exponent;
+    if (shift > 0) {
+        const significand = integerDigits + fractionDigits;
+        if (/[1-9]/.test(significand)) {
+            const trailingZeros = significand.length - significand.replace(/0+$/, '').length;
+            if (trailingZeros < shift)
+                return null;
+        }
+    }
+    const parsed = (negative ? -1 : 1) * Number(magnitude);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+}
 function resolvePositiveInteger(value, fallback) {
-    const parsed = Number.parseInt(value ?? '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    if (value == null || value.trim() === '')
+        return fallback;
+    const parsed = parseExactInteger(value);
+    return parsed !== null && parsed > 0 ? parsed : fallback;
 }
 export async function prepareWorkerLaunchAttempt(input) {
     const instanceId = input.instanceId;
@@ -2059,6 +2097,11 @@ export async function runWorkerLaunchBootstrap(value) {
             let resolveWindowsTerminal;
             const windowsReady = new Promise(resolve => { resolveWindowsReady = resolve; });
             const windowsTerminal = new Promise(resolve => { resolveWindowsTerminal = resolve; });
+            // Fork: the supervisor stdin error handler and payload write stay above
+            // (an EPIPE on a late frame must not override a terminal proof still in
+            // flight on stdout); only upstream's stderr drain is taken here.
+            if (process.platform === 'win32')
+                child.stderr?.resume();
             if (providerGate) {
                 // Own the extra stream's error for its entire lifetime. ChildProcess
                 // does not forward errors from additional stdio sockets, so leaving
@@ -2138,7 +2181,10 @@ export async function runWorkerLaunchBootstrap(value) {
                         }
                         else if (message.kind === 'terminal' && message.pid === providerPid
                             && (message.outcome === 'terminated' || message.outcome === 'exit')
+                            && Number.isSafeInteger(message.exit_code) && Number(message.exit_code) >= 0
+                            && Number(message.exit_code) <= 0xffffffff
                             && message.cleanup_verified === true) {
+                            supervisedExitCode = Number(message.exit_code);
                             windowsTerminationProofWrite = writeExclusiveAtomic(`${spec.started_path}.termination-complete`, {
                                 ...identityOf(spec), kind: 'worker_launch_termination_complete', cleanup_verified: true,
                                 pid: providerPid, process_start_identity: providerStartIdentity,
@@ -2154,7 +2200,9 @@ export async function runWorkerLaunchBootstrap(value) {
             }
             const completion = new Promise(resolve => {
                 resolveCompletion = resolve;
-                child.once('exit', async (exitCode, signal) => {
+                // On Windows, drain the bound terminal frame before interpreting the
+                // supervisor's exit code as the provider's result.
+                child.once(process.platform === 'win32' ? 'close' : 'exit', async (exitCode, signal) => {
                     if ((settled && process.platform === 'win32') || childExitObserved)
                         return;
                     childExitObserved = true;

@@ -838,22 +838,23 @@ Once a point is opted in (e.g., `OMC_JEV="model-routing"`), it automatically deg
 
 ### Shadow Log Location
 
-Every Jev call—whether shadow or active—is recorded in the shadow log:
+Every Jev judgment that runs in shadow, active, or degraded mode is
+appended to the shared shadow log:
 
 ```
-.omg/state/jev/<point>-shadow.jsonl
+.omg/state/jev/shadow.jsonl
 ```
 
 Each line is a JSON record with:
 - `ts`: ISO timestamp
 - `point`: judgment-point name
-- `state`: the payload sent to Jev (bounded to `OMC_JEV_EXCERPT_CHARS`)
-- `mode`: `"shadow"` or `"active"`
-- `jev_answer`: Jev's response (if successful)
-- `twin_answer`: the heuristic twin's result
-- `match`: `true` if Jev and twin agree
-- `error`: error message (if the call failed)
-- `latencyMs`: round-trip time
+- `state`: the bounded state passed to the judgment
+- `mode`: `"shadow"`, `"active"`, or `"degraded"`
+- `heuristic`: the heuristic twin's result
+- `jev`: Jev's response, or `null` when the request degrades
+- `confidence`: Jev's confidence when provided
+- `durationMs`: elapsed request time
+- `usage`: Jev-reported token usage when available
 
 Use shadow logs to collect evidence for promotion decisions (ticket 07) and to debug mismatches.
 
@@ -953,7 +954,7 @@ Or simply omit `TYPESAFE_API_KEY`.
 Read the shadow log for a point:
 
 ```bash
-cat .omg/state/jev/model-routing-shadow.jsonl | jq '.'
+jq 'select(.point == "model-routing")' .omg/state/jev/shadow.jsonl
 ```
 
 #### Verify Jev is Running

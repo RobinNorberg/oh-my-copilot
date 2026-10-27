@@ -6,10 +6,11 @@
  * (which work universally) and handle platform-specific directory conventions.
  */
 
-import { join, dirname, basename } from 'path';
+import { join, dirname } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { getCopilotConfigDir } from './config-dir.js';
+import { compareVersions } from './semver-compare.js';
 import { pathIdentity, readOccupiedPluginRoots } from './cache-occupancy.js';
 import {
   firstChildBelowDirectoryIdentity,
@@ -445,22 +446,26 @@ function comparisonPath(p: string): string {
 const STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 /**
+ * The trailing path segment, split on either separator.
+ *
+ * These paths come from the plugin registration file, so on Windows they are
+ * native and splitting on '/' alone returned the whole string. The comparator
+ * then read the drive and directory names as version components: every path
+ * under the default config directory parsed to the same leading numbers, so
+ * '...\\1.2.3' and '...\\1.2.4' compared equal and the newest active version
+ * was not reliably chosen.
+ */
+export function versionLeaf(path: string): string {
+  const segments = path.split(/[\\/]/).filter((segment) => segment.length > 0);
+  return segments[segments.length - 1] ?? path;
+}
+
+/**
  * Compare two semver-like version strings descending (higher version first).
  * Non-numeric segments fall back to 0.
  */
-function compareSemverDesc(a: string, b: string): number {
-  const parse = (s: string) => s.split('.').map(n => parseInt(n, 10) || 0);
-  const pa = parse(a), pb = parse(b);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pb[i] ?? 0) - (pa[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-/** Highest-version directory by its last path segment; `base` lets tests pass `path.win32.basename`. */
-export function pickHighestVersionDir(dirs: string[], base: (p: string) => string = basename): string {
-  return [...dirs].sort((a, b) => compareSemverDesc(base(a), base(b)))[0];
+export function compareSemverDesc(a: string, b: string): number {
+  return compareVersions(b, a);
 }
 
 export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: boolean }): PurgeCacheResult {
@@ -639,8 +644,9 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
         // stale directory with a symlink rather than deleting it.  This keeps any
         // running session whose CLAUDE_PLUGIN_ROOT still points to this path working.
         if (activeVersionDirsHere.length > 0) {
-          // Native paths (backslashes on win32): the helper uses basename, not split('/').
-          const target = pickHighestVersionDir(activeVersionDirsHere);
+          const target = [...activeVersionDirsHere].sort((a, b) =>
+            compareSemverDesc(versionLeaf(a), versionLeaf(b)),
+          )[0];
           try {
             const targetStats = statSync(target, { bigint: true });
             if (!targetStats.isDirectory()) {

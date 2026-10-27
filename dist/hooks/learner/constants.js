@@ -5,6 +5,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { OmcPaths } from '../../lib/worktree-paths.js';
+import { isDebugEnabled } from '../../utils/debug-flag.js';
 /** User-level skills directory (read by skill-injector.mjs hook) */
 export const USER_SKILLS_DIR = join(getCopilotConfigDir(), 'skills', 'omc-learned');
 /** Global skills directory (new preferred location: ~/.omg/skills) */
@@ -30,5 +31,5 @@ export const REQUIRED_METADATA_FIELDS = ['id', 'name', 'description', 'triggers'
 /** Maximum skills to inject per session */
 export const MAX_SKILLS_PER_SESSION = 10;
 /** Debug mode enabled */
-export const DEBUG_ENABLED = process.env.OMC_DEBUG === '1';
+export const DEBUG_ENABLED = isDebugEnabled('learner');
 //# sourceMappingURL=constants.js.map

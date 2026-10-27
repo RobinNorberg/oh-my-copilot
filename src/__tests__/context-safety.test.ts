@@ -65,7 +65,7 @@ describe('context-safety hook (issues #1006, #1597)', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
+    expect(result.stdout).toBe('');
   });
 
   it('does NOT block ExitPlanMode even when transcript shows high context', () => {
@@ -84,7 +84,7 @@ describe('context-safety hook (issues #1006, #1597)', () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
+    expect(result.stdout).toBe('');
   });
 
   it('allows unknown tools through without blocking', () => {
@@ -96,7 +96,7 @@ describe('context-safety hook (issues #1006, #1597)', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
+    expect(result.stdout).toBe('');
   });
 });
 
