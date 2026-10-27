@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-    "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+    "head": "191133574ac8d828e4aab0a3e57d53442abc661a",
+    "sourceSha256": "9aec87223824eabe5f878b245ecf96561f05cde34f0aa023af05dbe448d04673",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-  "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+  "head": "191133574ac8d828e4aab0a3e57d53442abc661a",
+  "sourceSha256": "9aec87223824eabe5f878b245ecf96561f05cde34f0aa023af05dbe448d04673",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1693
     },
     "generated": {
-      "distFiles": 6344,
+      "distFiles": 6348,
       "bridgeFiles": 9,
-      "total": 6353
+      "total": 6357
     },
     "prompt": {
       "promptLikeFiles": 64
@@ -1347,6 +1347,10 @@
       "dist/__tests__/hud/context.test.d.ts.map",
       "dist/__tests__/hud/context.test.js",
       "dist/__tests__/hud/context.test.js.map",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts",
+      "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+      "dist/__tests__/hud/credit-budget-element.test.js",
+      "dist/__tests__/hud/credit-budget-element.test.js.map",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts",
       "dist/__tests__/hud/custom-rate-provider.test.d.ts.map",
       "dist/__tests__/hud/custom-rate-provider.test.js",
@@ -10866,6 +10870,26 @@
         "id": "dist/__tests__/hud/context.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/context.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/credit-budget-element.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/credit-budget-element.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/custom-rate-provider.test.d.ts",
@@ -100956,12 +100980,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8752,
+      "nodeCount": 8756,
       "edgeCount": 9855,
       "importEdgeCount": 8245,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
-  "manifestSha256": "29a6ca45f6e3a8e3d410038f8c3026aaddeab3ead6ca0c1b14678722ba9d0671"
+  "manifestSha256": "ad2d8ff256c88296ce3ce1de0876703c5399242220d437ea4de4b31351d6e56a"
 }
