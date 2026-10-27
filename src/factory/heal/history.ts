@@ -52,6 +52,10 @@ function gitAllowed(a: string[]): boolean {
       return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case 'rev-list':
       return r.length === 2 && r[0] === '--count' && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[1]);
+    case 'log':
+      // Evidence bundle commit subjects: git log --oneline --no-decorate --no-color -n <n> <green>..<red>
+      return r.length === 6 && r[0] === '--oneline' && r[1] === '--no-decorate' && r[2] === '--no-color' && r[3] === '-n'
+        && /^\d{1,3}$/.test(r[4]) && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[5]);
     case 'diff':
       return r.length === 3 && r[0] === '--name-only' && r[1] === '--no-renames' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]);
     case 'show': {
