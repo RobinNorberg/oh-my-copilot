@@ -11,7 +11,8 @@ import { join } from 'node:path';
 import { summarizeChanges } from '../../../copilot-run/job.js';
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
-import { LaneLostError, type LaneBackend, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
+import type { LaneProcessOps } from '../engine.js';
+import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
 
 export { gitIn };
 
@@ -95,6 +96,7 @@ export class FakeLanes implements LaneBackend {
       remoteId,
       error: o.error ?? null,
       notes: [],
+      process: fakeProcess(remoteId),
     };
   }
 
@@ -126,6 +128,33 @@ export class FakeLanes implements LaneBackend {
     if (!job || job.outcome?.lost) throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
     job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };
     return { supported: true, result: this.result(job, remoteId, 'cancelled') };
+  }
+}
+
+/** The fake Copilot child of a job: a pid no real process has, with a fake start identity. */
+export const fakeProcess = (remoteId: string): LaneProcess => ({ pid: 4_000_000 + [...remoteId].reduce((n, c) => n + c.charCodeAt(0), 0), identity: `ticks:${remoteId}` });
+
+/**
+ * A scripted process seam (FactoryEngineOptions.processes): every child is
+ * dead unless listed in `live` (killed by terminate only when `killable`) or
+ * `unknown`. Records the pids it checked and killed.
+ */
+export class FakeProcesses implements LaneProcessOps {
+  readonly live = new Set<number>();
+  readonly unknown = new Set<number>();
+  killable = true;
+  readonly checked: number[] = [];
+  readonly killed: number[] = [];
+
+  async state(p: LaneProcess): Promise<'live' | 'dead' | 'mismatch' | 'unknown'> {
+    this.checked.push(p.pid);
+    if (this.unknown.has(p.pid)) return 'unknown';
+    return this.live.has(p.pid) ? 'live' : 'dead';
+  }
+
+  async terminate(p: LaneProcess): Promise<void> {
+    this.killed.push(p.pid);
+    if (this.killable) this.live.delete(p.pid);
   }
 }
 

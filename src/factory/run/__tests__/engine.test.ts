@@ -21,12 +21,14 @@ import {
   updateFactoryState,
   type FactoryRunState,
 } from '../state.js';
-import { commitFile, FakeLanes, gitIn, harness, ISSUE, noCommit, PR, remoteHead, review, verdictBlock, type Harness, type LaneScript } from './fake-lanes.js';
+import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, ISSUE, noCommit, PR, remoteHead, review, verdictBlock, type Harness, type LaneScript } from './fake-lanes.js';
 
 let h: Harness;
+let procs: FakeProcesses;
 
 beforeEach(() => {
   h = harness();
+  procs = new FakeProcesses();
 });
 
 afterEach(() => {
@@ -46,19 +48,26 @@ function opts(lanes: FakeLanes, over: Partial<FactoryEngineOptions> = {}): Facto
     pollMs: 5,
     owner: { pid: 4242, hostname: 'test-host', isAlive: () => false },
     ledgerDir: h.ledgerDir,
+    processes: procs,
     ...over,
   };
 }
 
 const ledger = () => EngineLedger.open(h.ledgerDir, h.root, ISSUE);
 
-/** The engine crashed while an implement lane (job cr-dead) ran; it had recorded the lane's baseline first. */
-function crashDuringLane(withBaseline = true): void {
+/** The Copilot child the crashed lane recorded (crashDuringLane). */
+const DEAD_CHILD = { pid: 4_999_999, identity: 'ticks:cr-dead' };
+
+/**
+ * The engine crashed while an implement lane (job cr-dead) ran; it had
+ * recorded the lane's baseline first and, by default, the lane's child.
+ */
+function crashDuringLane(withBaseline = true, child: { pid: number; identity: string | null } | null = DEAD_CHILD): void {
   const id = `issue-${ISSUE}-implement-1`;
   if (withBaseline) ledger().setBaseline(id, snapshotRepo(factoryGuardExec(defaultExec), h.root));
   asEngine((s) => ({
     ...s, phase: 'implement', gate: undefined, plan: { source: 'issue-body', text: 'do it' },
-    lanes: [{ id, kind: 'implement', jobId: 'cr-dead', startSha: 'a'.repeat(40), status: 'running', maxCredits: 30, startedAt: s.createdAt }],
+    lanes: [{ id, kind: 'implement', jobId: 'cr-dead', ...(child ? { process: child } : {}), startSha: 'a'.repeat(40), status: 'running', maxCredits: 30, startedAt: s.createdAt }],
   }));
 }
 
@@ -517,7 +526,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
 
   it('a lost review lane that changed shared git state parks at review-tampered (no respawn), charged at its cap', async () => {
     const lostAfterTamper: LaneScript = (ctx) => { gitIn(ctx.root, 'branch', 'evil', ctx.baseSha); return { lost: true }; };
-    const { lanes, done } = run([commitFile('a.ts'), lostAfterTamper, review('approve')]);
+    // One running poll first: the engine has recorded the lane's (dead) child before the job is lost.
+    const { lanes, done } = run([commitFile('a.ts'), lostAfterTamper, review('approve')], {}, [0, 1]);
     const out = await done;
     expect(out.gate?.name).toBe('review-tampered');
     expect(out.gate?.reason).toMatch(/ref refs\/heads\/evil was created/);
@@ -556,7 +566,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
 
   it('a lost lane is respawned once; a second loss in a row parks at lane-lost', async () => {
     const lost: LaneScript = () => ({ lost: true });
-    const { lanes, done } = run([lost, lost]);
+    const { lanes, done } = run([lost, lost], {}, [1, 1]);
     const out = await done;
     expect(out.gate?.name).toBe('lane-lost');
     expect(lanes.started).toHaveLength(2);
@@ -612,6 +622,77 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(out.gate?.name).toBe('lane-unconfirmed');
     expect(lanes.started).toHaveLength(0);
     expect(readFactoryState(h.root, ISSUE)!.lanes[0].status).toBe('running');
+  });
+
+  describe('resume after an engine crash: the lost job\'s Copilot child', () => {
+    const resumeAfterCrash = async (child: { pid: number; identity: string | null } | null = DEAD_CHILD) => {
+      h.gh.issue.body = 'nothing yet';
+      await run([]).done;
+      crashDuringLane(true, child);
+    };
+
+    it('a child still alive with its start identity is killed before the lane counts as ended', async () => {
+      await resumeAfterCrash();
+      procs.live.add(DEAD_CHILD.pid);
+      const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
+      const out = await done;
+      expect(out.gate?.name).toBe('prepare');
+      expect(procs.killed).toEqual([DEAD_CHILD.pid]);
+      const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
+      expect(lane.status).toBe('lost');
+      expect(lane.note).toMatch(/Copilot child pid 4999999 is gone/);
+      expect(lanes.started).toHaveLength(2);
+    });
+
+    it('a child that survives the kill parks at lane-unconfirmed, and a rerun after that gate does not override it', async () => {
+      await resumeAfterCrash();
+      procs.live.add(DEAD_CHILD.pid);
+      procs.killable = false;
+      const first = await run([commitFile('a.ts')]).done;
+      expect(first.gate?.name).toBe('lane-unconfirmed');
+      expect(first.gate?.reason).toMatch(/pid 4999999.*still runs after the engine killed it/);
+      expect(readFactoryState(h.root, ISSUE)!.lanes[0].status).toBe('running');
+      const { lanes, done } = run([commitFile('a.ts')]);
+      expect((await done).gate?.name).toBe('lane-unconfirmed');
+      expect(lanes.started).toHaveLength(0);
+    });
+
+    it.each<[string, { pid: number; identity: string | null } | null, RegExp, boolean]>([
+      ['no recorded pid', null, /no pid of its Copilot child was recorded/, false],
+      ['an unreadable liveness', DEAD_CHILD, /whether its Copilot child pid 4999999 still runs cannot be determined/, true],
+    ])('%s parks at lane-unconfirmed; the rerun after that gate is the human\'s word and goes on', async (_name, child, why, unknown) => {
+      await resumeAfterCrash(child);
+      if (unknown) procs.unknown.add(DEAD_CHILD.pid);
+      const first = await run([commitFile('a.ts')]).done;
+      expect(first.gate?.name).toBe('lane-unconfirmed');
+      expect(first.gate?.reason).toMatch(why);
+      expect(procs.killed).toEqual([]);
+      const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
+      const out = await done;
+      expect(out.gate?.name).toBe('prepare');
+      const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
+      expect(lane.status).toBe('lost');
+      expect(lane.note).toMatch(/taken as the human's word that it stopped/);
+      expect(lanes.started).toHaveLength(2);
+    });
+
+    it('a settled lost lane sets the recheck: a late change after its check is found at the next step boundary', async () => {
+      await resumeAfterCrash();
+      const original = EngineLedger.prototype.setRecheck;
+      vi.spyOn(EngineLedger.prototype, 'setRecheck').mockImplementation(function (this: EngineLedger, r) {
+        original.call(this, r);
+        if (r?.laneId === `issue-${ISSUE}-implement-1`) gitIn(h.root, 'branch', 'late-evil', 'HEAD');
+      });
+      try {
+        const { lanes, done } = run([commitFile('a.ts')]);
+        const out = await done;
+        expect(out.gate?.name).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/after lane issue-7-implement-1 passed its check \(found at the next step boundary\).*late-evil was created/);
+        expect(lanes.started).toHaveLength(0);
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
   });
 
   it('cancel during a review lane still runs its tamper check and records the result', async () => {

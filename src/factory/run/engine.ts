@@ -49,7 +49,8 @@ import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
-import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProfile, type LaneResult } from './lane.js';
+import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
+import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
@@ -112,7 +113,35 @@ export interface FactoryEngineOptions {
   /** True once SIGINT / SIGTERM arrived. */
   interrupted?: () => boolean;
   warn?: (message: string) => void;
+  /** Liveness and kill of a lost lane's Copilot child (default: defaultLaneProcessOps). */
+  processes?: LaneProcessOps;
 }
+
+/** How the engine checks and stops a lost lane's recorded child process. */
+export interface LaneProcessOps {
+  /** dead or mismatch (pid reused): the child is gone; live: it still runs; unknown: cannot tell. */
+  state(p: LaneProcess): Promise<'live' | 'dead' | 'mismatch' | 'unknown'>;
+  /** Kill the child's process tree, only while its start identity still matches. */
+  terminate(p: LaneProcess): Promise<void>;
+}
+
+const PROCESS_DEADLINE_MS = 15_000;
+
+/**
+ * Start-identity checks from platform/process-utils.ts (PowerShell ticks on
+ * Windows, /proc start time on Linux, ps on macOS). Without an identity a
+ * dead pid is gone and a live one is unknown: it may be another process now,
+ * so the engine never kills by bare pid.
+ */
+export const defaultLaneProcessOps: LaneProcessOps = {
+  state: async (p) => (p.identity
+    ? isProcessIdentityLive(p.pid, p.identity, Date.now() + PROCESS_DEADLINE_MS)
+    : isProcessAlive(p.pid) ? 'unknown' : 'dead'),
+  terminate: async (p) => {
+    if (!p.identity) return;
+    await terminateOwnedProcessTree({ pid: p.pid, expectedStartIdentity: p.identity, deadlineAt: new Date(Date.now() + PROCESS_DEADLINE_MS).toISOString(), force: true });
+  },
+};
 
 export interface FactoryRunOutcome {
   exitCode: number;
@@ -442,9 +471,11 @@ class FactoryEngine {
         this.state = existing;
         // A human looked at the gate; what they changed in the repo is the new baseline.
         if (existing.gate) this.ledger.setRecheck(undefined);
+        // A rerun after lane-unconfirmed is the human's word that the job stopped (used only when the engine cannot tell).
+        const humanCleared = existing.gate?.name === 'lane-unconfirmed';
         this.save((s) => this.resumed(s, tookOver));
         for (const lane of this.state.lanes.filter((l) => l.status === 'running')) {
-          if (!(await this.settleLost(lane, 'lost at resume; its worktree is kept for inspection'))) break;
+          if (!(await this.settleLost(lane, 'lost at resume; its worktree is kept for inspection', humanCleared))) break;
         }
       }
     } catch (error) {
@@ -507,7 +538,10 @@ class FactoryEngine {
           try {
             const c = await this.o.lanes.cancel(lane.jobId);
             if (isTerminalLaneState(c.result.state)) usage = usageOf(c.result);
-          } catch { /* counted at its cap */ }
+          } catch (e) {
+            // Counted at its cap; a job lost with its process may have left its Copilot child running.
+            if (e instanceof LaneLostError) await this.laneChildGone(lane);
+          }
         }
         stopped.set(lane.id, usage);
         try { this.ledger.dropBaseline(lane.id); } catch { /* the gate below still parks */ }
@@ -593,7 +627,10 @@ class FactoryEngine {
         try {
           const c = await this.o.lanes.cancel(lane.jobId);
           if (isTerminalLaneState(c.result.state)) u = usageOf(c.result);
-        } catch { /* lost already; counted at its cap */ }
+        } catch (e) {
+          // Lost already; counted at its cap. Its Copilot child may outlive the job's process.
+          if (e instanceof LaneLostError) await this.laneChildGone(lane);
+        }
       }
       usage.set(lane.id, u);
       this.ledger.dropBaseline(lane.id);
@@ -959,35 +996,59 @@ class FactoryEngine {
    * compare the shared git state with the snapshot from before it started.
    * True when the run may go on; false when it parked. A cancel that is not
    * confirmed leaves the lane `running`, so the next rerun tries again.
+   *
+   * A job the backend no longer knows (LaneLostError: jobs live in the
+   * process that started them) is not proof that its Copilot child ended:
+   * the recorded child must be dead, or is killed, before the lane counts as
+   * ended. When that cannot be told (no pid recorded, identity unreadable),
+   * the run parks at lane-unconfirmed, and only a rerun after that gate
+   * (`humanCleared`) takes the human's word for it; a child seen alive never.
    */
-  private async settleLost(lane: FactoryLaneRecord, reason: string): Promise<boolean> {
+  private async settleLost(lane: FactoryLaneRecord, reason: string, humanCleared = false): Promise<boolean> {
     let confirmed = lane.jobId === undefined;
     let usage = capUsage(lane.maxCredits);
+    let why = 'its cancel was not confirmed';
+    let childNote = '';
     if (lane.jobId) {
+      let lostJob = false;
       try {
         const c = await this.o.lanes.cancel(lane.jobId);
         confirmed = isTerminalLaneState(c.result.state);
         if (confirmed && c.result.usage.source === 'measured') usage = usageOf(c.result);
       } catch (error) {
-        // The backend no longer knows the job: the process that ran it is gone.
-        confirmed = error instanceof LaneLostError;
+        lostJob = error instanceof LaneLostError;
+      }
+      if (lostJob) {
+        const child = await this.laneChildGone(lane);
+        if (child.gone) {
+          confirmed = true;
+          if (lane.process) childNote = `; its Copilot child pid ${lane.process.pid} is gone`;
+        } else if (!child.live && humanCleared) {
+          confirmed = true;
+          childNote = `; ${child.why}: the rerun after awaiting-human: lane-unconfirmed is taken as the human's word that it stopped`;
+        } else {
+          why = `the backend lost the job and ${child.why}`;
+        }
       }
     }
     const at = this.iso();
     if (!confirmed) {
-      this.updateLane(lane.id, { note: `${reason}; its cancel was not confirmed, so it may still run` });
-      this.gate('lane-unconfirmed', `lane ${lane.id} (${lane.jobId}) ${reason}, and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun omg factory run ${this.o.issue}`);
+      this.updateLane(lane.id, { note: `${reason}; ${why}, so it may still run` });
+      const pid = lane.process ? `, pid ${lane.process.pid}` : '';
+      this.gate('lane-unconfirmed', `lane ${lane.id} (${lane.jobId}${pid}) ${reason}, and ${why}; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun omg factory run ${this.o.issue}`);
       return false;
     }
     const baseline = this.ledger.baseline(lane.id);
     let problems: string[];
+    let after: RepoSnapshot | undefined;
     if (!baseline) {
       problems = ['the engine has no snapshot from before the lane started'];
     } else {
       try {
         const jobRef = (name: string, sha: string) => lane.jobId !== undefined && name.startsWith('refs/heads/') && name.endsWith(`/${lane.jobId}`)
           && (lane.kind !== 'review' || sha === lane.startSha);
-        problems = compareSnapshots(baseline, snapshotRepo(this.exec, this.o.root, this.stateRootRel, baseline), {}, {
+        after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, baseline);
+        problems = compareSnapshots(baseline, after, {}, {
           refAllowed: jobRef,
           ...(lane.jobId ? { newWorktree: { id: lane.jobId } } : {}),
         });
@@ -995,18 +1056,44 @@ class FactoryEngine {
         problems = [`the snapshot failed: ${errText(error)}`];
       }
     }
+    const note = `${reason}${childNote}`;
     this.save((x) => ({
       ...x,
-      lanes: x.lanes.map((l) => (l.id === lane.id ? { ...l, status: 'lost' as const, endedAt: at, usage, note: reason } : l)),
+      lanes: x.lanes.map((l) => (l.id === lane.id ? { ...l, status: 'lost' as const, endedAt: at, usage, note } : l)),
       lostStreak: { ...x.lostStreak, [lane.kind]: (x.lostStreak[lane.kind] ?? 0) + 1 },
-      history: [...x.history, { at, from: x.phase, to: x.phase, note: `lane ${lane.id} (${lane.jobId ?? 'no job'}) ${reason}; ${usage.source === 'estimated' ? `counted at its cap of ${usage.credits}` : `${usage.credits.toFixed(2)}`} AI credits` }],
+      history: [...x.history, { at, from: x.phase, to: x.phase, note: `lane ${lane.id} (${lane.jobId ?? 'no job'}) ${note}; ${usage.source === 'estimated' ? `counted at its cap of ${usage.credits}` : `${usage.credits.toFixed(2)}`} AI credits` }],
     }));
     this.ledger.dropBaseline(lane.id);
-    if (problems.length > 0) {
+    if (problems.length > 0 || !after) {
       this.laneTampered(lane.id, lane.kind, problems);
       return false;
     }
+    // A late edit (a child the engine missed) is re-compared at the next step boundary and before the next push.
+    this.ledger.setRecheck({ laneId: lane.id, kind: lane.kind, snapshot: after });
     return true;
+  }
+
+  /**
+   * Whether the lane's recorded Copilot child is gone; a child whose start
+   * identity still matches is killed (its tree) and checked again. `live`:
+   * it was seen alive after the kill. Never throws.
+   */
+  private async laneChildGone(lane: FactoryLaneRecord): Promise<{ gone: true } | { gone: false; live: boolean; why: string }> {
+    const p = lane.process;
+    if (!p) return { gone: false, live: false, why: 'no pid of its Copilot child was recorded, so whether the child still runs is unknown' };
+    const ops = this.o.processes ?? defaultLaneProcessOps;
+    try {
+      let st = await ops.state(p);
+      if (st === 'live') {
+        await ops.terminate(p);
+        st = await ops.state(p);
+        if (st === 'live') return { gone: false, live: true, why: `its Copilot child pid ${p.pid} still runs after the engine killed it` };
+      }
+      if (st === 'dead' || st === 'mismatch') return { gone: true };
+      return { gone: false, live: false, why: `whether its Copilot child pid ${p.pid} still runs cannot be determined` };
+    } catch (error) {
+      return { gone: false, live: false, why: `the check of its Copilot child pid ${p.pid} failed (${errText(error)})` };
+    }
   }
 
   /** The user cancelled while a lane ran: stop it, check it if it confirmed its end, record the result. */
@@ -1092,6 +1179,10 @@ class FactoryEngine {
         await this.settleLost(this.state.lanes.find((l) => l.id === id)!, `lost: ${error.message}`);
         return { kind: 'stopped' };
       }
+      // The child's pid and identity, persisted so a resume after an engine crash can make sure it is gone.
+      const proc = result.process;
+      const known = this.state.lanes.find((l) => l.id === id)?.process;
+      if (proc && (known?.pid !== proc.pid || known.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
       if (isTerminalLaneState(result.state)) break;
       if (this.clock() - begun > this.o.limits.laneTimeoutMs + LANE_GRACE_MS) {
         let confirmed: LaneResult | null = null;

@@ -35,6 +35,8 @@ export interface FactoryLaneRecord {
   id: string;
   kind: FactoryLaneKind;
   jobId?: string;
+  /** The job's local Copilot child (pid and start identity), recorded at the first poll that reports it. */
+  process?: { pid: number; identity: string | null };
   worktree?: string;
   startSha: string;
   endSha?: string;

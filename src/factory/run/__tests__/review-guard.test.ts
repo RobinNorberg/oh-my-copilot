@@ -37,7 +37,7 @@ function laneResult(): LaneResult {
   return {
     state: 'completed', branch, pr: null, headSha: gitIn(wt, 'rev-parse', 'HEAD'), baseSha: head, worktree: wt,
     changes: summarizeChanges(wt, head), finalText: '', logsUrl: null,
-    usage: { premiumRequests: 1, credits: 2, source: 'measured', detail: '' }, remoteId: 'cr-rev', error: null, notes: [],
+    usage: { premiumRequests: 1, credits: 2, source: 'measured', detail: '' }, remoteId: 'cr-rev', error: null, notes: [], process: null,
   };
 }
 

@@ -40,6 +40,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount, governTeamFanout, loadBudgetSettings } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, ledgerTotals, readLedger, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -181,7 +182,12 @@ export interface CopilotRunDeps {
   userConfigDir: () => string;
   isAlive: (pid: number) => boolean;
   killTree: (pid: number) => void;
+  /** The runtime's start identity (pid-reuse guard; default getProcessStartIdentity), null when unknown. */
+  processIdentity?: (pid: number) => Promise<string | null>;
 }
+
+/** How long the runtime's start identity may take to read (PowerShell on Windows). */
+const IDENTITY_TIMEOUT_MS = 10_000;
 
 export interface WorktreeSummary {
   path: string;
@@ -213,6 +219,12 @@ export type CopilotRunSnapshot = {
   deniedPermissions?: Array<{ kind: string; reason: string }>;
   notes?: string[];
   eventsPath: string;
+  /**
+   * The copilot runtime child once it started: its pid and start identity
+   * (null when it could not be read). A caller that outlives a crash of this
+   * process (omg factory run) uses it to make sure the child is gone.
+   */
+  runtime?: { pid: number; identity: string | null };
 };
 
 export interface ChangeSummary {
@@ -251,6 +263,8 @@ interface Job {
   extraProtected: string[];
   /** The runtime's pid once the client started (stopAll's kill fallback). */
   pid: number | undefined;
+  /** The runtime's start identity once read (null: not read or unknown). */
+  pidIdentity: string | null;
   startedAt: string;
   endedAt: string | null;
   sessionId: string | null;
@@ -457,6 +471,7 @@ export class CopilotRunManager {
       worktree,
       extraProtected,
       pid: undefined,
+      pidIdentity: null,
       startedAt: new Date().toISOString(),
       endedAt: null,
       sessionId: null,
@@ -703,6 +718,10 @@ export class CopilotRunManager {
       await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
       pid = runtimePid(client);
       job.pid = pid;
+      if (pid) {
+        const identify = deps.processIdentity ?? ((p: number) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
+        job.pidIdentity = await identify(pid).catch(() => null);
+      }
       if (!job.stopReason) {
         session = await withTimeout(client.createSession({
           onPermissionRequest,
@@ -796,6 +815,7 @@ export class CopilotRunManager {
       ...(job.denied.length ? { deniedPermissions: job.denied } : {}),
       ...(job.notes.length ? { notes: job.notes } : {}),
       eventsPath: job.eventsPath,
+      ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
     };
   }
 }
