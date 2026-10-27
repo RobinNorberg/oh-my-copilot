@@ -69,7 +69,7 @@ export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = pro
     if (block.unit === 'premiumRequests' || block.unit === 'credits') settings.unit = block.unit;
     else issues.push(`budget.unit: must be "credits" or the legacy "premiumRequests" (got ${JSON.stringify(block.unit)}); using "credits"`);
     if (block.unit === 'premiumRequests') {
-      issues.push('budget.unit: "premiumRequests" is deprecated (Copilot bills AI Credits since 2026-06-01); the limits still count legacy premium requests. Set "credits" and limits in AI Credits (docs/MIGRATION.md)');
+      issues.push('budget.unit: "premiumRequests" is deprecated (Copilot bills AI Credits since 2026-06-01; only annual Pro/Pro+ plans from before then still bill premium requests); the limits count legacy premium requests. Otherwise set "credits" and limits in AI Credits (docs/MIGRATION.md)');
     }
   }
   for (const key of LIMIT_KEYS) {

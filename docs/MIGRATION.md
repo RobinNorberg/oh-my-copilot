@@ -38,7 +38,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Unreleased: Budget Unit Is AI Credits
 
-Applies when upgrading from v5.13.1. GitHub Copilot bills usage in AI Credits since 2026-06-01; premium requests are gone as a billing unit. The budget governor now counts AI Credits. Premium requests stay in the ledger as a legacy field, because Copilot CLI still writes `totalPremiumRequests` next to `totalNanoAiu`.
+Applies when upgrading from v5.13.1. GitHub Copilot bills usage in AI Credits since 2026-06-01: one AI Credit is $0.01, priced per input, output and cached token by model. Only Copilot Pro and Pro+ annual plans bought before then keep premium request billing until they end. The budget governor now counts AI Credits. Premium requests stay in the ledger as a legacy field, because Copilot CLI still writes `totalPremiumRequests` next to `totalNanoAiu`.
 
 **What changed.**
 
@@ -63,7 +63,7 @@ There is no fixed rate between the units. A premium request was one prompt times
 2. Divide the summed `credits` by the summed `premiumRequests`. That is your credits per legacy premium request.
 3. Multiply each old limit by that ratio and set `"unit": "credits"` explicitly.
 
-For reference, short smoke prompts on small models measured 0.29 to 0.91 AI credits per legacy premium request on Copilot CLI 1.0.91. At that rate a 300 premium request limit is roughly 90 to 270 AI credits. Larger models and long agentic prompts cost more. To keep the old behaviour while you measure, set `"unit": "premiumRequests"` and accept the deprecation warning.
+For reference, short smoke prompts on small models measured 0.29 to 0.91 AI credits per legacy premium request on Copilot CLI 1.0.91. At that rate a 300 premium request limit is roughly 90 to 270 AI credits. Larger models and long agentic prompts cost more. To keep the old behaviour while you measure, or on a legacy annual Pro/Pro+ plan that still bills premium requests, set `"unit": "premiumRequests"` and accept the deprecation warning.
 
 Older sections of this guide quote costs in premium requests, as Copilot billed them at the time.
 

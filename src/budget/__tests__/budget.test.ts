@@ -228,7 +228,7 @@ describe('resolveBudgetSettings', () => {
   it('still honours the deprecated premiumRequests unit, with a warning', () => {
     const { settings: s, issues } = resolveBudgetSettings({ unit: 'premiumRequests', hardLimit: 300 }, {});
     expect(s).toEqual(settings({ unit: 'premiumRequests', hardLimit: 300 }));
-    expect(issues).toEqual([expect.stringMatching(/^budget\.unit: "premiumRequests" is deprecated \(Copilot bills AI Credits since 2026-06-01\)/)]);
+    expect(issues).toEqual([expect.stringMatching(/^budget\.unit: "premiumRequests" is deprecated \(Copilot bills AI Credits since 2026-06-01; only annual Pro\/Pro\+ plans from before then still bill premium requests\)/)]);
   });
 
   it('flags a soft limit above the hard limit and honours the kill switch', () => {
