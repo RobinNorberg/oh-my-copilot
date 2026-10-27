@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * Premium-request budget hook (SessionStart, UserPromptSubmit, Stop).
+ * AI Credits budget hook (SessionStart, UserPromptSubmit, Stop). The file
+ * keeps its premium-budget name: the generated hook entries reference it.
  *
  * argv[2] is the phase: `start` (SessionStart) records the session and prints the
  * budget summary line, `turn` (Stop) records the turn's usage and marks a crossed
- * soft/hard limit, `submit` (UserPromptSubmit) delivers that pending notice as context. The
+ * warn-only soft limit, `submit` (UserPromptSubmit) delivers that pending notice as context. The
  * logic lives in dist/budget/governor.js (src/budget, docs/REFERENCE.md
- * "Premium-request budget").
+ * "AI Credits budget").
  *
  * Fail-open by contract: any error, a missing build or a bad payload prints
  * the no-op output and exits 0. This hook never blocks a session.

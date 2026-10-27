@@ -408,8 +408,8 @@ describe('sdk host', () => {
       liveBudget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
       ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
     });
-    // Before the shutdown totals the x1-per-call count is an estimate (the multiplier is unknown).
-    expect(liveBudget).toMatchObject({ premiumRequests: 2, source: 'estimated' });
+    // Before the shutdown totals the record is an estimate: live AI credits as billed, legacy requests x1 per call.
+    expect(liveBudget).toMatchObject({ credits: expect.closeTo(1), premiumRequests: 2, source: 'estimated' });
     expect(await host).toBe('stopped');
 
     // The second prompt waited for the first turn's idle.

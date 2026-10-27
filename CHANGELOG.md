@@ -2,6 +2,27 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **The budget counts AI Credits.** Copilot bills AI Credits since
+  2026-06-01, so `omg budget`, the SessionStart summary, the soft-limit
+  notice and the HUD (`creditBudget`, `cr:`) count AI credits; premium
+  requests stay in the ledger as a legacy field. A `softLimit` written for
+  premium requests now counts AI credits. See
+  [MIGRATION.md](docs/MIGRATION.md#unreleased-budget-unit-is-ai-credits).
+
+### Removed
+
+- **Budget enforcement.** `omg team` no longer clamps or refuses a launch on
+  budget, `copilot_run_start` no longer refuses a job, and
+  `omg budget status` always exits 0. `budget.mode`, `budget.hardLimit`,
+  `budget.perTeamLimit` and `"unit": "premiumRequests"` parse as no-ops with
+  one deprecation warning; `--budget-override` is an accepted no-op that
+  warns once. `budget.softLimit` stays as an advisory threshold. Cap spend
+  with Copilot's per-session `maxAiCredits` and admin budgets instead.
+
 # oh-my-copilot v5.13.1
 
 ## [5.13.1] - 2026-10-26
@@ -450,7 +471,7 @@ Copilot, `npm run build`, test commands, git read commands and heredoc
   exceeds the limits (`--budget-override` starts it anyway); `omg budget`
   (`status`, `reset`, `--json`) shows and resets the ledger; `omg doctor
   conflicts` warns about invalid values. `OMC_BUDGET_GOVERNOR=0` turns it
-  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-premium-request-budget).
+  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-ai-credits-budget).
 - **New `session-flow` skill (upstream #4319)**: an evidence-backed map of the
   current session; its Tasks are excluded from the continuation hook. The
   plugin now ships 63 skills.

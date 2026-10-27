@@ -3,8 +3,8 @@
  *
  * Runs the headless Copilot CLI smoke check (`omg smoke copilot`) against a
  * plugin root and returns the SmokeReport as JSON. Tier 0 makes no model call;
- * tier 1 spends one premium request; tier 2 drives SDK scenarios (about one
- * premium request each) and is free only with `scenarios: []` (static checks).
+ * tier 1 spends one prompt (about 0.4 to 0.9 AI credits measured); tier 2 drives
+ * SDK scenarios (one prompt each) and is free only with `scenarios: []` (static checks).
  *
  * This tool is also reachable from inside Copilot through the plugin's own `t`
  * MCP server, so it is fenced (the `omg smoke copilot` CLI is not):
@@ -38,7 +38,7 @@ const hostSmokeSchema = {
     .optional()
     .describe(
       '0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin '
-      + '(one premium request). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. '
+      + '(one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. '
       + 'Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env.',
     ),
   scenarios: z
@@ -46,7 +46,7 @@ const hostSmokeSchema = {
     .optional()
     .describe(
       'Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail '
-      + '(~2 premium requests, 1 per scenario). [] = SDK static checks only, no model call, no opt-in needed.',
+      + '(one prompt per scenario, billed in AI credits). [] = SDK static checks only, no model call, no opt-in needed.',
     ),
   pluginRoot: z
     .string()
@@ -90,7 +90,7 @@ export const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema> = {
   description:
     'Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). ' +
     'Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; ' +
-    'tier 1 adds one live session (one premium request, needs OMC_SMOKE_ALLOW_LIVE=1); ' +
+    'tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); ' +
     'tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). ' +
     'Returns the SmokeReport JSON; isError when any check fails.',
   category: TOOL_CATEGORIES.SMOKE,

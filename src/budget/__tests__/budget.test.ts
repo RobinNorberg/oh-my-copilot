@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   checkThresholds,
-  governTeamFanout,
   resolveBudgetSettings,
   runBudgetHook,
   type BudgetSettings,
@@ -16,6 +15,7 @@ import {
   emptyLedger,
   ledgerPath,
   ledgerTotals,
+  ESTIMATED_CREDITS_PER_PROMPT,
   MAX_SCAN_BYTES,
   mergeRecord,
   readCopilotSessionUsage,
@@ -29,7 +29,7 @@ import {
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../lib/file-lock.js';
 import { budgetCommand } from '../../cli/commands/budget.js';
 import { renderPremiumBudget } from '../../hud/elements/premium-budget.js';
-import { applyBudgetGovernor, parseTeamArgs } from '../../cli/commands/team.js';
+import { parseTeamArgs } from '../../cli/commands/team.js';
 
 const SID = '1b4b720d-2e5c-4ba8-bd81-d42629574d3a';
 const line = (type: string, data: Record<string, unknown>, extra: Record<string, unknown> = {}) => JSON.stringify({ type, data, ...extra });
@@ -60,7 +60,7 @@ function writeBudget(budget: Record<string, unknown>): void {
 const record = (premiumRequests: number, source: UsageRecord['source'] = 'measured', credits = 0): UsageRecord =>
   ({ premiumRequests, credits, source, detail: 'test', updatedAt: '2026-10-11T00:00:00.000Z' });
 
-const settings = (over: Partial<BudgetSettings> = {}): BudgetSettings => ({ enabled: true, mode: 'warn', unit: 'premiumRequests', ...over });
+const settings = (over: Partial<BudgetSettings> = {}): BudgetSettings => ({ enabled: true, deprecated: [], ...over });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-budget-'));
@@ -91,10 +91,10 @@ describe('readCopilotSessionUsage', () => {
     expect(readCopilotSessionUsage(writeEvents(SID, [PROMPT, CHECKPOINT]))).toMatchObject({ premiumRequests: 1, credits: 0.26866, source: 'measured', detail: 'session.usage_checkpoint' });
   });
 
-  it('estimates one request per top-level prompt, ignoring subagent prompts', () => {
+  it('estimates ESTIMATED_CREDITS_PER_PROMPT credits (and one legacy request) per top-level prompt, ignoring subagent prompts', () => {
     const usage = readCopilotSessionUsage(writeEvents(SID, [PROMPT, SUBAGENT_PROMPT, PROMPT, 'not json']));
-    expect(usage).toMatchObject({ premiumRequests: 2, credits: 0, source: 'estimated' });
-    expect(usage?.detail).toMatch(/^estimate: 2 user prompt\(s\) x1/);
+    expect(usage).toMatchObject({ credits: 2 * ESTIMATED_CREDITS_PER_PROMPT, premiumRequests: 2, source: 'estimated' });
+    expect(usage?.detail).toMatch(/^estimate: 2 user prompt\(s\) x 1 AI credit/);
   });
 
   it('returns null for a missing file or a session without prompts', () => {
@@ -155,8 +155,15 @@ describe('ledger', () => {
   it('never lowers an estimate, and keeps the larger measured total when one drops', () => {
     expect(mergeRecord(record(5, 'estimated'), record(3, 'estimated')).premiumRequests).toBe(5);
     const dropped = mergeRecord(record(7), record(2));
+    expect(mergeRecord(record(1, 'estimated', 4), record(1, 'estimated', 2)).credits).toBe(4);
     expect(dropped.premiumRequests).toBe(7);
-    expect(dropped.detail).toMatch(/total fell from 7 to 2 \(resumed session\?\), kept 7/);
+    expect(dropped.detail).toMatch(/total fell from 0 AI credits \(7 premium requests\) to 0 AI credits \(2 premium requests\) \(resumed session\?\), kept 0 AI credits \(7 premium requests\)/);
+    // Credits are the billed unit: a drop in credits alone is kept too.
+    const fewerCredits = mergeRecord(record(1, 'measured', 0.9), record(1, 'measured', 0.4));
+    expect(fewerCredits).toMatchObject({ credits: 0.9, premiumRequests: 1 });
+    expect(fewerCredits.detail).toMatch(/total fell from 0\.9 AI credits/);
+    // A growing total replaces the record unchanged.
+    expect(mergeRecord(record(1, 'measured', 0.4), record(2, 'measured', 0.9))).toEqual(record(2, 'measured', 0.9));
   });
 
   it('refuses a ledger path in the real home directory under test', () => {
@@ -205,55 +212,61 @@ describe('readCopilotSessionUsage incremental and tail mode', () => {
 });
 
 describe('resolveBudgetSettings', () => {
-  it('defaults to warn mode in premium requests with no limits', () => {
+  it('defaults to no soft limit in AI credits', () => {
     expect(resolveBudgetSettings(undefined, {})).toEqual({ settings: settings(), issues: [] });
+    expect(resolveBudgetSettings({ softLimit: 50, unit: 'credits' }, {})).toEqual({ settings: settings({ softLimit: 50 }), issues: [] });
   });
 
   it('drops invalid values with an issue instead of throwing', () => {
-    const { settings: s, issues } = resolveBudgetSettings({ mode: 'block', unit: 'usd', softLimit: -1, hardLimit: 10, perTeamLimit: '5', extra: 1 }, {});
-    expect(s).toEqual(settings({ hardLimit: 10 }));
-    expect(issues).toHaveLength(5);
+    const { settings: s, issues } = resolveBudgetSettings({ unit: 'usd', softLimit: -1, extra: 1 }, {});
+    expect(s).toEqual(settings());
+    expect(issues).toEqual([
+      'budget.extra: unknown key',
+      'budget.unit: must be "credits" (got "usd"); ignored',
+      'budget.softLimit: must be a positive number (got -1); ignored',
+    ]);
   });
 
-  it('flags a soft limit above the hard limit and honours the kill switch', () => {
-    const { settings: s, issues } = resolveBudgetSettings({ softLimit: 20, hardLimit: 10, mode: 'enforce' }, { OMC_BUDGET_GOVERNOR: '0' });
-    expect(s.enabled).toBe(false);
-    expect(issues).toEqual(['budget.softLimit (20) is above budget.hardLimit (10)']);
+  it('accepts the retired enforcement keys and the premiumRequests unit as no-ops with one deprecation warning', () => {
+    const { settings: s, issues } = resolveBudgetSettings({ mode: 'enforce', unit: 'premiumRequests', softLimit: 20, hardLimit: 10, perTeamLimit: 'x' }, {});
+    expect(s).toEqual(settings({ softLimit: 20, deprecated: ['budget.mode', 'budget.hardLimit', 'budget.perTeamLimit', 'budget.unit "premiumRequests"'] }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatch(/^budget\.mode, budget\.hardLimit, budget\.perTeamLimit, budget\.unit "premiumRequests": deprecated and ignored\. .*docs\/MIGRATION\.md/);
+  });
+
+  it('honours the kill switch', () => {
+    expect(resolveBudgetSettings({ softLimit: 20 }, { OMC_BUDGET_GOVERNOR: '0' }).settings.enabled).toBe(false);
   });
 });
 
 describe('checkThresholds', () => {
-  it('notifies the soft and then the hard limit once each', () => {
+  it('notifies the soft limit once, in AI credits', () => {
     const ledger = emptyLedger();
-    const s = settings({ softLimit: 2, hardLimit: 4 });
-    ledger.sessions.a = record(1);
+    const s = settings({ softLimit: 2 });
+    ledger.sessions.a = record(9, 'measured', 1);
     expect(checkThresholds(ledger, s)).toBeNull();
-    ledger.sessions.a = record(2);
-    expect(checkThresholds(ledger, s)).toMatch(/^\[BUDGET\] Soft limit reached: 2 premium requests of 2/);
-    expect(checkThresholds(ledger, s)).toBeNull();
-    ledger.sessions.a = record(5);
-    expect(checkThresholds(ledger, s)).toMatch(/^\[BUDGET\] Hard limit reached/);
+    ledger.sessions.a = record(9, 'measured', 2);
+    expect(checkThresholds(ledger, s)).toMatch(/^\[BUDGET\] Soft limit reached: 2 AI credits of 2/);
     expect(checkThresholds(ledger, s)).toBeNull();
   });
 
   it('says how many records are estimated', () => {
     const ledger = emptyLedger();
-    ledger.sessions.a = record(2, 'estimated');
-    ledger.sessions.b = record(1);
-    expect(checkThresholds(ledger, settings({ softLimit: 3 }))).toMatch(/3 premium requests of 3 used since .* \(1 record\(s\) estimated\)\. Mention/);
+    ledger.sessions.a = record(0, 'estimated', 2);
+    ledger.sessions.b = record(0, 'measured', 1);
+    expect(checkThresholds(ledger, settings({ softLimit: 3 }))).toMatch(/3 AI credits of 3 used since .* \(1 record\(s\) estimated\)\. Mention/);
   });
 
-  it('re-arms a notice when its limit is raised', () => {
+  it('re-arms the notice when the limit is raised', () => {
     const ledger = emptyLedger();
-    ledger.sessions.a = record(5);
-    expect(checkThresholds(ledger, settings({ softLimit: 2, hardLimit: 4 }))).toMatch(/Hard limit reached: 5 premium requests of 4/);
-    expect(checkThresholds(ledger, settings({ softLimit: 2, hardLimit: 4 }))).toBeNull();
+    ledger.sessions.a = record(0, 'measured', 5);
+    expect(checkThresholds(ledger, settings({ softLimit: 4 }))).toMatch(/Soft limit reached: 5 AI credits of 4/);
     // Raised past the usage: nothing yet, but armed again.
-    expect(checkThresholds(ledger, settings({ softLimit: 2, hardLimit: 10 }))).toBeNull();
-    ledger.sessions.a = record(11);
-    expect(checkThresholds(ledger, settings({ softLimit: 2, hardLimit: 10 }))).toMatch(/Hard limit reached: 11 premium requests of 10/);
+    expect(checkThresholds(ledger, settings({ softLimit: 10 }))).toBeNull();
+    ledger.sessions.a = record(0, 'measured', 11);
+    expect(checkThresholds(ledger, settings({ softLimit: 10 }))).toMatch(/Soft limit reached: 11 AI credits of 10/);
     // Lowering never re-arms.
-    expect(checkThresholds(ledger, settings({ softLimit: 2, hardLimit: 8 }))).toBeNull();
+    expect(checkThresholds(ledger, settings({ softLimit: 8 }))).toBeNull();
   });
 });
 
@@ -267,7 +280,7 @@ describe('runBudgetHook', () => {
   });
 
   it('marks a crossed limit at stop and delivers it once on the next prompt', () => {
-    writeBudget({ softLimit: 1, hardLimit: 10 });
+    writeBudget({ softLimit: 1 });
     writeEvents(SID, [PROMPT]);
     const stop = runBudgetHook({ phase: 'turn', payload: payload() });
     expect(stop?.systemMessage).toMatch(/Soft limit reached/);
@@ -277,13 +290,27 @@ describe('runBudgetHook', () => {
   });
 
   it('prints the summary at session start and upgrades ended estimates to measured', () => {
-    writeBudget({ hardLimit: 50 });
+    writeBudget({ softLimit: 50 });
     writeEvents(SID, [PROMPT]);
     runBudgetHook({ phase: 'turn', payload: payload() });
     writeEvents(SID, [PROMPT, SHUTDOWN]);
     const out = runBudgetHook({ phase: 'start', payload: payload({ session_id: 'new-session' }) }) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/^\[BUDGET\] Copilot usage since .*: 3 premium requests, 0\.617 AI credits \(1 session\(s\), 0 team\(s\)\)\. Limits in premiumRequests: hard 50 \(warn mode\)/);
+    expect(out.hookSpecificOutput.additionalContext).toBe(
+      `[BUDGET] Copilot usage since ${readLedger(ledgerPath(project)).since.slice(0, 10)}: 0.617 AI credits (1 session(s), 0 team(s)). Reporting only, soft limit 50 AI credits. Details: omg budget status.`,
+    );
     expect(readLedger(ledgerPath(project)).sessions[SID]?.source).toBe('measured');
+  });
+
+  it('names retired keys once in the session-start summary and never blocks past a deprecated hard limit', () => {
+    writeBudget({ mode: 'enforce', hardLimit: 1 });
+    writeEvents(SID, [PROMPT, PROMPT, PROMPT]);
+    expect(runBudgetHook({ phase: 'turn', payload: payload() })).toBeNull();
+    const out = runBudgetHook({ phase: 'start', payload: payload({ session_id: 'new-session' }) }) as { continue: boolean; hookSpecificOutput: { additionalContext: string } };
+    expect(out.continue).toBe(true);
+    const context = out.hookSpecificOutput.additionalContext;
+    expect(context).toMatch(/no soft limit\. budget\.mode, budget\.hardLimit: deprecated and ignored\./);
+    expect(context.match(/deprecated/g)).toHaveLength(1);
+    expect(context).toMatch(/docs\/MIGRATION\.md/);
   });
 
   it('records a pane team worker under its team without output, and skips host-recorded sdk workers', () => {
@@ -396,47 +423,16 @@ describe('runBudgetHook', () => {
   });
 });
 
-describe('governTeamFanout', () => {
-  const totals = (premiumRequests: number, credits = 0) => ({ ...ledgerTotals(emptyLedger()), premiumRequests, credits });
-  const base = { maxCreditsPerWorker: 10, override: false, clampable: true };
-  const four = ['copilot', 'copilot', 'copilot', 'copilot'];
-
-  it('passes when within budget or when no copilot worker is billed', () => {
-    expect(governTeamFanout({ ...base, settings: settings({ mode: 'enforce', hardLimit: 10 }), totals: totals(5), agentTypes: four })).toEqual({ workerCount: 4 });
-    expect(governTeamFanout({ ...base, settings: settings({ mode: 'enforce', hardLimit: 1 }), totals: totals(5), agentTypes: ['claude', 'codex'] })).toEqual({ workerCount: 2 });
-  });
-
-  it('only warns in warn mode or with the override', () => {
-    const warn = governTeamFanout({ ...base, settings: settings({ hardLimit: 6 }), totals: totals(4), agentTypes: four });
-    expect(warn).toEqual({ workerCount: 4, notice: expect.stringMatching(/projected at least 4 premium requests .* exceeds the 2 premium requests left of budget.hardLimit 6; starting anyway \(warn mode\)/) });
-    const override = governTeamFanout({ ...base, override: true, settings: settings({ mode: 'enforce', hardLimit: 6 }), totals: totals(4), agentTypes: four });
-    expect(override.workerCount).toBe(4);
-    expect(override.notice).toMatch(/--budget-override/);
-  });
-
-  it('clamps in enforce mode, and refuses when nothing fits or workers own subtasks', () => {
-    const s = settings({ mode: 'enforce', hardLimit: 6, perTeamLimit: 3 });
-    expect(governTeamFanout({ ...base, settings: s, totals: totals(0), agentTypes: four })).toMatchObject({ workerCount: 3, notice: expect.stringMatching(/exceeds budget.perTeamLimit 3; clamped to 3/) });
-    expect(governTeamFanout({ ...base, settings: s, totals: totals(6), agentTypes: four }).refusal).toMatch(/team launch refused\. Pass --budget-override/);
-    expect(governTeamFanout({ ...base, clampable: false, settings: s, totals: totals(0), agentTypes: four }).refusal).toMatch(/refused/);
-  });
-
-  it('projects the per-worker credit cap in credits', () => {
-    const decision = governTeamFanout({ ...base, settings: settings({ mode: 'enforce', unit: 'credits', perTeamLimit: 25 }), totals: totals(0, 0), agentTypes: four });
-    expect(decision).toMatchObject({ workerCount: 2, notice: expect.stringMatching(/projected 40 AI credits \(4 copilot worker\(s\) x 10 credit cap\)/) });
-  });
-});
-
 describe('omg budget and the HUD element', () => {
-  it('reports status as JSON, exits 1 at the hard limit, and resets', async () => {
-    writeBudget({ hardLimit: 2 });
-    recordUsage(ledgerPath(project), 's1', record(2));
+  it('reports status as JSON, exits 0 even past a deprecated hard limit, and resets', async () => {
+    writeBudget({ softLimit: 1, hardLimit: 2 });
+    recordUsage(ledgerPath(project), 's1', record(1, 'measured', 2));
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      expect(await budgetCommand('status', { json: true }, project)).toBe(1);
-      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ used: 2, settings: { hardLimit: 2 }, totals: { sessions: 1 } });
+      expect(await budgetCommand('status', { json: true }, project)).toBe(0);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ used: 2, settings: { softLimit: 1, deprecated: ['budget.hardLimit'] }, totals: { sessions: 1 } });
       expect(await budgetCommand('reset', { json: true }, project)).toBe(0);
-      expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: true, previous: { premiumRequests: 2 } });
+      expect(JSON.parse(String(log.mock.calls[1]?.[0]))).toMatchObject({ ok: true, previous: { credits: 2, premiumRequests: 1 } });
       expect(readLedger(ledgerPath(project)).sessions).toEqual({});
     } finally {
       log.mockRestore();
@@ -459,50 +455,33 @@ describe('omg budget and the HUD element', () => {
     }
   });
 
-  it('renders prq:used/limit, with ~ when part is estimated, only when limits exist', () => {
+  it('prints the deprecation once in the text status', async () => {
+    writeBudget({ mode: 'enforce', unit: 'premiumRequests' });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      expect(await budgetCommand('status', {}, project)).toBe(0);
+      const out = log.mock.calls.flat().join('\n');
+      expect(out.match(/deprecated and ignored/g)).toHaveLength(1);
+      expect(out).toMatch(/budget\.mode, budget\.unit "premiumRequests": deprecated and ignored/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('renders cr:used/softLimit, with ~ when part is estimated, only when a soft limit exists', () => {
     expect(renderPremiumBudget(project)).toBeNull();
-    writeBudget({ softLimit: 2, hardLimit: 5 });
-    recordUsage(ledgerPath(project), 's1', record(3, 'estimated'));
-    expect(renderPremiumBudget(project)?.replace(/\x1b\[[0-9;]*m/g, '')).toBe('prq:~3/5');
+    writeBudget({ hardLimit: 5 });
+    expect(renderPremiumBudget(project)).toBeNull();
+    writeBudget({ softLimit: 2, hardLimit: 5, unit: 'premiumRequests' });
+    recordUsage(ledgerPath(project), 's1', record(3, 'estimated', 2.25));
+    expect(renderPremiumBudget(project)?.replace(/\x1b\[[0-9;]*m/g, '')).toBe('cr:~2.3/2');
   });
 });
 
 describe('omg team --budget-override', () => {
-  it('parses the flag only when given', () => {
+  it('still parses the deprecated flag', () => {
     expect(parseTeamArgs(['2:copilot', '--budget-override', 'fix it']).budgetOverride).toBe(true);
     expect('budgetOverride' in parseTeamArgs(['2:copilot', 'fix it'])).toBe(false);
-  });
-});
-
-describe('applyBudgetGovernor (omg team start)', () => {
-  const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
-
-  it('clamps an all-copilot team in enforce mode and prints why', async () => {
-    writeBudget({ mode: 'enforce', perTeamLimit: 2 });
-    const error = quiet();
-    try {
-      expect(await applyBudgetGovernor(parseTeamArgs(['4:copilot', 'fix it']), 4, true, project)).toBe(2);
-      expect(String(error.mock.calls[0]?.[0])).toMatch(/projected at least 4 premium requests .* clamped to 2 worker\(s\)/);
-    } finally {
-      error.mockRestore();
-    }
-  });
-
-  it('refuses a mixed-provider team instead of dropping workers, unless overridden', async () => {
-    writeBudget({ mode: 'enforce', perTeamLimit: 1 });
-    const error = quiet();
-    try {
-      await expect(applyBudgetGovernor(parseTeamArgs(['2:copilot,1:claude', 'fix it']), 3, true, project)).rejects.toThrow(/team launch refused/);
-      expect(await applyBudgetGovernor(parseTeamArgs(['2:copilot,1:claude', '--budget-override', 'fix it']), 3, true, project)).toBe(3);
-    } finally {
-      error.mockRestore();
-    }
-  });
-
-  it('starts unchanged when the governor itself fails (fail-open)', async () => {
-    writeBudget({ mode: 'enforce', perTeamLimit: 1 });
-    vi.stubEnv('OMC_STATE_DIR', join(homedir(), '.omg-budget-test-guard')); // ledgerPath throws under test
-    expect(await applyBudgetGovernor(parseTeamArgs(['4:copilot', 'fix it']), 4, true, project)).toBe(4);
   });
 });
 

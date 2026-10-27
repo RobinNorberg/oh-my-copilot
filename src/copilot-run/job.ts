@@ -37,8 +37,8 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
-import { formatAmount, governTeamFanout, loadBudgetSettings } from '../budget/governor.js';
-import { SAFE_KEY, ledgerPath, ledgerTotals, readLedger, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { formatAmount } from '../budget/governor.js';
+import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
@@ -388,8 +388,6 @@ export class CopilotRunManager {
 
     const ledgerCwd = repoRoot ? resolve(repoRoot) : cwd;
     const notes: string[] = [];
-    const budgetNotice = this.checkBudget(ledgerCwd, maxCredits);
-    if (budgetNotice) notes.push(budgetNotice);
 
     const id = `cr-${randomBytes(6).toString('hex')}`;
     let workCwd = cwd;
@@ -542,33 +540,6 @@ export class CopilotRunManager {
     return job;
   }
 
-  /** The governor's one-copilot-worker check; a refusal throws, a governor failure starts anyway (fail-open). */
-  private checkBudget(ledgerCwd: string, maxCredits: number): string | undefined {
-    let decision: ReturnType<typeof governTeamFanout>;
-    try {
-      const { settings } = loadBudgetSettings(ledgerCwd, this.deps.env);
-      decision = governTeamFanout({
-        settings,
-        totals: ledgerTotals(readLedger(ledgerPath(ledgerCwd))),
-        agentTypes: ['copilot'],
-        maxCreditsPerWorker: maxCredits,
-        override: false,
-        clampable: false,
-      });
-    } catch {
-      return undefined;
-    }
-    if (decision.refusal) {
-      // The governor's own advice names `omg team --budget-override`, which this tool lacks.
-      const over = decision.refusal.split('; team launch refused')[0];
-      throw new CopilotRunError(
-        `copilot_run_start refused by the budget governor: ${over}; job refused. `
-        + 'Raise the limit in .copilot/omg.jsonc, run `omg budget reset`, or (budget.unit "credits") pass a lower maxCredits; copilot_run_start has no budget override.',
-      );
-    }
-    return decision.notice;
-  }
-
   /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
   private recordBudget(job: Job, lockTimeoutMs: number): boolean {
     if (this.deps.env.OMC_BUDGET_GOVERNOR === '0') return true;
@@ -669,7 +640,7 @@ export class CopilotRunManager {
             job.usage.premiumRequests = data.totalPremiumRequests;
             job.usage.measured = true;
           }
-          if (typeof data.totalNanoAiu === 'number') job.usage.credits = data.totalNanoAiu / 1e9;
+          if (typeof data.totalNanoAiu === 'number') job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
           if (typeof data.currentModel === 'string') job.model = data.currentModel;
           onShutdown();
           break;

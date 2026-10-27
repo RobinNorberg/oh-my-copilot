@@ -33,8 +33,8 @@ reference for what each phase asserts.
    `omg release X.Y.Z --dry-run` to see the plan, then run it:
 
    ```bash
-   omg release X.Y.Z --to suite --suite full --baseline <last good report>   # preflight..suite: release commit + full suite, no premium requests
-   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): pr, promote, tag (asks), verify
+   omg release X.Y.Z --to suite --suite full --baseline <last good report>   # preflight..suite: release commit + full suite, no AI credits
+   omg release X.Y.Z --live-smoke    # resumes at smoke (2 prompts, ~1 AI credit): pr, promote, tag (asks), verify
    omg release X.Y.Z --live-smoke --yes    # --yes: required for the tag phase without a terminal (agent lanes, CI)
    ```
 
@@ -45,7 +45,7 @@ reference for what each phase asserts.
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
    committed docs/CLAUDE.md, inventory drift) and always fail before it. The
-   live smoke runs after the suite, so a red suite costs no premium requests.
+   live smoke runs after the suite, so a red suite costs no AI credits.
    `--suite` is recorded for the release: a later run without `--suite` uses
    the recorded level, a lower `--suite` is refused (start over with
    `--from preflight` to change it), and `--suite none` records `suite` as
@@ -150,7 +150,7 @@ reference for what each phase asserts.
 9. After the full build, `omg smoke copilot --tier 1` must be green before
    tagging. It loads the build into the real Copilot CLI in a throwaway
    `COPILOT_HOME` and runs one live session with the prompt on stdin, which
-   costs one premium request. It reuses your `copilot /login` identity and
+   costs one prompt in AI credits. It reuses your `copilot /login` identity and
    drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token
    for it; `--model` is optional (Copilot auto-selects). Hooks run
    fail-closed, so a red `hooks.*` or `hooks.adapter_errors` is a real hook
@@ -158,7 +158,7 @@ reference for what each phase asserts.
    refuses to load. Exit `2` means the `copilot` binary was not found, which
    is not a pass.
 10. Then `omg smoke copilot --tier 2` (default scenarios `smoke` and
-   `guardrail`, about two premium requests, one per scenario) must also be green before
+   `guardrail`, one prompt each, about 0.6 AI credits measured) must also be green before
    tagging. It drives the installed Copilot CLI through `@github/copilot-sdk`
    (install once: `npm i -g @github/copilot-sdk --omit=optional
    --ignore-scripts`) and proves the git guardrail hook really denies a
@@ -195,8 +195,8 @@ A lane running this sequence emits one progress event per step
 4. Watch the run: `gh run list --workflow=ci.yml`, then `gh run watch <id>`.
    Background watchers cap at 10 minutes; the release job alone takes ~9.
    The tag run also starts the `Copilot smoke (tier 2)` job in parallel: SDK
-   static checks plus the default scenarios (smoke, guardrail; ~2 premium
-   requests billed to the `COPILOT_GITHUB_TOKEN` owner). The release job does
+   static checks plus the default scenarios (smoke, guardrail; ~0.6 AI
+   credits billed to the `COPILOT_GITHUB_TOKEN` owner). The release job does
    NOT wait for it, so check its result before announcing; its report is the
    `copilot-smoke-<run id>-<attempt>` artifact (`reports/scenarios.json`).
 
