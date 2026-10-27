@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "82388d09b700dee832e185be5846f80fa9badbfd",
-    "sourceSha256": "e27c42dec100016e6c32c8689a4d7b774eb4ef996ae0c251c8c3f0f36f7cbbe7",
+    "head": "f6a8e89f699c07f8ab7b3ad00256c3602c961366",
+    "sourceSha256": "0034172aa14d655a8e1b1f998d295d7b390506687d73094ed56f8c8f264313d2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "82388d09b700dee832e185be5846f80fa9badbfd",
-  "sourceSha256": "e27c42dec100016e6c32c8689a4d7b774eb4ef996ae0c251c8c3f0f36f7cbbe7",
+  "head": "f6a8e89f699c07f8ab7b3ad00256c3602c961366",
+  "sourceSha256": "0034172aa14d655a8e1b1f998d295d7b390506687d73094ed56f8c8f264313d2",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1668,
-      "total": 1692
+      "srcFiles": 1669,
+      "total": 1693
     },
     "generated": {
       "distFiles": 6344,
@@ -43428,6 +43428,11 @@
         "path": "src/__tests__/hud/context.test.ts"
       },
       {
+        "id": "src/__tests__/hud/credit-budget-element.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/credit-budget-element.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/custom-rate-provider.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/custom-rate-provider.test.ts"
@@ -57516,6 +57521,26 @@
       },
       {
         "from": "src/__tests__/hud/context.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/credit-budget-element.test.ts",
         "to": "src/hud/types.ts",
         "kind": "type-imports"
       },
@@ -100931,12 +100956,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8751,
-      "edgeCount": 9851,
-      "importEdgeCount": 8242,
+      "nodeCount": 8752,
+      "edgeCount": 9855,
+      "importEdgeCount": 8245,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c77febf4c5b6edf42cf16d039e754ceeafc38dbc473e031a4b9f8ad25dc317d7",
-  "manifestSha256": "cb30a448815fbfa1b5ef23107ec80eec89158d1060bac2422db08bc9159901b9"
+  "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
+  "manifestSha256": "e767533f0b40506914f27a47e152933cf1f70d48edeb9fc0f9984ee0b4ef0860"
 }
