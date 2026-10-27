@@ -70,6 +70,12 @@ export declare const DEFAULT_MISSION_BOARD_CONFIG: MissionBoardConfig;
 export declare function readMissionBoardState(directory: string, sessionId?: string): MissionBoardState | null;
 export declare function recordMissionAgentStart(directory: string, input: MissionAgentStartInput, sessionId?: string): MissionBoardState;
 export declare function recordMissionAgentStop(directory: string, input: MissionAgentStopInput, sessionId?: string): MissionBoardState;
+/**
+ * Read every team under `.omg/state/team/` as a mission, without writing board state.
+ * With `skipOlderThanMs`, a team dir whose config, event logs and worker
+ * heartbeat/status files are all older than that is skipped before collecting. One unreadable team is dropped alone.
+ */
+export declare function readTeamMissions(directory: string, rawConfig?: MissionBoardConfig, skipOlderThanMs?: number, now?: number): MissionBoardMission[];
 export declare function refreshMissionBoardState(directory: string, rawConfig?: MissionBoardConfig, sessionId?: string): MissionBoardState;
 export declare function renderMissionBoard(state: MissionBoardState | null, rawConfig?: MissionBoardConfig): string[];
 //# sourceMappingURL=mission-board.d.ts.map

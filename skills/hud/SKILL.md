@@ -124,6 +124,24 @@ Shows everything including multi-line agent details:
 └─ s executor     1m   implementing validation logic
 ```
 
+### Presets per host
+
+The same `minimal`, `focused` and `full` presets apply on both hosts. The HUD detects the host from the statusline payload and layers a Copilot overlay over the preset, under your own `elements`. The label reads `[oh-my-copilot#version]` on both.
+
+Focused on Copilot CLI (the model, effort, directory and branch are left to Copilot's own footer):
+```
+[oh-my-copilot#5.13.1] | cr:0.4 | autopilot | session:25m | skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1
+└─ x exec          4m  lane-b: events reader (call_ta)
+```
+
+Defaults the overlay changes:
+- **Off on Copilot:** `model`, `effort`, `cwd`, `gitBranch`. Set one to `true` to show it anyway.
+- **On on Copilot, off on Claude Code:** `copilotMode` (plan or autopilot, and yolo), `team` (live `omg team` run), `ultragoal` (open plan progress).
+
+**Ignored on Copilot** (no data source, forced off even when set to `true`): `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, and the payload warning.
+
+The `T:` `A:` `S:` counts and the agent list come from the last 4 MB of the session's `events.jsonl`, so they undercount in very long sessions. See [REFERENCE.md](../../docs/REFERENCE.md#configure-hud-statusline) for the full host matrix.
+
 ## Multi-Line Agent Display
 
 When agents are running, the HUD shows detailed information on separate lines:
@@ -142,7 +160,7 @@ When agents are running, the HUD shows detailed information on separate lines:
 | `ralph:3/10` | Ralph loop iteration/max |
 | `US-002` | Current PRD story ID |
 | `skill:name` | Last activated skill (cyan) |
-| `effort:high` | Effort level from Claude Code (dim low, cyan medium, yellow high, magenta xhigh, bold magenta max) |
+| `effort:high` | Effort level (Claude Code payload, or Copilot `reasoningEffort` events; off by default on Copilot) (dim low, cyan medium, yellow high, magenta xhigh, bold magenta max) |
 | `ctx:67%` | Context window usage |
 | `agents:2` | Running subagent count |
 | `bg:3/5` | Background task slots |
@@ -182,7 +200,6 @@ You can manually edit the config file. Each option can be set individually - any
     "todos": true,
     "thinking": true,
     "thinkingFormat": "text",
-    "effort": true,
     "permissionStatus": false,
     "apiKeySource": false,
     "profile": true,
@@ -207,6 +224,8 @@ You can manually edit the config file. Each option can be set individually - any
   }
 }
 ```
+
+Copilot notes: `thinking`, `todos` and `apiKeySource` above are ignored on Copilot. `effort` is off on Copilot by default and not in this example; add `"effort": true` to show it (Claude Code shows it by default).
 
 ### callCountsFormat
 

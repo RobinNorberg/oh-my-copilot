@@ -2,6 +2,87 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.16.0
+
+## [5.16.0] - 2026-10-27
+
+Fork **v5.16.0** (from v5.15.0) is a minor release: a HUD overhaul for Copilot
+CLI. The HUD now detects whether Claude Code or Copilot CLI is calling it, from
+the shape of the statusline payload. Claude Code output is unchanged apart from
+the label. Under Copilot the HUD stops showing Claude-only data, prints the
+right update command for your install channel, and reads real Copilot data:
+session time, context, AI credits, and agent, skill and tool counts.
+
+### Added
+
+- **New HUD elements for Copilot CLI.** `copilotMode` shows `mode:plan`,
+  `mode:autopilot` or `mode:yolo` (combined as `mode:plan+yolo`), from
+  `session.mode_changed` events and the payload's `allow_all_enabled`. `team`
+  shows a live `omg team` run, and `ultragoal` shows open plan progress. All
+  three are on under Copilot and off under Claude Code unless set to `true`.
+  `team` and `ultragoal` show repo-wide state, not per session.
+- **Real Copilot data.** Session duration and context % come from the
+  statusline payload. Without a `softLimit`, `creditBudget` shows the session's
+  AI credits as `cr:0.4`, with two decimals below 0.1 credit and hidden at
+  exactly zero. Agent, skill and tool-call counts are read from the session's
+  `events.jsonl` (the last 4 MB, so counts undercount in very long sessions).
+  The effort level, when shown, comes from the latest session start, resume or
+  model-change event.
+
+### Changed
+
+- **Host detection.** The HUD tells the hosts apart by payload fields: Copilot
+  sends `ai_used`, `allow_all_enabled`, `remote.connected` and
+  `cost.total_premium_requests`; Claude Code sends `output_style`,
+  `exceeds_200k_tokens`, `rate_limits` and a `.claude/projects` transcript.
+  When neither decides, the environment is checked, then Claude. Claude Code
+  output is byte-identical except for the label and the `omc` to `omg` wording
+  in the update hint.
+- **One label.** The label reads `[oh-my-copilot#version]` on both hosts.
+  `omgLabel` is the layout element and `omcLabel` is still accepted; listing
+  both renders the label once.
+- **Copilot hides what its footer already shows.** Under Copilot, `model`,
+  `effort`, `cwd` and `gitBranch` default to off. Set one to `true` under
+  `omcHud.elements` in `~/.copilot/settings.json` to keep it.
+- **Claude-only elements are off under Copilot.** `rateLimits`,
+  `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`
+  and `sessionSummary` are forced off even when configured, because they have
+  no data source there. The Claude Code version check, label and hint no longer
+  appear, and the SessionStart hook skips the `@anthropic-ai/claude-code`
+  fetch and the Anthropic usage work.
+- **Update hints name the right command for your channel.** A Copilot plugin
+  install (`~/.copilot/installed-plugins/`) reads its latest version from
+  `marketplace.json` on `main` and gets:
+
+  ```
+  copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc
+  ```
+
+  An npm install gets `npm i -g oh-my-copilot@latest`. `omg update --check`
+  follows the same rule. Whether `plugin update` refreshes the marketplace on
+  its own is unverified, so the hint keeps the explicit refresh.
+- **The update check is cached for 6 hours** (was 24), refreshed early when the
+  installed version or channel changes. The HUD uses a cached hint only when it
+  came from the HUD's own channel and installed version.
+- **Per-element isolation.** Each HUD element renders inside its own guard, so
+  an element that throws is dropped and the rest of the line still prints. The
+  HUD no longer goes blank.
+- The tmux rate-limit detector matches both `[oh-my-copilot#...]` and the old
+  `[OMC#...]` label.
+
+### Fixed
+
+- **`omg update --check` queried the wrong repository.** It looked at
+  `Yeachan-Heo/oh-my-copilot` and now queries `RobinNorberg`.
+- **The Claude Code update hint no longer appears under Copilot.** The HUD had
+  compared Copilot's own CLI version with the newest Claude Code release, so
+  the hint always fired, and plugin installs always got the npm command.
+- **A Copilot plugin install gets the plugin command**, not `npm i -g`, and the
+  wording says `omg` instead of `omc`.
+
+Upgrade notes are in
+[MIGRATION.md](docs/MIGRATION.md#unreleased-hud-host-detection-and-copilot-defaults).
+
 # oh-my-copilot v5.15.0
 
 ## [5.15.0] - 2026-10-27

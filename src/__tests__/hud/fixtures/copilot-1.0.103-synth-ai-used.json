@@ -1,0 +1,19 @@
+{
+  "$comment": "SYNTHETIC: built from the Copilot CLI 1.0.103 statusline payload builder's field list (design 2026-10-27 section 1.1), not captured live. Auto model with a resolved tier, allow-all on, and AI Credits used; the auto_tier value and the ai_used.formatted text are guesses.",
+  "cwd": "C:\\Code\\OMC",
+  "session_id": "6f1c0e2a-0000-4000-8000-00000000b004",
+  "transcript_path": "C:\\Users\\u\\.copilot\\session-state\\6f1c0e2a-0000-4000-8000-00000000b004",
+  "model": { "id": "auto", "display_name": "Auto", "auto_tier": "balanced", "pending_auto_tier": null },
+  "remote": { "connected": false },
+  "version": "1.0.103",
+  "cost": { "total_duration_ms": 2580000, "total_premium_requests": 6 },
+  "context_window": {
+    "context_window_size": 200000,
+    "used_percentage": 44,
+    "current_context_used_percentage": 48,
+    "last_call_input_tokens": 96000,
+    "last_call_output_tokens": 1200
+  },
+  "ai_used": { "total_nano_aiu": 11800000000, "formatted": "11.8" },
+  "allow_all_enabled": true
+}

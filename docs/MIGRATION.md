@@ -7,6 +7,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 ## Table of Contents
 
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
+- [Unreleased: HUD Host Detection and Copilot Defaults](#unreleased-hud-host-detection-and-copilot-defaults)
 - [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
 - [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
@@ -83,6 +84,22 @@ For reference, short smoke prompts on small models measured 0.29 to 0.91 AI cred
 ```
 
 Older sections of this guide quote costs in premium requests, as Copilot billed them at the time.
+
+## Unreleased: HUD Host Detection and Copilot Defaults
+
+Applies when upgrading from v5.13.1. The HUD now detects whether Claude Code or Copilot CLI is calling it, from the statusline payload. Claude Code output is unchanged. Under Copilot CLI several elements change.
+
+**What changed.**
+
+- The label reads `[oh-my-copilot#version]` on both hosts. `omgLabel` is an alias of `omcLabel`: it wins when both are set, and both names work in `layout` and `elementOrder`.
+- Under Copilot, `model`, `effort`, `cwd` and `gitBranch` default to off, because Copilot's footer already shows them. Set one to `true` to keep it.
+- Under Copilot, `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos` and `sessionSummary` are forced off, even when your config sets them to `true`. They have no data source there. Set `OMC_DEBUG=1` to see which of your settings are ignored.
+- Three new elements: `copilotMode` (`mode:plan`, `mode:autopilot`, `mode:yolo`), `team` (live `omg team` run) and `ultragoal` (open plan progress). They are on under Copilot and off under Claude Code unless you set them to `true`. `team` and `ultragoal` show repo-wide state, not per session.
+- Without a `softLimit`, `creditBudget` shows the session's AI credits under Copilot (`cr:0.4`), with up to two decimals below 0.1 credit, hidden at exactly zero.
+- Session duration, context %, agents, skills and call counts now come from the Copilot payload and the session's `events.jsonl`. Counts come from the last 4 MB of that file and undercount in very long sessions.
+- The update check runs at most every 6 hours (was 24) and recognises Copilot plugin installs. The hint prints the command for your channel: `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc` for a plugin install, `npm i -g oh-my-copilot@latest` for npm. Under Copilot the HUD no longer shows a Claude Code update hint.
+
+**Who must act.** Nobody. To bring back an element Copilot now hides, set it to `true` under `omcHud.elements` in `~/.copilot/settings.json`. See [REFERENCE.md](./REFERENCE.md#configure-hud-statusline).
 
 ## Unreleased: Host Load Gate Threshold Values
 

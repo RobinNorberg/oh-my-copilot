@@ -60,4 +60,30 @@ export declare function getRateLimitsFromStdin(stdin: StatuslineStdin): RateLimi
 export declare function getModelId(stdin: StatuslineStdin): string | null;
 export declare function getEffortLevel(stdin: StatuslineStdin): string | null;
 export declare function getModelName(stdin: StatuslineStdin): string | null;
+/** Copilot session duration from `cost.total_duration_ms`, or null. */
+export declare function getSessionDurationMs(stdin: StatuslineStdin): number | null;
+/**
+ * Copilot context percent: `current_context_used_percentage`, then
+ * `used_percentage` (zero is a real value here: a fresh session), then the
+ * shared token fallbacks.
+ */
+export declare function getCopilotContextPercent(stdin: StatuslineStdin): number;
+/** Session AI Credits from `ai_used`, or null when the payload has none. */
+export declare function getAiUsed(stdin: StatuslineStdin): {
+    nanoAiu: number | null;
+    formatted: string | null;
+} | null;
+/**
+ * Copilot model label: `display_name` verbatim, and `Auto>{auto_tier}` when
+ * the id is `auto` and a tier is resolved.
+ */
+export declare function getCopilotModelName(stdin: StatuslineStdin): string | null;
+/** Copilot last-call and session token counts from `context_window`. */
+export declare function getCopilotTokenUsage(stdin: StatuslineStdin): {
+    lastRequest: {
+        inputTokens: number;
+        outputTokens: number;
+    } | null;
+    sessionTotal: number | null;
+};
 //# sourceMappingURL=stdin.d.ts.map

@@ -53,9 +53,9 @@ describe('HUD AI Credits budget element', () => {
     it('accepts the deprecated premiumBudget name in layout.main and elementOrder', async () => {
         expect(await render(context, config({}, { layout: { main: ['premiumBudget'] } }))).toContain('cr:1.5/5');
         const ordered = await render(context, config({}, { elementOrder: ['premiumBudget', 'omcLabel'] }));
-        const main = ordered.split('\n').find((l) => l.includes('[OMC'));
+        const main = ordered.split('\n').find((l) => l.includes('[oh-my-copilot'));
         expect(main.indexOf('cr:')).toBeGreaterThanOrEqual(0);
-        expect(main.indexOf('cr:')).toBeLessThan(main.indexOf('[OMC'));
+        expect(main.indexOf('cr:')).toBeLessThan(main.indexOf('[oh-my-copilot'));
     });
 });
 //# sourceMappingURL=credit-budget-element.test.js.map

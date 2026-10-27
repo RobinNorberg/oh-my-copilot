@@ -18,6 +18,8 @@ const STATE_LOCK_PATH = join(TEMPLATE_HOOKS_ROOT, 'lib', 'state-lock.mjs');
 provisionStandaloneStateLockBridge(REPO_ROOT, STATE_LOCK_PATH);
 const SCRIPT_PATH = join(TEMPLATE_HOOKS_ROOT, 'session-start.mjs');
 const NODE = process.execPath;
+/** The version the copied template resolves; a cache for another version is stale. */
+const INSTALLED_VERSION = (JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8')) as { version: string }).version;
 
 afterAll(() => {
   rmSync(TEMPLATE_ROOT, { recursive: true, force: true });
@@ -1370,7 +1372,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
       JSON.stringify({
         timestamp: Date.now(),
         latestVersion: '999.0.0',
-        currentVersion: '1.0.0',
+        currentVersion: INSTALLED_VERSION,
         updateAvailable: true,
       }),
     );
@@ -1415,7 +1417,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
       JSON.stringify({
         timestamp: Date.now(),
         latestVersion: '999.0.0',
-        currentVersion: '1.0.0',
+        currentVersion: INSTALLED_VERSION,
         updateAvailable: true,
       }),
     );

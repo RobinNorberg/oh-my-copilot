@@ -1,0 +1,37 @@
+{
+  "$comment": "SYNTHETIC: built from the Copilot CLI 1.0.103 statusline payload builder's field list (design 2026-10-27 section 1.1), not captured live. Fresh session before the first model call.",
+  "cwd": "C:\\Code\\OMC",
+  "session_id": "6f1c0e2a-0000-4000-8000-00000000b001",
+  "session_name": null,
+  "transcript_path": "C:\\Users\\u\\.copilot\\session-state\\6f1c0e2a-0000-4000-8000-00000000b001",
+  "model": { "id": "claude-sonnet-5.5", "display_name": "Claude Sonnet 5.5", "auto_tier": null, "pending_auto_tier": null },
+  "workspace": { "current_dir": "C:\\Code\\OMC" },
+  "username": "octocat",
+  "remote": { "connected": false },
+  "version": "1.0.103",
+  "cost": {
+    "total_api_duration_ms": 0,
+    "total_lines_added": 0,
+    "total_lines_removed": 0,
+    "total_duration_ms": 4000,
+    "total_premium_requests": 0
+  },
+  "context_window": {
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cache_read_tokens": 0,
+    "total_cache_write_tokens": 0,
+    "total_tokens": 0,
+    "context_window_size": 200000,
+    "used_percentage": 0,
+    "remaining_percentage": 100,
+    "remaining_tokens": 200000,
+    "last_call_input_tokens": 0,
+    "last_call_output_tokens": 0,
+    "current_context_tokens": 0,
+    "displayed_context_limit": 200000,
+    "current_context_used_percentage": 0
+  },
+  "ai_used": { "total_nano_aiu": 0, "formatted": "0" },
+  "allow_all_enabled": false
+}

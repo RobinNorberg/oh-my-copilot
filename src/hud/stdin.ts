@@ -459,3 +459,72 @@ export function getModelName(stdin: StatuslineStdin): string | null {
   const displayName = stdin.model?.display_name?.trim();
   return displayName || getModelId(stdin);
 }
+
+// ============================================================================
+// Copilot CLI payload (all fields optional; see StatuslineStdin)
+// ============================================================================
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function trimmedString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** Copilot session duration from `cost.total_duration_ms`, or null. */
+export function getSessionDurationMs(stdin: StatuslineStdin): number | null {
+  const ms = finiteNumber(stdin.cost?.total_duration_ms);
+  return ms !== null && ms >= 0 ? ms : null;
+}
+
+/**
+ * Copilot context percent: `current_context_used_percentage`, then
+ * `used_percentage` (zero is a real value here: a fresh session), then the
+ * shared token fallbacks.
+ */
+export function getCopilotContextPercent(stdin: StatuslineStdin): number {
+  const contextWindow = stdin.context_window;
+  const native = finiteNumber(contextWindow?.current_context_used_percentage)
+    ?? finiteNumber(contextWindow?.used_percentage);
+  if (native !== null) return Math.min(100, Math.max(0, Math.round(native)));
+  return getContextPercent(stdin);
+}
+
+/** Session AI Credits from `ai_used`, or null when the payload has none. */
+export function getAiUsed(stdin: StatuslineStdin): { nanoAiu: number | null; formatted: string | null } | null {
+  const aiUsed = stdin.ai_used;
+  if (!aiUsed || typeof aiUsed !== 'object') return null;
+  const nanoAiu = finiteNumber(aiUsed.total_nano_aiu);
+  const formatted = trimmedString(aiUsed.formatted);
+  return nanoAiu === null && formatted === null ? null : { nanoAiu, formatted };
+}
+
+/**
+ * Copilot model label: `display_name` verbatim, and `Auto>{auto_tier}` when
+ * the id is `auto` and a tier is resolved.
+ */
+export function getCopilotModelName(stdin: StatuslineStdin): string | null {
+  const id = trimmedString(stdin.model?.id);
+  const tier = trimmedString(stdin.model?.auto_tier);
+  if (id?.toLowerCase() === 'auto' && tier) return `Auto>${tier}`;
+  return trimmedString(stdin.model?.display_name) ?? id;
+}
+
+/** Copilot last-call and session token counts from `context_window`. */
+export function getCopilotTokenUsage(stdin: StatuslineStdin): {
+  lastRequest: { inputTokens: number; outputTokens: number } | null;
+  sessionTotal: number | null;
+} {
+  const contextWindow = stdin.context_window;
+  const input = finiteNumber(contextWindow?.last_call_input_tokens);
+  const output = finiteNumber(contextWindow?.last_call_output_tokens);
+  const totalIn = finiteNumber(contextWindow?.total_input_tokens);
+  const totalOut = finiteNumber(contextWindow?.total_output_tokens);
+  return {
+    lastRequest: input === null && output === null
+      ? null
+      : { inputTokens: input ?? 0, outputTokens: output ?? 0 },
+    sessionTotal: totalIn === null && totalOut === null ? null : (totalIn ?? 0) + (totalOut ?? 0),
+  };
+}

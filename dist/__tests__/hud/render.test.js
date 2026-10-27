@@ -233,7 +233,7 @@ describe('gitInfoPosition configuration', () => {
             expect(lines[0]).toContain('repo:my-repo');
             expect(lines[0]).toContain('branch:main');
             // Second line should be the main HUD header (with ANSI codes from bold())
-            expect(lines[1]).toMatch(/\[OMC/);
+            expect(lines[1]).toMatch(/\[oh-my-copilot/);
         });
         it('maintains traditional layout with git info above', async () => {
             const context = createMockContext();
@@ -244,7 +244,7 @@ describe('gitInfoPosition configuration', () => {
             // Git info comes first
             expect(lines[0]).toContain('~/workspace/project');
             // Main header comes second (with ANSI codes from bold())
-            expect(lines[1]).toMatch(/\[OMC/);
+            expect(lines[1]).toMatch(/\[oh-my-copilot/);
         });
     });
     describe('render with gitInfoPosition: below', () => {
@@ -254,7 +254,7 @@ describe('gitInfoPosition configuration', () => {
             const result = await render(context, config);
             const lines = result.split('\n');
             // First line should be the main HUD header (with ANSI codes from bold())
-            expect(lines[0]).toMatch(/\[OMC/);
+            expect(lines[0]).toMatch(/\[oh-my-copilot/);
             // Second line should be git info
             expect(lines[1]).toContain('repo:my-repo');
             expect(lines[1]).toContain('branch:main');
@@ -266,7 +266,7 @@ describe('gitInfoPosition configuration', () => {
             const lines = result.split('\n');
             expect(lines.length).toBeGreaterThanOrEqual(2);
             // Main header comes first (with ANSI codes from bold())
-            expect(lines[0]).toMatch(/\[OMC/);
+            expect(lines[0]).toMatch(/\[oh-my-copilot/);
             // Git info comes second
             expect(lines[1]).toContain('~/workspace/project');
         });
@@ -286,7 +286,7 @@ describe('gitInfoPosition configuration', () => {
             // Should default to above behavior
             // Git info should be in the first line (if present)
             const firstLineIsGitInfo = lines[0]?.includes('repo:') || lines[0]?.includes('branch:');
-            const firstLineIsHeader = lines[0]?.includes('[OMC]');
+            const firstLineIsHeader = lines[0]?.includes('[oh-my-copilot]');
             // Either git info is first, or if no git info, header is first
             expect(firstLineIsGitInfo || firstLineIsHeader).toBe(true);
         });
@@ -384,7 +384,7 @@ describe('maxWidth wrapMode behavior', () => {
         const result = await render(context, config);
         const lines = result.split('\n');
         expect(lines.length).toBeGreaterThan(1);
-        expect(lines[0]).toContain('[OMC');
+        expect(lines[0]).toContain('[oh-my-copilot');
         lines.forEach(line => {
             expect(stringWidth(line)).toBeLessThanOrEqual(24);
         });
@@ -539,9 +539,9 @@ describe('layout element ordering', () => {
         const config = createLayoutConfig(); // no layout
         const result = await render(context, config);
         const lines = result.split('\n');
-        // line1 has gitBranch, main has [OMC]
+        // line1 has gitBranch, main has [oh-my-copilot]
         expect(lines[0]).toContain('branch:');
-        expect(lines[1]).toContain('[OMC');
+        expect(lines[1]).toContain('[oh-my-copilot');
     });
     it('reorders main elements according to layout.main', async () => {
         const context = createMockContext();
@@ -551,12 +551,12 @@ describe('layout element ordering', () => {
         });
         const result = await render(context, config);
         const lines = result.split('\n');
-        // Find the main line (has [OMC])
-        const mainLine = lines.find(l => l.includes('[OMC'));
+        // Find the main line (has [oh-my-copilot])
+        const mainLine = lines.find(l => l.includes('[oh-my-copilot'));
         expect(mainLine).toBeDefined();
-        // contextBar should appear before [OMC]
+        // contextBar should appear before [oh-my-copilot]
         const ctxIdx = mainLine.indexOf('ctx:');
-        const omcIdx = mainLine.indexOf('[OMC');
+        const omcIdx = mainLine.indexOf('[oh-my-copilot');
         expect(ctxIdx).toBeLessThan(omcIdx);
     });
     it('moves elements between groups via layout', async () => {
@@ -568,12 +568,12 @@ describe('layout element ordering', () => {
         });
         const result = await render(context, config);
         const lines = result.split('\n');
-        // line1 should have both [OMC] and branch:
-        expect(lines[0]).toContain('[OMC');
+        // line1 should have both [oh-my-copilot] and branch:
+        expect(lines[0]).toContain('[oh-my-copilot');
         expect(lines[0]).toContain('branch:');
-        // main should have contextBar but not [OMC]
+        // main should have contextBar but not [oh-my-copilot]
         expect(lines[1]).toContain('ctx:');
-        expect(lines[1]).not.toContain('[OMC');
+        expect(lines[1]).not.toContain('[oh-my-copilot');
     });
     it('skips elements not in layout silently', async () => {
         const context = createMockContext();
@@ -585,7 +585,7 @@ describe('layout element ordering', () => {
         });
         const result = await render(context, config);
         // Should only have the OMC label, no other elements
-        expect(result).toContain('[OMC');
+        expect(result).toContain('[oh-my-copilot');
         expect(result).not.toContain('ctx:');
         expect(result).not.toContain('branch:');
     });
@@ -596,7 +596,7 @@ describe('layout element ordering', () => {
         });
         const result = await render(context, config);
         // Should still render omcLabel without error
-        expect(result).toContain('[OMC');
+        expect(result).toContain('[oh-my-copilot');
     });
     it('produces no line1 output when line1 layout is empty', async () => {
         const context = createMockContext();
@@ -607,7 +607,7 @@ describe('layout element ordering', () => {
         const result = await render(context, config);
         const lines = result.split('\n');
         // First line should be main (OMC), no git info line
-        expect(lines[0]).toContain('[OMC');
+        expect(lines[0]).toContain('[oh-my-copilot');
         expect(lines).toHaveLength(1);
     });
     it('falls back to DEFAULT_ELEMENT_ORDER for omitted groups', async () => {
@@ -621,10 +621,10 @@ describe('layout element ordering', () => {
         // line1 should use default order (gitBranch)
         expect(lines[0]).toContain('branch:');
         // main should use custom order (ctx before OMC)
-        const mainLine = lines.find(l => l.includes('[OMC'));
+        const mainLine = lines.find(l => l.includes('[oh-my-copilot'));
         expect(mainLine).toBeDefined();
         const ctxIdx = mainLine.indexOf('ctx:');
-        const omcIdx = mainLine.indexOf('[OMC');
+        const omcIdx = mainLine.indexOf('[oh-my-copilot');
         expect(ctxIdx).toBeLessThan(omcIdx);
     });
     it('reorders main elements according to elementOrder and appends unspecified defaults', async () => {
@@ -632,22 +632,22 @@ describe('layout element ordering', () => {
         const config = createElementOrderConfig(['contextBar', 'omcLabel']);
         const result = await render(context, config);
         const lines = result.split('\n');
-        const mainLine = lines.find(l => l.includes('[OMC'));
+        const mainLine = lines.find(l => l.includes('[oh-my-copilot'));
         expect(mainLine).toBeDefined();
         expect(mainLine).toContain('ctx:');
         expect(mainLine).toContain('session:');
         expect(mainLine).toMatch(/(?:🔧5|T:5)/);
-        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[OMC'));
-        expect(mainLine.indexOf('[OMC')).toBeLessThan(mainLine.indexOf('session:'));
+        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[oh-my-copilot'));
+        expect(mainLine.indexOf('[oh-my-copilot')).toBeLessThan(mainLine.indexOf('session:'));
     });
     it('ignores unknown names in elementOrder silently', async () => {
         const context = createMockContext();
         const config = createElementOrderConfig(['unknownElement', 'contextBar', 'omcLabel']);
         const result = await render(context, config);
         const lines = result.split('\n');
-        const mainLine = lines.find(l => l.includes('[OMC'));
+        const mainLine = lines.find(l => l.includes('[oh-my-copilot'));
         expect(mainLine).toBeDefined();
-        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[OMC'));
+        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[oh-my-copilot'));
     });
     it('lets layout.main override elementOrder when both are present', async () => {
         const context = createMockContext();
@@ -659,9 +659,9 @@ describe('layout element ordering', () => {
         };
         const result = await render(context, config);
         const lines = result.split('\n');
-        const mainLine = lines.find(l => l.includes('[OMC'));
+        const mainLine = lines.find(l => l.includes('[oh-my-copilot'));
         expect(mainLine).toBeDefined();
-        expect(mainLine.indexOf('[OMC')).toBeLessThan(mainLine.indexOf('ctx:'));
+        expect(mainLine.indexOf('[oh-my-copilot')).toBeLessThan(mainLine.indexOf('ctx:'));
     });
 });
 describe('optional HUD line defaults', () => {
@@ -785,7 +785,7 @@ describe('HUD model display', () => {
     it('renders the Claude model when statusline stdin provides reliable metadata', async () => {
         const output = await render(createModelContext('Claude Sonnet 4.5'), modelConfig);
         expect(output.split('\n')).toHaveLength(1);
-        expect(output).toContain('[OMC#4.14.0]');
+        expect(output).toContain('[oh-my-copilot#4.14.0]');
         expect(output).toContain('Model: Sonnet 4.5');
     });
     it('renders full format from raw model id when display name is also available', async () => {
@@ -812,7 +812,7 @@ describe('HUD model display', () => {
     });
     it('omits the model segment when model metadata is unavailable', async () => {
         const output = await render(createModelContext(null), modelConfig);
-        expect(output).toBe('\u001b[1m[OMC#4.14.0]\u001b[0m');
+        expect(output).toBe('\u001b[1m[oh-my-copilot#4.14.0]\u001b[0m');
         expect(output).not.toContain('Unknown');
     });
 });

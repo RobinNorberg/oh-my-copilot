@@ -1,0 +1,39 @@
+{
+  "$comment": "SYNTHETIC: built from the Copilot CLI 1.0.103 statusline payload builder's field list (design 2026-10-27 section 1.1), not captured live. After one prompt; used_percentage and current_context_used_percentage differ on purpose so tests can see which one wins. The ai_used.formatted text is a guess.",
+  "cwd": "C:\\Code\\OMC",
+  "session_id": "6f1c0e2a-0000-4000-8000-00000000b002",
+  "session_name": "hud lane b",
+  "transcript_path": "C:\\Users\\u\\.copilot\\session-state\\6f1c0e2a-0000-4000-8000-00000000b002",
+  "model": { "id": "claude-sonnet-5.5", "display_name": "Claude Sonnet 5.5", "auto_tier": null, "pending_auto_tier": null },
+  "workspace": { "current_dir": "C:\\Code\\OMC" },
+  "username": "octocat",
+  "remote": { "connected": false },
+  "version": "1.0.103",
+  "cost": {
+    "total_api_duration_ms": 38000,
+    "total_lines_added": 12,
+    "total_lines_removed": 3,
+    "total_duration_ms": 1500000,
+    "total_premium_requests": 1
+  },
+  "context_window": {
+    "total_input_tokens": 61800,
+    "total_output_tokens": 2100,
+    "total_cache_read_tokens": 40100,
+    "total_cache_write_tokens": 9000,
+    "total_reasoning_tokens": 600,
+    "total_tokens": 63900,
+    "context_window_size": 200000,
+    "used_percentage": 18,
+    "remaining_percentage": 69,
+    "remaining_tokens": 138000,
+    "last_call_input_tokens": 41200,
+    "last_call_output_tokens": 850,
+    "current_context_tokens": 62000,
+    "displayed_context_limit": 200000,
+    "current_context_used_percentage": 31,
+    "current_usage": { "input_tokens": 1200, "output_tokens": 850, "cache_creation_input_tokens": 9000, "cache_read_input_tokens": 31000 }
+  },
+  "ai_used": { "total_nano_aiu": 420000000, "formatted": "0.42" },
+  "allow_all_enabled": false
+}
