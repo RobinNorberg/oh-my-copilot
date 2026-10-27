@@ -229,9 +229,14 @@ function shapeProblem(s: Record<string, unknown>): string | null {
 export function readFactoryState(root: string, issue: number): FactoryRunState | null {
   const path = factoryStatePath(root, issue);
   if (!existsSync(path)) return null;
+  return parseFactoryState(path, issue, readFileSync(path, 'utf8'));
+}
+
+/** Parse and shape-check the bytes of a state file (read once by the caller). */
+export function parseFactoryState(path: string, issue: number, raw: string): FactoryRunState {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
+    parsed = JSON.parse(raw);
   } catch (error) {
     throw new FactoryStateError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -251,24 +256,48 @@ export function updateFactoryState(
   root: string,
   issue: number,
   mutate: (current: FactoryRunState | null) => FactoryRunState,
-  options: { onWrite?: (path: string, content: string) => void } = {},
+  options: {
+    onWrite?: (path: string, content: string) => void;
+    /**
+     * Called under the lock with the exact bytes read (null: no file); throw
+     * to refuse. `mutate` gets the state parsed from these same bytes, never
+     * from a second read (the engine compares them with its ledger).
+     */
+    verify?: (bytes: Buffer | null) => void;
+  } = {},
 ): FactoryRunState {
   if (!existsSync(join(root, '.git'))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
   const path = factoryStatePath(root, issue);
   ensureDirSync(factoryStateDir(root));
   return withFileLockSync(lockPathFor(path), () => {
-    const current = readFactoryState(root, issue);
+    const bytes = existsSync(path) ? readFileSync(path) : null;
+    options.verify?.(bytes);
+    const current = bytes === null ? null : parseFactoryState(path, issue, bytes.toString('utf8'));
     if (current && !verifyFactoryIntegrity(current)) {
       throw new FactoryStateError(`${path} fails its integrity check (edited outside omg factory run); the run is failed until a human replaces the file`);
     }
-    const next = mutate(current);
-    const sealed = { ...next, integrity: computeFactoryIntegrity(next) };
-    // The exact bytes written, so the engine ledger can record them (ledger.ts).
-    const content = JSON.stringify(sealed, null, 2);
-    atomicWriteFileSync(path, content);
+    const { sealed, content } = writeSealed(path, mutate(current));
     options.onWrite?.(path, content);
     return sealed;
   }, { timeoutMs: 5_000 });
+}
+
+function writeSealed(path: string, next: FactoryRunState): { sealed: FactoryRunState; content: string } {
+  const sealed = { ...next, integrity: computeFactoryIntegrity(next) };
+  // The exact bytes written, so the engine ledger can record them (ledger.ts).
+  const content = JSON.stringify(sealed, null, 2);
+  atomicWriteFileSync(path, content);
+  return { sealed, content };
+}
+
+/**
+ * Seal and write `state` without the lock and without reading the file: the
+ * engine's park at state-tampered, which must not depend on the current
+ * bytes (or a lock file) that an unconfirmed lane may still be rewriting.
+ */
+export function overwriteFactoryState(root: string, issue: number, state: FactoryRunState): { sealed: FactoryRunState; content: string } {
+  ensureDirSync(factoryStateDir(root));
+  return writeSealed(factoryStatePath(root, issue), state);
 }
 
 /**

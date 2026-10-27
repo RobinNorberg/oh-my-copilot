@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { readShipState, recordVerdict, sealShipState, shipStatePath, updateShipState, type ShipState } from '../../../ship/state.js';
@@ -331,6 +331,115 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
       const out = await run([]).done;
       expect(out.exitCode).toBe(0);
       expect(out.gate?.name).toBe('prepare');
+    });
+
+    describe('a lane swapping a file between the engine\'s hash and its parse (deterministic interleave)', () => {
+      const forgeState = (root: string, patch: Partial<FactoryRunState>) => {
+        const path = factoryStatePath(root, ISSUE);
+        const cur = JSON.parse(readFileSync(path, 'utf8')) as FactoryRunState;
+        const forged = { ...cur, ...patch, integrity: undefined };
+        writeFileSync(path, JSON.stringify({ ...forged, integrity: computeFactoryIntegrity(forged) }, null, 2));
+      };
+      /** `afterHash` runs right after the next ledger hash pass, `beforeHash` right before the one after it. */
+      let afterHash: (() => void) | undefined;
+      let beforeHash: (() => void) | undefined;
+      beforeEach(() => {
+        const original = EngineLedger.prototype.mismatches;
+        let pendingBefore: (() => void) | undefined;
+        vi.spyOn(EngineLedger.prototype, 'mismatches').mockImplementation(function (this: EngineLedger, paths?: readonly string[]) {
+          const pre = pendingBefore;
+          if (pre) { pendingBefore = undefined; pre(); }
+          const out = original.call(this, paths);
+          const post = afterHash;
+          if (post) {
+            afterHash = undefined;
+            post();
+            pendingBefore = beforeHash;
+            beforeHash = undefined;
+          }
+          return out;
+        });
+      });
+      afterEach(() => { vi.restoreAllMocks(); afterHash = undefined; beforeHash = undefined; });
+
+      it('a forged state swapped in after the poll check and swapped back is never adopted', async () => {
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')], [1]);
+        lanes.onRunningPoll = () => {
+          const path = factoryStatePath(h.root, ISSUE);
+          const own = readFileSync(path);
+          afterHash = () => forgeState(h.root, { issueTitle: 'FORGED', plan: { source: 'issue-body', text: 'FORGED' } });
+          beforeHash = () => writeFileSync(path, own);
+        };
+        const out = await runFactoryEngine(opts(lanes));
+        expect(out.gate?.name).toBe('prepare');
+        const state = readFactoryState(h.root, ISSUE)!;
+        expect(state.issueTitle).toBe('Add greet()');
+        expect(lanes.started[1].prompt).not.toContain('FORGED');
+        expect(ledger().mismatches()).toEqual([]);
+      });
+
+      it('a forged state swapped in between a save\'s check and its locked read parks at state-tampered', async () => {
+        const lane: LaneScript = (ctx) => {
+          const out = commitFile('a.ts')(ctx);
+          afterHash = () => forgeState(ctx.root, { issueTitle: 'FORGED' });
+          return out ?? undefined;
+        };
+        const { lanes, done } = run([lane]);
+        const out = await done;
+        expect(out.gate?.name).toBe('state-tampered');
+        expect(out.gate?.reason).toMatch(/run-7\.json changed outside the engine/);
+        expect(readFactoryState(h.root, ISSUE)!.issueTitle).toBe('Add greet()');
+        expect(readdirSync(factoryStateDir(h.root)).some((f) => f.startsWith('run-7.json.tampered-'))).toBe(true);
+        expect(lanes.started).toHaveLength(1);
+        expect(h.calls.filter((c) => c.startsWith('git push '))).toHaveLength(0);
+      });
+
+      it('a forged ship approve swapped in between the ship check and its parse is refused as tampering', async () => {
+        h.onCall = (call) => {
+          if (!call.startsWith(`gh pr view ${PR} --json headRefOid`) || h.gh.prCreated !== true) return;
+          h.onCall = undefined;
+          const path = shipStatePath(h.root, PR);
+          const own = readFileSync(path);
+          afterHash = () => forgedApprove(h.root, readFactoryState(h.root, ISSUE)!.head!);
+          beforeHash = () => writeFileSync(path, own);
+        };
+        const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
+        const out = await done;
+        expect(out.gate?.name).toBe('state-tampered');
+        expect(out.gate?.reason).toMatch(/ship\/42\.json changed outside the engine/);
+        expect(lanes.started).toHaveLength(1);
+        expect(readShipState(h.root, PR)!.verdicts).toHaveLength(0);
+      });
+    });
+
+    it('the state-tampered park does not depend on a clean check while a lane keeps rewriting the state', async () => {
+      const original = EngineLedger.prototype.restore;
+      const rewrite = (root: string) => {
+        const path = factoryStatePath(root, ISSUE);
+        const cur = JSON.parse(readFileSync(path, 'utf8')) as FactoryRunState;
+        const forged = { ...cur, phase: 'prepare' as const, integrity: undefined };
+        writeFileSync(path, JSON.stringify({ ...forged, integrity: computeFactoryIntegrity(forged) }, null, 2));
+      };
+      // The unconfirmed lane rewrites the file again right after the engine restored its copy.
+      vi.spyOn(EngineLedger.prototype, 'restore').mockImplementation(function (this: EngineLedger, paths: readonly string[], stamp: string) {
+        const aside = original.call(this, paths, stamp);
+        rewrite(h.root);
+        return aside;
+      });
+      try {
+        const forge: LaneScript = (ctx) => { rewrite(ctx.root); return { finalText: verdictBlock('approve', ctx.baseSha), credits: 3 }; };
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), forge]);
+        lanes.cancelFails = true;
+        const out = await runFactoryEngine(opts(lanes));
+        expect(out.exitCode).toBe(EXIT_AWAITING_HUMAN);
+        expect(out.gate?.name).toBe('state-tampered');
+        const state = readFactoryState(h.root, ISSUE)!;
+        expect(state.phase).toBe('review');
+        expect(state.gate?.name).toBe('state-tampered');
+        expect(ledger().mismatches([factoryStatePath(h.root, ISSUE)])).toEqual([]);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 

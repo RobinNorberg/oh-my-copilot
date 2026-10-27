@@ -37,7 +37,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import {
   createShipState,
   latestVerdict,
-  readShipState,
+  parseShipState,
   recordVerdict,
   shipStatePath,
   updateShipState,
@@ -50,7 +50,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProfile, type LaneResult } from './lane.js';
-import { defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
+import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
@@ -62,6 +62,8 @@ import {
   factoryStateDir,
   factoryStatePath,
   moveTo,
+  overwriteFactoryState,
+  parseFactoryState,
   readFactoryState,
   reviewerName,
   setGate,
@@ -296,38 +298,60 @@ class FactoryEngine {
     if (bad.length > 0) throw new StateTamperedError(bad);
   }
 
-  /** Read-modify-write; every save adds the wall time since the last one to elapsedMs. */
-  private save(mutate: (s: FactoryRunState) => FactoryRunState): FactoryRunState {
-    this.check();
+  /** Refuses (StateTamperedError) unless `bytes`, one read of `path`, are the engine's last write of it. */
+  private ownBytes(path: string, bytes: Buffer | null): void {
+    if (!this.ledger.matches(path, bytes)) throw new StateTamperedError([resolve(path)]);
+  }
+
+  /** The wall time since the last save, for elapsedMs. */
+  private tick(): number {
     const t = this.clock();
     const delta = Math.max(0, t - this.lastTick);
     this.lastTick = t;
-    this.state = updateFactoryState(this.o.root, this.o.issue, (cur) => {
-      if (!cur) throw new FactoryStepError(`the factory run state for issue #${this.o.issue} disappeared`);
-      return { ...mutate(cur), elapsedMs: cur.elapsedMs + delta };
-    }, { onWrite: (path, content) => this.ledger.record(path, content) });
+    return delta;
+  }
+
+  /**
+   * Write the next state. The engine's in-memory state is authoritative
+   * while it runs (it is never re-read from disk except at resume); under the
+   * lock, the file's bytes must still be the engine's last write, and the
+   * exact bytes written are recorded.
+   */
+  private save(mutate: (s: FactoryRunState) => FactoryRunState): FactoryRunState {
+    this.check();
+    const delta = this.tick();
+    const own = this.state;
+    this.state = updateFactoryState(this.o.root, this.o.issue, () => ({ ...mutate(own), elapsedMs: own.elapsedMs + delta }), {
+      verify: (bytes) => this.ownBytes(this.statePath, bytes),
+      onWrite: (path, content) => this.ledger.record(path, content),
+    });
     return this.state;
   }
 
+  /** Every engine-owned file still holds the engine's last write; the state is the engine's own copy. */
   private reload(): FactoryRunState {
     this.check();
-    const s = readFactoryState(this.o.root, this.o.issue);
-    if (!s) throw new FactoryStepError(`the factory run state for issue #${this.o.issue} disappeared`);
-    if (!verifyFactoryIntegrity(s)) throw new FactoryStepError(`the factory run state for issue #${this.o.issue} fails its integrity check`);
-    this.state = s;
-    return s;
+    return this.state;
   }
 
+  /** The ship state parsed from one read of its bytes, which must be the engine's last write. */
   private readShip(pr: number): ShipState | null {
     this.trackShip(pr);
     this.check();
-    return readShipState(this.o.root, pr);
+    const path = shipStatePath(this.o.root, pr);
+    const bytes = currentBytes(path);
+    this.ownBytes(path, bytes);
+    return bytes === null ? null : parseShipState(path, pr, bytes.toString('utf8'));
   }
 
   private writeShip(pr: number, mutate: (cur: ShipState | null) => ShipState): ShipState {
     this.trackShip(pr);
     this.check();
-    return updateShipState(this.o.root, pr, mutate, { onWrite: (path, content) => this.ledger.record(path, content) });
+    const path = shipStatePath(this.o.root, pr);
+    return updateShipState(this.o.root, pr, mutate, {
+      verify: (bytes) => this.ownBytes(path, bytes),
+      onWrite: (p, content) => this.ledger.record(p, content),
+    });
   }
 
   private gate(name: string, reason: string): void {
@@ -389,7 +413,12 @@ class FactoryEngine {
       }
       if (bad.length > 0) return this.onTampered(new StateTamperedError(bad));
     }
-    const existing = readFactoryState(this.o.root, this.o.issue);
+    // One read: the bytes compared with the engine's record are the bytes parsed.
+    const bytes = currentBytes(this.statePath);
+    if (this.ledger.tracks(this.statePath) && !this.ledger.matches(this.statePath, bytes)) {
+      return this.onTampered(new StateTamperedError([resolve(this.statePath)]));
+    }
+    const existing = bytes === null ? null : parseFactoryState(this.statePath, this.o.issue, bytes.toString('utf8'));
     if (existing && !this.ledger.tracks(this.statePath)) {
       this.progress.emit(existing.phase, 'fail', 'no engine record');
       return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for issue #${this.o.issue} has no engine record in ${this.ledger.file} (written outside omg factory run or by an older version); the run is not resumed. Move ${this.statePath} aside to start over` };
@@ -405,8 +434,10 @@ class FactoryEngine {
       if (!existing) {
         if (!isPlainBranchName(this.o.base)) throw new FactoryStepError(`base ${JSON.stringify(this.o.base)} is not a branch name`);
         this.check();
-        this.state = updateFactoryState(this.o.root, this.o.issue, (cur) => cur ?? createFactoryState({ issue: this.o.issue, repoUrl: '', base: this.o.base }, this.iso()),
-          { onWrite: (path, content) => this.ledger.record(path, content) });
+        this.state = updateFactoryState(this.o.root, this.o.issue, () => createFactoryState({ issue: this.o.issue, repoUrl: '', base: this.o.base }, this.iso()), {
+          verify: (b) => { if (b !== null) throw new StateTamperedError([resolve(this.statePath)]); },
+          onWrite: (path, content) => this.ledger.record(path, content),
+        });
       } else {
         this.state = existing;
         // A human looked at the gate; what they changed in the repo is the new baseline.
@@ -435,40 +466,71 @@ class FactoryEngine {
     return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
   }
 
+  /** The engine's own state: its in-memory copy, else the bytes of its last write in the ledger. */
+  private ownState(): FactoryRunState | null {
+    const mem = this.state as FactoryRunState | undefined;
+    if (mem) return mem;
+    const own = this.ledger.recorded(this.statePath);
+    if (!own) return null;
+    try { return parseFactoryState(this.statePath, this.o.issue, own); } catch { return null; }
+  }
+
   /**
    * An engine-owned file changed outside the engine: move the changed copy
    * aside, put the engine's bytes back, stop any lane, park at state-tampered.
+   * The park is written from the engine's own state without reading or
+   * checking the files again (an unconfirmed lane may still be rewriting
+   * them), and nothing here throws: a failure is reported, not raised.
    */
   private async onTampered(error: StateTamperedError): Promise<FactoryRunOutcome> {
-    const stamp = this.iso().replace(/[:.]/g, '-');
-    const aside = this.ledger.restore(error.paths, stamp);
-    const s = existsSync(this.statePath) ? readFactoryState(this.o.root, this.o.issue) : null;
     const changed = error.paths.map((p) => this.rel(p)).join(', ');
-    if (!s) {
-      this.progress.emit('intake', 'fail', 'state tampered');
-      return { exitCode: 1, phase: 'failed', state: null, message: `engine-owned state changed outside the engine (${changed}) before the engine wrote a run state; nothing was resumed` };
-    }
-    this.state = s;
-    const at = this.iso();
-    const stopped = new Map<string, NonNullable<FactoryLaneRecord['usage']>>();
-    for (const lane of s.lanes.filter((l) => l.status === 'running')) {
-      let usage = capUsage(lane.maxCredits);
-      if (lane.jobId) {
-        try {
-          const c = await this.o.lanes.cancel(lane.jobId);
-          if (isTerminalLaneState(c.result.state)) usage = usageOf(c.result);
-        } catch { /* counted at its cap */ }
+    try {
+      const stamp = this.iso().replace(/[:.]/g, '-');
+      let aside: string[] = [];
+      let restoreNote = '';
+      try {
+        aside = this.ledger.restore(error.paths, stamp);
+      } catch (e) {
+        restoreNote = ` (restoring the engine's copies failed: ${errText(e)})`;
       }
-      stopped.set(lane.id, usage);
-      this.ledger.dropBaseline(lane.id);
+      const s = this.ownState();
+      if (!s) {
+        this.progress.emit('intake', 'fail', 'state tampered');
+        return { exitCode: 1, phase: 'failed', state: null, message: `engine-owned state changed outside the engine (${changed}) before the engine wrote a run state; nothing was resumed` };
+      }
+      this.state = s;
+      const at = this.iso();
+      const stopped = new Map<string, NonNullable<FactoryLaneRecord['usage']>>();
+      for (const lane of s.lanes.filter((l) => l.status === 'running')) {
+        let usage = capUsage(lane.maxCredits);
+        if (lane.jobId) {
+          try {
+            const c = await this.o.lanes.cancel(lane.jobId);
+            if (isTerminalLaneState(c.result.state)) usage = usageOf(c.result);
+          } catch { /* counted at its cap */ }
+        }
+        stopped.set(lane.id, usage);
+        try { this.ledger.dropBaseline(lane.id); } catch { /* the gate below still parks */ }
+      }
+      try { this.ledger.setRecheck(undefined); } catch { /* the gate below still parks */ }
+      const reason = `${changed} changed outside the engine; the changed copies were moved aside (${aside.map((p) => this.rel(p)).join(', ') || 'removed files'}) and the engine's own copies restored${restoreNote}. Check what wrote them (a lane may be prompt-injected), then rerun omg factory run ${this.o.issue}`;
+      const parked = setGate({
+        ...s,
+        elapsedMs: s.elapsedMs + this.tick(),
+        lanes: s.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled' as const, endedAt: at, usage: stopped.get(l.id)!, note: 'cancelled: engine state tampered' } : l)),
+      }, 'state-tampered', reason, at);
+      try {
+        const { sealed, content } = overwriteFactoryState(this.o.root, this.o.issue, parked);
+        this.ledger.record(this.statePath, content);
+        this.state = sealed;
+      } catch (e) {
+        this.state = parked;
+        this.o.warn?.(`omg factory run: could not write the state-tampered park: ${errText(e)}`);
+      }
+      return this.parked(this.state.gate!);
+    } catch (e) {
+      return { exitCode: EXIT_AWAITING_HUMAN, phase: this.ownState()?.phase ?? null, state: this.ownState(), message: `awaiting-human: state-tampered: ${changed} changed outside the engine, and parking failed: ${errText(e)}. Check the state files by hand, then rerun omg factory run ${this.o.issue}.` };
     }
-    this.ledger.setRecheck(undefined);
-    const reason = `${changed} changed outside the engine; the changed copies were moved aside (${aside.map((p) => this.rel(p)).join(', ') || 'removed files'}) and the engine's own copies restored. Check what wrote them (a lane may be prompt-injected), then rerun omg factory run ${this.o.issue}`;
-    this.save((x) => setGate({
-      ...x,
-      lanes: x.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled' as const, endedAt: at, usage: stopped.get(l.id)!, note: 'cancelled: engine state tampered' } : l)),
-    }, 'state-tampered', reason, at));
-    return this.parked(this.state.gate!);
   }
 
   private cancelWanted(s: FactoryRunState): boolean {

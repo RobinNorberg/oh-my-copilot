@@ -197,9 +197,14 @@ function shapeProblem(s: Record<string, unknown>): string | null {
 export function readShipState(repoRoot: string, pr: number): ShipState | null {
   const path = shipStatePath(repoRoot, pr);
   if (!existsSync(path)) return null;
+  return parseShipState(path, pr, readFileSync(path, 'utf8'));
+}
+
+/** Parse and shape-check the bytes of a ship state file (read once by the caller). */
+export function parseShipState(path: string, pr: number, raw: string): ShipState {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
+    parsed = JSON.parse(raw);
   } catch (error) {
     throw new ShipStateError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -215,6 +220,12 @@ export interface UpdateShipStateOptions {
   allowUnverified?: boolean;
   /** Called with the exact bytes written (omg factory run records them in its engine ledger). */
   onWrite?: (path: string, content: string) => void;
+  /**
+   * Called under the lock with the exact bytes read (null: no file); throw to
+   * refuse. `mutate` gets the state parsed from these same bytes, never from a
+   * second read (omg factory run compares them with its engine ledger).
+   */
+  verify?: (bytes: Buffer | null) => void;
 }
 
 /**
@@ -234,7 +245,9 @@ export function updateShipState(
   const path = shipStatePath(repoRoot, pr);
   ensureDirSync(join(path, '..'));
   return withFileLockSync(lockPathFor(path), () => {
-    const current = readShipState(repoRoot, pr);
+    const bytes = existsSync(path) ? readFileSync(path) : null;
+    options.verify?.(bytes);
+    const current = bytes === null ? null : parseShipState(path, pr, bytes.toString('utf8'));
     if (current && !options.allowUnverified && !verifyShipIntegrity(current)) {
       throw new ShipStateError(`${path} fails its integrity check (edited outside omg ship); an owner can replace it with OMG_SHIP_HUMAN=1 omg ship init ${pr} --force`);
     }

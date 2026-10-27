@@ -83,7 +83,8 @@ export function emptyHooksDir(dir: string): string {
   return path;
 }
 
-function currentBytes(path: string): Buffer | null {
+/** The file's bytes, or null when it does not exist. */
+export function currentBytes(path: string): Buffer | null {
   return existsSync(path) ? readFileSync(path) : null;
 }
 
@@ -122,6 +123,17 @@ export class EngineLedger {
   record(path: string, content: string | null): void {
     this.data.files[resolve(path)] = { sha256: content === null ? null : sha256(content), content };
     this.persist();
+  }
+
+  /**
+   * True when `bytes` (one read of `path`, null: absent) are exactly the
+   * engine's last write of it. The caller parses these same bytes, so a swap
+   * between a hash and a second read cannot happen. Untracked: false.
+   */
+  matches(path: string, bytes: Buffer | null): boolean {
+    const rec = this.data.files[resolve(path)];
+    if (!rec) return false;
+    return (bytes === null ? null : sha256(bytes)) === rec.sha256;
   }
 
   /** Engine-owned files whose bytes differ from the engine's last write (optionally only `paths`). */
