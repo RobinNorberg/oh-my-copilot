@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f35cb14770d741ad29ce2288d3a877f1c8455aba",
-    "sourceSha256": "55e4333229eb89128baae1a5d00898d111c78e4ef9a5d4870bcbecab81325b62",
+    "head": "afa6c417ce0335e730ff7134391c8a6b1c3d4d98",
+    "sourceSha256": "e067b176bf5e5e0a731dfbac5b46c3ee9c73235eeec23e951638cdbb6d017781",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f35cb14770d741ad29ce2288d3a877f1c8455aba",
-  "sourceSha256": "55e4333229eb89128baae1a5d00898d111c78e4ef9a5d4870bcbecab81325b62",
+  "head": "afa6c417ce0335e730ff7134391c8a6b1c3d4d98",
+  "sourceSha256": "e067b176bf5e5e0a731dfbac5b46c3ee9c73235eeec23e951638cdbb6d017781",
   "counts": {
     "public": {
       "skills": 63,
@@ -87811,6 +87811,11 @@
       },
       {
         "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "src/smoke/copilot-session-eval.ts",
         "kind": "imports"
       },
@@ -100952,11 +100957,11 @@
     ],
     "stats": {
       "nodeCount": 8752,
-      "edgeCount": 9854,
-      "importEdgeCount": 8244,
+      "edgeCount": 9855,
+      "importEdgeCount": 8245,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
-  "manifestSha256": "dbd5018c3fbb54f4233dcb4f40bd41105ae0d796f0f5a83c0549c589a3d71a73"
+  "manifestSha256": "bc4921a7e4c777c6421f137bad617bd02cf1f86ace99bf5de6fa70aab24f49ce"
 }
