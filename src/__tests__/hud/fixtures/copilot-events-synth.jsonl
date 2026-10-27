@@ -1,0 +1,25 @@
+{"type":"$comment","data":{"note":"SYNTHETIC: written to the Copilot CLI 1.0.103 session-events.schema.json field names, not captured live. Also covers a malformed line and an unknown event type."}}
+{"id":"e01","timestamp":"2026-10-27T10:00:00.000Z","parentId":null,"type":"session.start","data":{"sessionId":"6f1c0e2a-0000-4000-8000-00000000b002","version":1,"producer":"copilot-agent","copilotVersion":"1.0.103"}}
+{"id":"e02","timestamp":"2026-10-27T10:00:01.000Z","parentId":"e01","type":"session.model_change","data":{"newModel":"claude-sonnet-5.5","reasoningEffort":"high"}}
+{"id":"e03","timestamp":"2026-10-27T10:00:05.000Z","parentId":"e02","type":"user.message","data":{"content":"scrubbed"}}
+{"id":"e04","timestamp":"2026-10-27T10:00:07.000Z","parentId":"e03","type":"tool.execution_start","data":{"toolCallId":"call_skill","toolName":"skill","arguments":{"skill":"oh-my-copilot:ralph"}}}
+{"id":"e05","timestamp":"2026-10-27T10:00:07.100Z","parentId":"e04","type":"skill.invoked","data":{"name":"oh-my-copilot:ralph","path":"skills/ralph/SKILL.md","content":"scrubbed"}}
+{"id":"e06","timestamp":"2026-10-27T10:00:07.200Z","parentId":"e05","type":"tool.execution_complete","data":{"toolCallId":"call_skill","success":true}}
+{"id":"e07","timestamp":"2026-10-27T10:00:10.000Z","parentId":"e06","type":"tool.execution_start","data":{"toolCallId":"call_view","toolName":"view","arguments":{"path":"C:\\Code\\OMC\\src\\hud\\index.ts"}}}
+{"id":"e08","timestamp":"2026-10-27T10:00:10.300Z","parentId":"e07","type":"tool.execution_complete","data":{"toolCallId":"call_view","success":true}}
+{"id":"e09","timestamp":"2026-10-27T10:00:12.000Z","parentId":"e08","type":"tool.execution_start","data":{"toolCallId":"call_ps","toolName":"powershell","arguments":{"command":"npx vitest run src/__tests__/hud --reporter=dot","description":"run tests"}}}
+{"id":"e10","timestamp":"2026-10-27T10:00:20.000Z","parentId":"e09","type":"tool.execution_complete","data":{"toolCallId":"call_ps","success":false,"error":{"message":"scrubbed"}}}
+{"type":"tool.execution_start","data":{"toolCallId":"broken
+{"id":"e11","timestamp":"2026-10-27T10:00:21.000Z","parentId":"e10","type":"permission.requested","data":{"requestId":"perm_done","permissionRequest":{"kind":"write","intention":"edit","fileName":"src/hud/render.ts","diff":"scrubbed","canOfferSessionApproval":true}}}
+{"id":"e12","timestamp":"2026-10-27T10:00:22.000Z","parentId":"e11","type":"permission.completed","data":{"requestId":"perm_done","result":{"kind":"approved"}}}
+{"id":"e13","timestamp":"2026-10-27T10:00:30.000Z","parentId":"e12","type":"tool.execution_start","data":{"toolCallId":"call_task_exec","toolName":"task","arguments":{"agent_type":"executor","prompt":"scrubbed"}}}
+{"id":"e14","timestamp":"2026-10-27T10:00:30.100Z","parentId":"e13","type":"subagent.started","data":{"toolCallId":"call_task_exec","agentName":"executor","agentDisplayName":"Executor","agentDescription":"lane-b: events reader","model":"gpt-5.4"}}
+{"id":"e15","timestamp":"2026-10-27T10:00:31.000Z","parentId":"e14","type":"tool.execution_start","data":{"toolCallId":"call_task_explore","toolName":"task","arguments":{"agent_type":"explore","prompt":"scrubbed"}}}
+{"id":"e16","timestamp":"2026-10-27T10:00:31.100Z","parentId":"e15","type":"subagent.started","data":{"toolCallId":"call_task_explore","agentName":"explore","agentDisplayName":"Explore","agentDescription":"find readers","model":"claude-haiku-4.5"}}
+{"id":"e17","timestamp":"2026-10-27T10:01:10.000Z","parentId":"e16","type":"subagent.completed","data":{"toolCallId":"call_task_explore","agentName":"explore","agentDisplayName":"Explore","durationMs":38900}}
+{"id":"e18","timestamp":"2026-10-27T10:01:20.000Z","parentId":"e17","type":"session.mode_changed","data":{"previousMode":"interactive","newMode":"autopilot"}}
+{"id":"e19","timestamp":"2026-10-27T10:02:00.000Z","parentId":"e18","type":"session.compaction_start","data":{"currentTokens":150000,"tokenLimit":200000}}
+{"id":"e20","timestamp":"2026-10-27T10:02:20.000Z","parentId":"e19","type":"session.compaction_complete","data":{"success":true,"preCompactionTokens":150000,"postCompactionTokens":42000}}
+{"id":"e21","timestamp":"2026-10-27T10:02:30.000Z","parentId":"e20","type":"session.background_tasks_changed","data":{"note":"type the reader does not handle"}}
+{"id":"e22","timestamp":"2026-10-27T10:03:00.000Z","parentId":"e21","type":"permission.requested","data":{"requestId":"perm_open","permissionRequest":{"kind":"shell","fullCommandText":"git push origin feat/hud-copilot-data","intention":"push","commands":[],"possiblePaths":[],"possibleUrls":[],"hasWriteFileRedirection":false,"canOfferSessionApproval":false}}}
+{"id":"e23","timestamp":"2026-10-27T10:03:10.000Z","parentId":"e22","type":"session.usage_checkpoint","data":{"totalNanoAiu":420000000,"totalPremiumRequests":1}}
