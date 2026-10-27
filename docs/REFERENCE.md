@@ -882,6 +882,21 @@ The link's own SessionStart binds the link to its host session: the first sessio
 
 Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. The root is dropped when it overlaps the link's working directory, because an AFK link may write there and could rewrite the plugin's hooks; a chain over the plugin's own repo needs the plugin installed. On Windows a root containing `%` is dropped as well. Limitation: Copilot fires `sessionEnd` after every turn, also in `-p` mode, so a link that a Stop hook keeps going into a second turn hands off after its first turn. The closed ledger stops later turns from enqueuing again, but the next link may start while this one still runs. A single-prompt link is not affected. `omg factory status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
 
+#### `omg factory run` (experimental)
+
+`omg factory run <issue>` drives one GitHub issue through these steps. An implement lane commits in its own worktree. The engine then pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The run then parks at `awaiting-human: prepare`. Prepare, gates and the merge stay manual, and merge is always a human step. It runs only when started by hand; the listener never starts it.
+
+```bash
+omg factory run <issue> [--dry-run] [--json]   # run or resume; --dry-run reads the issue and plan only
+omg factory run status <issue> [--json]        # the persisted state, read-only
+omg factory run cancel <issue>                 # stop the running engine and its lane; keeps the PR, branch and worktrees
+```
+
+- **Plan:** the issue needs an `Acceptance criteria` heading, or an `omg-plan: <repo path>` line in its body or a comment. Without one the run stops at `awaiting-human: needs-plan`.
+- **Credits:** every lane starts with an AI-credit cap, `factory.run.laneMaxCredits`. The default is 30, which is also the CLI minimum. The optional `factory.run.maxRunCredits` stops the run at `awaiting-human: budget`. Both keys come from the user config. The project config can only lower them.
+- **Review:** a review lane runs on the review profile. The engine compares the shared git state before and after it: refs, config, `hooks/`, `info/`, both HEADs and the lane's changes. Any difference stops the run at `awaiting-human: review-tampered` and drops that verdict.
+- **State and resume:** state lives in `.omg/state/factory/run-<issue>.json`. Rerun the same command to resume after any `awaiting-human` stop. Exit codes are 0 for the `prepare` park or a cancel, 4 for other `awaiting-human` stops, 1 for a failure and 2 for a usage error. The full docs come with the rest of the engine.
+
 ### `omg smoke copilot`
 
 Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a throwaway `COPILOT_HOME`. Use it on a local build before opening a PR or tagging a release.

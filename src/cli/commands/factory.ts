@@ -19,12 +19,22 @@
 import { Command } from 'commander';
 import { integerOption } from '../utils/integer-option.js';
 import chalk from 'chalk';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus, type ChainStatus } from '../../factory/status.js';
 import { type RouteTable } from '../../hooks/session-end/routing.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { resolveProjectConfigPath } from '../../config/project-config-path.js';
+import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
+import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
+import { runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
+import { factoryGuardExec } from '../../factory/run/exec.js';
+import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
+import { factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity, type FactoryRunState } from '../../factory/run/state.js';
+import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
+import { defaultExec, type Exec } from '../../ship/exec.js';
+import { parseJsonc } from '../../utils/jsonc.js';
 
 export function renderChainStatus(status: ChainStatus): string {
   const lines: string[] = [];
@@ -52,9 +62,165 @@ export function renderChainStatus(status: ChainStatus): string {
   return lines.join('\n');
 }
 
+/** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
+export interface FactoryRunDeps {
+  exec: Exec;
+  lanes: (root: string) => LaneBackend;
+  /** Limits from `factory.run` (trusted user config; the project config can only tighten). */
+  limits: (root: string) => LoadedFactoryRunLimits;
+  /** The integration branch: ship.base from the project config, else the user config, else dev. */
+  base: (root: string) => string;
+}
+
+function projectConfig(root: string): unknown {
+  const path = resolveProjectConfigPath(root);
+  return existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
+}
+
+export const defaultFactoryRunDeps: FactoryRunDeps = {
+  exec: defaultExec,
+  // `omg factory run` without --dry-run is itself the opt-in to live, billed lanes.
+  lanes: () => new CopilotLaneBackend(new CopilotRunManager(defaultCopilotRunDeps()), { allowLive: true }),
+  limits: (root) => resolveFactoryRunLimits(userConfigLayers().trustedUser, projectConfig(root)),
+  base: (root) => {
+    const pick = (c: unknown) => (c as { ship?: { base?: unknown } } | null | undefined)?.ship?.base;
+    return resolveShipConfig({ base: pick(projectConfig(root)) ?? pick(userConfigLayers().user) }).base;
+  },
+};
+
+class FactoryUsageError extends Error {}
+
+/** --dry-run never starts a lane: any call is a bug and throws. */
+const NO_LANES: LaneBackend = {
+  kind: 'local-sdk',
+  start: () => Promise.reject(new Error('omg factory run --dry-run starts no lanes')),
+  poll: () => Promise.reject(new Error('omg factory run --dry-run starts no lanes')),
+  wait: () => Promise.reject(new Error('omg factory run --dry-run starts no lanes')),
+  cancel: () => Promise.reject(new Error('omg factory run --dry-run starts no lanes')),
+};
+
+function parseIssue(raw: string | undefined): number {
+  const n = Number(String(raw ?? '').replace(/^#/, ''));
+  if (!Number.isInteger(n) || n <= 0) throw new FactoryUsageError(`issue must be a positive number, got ${JSON.stringify(raw)}`);
+  return n;
+}
+
+function factoryRoot(exec: Exec): string {
+  const r = exec('git', ['rev-parse', '--show-toplevel']);
+  if (r.status !== 0) throw new FactoryUsageError('omg factory run must run inside a git repository');
+  return r.stdout.trim();
+}
+
+async function factoryGuarded(json: boolean, fn: () => Promise<number> | number): Promise<void> {
+  try {
+    process.exitCode = await fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+    else console.error(chalk.red(`Error: ${message}`));
+    process.exitCode = error instanceof FactoryUsageError ? 2 : 1;
+  }
+}
+
+export function renderFactoryRunState(state: FactoryRunState): string {
+  const lines = [`${chalk.bold(`factory run #${state.issue}`)}  phase=${chalk.cyan(state.phase)}  base=${state.base}  branch=${state.branch}${state.pr ? `  PR #${state.pr}` : ''}`];
+  if (state.gate) lines.push(chalk.yellow(`awaiting-human: ${state.gate.name}: ${state.gate.reason}`));
+  if (state.cancelRequested && state.phase !== 'cancelled') lines.push(chalk.yellow('cancel requested'));
+  if (state.head) lines.push(`head ${state.head.slice(0, 12)}`);
+  lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
+  for (const lane of state.lanes) {
+    const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
+    lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.jobId ? ` job ${lane.jobId}` : ''}`);
+  }
+  for (const h of state.history.slice(-5)) lines.push(chalk.gray(`  ${h.at} ${h.from ?? '-'} -> ${h.to}: ${h.note}`));
+  return lines.join('\n');
+}
+
+function printOutcome(json: boolean, outcome: FactoryRunOutcome): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...outcome }, null, 2));
+    return;
+  }
+  if (outcome.state) console.log(renderFactoryRunState(outcome.state));
+  const color = outcome.exitCode === 0 ? chalk.green : outcome.exitCode === 1 ? chalk.red : chalk.yellow;
+  console.log(color(outcome.message));
+}
+
+/** `omg factory run <issue>`, `run cancel <issue>`, `run status <issue>` (experimental; manual trigger only). */
+export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps): Command {
+  const exec = factoryGuardExec(deps.exec);
+  const run = new Command('run');
+  run
+    .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds, then park for the human prepare and merge')
+    .argument('[issue]', 'GitHub issue number')
+    .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
+    .option('--json', 'JSON output')
+    .action((issueRaw: string | undefined, o: { dryRun?: boolean; json?: boolean }) =>
+      factoryGuarded(Boolean(o.json), async () => {
+        const issue = parseIssue(issueRaw);
+        const root = factoryRoot(exec);
+        const { limits, warnings } = deps.limits(root);
+        for (const w of warnings) console.error(chalk.yellow(w));
+        let signals = 0;
+        const onSignal = () => {
+          signals += 1;
+          if (signals > 1) process.exit(130);
+          console.error(chalk.yellow('omg factory run: stopping after the current poll (cancelling the lane); press again to exit at once'));
+        };
+        if (!o.dryRun) { process.on('SIGINT', onSignal); process.on('SIGTERM', onSignal); }
+        try {
+          const outcome = await runFactoryEngine({
+            root, issue, exec: deps.exec, limits, base: deps.base(root), dryRun: Boolean(o.dryRun),
+            lanes: o.dryRun ? NO_LANES : deps.lanes(root),
+            interrupted: () => signals > 0,
+            warn: (m) => console.error(chalk.yellow(m)),
+          });
+          printOutcome(Boolean(o.json), outcome);
+          return outcome.exitCode;
+        } finally {
+          process.off('SIGINT', onSignal);
+          process.off('SIGTERM', onSignal);
+        }
+      }));
+
+  run
+    .command('cancel <issue>')
+    .description('Ask the running engine to cancel the lane and stop (the PR, branch and worktrees are kept)')
+    .option('--json', 'JSON output')
+    .action((issueRaw: string, _o: unknown, c: Command) =>
+      factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        const issue = parseIssue(issueRaw);
+        const state = requestFactoryCancel(factoryRoot(exec), issue, new Date().toISOString());
+        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, cancelRequested: true, phase: state.phase }, null, 2));
+        else console.log(chalk.green(`cancel requested for factory run #${issue} (phase ${state.phase}); a running engine stops within seconds, otherwise the next run finishes the cancel`));
+        return 0;
+      }));
+
+  run
+    .command('status <issue>')
+    .description('Print the persisted factory run state (read-only)')
+    .option('--json', 'JSON output')
+    .action((issueRaw: string, _o: unknown, c: Command) =>
+      factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        const issue = parseIssue(issueRaw);
+        const root = factoryRoot(exec);
+        const state = readFactoryState(root, issue);
+        if (!state) throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
+        const integrity = verifyFactoryIntegrity(state);
+        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ...state, integrityOk: integrity, runCredits: runCredits(state) }, null, 2));
+        else {
+          console.log(renderFactoryRunState(state));
+          if (!integrity) console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
+        }
+        return 0;
+      }));
+  return run;
+}
+
 export function factoryCommand(): Command {
   const cmd = new Command('factory');
   cmd.description('Software factory automation (chain trigger + intake listener)');
+  cmd.addCommand(factoryRunCommand());
 
   cmd
     .command('listen')
