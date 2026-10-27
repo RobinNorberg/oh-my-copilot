@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { join, sep, win32 } from 'path';
+import { join, sep } from 'path';
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -33,7 +33,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from 'fs';
-import { purgeStalePluginCacheVersions, pickHighestVersionDir } from '../utils/paths.js';
+import { purgeStalePluginCacheVersions, versionLeaf, compareSemverDesc } from '../utils/paths.js';
 import { IS_WIN } from './helpers/platform.js';
 
 /** The product links version dirs with junctions on win32 (no symlink privilege). */
@@ -208,7 +208,7 @@ describe('purgeStalePluginCacheVersions', () => {
       'C:\\cfg\\plugins\\cache\\omc\\p\\5.0.0',
       'C:\\cfg\\plugins\\cache\\omc\\p\\1.0.0',
     ];
-    expect(pickHighestVersionDir(dirs, win32.basename)).toBe(dirs[1]);
+    expect([...dirs].sort((a, b) => compareSemverDesc(versionLeaf(a), versionLeaf(b)))[0]).toBe(dirs[1]);
   });
 
   it('links a stale version to the highest active version by version name', () => {

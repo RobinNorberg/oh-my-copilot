@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { toForwardSlash, toShellPath, getDataDir, getConfigDir, getStateDir, getGlobalOmcConfigRoot, getGlobalOmcStateRoot, getGlobalOmcConfigPath, getGlobalOmcStatePath, getGlobalOmcConfigCandidates, getGlobalOmcStateCandidates, getLegacyOmcDir, } from '../paths.js';
+import { toForwardSlash, toShellPath, getDataDir, getConfigDir, getStateDir, getGlobalOmcConfigRoot, getGlobalOmcStateRoot, getGlobalOmcConfigPath, getGlobalOmcStatePath, getGlobalOmcConfigCandidates, getGlobalOmcStateCandidates, getLegacyOmcDir, versionLeaf, compareSemverDesc, } from '../paths.js';
 import { toPosix } from '../../__tests__/helpers/platform.js';
 describe('cross-platform path utilities', () => {
     describe('toForwardSlash', () => {
@@ -169,6 +169,37 @@ describe('cross-platform path utilities', () => {
                 `${toPosix(getLegacyOmcDir())}/state/reply-session-registry.jsonl`,
             ]);
         });
+    });
+});
+describe('active plugin cache target selection', () => {
+    it('extracts the version leaf from either path separator', () => {
+        // These paths come from the plugin registration file, so on Windows they are
+        // native. Splitting on '/' alone returned the whole string, and the
+        // comparator then read the drive and directory names as version components.
+        expect(versionLeaf('/home/u/.claude/plugins/cache/omc/ohmy/1.2.3')).toBe('1.2.3');
+        expect(versionLeaf('C:\\Users\\u\\.claude\\plugins\\cache\\omc\\ohmy\\1.2.3')).toBe('1.2.3');
+        expect(versionLeaf('C:\\Users\\u\\.claude\\plugins\\cache\\omc\\ohmy\\1.2.3\\')).toBe('1.2.3');
+    });
+    it('selects the newest active version from native Windows paths', () => {
+        // The exact expression used at the call site. Before the leaf fix both of
+        // these parsed to the same leading components and compared equal, so the
+        // stale directory could be relinked to whichever came first.
+        const dirs = [
+            'C:\\Users\\u\\.claude\\plugins\\cache\\omc\\ohmy\\1.2.3',
+            'C:\\Users\\u\\.claude\\plugins\\cache\\omc\\ohmy\\1.2.4',
+        ];
+        const newestFirst = [...dirs].sort((a, b) => compareSemverDesc(versionLeaf(a), versionLeaf(b)));
+        expect(versionLeaf(newestFirst[0])).toBe('1.2.4');
+        const reversed = [...dirs].reverse().sort((a, b) => compareSemverDesc(versionLeaf(a), versionLeaf(b)));
+        expect(versionLeaf(reversed[0])).toBe('1.2.4');
+    });
+    it('selects the newest active version from POSIX paths', () => {
+        const dirs = [
+            '/home/u/.claude/plugins/cache/omc/ohmy/1.2.10',
+            '/home/u/.claude/plugins/cache/omc/ohmy/1.2.9',
+        ];
+        const newestFirst = [...dirs].sort((a, b) => compareSemverDesc(versionLeaf(a), versionLeaf(b)));
+        expect(versionLeaf(newestFirst[0])).toBe('1.2.10');
     });
 });
 //# sourceMappingURL=paths.test.js.map

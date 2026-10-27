@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,6 +23,7 @@ const FIXTURE_NOW = new Date('2026-08-01T00:00:00.000Z');
 const ROOT = process.cwd();
 const WORKFLOW_PATH = join(ROOT, '.github', 'workflows', 'generated-artifact-authorization.yml');
 const MANIFEST_PATH = join(ROOT, '.github', 'generated-artifact-authorizations.json');
+const BUILDER_PATH = join(ROOT, 'scripts', 'build-generated-artifact-authorization.mjs');
 const VERIFIER_PATH = join(ROOT, 'scripts', 'verify-generated-artifact-authorization.mjs');
 const verifier = (await import(pathToFileURL(VERIFIER_PATH).href));
 const repositoryManifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
@@ -45,6 +47,12 @@ const EXPIRES_AT = exactAuthorization.expiresAt;
 const EXPIRY_INSTANT = Date.parse(EXPIRES_AT);
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
+}
+function authorizationFor(manifestToUpdate) {
+    const authorization = manifestToUpdate.authorizations.find(entry => entry.pullNumber === PULL_NUMBER);
+    if (!authorization)
+        throw new Error(`Missing authorization for #${PULL_NUMBER}`);
+    return authorization;
 }
 function apiFiles(records = exactAuthorization.generatedFiles) {
     return records.map(record => ({
@@ -178,28 +186,47 @@ describe('generated-artifact base trust root workflow', () => {
             ]),
         });
         const malformedRecord = clone(manifest);
-        delete malformedRecord.authorizations[0].generatedFiles[0].sha;
+        delete authorizationFor(malformedRecord).generatedFiles[0].sha;
         expect(() => verifier.validateAuthorizationManifest(malformedRecord)).toThrow('unexpected or missing fields');
         const duplicate = clone(manifest);
-        duplicate.authorizations.push(clone(duplicate.authorizations[0]));
+        duplicate.authorizations.push(clone(authorizationFor(duplicate)));
         expect(() => verifier.validateAuthorizationManifest(duplicate)).toThrow('duplicate pull numbers');
         for (const targetRef of ['*', 'main/**', '../main']) {
             const wildcardOrFallback = clone(manifest);
-            wildcardOrFallback.authorizations[0].targetRef = targetRef;
+            authorizationFor(wildcardOrFallback).targetRef = targetRef;
             expect(() => verifier.validateAuthorizationManifest(wildcardOrFallback)).toThrow('targetRef is not a canonical ref name');
         }
         const invalidMergeBase = clone(manifest);
-        invalidMergeBase.authorizations[0].mergeBaseSha = 'A'.repeat(40);
+        authorizationFor(invalidMergeBase).mergeBaseSha = 'A'.repeat(40);
         expect(() => verifier.validateAuthorizationManifest(invalidMergeBase)).toThrow('mergeBaseSha must be a lowercase 40-character SHA-1');
         const invalidHead = clone(manifest);
-        invalidHead.authorizations[0].headSha = 'A'.repeat(40);
+        authorizationFor(invalidHead).headSha = 'A'.repeat(40);
         expect(() => verifier.validateAuthorizationManifest(invalidHead)).toThrow('headSha must be a lowercase 40-character SHA-1');
+        const invalidExpiry = clone(manifest);
+        authorizationFor(invalidExpiry).expiresAt = '2027-01-01T00:00:00Z';
+        expect(() => verifier.validateAuthorizationManifest(invalidExpiry)).toThrow('expiresAt is not a canonical UTC timestamp');
         const invalidCount = clone(manifest);
-        invalidCount.authorizations[0].generatedDelta.count += 1;
+        authorizationFor(invalidCount).generatedDelta.count += 1;
         expect(() => verifier.validateAuthorizationManifest(invalidCount)).toThrow('count and digest');
+        const negativeCount = clone(manifest);
+        authorizationFor(negativeCount).generatedDelta.count = -1;
+        expect(() => verifier.validateAuthorizationManifest(negativeCount)).toThrow('must be a non-negative integer');
         const invalidDigest = clone(manifest);
-        invalidDigest.authorizations[0].generatedDelta.sha256 = 'b'.repeat(64);
+        authorizationFor(invalidDigest).generatedDelta.sha256 = 'b'.repeat(64);
         expect(() => verifier.validateAuthorizationManifest(invalidDigest)).toThrow('count and digest');
+    });
+    it('requires canonical UTC millisecond timestamps from the authorization builder', () => {
+        const args = [BUILDER_PATH, '--pull', '4506', '--base', 'HEAD', '--head', 'HEAD', '--target', 'dev', '--owner', OWNER];
+        const canonicalExpiry = '2027-01-01T00:00:00.000Z';
+        const valid = spawnSync(process.execPath, [...args, '--expires', canonicalExpiry], { cwd: ROOT, encoding: 'utf8' });
+        expect(valid.status).toBe(0);
+        expect(JSON.parse(valid.stdout).expiresAt).toBe(canonicalExpiry);
+        const missingMilliseconds = spawnSync(process.execPath, [...args, '--expires', '2027-01-01T00:00:00Z'], {
+            cwd: ROOT,
+            encoding: 'utf8',
+        });
+        expect(missingMilliseconds.status).toBe(2);
+        expect(missingMilliseconds.stderr).toContain('canonical UTC timestamp with milliseconds');
     });
     it('is immune to candidate workflow and checker replacement because the trusted workflow checks out only base bytes', () => {
         const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
@@ -457,13 +484,14 @@ describe('generated-artifact base-owned authorization decision', () => {
         const input = authorizedInput();
         const authorizedHeadSha = 'b'.repeat(40);
         const authorizedMergeBaseSha = 'c'.repeat(40);
-        input.manifest.authorizations[0].headSha = authorizedHeadSha;
-        input.manifest.authorizations[0].mergeBaseSha = authorizedMergeBaseSha;
+        const authorization = authorizationFor(input.manifest);
+        authorization.headSha = authorizedHeadSha;
+        authorization.mergeBaseSha = authorizedMergeBaseSha;
         expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
             allowed: false,
             reason: expect.stringContaining('authorized PR/target/head identity'),
         });
-        input.manifest.authorizations[0].headSha = HEAD_SHA;
+        authorization.headSha = HEAD_SHA;
         expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
             allowed: false,
             reason: expect.stringContaining('authorized merge base SHA'),
@@ -474,13 +502,13 @@ describe('generated-artifact base-owned authorization decision', () => {
             input.manifest.authorizations = [];
         }, 'no base-owned authorization entry');
         expectDenied(input => {
-            input.manifest.authorizations[0].generatedDelta.sha256 = 'b'.repeat(64);
+            authorizationFor(input.manifest).generatedDelta.sha256 = 'b'.repeat(64);
         }, 'count and digest');
         expectDenied(input => {
             input.files[0].sha = 'c'.repeat(40);
         }, 'authorized closure');
         expectDenied(input => {
-            input.manifest.authorizations[0].expiresAt = '2000-01-01T00:00:00.000Z';
+            authorizationFor(input.manifest).expiresAt = '2000-01-01T00:00:00.000Z';
         }, 'authorization has expired');
         expectDenied(input => {
             input.files.push({ status: 'added', filename: 'dist/extra.js', sha: 'd'.repeat(40) });
@@ -653,11 +681,12 @@ describe('generated-artifact base-owned authorization decision', () => {
             const authorized = authorizedInput();
             authorized.files = [record.api];
             authorized.livePull.changed_files = 1;
-            authorized.manifest.authorizations[0].generatedFiles = [record.canonical];
-            authorized.manifest.authorizations[0].generatedDelta = verifier.calculateGeneratedDelta([record.canonical]);
+            const authorization = authorizationFor(authorized.manifest);
+            authorization.generatedFiles = [record.canonical];
+            authorization.generatedDelta = verifier.calculateGeneratedDelta([record.canonical]);
             expect(verifier.evaluateGeneratedArtifactAuthorization(authorized)).toMatchObject({
                 allowed: true,
-                decision: { generatedDelta: authorized.manifest.authorizations[0].generatedDelta },
+                decision: { generatedDelta: authorization.generatedDelta },
             });
             const outsideClosure = authorizedInput();
             outsideClosure.files = [record.api];
@@ -819,7 +848,7 @@ describe('generated-artifact base-owned authorization decision', () => {
             expect(requestedPaths.indexOf(`/repos/${REPOSITORY}`)).toBeLessThan(requestedPaths.indexOf(`/repos/${REPOSITORY}/commits/main`));
             const advancedInput = authorizedInput();
             const authorizedHeadSha = 'b'.repeat(40);
-            advancedInput.manifest.authorizations[0].headSha = authorizedHeadSha;
+            authorizationFor(advancedInput.manifest).headSha = authorizedHeadSha;
             const advancePaths = [];
             const advanceFetch = async (request) => {
                 const url = new URL(typeof request === 'string' ? request : request instanceof URL ? request.href : request.url);
@@ -860,7 +889,7 @@ describe('generated-artifact base-owned authorization decision', () => {
             expect(advancePaths).not.toContain(`/repos/${REPOSITORY}/compare/${authorizedHeadSha}...${HEAD_SHA}?per_page=100&page=1`);
             const mergeBaseAdvancedInput = authorizedInput();
             const authorizedMergeBaseSha = 'c'.repeat(40);
-            mergeBaseAdvancedInput.manifest.authorizations[0].mergeBaseSha = authorizedMergeBaseSha;
+            authorizationFor(mergeBaseAdvancedInput.manifest).mergeBaseSha = authorizedMergeBaseSha;
             const mergeBaseAdvancePaths = [];
             const mergeBaseAdvanceFetch = async (request) => {
                 const url = new URL(typeof request === 'string' ? request : request instanceof URL ? request.href : request.url);

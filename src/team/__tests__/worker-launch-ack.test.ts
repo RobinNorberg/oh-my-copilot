@@ -2466,6 +2466,7 @@ describe('worker launch acknowledgement', () => {
     const consumed = await readAndConsumeWorkerLaunchDescriptor(materialized.bootstrapDescriptorPath, 'win32') as WorkerLaunchBootstrapSpec;
     const invocation = buildWindowsSupervisorInvocation(consumed, baselineEnv);
     if (!invocation.stdinPayload) throw new Error('worker_launch_test_supervisor_payload_missing');
+    expect(invocation.command.length + invocation.args.join(' ').length + 16).toBeLessThan(32_767);
     const payload = JSON.parse(invocation.stdinPayload) as {
       canonical_json: string;
       authority_digest: string;
@@ -3212,6 +3213,8 @@ describe('worker launch acknowledgement', () => {
 
   it('binds the Windows supervisor source, environment, Job Object, and argv protocol', () => {
     const source = buildWindowsSupervisorSource();
+    // Fork: the fork keeps its own supervisor (CreateProcessW with the pane
+    // console and .cmd/.bat via cmd.exe), not upstream's CreateConsoleProcess.
     const create = source.indexOf('CreateProcessW(');
     const assign = source.indexOf('AssignProcessToJobObject(');
     const resume = source.indexOf('ResumeThread(');

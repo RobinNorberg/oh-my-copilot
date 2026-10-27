@@ -71,6 +71,24 @@ function cmuxWorkerTarget(overrides: Partial<MailboxNotificationTarget> = {}): M
   });
 }
 
+function codexTrustPromptCapture(): string {
+  return [
+    'Folder access', 'D:\\test\\repo',
+    'Trust this folder? Codex can read, edit, and',
+    'run files here, subject to your permission',
+    'settings. Folder settings can run code',
+    'automatically, even without a model request.',
+    'Continue only if you trust these files. Your',
+    'trust decision will be saved.',
+    'Review the files in this folder before continuing.',
+    'Folder settings may allow code to run automatically.',
+    'Only proceed when you recognize and trust this project.',
+    'Folder access may include reading project files.',
+    '› 1. Trust and continue', '  2. Quit',
+    'enter continue · esc quit',
+  ].join('\n');
+}
+
 function matchingServerIdentityDependencies(): TmuxServerIdentityDependencies {
   if (!tmuxServerIdentity) {
     return {
@@ -431,5 +449,151 @@ describe('direct mailbox effect adapter', () => {
       && args.includes(identity.socket_path)
       && args.some(arg => arg.includes('send-keys')),
     )).toBe(true);
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture)('refuses native mailbox injection into a Codex folder-trust prompt', async () => {
+    const trustPrompt = codexTrustPromptCapture();
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: trustPrompt, stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+
+    expect(result).toEqual({ kind: 'not_attempted', reason: 'codex_workspace_untrusted' });
+    expect(tmuxUtilsMocks.tmuxExecAsync).toHaveBeenCalledTimes(2);
+    expect(tmuxUtilsMocks.tmuxCmdAsync.mock.calls.some(([args]) =>
+      args.some(argument => argument.includes('send-keys')),
+    )).toBe(false);
+    expect(dependencies.sendWorker).not.toHaveBeenCalled();
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture).each([
+    ['Cursor workspace trust', 'Workspace Trust Required\nDo you trust the contents of this directory?\nPass --trust, --yolo, or -f to skip this prompt.\n', 'cursor_workspace_untrusted'],
+    ['Claude files trust', 'Do you trust the files in this folder?\n❯ No, exit\n  Yes, proceed\n', 'trust_prompt_pending'],
+    ['Claude quick safety check', 'Quick safety check: Is this a project you created or one you trust?\n❯ No, exit\n  Yes, I trust this folder\n', 'trust_prompt_pending'],
+    ['directory trust', 'Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit\n', 'trust_prompt_pending'],
+    ['Codex hooks review', 'Hooks need review\n› 3. Continue without trusting\nPress enter to confirm or esc to go back\n', 'trust_prompt_pending'],
+  ] as const)('refuses native mailbox injection into a %s prompt', async (_label, capture, reason) => {
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: capture, stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+
+    expect(result).toEqual({ kind: 'not_attempted', reason });
+    expect(tmuxUtilsMocks.tmuxCmdAsync.mock.calls.some(([args]) =>
+      args.some(argument => argument.includes('send-keys')),
+    )).toBe(false);
+    expect(dependencies.sendWorker).not.toHaveBeenCalled();
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture)('fails closed when the native pane capture is empty before mailbox input', async () => {
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '', stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+
+    expect(result).toEqual({ kind: 'not_attempted', reason: 'mailbox_membership_unresolvable' });
+    expect(tmuxUtilsMocks.tmuxExecAsync).toHaveBeenCalledTimes(2);
+    expect(tmuxUtilsMocks.tmuxCmdAsync.mock.calls.some(([args]) =>
+      args.some(argument => argument.includes('send-keys')),
+    )).toBe(false);
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture)('does not submit mailbox text when a trust prompt appears before Enter', async () => {
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '› ready\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: codexTrustPromptCapture(), stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+    const guardedCommands = tmuxUtilsMocks.tmuxCmdAsync.mock.calls
+      .map(([args]) => args.join(' '))
+      .filter(command => command.includes('if-shell'));
+
+    expect(result).toEqual({
+      kind: 'attempted_unconfirmed',
+      transport: 'tmux_send_keys',
+      reason: 'notification_delivery_uncertain',
+      cause: 'returned_false',
+    });
+    expect(tmuxUtilsMocks.tmuxExecAsync).toHaveBeenCalledTimes(3);
+    expect(guardedCommands).toHaveLength(1);
+    expect(guardedCommands[0]).toContain('mailbox trigger');
+    expect(guardedCommands[0]).not.toContain('Enter');
+    expect(dependencies.sendWorker).not.toHaveBeenCalled();
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture).each([
+    ['Cursor workspace trust', 'Workspace Trust Required\nDo you trust the contents of this directory?\nPass --trust, --yolo, or -f to skip this prompt.\n'],
+    ['Claude files trust', 'Do you trust the files in this folder?\n❯ No, exit\n  Yes, proceed\n'],
+  ] as const)('does not submit mailbox text when a %s prompt appears before Enter', async (_label, capture) => {
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '› ready\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: capture, stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+    const guardedCommands = tmuxUtilsMocks.tmuxCmdAsync.mock.calls
+      .map(([args]) => args.join(' '))
+      .filter(command => command.includes('if-shell'));
+
+    expect(result).toEqual({
+      kind: 'attempted_unconfirmed',
+      transport: 'tmux_send_keys',
+      reason: 'notification_delivery_uncertain',
+      cause: 'returned_false',
+    });
+    expect(guardedCommands).toHaveLength(1);
+    expect(guardedCommands[0]).toContain('mailbox trigger');
+    expect(guardedCommands[0]).not.toContain('Enter');
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture)('does not press Enter when the post-input native pane capture is empty', async () => {
+    tmuxUtilsMocks.tmuxExecAsync
+      .mockResolvedValueOnce({ stdout: '%9\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '› ready\n', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '', stderr: '' });
+    const dependencies = {
+      ...effectDependencies(true),
+      serverIdentityDependencies: matchingServerIdentityDependencies(),
+    };
+
+    const result = await invokeDirectMailboxEffect(workerTarget(), 'mailbox trigger', dependencies);
+    const guardedCommands = tmuxUtilsMocks.tmuxCmdAsync.mock.calls
+      .map(([args]) => args.join(' '))
+      .filter(command => command.includes('if-shell'));
+
+    expect(result).toEqual({
+      kind: 'attempted_unconfirmed',
+      transport: 'tmux_send_keys',
+      reason: 'notification_delivery_uncertain',
+      cause: 'returned_false',
+    });
+    expect(guardedCommands).toHaveLength(1);
+    expect(guardedCommands[0]).toContain('mailbox trigger');
+    expect(guardedCommands[0]).not.toContain('Enter');
+    expect(dependencies.sendWorker).not.toHaveBeenCalled();
   });
 });

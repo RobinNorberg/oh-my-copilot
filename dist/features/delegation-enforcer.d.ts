@@ -37,7 +37,7 @@ export interface EnforcementResult {
     injected: boolean;
     /** The model that was used */
     model: string;
-    /** Warning message (only if OMC_DEBUG=true) */
+    /** Warning message (only when OMC_DEBUG is enabled) */
     warning?: string;
 }
 /**
