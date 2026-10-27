@@ -569,17 +569,23 @@ function mergeMissions(previous: MissionBoardState | null, teamMissions: Mission
     .slice(0, config.maxMissions);
 }
 
-export function refreshMissionBoardState(directory: string, rawConfig: MissionBoardConfig = DEFAULT_CONFIG, sessionId?: string): MissionBoardState {
-  const effectiveSessionId = sessionId ?? getProcessSessionId();
+/** Read every team under `.omg/state/team/` as a mission, without writing board state. */
+export function readTeamMissions(directory: string, rawConfig: MissionBoardConfig = DEFAULT_CONFIG): MissionBoardMission[] {
   const config = resolveConfig(rawConfig);
-  const previous = readMissionBoardState(directory, effectiveSessionId);
   const teamsRoot = join(getOmcRoot(directory), 'state', 'team');
-  const teamMissions = existsSync(teamsRoot)
+  return existsSync(teamsRoot)
     ? readdirSync(teamsRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => collectTeamMission(join(teamsRoot, entry.name), entry.name, config))
       .filter((mission): mission is MissionBoardMission => Boolean(mission))
     : [];
+}
+
+export function refreshMissionBoardState(directory: string, rawConfig: MissionBoardConfig = DEFAULT_CONFIG, sessionId?: string): MissionBoardState {
+  const effectiveSessionId = sessionId ?? getProcessSessionId();
+  const config = resolveConfig(rawConfig);
+  const previous = readMissionBoardState(directory, effectiveSessionId);
+  const teamMissions = readTeamMissions(directory, config);
 
   const state: MissionBoardState = {
     updatedAt: new Date().toISOString(),

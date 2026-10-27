@@ -8,6 +8,8 @@ import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
 import type { SessionSummaryState } from './elements/session-summary.js';
 import type { PayloadEstimate } from './payload-estimate.js';
+import type { TeamStateForHud } from './elements/team.js';
+import type { UltragoalStateForHud } from './elements/ultragoal.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
 
@@ -569,6 +571,15 @@ export interface HudRenderContext {
 
   /** Copilot only: a conversation compaction is in progress */
   compacting?: boolean;
+
+  /** Copilot only: allow-all (YOLO) from the payload's `allow_all_enabled` */
+  copilotAllowAll?: boolean;
+
+  /** Live `omg team` run (read only when the `team` element is on) */
+  team?: TeamStateForHud | null;
+
+  /** Open ultragoal plan (read only when the `ultragoal` element is on) */
+  ultragoal?: UltragoalStateForHud | null;
 }
 
 // ============================================================================
@@ -723,6 +734,9 @@ export interface HudElementConfig {
   rateLimits: boolean;  // Show 5h and weekly rate limits
   ralph: boolean;
   autopilot: boolean;
+  copilotMode?: boolean;     // Copilot native mode (plan/autopilot) and yolo; on under Copilot, off under Claude
+  team?: boolean;            // Live omg team summary (team:name 3/4w 5/9t); on under Copilot, off under Claude
+  ultragoal?: boolean;       // Open ultragoal plan progress (goal:2/5); on under Copilot, off under Claude
   prdStory: boolean;
   activeSkills: boolean;
   lastSkill: boolean;
@@ -807,8 +821,8 @@ export interface LayoutConfig {
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
   line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
   main: [
-    'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
+    'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
     'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
   ],
@@ -846,13 +860,18 @@ export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
 /**
  * Copilot host defaults, applied over the preset and under the user's config:
  * Copilot's own footer already shows the model, effort, directory and branch,
- * so these start off and a user `true` turns them back on.
+ * so these start off and a user `true` turns them back on. The OMC-state
+ * elements (copilotMode, team, ultragoal) start on here; under Claude they are
+ * unset in every preset, so they stay off unless the user turns them on.
  */
 export const COPILOT_HOST_DEFAULTS: Partial<HudElementConfig> = {
   model: false,
   effort: false,
   cwd: false,
   gitBranch: false,
+  copilotMode: true,
+  team: true,
+  ultragoal: true,
 };
 
 /**

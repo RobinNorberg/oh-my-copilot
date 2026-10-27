@@ -38,6 +38,9 @@ import { renderTokenUsage } from "./elements/token-usage.js";
 import { renderEnterpriseCost } from "./elements/enterprise-cost.js";
 import { renderPromptTime } from "./elements/prompt-time.js";
 import { renderAutopilot } from "./elements/autopilot.js";
+import { renderCopilotMode } from "./elements/copilot-mode.js";
+import { renderTeam } from "./elements/team.js";
+import { renderUltragoal } from "./elements/ultragoal.js";
 import { renderCwd } from "./elements/cwd.js";
 import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
@@ -510,6 +513,21 @@ export async function render(
   if (enabledElements.autopilot && context.autopilot) {
     const autopilot = renderAutopilot(context.autopilot, config.thresholds);
     if (autopilot) rendered.set("autopilot", autopilot);
+  }
+
+  if (enabledElements.copilotMode === true) {
+    const mode = renderCopilotMode(context.copilotMode, context.copilotAllowAll);
+    if (mode) rendered.set("copilotMode", mode);
+  }
+
+  if (enabledElements.team === true) {
+    const team = renderTeam(context.team);
+    if (team) rendered.set("team", team);
+  }
+
+  if (enabledElements.ultragoal === true) {
+    const ultragoal = renderUltragoal(context.ultragoal);
+    if (ultragoal) rendered.set("ultragoal", ultragoal);
   }
 
   if (enabledElements.prdStory && context.prd) {

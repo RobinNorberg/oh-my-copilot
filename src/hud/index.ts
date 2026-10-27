@@ -43,6 +43,8 @@ import { detectApiKeySource } from "./elements/api-key-source.js";
 import { detectHudHost } from "./host.js";
 import { resolveCachedOmcUpdate } from "./elements/update-hint.js";
 import { refreshMissionBoardState } from "./mission-board.js";
+import { readTeamStateForHud } from "./elements/team.js";
+import { readUltragoalStateForHud } from "./elements/ultragoal.js";
 import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import type {
@@ -618,8 +620,11 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
             aiUsed: getAiUsed(stdin),
             copilotMode: copilotEvents.mode,
             compacting: copilotEvents.compacting,
+            copilotAllowAll: stdin.allow_all_enabled === true,
           }
         : {}),
+      ...(config.elements.team === true ? { team: readTeamStateForHud(cwd) } : {}),
+      ...(config.elements.ultragoal === true ? { ultragoal: readUltragoalStateForHud(cwd) } : {}),
     };
 
     // Debug: log data if OMC_DEBUG is set
