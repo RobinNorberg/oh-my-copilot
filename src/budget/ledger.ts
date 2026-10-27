@@ -128,7 +128,7 @@ export const MAX_SCAN_BYTES = 8 * 1024 * 1024;
 export const TAIL_BYTES = 64 * 1024;
 /** Lock wait of hook processes: a hook must stay well inside its timeout. */
 export const HOOK_LOCK_TIMEOUT_MS = 250;
-const SAFE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+export const SAFE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function isWithin(child: string, parent: string): boolean {
   const rel = relative(resolve(parent), resolve(child));

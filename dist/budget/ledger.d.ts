@@ -125,6 +125,7 @@ export declare const MAX_SCAN_BYTES: number;
 export declare const TAIL_BYTES: number;
 /** Lock wait of hook processes: a hook must stay well inside its timeout. */
 export declare const HOOK_LOCK_TIMEOUT_MS = 250;
+export declare const SAFE_KEY: RegExp;
 export declare function ledgerPath(cwd: string): string;
 export declare function emptyLedger(now?: Date): BudgetLedger;
 export declare function readLedger(path: string): BudgetLedger;
