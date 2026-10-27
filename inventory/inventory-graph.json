@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ae9260527886451383b468549e5eb5e085bef6d7",
-    "sourceSha256": "ab86170d9632921e6abbf7a5fbd74b92005225afd2e631965c74d7b77773a4b8",
+    "head": "3a21e0dcab5ab25a1bf53a1d0ca3a7476a3d34ca",
+    "sourceSha256": "0a057ab64a8027e745e7caf1ae25daedabae462b92aff51440db6590a95b7357",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ae9260527886451383b468549e5eb5e085bef6d7",
-  "sourceSha256": "ab86170d9632921e6abbf7a5fbd74b92005225afd2e631965c74d7b77773a4b8",
+  "head": "3a21e0dcab5ab25a1bf53a1d0ca3a7476a3d34ca",
+  "sourceSha256": "0a057ab64a8027e745e7caf1ae25daedabae462b92aff51440db6590a95b7357",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1683,
-      "total": 1707
+      "srcFiles": 1688,
+      "total": 1712
     },
     "generated": {
       "distFiles": 6344,
@@ -43435,6 +43435,11 @@
         "path": "src/__tests__/hud/context.test.ts"
       },
       {
+        "id": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-elements-golden.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/copilot-events.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/copilot-events.test.ts"
@@ -43553,6 +43558,11 @@
         "id": "src/__tests__/hud/model.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/model.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/omc-state-elements.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/omc-state-elements.test.ts"
       },
       {
         "id": "src/__tests__/hud/omc-state.test.ts",
@@ -48005,6 +48015,11 @@
         "path": "src/hud/elements/context.ts"
       },
       {
+        "id": "src/hud/elements/copilot-mode.ts",
+        "kind": "src",
+        "path": "src/hud/elements/copilot-mode.ts"
+      },
+      {
         "id": "src/hud/elements/cwd.ts",
         "kind": "src",
         "path": "src/hud/elements/cwd.ts"
@@ -48105,6 +48120,11 @@
         "path": "src/hud/elements/skills.ts"
       },
       {
+        "id": "src/hud/elements/team.ts",
+        "kind": "src",
+        "path": "src/hud/elements/team.ts"
+      },
+      {
         "id": "src/hud/elements/thinking.ts",
         "kind": "src",
         "path": "src/hud/elements/thinking.ts"
@@ -48118,6 +48138,11 @@
         "id": "src/hud/elements/token-usage.ts",
         "kind": "src",
         "path": "src/hud/elements/token-usage.ts"
+      },
+      {
+        "id": "src/hud/elements/ultragoal.ts",
+        "kind": "src",
+        "path": "src/hud/elements/ultragoal.ts"
       },
       {
         "id": "src/hud/elements/update-hint.ts",
@@ -57622,6 +57647,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "src/hud/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hud/copilot-events.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -58079,6 +58144,66 @@
       {
         "from": "src/__tests__/hud/model.test.ts",
         "to": "src/hud/elements/model.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/copilot-mode.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/ultragoal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -80842,6 +80967,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/copilot-mode.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/copilot-mode.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hud/elements/cwd.ts",
         "to": "external:node:os",
         "kind": "imports"
@@ -81212,6 +81347,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hud/elements/thinking.ts",
         "to": "src/hud/colors.ts",
         "kind": "imports"
@@ -81254,6 +81404,36 @@
       {
         "from": "src/hud/elements/token-usage.ts",
         "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/ultragoal/artifacts.ts",
         "kind": "type-imports"
       },
       {
@@ -81314,6 +81494,16 @@
       {
         "from": "src/hud/index.ts",
         "to": "src/hud/elements/api-key-source.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/elements/ultragoal.ts",
         "kind": "imports"
       },
       {
@@ -81513,6 +81703,11 @@
       },
       {
         "from": "src/hud/render.ts",
+        "to": "src/hud/elements/copilot-mode.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
         "to": "src/hud/elements/cwd.ts",
         "kind": "imports"
       },
@@ -81603,6 +81798,11 @@
       },
       {
         "from": "src/hud/render.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
         "to": "src/hud/elements/thinking.ts",
         "kind": "imports"
       },
@@ -81614,6 +81814,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/token-usage.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/ultragoal.ts",
         "kind": "imports"
       },
       {
@@ -81759,6 +81964,16 @@
       {
         "from": "src/hud/types.ts",
         "to": "src/hud/elements/session-summary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/types.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/types.ts",
+        "to": "src/hud/elements/ultragoal.ts",
         "kind": "type-imports"
       },
       {
@@ -101283,12 +101498,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8766,
-      "edgeCount": 9906,
-      "importEdgeCount": 8289,
+      "nodeCount": 8771,
+      "edgeCount": 9944,
+      "importEdgeCount": 8321,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "d66d77a10a1f1b608f17ae0e4a9f13fe7254582dcaec0ee51387f1f794183ca2",
-  "manifestSha256": "8d671e725ccce646cf78ffdb1ae0e65b666edb08791d6be25333b2ad0653d79d"
+  "inventorySha256": "5b7a541428276f97dbb3b5fd48159a43ac76cea43ba90610bcc474572399bb08",
+  "manifestSha256": "1b637f539f08bf3e33769627ec168d22a26761f4decd13b1630dc99f114a5fd3"
 }
