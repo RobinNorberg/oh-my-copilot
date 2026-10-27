@@ -211,7 +211,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .action((issueRaw: string, _o: unknown, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
-        const result = cleanFactoryRun({ root: factoryRoot(exec), issue, exec });
+        const result = cleanFactoryRun({ root: factoryRoot(exec), issue, exec: deps.exec, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
         else {
           for (const path of result.removed) console.log(chalk.green(`removed ${path}`));

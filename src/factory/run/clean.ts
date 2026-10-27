@@ -8,7 +8,9 @@
  * `git worktree remove`, a dirty tree is kept, and a worktree or branch
  * holding a commit that neither the main checkout's HEAD nor a verified
  * remote ref (GitHub's base after a fetch, the PR branch on origin) holds is
- * kept. The remote PR branch itself is never deleted.
+ * kept. The remote PR branch itself is never deleted. clean's own git
+ * (remote check, fetch, ls-remote) runs guarded and hardened like the
+ * engine's: no hooks, no fsmonitor.
  */
 
 import { existsSync } from 'fs';
@@ -16,6 +18,8 @@ import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { remoteRepoMismatch } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { getWorktreePath, removeWorkerWorktree } from '../../team/git-worktree.js';
+import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { defaultLedgerDir, emptyHooksDir } from './ledger.js';
 import { checkoutWorker, FACTORY_CHECKOUT_TEAM } from './prepare.js';
 import { acquireFactoryOwner, FactoryStateError, readFactoryState, verifyFactoryIntegrity, type OwnerDeps } from './state.js';
 
@@ -33,8 +37,10 @@ export interface FactoryCleanResult {
 export interface FactoryCleanOptions {
   root: string;
   issue: number;
-  /** The guarded command runner (factoryGuardExec). */
+  /** The plain command runner; clean wraps it like the engine does (factoryGuardExec around hardenedGitExec). */
   exec: Exec;
+  /** Engine ledger directory, home of the empty hooks directory (default: defaultLedgerDir()). */
+  ledgerDir?: string;
   now?: string;
   owner?: OwnerDeps;
 }
@@ -49,15 +55,17 @@ export function cleanFactoryRun(o: FactoryCleanOptions): FactoryCleanResult {
   // A live engine on this issue refuses here; the owner file is gone again afterwards.
   const owner = acquireFactoryOwner(o.root, o.issue, o.now ?? new Date().toISOString(), o.owner);
   try {
-    const git = (args: string[]) => o.exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
-    const mismatch = remoteRepoMismatch(o.exec, o.root, 'origin', state.repoUrl);
+    // No hook or fsmonitor a lane planted runs in clean's fetch and ls-remote.
+    const exec = factoryGuardExec(hardenedGitExec(o.exec, emptyHooksDir(o.ledgerDir ?? defaultLedgerDir())), () => [state.base]);
+    const git = (args: string[]) => exec('git', args, { cwd: o.root, env: TRUSTED_READ_ENV });
+    const mismatch = remoteRepoMismatch(exec, o.root, 'origin', state.repoUrl);
     if (mismatch) throw new FactoryStateError(`refusing to fetch: ${mismatch}`);
     const fetched = git(['fetch', 'origin', state.base]);
     if (fetched.status !== 0) throw new FactoryStateError(`git fetch origin ${state.base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
     const contained: string[] = [];
     const base = git(['rev-parse', '--verify', `refs/remotes/origin/${state.base}`]).stdout.trim();
     if (HEX40.test(base)) contained.push(base);
-    const remote = o.exec('git', ['ls-remote', 'origin', `refs/heads/${state.branch}`], { cwd: o.root });
+    const remote = exec('git', ['ls-remote', 'origin', `refs/heads/${state.branch}`], { cwd: o.root });
     const pushed = remote.status === 0 ? remote.stdout.trim().split(/\s+/)[0] : '';
     if (HEX40.test(pushed) && git(['cat-file', '-e', `${pushed}^{commit}`]).status === 0) contained.push(pushed);
 

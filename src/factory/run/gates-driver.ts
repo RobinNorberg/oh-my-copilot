@@ -23,6 +23,8 @@ import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGate
 export const NO_WORKFLOWS_GRACE_MS = 5 * 60_000;
 /** Failed jobs whose logs are read for the ci-fix lane's test titles. */
 const MAX_FAILED_LOGS = 5;
+/** Test titles kept from those logs (a log is untrusted, PR-controlled output). */
+export const MAX_FAILING_TITLES = 50;
 
 export interface GatesDriverInput {
   exec: Exec;
@@ -86,17 +88,22 @@ export function staleRead(exec: Exec, pr: number, head: string, report: GateRepo
   return foreign.length > 0 ? `checks ${foreign.join(', ')} belong to workflow runs of another commit` : null;
 }
 
-/** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs). */
+/** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs, MAX_FAILING_TITLES titles). */
 export function failingTestTitles(exec: Exec, report: GateReport, cwd: string): string[] {
   const out = new Set<string>();
   const jobs = report.checks.filter((c) => c.class === 'failed' && c.jobId).slice(0, MAX_FAILED_LOGS);
   for (const c of jobs) {
     const log = exec('gh', ['run', 'view', '--job', c.jobId!, '--log'], { cwd });
     if (log.status !== 0) continue;
-    for (const t of parseFailingTests(log.stdout)) out.add(t.title ? `${t.file} > ${t.title}` : t.file);
+    for (const t of parseFailingTests(log.stdout)) {
+      if (out.size >= MAX_FAILING_TITLES) break;
+      out.add(t.title ? `${t.file} > ${t.title}` : t.file);
+    }
   }
   return [...out];
 }
+
+class GatesCancelled extends Error {}
 
 export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
   const pollMs = Math.max(1, o.config.pollIntervalSeconds * 1000);
@@ -118,10 +125,17 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
       continue;
     }
     const windowMin = Math.min(o.config.watchTimeoutMinutes > 0 ? o.config.watchTimeoutMinutes : Infinity, left / 60_000);
-    const res = await watchGates({
-      exec: o.exec, pr: o.pr, config: { ...o.config, watchTimeoutMinutes: windowMin }, known: o.known, cwd: o.cwd, headSha: o.head,
-      watch: true, reruns: o.reruns, sleep: o.sleep, now: o.now,
-    });
+    let res: Awaited<ReturnType<typeof watchGates>>;
+    try {
+      res = await watchGates({
+        exec: o.exec, pr: o.pr, config: { ...o.config, watchTimeoutMinutes: windowMin }, known: o.known, cwd: o.cwd, headSha: o.head,
+        // A cancel lands between ship's polls, not only at the end of its window.
+        watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled()) throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
+      });
+    } catch (error) {
+      if (error instanceof GatesCancelled) return { kind: 'cancelled' };
+      throw error;
+    }
     const report = res.report;
     if (report.verdict === 'green' || report.verdict === 'failed' || report.verdict === 'flaky') {
       const stale = staleRead(o.exec, o.pr, o.head, report, o.cwd);

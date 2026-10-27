@@ -32,7 +32,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
       return ok(JSON.stringify({ number: 42, state: 'OPEN', isDraft: false, baseRefName: prBase, baseRefOid: BASE, headRefName: 'feat/x', headRefOid: HEAD, url: PR_URL }));
     }
     if (key === 'gh pr view 42 --json baseRefName,baseRefOid,url') return ok(JSON.stringify({ baseRefName: prBase, baseRefOid: BASE, url: PR_URL }));
-    if (key === 'git remote get-url origin') return ok(`${remoteUrl}\n`);
+    if (key === 'git remote get-url origin' || key === 'git remote get-url --push --all origin') return ok(`${remoteUrl}\n`);
     if (key.startsWith('gh pr view 42 --json headRefOid')) return ok(JSON.stringify({ headRefOid: HEAD }));
     if (key.startsWith(`gh run list --commit ${HEAD}`)) return ok(runs);
     if (key.startsWith('git fetch origin ') && fetchFails) return { status: 128, stdout: '', stderr: 'fatal: unable to access remote' };

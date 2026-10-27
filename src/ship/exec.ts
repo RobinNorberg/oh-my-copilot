@@ -149,7 +149,9 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
       return r.length === 3 && r[0] === '--is-ancestor' && isOperand(r[1]) && isOperand(r[2]);
     case 'remote':
       // The URL the base is fetched from, checked against the PR's repository.
-      return r.length === 2 && r[0] === 'get-url' && REMOTE.test(r[1]);
+      return (r.length === 2 && r[0] === 'get-url' && REMOTE.test(r[1]))
+        // Every push URL, checked against the PR's repository too.
+        || (r.length === 4 && r[0] === 'get-url' && r[1] === '--push' && r[2] === '--all' && REMOTE.test(r[3]));
     case 'merge':
       // Only GitHub's base sha, never a ref name a local tag or branch could shadow; hooks never run.
       return r.length === 4 && r[0] === '--no-ff' && r[1] === '--no-edit' && r[2] === '--no-verify' && HEX40.test(r[3]);

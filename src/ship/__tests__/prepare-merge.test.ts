@@ -41,7 +41,7 @@ function fakeRepo(overrides: Record<string, ExecResult | Responder> = {}) {
     if (key.startsWith('git rev-parse -q --verify')) return res(1);
     if (key.startsWith('git rev-parse --git-path')) return res(0, `.git/${args[2]}\n`);
     if (key === 'git rev-parse HEAD') return res(0, `${head()}\n`);
-    if (key === 'git remote get-url origin') return res(0, 'git@github.com:o/r.git\n');
+    if (key === 'git remote get-url origin' || key === 'git remote get-url --push --all origin') return res(0, 'git@github.com:o/r.git\n');
     if (key === 'git rev-parse --verify refs/remotes/origin/dev') return res(0, `${BASE_SHA}\n`);
     if (key === `git merge-base --is-ancestor ${REVIEWED_SHA} HEAD`) return res(0);
     if (key.startsWith('git merge-base --is-ancestor')) return res(1);
@@ -202,6 +202,7 @@ describe('runPrepare', () => {
   it.each<[string, Record<string, ExecResult>, RegExp, Partial<typeof base>?]>([
     ['a remote pointing at another repository', { 'git remote get-url origin': res(0, 'https://github.com/evil/r.git\n') }, /remote: remote origin points at https:\/\/github.com\/evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
     ['a local-path remote', { 'git remote get-url origin': res(0, 'C:\\tmp\\o\\r\n') }, /remote: remote origin points at/],
+    ['a pushurl naming another repository', { 'git remote get-url --push --all origin': res(0, 'git@github.com:o/r.git\nhttps://github.com/evil/r.git\n') }, /remote: remote origin pushes to https:\/\/github.com\/evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
     ['no repository url from GitHub', {}, /remote: GitHub reported no repository url/, { repoUrl: undefined }],
     ['a fetched base that is not GitHub\'s base sha', { 'git rev-parse --verify refs/remotes/origin/dev': res(0, `${'e'.repeat(40)}\n`) }, /fetch: refs\/remotes\/origin\/dev is e{40}, but GitHub reports dev at d{40}/],
     ['a missing remote-tracking ref', { 'git rev-parse --verify refs/remotes/origin/dev': res(128, '', 'fatal: Needed a single revision') }, /fetch: refs\/remotes\/origin\/dev is missing/],

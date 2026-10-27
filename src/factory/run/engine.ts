@@ -38,7 +38,7 @@ import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
-import { driveGates } from './gates-driver.js';
+import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
 import { MERGE_VIEW_FIELDS, mergeComment, mergeDecision, parseMergeView, type MergeView } from './merge-policy.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import {
@@ -96,7 +96,10 @@ export const EXIT_AWAITING_HUMAN = 4;
 const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-base', 'push']);
 /** A failed prepare step's output in the ci-fix prompt is cut at this many characters. */
 const MAX_CI_DETAIL_CHARS = 8_000;
-/** Lane waits are sliced so the cancel flag is seen within this long. */
+/** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
+export const MAX_CONFLICT_FIX_ROUNDS = 2;
+/** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
+export const MAX_MERGE_BOUNCES = 2;/** Lane waits are sliced so the cancel flag is seen within this long. */
 export const DEFAULT_POLL_MS = 5_000;
 /** The engine cancels a lane this long past its own timeout (copilot_run enforces the timeout first). */
 const LANE_GRACE_MS = 60_000;
@@ -317,8 +320,13 @@ export function ciFixPrompt(s: FactoryRunState): string {
   const where = f?.source === 'prepare'
     ? 'the pull request head with the base branch merged in by the engine; the failure is from the engine\'s local checks'
     : 'the pull request head; the failure is from CI on GitHub';
-  const detail = (f?.detail ?? '').slice(0, MAX_CI_DETAIL_CHARS);
+  // The tail: test runners and compilers print the failure summary last.
+  const detail = (f?.detail ?? '').slice(-MAX_CI_DETAIL_CHARS);
   const fence = fenceFor(detail);
+  const allTests = f?.tests ?? [];
+  const tests = allTests.slice(0, MAX_FAILING_TITLES).map((t) => oneLine(t, 500));
+  if (allTests.length > tests.length) tests.push(`... and ${allTests.length - tests.length} more`);
+  const testFence = fenceFor(tests.join('\n'));
   return [
     `You are fixing failing checks (CI-fix round ${s.ciFixRounds}) for GitHub issue #${s.issue}: ${oneLine(s.issueTitle)}`,
     `The worktree is at ${f?.startSha} (${where}).`,
@@ -331,7 +339,7 @@ export function ciFixPrompt(s: FactoryRunState): string {
     '## Failing checks',
     '',
     ...(f?.checks ?? []).map((c) => `- ${oneLine(c, 300)}`),
-    ...((f?.tests ?? []).length > 0 ? ['', '## Failing tests', '', ...f!.tests.map((t) => `- ${oneLine(t, 500)}`)] : []),
+    ...(tests.length > 0 ? ['', '## Failing tests', '', `${testFence}text`, ...tests, testFence] : []),
     ...(detail ? ['', '## Output', '', `${fence}text`, detail, fence] : []),
     '',
     ...planSection(s),
@@ -393,6 +401,8 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
+  /** merge -> gates returns in this invocation (MAX_MERGE_BOUNCES). */
+  private mergeBounces = 0;
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
     this.exec = factoryGuardExec(hardenedGitExec(o.exec, hooksDir), () => [o.base]);
@@ -893,6 +903,11 @@ class FactoryEngine {
     if (this.exec('git', ['merge-base', '--is-ancestor', start, head], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status !== 0) {
       return this.laneFailed(key, lane.kind, `lane ${lane.id} head ${head.slice(0, 12)} does not descend from ${start.slice(0, 12)}`);
     }
+    const baseSha = this.state.baseSha;
+    if (lane.kind === 'conflict-fix' && (!baseSha || this.exec('git', ['merge-base', '--is-ancestor', baseSha, head], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status !== 0)) {
+      this.gate('conflict-fix-failed', `conflict-fix lane ${lane.id} head ${head.slice(0, 12)} does not contain the base ${baseSha?.slice(0, 12) ?? '(unknown)'}; nothing was pushed`);
+      return;
+    }
     this.save((s) => moveTo({ ...s, pendingHead: head }, 'publish', `lane ${lane.id} committed ${head.slice(0, 12)}`, this.iso()));
   }
 
@@ -1162,8 +1177,14 @@ class FactoryEngine {
       this.gate('fix-rounds-spent', ship.blockedReason ?? 'ship run is blocked');
       return;
     }
-    // A crash after the push: record what that prepare made instead of preparing again.
-    if (s.prepared && s.prepared.head === head && view.headRefOid === head) return this.recordPrepared(pr, s.prepared);
+    // A crash after the push (prepared is recorded before it): record what that prepare made instead of preparing again.
+    if (s.prepared && view.headRefOid === s.prepared.head) {
+      const prepared = s.prepared;
+      // The step boundary compared the shared git state with that push's tracking-ref move allowed; it is the new baseline.
+      this.rebaseRecheck();
+      if (head !== prepared.head) this.save((x) => ({ ...x, head: prepared.head }));
+      return this.recordPrepared(pr, prepared);
+    }
     // Ship state wins: a ship run already past prepare is followed (its gates and merge checks re-read the head).
     if (ship.phase !== 'prepare') {
       if (ship.phase !== 'gates' && ship.phase !== 'ready' && ship.phase !== 'merged') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not prepare`);
@@ -1176,17 +1197,24 @@ class FactoryEngine {
     }
     if (view.isDraft) this.run(['pr', 'ready', String(pr)], 'gh');
 
+    if (this.recheckFailed('before prepare')) return;
     this.discardCheckout();
     const path = checkoutPath(this.o.root, this.o.issue);
     const branch = checkoutBranch(this.o.issue);
+    // prepare runs the PR's own code (tsc, eslint, vitest): the shared git state is compared around it like a lane's.
+    let before: RepoSnapshot;
+    try {
+      before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
+    } catch (error) {
+      throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText(error)}`);
+    }
     mkdirSync(dirname(path), { recursive: true });
     this.run(['worktree', 'add', '-B', branch, path, head]);
     this.save((x) => ({ ...x, checkoutHead: head }));
     linkNodeModules(this.o.root, path);
     const result = runPrepare({ exec: this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, push: false });
+    if (this.prepareTampered(before, path, branch, view.baseRefOid)) return;
     const checkoutHead = this.run(['rev-parse', 'HEAD'], 'git', undefined, path).trim();
-    // The checkout's worktree entry, branch and the fetched base are the engine's own changes.
-    this.rebaseRecheck();
     const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
     // From here the PR's diff (review, protected paths) is against the base GitHub reports.
     this.save((x) => ({ ...x, checkoutHead, ...(fetched ? { baseSha: view.baseRefOid } : {}) }));
@@ -1195,6 +1223,11 @@ class FactoryEngine {
     const failed = result.steps.at(-1);
     if (failed?.name === 'merge-base' && (result.conflicts ?? []).length > 0) {
       this.discardCheckout();
+      const rounds = new Set(this.state.lanes.filter((l) => l.kind === 'conflict-fix').map((l) => l.startSha)).size;
+      if (rounds >= MAX_CONFLICT_FIX_ROUNDS) {
+        this.gate('merge-conflicts', `base merge conflicts outside inventory/ after ${rounds} conflict-fix round(s): ${result.conflicts!.join(', ')}; merge ${view.baseRefOid.slice(0, 12)} in by hand`);
+        return;
+      }
       this.save((x) => moveTo({ ...x, conflicts: result.conflicts }, 'conflict-fix', `base merge conflicts outside inventory/: ${result.conflicts!.join(', ')}`, this.iso()));
       return;
     }
@@ -1203,6 +1236,37 @@ class FactoryEngine {
       return;
     }
     throw new FactoryStepError(`prepare failed: ${result.blockedReason ?? 'unknown step'}`);
+  }
+
+  /**
+   * The shared git state after prepare against the snapshot from before its
+   * checkout was added. Only the checkout's own worktree entry, its branch
+   * and origin/<base> (at its old sha or GitHub's base sha) may change;
+   * anything else parks at lane-tampered and the checkout is left for a human.
+   * A clean comparison is the new recheck baseline.
+   */
+  private prepareTampered(before: RepoSnapshot, path: string, branch: string, baseSha: string): boolean {
+    const branchRef = `refs/heads/${branch}`;
+    const tracking = `refs/remotes/origin/${this.state.base}`;
+    const strip = (snap: RepoSnapshot): RepoSnapshot => ({ ...snap, refs: Object.fromEntries(Object.entries(snap.refs).filter(([n]) => n !== branchRef && n !== tracking)) });
+    let problems: string[];
+    let after: RepoSnapshot | undefined;
+    try {
+      after = snapshotRepo(this.exec, this.o.root, this.stateRootRel, before);
+      problems = compareSnapshots(strip(before), strip(after), {}, { newWorktree: { path } });
+      const now = after.refs[tracking];
+      if (now !== before.refs[tracking] && now !== baseSha) problems.push(`ref ${tracking} is at ${now?.slice(0, 12) ?? 'nothing'}, not GitHub's base ${baseSha.slice(0, 12)}`);
+      if (!after.refs[branchRef]) problems.push(`the checkout's branch ${branchRef} is gone`);
+    } catch (error) {
+      problems = [`the post-prepare snapshot failed: ${errText(error)}`];
+    }
+    if (problems.length > 0) {
+      this.gate('lane-tampered', `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and origin/${this.state.base}, so nothing is pushed; inspect and remove ${path} by hand: ${problems.slice(0, 5).join('; ')}`);
+      return true;
+    }
+    const r = this.ledger.recheck;
+    if (r) this.ledger.setRecheck({ ...r, snapshot: after! });
+    return false;
   }
 
   /** Push prepare's housekeeping commits (protected paths re-checked), then record them. */
@@ -1225,6 +1289,8 @@ class FactoryEngine {
       }
       if (remote !== next) {
         if (this.recheckFailed('right before the prepare push')) return;
+        // Recorded before the push: a crash right after it resumes from this record, not at head-moved-externally.
+        this.save((x) => ({ ...x, prepared: { head: next, housekeeping } }));
         this.run(['push', 'origin', `${next}:refs/heads/${s.branch}`]);
         this.rebaseRecheck();
       }
@@ -1363,6 +1429,11 @@ class FactoryEngine {
     const { config, known } = this.gateConfig(view);
     const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known);
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
+      // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per invocation.
+      if (++this.mergeBounces > MAX_MERGE_BOUNCES) {
+        this.gate('gates-disagree', `the merge rule's gate read at ${head.slice(0, 12)} disagreed with the gates loop ${MAX_MERGE_BOUNCES} times: ${decision.reasons.join('; ')}; check the PR's checks by hand`);
+        return;
+      }
       this.writeShip(pr, (cur) => transition(cur!, 'gates', 'gates no longer green at the merge check', this.iso()));
       this.save((x) => moveTo(x, 'gates', `gates no longer green: ${decision.reasons.join('; ')}`, this.iso()));
       return;
@@ -1420,7 +1491,10 @@ class FactoryEngine {
     if (!r) return false;
     let problems: string[];
     try {
-      problems = compareSnapshots(r.snapshot, snapshotRepo(this.exec, this.o.root, this.stateRootRel, r.snapshot));
+      const now = snapshotRepo(this.exec, this.o.root, this.stateRootRel, r.snapshot);
+      // The engine's own prepare push (recorded before it) moves the PR branch's tracking ref; a crash right after it skips the rebase.
+      const tracking = `refs/remotes/origin/${this.state.branch}`;
+      const own = this.state.prepared !== undefined && now.refs[tracking] === this.state.prepared.head;      problems = compareSnapshots(own ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now.refs[tracking] } } : r.snapshot, now);
     } catch (error) {
       problems = [`the snapshot failed: ${errText(error)}`];
     }

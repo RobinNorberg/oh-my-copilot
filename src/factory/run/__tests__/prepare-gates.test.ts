@@ -16,7 +16,8 @@ import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryEngineOptions } from
 import { factoryGuardExec } from '../exec.js';
 import { checkoutPath } from '../prepare.js';
 import { factoryProgressFile } from '../progress.js';
-import { readFactoryState } from '../state.js';
+import { readFactoryState, requestFactoryCancel } from '../state.js';
+import type { Exec, ExecResult } from '../../../ship/exec.js';
 import {
   commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, remoteHead, review, testGateConfig,
   type GatesRead, type Harness, type LaneScript,
@@ -288,15 +289,21 @@ describe('merge gate (always human)', () => {
 describe('omg factory run clean', () => {
   it('removes the lane worktrees and the prepare checkout of a merged run, keeps what would be lost, and refuses an unfinished run', async () => {
     await run([commitFile('a.ts'), review('approve')]).done;
-    const guarded = factoryGuardExec(h.exec);
-    expect(() => cleanFactoryRun({ root: h.root, issue: ISSUE, exec: guarded })).toThrow(/merged or cancelled run only/);
+    const clean = () => cleanFactoryRun({ root: h.root, issue: ISSUE, exec: h.exec, ledgerDir: h.ledgerDir });
+    expect(clean).toThrow(/merged or cancelled run only/);
 
     h.gh.merged = true;
     await run([]).done;
     const state = readFactoryState(h.root, ISSUE)!;
     const reviewTree = state.lanes[1].worktree!;
     writeFileSync(join(reviewTree, 'notes.txt'), 'a human left this\n');
-    const result = cleanFactoryRun({ root: h.root, issue: ISSUE, exec: guarded });
+    const rawBefore = h.raw.length;
+    const result = clean();
+    // clean's fetch and ls-remote run hardened like the engine's: no hooks, no fsmonitor.
+    for (const sub of ['fetch', 'ls-remote']) {
+      const call = h.raw.slice(rawBefore).find((c) => c.cmd === 'git' && c.args.includes(sub))!;
+      expect(call.args.slice(0, 4)).toEqual(['-c', `core.hooksPath=${join(h.ledgerDir, 'empty-hooks')}`, '-c', 'core.fsmonitor=false']);
+    }
     expect(result.removed).toEqual(expect.arrayContaining([state.lanes[0].worktree, checkoutPath(h.root, ISSUE)]));
     expect(existsSync(state.lanes[0].worktree!)).toBe(false);
     expect(existsSync(checkoutPath(h.root, ISSUE))).toBe(false);
@@ -318,9 +325,173 @@ describe('omg factory run clean', () => {
     writeFileSync(join(implTree, 'extra.ts'), 'x\n');
     gitIn(implTree, 'add', '--', 'extra.ts');
     gitIn(implTree, 'commit', '-q', '-m', 'unpushed');
-    const result = cleanFactoryRun({ root: h.root, issue: ISSUE, exec: factoryGuardExec(h.exec) });
+    const result = cleanFactoryRun({ root: h.root, issue: ISSUE, exec: h.exec, ledgerDir: h.ledgerDir });
     expect(result.kept.map((k) => k.worktree)).toEqual([implTree]);
     expect(result.kept[0].reason).toMatch(/worktree_unmerged_commits/);
     expect(existsSync(implTree)).toBe(true);
+  });
+});
+
+const okRun: ExecResult = { status: 0, stdout: '', stderr: '' };
+const isTsc = (args: string[]) => args.some((a) => a.includes('typescript/bin/tsc'));
+const pushes = () => h.calls.filter((c) => c.startsWith('git push '));
+
+describe('prepare: crash window, PR code and failing checks', () => {
+  it('a crash right after the prepare push resumes from the recorded prepare instead of parking at head-moved-externally', async () => {
+    before(PREPARE_VIEW, () => moveBase('inventory/graph.json', '{"base":true}\n'));
+    let n = 0;
+    const crashing: Exec = (cmd, args, opts) => {
+      const res = h.exec(cmd, args, opts);
+      if (cmd === 'git' && args.includes('push') && ++n === 2) throw new Error('simulated crash after the prepare push');
+      return res;
+    };
+    const first = await run([commitFile('inventory/graph.json', '{"lane":true}\n'), review('approve')], { exec: crashing }).done;
+    expect(first.exitCode, first.message).toBe(1);
+    const crashed = readFactoryState(h.root, ISSUE)!;
+    expect(crashed.phase).toBe('prepare');
+    expect(crashed.prepared?.head).toBe(remoteHead(h));
+    expect(crashed.head).not.toBe(remoteHead(h));
+
+    const out = await run([]).done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    const state = readFactoryState(h.root, ISSUE)!;
+    expect(state.head).toBe(remoteHead(h));
+    expect(state.prepared).toBeUndefined();
+    expect(readShipState(h.root, PR)!.housekeepingCommits).toEqual([state.head]);
+    // Nothing was prepared or pushed again.
+    expect(pushes()).toHaveLength(2);
+  });
+
+  it.each<[string, () => void, RegExp]>([
+    ['sets a pushurl', () => gitIn(h.root, 'config', 'remote.origin.pushurl', 'https://github.com/evil/r.git'), /common git config changed/],
+    ['creates a ref', () => gitIn(h.root, 'branch', 'evil', 'HEAD'), /ref refs\/heads\/evil was created/],
+  ])('PR code run by prepare\'s checks that %s parks at lane-tampered and nothing is pushed', async (_label, tamper, problem) => {
+    h.node = (args) => { if (isTsc(args)) tamper(); return okRun; };
+    const out = await run([commitFile('src/greet.ts', 'x\n'), review('approve')]).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.message).toMatch(problem);
+    expect(out.message).toMatch(/prepare's checks/);
+    expect(readFactoryState(h.root, ISSUE)!.phase).toBe('prepare');
+    expect(pushes()).toHaveLength(1);
+    expect(readShipState(h.root, PR)!.phase).toBe('prepare');
+  });
+
+  it('origin/dev moved by prepare\'s checks to a sha that is not GitHub\'s base parks at lane-tampered', async () => {
+    h.node = (args) => {
+      if (isTsc(args)) gitIn(h.root, 'update-ref', 'refs/remotes/origin/dev', readFactoryState(h.root, ISSUE)!.head!);
+      return okRun;
+    };
+    const out = await run([commitFile('src/greet.ts', 'x\n'), review('approve')]).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.message).toMatch(/refs\/remotes\/origin\/dev is at .*, not GitHub's base/);
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it('a failing prepare check starts one ci-fix lane at the checkout head, then a new review and a clean prepare', async () => {
+    let tsc = 0;
+    h.node = (args) => (isTsc(args) && ++tsc === 1 ? { status: 1, stdout: 'src/greet.ts(1,1): error TS1005: expected', stderr: '' } : okRun);
+    const { lanes, done } = run([commitFile('src/greet.ts', 'x\n'), review('approve'), commitFile('src/greet.ts', 'fixed\n'), review('approve')]);
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(lanes.started.map((s) => s.laneId)).toEqual([
+      `issue-${ISSUE}-implement-1`, `issue-${ISSUE}-review-1`, `issue-${ISSUE}-ci-fix-1`, `issue-${ISSUE}-review-2`,
+    ]);
+    const state = readFactoryState(h.root, ISSUE)!;
+    expect(lanes.started[2].baseRef).toBe(state.lanes[0].endSha);
+    expect(lanes.started[2].prompt).toContain('- prepare tsc');
+    expect(lanes.started[2].prompt).toContain('engine\'s local checks');
+    expect(state.ciFixRounds).toBe(1);
+    expect(tsc).toBe(2);
+  });
+});
+
+describe('conflict-fix checks', () => {
+  /** A conflict-fix lane that merges the fetched base, resolves README.md, then (optionally) moves the base again. */
+  const resolveAndMoveBase = (again?: string): LaneScript => ({ worktree }) => {
+    const base = gitIn(worktree, 'rev-parse', 'refs/remotes/origin/dev');
+    try { gitIn(worktree, 'merge', '--no-ff', '--no-edit', base); } catch { /* conflicts, resolved below */ }
+    writeFileSync(join(worktree, 'README.md'), `both sides ${again ?? ''}\n`);
+    gitIn(worktree, 'add', '--', 'README.md');
+    gitIn(worktree, 'commit', '-q', '--no-edit');
+    if (again) moveBase('README.md', `${again}\n`);
+    return { finalText: 'Merged.' };
+  };
+
+  it('a conflict-fix lane whose head does not contain the base parks at conflict-fix-failed and nothing is pushed', async () => {
+    before(PREPARE_VIEW, () => { moveBase('README.md', 'base side\n'); });
+    const { done } = run([commitFile('README.md', 'lane side\n'), review('approve'), commitFile('README.md', 'only the lane side\n')]);
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('conflict-fix-failed');
+    expect(out.message).toMatch(/does not contain the base/);
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it('base conflicts after two conflict-fix rounds park at merge-conflicts', async () => {
+    before(PREPARE_VIEW, () => { moveBase('README.md', 'base side\n'); });
+    const { lanes, done } = run([
+      commitFile('README.md', 'lane side\n'), review('approve'),
+      resolveAndMoveBase('base side 2'), review('approve'),
+      resolveAndMoveBase('base side 3'), review('approve'),
+    ]);
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('merge-conflicts');
+    expect(lanes.started.filter((s) => s.laneId.includes('conflict-fix'))).toHaveLength(2);
+  });
+
+  it('a conflict-fix lane that changes shared git state parks at lane-tampered and nothing is pushed', async () => {
+    before(PREPARE_VIEW, () => { moveBase('README.md', 'base side\n'); });
+    const tampering: LaneScript = (ctx) => { const r = resolveAndMoveBase()(ctx); gitIn(h.root, 'config', 'core.sshCommand', 'evil'); return r; };
+    const out = await run([commitFile('README.md', 'lane side\n'), review('approve'), tampering]).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.message).toMatch(/conflict-fix lane/);
+    expect(pushes()).toHaveLength(1);
+  });
+});
+
+describe('gates: ci-fix tampering, cancel and resume', () => {
+  it('a ci-fix lane that changes shared git state parks at lane-tampered and nothing is pushed', async () => {
+    h.gh.gates = [failedGates(100)];
+    const tampering: LaneScript = (ctx) => { const r = commitFile('src/fix.ts')(ctx); gitIn(h.root, 'branch', 'evil', ctx.baseSha); return r ?? undefined; };
+    const out = await run([commitFile('a.ts'), review('approve'), tampering]).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.message).toMatch(/ci-fix lane .*refs\/heads\/evil was created/);
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it('cancel while the gates loop polls stops the run as cancelled', async () => {
+    h.gh.gates = [pendingGates()];
+    let checks = 0;
+    h.onCall = (c) => { if (c.startsWith(`gh pr checks ${PR}`) && ++checks === 3) requestFactoryCancel(h.root, ISSUE, new Date(t).toISOString()); };
+    const out = await run([commitFile('a.ts'), review('approve')]).done;
+    expect(out.phase, out.message).toBe('cancelled');
+    expect(readFactoryState(h.root, ISSUE)!.phase).toBe('cancelled');
+    // It lands at ship's next poll, not at the end of the 9-minute watch window.
+    expect(h.calls.filter((c) => c.startsWith(`gh pr checks ${PR}`))).toHaveLength(3);
+  });
+
+  it('a crash mid-gates resumes the gates loop on the same head and reaches the merge park', async () => {
+    h.gh.gates = [pendingGates()];
+    let checks = 0;
+    const crashing: Exec = (cmd, args, opts) => {
+      if (cmd === 'gh' && args[0] === 'pr' && args[1] === 'checks' && ++checks === 3) throw new Error('simulated crash mid-gates');
+      return h.exec(cmd, args, opts);
+    };
+    const first = await run([commitFile('a.ts'), review('approve')], { exec: crashing }).done;
+    expect(first.exitCode, first.message).toBe(1);
+    const head = readFactoryState(h.root, ISSUE)!.head;
+    expect(readFactoryState(h.root, ISSUE)!.phase).toBe('gates');
+    h.gh.gates = [greenGates()];
+    const out = await run([]).done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(readFactoryState(h.root, ISSUE)!.head).toBe(head);
+    expect(readShipState(h.root, PR)!.phase).toBe('ready');
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it('a merge-rule gate read that keeps disagreeing with the gates loop parks at gates-disagree instead of cycling', async () => {
+    h.gh.gates = Array.from({ length: 40 }, (_, i) => (i % 2 === 0 ? greenGates() : failedGates()));
+    const out = await run([commitFile('a.ts'), review('approve')]).done;
+    expect(out.gate?.name, out.message).toBe('gates-disagree');
+    expect(h.calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
   });
 });
