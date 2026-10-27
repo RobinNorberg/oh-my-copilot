@@ -48,6 +48,6 @@ describe('omg team start under budget.mode "enforce"', () => {
     await teamCommand(['2:copilot,1:claude', 'fix the bug']);
     expect(runtimeV2Mocks.startTeamV2).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
-    expect(errorSpy.mock.calls.flat().join('\n')).toMatch(/projected at least 2 premium requests \(2 copilot worker\(s\).*exceeds budget\.perTeamLimit 1; team launch refused/);
+    expect(errorSpy.mock.calls.flat().join('\n')).toMatch(/projected \d+ AI credits \(2 copilot worker\(s\) x \d+ credit cap\) exceeds budget\.perTeamLimit 1; team launch refused/);
   });
 });

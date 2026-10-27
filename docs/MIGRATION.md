@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
 - [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
 - [v5.12.2 → v5.13.0: Chained Stop Continuation on Copilot](#v5122--v5130-chained-stop-continuation-on-copilot)
 - [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
@@ -34,6 +35,37 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## Unreleased: Budget Unit Is AI Credits
+
+Applies when upgrading from v5.13.1. GitHub Copilot bills usage in AI Credits since 2026-06-01; premium requests are gone as a billing unit. The budget governor now counts AI Credits. Premium requests stay in the ledger as a legacy field, because Copilot CLI still writes `totalPremiumRequests` next to `totalNanoAiu`.
+
+**What changed.**
+
+- `budget.unit` defaults to `"credits"`. `"premiumRequests"` still works and still counts the legacy field, but `omg budget` and `omg doctor` report it as deprecated.
+- `omg budget`, the SessionStart summary, threshold notices and `omg team` fan-out messages lead with AI credits. Premium requests appear only in the legacy unit.
+- A running Copilot CLI session is estimated at 1 AI credit per top-level prompt until its measured total is written. It used to count 0 credits until the session ended.
+- The HUD element is `creditBudget` and shows `cr:`. The old name `premiumBudget` still works as the toggle and in `layout` / `elementOrder` while `creditBudget` is unset.
+- `omg team status --json` adds `credits_final` per sdk worker. `premium_requests` and `premium_requests_final` stay.
+- The smoke checks `scn.team.premium` and `scn.chain.premium` are now `scn.team.credits` (at most 10 AI credits) and `scn.chain.credits` (at most 6). Scripts that look up the old ids need the new ones.
+- The ledger file format is unchanged, so existing ledgers load as before.
+
+**Who must act.** A `budget` block with limits and no `unit` meant premium requests and now means AI Credits:
+
+```jsonc
+// v5.13.1: 300 premium requests. Now: 300 AI credits.
+{ "budget": { "hardLimit": 300 } }
+```
+
+There is no fixed rate between the units. A premium request was one prompt times a model multiplier; AI Credits follow the tokens and model calls a prompt uses. Convert with your own history:
+
+1. Run `omg budget status --json` on a ledger with measured records. Each record carries both `credits` and `premiumRequests`.
+2. Divide the summed `credits` by the summed `premiumRequests`. That is your credits per legacy premium request.
+3. Multiply each old limit by that ratio and set `"unit": "credits"` explicitly.
+
+For reference, short smoke prompts on small models measured 0.29 to 0.91 AI credits per legacy premium request on Copilot CLI 1.0.91. At that rate a 300 premium request limit is roughly 90 to 270 AI credits. Larger models and long agentic prompts cost more. To keep the old behaviour while you measure, set `"unit": "premiumRequests"` and accept the deprecation warning.
+
+Older sections of this guide quote costs in premium requests, as Copilot billed them at the time.
 
 ## Unreleased: Host Load Gate Threshold Values
 

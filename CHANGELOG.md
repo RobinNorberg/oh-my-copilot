@@ -450,7 +450,7 @@ Copilot, `npm run build`, test commands, git read commands and heredoc
   exceeds the limits (`--budget-override` starts it anyway); `omg budget`
   (`status`, `reset`, `--json`) shows and resets the ledger; `omg doctor
   conflicts` warns about invalid values. `OMC_BUDGET_GOVERNOR=0` turns it
-  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-premium-request-budget).
+  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-ai-credits-budget).
 - **New `session-flow` skill (upstream #4319)**: an evidence-backed map of the
   current session; its Tasks are excluded from the continuation hook. The
   plugin now ships 63 skills.

@@ -74,7 +74,7 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--yes', 'Create and push the tag without the interactive confirmation')
     .option('--suite <suite>', 'vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none')
     .option('--baseline <file>', 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail')
-    .option('--live-smoke', 'Run the live Tier 2 smoke (two prompts, about 1 to 2 AI credits); skipped otherwise')
+    .option('--live-smoke', 'Run the live Tier 2 smoke (two prompts, about 1 AI credit); skipped otherwise')
     .option('--allow-skipped-smoke', 'Let the pr phase run although the live smoke was skipped')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
     .option('--timeout <minutes>', 'Minutes the pr / promote / verify phases wait on CI per run', '60')

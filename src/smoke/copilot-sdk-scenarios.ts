@@ -48,7 +48,7 @@ export const PENDING_SCENARIOS: Partial<Record<Scenario, string>> = {
   ultragoal: 'PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands',
 };
 export const KNOWN_SCENARIOS: readonly Scenario[] = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
-/** Two prompts (one per scenario), about 0.6 to 1.8 AI credits measured. */
+/** Two prompts (one per scenario), about 0.6 AI credits measured. */
 export const DEFAULT_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail'];
 
 export const PLUGIN_NAME = 'oh-my-copilot';
