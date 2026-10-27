@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-    "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+    "head": "47f9be7c44254c3cb2a94f0abfaf2febd5ec26f4",
+    "sourceSha256": "4216ae1ed314d598809ff9b260c05f200c0faefc4ab1990a12902b165657d156",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-  "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+  "head": "47f9be7c44254c3cb2a94f0abfaf2febd5ec26f4",
+  "sourceSha256": "4216ae1ed314d598809ff9b260c05f200c0faefc4ab1990a12902b165657d156",
   "counts": {
     "public": {
       "skills": 63,
@@ -24,12 +24,12 @@
     },
     "internal": {
       "hookFiles": 346,
-      "featureFiles": 88,
+      "featureFiles": 89,
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1669,
-      "total": 1693
+      "srcFiles": 1670,
+      "total": 1694
     },
     "generated": {
       "distFiles": 6344,
@@ -560,6 +560,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -7796,6 +7797,7 @@
       "src/features/index.ts",
       "src/features/jev-model-routing.ts",
       "src/features/jev-slop-warning.ts",
+      "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -45658,6 +45660,11 @@
         "path": "src/features/jev-slop-warning.ts"
       },
       {
+        "id": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts"
+      },
+      {
         "id": "src/features/lookout/__tests__/lookout-workspace.test.ts",
         "kind": "feature",
         "path": "src/features/lookout/__tests__/lookout-workspace.test.ts"
@@ -69083,6 +69090,41 @@
         "from": "src/features/jev-slop-warning.ts",
         "to": "src/hooks/jev/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace-git-wording.test.ts",
+        "to": "src/features/lookout/workspace.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -100956,12 +100998,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8752,
-      "edgeCount": 9855,
-      "importEdgeCount": 8245,
+      "nodeCount": 8753,
+      "edgeCount": 9862,
+      "importEdgeCount": 8252,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
-  "manifestSha256": "29a6ca45f6e3a8e3d410038f8c3026aaddeab3ead6ca0c1b14678722ba9d0671"
+  "inventorySha256": "fe7671fda6a6847c9fa4706626f5b420a82b40df07d32d5f902de5c2e2b9adfb",
+  "manifestSha256": "053c7aa78ca452801f73aad977b7bda38d9d95f0e877a6f8eda7bbb60cc2941a"
 }
