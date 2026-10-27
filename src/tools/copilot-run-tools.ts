@@ -97,7 +97,7 @@ const startSchema = {
   profile: z
     .enum(['write', 'review'])
     .optional()
-    .describe('"write" (default): the worker policy. "review": the write tool is denied, and so are git commit, reset, checkout, merge, rebase and stash.'),
+    .describe('"write" (default): the worker policy. "review": the write tool is denied, and so are git -c/--config-env, fetch with a refspec, and the git subcommands that change the tree, refs or config (commit, reset, checkout, merge, rebase, stash, switch, restore, cherry-pick, revert, apply, am, branch, tag, update-ref, symbolic-ref, worktree, notes, replace, push, config). A denylist, not a sandbox.'),
 };
 
 const waitSchema = {

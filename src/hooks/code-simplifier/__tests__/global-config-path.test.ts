@@ -100,3 +100,13 @@ describe.each(SCRIPTS)('code-simplifier %s global config lookup', (_label, scrip
     expect(runStop(script)).toEqual({ continue: true });
   });
 });
+
+describe('code-simplifier plugin hook OMC_SKIP_HOOKS', () => {
+  const plugin = SCRIPTS[0][1];
+
+  it('exits without blocking when its token is in the skip list', () => {
+    writeConfig(join(homeDir, '.omg'), true);
+    expect(runStop(plugin, { OMC_SKIP_HOOKS: 'persistent-mode, code-simplifier' })).toEqual({ continue: true });
+    expect(runStop(plugin, { OMC_SKIP_HOOKS: 'persistent-mode' }).decision).toBe('block');
+  });
+});

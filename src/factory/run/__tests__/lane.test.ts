@@ -1,7 +1,8 @@
 import { rmSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { CopilotRunManager } from '../../../copilot-run/job.js';
+import { ledgerPath, readLedger } from '../../../budget/ledger.js';
+import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN } from '../../../copilot-run/job.js';
 import { fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { CopilotLaneBackend, LaneLostError, isTerminalLaneState, type LaneJobManager, type LaneRunner, type LaneStartInput } from '../lane.js';
 
@@ -53,10 +54,15 @@ describe('CopilotLaneBackend', () => {
     expect(result.pr).toBeNull();
     expect(result.error).toBeNull();
 
-    // A lane session never gets the env opt-in and never runs persistent-mode Stop continuations.
+    // A lane session never gets the env opt-in and never runs the blocking Stop hooks.
     const env = calls.connections[0].env!;
     expect(env.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
-    expect(env.OMC_SKIP_HOOKS).toBe('persistent-mode');
+    expect(env.OMC_SKIP_HOOKS).toBe(STOP_CONTINUATION_SKIP_TOKEN);
+
+    // The spend is attributed to the lane, not to the job id.
+    const { sessions } = readLedger(ledgerPath(repo));
+    expect(Object.keys(sessions)).toEqual(['factory-lane:implement-1']);
+    expect(sessions['factory-lane:implement-1']).toMatchObject({ premiumRequests: 1, credits: 2, source: 'measured' });
   });
 
   it('passes the review profile and baseRef through to the job', async () => {
@@ -72,7 +78,7 @@ describe('CopilotLaneBackend', () => {
     const { remoteId } = await lanes.start(input({ profile: 'review', model: 'gpt-test' }));
     const result = await lanes.wait(remoteId, 10_000);
     expect(started[0][0]).toMatchObject({ isolation: 'worktree', startRef: 'main', profile: 'review', model: 'gpt-test', timeoutMs: 60_000, maxCredits: 30 });
-    expect(started[0][1]).toEqual({ allowLive: true, disableStopContinuations: true });
+    expect(started[0][1]).toEqual({ allowLive: true, disableStopContinuations: true, ledgerKey: 'factory-lane:implement-1' });
     // A review lane that changed nothing ends on its base commit.
     expect(result.headSha).toBe(result.baseSha);
     expect(result.changes?.changedFiles).toEqual([]);
@@ -105,6 +111,12 @@ describe('CopilotLaneBackend', () => {
     await expect(restarted.poll(remoteId)).rejects.toBeInstanceOf(LaneLostError);
     await expect(restarted.wait(remoteId, 10)).rejects.toBeInstanceOf(LaneLostError);
     await expect(restarted.cancel(remoteId)).rejects.toBeInstanceOf(LaneLostError);
+  });
+
+  it('a laneId that is not a ledger key refuses the start before a session', async () => {
+    const lanes = new CopilotLaneBackend(managerFor('idle'), { allowLive: true });
+    await expect(lanes.start(input({ laneId: 'team/worker 1' }))).rejects.toThrow('ledgerKey');
+    expect(calls.connections).toHaveLength(0);
   });
 
   it('a bad baseRef refuses the start', async () => {

@@ -22,6 +22,7 @@ import {
   type ChangeSummary,
   type CopilotRunManager,
   type CopilotRunProfile,
+  type CopilotRunSnapshot,
   type CopilotRunStatus,
 } from '../../copilot-run/job.js';
 
@@ -30,7 +31,11 @@ export type LaneState = 'queued' | 'running' | 'needs-input' | 'completed' | 'fa
 export type LaneProfile = CopilotRunProfile;
 
 export interface LaneStartInput {
-  /** The engine's id for the lane (state file key); the backend's handle is `remoteId`. */
+  /**
+   * The engine's id for the lane (state file key); the backend's handle is
+   * `remoteId`. The local backend records the lane's spend in the budget
+   * ledger as `factory-lane:<laneId>` (ledger key characters only).
+   */
   laneId: string;
   /** Local checkout of the repository: the job's git repository and the budget ledger location. */
   cwd: string;
@@ -39,7 +44,12 @@ export interface LaneStartInput {
   /** Commit sha or branch the lane starts at. */
   baseRef: string;
   prompt: string;
-  /** `write` (default) may commit in its worktree; `review` cannot write files or change git state. */
+  /**
+   * `write` (default) may commit in its worktree. `review` denies the write
+   * tool and the git commands listed in REVIEW_SHELL_DENY_PATTERNS; that is a
+   * denylist, not a sandbox, so the engine must verify the worktree after the
+   * lane (refs, config and HEAD unchanged; PR 2 adds those checks).
+   */
   profile?: LaneProfile;
   model?: string;
   /** Cloud backends only. */
@@ -49,7 +59,9 @@ export interface LaneStartInput {
 }
 
 export interface LaneUsage {
+  /** Legacy unit (premium requests), kept for the ledger and older readers. */
   premiumRequests: number;
+  /** AI Credits: the billing unit. */
   credits: number;
   source: 'measured' | 'estimated';
   detail: string;
@@ -101,19 +113,6 @@ export class LaneLostError extends Error {
 export const TERMINAL_LANE_STATES: readonly LaneState[] = ['completed', 'failed', 'timeout', 'cancelled'];
 export const isTerminalLaneState = (state: LaneState): boolean => TERMINAL_LANE_STATES.includes(state);
 
-/** The snapshot fields of a copilot_run job this adapter reads. */
-interface JobSnapshot {
-  jobId: string;
-  status: CopilotRunStatus;
-  finalText: string | null;
-  error: string | null;
-  usage: { premiumRequests: number; credits: number; source: 'measured' | 'estimated'; summary: string };
-  worktree?: { path: string; branch: string; baseCommit: string | null };
-  changes?: ChangeSummary;
-  notes?: string[];
-  eventsPath: string;
-}
-
 export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'>;
 
 export interface CopilotLaneBackendOptions {
@@ -159,8 +158,8 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true },
-    ) as unknown as JobSnapshot;
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}` },
+    );
     return { remoteId: snap.jobId };
   }
 
@@ -176,17 +175,17 @@ export class CopilotLaneBackend implements LaneBackend {
     return { supported: true, result: this.result(await this.knownAsync(remoteId, () => this.manager.cancel(remoteId))) };
   }
 
-  private known(remoteId: string, fn: () => Record<string, unknown>): JobSnapshot {
+  private known(remoteId: string, fn: () => CopilotRunSnapshot): CopilotRunSnapshot {
     try {
-      return fn() as unknown as JobSnapshot;
+      return fn();
     } catch (err) {
       throw this.lost(remoteId, err);
     }
   }
 
-  private async knownAsync(remoteId: string, fn: () => Promise<Record<string, unknown>>): Promise<JobSnapshot> {
+  private async knownAsync(remoteId: string, fn: () => Promise<CopilotRunSnapshot>): Promise<CopilotRunSnapshot> {
     try {
-      return (await fn()) as unknown as JobSnapshot;
+      return await fn();
     } catch (err) {
       throw this.lost(remoteId, err);
     }
@@ -196,7 +195,7 @@ export class CopilotLaneBackend implements LaneBackend {
     return err instanceof CopilotRunError ? new LaneLostError(remoteId, err.message) : err;
   }
 
-  private result(snap: JobSnapshot): LaneResult {
+  private result(snap: CopilotRunSnapshot): LaneResult {
     const state = STATE_OF[snap.status];
     const worktree = snap.worktree?.path ?? null;
     return {

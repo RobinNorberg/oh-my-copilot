@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   CopilotRunManager,
-  REVIEW_SHELL_DENY_PATTERNS,
   STOP_CONTINUATION_SKIP_TOKEN,
   reviewProfileDenial,
 } from '../job.js';
@@ -128,7 +128,43 @@ describe('copilot_run review profile', () => {
   it('reviewProfileDenial leaves other request kinds to the worker policy', () => {
     expect(reviewProfileDenial({ kind: 'read', path: 'x' })).toBeNull();
     expect(reviewProfileDenial({ kind: 'url', url: 'https://example.com' })).toBeNull();
-    expect(REVIEW_SHELL_DENY_PATTERNS.some(({ re }) => re.test('git cherry-pick abc'))).toBe(false);
+  });
+
+  it('denies the alias, config and quote-splitting bypasses and the wider subcommand list', () => {
+    const denied = (cmd: string) => reviewProfileDenial({ kind: 'shell', fullCommandText: cmd });
+    for (const cmd of [
+      // An alias defined on the command line or in the config renames a denied subcommand.
+      'git -c alias.c=commit c -am x',
+      'git -c "alias.c=commit" c -am x',
+      'git -C . -c alias.c=commit c -am x',
+      'git -c core.hooksPath=/tmp/h status',
+      'git --config-env=alias.c=CMD c -am x',
+      'git --config-env alias.c=CMD c',
+      'git config alias.c commit',
+      'git config --get user.name',
+      'g=git; $g -c alias.c=commit c',
+      // Empty quotes split a word the shell joins back together.
+      "git c''ommit -am x",
+      'git c""ommit -am x',
+      `git "c"''ommit -am x`,
+      "git re''set --hard HEAD~1",
+      // A long global option with a separate value.
+      'git --git-dir .git commit -am x',
+      'git --work-tree . reset --hard',
+      ...['switch main', 'restore README.md', 'cherry-pick abc', 'revert HEAD', 'apply x.patch', 'am x.patch', 'branch -D x',
+        'tag v1', 'update-ref refs/heads/x HEAD', 'symbolic-ref HEAD refs/heads/x', 'worktree add ../x', 'notes add -m x',
+        'replace HEAD abc', 'push origin HEAD', 'fetch origin main:main', 'fetch origin +refs/heads/*:refs/remotes/o/*',
+        'fetch origin :refs/heads/x'].map((sub) => `git ${sub}`),
+    ]) {
+      expect(denied(cmd), cmd).toMatch(/^review profile|alias|environment/);
+    }
+    for (const cmd of [
+      'git status', 'git diff main...HEAD', 'git merge-base main HEAD', 'git log -c -1', 'git grep -c TODO',
+      'git fetch origin', 'git fetch https://github.com/o/r main', 'git fetch git@github.com:o/r main',
+      'git show HEAD:README.md', 'git commit-graph verify',
+    ]) {
+      expect(denied(cmd), cmd).toBeNull();
+    }
   });
 
   it('rejects an unknown profile', () => {
@@ -156,16 +192,51 @@ describe('copilot_run allowLive and session env', () => {
     expect(calls.connections).toHaveLength(0);
   });
 
-  it('disableStopContinuations sets only the persistent-mode skip; the allow env and caller OMC_* never reach the session', async () => {
+  it('disableStopContinuations skips only the blocking Stop hooks; the allow env and caller OMC_* never reach the session', async () => {
     const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', OMC_SKIP_HOOKS: 'pre-tool-use' });
-    await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, disableStopContinuations: true }).jobId as string, 10_000);
-    await m.wait(m.start({ prompt: 'b', cwd: repo }).jobId as string, 10_000);
+    await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, disableStopContinuations: true }).jobId, 10_000);
+    await m.wait(m.start({ prompt: 'b', cwd: repo }).jobId, 10_000);
     const [lane, plain] = calls.connections.map((c) => c.env!);
-    expect(STOP_CONTINUATION_SKIP_TOKEN).toBe('persistent-mode');
-    expect(lane.OMC_SKIP_HOOKS).toBe('persistent-mode');
+    expect(STOP_CONTINUATION_SKIP_TOKEN).toBe('persistent-mode,workflow-drift-guard,code-simplifier');
+    expect(lane.OMC_SKIP_HOOKS).toBe(STOP_CONTINUATION_SKIP_TOKEN);
     expect(lane.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
     expect(lane.OMC_GIT_GUARDRAILS).toBe('1');
     expect(plain.OMC_SKIP_HOOKS).toBeUndefined();
     expect(plain.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
+  });
+});
+
+describe('copilot_run lane skip token in the Stop hook scripts', () => {
+  /** Run a Stop hook script in `repo` with a clean OMC env plus `env`; returns its parsed JSON output. */
+  function runStopHook(script: string, input: Record<string, unknown>, env: NodeJS.ProcessEnv): Record<string, unknown> {
+    const base = { ...process.env };
+    for (const key of ['DISABLE_OMC', 'OMC_SKIP_HOOKS', 'OMC_HOME', 'OMC_STATE_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_PLUGIN_ROOT', 'OMC_JEV']) delete base[key];
+    const stdout = execFileSync(process.execPath, [join(process.cwd(), 'scripts', script)], {
+      input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'lane-skip-test', cwd: repo, ...input }),
+      encoding: 'utf-8',
+      timeout: 15_000,
+      env: { ...base, ...env },
+    });
+    return JSON.parse(stdout.trim()) as Record<string, unknown>;
+  }
+
+  it('workflow-drift-guard and code-simplifier block without it and let the lane stop with it', () => {
+    // A review verdict that quotes a PR's TODO while the tree holds one.
+    writeFileSync(join(repo, 'index.ts'), 'export function next() {\n  // TODO: implement follow-up\n  return 1;\n}\n');
+    gitIn(repo, 'add', 'index.ts');
+    writeFileSync(join(repo, 'index.ts'), 'export function next() {\n  // TODO: implement follow-up\n  return 2;\n}\n');
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.omg'), { recursive: true });
+    writeFileSync(join(home, '.omg', 'config.json'), JSON.stringify({ codeSimplifier: { enabled: true } }));
+    const verdict = { last_assistant_message: 'Review complete. Verdict: approve; the TODO in index.ts is fine.' };
+    const homeEnv = { HOME: home, USERPROFILE: home };
+
+    expect(runStopHook('workflow-drift-guard.mjs', verdict, homeEnv).decision).toBe('block');
+    expect(runStopHook('code-simplifier.mjs', {}, homeEnv).decision).toBe('block');
+    rmSync(join(repo, '.omg', 'state', 'code-simplifier-triggered.marker'), { force: true });
+
+    const lane = { ...homeEnv, OMC_SKIP_HOOKS: STOP_CONTINUATION_SKIP_TOKEN };
+    expect(runStopHook('workflow-drift-guard.mjs', verdict, lane).decision).toBeUndefined();
+    expect(runStopHook('code-simplifier.mjs', {}, lane)).toEqual({ continue: true });
   });
 });

@@ -13,8 +13,8 @@
  * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env,
  *   or an in-process caller passes `allowLive` (never reachable from MCP);
  *   the session never inherits the env var;
- * - profile `review` denies the write tool and the git commands that move
- *   or rewrite the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
+ * - profile `review` denies the write tool and the git commands that move,
+ *   rewrite or reconfigure the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
  * - the budget governor (src/budget) is asked first, like an `omg team`
  *   launch of one copilot worker, and the spend is recorded in the ledger
  *   (live estimate, then the `session.shutdown` totals);
@@ -38,7 +38,7 @@ import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync 
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount, governTeamFanout, loadBudgetSettings } from '../budget/governor.js';
-import { ledgerPath, ledgerTotals, readLedger, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { SAFE_KEY, ledgerPath, ledgerTotals, readLedger, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
@@ -57,7 +57,13 @@ import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import { ensureWorkerWorktree, getBranchName, getWorktreePath, removeWorkerWorktree } from '../team/git-worktree.js';
-import { buildSdkExcludedTools, decideSdkPermission, normalizeShellCommand, type SdkPermissionRequest } from '../team/sdk-policy.js';
+import {
+  buildSdkExcludedTools,
+  decideSdkPermission,
+  gitSubcommandDeny,
+  normalizeShellCommand,
+  type SdkPermissionRequest,
+} from '../team/sdk-policy.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 
@@ -81,13 +87,15 @@ const DENIED_LOG_MAX = 50;
 const JOB_ID = /^cr-[0-9a-f]{12}$/;
 const MAX_START_REF_CHARS = 256;
 /**
- * The OMC_SKIP_HOOKS token that turns off the persistent-mode Stop hook in a
- * session started with `disableStopContinuations`. scripts/persistent-mode.mjs
- * (run by the Copilot Stop dispatcher), src/hooks/persistent-mode and the hook
- * bridge all honor `persistent-mode`; the other hooks (git guardrails, budget
- * guard) keep running, which DISABLE_OMC would not allow.
+ * The OMC_SKIP_HOOKS list that turns off the blocking Stop hooks in a session
+ * started with `disableStopContinuations`, so no Stop block silently costs a
+ * request: persistent-mode (continuations), workflow-drift-guard (blocks on
+ * placeholder text, which a review verdict may quote) and code-simplifier.
+ * The scripts the Copilot Stop dispatcher runs each honor their own token;
+ * the other hooks (git guardrails, budget guard) keep running, which
+ * DISABLE_OMC would not allow.
  */
-export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode';
+export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode,workflow-drift-guard,code-simplifier';
 
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
@@ -112,25 +120,30 @@ export interface CopilotRunStartInput {
 export interface CopilotRunStartOptions {
   /** Explicit opt-in to a live, billed session in place of OMG_COPILOT_RUN_ALLOW=1. */
   allowLive?: boolean;
-  /** Skip the persistent-mode Stop hook in the session, so no Stop block silently costs a premium request. */
+  /** Skip the blocking Stop hooks ({@link STOP_CONTINUATION_SKIP_TOKEN}), so no Stop block silently costs a request. */
   disableStopContinuations?: boolean;
+  /** The job's budget ledger record key (default `copilot-run:<jobId>`). */
+  ledgerKey?: string;
 }
 
 /**
- * Shell commands a `review` session may not run: git's commit, reset,
- * checkout, merge, rebase and stash, spelled like the push rule of
- * SDK_SHELL_DENY_PATTERNS (global options may sit between). `merge-base` and
- * other hyphenated read-only subcommands stay allowed.
+ * Shell commands a `review` session may not run, on top of the worker policy
+ * (which already denies push, aliases and GIT_CONFIG_* env overrides):
+ * - git subcommands that move or rewrite the tree, its refs or its config;
+ *   `merge-base` and other hyphenated read-only subcommands stay allowed;
+ * - any global `-c` or `--config-env` (an alias or `core.*` override);
+ * - `git fetch` with a refspec (`main:main` writes a local ref).
+ * Spelled like the push rule of SDK_SHELL_DENY_PATTERNS, on
+ * normalizeShellCommand's output.
  */
 export const REVIEW_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
-  {
-    re: /(?:^|[\s;&|("'/\\])git(?:\.exe)?(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+(?:commit|reset|checkout|merge|rebase|stash)(?![\w-])/i,
-    reason: 'review profile: git commands that change the tree or its history',
-  },
-  {
-    re: /\bgit\b[\s\S]*\$\{?\w+\}?\s+(?:commit|reset|checkout|merge|rebase|stash)(?![\w-])/i,
-    reason: 'review profile: git commands that change the tree or its history',
-  },
+  ...gitSubcommandDeny(
+    String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config)(?![\w-])`,
+    'review profile: git commands that change the tree, its refs or its config',
+  ),
+  ...gitSubcommandDeny(String.raw`(?:-c(?:\s|$)|--config-env\b)`, 'review profile: git config overrides (-c, --config-env)'),
+  // A refspec argument (`src:dst`, `+refs/*:refs/*`); a URL's `://` and scp-style `user@host:` are not one.
+  ...gitSubcommandDeny(String.raw`fetch\b[^;&|\n]*?\s\+?[\w./*-]*:(?!//)`, 'review profile: git fetch with a refspec'),
 ];
 
 /** The review profile's extra refusal for a request the worker policy approved, or null. */
@@ -176,6 +189,32 @@ export interface WorktreeSummary {
   repoRoot: string;
 }
 
+/** A job as start, status, wait and cancel return it (the copilot_run tools' JSON). */
+export type CopilotRunSnapshot = {
+  jobId: string;
+  status: CopilotRunStatus;
+  stopRequested: 'timeout' | 'cancelled' | 'capped' | null;
+  isolation: CopilotRunIsolation;
+  profile: CopilotRunProfile;
+  startRef?: string;
+  cwd: string;
+  workingDirectory: string;
+  model: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  timeoutMs: number;
+  maxCredits: number;
+  sessionId: string | null;
+  finalText: string | null;
+  error: string | null;
+  usage: { premiumRequests: number; credits: number; source: 'measured' | 'estimated'; summary: string };
+  worktree?: WorktreeSummary & { baseCommit: string | null; removed: boolean };
+  changes?: ChangeSummary;
+  deniedPermissions?: Array<{ kind: string; reason: string }>;
+  notes?: string[];
+  eventsPath: string;
+};
+
 export interface ChangeSummary {
   /** `git diff --stat <base>` at the repository toplevel (commits and uncommitted tracked changes); all paths are root-relative. */
   diffStat: string;
@@ -196,6 +235,8 @@ interface Job {
   /** The caller's startRef (null: HEAD). */
   startRef: string | null;
   disableStopContinuations: boolean;
+  /** Budget ledger record key. */
+  ledgerKey: string;
   model: string | null;
   timeoutMs: number;
   maxCredits: number;
@@ -305,7 +346,7 @@ export class CopilotRunManager {
   constructor(private readonly deps: CopilotRunDeps) {}
 
   /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
-  start(input: CopilotRunStartInput, options: CopilotRunStartOptions = {}): Record<string, unknown> {
+  start(input: CopilotRunStartInput, options: CopilotRunStartOptions = {}): CopilotRunSnapshot {
     if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
       throw new CopilotRunError(
         `copilot_run_start runs a live, billed Copilot session and is disabled. Set ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env `
@@ -326,6 +367,7 @@ export class CopilotRunManager {
     if (profile !== 'write' && profile !== 'review') throw new CopilotRunError(`copilot_run_start: profile must be "write" or "review", not ${JSON.stringify(profile)}.`);
     const startRef = input.startRef ?? null;
     if (startRef !== null && isolation !== 'worktree') throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
+    if (options.ledgerKey !== undefined && !SAFE_KEY.test(options.ledgerKey)) throw new CopilotRunError(`copilot_run_start: ledgerKey ${JSON.stringify(options.ledgerKey)} must match ${SAFE_KEY}.`);
 
     const cwd = resolve(input.cwd ?? process.cwd());
     let isDir = false;
@@ -397,6 +439,7 @@ export class CopilotRunManager {
       profile,
       startRef,
       disableStopContinuations: options.disableStopContinuations === true,
+      ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
       model: input.model ?? null,
       timeoutMs,
       maxCredits,
@@ -438,19 +481,19 @@ export class CopilotRunManager {
     return this.snapshot(job);
   }
 
-  status(jobId: string): Record<string, unknown> {
+  status(jobId: string): CopilotRunSnapshot {
     return this.snapshot(this.find(jobId));
   }
 
   /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
-  async wait(jobId: string, timeoutMs: number): Promise<Record<string, unknown>> {
+  async wait(jobId: string, timeoutMs: number): Promise<CopilotRunSnapshot> {
     const job = this.find(jobId);
     await settleWithin(job.done, Math.max(0, timeoutMs));
     return this.snapshot(job);
   }
 
   /** Abort the session and wait (bounded) for the teardown. */
-  async cancel(jobId: string): Promise<Record<string, unknown>> {
+  async cancel(jobId: string): Promise<CopilotRunSnapshot> {
     const job = this.find(jobId);
     if (!isTerminal(job.status)) {
       job.requestStop('cancelled');
@@ -473,7 +516,7 @@ export class CopilotRunManager {
   }
 
   /** Remove a finished job's worktree and branch when nothing in them would be lost. */
-  cleanup(jobId: string): Record<string, unknown> {
+  cleanup(jobId: string): CopilotRunSnapshot & { cleanup: string } {
     const job = this.find(jobId);
     if (!isTerminal(job.status)) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} is still ${job.status}; cancel it first.`);
     if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
@@ -526,7 +569,7 @@ export class CopilotRunManager {
     return decision.notice;
   }
 
-  /** Ledger record `copilot-run:<jobId>`; fail-open. False when the lock was busy (retry later). */
+  /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
   private recordBudget(job: Job, lockTimeoutMs: number): boolean {
     if (this.deps.env.OMC_BUDGET_GOVERNOR === '0') return true;
     const usage: UsageRecord = {
@@ -540,7 +583,7 @@ export class CopilotRunManager {
       updatedAt: new Date().toISOString(),
     };
     try {
-      recordUsage(ledgerPath(job.ledgerCwd), `copilot-run:${job.id}`, usage, undefined, { timeoutMs: lockTimeoutMs });
+      recordUsage(ledgerPath(job.ledgerCwd), job.ledgerKey, usage, undefined, { timeoutMs: lockTimeoutMs });
       return true;
     } catch (err) {
       return !errText(err).startsWith('Failed to acquire file lock');
@@ -716,11 +759,11 @@ export class CopilotRunManager {
     return outcome;
   }
 
-  private snapshot(job: Job): Record<string, unknown> {
+  private snapshot(job: Job): CopilotRunSnapshot {
     const usage = {
       premiumRequests: job.usage.premiumRequests,
       credits: Number(job.usage.credits.toFixed(3)),
-      source: job.usage.measured ? 'measured' : 'estimated',
+      source: job.usage.measured ? 'measured' as const : 'estimated' as const,
       summary: `${formatAmount(job.usage.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(job.usage.credits.toFixed(3)), 'credits')}`,
     };
     return {
