@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { factoryCommand, factoryRunCommand, type FactoryRunDeps } from '../factory.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
-import { readFactoryState } from '../../../factory/run/state.js';
+import { factoryCancelRequested, readFactoryState } from '../../../factory/run/state.js';
 import type { Exec } from '../../../ship/exec.js';
 import { commitFile, FakeLanes, harness, ISSUE, review, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
 
@@ -34,6 +34,7 @@ function deps(over: Partial<FactoryRunDeps> = {}): FactoryRunDeps {
     lanes: () => lanes,
     limits: () => resolveFactoryRunLimits(undefined, undefined),
     base: () => 'dev',
+    ledgerDir: h.ledgerDir,
     ...over,
   };
 }
@@ -68,7 +69,10 @@ describe('omg factory run CLI', () => {
 
     out = [];
     expect(await cli(d, 'cancel', String(ISSUE))).toBe(0);
-    expect(readFactoryState(h.root, ISSUE)!.cancelRequested).toBe(true);
+    expect(factoryCancelRequested(h.root, ISSUE)).toBe(true);
+    out = [];
+    expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+    expect(out.join('\n')).toMatch(/cancel requested/);
   });
 
   it('a gate other than prepare exits 4', async () => {

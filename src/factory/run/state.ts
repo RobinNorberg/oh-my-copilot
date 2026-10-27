@@ -3,7 +3,9 @@
  * written with the ship pattern (src/ship/state.ts): read-modify-write under
  * the file lock, atomic write, sha256 `integrity` seal re-checked before every
  * update. A single-runner owner file `run-<issue>.owner` keeps two engines off
- * one issue.
+ * one issue. The seal is an unkeyed sha256 that anyone can recompute, so it
+ * only catches accidental edits; the engine's defence against a lane that
+ * rewrites the file is its own record of the bytes it wrote (ledger.ts).
  *
  * Phases (design §3, PR 2 scope): intake -> plan -> implement -> publish ->
  * review -> (fix -> publish -> review)* -> prepare. `gate` set means
@@ -15,10 +17,11 @@ import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
 import { join } from 'path';
-import { atomicWriteJsonSync, ensureDirSync } from '../../lib/atomic-write.js';
+import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
+import type { ShipVerdict } from '../../ship/state.js';
 
 export const FACTORY_PHASES = ['intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'cancelled', 'failed'] as const;
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
@@ -41,6 +44,12 @@ export interface FactoryLaneRecord {
   /** AI Credits is the unit; premiumRequests is legacy, kept for older readers. */
   usage?: { credits: number; premiumRequests: number; source: 'measured' | 'estimated' };
   verdict?: FactoryLaneVerdict;
+  /**
+   * sha256 of the ship verdict the engine recorded from this lane
+   * (shipVerdictHash), written before the ship state: a ship verdict is
+   * adopted only when a review lane the engine ran carries its hash.
+   */
+  verdictHash?: string;
   note?: string;
   startedAt: string;
   endedAt?: string;
@@ -136,6 +145,20 @@ export function factoryOwnerPath(root: string, issue: number): string {
   return join(factoryStateDir(root), `run-${issue}.owner`);
 }
 
+/** `omg factory run cancel` drops this file; the engine alone writes the state file. */
+export function factoryCancelPath(root: string, issue: number): string {
+  return join(factoryStateDir(root), `run-${issue}.cancel`);
+}
+
+export function factoryCancelRequested(root: string, issue: number): boolean {
+  return existsSync(factoryCancelPath(root, issue));
+}
+
+/** The hash a review lane record keeps of the ship verdict the engine recorded from it. */
+export function shipVerdictHash(v: Pick<ShipVerdict, 'reviewer' | 'verdict' | 'sha' | 'at' | 'notes'>): string {
+  return createHash('sha256').update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest('hex');
+}
+
 export function createFactoryState(input: { issue: number; repoUrl: string; base: string }, now: string): FactoryRunState {
   return {
     version: 1,
@@ -228,6 +251,7 @@ export function updateFactoryState(
   root: string,
   issue: number,
   mutate: (current: FactoryRunState | null) => FactoryRunState,
+  options: { onWrite?: (path: string, content: string) => void } = {},
 ): FactoryRunState {
   if (!existsSync(join(root, '.git'))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
   const path = factoryStatePath(root, issue);
@@ -239,17 +263,24 @@ export function updateFactoryState(
     }
     const next = mutate(current);
     const sealed = { ...next, integrity: computeFactoryIntegrity(next) };
-    atomicWriteJsonSync(path, sealed);
+    // The exact bytes written, so the engine ledger can record them (ledger.ts).
+    const content = JSON.stringify(sealed, null, 2);
+    atomicWriteFileSync(path, content);
+    options.onWrite?.(path, content);
     return sealed;
   }, { timeoutMs: 5_000 });
 }
 
-/** `omg factory run cancel`: set cancelRequested under the lock. */
+/**
+ * `omg factory run cancel`: drop the cancel request file next to the state.
+ * The state file stays engine-only (the engine ledger flags any other
+ * writer); the returned state shows the request.
+ */
 export function requestFactoryCancel(root: string, issue: number, now: string): FactoryRunState {
-  return updateFactoryState(root, issue, (current) => {
-    if (!current) throw new FactoryStateError(`no factory run for issue #${issue}`);
-    return { ...current, cancelRequested: true, updatedAt: now };
-  });
+  const current = readFactoryState(root, issue);
+  if (!current) throw new FactoryStateError(`no factory run for issue #${issue}`);
+  writeFileSync(factoryCancelPath(root, issue), `${JSON.stringify({ at: now })}\n`, 'utf8');
+  return { ...current, cancelRequested: true };
 }
 
 export interface FactoryOwner {

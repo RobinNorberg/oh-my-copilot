@@ -31,7 +31,7 @@ import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from
 import { runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
-import { factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity, type FactoryRunState } from '../../factory/run/state.js';
+import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity, type FactoryRunState } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -70,6 +70,8 @@ export interface FactoryRunDeps {
   limits: (root: string) => LoadedFactoryRunLimits;
   /** The integration branch: ship.base from the project config, else the user config, else dev. */
   base: (root: string) => string;
+  /** Engine ledger directory outside the repo (default: `$OMC_STATE_DIR` or `~/.omg`, then `factory-ledger`). */
+  ledgerDir?: string;
 }
 
 function projectConfig(root: string): unknown {
@@ -172,6 +174,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           const outcome = await runFactoryEngine({
             root, issue, exec: deps.exec, limits, base: deps.base(root), dryRun: Boolean(o.dryRun),
             lanes: o.dryRun ? NO_LANES : deps.lanes(root),
+            ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
             interrupted: () => signals > 0,
             warn: (m) => console.error(chalk.yellow(m)),
           });
@@ -204,9 +207,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const issue = parseIssue(issueRaw);
         const root = factoryRoot(exec);
-        const state = readFactoryState(root, issue);
-        if (!state) throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
-        const integrity = verifyFactoryIntegrity(state);
+        const stored = readFactoryState(root, issue);
+        if (!stored) throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
+        const state = factoryCancelRequested(root, issue) ? { ...stored, cancelRequested: true } : stored;
+        const integrity = verifyFactoryIntegrity(stored);
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ...state, integrityOk: integrity, runCredits: runCredits(state) }, null, 2));
         else {
           console.log(renderFactoryRunState(state));

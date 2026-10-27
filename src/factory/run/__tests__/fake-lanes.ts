@@ -115,9 +115,15 @@ export class FakeLanes implements LaneBackend {
     return this.result(job, remoteId, job.outcome.state ?? 'completed');
   }
 
+  /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
+  cancelFails = false;
+
   async cancel(remoteId: string): Promise<{ supported: boolean; result: LaneResult }> {
     this.cancelled.push(remoteId);
-    const job = this.jobs.get(remoteId)!;
+    if (this.cancelFails) throw new Error(`fake lanes: cancel of ${remoteId} timed out`);
+    const job = this.jobs.get(remoteId);
+    // Like copilot_run after a restart: a job the backend does not know (or lost) is LaneLostError.
+    if (!job || job.outcome?.lost) throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
     job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };
     return { supported: true, result: this.result(job, remoteId, 'cancelled') };
   }
@@ -152,10 +158,17 @@ export interface Harness {
   dir: string;
   root: string;
   bare: string;
+  /** Engine ledger directory, outside the repo (FactoryEngineOptions.ledgerDir). */
+  ledgerDir: string;
   exec: Exec;
+  /** Commands as the engine built them, with the git hardening prefix (`-c k=v` pairs) left out. */
   calls: string[];
+  /** Every command as it reached the exec seam, with its env. */
+  raw: Array<{ cmd: string; args: string[]; env?: Readonly<Record<string, string>> }>;
+  /** Called with each recorded call before it runs (tests plant late changes here). */
+  onCall?: (call: string) => void;
   gh: {
-    issue: { title: string; body: string; state: string; comments: Array<{ body: string }> };
+    issue: { title: string; body: string; state: string; comments: Array<{ body: string; authorAssociation?: string }> };
     prCreated: boolean;
     /** Override what `gh pr view` reports as the head (default: the bare remote's factory branch). */
     headOverride?: string;
@@ -180,16 +193,20 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
   gitIn(root, 'remote', 'add', 'origin', bare);
   gitIn(root, 'push', '-q', 'origin', 'dev');
   const h: Harness = {
-    dir, root, bare, calls: [],
+    dir, root, bare, ledgerDir: join(dir, 'ledger'), calls: [], raw: [],
     gh: { issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', comments: [] }, prCreated: false, openPrs: [] },
     exec: () => ({ status: 1, stdout: '', stderr: '' }),
   };
   const ok = (stdout = ''): ExecResult => ({ status: 0, stdout, stderr: '' });
-  h.exec = (cmd, args, opts) => {
+  h.exec = (cmd, rawArgs, opts) => {
+    h.raw.push({ cmd, args: rawArgs, ...(opts?.env ? { env: opts.env } : {}) });
+    let args = rawArgs;
+    while (cmd === 'git' && args[0] === '-c') args = args.slice(2);
     const key = `${cmd} ${args.join(' ')}`;
     h.calls.push(key);
+    h.onCall?.(key);
     if (cmd === 'git' && args[0] === 'remote' && args[1] === 'get-url') return ok(`${REPO_URL}.git\n`);
-    if (cmd === 'git') return defaultExec(cmd, args, opts);
+    if (cmd === 'git') return defaultExec(cmd, rawArgs, opts);
     if (key.startsWith(`gh issue view ${ISSUE} --json`)) return ok(JSON.stringify({ ...h.gh.issue, labels: [], url: `${REPO_URL}/issues/${ISSUE}` }));
     if (key.startsWith('gh pr list --head factory/issue-')) return ok(JSON.stringify(h.gh.openPrs.map((number) => ({ number, state: 'OPEN' }))));
     if (key.startsWith('gh pr create ')) {

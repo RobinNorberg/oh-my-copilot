@@ -288,10 +288,15 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
   ]).finally(() => clearTimeout(timer));
 }
 
-/** One git command as an argv array (never a shell); trimmed stdout, or null on failure. */
+/**
+ * One git command as an argv array (never a shell); trimmed stdout, or null
+ * on failure. fsmonitor is off: these run in the caller's process on a job
+ * worktree the job's agent could configure (omg factory run reads the
+ * change summary before its tamper check).
+ */
 function git(cwd: string, args: string[]): string | null {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
+    return execFileSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
   } catch {
     return null;
   }
@@ -308,8 +313,9 @@ export function summarizeChanges(cwd: string, base: string | null, extraProtecte
   if (!base) return null;
   const top = git(cwd, ['rev-parse', '--show-toplevel']);
   if (!top) return null;
-  const stat = git(top, ['diff', '--stat', base, '--']);
-  const names = git(top, ['diff', '--name-only', base, '--']);
+  // No external diff driver or textconv: the worktree's attributes are the job's to write.
+  const stat = git(top, ['diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+  const names = git(top, ['diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
   const untrackedFiles = lines(git(top, ['ls-files', '--others', '--exclude-standard']));

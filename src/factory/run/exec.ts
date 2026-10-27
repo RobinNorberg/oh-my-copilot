@@ -8,10 +8,14 @@
  * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list` in
  *   fixed shapes, plus ship's `gh pr view|checks`. Never `gh api`, `gh -R`,
  *   or a merge (merge is always human).
- * - Read-only git for the review-lane tamper check (review-guard.ts) and the
- *   review prompt's diff.
+ * - Read-only git for the lane tamper check (review-guard.ts) and the review
+ *   prompt's diff (no external diff driver, no textconv).
+ * - Every engine git command runs hardened (hardenedGitExec): no hooks and no
+ *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
+ *   even if the tamper check missed it.
  */
 
+import { existsSync, readdirSync } from 'fs';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -64,7 +68,7 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
     case 'status':
       return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
     case 'diff':
-      return r.length === 1 && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[0]) ? true : null;
+      return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     default:
       return null;
   }
@@ -122,5 +126,35 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
   return (cmd, args, opts) => {
     assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
     return exec(cmd, args, opts);
+  };
+}
+
+/** Prepended to every hardened git command, after the guard checked the plain shape. */
+export function gitHardeningArgs(hooksDir: string): string[] {
+  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false'];
+}
+
+/**
+ * Run git with `core.hooksPath` set to an engine-owned empty directory and
+ * `core.fsmonitor=false`, so no hook (pre-push, post-checkout,
+ * reference-transaction) and no fsmonitor command runs in the engine.
+ * Refuses when the hooks directory is missing or not empty. Other commands
+ * pass through unchanged. Wrap it INSIDE factoryGuardExec, so the guard sees
+ * the plain shape.
+ *
+ * The system and global config stay. GIT_CONFIG_NOSYSTEM is not set: Git for
+ * Windows keeps `credential.helper` and `core.autocrlf` in the system config,
+ * so pushes would lose their credentials and every CRLF checkout would read
+ * as modified. The system config needs admin rights to write; the global one
+ * is in the user's home (see the residual risks in docs/REFERENCE.md).
+ */
+export function hardenedGitExec(exec: Exec, hooksDir: string): Exec {
+  return (cmd, args, opts) => {
+    const base = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
+    if (base !== 'git') return exec(cmd, args, opts);
+    if (!existsSync(hooksDir) || readdirSync(hooksDir).length > 0) {
+      throw new FactorySafetyError(`omg factory run refuses git: the engine's empty hooks directory ${hooksDir} is missing or not empty`);
+    }
+    return exec(cmd, [...gitHardeningArgs(hooksDir), ...args], opts);
   };
 }

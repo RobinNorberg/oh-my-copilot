@@ -47,7 +47,7 @@ function problemsAfter(tamper: () => void): string[] {
   addLaneWorktree();
   tamper();
   const after = snapshotRepo(exec, h.root);
-  return [...compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }), ...verifyReviewWorktree(exec, laneResult(), head)];
+  return [...compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }, { newWorktree: { path: wt } }), ...verifyReviewWorktree(exec, laneResult(), head, after.commonDir)];
 }
 
 const git = (...args: string[]) => gitIn(h.root, ...args);
@@ -85,6 +85,70 @@ describe('review-lane tamper check', () => {
     const problems = problemsAfter(tamper);
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.join('\n')).toMatch(problem);
+  });
+
+  it.each<[string, () => void, RegExp]>([
+    ['another new worktree entry', () => git('worktree', 'add', '-q', '--detach', join(h.dir, 'sneaky'), head), /worktree entry worktrees\/sneaky was added/],
+    ['a new submodule git dir', () => { mkdirSync(join(h.root, '.git', 'modules', 'lib', 'sub'), { recursive: true }); writeFileSync(join(h.root, '.git', 'modules', 'lib', 'sub', 'HEAD'), 'ref: refs/heads/main\n'); }, /submodule git dir modules\/lib\/sub was added/],
+    ['objects/info/alternates', () => writeFileSync(join(h.root, '.git', 'objects', 'info', 'alternates'), '/evil/objects\n'), /objects\/info\/alternates changed/],
+  ])('fails on %s', (_name, tamper, problem) => {
+    const problems = problemsAfter(tamper);
+    expect(problems.join('\n')).toMatch(problem);
+  });
+
+  describe('state that exists before the lane', () => {
+    const other = () => join(h.root, '.git', 'worktrees', 'other');
+    beforeEach(() => {
+      git('worktree', 'add', '-q', '-b', 'other', join(h.dir, 'other'), head);
+      mkdirSync(join(h.root, '.git', 'modules', 'sub'), { recursive: true });
+      writeFileSync(join(h.root, '.git', 'modules', 'sub', 'HEAD'), 'ref: refs/heads/main\n');
+      writeFileSync(join(h.root, '.git', 'modules', 'sub', 'config'), '[core]\n\tbare = false\n');
+      mkdirSync(join(h.root, '.git', 'modules', 'sub', 'hooks'));
+      appendFileSync(join(h.root, '.git', 'info', 'exclude'), '.env\nnode_modules/\n');
+      writeFileSync(join(h.root, '.env'), 'TOKEN=a\n');
+      mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+      writeFileSync(join(h.root, 'node_modules', '.bin', 'tsc'), '#!/bin/sh\n');
+    });
+
+    it('is not tampering when nothing changes', () => {
+      expect(problemsAfter(() => {})).toEqual([]);
+    });
+
+    it.each<[string, () => void, RegExp]>([
+      ['another worktree\'s HEAD', () => writeFileSync(join(other(), 'HEAD'), `${head}\n`), /worktrees\/other changed/],
+      ['another worktree\'s gitdir', () => writeFileSync(join(other(), 'gitdir'), '/evil/.git\n'), /worktrees\/other changed/],
+      ['a per-worktree ref (refs/bisect)', () => { mkdirSync(join(other(), 'refs', 'bisect'), { recursive: true }); writeFileSync(join(other(), 'refs', 'bisect', 'bad'), `${head}\n`); }, /worktrees\/other changed/],
+      ['a submodule\'s config', () => appendFileSync(join(h.root, '.git', 'modules', 'sub', 'config'), '\tfsmonitor = evil\n'), /modules\/sub changed/],
+      ['a submodule\'s hook', () => writeFileSync(join(h.root, '.git', 'modules', 'sub', 'hooks', 'post-checkout'), '#!/bin/sh\n'), /modules\/sub changed/],
+      ['an ignored .env', () => writeFileSync(join(h.root, '.env'), 'TOKEN=evil\n'), /ignored file in the main checkout changed/],
+      ['a new ignored .env.local', () => writeFileSync(join(h.root, '.env.local'), 'X=1\n'), /ignored file in the main checkout changed/],
+      ['node_modules/.bin', () => writeFileSync(join(h.root, 'node_modules', '.bin', 'tsc'), '#!/bin/sh\nevil\n'), /ignored file in the main checkout changed/],
+    ])('fails on %s', (_name, tamper, problem) => {
+      const problems = problemsAfter(tamper);
+      expect(problems.join('\n')).toMatch(problem);
+    });
+  });
+
+  it('fails when the lane\'s own new worktree entry points its commondir elsewhere', () => {
+    const before = snapshotRepo(exec, h.root);
+    addLaneWorktree();
+    writeFileSync(join(h.root, '.git', 'worktrees', 'cr-rev', 'commondir'), '/evil/.git\n');
+    const after = snapshotRepo(exec, h.root);
+    expect(compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }, { newWorktree: { path: wt } }).join('\n')).toMatch(/points its commondir at \/evil\/\.git/);
+  });
+
+  it('skips git status when the config already differs (a changed config may name a clean filter)', () => {
+    const before = snapshotRepo(exec, h.root);
+    appendFileSync(join(h.root, '.git', 'config'), '[filter "evil"]\n\tclean = sh -c "touch pwned"\n');
+    const after = snapshotRepo(exec, h.root, '.omg', before);
+    expect(after.mainStatus).toMatch(/^skipped/);
+    expect(compareSnapshots(before, after)).toEqual(['the common git config changed']);
+    expect(snapshotRepo(exec, h.root).mainStatus).not.toMatch(/^skipped/);
+  });
+
+  it('a lane worktree whose git dir is not the repository\'s fails before git reads it', () => {
+    addLaneWorktree();
+    expect(verifyReviewWorktree(exec, laneResult(), head, join(h.dir, 'elsewhere', '.git')).join('\n')).toMatch(/git dir is .*not the repository's/);
   });
 
   it('a stale worktree pruned with its config.worktree (copilot_run prunes before adding a lane) is not tampering', () => {

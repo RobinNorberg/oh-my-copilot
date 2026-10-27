@@ -21,7 +21,16 @@ export type ParsedReview =
   | { kind: 'valid'; verdict: 'approve' | 'changes-requested'; sha: string; findings: FactoryFinding[]; notes: string; downgraded: boolean }
   | { kind: 'invalid'; reason: string };
 
-const FENCE = /```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```/g;
+/**
+ * A verdict block: an opening line of exactly ```json and a closing line of
+ * exactly ```, both at the start of a line. A block quoted from the diff
+ * (`> ```json`, an indented or `+` diff line) or wrapped in a longer fence
+ * never matches on its own; the lane's own block plus a pasted copy is two
+ * blocks, which is invalid.
+ */
+const FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
+/** Any line opening a json fence, quoted, indented or longer: counted so a pasted copy cannot hide. */
+const ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
 
 export function parseReviewOutput(finalText: string | null | undefined, expectedSha: string): ParsedReview {
   const invalid = (reason: string): ParsedReview => ({ kind: 'invalid', reason });
@@ -29,6 +38,8 @@ export function parseReviewOutput(finalText: string | null | undefined, expected
   const blocks = [...finalText.matchAll(FENCE)];
   if (blocks.length === 0) return invalid('no fenced json verdict block');
   if (blocks.length > 1) return invalid(`${blocks.length} fenced json blocks; the contract is exactly one`);
+  const fences = [...finalText.matchAll(ANY_JSON_FENCE)].length;
+  if (fences > 1) return invalid(`${fences} json fences (quoted or indented ones included); the contract is exactly one block`);
   const block = blocks[0];
   if (finalText.slice(block.index! + block[0].length).trim()) return invalid('text after the verdict block');
   let raw: unknown;

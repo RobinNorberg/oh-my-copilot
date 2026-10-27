@@ -13,7 +13,7 @@
 import { createHash } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { atomicWriteJsonSync, ensureDirSync } from '../lib/atomic-write.js';
+import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
@@ -213,6 +213,8 @@ export function readShipState(repoRoot: string, pr: number): ShipState | null {
 export interface UpdateShipStateOptions {
   /** Hand the mutator a state whose integrity check fails (owner-only `init --force`). */
   allowUnverified?: boolean;
+  /** Called with the exact bytes written (omg factory run records them in its engine ledger). */
+  onWrite?: (path: string, content: string) => void;
 }
 
 /**
@@ -237,7 +239,9 @@ export function updateShipState(
       throw new ShipStateError(`${path} fails its integrity check (edited outside omg ship); an owner can replace it with OMG_SHIP_HUMAN=1 omg ship init ${pr} --force`);
     }
     const next = sealShipState(mutate(current));
-    atomicWriteJsonSync(path, next);
+    const content = JSON.stringify(next, null, 2);
+    atomicWriteFileSync(path, content);
+    options.onWrite?.(path, content);
     return next;
   }, { timeoutMs: 5_000 });
 }
