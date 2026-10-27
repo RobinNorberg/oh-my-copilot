@@ -6,10 +6,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 
-- **HUD elements for Copilot CLI.** New `copilotMode` (native plan or
-  autopilot mode and yolo), `team` (live `omg team` run) and `ultragoal`
+- **HUD elements for Copilot CLI.** New `copilotMode` (`mode:plan`,
+  `mode:autopilot`, `mode:yolo`), `team` (live `omg team` run) and `ultragoal`
   (open plan progress) elements. They are on under Copilot and off under
-  Claude Code unless set to `true`.
+  Claude Code unless set to `true`. `team` and `ultragoal` are repo-wide, not
+  per session.
 
 ### Changed
 

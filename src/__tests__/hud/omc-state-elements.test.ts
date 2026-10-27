@@ -9,6 +9,7 @@ import { homedir, tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { readTeamStateForHud, renderTeam } from '../../hud/elements/team.js';
+import { readTeamMissions } from '../../hud/mission-board.js';
 import { readUltragoalStateForHud, renderUltragoal } from '../../hud/elements/ultragoal.js';
 import { renderCopilotMode } from '../../hud/elements/copilot-mode.js';
 import { render } from '../../hud/render.js';
@@ -60,6 +61,12 @@ function writeTeam(
     writeJson(join(root, 'workers', worker.name, 'status.json'), { state: worker.state, updated_at: updatedAt });
   }
   for (const task of tasks) writeJson(join(root, 'tasks', `${task.id}.json`), task);
+  // The reader skips dirs by mtime against NOW, so pin it to the team's own clock.
+  setMtime(join(root, 'config.json'), Date.parse(updatedAt));
+}
+
+function setMtime(path: string, mtimeMs: number): void {
+  utimesSync(path, mtimeMs / 1000, mtimeMs / 1000);
 }
 
 function goal(id: string, status: string): Record<string, unknown> {
@@ -108,6 +115,63 @@ describe('team element', () => {
     expect(strip(renderTeam(readTeamStateForHud(project, NOW)))).toBe('team:stuck 0/1w 0/1t blocked');
     expect(renderTeam(null)).toBeNull();
   });
+
+  it('never throws on corrupt config, tasks or events, and drops only the broken team', () => {
+    const teams = join(getOmcRoot(project), 'state', 'team');
+    // Corrupt entries inside an otherwise readable team are ignored.
+    writeTeam('healthy', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress', owner: 'w' }]);
+    writeJson(join(teams, 'healthy', 'tasks', '2.json'), null);
+    writeJson(join(teams, 'healthy', 'tasks', '3.json'), 'not a task');
+    writeJson(join(teams, 'healthy', 'tasks', '4.json'), { id: '4', status: 5 });
+    writeFileSync(join(teams, 'healthy', 'events.jsonl'), 'null\n');
+    setMtime(join(teams, 'healthy', 'events.jsonl'), NOW - 60_000);
+    // Configs that are not objects, or hold non-object workers.
+    writeJson(join(teams, 'scalar-config', 'config.json'), 5);
+    writeJson(join(teams, 'null-workers', 'config.json'), { name: 'null-workers', created_at: '2026-10-27T09:00:00.000Z', workers: [null, 7, 'x'] });
+    mkdirSync(join(teams, 'bad-json'), { recursive: true });
+    writeFileSync(join(teams, 'bad-json', 'config.json'), '{not json');
+    // A mailbox whose messages is not iterable throws inside the collector.
+    writeTeam('broken-mailbox', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress', owner: 'w' }]);
+    writeJson(join(teams, 'broken-mailbox', 'mailbox', 'w.json'), { messages: {} });
+    for (const dir of ['scalar-config', 'null-workers']) setMtime(join(teams, dir, 'config.json'), NOW - 60_000);
+    setMtime(join(teams, 'bad-json', 'config.json'), NOW - 60_000);
+
+    const state = readTeamStateForHud(project, NOW);
+    expect(state).toMatchObject({ name: 'healthy', runningWorkers: 1, workerCount: 1, completedTasks: 0, totalTasks: 2 });
+    // null-workers is a live team with no workers or tasks: waiting, so it counts as another team.
+    expect(state?.otherTeams).toBe(2);
+    expect(readTeamMissions(project).map((mission) => mission.name).sort()).toEqual(['healthy', 'null-workers', 'scalar-config']);
+  });
+
+  it('skips team dirs whose config.json and events.jsonl are both older than 2 hours', () => {
+    const teams = join(getOmcRoot(project), 'state', 'team');
+    // created_at says live, but the files are old: skipped before collecting.
+    writeTeam('old-files', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
+    setMtime(join(teams, 'old-files', 'config.json'), NOW - 3 * 60 * 60 * 1000);
+    // Old config but a fresh events.jsonl: still read.
+    writeTeam('fresh-events', [{ name: 'w', state: 'working' }], [{ id: '1', status: 'in_progress' }]);
+    setMtime(join(teams, 'fresh-events', 'config.json'), NOW - 3 * 60 * 60 * 1000);
+    writeFileSync(join(teams, 'fresh-events', 'events.jsonl'), '');
+    setMtime(join(teams, 'fresh-events', 'events.jsonl'), NOW - 60_000);
+
+    expect(readTeamMissions(project, undefined, 2 * 60 * 60 * 1000, NOW).map((mission) => mission.name)).toEqual(['fresh-events']);
+    expect(strip(renderTeam(readTeamStateForHud(project, NOW)))).toBe('team:fresh-events 1/1w 0/1t');
+    // Without the window the board still sees both.
+    expect(readTeamMissions(project).map((mission) => mission.name).sort()).toEqual(['fresh-events', 'old-files']);
+  });
+
+  it('dates a team without created_at or events by its config.json mtime, so it goes stale', () => {
+    const configPath = join(getOmcRoot(project), 'state', 'team', 'dead', 'config.json');
+    writeJson(configPath, { name: 'dead', workers: [{ name: 'w' }] });
+    writeJson(join(getOmcRoot(project), 'state', 'team', 'dead', 'tasks', '1.json'), { id: '1', status: 'pending' });
+    const mtimeMs = NOW - 3 * 60 * 60 * 1000;
+    setMtime(configPath, mtimeMs);
+
+    const [mission] = readTeamMissions(project);
+    expect(mission?.createdAt).toBe(new Date(mtimeMs).toISOString());
+    expect(mission?.updatedAt).toBe(new Date(mtimeMs).toISOString());
+    expect(readTeamStateForHud(project, NOW)).toBeNull();
+  });
 });
 
 describe('ultragoal element', () => {
@@ -130,6 +194,23 @@ describe('ultragoal element', () => {
     expect(readUltragoalStateForHud(project, NOW)).toEqual({ complete: 0, total: 3, failed: 1 });
   });
 
+  it('never throws on corrupt goals: null entries, wrong types and non-objects', () => {
+    const path = join(getOmcRoot(project), 'ultragoal', 'goals.json');
+    writePlan(path, [null, 5, 'goal', [], { id: 'G0', status: 3 }, goal('G1', 'complete'), goal('G2', 'pending')] as never);
+    expect(readUltragoalStateForHud(project, NOW)).toEqual({ complete: 1, total: 2, failed: 0 });
+
+    // Nothing valid left: no plan to show.
+    writePlan(path, [null, { status: null }] as never);
+    expect(readUltragoalStateForHud(project, NOW)).toBeNull();
+
+    // The whole file is not a plan object.
+    for (const value of [null, 'plan', 7, [], { version: 1, goals: 'x' }]) {
+      writeJson(path, value);
+      expect(() => readUltragoalStateForHud(project, NOW)).not.toThrow();
+      expect(readUltragoalStateForHud(project, NOW)).toBeNull();
+    }
+  });
+
   it('returns null without ultragoal state', () => {
     expect(readUltragoalStateForHud(project, NOW)).toBeNull();
     expect(renderUltragoal(null)).toBeNull();
@@ -137,11 +218,11 @@ describe('ultragoal element', () => {
 });
 
 describe('copilotMode element', () => {
-  it('shows plan, autopilot and yolo, and hides interactive', () => {
-    expect(strip(renderCopilotMode('plan', false))).toBe('plan');
-    expect(strip(renderCopilotMode('autopilot', undefined))).toBe('autopilot');
-    expect(strip(renderCopilotMode('interactive', true))).toBe('yolo');
-    expect(strip(renderCopilotMode('autopilot', true))).toBe('autopilot yolo');
+  it('shows mode:plan, mode:autopilot and mode:yolo, and hides interactive', () => {
+    expect(strip(renderCopilotMode('plan', false))).toBe('mode:plan');
+    expect(strip(renderCopilotMode('autopilot', undefined))).toBe('mode:autopilot');
+    expect(strip(renderCopilotMode('interactive', true))).toBe('mode:yolo');
+    expect(strip(renderCopilotMode('autopilot', true))).toBe('mode:autopilot+yolo');
     expect(renderCopilotMode('interactive', false)).toBeNull();
     expect(renderCopilotMode(null, undefined)).toBeNull();
   });
@@ -200,6 +281,19 @@ describe('default visibility per host', () => {
 
   it('is on under Copilot through the host defaults, in layout order', async () => {
     const out = strip(await render({ ...baseContext, host: 'copilot' }, onlyNew(COPILOT_HOST_DEFAULTS)));
-    expect(out).toBe('plan yolo | team:hud-fix 1/2w 0/3t | goal:1/4');
+    expect(out).toBe('mode:plan+yolo | team:hud-fix 1/2w 0/3t | goal:1/4');
+  });
+
+  it('drops only a throwing element and still renders the rest of the line', async () => {
+    const throwingTeam = {
+      get name(): string {
+        throw new Error('corrupt team state');
+      },
+    } as unknown as HudRenderContext['team'];
+    const out = strip(await render(
+      { ...baseContext, host: 'copilot', team: throwingTeam },
+      onlyNew(COPILOT_HOST_DEFAULTS),
+    ));
+    expect(out).toBe('mode:plan+yolo | goal:1/4');
   });
 });

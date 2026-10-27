@@ -138,7 +138,7 @@ describe('HUD OMC-state elements by host (golden)', () => {
     const out = await runHud(payload);
     // `ralph skill:ralph` is the existing skills element (active ralph plus the last skill).
     expect(out).toBe([
-      '[oh-my-copilot#V] | cr:0.4 | autopilot | session:25m | ralph:4/10 | ralph skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
+      '[oh-my-copilot#V] | cr:0.4 | mode:autopilot | session:25m | ralph:4/10 | ralph skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
       '└─ x exec          4m  lane-b: events reader (call_ta)',
     ].join('\n'));
   });
@@ -147,7 +147,7 @@ describe('HUD OMC-state elements by host (golden)', () => {
     writeTeamAndGoals();
     const out = await runHud({ ...copilotPayload('copilot-1.0.103-synth-near-limit.json', false), allow_all_enabled: true });
     expect(out).toBe([
-      '[oh-my-copilot#V] | cr:9.1 | yolo | session:125m | team:hud-fix 3/4w 5/9t | goal:2/5 | ctx:[#########-]86% CRITICAL',
+      '[oh-my-copilot#V] | cr:9.1 | mode:yolo | session:125m | team:hud-fix 3/4w 5/9t | goal:2/5 | ctx:[#########-]86% CRITICAL',
       '[!] ctx 86% >= 80% threshold - run /compact',
     ].join('\n'));
   });

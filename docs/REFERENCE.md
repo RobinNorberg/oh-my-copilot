@@ -1788,13 +1788,13 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `creditBudget` | on | on | payload `ai_used.total_nano_aiu` (`cr:0.42`), or the budget ledger when a `softLimit` is set |
 | `agents`, `activeSkills`, `lastSkill`, call counts (`T:` `A:` `S:`), `showLastTool`, `showRecentTools` | on | on | the tail of the session's `events.jsonl` |
 | `ralph`, `autopilot`, `prdStory`, `backgroundTasks` | on | on | OMC state files |
-| `copilotMode` | off | on | `session.mode_changed` events (plan or autopilot) and the payload `allow_all_enabled` (yolo) |
-| `team` | off | on | live `omg team` run state |
-| `ultragoal` | off | on | open ultragoal plan |
+| `copilotMode` | off | on | `session.mode_changed` events (`mode:plan` or `mode:autopilot`) and the payload `allow_all_enabled` (`mode:yolo`), combined as `mode:plan+yolo` |
+| `team` | off | on | live `omg team` run state under `.omg/state/team/`, repo-wide |
+| `ultragoal` | off | on | open ultragoal plan in `.omg/ultragoal/goals.json` or `plans/<id>/goals.json`, repo-wide |
 | `model`, `effort`, `cwd`, `gitBranch` | model, effort on; cwd, gitBranch per config | off | Copilot's footer already shows them; set `true` to show them anyway |
 | `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, payload warning | per config | off, forced | no Copilot data source; ignored even when set to `true` |
 
-`copilotMode`, `team` and `ultragoal` are new elements. They are on by default under Copilot and off under Claude Code unless you set them to `true`.
+`copilotMode`, `team` and `ultragoal` are new elements. They are on by default under Copilot and off under Claude Code unless you set them to `true`. `team` and `ultragoal` read repo-wide state, not per session: every session in the repo shows the same live team and the same open plan.
 
 **Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript. Effort, when shown, comes from the `reasoningEffort` of the latest `session.start`, `session.resume` or `session.model_change` event. Session credits come from the payload's nano-AIU total converted to credits, with two decimals below 0.1, and the element is hidden only at exactly zero. `T:`, `A:`, `S:` and the agent counts come from the last 4 MB of `events.jsonl`, so they undercount in long sessions.
 

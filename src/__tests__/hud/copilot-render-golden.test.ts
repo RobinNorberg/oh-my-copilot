@@ -103,7 +103,7 @@ describe('HUD renderings by host (golden)', () => {
     const out = await runHud(copilotPayload('copilot-1.0.103-synth-after-prompt.json', true));
     // Before: session:0m and ctx 18% (used_percentage), no events data at all.
     expect(out).toBe([
-      '[oh-my-copilot#V] | cr:0.4 | autopilot | session:25m | skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
+      '[oh-my-copilot#V] | cr:0.4 | mode:autopilot | session:25m | skill:ralph | ctx:[###-------]31% | agents:1 | T:5 A:2 S:1',
       '└─ x exec          4m  lane-b: events reader (call_ta)',
     ].join('\n'));
   });
@@ -127,7 +127,7 @@ describe('HUD renderings by host (golden)', () => {
       }),
     );
     const out = await runHud(copilotPayload('copilot-1.0.103-synth-ai-used.json', false));
-    expect(out).toBe('[oh-my-copilot#V] | Model: Auto>balanced | cr:11.8 | yolo | session:43m | ctx:[#####-----]48%');
+    expect(out).toBe('[oh-my-copilot#V] | Model: Auto>balanced | cr:11.8 | mode:yolo | session:43m | ctx:[#####-----]48%');
   });
 
   it('Claude Code: output is unchanged by the Copilot data lane', async () => {
