@@ -66,6 +66,10 @@ export interface StatuslineStdin {
   model?: {
     id?: string;
     display_name?: string;
+    /** Copilot only, when id is "auto": the resolved tier */
+    auto_tier?: string | null;
+    /** Copilot only, when id is "auto": the tier the next call switches to */
+    pending_auto_tier?: string | null;
   };
 
   /** Effort level from Claude Code statusline stdin */
@@ -80,10 +84,55 @@ export interface StatuslineStdin {
     used_percentage?: number;
     current_usage?: {
       input_tokens?: number;
+      output_tokens?: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
     };
+    // Copilot CLI fields (1.0.103 statusline builder); all optional.
+    total_output_tokens?: number;
+    total_cache_read_tokens?: number;
+    total_cache_write_tokens?: number;
+    total_reasoning_tokens?: number;
+    total_tokens?: number;
+    remaining_percentage?: number;
+    remaining_tokens?: number;
+    last_call_input_tokens?: number;
+    last_call_output_tokens?: number;
+    current_context_tokens?: number;
+    displayed_context_limit?: number;
+    current_context_used_percentage?: number;
   };
+
+  // ── Copilot CLI only (1.0.103 statusline builder). Every field is optional
+  //    and unknown fields are ignored: the schema is read from the bundle, not
+  //    from captured payloads.
+
+  /** Copilot session name (since 1.0.12) */
+  session_name?: string | null;
+
+  /** Workspace info */
+  workspace?: { current_dir?: string };
+
+  /** GitHub login */
+  username?: string | null;
+
+  /** Remote-session state */
+  remote?: { connected?: boolean; [key: string]: unknown };
+
+  /** Session metrics */
+  cost?: {
+    total_api_duration_ms?: number;
+    total_duration_ms?: number;
+    total_lines_added?: number;
+    total_lines_removed?: number;
+    total_premium_requests?: number;
+  };
+
+  /** AI Credits used this session, in nano-AIU, plus Copilot's own formatting */
+  ai_used?: { total_nano_aiu?: number; formatted?: string };
+
+  /** Allow-all (YOLO) state (since 1.0.62) */
+  allow_all_enabled?: boolean;
 
   /** Rate limits from Claude Code statusline stdin */
   rate_limits?: {
@@ -511,6 +560,15 @@ export interface HudRenderContext {
 
   /** Best-effort local transcript-backed request payload pressure estimate. */
   payloadEstimate?: PayloadEstimate | null;
+
+  /** Copilot only: session AI Credits from the payload's `ai_used` */
+  aiUsed?: { nanoAiu: number | null; formatted: string | null } | null;
+
+  /** Copilot only: agent mode from events.jsonl (null = interactive / unknown) */
+  copilotMode?: 'interactive' | 'plan' | 'autopilot' | null;
+
+  /** Copilot only: a conversation compaction is in progress */
+  compacting?: boolean;
 }
 
 // ============================================================================
@@ -784,6 +842,33 @@ export interface HudConfig {
 }
 
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
+
+/**
+ * Copilot host defaults, applied over the preset and under the user's config:
+ * Copilot's own footer already shows the model, effort, directory and branch,
+ * so these start off and a user `true` turns them back on.
+ */
+export const COPILOT_HOST_DEFAULTS: Partial<HudElementConfig> = {
+  model: false,
+  effort: false,
+  cwd: false,
+  gitBranch: false,
+};
+
+/**
+ * Elements with no data source under Copilot (Claude usage/enterprise APIs,
+ * Claude transcript, `claude -p`). Forced off on the Copilot host even when the
+ * user config enables them; the payload warning is skipped in index.ts.
+ */
+export const COPILOT_HOST_DROPPED: Partial<HudElementConfig> = {
+  rateLimits: false,
+  enterpriseMode: false,
+  showEnterpriseCost: false,
+  apiKeySource: false,
+  thinking: false,
+  todos: false,
+  sessionSummary: false,
+};
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
   preset: 'focused',

@@ -29,12 +29,15 @@ import type {
   HudLocale,
 } from "./types.js";
 import {
+  COPILOT_HOST_DEFAULTS,
+  COPILOT_HOST_DROPPED,
   DEFAULT_HUD_CONFIG,
   PRESET_CONFIGS,
   isHudLocale,
   resolveHudLabels,
   sanitizeHudLabels,
 } from "./types.js";
+import type { HudHost } from "./host.js";
 import { DEFAULT_MISSION_BOARD_CONFIG } from "./mission-board.js";
 import {
   cleanupStaleBackgroundTasks,
@@ -341,8 +344,11 @@ export function getBackgroundTaskCount(state: OmcHudState | null): {
 /**
  * Read HUD configuration from disk.
  * Priority: settings.json > hud-config.json (legacy) > defaults
+ *
+ * `host: 'copilot'` adds the Copilot overlay (COPILOT_HOST_DEFAULTS and
+ * COPILOT_HOST_DROPPED). Without a host the result is the upstream config.
  */
-export function readHudConfig(): HudConfig {
+export function readHudConfig(host?: HudHost): HudConfig {
   const settingsFile = getSettingsFilePath();
   const legacyConfig = getLegacyHudConfig();
 
@@ -377,7 +383,7 @@ export function readHudConfig(): HudConfig {
             ...sanitizeHudLabels(legacyConfig?.labels),
             ...sanitizeHudLabels(settings.omcHud.labels),
           },
-        });
+        }, host);
       }
     } catch (error) {
       console.error(
@@ -388,16 +394,40 @@ export function readHudConfig(): HudConfig {
   }
 
   if (legacyConfig) {
-    return mergeWithDefaults(legacyConfig);
+    return mergeWithDefaults(legacyConfig, host);
   }
 
-  return mergeWithDefaults({});
+  return mergeWithDefaults({}, host);
+}
+
+/**
+ * Copilot element merge: defaults, preset, Copilot defaults, user config, then
+ * the dropped elements forced off.
+ */
+function copilotElements(
+  presetElements: Partial<HudElementConfig>,
+  userElements: HudConfigInput["elements"],
+): HudElementConfig {
+  if (process.env.OMC_DEBUG) {
+    for (const key of Object.keys(COPILOT_HOST_DROPPED) as Array<keyof HudElementConfig>) {
+      if (userElements?.[key] === true) {
+        console.error(`[HUD] ${key} is ignored on Copilot (no data source)`);
+      }
+    }
+  }
+  return {
+    ...DEFAULT_HUD_CONFIG.elements,
+    ...presetElements,
+    ...COPILOT_HOST_DEFAULTS,
+    ...userElements,
+    ...COPILOT_HOST_DROPPED,
+  };
 }
 
 /**
  * Merge partial config with defaults
  */
-function mergeWithDefaults(config: HudConfigInput): HudConfig {
+function mergeWithDefaults(config: HudConfigInput, host?: HudHost): HudConfig {
   const preset = config.preset ?? DEFAULT_HUD_CONFIG.preset;
   const presetElements = PRESET_CONFIGS[preset] ?? {};
   const missionBoardEnabled =
@@ -420,11 +450,13 @@ function mergeWithDefaults(config: HudConfigInput): HudConfig {
     preset,
     locale,
     labels: resolveHudLabels(locale, config.labels),
-    elements: {
-      ...DEFAULT_HUD_CONFIG.elements, // Base defaults
-      ...presetElements, // Preset overrides
-      ...config.elements, // User overrides
-    },
+    elements: host === "copilot"
+      ? copilotElements(presetElements, config.elements)
+      : {
+          ...DEFAULT_HUD_CONFIG.elements, // Base defaults
+          ...presetElements, // Preset overrides
+          ...config.elements, // User overrides
+        },
     thresholds: {
       ...DEFAULT_HUD_CONFIG.thresholds,
       ...config.thresholds,

@@ -5,7 +5,12 @@
  */
 
 import type { HudRenderContext, HudConfig, LayoutConfig } from "./types.js";
-import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS } from "./types.js";
+import {
+  COPILOT_HOST_DROPPED,
+  DEFAULT_HUD_CONFIG,
+  DEFAULT_ELEMENT_ORDER,
+  DEFAULT_HUD_LABELS,
+} from "./types.js";
 import { bold, dim } from "./colors.js";
 import { isRuntimePackageLocal } from "../lib/version.js";
 import { stringWidth, getCharWidth } from "../utils/string-width.js";
@@ -38,7 +43,7 @@ import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
 import { renderGitRepo, renderGitBranch, renderGitStatus } from "./elements/git.js";
 import { renderMultiRepo } from "./elements/multi-repo.js";
-import { renderModel } from "./elements/model.js";
+import { renderCopilotModel, renderModel } from "./elements/model.js";
 import { renderEffort } from "./elements/effort.js";
 import { renderApiKeySource } from "./elements/api-key-source.js";
 import { renderCallCounts } from "./elements/call-counts.js";
@@ -262,9 +267,12 @@ export async function render(
   context: HudRenderContext,
   config: HudConfig,
 ): Promise<string> {
-  const { elements: enabledElements } = config;
-  const hudLabels = config.labels ?? DEFAULT_HUD_LABELS;
   const isCopilotHost = context.host === "copilot";
+  // Elements without a Copilot data source stay off there whatever the config.
+  const enabledElements = isCopilotHost
+    ? { ...config.elements, ...COPILOT_HOST_DROPPED }
+    : config.elements;
+  const hudLabels = config.labels ?? DEFAULT_HUD_LABELS;
 
   // ── Render all elements into maps ──────────────────────────────────
   // Each element is rendered independently and stored by name.
@@ -318,11 +326,13 @@ export async function render(
     ? context.modelId ?? context.modelName
     : context.modelName;
   if (enabledElements.model && modelSource) {
-    const modelElement = renderModel(
-      modelSource,
-      enabledElements.modelFormat,
-      hudLabels,
-    );
+    const modelElement = isCopilotHost
+      ? renderCopilotModel(modelSource, hudLabels)
+      : renderModel(
+          modelSource,
+          enabledElements.modelFormat,
+          hudLabels,
+        );
     if (modelElement) rendered.set("model", modelElement);
   }
 
@@ -457,7 +467,9 @@ export async function render(
 
   // `premiumBudget` is the deprecated name of the element and its toggle.
   if ((enabledElements.creditBudget ?? enabledElements.premiumBudget) !== false) {
-    const budget = renderPremiumBudget(context.cwd);
+    const budget = isCopilotHost
+      ? renderPremiumBudget(context.cwd, context.aiUsed ?? null)
+      : renderPremiumBudget(context.cwd);
     if (budget) {
       rendered.set("creditBudget", budget);
       rendered.set("premiumBudget", budget);
@@ -608,7 +620,9 @@ export async function render(
   );
   if (ctxWarning) renderedDetail.set("contextWarning", [ctxWarning]);
 
-  const payloadWarning = renderPayloadLimitWarning(context.payloadEstimate);
+  const payloadWarning = isCopilotHost
+    ? null
+    : renderPayloadLimitWarning(context.payloadEstimate);
   if (payloadWarning) renderedDetail.set("payloadWarning", [payloadWarning]);
 
   if (enabledElements.updateNotification !== false) {

@@ -16,8 +16,14 @@ import {
   getModelName,
   getRateLimitsFromStdin,
   stabilizeContextPercent,
+  getAiUsed,
+  getCopilotContextPercent,
+  getCopilotModelName,
+  getCopilotTokenUsage,
+  getSessionDurationMs,
 } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
+import { readCopilotEvents, resolveCopilotEventsPath } from "./copilot-events.js";
 import {
   readHudState,
   readHudConfig,
@@ -255,8 +261,9 @@ function spawnSessionSummaryScript(
 async function calculateSessionHealth(
   sessionStart: Date | undefined,
   contextPercent: number,
+  reportedDurationMs: number | null = null,
 ): Promise<SessionHealth | null> {
-  const durationMs = sessionStart ? Date.now() - sessionStart.getTime() : 0;
+  const durationMs = reportedDurationMs ?? (sessionStart ? Date.now() - sessionStart.getTime() : 0);
   const durationMinutes = Math.floor(durationMs / 60_000);
   let health: SessionHealth["health"] = "healthy";
   if (durationMinutes > 120 || contextPercent > 85) health = "critical";
@@ -338,7 +345,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
 
     // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
     // Clone to avoid mutating shared DEFAULT_HUD_CONFIG when applying runtime width detection
-    const config = { ...readHudConfig() };
+    const config = { ...readHudConfig(host) };
 
     // Auto-detect terminal width if not explicitly configured (#1726)
     // Prefer live TTY columns (responds to resize) over static COLUMNS env var
@@ -360,10 +367,18 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       cwd,
     );
 
-    // Parse transcript for agents and todos
-    const transcriptData = await parseTranscript(resolvedTranscriptPath, {
+    // Parse transcript for agents and todos. Copilot has no transcript: its
+    // session-state events.jsonl feeds the same fields.
+    const copilotEvents = isCopilotHost
+      ? readCopilotEvents(
+          resolveCopilotEventsPath(stdin.transcript_path, stdin.session_id),
+          { staleTaskThresholdMinutes: config.staleTaskThresholdMinutes },
+        )
+      : null;
+    const transcriptData = copilotEvents ?? await parseTranscript(resolvedTranscriptPath, {
       staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
     });
+    const copilotTokens = isCopilotHost ? getCopilotTokenUsage(stdin) : null;
 
     // Copilot's transcript_path is the session-state directory, so its session
     // id comes from the payload; Claude keeps the transcript-path rule.
@@ -522,8 +537,13 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     const missionBoard = missionBoardEnabled
       ? await refreshMissionBoardState(cwd, config.missionBoard)
       : null;
-    const contextPercent = getContextPercent(stdin);
-    const payloadEstimate = estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
+    const contextPercent = isCopilotHost
+      ? getCopilotContextPercent(stdin)
+      : getContextPercent(stdin);
+    // The payload estimate reads a Claude transcript; Copilot compacts itself.
+    const payloadEstimate = isCopilotHost
+      ? null
+      : estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
 
     // Read subscription info for enterprise detection (best-effort).
     // Rate-limit rendering must not depend on this metadata being present.
@@ -541,9 +561,9 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       host,
       contextPercent,
       contextDisplayScope: currentSessionId ?? cwd,
-      modelName: getModelName(stdin),
+      modelName: isCopilotHost ? getCopilotModelName(stdin) : getModelName(stdin),
       modelId: getModelId(stdin),
-      effortLevel: getEffortLevel(stdin),
+      effortLevel: copilotEvents ? copilotEvents.reasoningEffort : getEffortLevel(stdin),
       ralph,
       ultrawork: null,
       prd,
@@ -558,9 +578,17 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       customBuckets,
       pendingPermission: transcriptData.pendingPermission || null,
       thinkingState: transcriptData.thinkingState || null,
-      sessionHealth: await calculateSessionHealth(sessionStart, contextPercent),
-      lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
-      sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
+      sessionHealth: await calculateSessionHealth(
+        sessionStart,
+        contextPercent,
+        isCopilotHost ? getSessionDurationMs(stdin) : null,
+      ),
+      lastRequestTokenUsage: copilotTokens
+        ? copilotTokens.lastRequest
+        : transcriptData.lastRequestTokenUsage || null,
+      sessionTotalTokens: copilotTokens
+        ? copilotTokens.sessionTotal
+        : transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
       omcUpdateSource,
@@ -585,6 +613,13 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       lastToolName: transcriptData.lastToolName,
       recentTools: transcriptData.recentTools,
       payloadEstimate,
+      ...(copilotEvents
+        ? {
+            aiUsed: getAiUsed(stdin),
+            copilotMode: copilotEvents.mode,
+            compacting: copilotEvents.compacting,
+          }
+        : {}),
     };
 
     // Debug: log data if OMC_DEBUG is set
