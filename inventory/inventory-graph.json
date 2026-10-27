@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "91a6a5692a8c99eefa9ec025d46f3bf7440af980",
-    "sourceSha256": "075d66c8bb2129ee2385cc35e595ac5dddc17bb542f5a6dbae4610b1d05df3bc",
+    "head": "eb564776efa124c87cd64e8da7c73a68b7240365",
+    "sourceSha256": "8ac9fbd0ff910ab8b6a347ae0ae9152cf0b313862779b70a26e811480b72853f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "91a6a5692a8c99eefa9ec025d46f3bf7440af980",
-  "sourceSha256": "075d66c8bb2129ee2385cc35e595ac5dddc17bb542f5a6dbae4610b1d05df3bc",
+  "head": "eb564776efa124c87cd64e8da7c73a68b7240365",
+  "sourceSha256": "8ac9fbd0ff910ab8b6a347ae0ae9152cf0b313862779b70a26e811480b72853f",
   "counts": {
     "public": {
       "skills": 63,
@@ -52588,6 +52588,11 @@
         "path": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts"
       },
       {
+        "id": "tests/lint/multirepo-paths-git-files.test.ts",
+        "kind": "other",
+        "path": "tests/lint/multirepo-paths-git-files.test.ts"
+      },
+      {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
         "kind": "other",
         "path": "tests/lint/session-end-forwarder-no-op.test.ts"
@@ -53352,6 +53357,11 @@
       {
         "from": "scripts/build-workflow-stage-prompts.mjs",
         "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ci/check-multirepo-paths.mjs",
+        "to": "external:node:child_process",
         "kind": "imports"
       },
       {
@@ -102980,6 +102990,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/multirepo-paths-git-files.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -103291,12 +103331,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8926,
-      "edgeCount": 10120,
-      "importEdgeCount": 8456,
+      "nodeCount": 8927,
+      "edgeCount": 10127,
+      "importEdgeCount": 8463,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ca26a3c4a36903e6aef46657effb1798ec448a2c665af24694555fe34c246cd5",
-  "manifestSha256": "2e9e7e95052459d6b4dc6f3821abc3b23a93aebd96efb49769b16c7444a0d4a4"
+  "inventorySha256": "9cb1c5cd56a51709de058f2e5388ebda2c1daecac33455570b606084d44cdf20",
+  "manifestSha256": "77fc2d6bf21bf79ed37185506cdb99c0be92f1630e3d97b21f077e7739a5d599"
 }
