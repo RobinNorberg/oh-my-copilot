@@ -10,7 +10,11 @@
  * (sdk-policy.ts) with writes confined to the job's working directory.
  *
  * Safety:
- * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env;
+ * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env,
+ *   or an in-process caller passes `allowLive` (never reachable from MCP);
+ *   the session never inherits the env var;
+ * - profile `review` denies the write tool and the git commands that move
+ *   or rewrite the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
  * - the budget governor (src/budget) is asked first, like an `omg team`
  *   launch of one copilot worker, and the spend is recorded in the ledger
  *   (live estimate, then the `session.shutdown` totals);
@@ -53,7 +57,7 @@ import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import { ensureWorkerWorktree, getBranchName, getWorktreePath, removeWorkerWorktree } from '../team/git-worktree.js';
-import { buildSdkExcludedTools, decideSdkPermission, type SdkPermissionRequest } from '../team/sdk-policy.js';
+import { buildSdkExcludedTools, decideSdkPermission, normalizeShellCommand, type SdkPermissionRequest } from '../team/sdk-policy.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 
@@ -75,9 +79,20 @@ const SERVER_EXIT_GRACE_MS = 3_000;
 const GIT_TIMEOUT_MS = 30_000;
 const DENIED_LOG_MAX = 50;
 const JOB_ID = /^cr-[0-9a-f]{12}$/;
+const MAX_START_REF_CHARS = 256;
+/**
+ * The OMC_SKIP_HOOKS token that turns off the persistent-mode Stop hook in a
+ * session started with `disableStopContinuations`. scripts/persistent-mode.mjs
+ * (run by the Copilot Stop dispatcher), src/hooks/persistent-mode and the hook
+ * bridge all honor `persistent-mode`; the other hooks (git guardrails, budget
+ * guard) keep running, which DISABLE_OMC would not allow.
+ */
+export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode';
 
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
+/** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
+export type CopilotRunProfile = 'write' | 'review';
 
 export class CopilotRunError extends Error {}
 
@@ -88,6 +103,59 @@ export interface CopilotRunStartInput {
   timeoutMs?: number;
   maxCredits?: number;
   isolation?: CopilotRunIsolation;
+  /** Commit-ish (sha or branch) the job worktree starts at instead of HEAD; isolation "worktree" only. */
+  startRef?: string;
+  profile?: CopilotRunProfile;
+}
+
+/** Options only an in-process caller can pass (the MCP tools never do). */
+export interface CopilotRunStartOptions {
+  /** Explicit opt-in to a live, billed session in place of OMG_COPILOT_RUN_ALLOW=1. */
+  allowLive?: boolean;
+  /** Skip the persistent-mode Stop hook in the session, so no Stop block silently costs a premium request. */
+  disableStopContinuations?: boolean;
+}
+
+/**
+ * Shell commands a `review` session may not run: git's commit, reset,
+ * checkout, merge, rebase and stash, spelled like the push rule of
+ * SDK_SHELL_DENY_PATTERNS (global options may sit between). `merge-base` and
+ * other hyphenated read-only subcommands stay allowed.
+ */
+export const REVIEW_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
+  {
+    re: /(?:^|[\s;&|("'/\\])git(?:\.exe)?(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+(?:commit|reset|checkout|merge|rebase|stash)(?![\w-])/i,
+    reason: 'review profile: git commands that change the tree or its history',
+  },
+  {
+    re: /\bgit\b[\s\S]*\$\{?\w+\}?\s+(?:commit|reset|checkout|merge|rebase|stash)(?![\w-])/i,
+    reason: 'review profile: git commands that change the tree or its history',
+  },
+];
+
+/** The review profile's extra refusal for a request the worker policy approved, or null. */
+export function reviewProfileDenial(req: SdkPermissionRequest): string | null {
+  if (req.kind === 'write') return 'review profile: the write tool is disabled';
+  if (req.kind !== 'shell') return null;
+  const normalized = normalizeShellCommand(String(req.fullCommandText ?? ''));
+  return REVIEW_SHELL_DENY_PATTERNS.find(({ re }) => re.test(normalized))?.reason ?? null;
+}
+
+/**
+ * The commit `ref` names in `repoRoot`, as a full sha. Refuses refs that
+ * git could read as an option, carry whitespace or control characters, or do
+ * not resolve to a commit.
+ */
+export function resolveStartRef(repoRoot: string, ref: unknown): string {
+  if (typeof ref !== 'string' || !ref.trim()) throw new CopilotRunError('copilot_run_start: startRef must be a non-empty string.');
+  if (ref.length > MAX_START_REF_CHARS || ref.startsWith('-') || /[\s\x00-\x1f\x7f]/.test(ref)) {
+    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} is not a valid ref.`);
+  }
+  const sha = git(repoRoot, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]);
+  if (!sha || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) {
+    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} does not resolve to a commit in ${repoRoot}.`);
+  }
+  return sha;
 }
 
 export interface CopilotRunDeps {
@@ -124,6 +192,10 @@ interface Job {
   cwd: string;
   workCwd: string;
   isolation: CopilotRunIsolation;
+  profile: CopilotRunProfile;
+  /** The caller's startRef (null: HEAD). */
+  startRef: string | null;
+  disableStopContinuations: boolean;
   model: string | null;
   timeoutMs: number;
   maxCredits: number;
@@ -233,8 +305,8 @@ export class CopilotRunManager {
   constructor(private readonly deps: CopilotRunDeps) {}
 
   /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
-  start(input: CopilotRunStartInput): Record<string, unknown> {
-    if (this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
+  start(input: CopilotRunStartInput, options: CopilotRunStartOptions = {}): Record<string, unknown> {
+    if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
       throw new CopilotRunError(
         `copilot_run_start runs a live, billed Copilot session and is disabled. Set ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env `
         + `(claude mcp add omg-dev -e ${COPILOT_RUN_ALLOW_ENV}=1 -- node <oh-my-copilot>/dist/mcp/standalone-server.js).`,
@@ -250,6 +322,10 @@ export class CopilotRunManager {
     const maxCredits = input.maxCredits ?? DEFAULT_MAX_CREDITS;
     if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new CopilotRunError('copilot_run_start: maxCredits must be a positive number.');
     const isolation = input.isolation ?? 'worktree';
+    const profile = input.profile ?? 'write';
+    if (profile !== 'write' && profile !== 'review') throw new CopilotRunError(`copilot_run_start: profile must be "write" or "review", not ${JSON.stringify(profile)}.`);
+    const startRef = input.startRef ?? null;
+    if (startRef !== null && isolation !== 'worktree') throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
 
     const cwd = resolve(input.cwd ?? process.cwd());
     let isDir = false;
@@ -259,6 +335,9 @@ export class CopilotRunManager {
     if (isolation === 'worktree' && !repoRoot) {
       throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
     }
+
+    // Validated before the budget check and the worktree, so a bad ref creates nothing.
+    const startSha = startRef !== null && repoRoot ? resolveStartRef(resolve(repoRoot), startRef) : null;
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
     if (running >= MAX_RUNNING_JOBS) {
@@ -277,7 +356,7 @@ export class CopilotRunManager {
     if (isolation === 'worktree') {
       let info;
       try {
-        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false });
+        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}) });
       } catch (err) {
         // A failure after `git worktree add` leaves a worktree no job id can clean: remove it now (same safety checks), or name it.
         const path = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
@@ -294,8 +373,8 @@ export class CopilotRunManager {
       const sub = relativeInside(cwd, ledgerCwd);
       workCwd = sub && existsSync(join(info.path, sub)) ? join(info.path, sub) : info.path;
       worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
-      baseCommit = info.baseCommit ?? baseCommit;
-      if (lines(git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no'])).length > 0) {
+      baseCommit = info.baseCommit ?? startSha ?? baseCommit;
+      if (!startSha && lines(git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no'])).length > 0) {
         notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? '?'} without them.`);
       }
     } else if (repoRoot) {
@@ -315,6 +394,9 @@ export class CopilotRunManager {
       cwd,
       workCwd,
       isolation,
+      profile,
+      startRef,
+      disableStopContinuations: options.disableStopContinuations === true,
       model: input.model ?? null,
       timeoutMs,
       maxCredits,
@@ -488,6 +570,8 @@ export class CopilotRunManager {
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
     Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
     delete env[COPILOT_RUN_ALLOW_ENV];
+    // OMC_* from the caller is stripped above, so this is the session's only skip list.
+    if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
 
     const policy = {
       cwd: job.workCwd,
@@ -504,6 +588,10 @@ export class CopilotRunManager {
         const raw = [req.resolvedPath, req.path, req.fileName].find((v): v is string => typeof v === 'string' && v.trim() !== '');
         const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
         if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+      }
+      if (decision.approve && job.profile === 'review') {
+        const denial = reviewProfileDenial(req);
+        if (denial) decision = { approve: false, reason: denial };
       }
       if (decision.approve) return { kind: 'approve-once' };
       job.denied.push({ kind: String(req.kind), reason: decision.reason });
@@ -641,6 +729,8 @@ export class CopilotRunManager {
       // Set as soon as a stop is asked for: a cancel that returns while the teardown runs still shows it.
       stopRequested: job.stopReason,
       isolation: job.isolation,
+      profile: job.profile,
+      ...(job.startRef !== null ? { startRef: job.startRef } : {}),
       cwd: job.cwd,
       workingDirectory: job.workCwd,
       model: job.model,

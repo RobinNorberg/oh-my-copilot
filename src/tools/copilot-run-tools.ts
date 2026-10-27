@@ -87,7 +87,17 @@ const startSchema = {
   isolation: z
     .enum(['worktree', 'none'])
     .optional()
-    .describe('"worktree" (default): a new git worktree and branch under .omg/team/copilot-run/worktrees/<jobId>, created from HEAD. "none": Copilot edits cwd directly.'),
+    .describe('"worktree" (default): a new git worktree and branch under .omg/team/copilot-run/worktrees/<jobId>, created from HEAD (or startRef). "none": Copilot edits cwd directly.'),
+  startRef: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe('Commit sha or branch the job worktree starts at instead of HEAD (isolation "worktree" only). Must resolve to a commit; option-shaped refs are refused.'),
+  profile: z
+    .enum(['write', 'review'])
+    .optional()
+    .describe('"write" (default): the worker policy. "review": the write tool is denied, and so are git commit, reset, checkout, merge, rebase and stash.'),
 };
 
 const waitSchema = {
