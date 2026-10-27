@@ -7,6 +7,8 @@ import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
 import type { SessionSummaryState } from './elements/session-summary.js';
 import type { PayloadEstimate } from './payload-estimate.js';
+import type { TeamStateForHud } from './elements/team.js';
+import type { UltragoalStateForHud } from './elements/ultragoal.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import type { AgentKind, IncomingAgentMessage } from './agent-kind.js';
 export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
@@ -47,6 +49,10 @@ export interface StatuslineStdin {
     model?: {
         id?: string;
         display_name?: string;
+        /** Copilot only, when id is "auto": the resolved tier */
+        auto_tier?: string | null;
+        /** Copilot only, when id is "auto": the tier the next call switches to */
+        pending_auto_tier?: string | null;
     };
     /** Effort level from Claude Code statusline stdin */
     effort?: {
@@ -59,10 +65,51 @@ export interface StatuslineStdin {
         used_percentage?: number;
         current_usage?: {
             input_tokens?: number;
+            output_tokens?: number;
             cache_creation_input_tokens?: number;
             cache_read_input_tokens?: number;
         };
+        total_output_tokens?: number;
+        total_cache_read_tokens?: number;
+        total_cache_write_tokens?: number;
+        total_reasoning_tokens?: number;
+        total_tokens?: number;
+        remaining_percentage?: number;
+        remaining_tokens?: number;
+        last_call_input_tokens?: number;
+        last_call_output_tokens?: number;
+        current_context_tokens?: number;
+        displayed_context_limit?: number;
+        current_context_used_percentage?: number;
     };
+    /** Copilot session name (since 1.0.12) */
+    session_name?: string | null;
+    /** Workspace info */
+    workspace?: {
+        current_dir?: string;
+    };
+    /** GitHub login */
+    username?: string | null;
+    /** Remote-session state */
+    remote?: {
+        connected?: boolean;
+        [key: string]: unknown;
+    };
+    /** Session metrics */
+    cost?: {
+        total_api_duration_ms?: number;
+        total_duration_ms?: number;
+        total_lines_added?: number;
+        total_lines_removed?: number;
+        total_premium_requests?: number;
+    };
+    /** AI Credits used this session, in nano-AIU, plus Copilot's own formatting */
+    ai_used?: {
+        total_nano_aiu?: number;
+        formatted?: string;
+    };
+    /** Allow-all (YOLO) state (since 1.0.62) */
+    allow_all_enabled?: boolean;
     /** Rate limits from Claude Code statusline stdin */
     rate_limits?: {
         five_hour?: {
@@ -317,6 +364,8 @@ export interface CustomProviderResult {
     error?: string;
 }
 export interface HudRenderContext {
+    /** Host CLI that fed the payload (see host.ts); absent means 'claude' */
+    host?: 'claude' | 'copilot';
     /** Context window percentage (0-100) */
     contextPercent: number;
     /** Stable display scope for context smoothing (e.g. session/worktree key) */
@@ -368,7 +417,7 @@ export interface HudRenderContext {
     /** Latest available version from npm registry (null if up to date or unknown) */
     updateAvailable: string | null;
     /** Update channel the cached OMC update belongs to (null if unknown) */
-    omcUpdateSource?: 'npm' | 'marketplace' | null;
+    omcUpdateSource?: 'npm' | 'marketplace' | 'copilot-plugin' | null;
     /** Installed Claude Code version reported by the statusline stdin payload */
     claudeCodeVersion?: string | null;
     /** Latest available Claude Code version (null if up to date or unknown) */
@@ -399,6 +448,21 @@ export interface HudRenderContext {
     recentTools?: RecentTool[];
     /** Best-effort local transcript-backed request payload pressure estimate. */
     payloadEstimate?: PayloadEstimate | null;
+    /** Copilot only: session AI Credits from the payload's `ai_used` */
+    aiUsed?: {
+        nanoAiu: number | null;
+        formatted: string | null;
+    } | null;
+    /** Copilot only: agent mode from events.jsonl (null = interactive / unknown) */
+    copilotMode?: 'interactive' | 'plan' | 'autopilot' | null;
+    /** Copilot only: a conversation compaction is in progress */
+    compacting?: boolean;
+    /** Copilot only: allow-all (YOLO) from the payload's `allow_all_enabled` */
+    copilotAllowAll?: boolean;
+    /** Live `omg team` run (read only when the `team` element is on) */
+    team?: TeamStateForHud | null;
+    /** Open ultragoal plan (read only when the `ultragoal` element is on) */
+    ultragoal?: UltragoalStateForHud | null;
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -470,10 +534,14 @@ export interface HudElementConfig {
     modelFormat: ModelFormat;
     effort: boolean;
     omcLabel: boolean;
+    omgLabel?: boolean;
     updateNotification?: boolean;
     rateLimits: boolean;
     ralph: boolean;
     autopilot: boolean;
+    copilotMode?: boolean;
+    team?: boolean;
+    ultragoal?: boolean;
     prdStory: boolean;
     activeSkills: boolean;
     lastSkill: boolean;
@@ -572,6 +640,20 @@ export interface HudConfig {
     layout?: LayoutConfig;
 }
 export declare const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS: number;
+/**
+ * Copilot host defaults, applied over the preset and under the user's config:
+ * Copilot's own footer already shows the model, effort, directory and branch,
+ * so these start off and a user `true` turns them back on. The OMC-state
+ * elements (copilotMode, team, ultragoal) start on here; under Claude they are
+ * unset in every preset, so they stay off unless the user turns them on.
+ */
+export declare const COPILOT_HOST_DEFAULTS: Partial<HudElementConfig>;
+/**
+ * Elements with no data source under Copilot (Claude usage/enterprise APIs,
+ * Claude transcript, `claude -p`). Forced off on the Copilot host even when the
+ * user config enables them; the payload warning is skipped in index.ts.
+ */
+export declare const COPILOT_HOST_DROPPED: Partial<HudElementConfig>;
 export declare const DEFAULT_HUD_CONFIG: HudConfig;
 export declare const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>>;
 //# sourceMappingURL=types.d.ts.map

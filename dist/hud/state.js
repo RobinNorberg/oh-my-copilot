@@ -9,7 +9,7 @@ import { join } from "path";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
 import { validateWorkingDirectory, getOmcRoot, ensureSessionStateDir, resolveSessionStatePath, } from "../lib/worktree-paths.js";
 import { atomicWriteFileSync, atomicWriteJsonSync, } from "../lib/atomic-write.js";
-import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS, isHudLocale, resolveHudLabels, sanitizeHudLabels, } from "./types.js";
+import { COPILOT_HOST_DEFAULTS, COPILOT_HOST_DROPPED, DEFAULT_HUD_CONFIG, PRESET_CONFIGS, isHudLocale, resolveHudLabels, sanitizeHudLabels, } from "./types.js";
 import { DEFAULT_MISSION_BOARD_CONFIG } from "./mission-board.js";
 import { cleanupStaleBackgroundTasks, markOrphanedTasksAsStale, } from "./background-cleanup.js";
 // ============================================================================
@@ -232,8 +232,11 @@ export function getBackgroundTaskCount(state) {
 /**
  * Read HUD configuration from disk.
  * Priority: settings.json > hud-config.json (legacy) > defaults
+ *
+ * `host: 'copilot'` adds the Copilot overlay (COPILOT_HOST_DEFAULTS and
+ * COPILOT_HOST_DROPPED). Without a host the result is the upstream config.
  */
-export function readHudConfig() {
+export function readHudConfig(host) {
     const settingsFile = getSettingsFilePath();
     const legacyConfig = getLegacyHudConfig();
     if (existsSync(settingsFile)) {
@@ -255,7 +258,7 @@ export function readHudConfig() {
                         ...sanitizeHudLabels(legacyConfig?.labels),
                         ...sanitizeHudLabels(settings.omcHud.labels),
                     },
-                });
+                }, host);
             }
         }
         catch (error) {
@@ -263,14 +266,34 @@ export function readHudConfig() {
         }
     }
     if (legacyConfig) {
-        return mergeWithDefaults(legacyConfig);
+        return mergeWithDefaults(legacyConfig, host);
     }
-    return mergeWithDefaults({});
+    return mergeWithDefaults({}, host);
+}
+/**
+ * Copilot element merge: defaults, preset, Copilot defaults, user config, then
+ * the dropped elements forced off.
+ */
+function copilotElements(presetElements, userElements) {
+    if (process.env.OMC_DEBUG) {
+        for (const key of Object.keys(COPILOT_HOST_DROPPED)) {
+            if (userElements?.[key] === true) {
+                console.error(`[HUD] ${key} is ignored on Copilot (no data source)`);
+            }
+        }
+    }
+    return {
+        ...DEFAULT_HUD_CONFIG.elements,
+        ...presetElements,
+        ...COPILOT_HOST_DEFAULTS,
+        ...userElements,
+        ...COPILOT_HOST_DROPPED,
+    };
 }
 /**
  * Merge partial config with defaults
  */
-function mergeWithDefaults(config) {
+function mergeWithDefaults(config, host) {
     const preset = config.preset ?? DEFAULT_HUD_CONFIG.preset;
     const presetElements = PRESET_CONFIGS[preset] ?? {};
     const missionBoardEnabled = config.missionBoard?.enabled ??
@@ -290,11 +313,13 @@ function mergeWithDefaults(config) {
         preset,
         locale,
         labels: resolveHudLabels(locale, config.labels),
-        elements: {
-            ...DEFAULT_HUD_CONFIG.elements, // Base defaults
-            ...presetElements, // Preset overrides
-            ...config.elements, // User overrides
-        },
+        elements: host === "copilot"
+            ? copilotElements(presetElements, config.elements)
+            : {
+                ...DEFAULT_HUD_CONFIG.elements, // Base defaults
+                ...presetElements, // Preset overrides
+                ...config.elements, // User overrides
+            },
         thresholds: {
             ...DEFAULT_HUD_CONFIG.thresholds,
             ...config.thresholds,
