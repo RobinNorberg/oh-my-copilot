@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { getCopilotConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
+import { isCopilotHookHost } from './lib/hook-host.mjs';
 
 // Detached update-cache refresh: argv flag and the child's overall deadline.
 const REFRESH_UPDATE_CACHE_FLAG = '--refresh-update-cache';
@@ -1029,11 +1030,19 @@ function compactBudgetedText(text, maxChars) {
 function formatUpdateNoticeForUser(updateInfo, options = {}) {
   const latestVersion = updateInfo?.latestVersion || 'latest';
   const currentVersion = updateInfo?.currentVersion || 'unknown';
-  const action = updateInfo?.source === 'marketplace'
-    ? 'To update the plugin channel, run: /plugin marketplace update omc && /omc-setup'
-    : (options.autoUpgradePrompt === false
+  let action;
+  if (updateInfo?.source === 'copilot-plugin') {
+    action = 'To update the plugin, run: /plugin update oh-my-copilot@omc (from a shell: copilot plugin update oh-my-copilot@omc)';
+  } else if (updateInfo?.source === 'marketplace') {
+    action = 'To update the plugin channel, run: /plugin marketplace update omc && /omc-setup';
+  } else if (options.copilotHost) {
+    // Copilot's /update updates Copilot CLI itself, not this package.
+    action = 'To update, run: npm i -g oh-my-copilot@latest';
+  } else {
+    action = options.autoUpgradePrompt === false
       ? 'To update later, run: omg update'
-      : 'Run /update to upgrade now, or use /plugin install oh-my-copilot');
+      : 'Run /update to upgrade now, or use /plugin install oh-my-copilot';
+  }
   return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
 
@@ -1202,16 +1211,64 @@ function writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, s
   });
 }
 
-function getPluginUpdateChannelVersion() {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-  if (!pluginRoot || !isManagedPluginCacheRoot(pluginRoot)) return { managed: false, version: null };
-  return { managed: true, version: getMarketplaceCloneVersion() };
+/**
+ * Copilot CLI installs plugins under <copilotHome>/installed-plugins/. A root
+ * from another COPILOT_HOME still has that path segment, as with the stale
+ * Claude cache roots above.
+ */
+function isCopilotInstalledPluginRoot(pluginRoot) {
+  if (!pluginRoot) return false;
+  const normalizedRoot = pluginRoot.replace(/[\\/]+$/, '');
+  if (isPathInsideOrEqual(join(configDir, 'installed-plugins'), normalizedRoot)) return true;
+  return `${normalizedRoot.replace(/\\/g, '/')}/`.includes('/installed-plugins/');
 }
 
-// Get plugin version from CLAUDE_PLUGIN_ROOT
+/** The package root this script runs from (scripts/..), independent of env vars. */
+function getScriptPackageRoot() {
+  return resolve(__dirname, '..');
+}
+
+/**
+ * The running plugin root: the host's env var when set, else this script's
+ * own package root when it sits in Copilot's installed-plugins tree (Copilot
+ * substitutes ${CLAUDE_PLUGIN_ROOT} in hook args; whether it also exports the
+ * variable to hook processes is unverified).
+ */
+function getActivePluginRoot() {
+  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || process.env.PLUGIN_ROOT;
+  if (envRoot) return envRoot;
+  const scriptRoot = getScriptPackageRoot();
+  return isCopilotInstalledPluginRoot(scriptRoot) ? scriptRoot : null;
+}
+
+/**
+ * Update channel of the active install: 'marketplace' for a Claude Code plugin
+ * cache root, 'copilot-plugin' for a Copilot CLI installed plugin, else 'npm'.
+ * src/features/auto-update.ts getOmcUpdateChannel applies the same rule.
+ */
+function getUpdateChannel() {
+  const pluginRoot = getActivePluginRoot();
+  if (pluginRoot && isManagedPluginCacheRoot(pluginRoot)) return 'marketplace';
+  if (isCopilotInstalledPluginRoot(pluginRoot) || isCopilotInstalledPluginRoot(getScriptPackageRoot())) {
+    return 'copilot-plugin';
+  }
+  return 'npm';
+}
+
+/**
+ * Copilot session host. Plugin hooks carry OMC_HOOK_EVENT (see hook-host.mjs);
+ * the env signal covers the detached refresh child's inherited env too.
+ * CLAUDE_CODE_ENTRYPOINT wins over an inherited COPILOT_CLI.
+ */
+function isCopilotSessionHost(env = process.env) {
+  if (isCopilotHookHost(env)) return true;
+  return Boolean((env.COPILOT_CLI || env.COPILOT_AGENT_SESSION_ID) && !env.CLAUDE_CODE_ENTRYPOINT);
+}
+
+// Get plugin version from the active plugin root
 function getPluginVersion() {
   try {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = getActivePluginRoot();
     if (!pluginRoot) return null;
     const pkg = readJsonFile(join(pluginRoot, 'package.json'));
     const latestCacheVersion = isManagedPluginCacheRoot(pluginRoot) ? getLatestPluginCacheVersion() : null;
@@ -1249,16 +1306,16 @@ function detectVersionDrift() {
   const pluginVersion = getPluginVersion();
   const npmVersion = getNpmVersion();
   const claudeMdVersion = getClaudeMdVersion();
-  const marketplaceChannel = getPluginUpdateChannelVersion();
+  const updateChannel = getUpdateChannel();
 
   // Need at least plugin version to detect drift
   if (!pluginVersion) return null;
 
   const drift = [];
 
-  // Managed plugin installs are intentionally governed by the marketplace clone,
+  // Managed plugin installs are intentionally governed by their plugin channel,
   // so a newer npm CLI/cache version is not proof that the plugin channel can act.
-  if (!marketplaceChannel.managed && npmVersion && npmVersion !== pluginVersion) {
+  if (updateChannel === 'npm' && npmVersion && npmVersion !== pluginVersion) {
     drift.push({ component: 'npm package (omc CLI)', current: npmVersion, expected: pluginVersion });
   }
 
@@ -1283,7 +1340,7 @@ function detectVersionDrift() {
     npmVersion,
     claudeMdVersion,
     drift,
-    source: marketplaceChannel.managed ? 'marketplace' : 'npm',
+    source: updateChannel,
   };
 }
 
@@ -1312,10 +1369,14 @@ function shouldNotifyDrift(driftInfo) {
   return true;
 }
 
-// Check the actionable update channel for the active install (with 24h npm cache).
-// Plugin marketplace installs update from the marketplace clone (usually origin/main),
-// not from the npm package. Keep those channels separate so HUD/session notices do
-// not advertise npm-only releases that `/plugin marketplace update` cannot install.
+// Check the actionable update channel for the active install (6h cache).
+// Claude plugin marketplace installs update from the marketplace clone (usually
+// origin/main), Copilot plugin installs from marketplace.json on the repo's
+// default branch (bumped by every release), npm installs from npm latest. Keep
+// those channels separate so HUD/session notices never advertise a release the
+// user's own update command cannot install.
+const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
+
 // Registry base override. Only honoured when set; tests point it at a closed
 // port to exercise the offline/timeout paths without touching the network.
 function registryLatestUrl(packageName) {
@@ -1324,10 +1385,36 @@ function registryLatestUrl(packageName) {
   return `${root}/${packageName}/latest`;
 }
 
+// Copilot plugin channel source; OMC_UPDATE_MARKETPLACE_URL overrides it (tests).
+function marketplaceManifestUrl() {
+  return process.env.OMC_UPDATE_MARKETPLACE_URL
+    || 'https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/.claude-plugin/marketplace.json';
+}
+
+// The channel's latest version, fetched with a 2s timeout.
+async function fetchLatestChannelVersion(channel) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+  try {
+    if (channel !== 'copilot-plugin') {
+      const response = await fetch(registryLatestUrl('oh-my-copilot'), { signal: controller.signal });
+      return response.ok ? (await response.json()).version : null;
+    }
+    const response = await fetch(marketplaceManifestUrl(), { signal: controller.signal });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const pluginEntry = Array.isArray(data?.plugins)
+      ? data.plugins.find(plugin => plugin?.name === 'oh-my-copilot')
+      : null;
+    const version = typeof pluginEntry?.version === 'string' ? pluginEntry.version.trim() : data?.version;
+    return typeof version === 'string' && parseSemver(version) ? version : null;
+  } finally { clearTimeout(timeoutId); }
+}
+
 async function checkNpmUpdate(currentVersion) {
-  const marketplaceChannel = getPluginUpdateChannelVersion();
-  if (marketplaceChannel.managed) {
-    const marketplaceVersion = marketplaceChannel.version;
+  const channel = getUpdateChannel();
+  if (channel === 'marketplace') {
+    const marketplaceVersion = getMarketplaceCloneVersion();
     if (!marketplaceVersion) {
       writeUpdateCheckCache(currentVersion, currentVersion, false, 'marketplace-unavailable');
       return null;
@@ -1338,43 +1425,40 @@ async function checkNpmUpdate(currentVersion) {
   }
 
   const cacheFile = getUpdateCheckCachePath();
-  const CACHE_DURATION = 24 * 60 * 60 * 1000;
   const now = Date.now();
 
-  // Check cache
+  // A fresh cache counts only for the same channel and the same installed
+  // version: an install switch or a finished update refreshes it early.
   try {
     if (existsSync(cacheFile)) {
       const cached = JSON.parse(readFileSync(cacheFile, 'utf-8'));
-      if (cached.timestamp && (now - cached.timestamp) < CACHE_DURATION && (!cached.source || cached.source === 'npm')) {
+      const sameChannel = cached.source === channel || (!cached.source && channel === 'npm');
+      if (
+        cached.timestamp && (now - cached.timestamp) < UPDATE_CHECK_TTL_MS &&
+        sameChannel && cached.currentVersion === currentVersion
+      ) {
         return (cached.updateAvailable && semverCompare(cached.latestVersion, currentVersion) > 0)
-          ? { currentVersion, latestVersion: cached.latestVersion, source: 'npm' }
+          ? { currentVersion, latestVersion: cached.latestVersion, source: channel }
           : null;
       }
     }
   } catch {}
 
-  // Fetch from npm registry with 2s timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch(registryLatestUrl('oh-my-copilot'), {
-      signal: controller.signal
-    });
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const latestVersion = data.version;
+    const latestVersion = await fetchLatestChannelVersion(channel);
+    if (!latestVersion) return null;
     const updateAvailable = semverCompare(latestVersion, currentVersion) > 0;
 
-    writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, 'npm');
+    writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, channel);
 
-    return updateAvailable ? { currentVersion, latestVersion, source: 'npm' } : null;
-  } catch { return null; } finally { clearTimeout(timeoutId); }
+    return updateAvailable ? { currentVersion, latestVersion, source: channel } : null;
+  } catch { return null; }
 }
 
-// Refresh the cached latest Claude Code version (same 24h window and 2s timeout
-// as the OMC check). Stored alongside the OMC fields so the HUD reads one file;
+// Refresh the cached latest Claude Code version (24h window, 2s timeout like
+// the OMC check). Stored alongside the OMC fields so the HUD reads one file;
 // the field is simply absent on caches written before this check existed.
+// Claude Code host only: runUpdateChecks skips it under Copilot.
 async function checkClaudeCodeUpdate() {
   const CACHE_DURATION = 24 * 60 * 60 * 1000;
   const cached = readUpdateCheckCache();
@@ -1397,6 +1481,7 @@ async function checkClaudeCodeUpdate() {
 // Refresh update caches and return a user-facing OMC update notice, if any.
 // Independent of the workspace, so it also runs for non-workspace cwds (#3942).
 async function runUpdateChecks() {
+  const copilotHost = isCopilotSessionHost();
   // Concurrent: each fetch aborts after 2s, and SessionStart hooks have a 5s
   // budget, so running them in sequence would risk a cold-cache timeout.
   const [notice] = await Promise.all([
@@ -1407,10 +1492,14 @@ async function runUpdateChecks() {
         const updateInfo = await checkNpmUpdate(pluginVersion);
         if (!updateInfo) return null;
         const omcConfig = readJsonFile(join(configDir, '.omc-config.json')) || {};
-        return formatUpdateNoticeForUser(updateInfo, { autoUpgradePrompt: omcConfig.autoUpgradePrompt !== false });
+        return formatUpdateNoticeForUser(updateInfo, {
+          autoUpgradePrompt: omcConfig.autoUpgradePrompt !== false,
+          copilotHost,
+        });
       } catch { return null; }
     })(),
-    checkClaudeCodeUpdate().catch(() => {}),
+    // Copilot sessions never show a Claude Code hint, so never fetch it there.
+    copilotHost ? null : checkClaudeCodeUpdate().catch(() => {}),
   ]);
   return notice;
 }
@@ -1638,14 +1727,18 @@ async function main() {
       for (const d of driftInfo.drift) {
         driftMsg += `${d.component}: ${d.current} (expected ${d.expected})\n`;
       }
-      driftMsg += driftInfo.source === 'marketplace'
-        ? `\nRun '/plugin marketplace update omc && /omc-setup' to sync plugin-managed components.`
-        : `\nRun 'omg update' to sync all components.`;
+      if (driftInfo.source === 'copilot-plugin') {
+        driftMsg += `\nRun '/plugin update oh-my-copilot@omc' to sync plugin-managed components.`;
+      } else {
+        driftMsg += driftInfo.source === 'marketplace'
+          ? `\nRun '/plugin marketplace update omc && /omc-setup' to sync plugin-managed components.`
+          : `\nRun 'omg update' to sync all components.`;
+      }
 
       messages.push(`<session-restore>\n\n${driftMsg}\n\n</session-restore>\n\n---\n`);
     }
 
-    // Check npm registry for available updates (with 24h cache)
+    // Check the install channel for available updates (with 6h cache)
     const updateNotice = await runUpdateChecks();
     if (updateNotice) userMessages.push(updateNotice);
 

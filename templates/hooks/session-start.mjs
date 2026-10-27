@@ -658,11 +658,11 @@ async function checkClaudeCodeUpdate() {
 async function checkForUpdates(currentVersion) {
   const cacheFile = getUpdateCheckCachePath();
   const now = Date.now();
-  const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+  const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours
 
-  // Check cache first
   const cached = readJsonFile(cacheFile);
-  if (cached && cached.timestamp && (now - cached.timestamp) < CACHE_DURATION) {
+  const sameInstall = (!cached?.source || cached.source === 'npm') && cached?.currentVersion === currentVersion;
+  if (sameInstall && cached.timestamp && (now - cached.timestamp) < CACHE_DURATION) {
     return cached.updateAvailable ? cached : null;
   }
 
@@ -706,9 +706,15 @@ async function checkForUpdates(currentVersion) {
 // budget, so running them in sequence would risk a cold-cache timeout.
 async function runUpdateChecks() {
   const currentVersion = resolveOmcVersion();
+  // Copilot sessions never show a Claude Code hint, so never fetch it there.
+  // CLAUDE_CODE_ENTRYPOINT wins over a COPILOT_CLI inherited from a Copilot shell.
+  const copilotHost = Boolean(
+    (process.env.OMC_HOOK_EVENT || '').trim() ||
+    ((process.env.COPILOT_CLI || process.env.COPILOT_AGENT_SESSION_ID) && !process.env.CLAUDE_CODE_ENTRYPOINT)
+  );
   const [updateInfo] = await Promise.all([
     currentVersion ? checkForUpdates(currentVersion).catch(() => null) : null,
-    checkClaudeCodeUpdate().catch(() => {}),
+    copilotHost ? null : checkClaudeCodeUpdate().catch(() => {}),
   ]);
   return updateInfo;
 }

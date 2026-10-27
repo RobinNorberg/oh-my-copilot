@@ -22,8 +22,10 @@ import {
   isRunningAsPlugin,
   copyPluginSyncPayload,
   syncInstalledPluginPayload,
+  getRuntimePackageRoot,
 } from '../installer/index.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { detectHostCliSignal } from '../utils/host-signal.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import type { NotificationConfig } from '../notifications/types.js';
 import { isAutoUpdateDisabled } from '../lib/security-config.js';
@@ -1232,12 +1234,57 @@ export async function performUpdate(options?: {
   }
 }
 
+export type OmcUpdateChannel = 'marketplace' | 'copilot-plugin' | 'npm';
+
+function toSlashPath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/**
+ * Update channel of the running install, by the rule scripts/session-start.mjs
+ * getUpdateChannel applies: a Claude Code plugin cache root is 'marketplace',
+ * a Copilot CLI installed plugin (<copilotHome>/installed-plugins/...) is
+ * 'copilot-plugin', anything else 'npm'. The package root counts as well as
+ * the env vars, since Copilot may not export a plugin root to processes.
+ */
+export function getOmcUpdateChannel(
+  env: NodeJS.ProcessEnv = process.env,
+  packageRoot: string = getRuntimePackageRoot(),
+): OmcUpdateChannel {
+  const envRoot = env.CLAUDE_PLUGIN_ROOT || env.PLUGIN_ROOT;
+  const claudeCacheBase = toSlashPath(join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot'));
+  if (envRoot) {
+    const root = toSlashPath(envRoot);
+    if (
+      root === claudeCacheBase || root.startsWith(`${claudeCacheBase}/`) ||
+      /\/plugins\/cache\/omc\/oh-my-copilot\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(root)
+    ) {
+      return 'marketplace';
+    }
+  }
+  const isCopilotPluginRoot = (root: string | undefined): boolean =>
+    !!root && `${toSlashPath(root)}/`.includes('/installed-plugins/');
+  return isCopilotPluginRoot(envRoot) || isCopilotPluginRoot(packageRoot) ? 'copilot-plugin' : 'npm';
+}
+
 /**
  * Get a formatted update notification message
  */
 export function formatUpdateNotification(checkResult: UpdateCheckResult): string {
   if (!checkResult.updateAvailable) {
     return `oh-my-copilot is up to date (v${checkResult.currentVersion ?? 'unknown'})`;
+  }
+
+  const channel = getOmcUpdateChannel();
+  let commandLines = ['  To update, run: /update', '  Or reinstall via: /plugin install oh-my-copilot'];
+  if (channel === 'copilot-plugin') {
+    commandLines = [
+      '  To update, run: copilot plugin update oh-my-copilot@omc',
+      '  Or inside Copilot CLI: /plugin update oh-my-copilot@omc',
+    ];
+  } else if (channel === 'npm' && detectHostCliSignal() === 'copilot') {
+    // Copilot's /update updates Copilot CLI itself, not this package.
+    commandLines = ['  To update, run: npm i -g oh-my-copilot@latest'];
   }
 
   const lines = [
@@ -1248,8 +1295,7 @@ export function formatUpdateNotification(checkResult: UpdateCheckResult): string
     `  Current version: ${checkResult.currentVersion ?? 'unknown'}`,
     `  Latest version:  ${checkResult.latestVersion}`,
     '',
-    '  To update, run: /update',
-    '  Or reinstall via: /plugin install oh-my-copilot',
+    ...commandLines,
     ''
   ];
 
