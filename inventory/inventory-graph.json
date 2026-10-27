@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-    "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+    "head": "7ff97edf0a6f40a5e5c89be2ecb0ea3e8fe9cbd5",
+    "sourceSha256": "43b1185ef8c7655139b55c20a08523dad4557aa54a07b242ffe2b02dba344634",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6aba5484792a575701846ddc27f568d2086fbb74",
-  "sourceSha256": "76260931dbecc11cd01af1d72836db28defb823757c725f35275965652cd7f24",
+  "head": "7ff97edf0a6f40a5e5c89be2ecb0ea3e8fe9cbd5",
+  "sourceSha256": "43b1185ef8c7655139b55c20a08523dad4557aa54a07b242ffe2b02dba344634",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1669,
-      "total": 1693
+      "srcFiles": 1673,
+      "total": 1697
     },
     "generated": {
       "distFiles": 6344,
@@ -45378,6 +45378,16 @@
         "path": "src/constants/names.ts"
       },
       {
+        "id": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "src",
+        "path": "src/copilot-run/__tests__/fake-sdk.ts"
+      },
+      {
+        "id": "src/copilot-run/__tests__/job.test.ts",
+        "kind": "src",
+        "path": "src/copilot-run/__tests__/job.test.ts"
+      },
+      {
         "id": "src/copilot-run/job.ts",
         "kind": "src",
         "path": "src/copilot-run/job.ts"
@@ -45436,6 +45446,16 @@
         "id": "src/factory/map-run.ts",
         "kind": "src",
         "path": "src/factory/map-run.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/lane.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/lane.test.ts"
+      },
+      {
+        "id": "src/factory/run/lane.ts",
+        "kind": "src",
+        "path": "src/factory/run/lane.ts"
       },
       {
         "id": "src/factory/status.ts",
@@ -67765,6 +67785,76 @@
         "kind": "type-exports"
       },
       {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/fake-sdk.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "src/tools/copilot-run-tools.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/copilot-run/job.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -68223,6 +68313,61 @@
         "from": "src/factory/map-run.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/lane.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/lane.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/status.ts",
@@ -100956,12 +101101,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8752,
-      "edgeCount": 9855,
-      "importEdgeCount": 8245,
+      "nodeCount": 8756,
+      "edgeCount": 9880,
+      "importEdgeCount": 8264,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "429f4f8b06cde43f9ba04186ec839bb3c800da4f389bed39ebea74d9033ea9ff",
-  "manifestSha256": "29a6ca45f6e3a8e3d410038f8c3026aaddeab3ead6ca0c1b14678722ba9d0671"
+  "inventorySha256": "1caa34f29710a6a95fd81a682ffbfa45766dc72f9c63ff26bc9db4bc586894ff",
+  "manifestSha256": "30a31e41735a31d2224c3c625649bfda68c4d659c2e73da614741ebdcc79537c"
 }
