@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "9fe2287c6f6226ea358b8ee5bff77eb046b5df14",
-    "sourceSha256": "4c869ec050492a8faa815fd8f43b30ea1324e85e134a8db7977cbab64187eb5c",
+    "head": "6c8ef03cad0f48f2138ecd11b05ec463dea3e6e8",
+    "sourceSha256": "cb0b554c6581d9e198254926c1ee42639406484064da0c750b9bd25092436990",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "9fe2287c6f6226ea358b8ee5bff77eb046b5df14",
-  "sourceSha256": "4c869ec050492a8faa815fd8f43b30ea1324e85e134a8db7977cbab64187eb5c",
+  "head": "6c8ef03cad0f48f2138ecd11b05ec463dea3e6e8",
+  "sourceSha256": "cb0b554c6581d9e198254926c1ee42639406484064da0c750b9bd25092436990",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1687,
-      "total": 1711
+      "srcFiles": 1707,
+      "total": 1731
     },
     "generated": {
       "distFiles": 6352,
@@ -37,14 +37,14 @@
       "total": 6361
     },
     "prompt": {
-      "promptLikeFiles": 64
+      "promptLikeFiles": 65
     },
     "skills": 63,
     "commands": 21,
     "hookFiles": 346,
     "workflows": 9,
     "agentDefinitions": 18,
-    "promptLikeFiles": 64
+    "promptLikeFiles": 65
   },
   "public": {
     "skills": [
@@ -785,6 +785,7 @@
       "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json",
       "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json",
       "src/__tests__/helpers/prompt-test-helpers.ts",
+      "src/__tests__/hud/fixtures/copilot-1.0.103-synth-after-prompt.json",
       "src/__tests__/hud/prompt-time.test.ts",
       "src/__tests__/load-agent-prompt.test.ts",
       "src/__tests__/prompt-injection.test.ts",
@@ -7723,6 +7724,7 @@
       "src/__tests__/fixtures/copilot-live/continuation-userpromptsubmit.json",
       "src/__tests__/fixtures/copilot-live/subagent-kickoff-userpromptsubmit.json",
       "src/__tests__/helpers/prompt-test-helpers.ts",
+      "src/__tests__/hud/fixtures/copilot-1.0.103-synth-after-prompt.json",
       "src/__tests__/hud/prompt-time.test.ts",
       "src/__tests__/load-agent-prompt.test.ts",
       "src/__tests__/prompt-injection.test.ts",
@@ -42953,6 +42955,11 @@
         "path": "src/__tests__/auto-slash-live-data-security.test.ts"
       },
       {
+        "id": "src/__tests__/auto-update-channel.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/auto-update-channel.test.ts"
+      },
+      {
         "id": "src/__tests__/auto-update.test.ts",
         "kind": "src",
         "path": "src/__tests__/auto-update.test.ts"
@@ -43478,6 +43485,36 @@
         "path": "src/__tests__/hud/context.test.ts"
       },
       {
+        "id": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-elements-golden.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/copilot-events.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-events.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-host-visibility.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-render-golden.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-session-credits.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/copilot-stdin.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/copilot-stdin.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/credit-budget-element.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/credit-budget-element.test.ts"
@@ -43513,9 +43550,39 @@
         "path": "src/__tests__/hud/extra-usage.test.ts"
       },
       {
+        "id": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-after-prompt.json",
+        "kind": "src",
+        "path": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-after-prompt.json"
+      },
+      {
+        "id": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-ai-used.json",
+        "kind": "src",
+        "path": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-ai-used.json"
+      },
+      {
+        "id": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-idle.json",
+        "kind": "src",
+        "path": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-idle.json"
+      },
+      {
+        "id": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-near-limit.json",
+        "kind": "src",
+        "path": "src/__tests__/hud/fixtures/copilot-1.0.103-synth-near-limit.json"
+      },
+      {
+        "id": "src/__tests__/hud/fixtures/copilot-events-synth.jsonl",
+        "kind": "src",
+        "path": "src/__tests__/hud/fixtures/copilot-events-synth.jsonl"
+      },
+      {
         "id": "src/__tests__/hud/git.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/git.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/host.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/host.test.ts"
       },
       {
         "id": "src/__tests__/hud/labels.test.ts",
@@ -43546,6 +43613,11 @@
         "id": "src/__tests__/hud/model.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/model.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/omc-state-elements.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/omc-state-elements.test.ts"
       },
       {
         "id": "src/__tests__/hud/omc-state.test.ts",
@@ -44351,6 +44423,11 @@
         "id": "src/__tests__/session-start-timeout-cleanup.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-start-timeout-cleanup.test.ts"
+      },
+      {
+        "id": "src/__tests__/session-start-update-channel.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-update-channel.test.ts"
       },
       {
         "id": "src/__tests__/session-start-update-check.test.ts",
@@ -48038,6 +48115,11 @@
         "path": "src/hud/colors.ts"
       },
       {
+        "id": "src/hud/copilot-events.ts",
+        "kind": "src",
+        "path": "src/hud/copilot-events.ts"
+      },
+      {
         "id": "src/hud/custom-rate-provider.ts",
         "kind": "src",
         "path": "src/hud/custom-rate-provider.ts"
@@ -48076,6 +48158,11 @@
         "id": "src/hud/elements/context.ts",
         "kind": "src",
         "path": "src/hud/elements/context.ts"
+      },
+      {
+        "id": "src/hud/elements/copilot-mode.ts",
+        "kind": "src",
+        "path": "src/hud/elements/copilot-mode.ts"
       },
       {
         "id": "src/hud/elements/cwd.ts",
@@ -48178,6 +48265,11 @@
         "path": "src/hud/elements/skills.ts"
       },
       {
+        "id": "src/hud/elements/team.ts",
+        "kind": "src",
+        "path": "src/hud/elements/team.ts"
+      },
+      {
         "id": "src/hud/elements/thinking.ts",
         "kind": "src",
         "path": "src/hud/elements/thinking.ts"
@@ -48193,9 +48285,19 @@
         "path": "src/hud/elements/token-usage.ts"
       },
       {
+        "id": "src/hud/elements/ultragoal.ts",
+        "kind": "src",
+        "path": "src/hud/elements/ultragoal.ts"
+      },
+      {
         "id": "src/hud/elements/update-hint.ts",
         "kind": "src",
         "path": "src/hud/elements/update-hint.ts"
+      },
+      {
+        "id": "src/hud/host.ts",
+        "kind": "src",
+        "path": "src/hud/host.ts"
       },
       {
         "id": "src/hud/index.ts",
@@ -54366,6 +54468,11 @@
       },
       {
         "from": "scripts/session-start.mjs",
+        "to": "scripts/lib/hook-host.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/session-start.mjs",
         "to": "scripts/lib/model-routing-override-message.mjs",
         "kind": "imports"
       },
@@ -55487,6 +55594,26 @@
       {
         "from": "src/__tests__/auto-slash-live-data-security.test.ts",
         "to": "src/hooks/auto-slash-command/executor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-update-channel.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-update-channel.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-update-channel.test.ts",
+        "to": "src/features/auto-update.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-update-channel.test.ts",
+        "to": "src/utils/config-dir.ts",
         "kind": "imports"
       },
       {
@@ -57665,6 +57792,201 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "src/hud/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-elements-golden.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-events.test.ts",
+        "to": "src/hud/copilot-events.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "src/hud/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-host-visibility.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-render-golden.test.ts",
+        "to": "src/hud/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "src/hud/copilot-events.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-session-credits.test.ts",
+        "to": "src/hud/elements/premium-budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-stdin.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-stdin.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-stdin.test.ts",
+        "to": "src/hud/stdin.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/copilot-stdin.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/hud/credit-budget-element.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -57830,6 +58152,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/hud/host.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/host.test.ts",
+        "to": "src/hud/host.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/host.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/hud/labels.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -57982,6 +58319,71 @@
       {
         "from": "src/__tests__/hud/model.test.ts",
         "to": "src/hud/elements/model.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/copilot-mode.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/elements/ultragoal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hud/omc-state-elements.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -62071,6 +62473,41 @@
       },
       {
         "from": "src/__tests__/session-start-timeout-cleanup.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-channel.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -69437,6 +69874,11 @@
       {
         "from": "src/features/auto-update.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/auto-update.ts",
+        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -81390,6 +81832,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/copilot-events.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/copilot-events.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/copilot-events.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/copilot-events.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hud/custom-rate-provider.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -81526,6 +81988,16 @@
       },
       {
         "from": "src/hud/elements/context.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/elements/copilot-mode.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/copilot-mode.ts",
         "to": "src/hud/types.ts",
         "kind": "type-imports"
       },
@@ -81900,6 +82372,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/team.ts",
+        "to": "src/hud/mission-board.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hud/elements/thinking.ts",
         "to": "src/hud/colors.ts",
         "kind": "imports"
@@ -81945,8 +82432,48 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/ultragoal.ts",
+        "to": "src/ultragoal/artifacts.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hud/elements/update-hint.ts",
         "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/host.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/host.ts",
+        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -81981,12 +82508,37 @@
       },
       {
         "from": "src/hud/index.ts",
+        "to": "src/hud/copilot-events.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
         "to": "src/hud/custom-rate-provider.ts",
         "kind": "imports"
       },
       {
         "from": "src/hud/index.ts",
         "to": "src/hud/elements/api-key-source.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/elements/ultragoal.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/elements/update-hint.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/index.ts",
+        "to": "src/hud/host.ts",
         "kind": "imports"
       },
       {
@@ -82176,6 +82728,11 @@
       },
       {
         "from": "src/hud/render.ts",
+        "to": "src/hud/elements/copilot-mode.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
         "to": "src/hud/elements/cwd.ts",
         "kind": "imports"
       },
@@ -82266,6 +82823,11 @@
       },
       {
         "from": "src/hud/render.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
         "to": "src/hud/elements/thinking.ts",
         "kind": "imports"
       },
@@ -82277,6 +82839,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/token-usage.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/ultragoal.ts",
         "kind": "imports"
       },
       {
@@ -82323,6 +82890,11 @@
         "from": "src/hud/state.ts",
         "to": "src/hud/background-cleanup.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hud/state.ts",
+        "to": "src/hud/host.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hud/state.ts",
@@ -82417,6 +82989,16 @@
       {
         "from": "src/hud/types.ts",
         "to": "src/hud/elements/session-summary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/types.ts",
+        "to": "src/hud/elements/team.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/types.ts",
+        "to": "src/hud/elements/ultragoal.ts",
         "kind": "type-imports"
       },
       {
@@ -101941,12 +102523,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8778,
-      "edgeCount": 10024,
-      "importEdgeCount": 8373,
+      "nodeCount": 8798,
+      "edgeCount": 10120,
+      "importEdgeCount": 8456,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "10c3f0b82ee165f25e438da6664e0b88463283297c511bd05d85e8d9bfb6327f",
-  "manifestSha256": "2c296da3373a9f5c9587ca18593921a8bcb453ebabb0e0eaf82e396b9ecd4803"
+  "inventorySha256": "ca26a3c4a36903e6aef46657effb1798ec448a2c665af24694555fe34c246cd5",
+  "manifestSha256": "8b7b7a21ca395b1a1123163779140a4cbd7ff588755adac6939365ad29ab6015"
 }
