@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { join } from 'node:path';
-import { formatUpdateNotification, getOmcUpdateChannel } from '../features/auto-update.js';
+import { formatUpdateNotification, getOmcUpdateChannel, REPO_OWNER, GITHUB_API_URL } from '../features/auto-update.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 const NPM_ROOT = join('/usr', 'lib', 'node_modules', 'oh-my-copilot');
@@ -48,9 +48,28 @@ describe('formatUpdateNotification commands', () => {
     delete process.env.CLAUDE_PLUGIN_ROOT;
 
     const text = formatUpdateNotification(result);
-    expect(text).toContain('To update, run: copilot plugin update oh-my-copilot@omc');
+    expect(text).toContain(
+      'To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc',
+    );
     expect(text).toContain('/plugin update oh-my-copilot@omc');
     expect(text).not.toContain('/plugin install');
+  });
+
+  it('never offers /update for the marketplace channel under Copilot', () => {
+    const root = join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot', '5.13.1');
+    process.env.CLAUDE_PLUGIN_ROOT = root;
+    delete process.env.PLUGIN_ROOT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    process.env.COPILOT_CLI = '1';
+
+    const text = formatUpdateNotification(result);
+    expect(text).toContain('copilot plugin update oh-my-copilot@omc');
+    expect(text).not.toContain('run: /update');
+  });
+
+  it('looks up releases in the fork repository', () => {
+    expect(REPO_OWNER).toBe('RobinNorberg');
+    expect(GITHUB_API_URL).toBe('https://api.github.com/repos/RobinNorberg/oh-my-copilot');
   });
 
   it('gives the npm command for an npm install under Copilot', () => {

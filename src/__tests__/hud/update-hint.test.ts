@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderUpdateHints } from '../../hud/elements/update-hint.js';
+import { renderUpdateHints, resolveCachedOmcUpdate } from '../../hud/elements/update-hint.js';
 import { render } from '../../hud/render.js';
 import { DEFAULT_HUD_CONFIG } from '../../hud/types.js';
 import type { HudRenderContext, HudConfig } from '../../hud/types.js';
@@ -156,7 +156,7 @@ describe('Claude Code update label', () => {
 });
 
 describe('update hints under the Copilot host', () => {
-  it('uses the in-session Copilot plugin command for Copilot plugin installs', () => {
+  it('uses the Copilot plugin command for Copilot plugin installs', () => {
     const [line] = renderUpdateHints({
       omcUpdateAvailable: '5.13.2',
       omcUpdateSource: 'copilot-plugin',
@@ -164,7 +164,7 @@ describe('update hints under the Copilot host', () => {
       host: 'copilot',
     }).map(stripAnsi);
 
-    expect(line).toBe('[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc');
+    expect(line).toBe('[!] omg 5.13.2 - paste: ! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc');
   });
 
   it('never offers the claude plugin command under Copilot', () => {
@@ -175,7 +175,7 @@ describe('update hints under the Copilot host', () => {
       host: 'copilot',
     }).map(stripAnsi);
 
-    expect(line).toBe('[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc');
+    expect(line).toBe('[!] omg 5.13.2 - paste: ! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc');
   });
 
   it('uses the npm command for npm installs', () => {
@@ -230,7 +230,7 @@ describe('update-available render golden', () => {
 
     expect(output).toBe([
       '[oh-my-copilot#5.13.1] -> 5.13.2',
-      '[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc',
+      '[!] omg 5.13.2 - paste: ! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc',
     ].join('\n'));
     expect(output).not.toContain('claude');
   });
@@ -243,5 +243,45 @@ describe('update-available render golden', () => {
     ));
 
     expect(output).toBe('[oh-my-copilot#5.13.1]');
+  });
+
+  it.each(['line1', 'main', 'detail'] as const)(
+    'renders the label once when %s lists both omcLabel and omgLabel',
+    async (group) => {
+      const config = createMinimalConfig({ omgLabel: true, model: false, sessionHealth: false, showCallCounts: false });
+      const layout = { line1: [], main: [], detail: [], [group]: ['omcLabel', 'omgLabel'] };
+      const output = stripAnsi(await render(
+        createMinimalContext({ omcVersion: '5.13.1' }),
+        { ...config, layout },
+      ));
+
+      expect(output.match(/oh-my-copilot#5\.13\.1/g)).toHaveLength(1);
+    },
+  );
+});
+
+describe('resolveCachedOmcUpdate', () => {
+  const cmp = (a: string, b: string) => (a === b ? 0 : a < b ? -1 : 1);
+  const cache = { latestVersion: '5.13.2', currentVersion: '5.13.1', source: 'copilot-plugin' };
+
+  it('shows no hint for a Claude marketplace HUD reading a copilot-plugin cache', () => {
+    expect(resolveCachedOmcUpdate(cache, '5.13.1', 'marketplace', cmp)).toBeNull();
+  });
+
+  it('shows no hint when the cache was written for another installed version', () => {
+    expect(resolveCachedOmcUpdate(cache, '5.13.0', 'copilot-plugin', cmp)).toBeNull();
+  });
+
+  it('uses the cache when channel and installed version match', () => {
+    expect(resolveCachedOmcUpdate(cache, '5.13.1', 'copilot-plugin', cmp)).toEqual({
+      latestVersion: '5.13.2',
+      source: 'copilot-plugin',
+    });
+  });
+
+  it('treats a cache without a source as npm', () => {
+    const legacy = { latestVersion: '5.13.2', currentVersion: '5.13.1' };
+    expect(resolveCachedOmcUpdate(legacy, '5.13.1', 'npm', cmp)?.source).toBe('npm');
+    expect(resolveCachedOmcUpdate(legacy, '5.13.1', 'marketplace', cmp)).toBeNull();
   });
 });

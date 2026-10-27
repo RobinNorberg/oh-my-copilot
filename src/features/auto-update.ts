@@ -32,7 +32,7 @@ import { isAutoUpdateDisabled } from '../lib/security-config.js';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 
 /** GitHub repository information */
-export const REPO_OWNER = 'Yeachan-Heo';
+export const REPO_OWNER = 'RobinNorberg';
 export const REPO_NAME = 'oh-my-copilot';
 export const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
@@ -1262,6 +1262,9 @@ export function getOmcUpdateChannel(
       return 'marketplace';
     }
   }
+  // Path-based on purpose: this matches the `/installed-plugins/` segment of
+  // the given string and does no realpath, so a symlinked or junctioned
+  // install is classified by where it is linked, not where it resolves.
   const isCopilotPluginRoot = (root: string | undefined): boolean =>
     !!root && `${toSlashPath(root)}/`.includes('/installed-plugins/');
   return isCopilotPluginRoot(envRoot) || isCopilotPluginRoot(packageRoot) ? 'copilot-plugin' : 'npm';
@@ -1277,12 +1280,15 @@ export function formatUpdateNotification(checkResult: UpdateCheckResult): string
 
   const channel = getOmcUpdateChannel();
   let commandLines = ['  To update, run: /update', '  Or reinstall via: /plugin install oh-my-copilot'];
-  if (channel === 'copilot-plugin') {
+  const copilotHost = detectHostCliSignal() === 'copilot';
+  if (channel === 'copilot-plugin' || (channel === 'marketplace' && copilotHost)) {
+    // Copilot's /update updates Copilot CLI itself, so the marketplace channel
+    // under Copilot gets the plugin command too.
     commandLines = [
-      '  To update, run: copilot plugin update oh-my-copilot@omc',
+      '  To update, run: copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc',
       '  Or inside Copilot CLI: /plugin update oh-my-copilot@omc',
     ];
-  } else if (channel === 'npm' && detectHostCliSignal() === 'copilot') {
+  } else if (channel === 'npm' && copilotHost) {
     // Copilot's /update updates Copilot CLI itself, not this package.
     commandLines = ['  To update, run: npm i -g oh-my-copilot@latest'];
   }

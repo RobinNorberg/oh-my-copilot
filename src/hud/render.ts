@@ -64,8 +64,24 @@ const DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
 /** Layout names kept as aliases of a renamed element. */
 const LAYOUT_ALIASES: Record<string, string> = { omcLabel: "omgLabel" };
 
+/**
+ * Map alias names to their canonical element. A canonical name that an alias
+ * produced more than once (omcLabel plus omgLabel) is kept only once, so the
+ * label never renders twice; other repeated names are left as configured.
+ */
 function normalizeLayoutNames(names: string[]): string[] {
-  return names.map((name) => LAYOUT_ALIASES[name] ?? name);
+  const aliasTargets = new Set(Object.values(LAYOUT_ALIASES));
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const name of names) {
+    const canonical = LAYOUT_ALIASES[name] ?? name;
+    if (aliasTargets.has(canonical)) {
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
+    }
+    result.push(canonical);
+  }
+  return result;
 }
 
 function buildMainElementOrder(elementOrder: string[] | undefined): string[] {

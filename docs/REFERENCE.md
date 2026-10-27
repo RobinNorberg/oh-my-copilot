@@ -1781,11 +1781,11 @@ Configure HUD elements in `~/.claude/settings.json`:
 **Update hint.** When an OMC update is available, the label reads `[oh-my-copilot#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
 
 ```
-[!] omg 5.13.2 - paste: /plugin update oh-my-copilot@omc
+[!] omg 5.13.2 - paste: ! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc
 [!] omg 5.13.2 - paste: ! npm i -g oh-my-copilot@latest
 ```
 
-The first line is for a Copilot CLI plugin install, the second for an npm install. Under Claude Code, a plugin install gets `claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc`, and the label and a `[!] claude ...` line also report a Claude Code update. Under Copilot CLI the HUD shows no Claude Code or Copilot CLI hint, because Copilot updates itself. The session-start hook refreshes the update cache at most every 6 hours, and earlier after an update or a channel switch.
+The first line is for a Copilot CLI plugin install (`copilot plugin marketplace update` added in Copilot CLI 1.0.27; the chain mirrors the Claude hint. Whether `plugin update` alone refreshes the marketplace clone is not documented, so the hint refreshes first), the second for an npm install. Under Claude Code, a plugin install gets `claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc`, and the label and a `[!] claude ...` line also report a Claude Code update. Under Copilot CLI the HUD shows no Claude Code or Copilot CLI hint, because Copilot updates itself. The session-start hook refreshes the update cache at most every 6 hours, and earlier after an update or a channel switch.
 
 Additional `omcHud` layout and label options (top-level):
 

@@ -35,6 +35,7 @@ import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
 import { detectHudHost } from "./host.js";
+import { resolveCachedOmcUpdate } from "./elements/update-hint.js";
 import { refreshMissionBoardState } from "./mission-board.js";
 import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
@@ -46,7 +47,7 @@ import type {
   UsageResult,
 } from "./types.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
-import { compareVersions } from "../features/auto-update.js";
+import { compareVersions, getOmcUpdateChannel } from "../features/auto-update.js";
 import {
   resolveToWorktreeRoot,
   resolveTranscriptPath,
@@ -462,19 +463,15 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       await access(updateCacheFile);
       const content = await readFile(updateCacheFile, "utf-8");
       const cached = JSON.parse(content);
-      if (
-        cached?.latestVersion &&
-        omcVersion &&
-        compareVersions(omcVersion, cached.latestVersion) < 0
-      ) {
-        updateAvailable = cached.latestVersion;
-      }
-      if (
-        cached?.source === "npm" ||
-        cached?.source === "marketplace" ||
-        cached?.source === "copilot-plugin"
-      ) {
-        omcUpdateSource = cached.source;
+      const cachedUpdate = resolveCachedOmcUpdate(
+        cached,
+        omcVersion,
+        getOmcUpdateChannel(),
+        compareVersions,
+      );
+      if (cachedUpdate) {
+        updateAvailable = cachedUpdate.latestVersion;
+        omcUpdateSource = cachedUpdate.source;
       }
       // claudeCodeLatestVersion is absent on caches written before the
       // Claude Code check existed; treat that as "no update known".

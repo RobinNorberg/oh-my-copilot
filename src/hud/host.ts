@@ -22,7 +22,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
  *    (1.0.103) mean `copilot`; fields only Claude Code emits, or a
  *    `.claude/projects/...jsonl` transcript, mean `claude`.
  * 2. The host env signal (COPILOT_CLI / COPILOT_AGENT_SESSION_ID first, then
- *    CLAUDE_CODE_ENTRYPOINT).
+ *    CLAUDE_CODE_ENTRYPOINT). The hooks rank these the other way round:
+ *    scripts/lib/hook-host.mjs and session-start.mjs let CLAUDE_CODE_ENTRYPOINT
+ *    win over an inherited COPILOT_CLI. The HUD can afford the payload shape
+ *    deciding first, because the statusline payload comes from the host that
+ *    is rendering it, while a hook process may be spawned from a shell that
+ *    inherited the other host's variables.
  * 3. `claude`. Unlike detectHostCliType, the HUD does not default to copilot:
  *    an unknown payload keeps upstream Claude Code behaviour (parity).
  */
