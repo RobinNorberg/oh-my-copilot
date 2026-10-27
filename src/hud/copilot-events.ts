@@ -13,7 +13,7 @@
  */
 
 import { closeSync, openSync, readSync, statSync } from "fs";
-import { basename, dirname, join } from "path";
+import { basename, dirname, join, win32 } from "path";
 import { copilotEventsPath } from "../budget/ledger.js";
 import type {
   ActiveAgent,
@@ -161,7 +161,9 @@ function toolTarget(args: unknown): string | null {
   if (!args || typeof args !== "object") return null;
   const input = args as Record<string, unknown>;
   const path = str(input.path) ?? str(input.file_path) ?? str(input.fileName);
-  if (path) return basename(path) || path;
+  // win32.basename splits on both separators, so a Windows-recorded path
+  // shortens the same way when the HUD runs on Linux or macOS.
+  if (path) return win32.basename(path) || path;
   const command = str(input.command);
   if (command) return command.length > 20 ? `${command.slice(0, 20)}...` : command;
   return null;
