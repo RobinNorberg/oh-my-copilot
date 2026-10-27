@@ -76,6 +76,11 @@ function readOmcConfig() {
   return null;
 }
 
+function skippedByEnv() {
+  const skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map((hook) => hook.trim());
+  return skipHooks.includes('code-simplifier');
+}
+
 function isEnabled(config) {
   return config?.codeSimplifier?.enabled === true;
 }
@@ -129,7 +134,7 @@ async function main() {
     const stateDir = join(await resolveOmcStateRoot(cwd), 'state');
     const config = readOmcConfig();
 
-    if (!isEnabled(config)) {
+    if (skippedByEnv() || !isEnabled(config)) {
       process.stdout.write(JSON.stringify({ continue: true }) + '\n');
       return;
     }
