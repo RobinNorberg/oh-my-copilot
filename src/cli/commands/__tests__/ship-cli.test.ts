@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +8,8 @@ import { shipCommand, EXIT_PENDING } from '../ship.js';
 import type { Exec, ExecResult } from '../../../ship/exec.js';
 import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
 import { readShipState, shipStatePath } from '../../../ship/state.js';
+import { resolveProgressFile } from '../../../lib/agent-progress.js';
+import type { DriveProcess, DriverLiveness } from '../../../release/drive.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECKS_GREEN = readFileSync(join(HERE, '../../../ship/__tests__/fixtures/checks-pr233-green.json'), 'utf8');
@@ -105,6 +107,76 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     delete process.env.OMG_SHIP_HUMAN;
     vi.restoreAllMocks();
     rmSync(root, { recursive: true, force: true });
+  });
+
+  describe('gates --drive', () => {
+    let t: number;
+    let liveness: DriverLiveness;
+    let savedProgressFile: string | undefined;
+    const proc: DriveProcess = { identity: async () => null, liveness: async () => liveness, kill: async () => true };
+
+    /** `gh pr checks` answers from `script(read)`; the clock moves only when the watch sleeps. */
+    async function drive(script: (read: number) => ExecResult | undefined, ...argv: string[]): Promise<number> {
+      let reads = 0;
+      const scripted: Exec = (cmd, args, opts) => {
+        if (cmd === 'gh' && args[0] === 'pr' && args[1] === 'checks') {
+          const r = script(++reads);
+          if (r) return r;
+        }
+        return exec(cmd, args, opts);
+      };
+      process.exitCode = undefined;
+      await shipCommand(scripted, () => resolveShipConfig(shipBlock), { sleep: async (ms) => { t += ms; }, now: () => t, proc }).parseAsync(['gates', '42', '--drive', ...argv], { from: 'user' });
+      const code = Number(process.exitCode ?? 0);
+      process.exitCode = undefined;
+      return code;
+    }
+    const events = () => (existsSync(resolveProgressFile('ship-42', undefined, root)) ? readFileSync(resolveProgressFile('ship-42', undefined, root), 'utf8') : '');
+    const testIs = (state: string) => ok(JSON.stringify(JSON.parse(CHECKS_GREEN).map((c: { name: string }) => (c.name === 'Test' ? { ...c, state } : c))));
+
+    beforeEach(() => {
+      t = Date.parse('2026-10-28T00:00:00Z');
+      liveness = 'live';
+      savedProgressFile = process.env.OMG_PROGRESS_FILE;
+      delete process.env.OMG_PROGRESS_FILE;
+    });
+
+    afterEach(() => {
+      if (savedProgressFile === undefined) delete process.env.OMG_PROGRESS_FILE;
+      else process.env.OMG_PROGRESS_FILE = savedProgressFile;
+    });
+
+    it('watches past the 9-minute window until green: exit 0 (never 8), start and done events under agent=ship-42', async () => {
+      // Pending for 30 minutes of polls, then green.
+      expect(await drive(() => (t < Date.parse('2026-10-28T00:30:00Z') ? testIs('IN_PROGRESS') : undefined))).toBe(0);
+      const log = events();
+      expect(log).toMatch(/phase=gates status=start .*agent=ship-42/);
+      expect(log).toMatch(/phase=gates status=heartbeat .*pending/);
+      expect(log).toMatch(/phase=gates status=done note="PR #42 gates green; next: omg ship merge 42" agent=ship-42/);
+      // Heartbeats at most every 5 minutes: 30 minutes of 30-second polls write about seven, not sixty.
+      expect((log.match(/status=heartbeat/g) ?? []).length).toBeLessThanOrEqual(8);
+      expect(existsSync(join(root, '.omg', 'state', 'ship', '42.drive.json'))).toBe(false);
+    });
+
+    it('a transient GitHub error is retried; a real failure exits 1 with a fail event', async () => {
+      expect(await drive((read) => (read === 1 ? { status: 1, stdout: '', stderr: 'HTTP 502: Bad Gateway' } : undefined))).toBe(0);
+      expect(events()).toMatch(/status=heartbeat note="PR #42: transient GitHub error, retrying/);
+
+      expect(await drive(() => testIs('FAILURE'))).toBe(1);
+      expect(events()).toMatch(/phase=gates status=fail note="PR #42 gates failed: Test/);
+    });
+
+    it('--drive-max ends an endless wait as blocked (exit 1), and a live driver lock refuses a second driver', async () => {
+      expect(await drive(() => testIs('IN_PROGRESS'), '--drive-max', '1')).toBe(1);
+      expect(events()).toMatch(/status=blocked note="PR #42 gates still pending at --drive-max 1 h/);
+      expect(t - Date.parse('2026-10-28T00:00:00Z')).toBeGreaterThanOrEqual(3_600_000);
+
+      mkdirSync(join(root, '.omg', 'state', 'ship'), { recursive: true });
+      writeFileSync(join(root, '.omg', 'state', 'ship', '42.drive.json'), JSON.stringify({ pid: 99, startedAt: 'x', argv: [], host: 'h', identity: null }));
+      logs = [];
+      expect(await drive(() => undefined)).toBe(1);
+      expect(logs.join('\n')).toMatch(/another driver holds .*42\.drive\.json \(pid 99/);
+    });
   });
 
   it('init -> verdict -> prepare -> gates -> merge (prints the admin command by default)', async () => {

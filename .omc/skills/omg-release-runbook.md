@@ -41,6 +41,26 @@ reference for what each phase asserts.
    Before any `--yes`, check `phases.smoke.status` is `ok` in
    `.omg/release/X.Y.Z.json` (`--yes` only logs the skipped-smoke warning).
 
+   **Waiting on CI: drive, do not poll.** From `pr` on, run the rest as one
+   detached driver and arm one Monitor; retire cron heartbeats for releases:
+
+   ```bash
+   omg release X.Y.Z --drive --detach --yes   # pr..verify to done / fail / blocked; outlives the session
+   # then arm ONE Monitor on the command it prints:
+   omg progress watch --file .omg/progress/release.log --until settled --stall 30m
+   ```
+
+   Why: a CI wait past `--timeout` and a transient GitHub error (5xx,
+   GraphQL "Something went wrong") no longer stop the run; the driver resumes
+   them itself (up to `--drive-max`, default 6 h), so the Monitor wakes only
+   on `done`, `fail` or `blocked`, and every terminal note names the next
+   command. Drive never implies `--yes` and never prompts: without `--yes`
+   the tag phase stops `blocked` ("needs confirmation"), which is the
+   intended human gate when the owner has not pre-approved the tag. The
+   merge rule is unchanged. After a session restart, run
+   `omg release X.Y.Z --status`: driver alive → re-arm the Monitor; dead →
+   `--drive --detach` again (it resumes from the state). `--stop` ends it.
+
    Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
@@ -172,7 +192,10 @@ reference for what each phase asserts.
 A lane running this sequence emits one progress event per step
 (`omg progress emit <step> start|ok|fail|blocked`, see
 `agent-progress-events.md`), so the lead's Monitor sees a stuck CI watch as
-`status=stalled` instead of silence.
+`status=stalled` instead of silence. For a PR's CI wait use
+`omg ship gates <pr> --drive --detach` (events under `agent=ship-<pr>`,
+exit 0 green / 1 failed, never 8) plus one Monitor on the progress file it
+prints, not a re-run `--watch` loop or a cron heartbeat.
 
 1. Push the working branch → PR → `dev` → `gh pr merge --admin` (rulesets
    require PRs; direct pushes to dev/main are rejected). **Merge only when

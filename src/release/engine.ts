@@ -43,7 +43,7 @@ import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
 import { scrubShipEnv, type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
-import { parseFailingTests, watchGates, type GateReport } from '../ship/gates.js';
+import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates, type GateReport } from '../ship/gates.js';
 import {
   compareVersions,
   failingTitlesFromVitestJson,
@@ -169,6 +169,12 @@ export interface ReleaseOptions {
   fixOrphans?: boolean;
   /** Total minutes the pr / promote / verify phases wait on CI per invocation. */
   timeoutMinutes?: number;
+  /**
+   * Drive mode (src/release/drive.ts): a CI wait that outlives --timeout, or a
+   * transient GitHub error, ends the run as pending (resumed by the drive loop)
+   * instead of blocked / failed; the tag phase never prompts (blocked without --yes).
+   */
+  drive?: boolean;
 }
 
 export interface ReleaseDeps {
@@ -193,9 +199,22 @@ export interface ReleaseResult {
   dryRun: boolean;
   statePath: string;
   phases: Array<{ id: PhaseId; status: PhaseStatus | 'planned'; note: string; details?: string[]; steps?: string[] }>;
+  /** Drive mode only: the run stopped on a wait or a transient error, and a resume continues at `phase`. */
+  pending?: { phase: PhaseId; note: string };
 }
 
 class PhaseStop extends Error {
+  constructor(readonly outcome: PhaseOutcome) {
+    super(outcome.note);
+  }
+}
+
+/**
+ * Not a result yet: a CI wait ran out of the --timeout window, or GitHub
+ * answered with a transient error. `outcome` is what a run without --drive
+ * records (blocked / fail, unchanged); under --drive the run ends pending.
+ */
+export class PendingError extends Error {
   constructor(readonly outcome: PhaseOutcome) {
     super(outcome.note);
   }
@@ -206,6 +225,10 @@ const fail = (note: string, details?: string[]): never => {
 };
 const blocked = (note: string, details?: string[]): never => {
   throw new PhaseStop({ status: 'blocked', note, details });
+};
+/** A CI wait past the --timeout: blocked without --drive, pending (resumed) with it. */
+const pendingWait = (note: string): never => {
+  throw new PendingError({ status: 'blocked', note });
 };
 
 export function releaseStatePath(stateRoot: string, version: string): string {
@@ -246,7 +269,6 @@ const HEAD_SYNC_POLLS = 36;
 
 /** `gh pr merge` retries on a transient GitHub error (5xx, GraphQL "Something went wrong"), with this backoff. */
 const MERGE_RETRY_BACKOFF_MS = [10_000, 30_000];
-const TRANSIENT_GH_ERROR = /Something went wrong|HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error/i;
 
 type PrView = {
   state: string; isDraft?: boolean; baseRefName: string; baseRefOid: string; headRefOid: string; url?: string; mergeCommit?: { oid?: string } | null;
@@ -362,7 +384,11 @@ class Release {
   /** Run and require exit 0; the phase fails with the output tail otherwise. */
   private must(cmd: string, args: string[], what?: string, opts?: ReleaseExecOptions): string {
     const r = this.run(cmd, args, opts);
-    if (r.status !== 0) fail(`${what ?? `${cmd} ${args.join(' ')}`} failed (exit ${r.status})`, tail(`${r.stdout}\n${r.stderr}`));
+    if (r.status !== 0) {
+      const outcome: PhaseOutcome = { status: 'fail', note: `${what ?? `${cmd} ${args.join(' ')}`} failed (exit ${r.status})`, details: tail(`${r.stdout}\n${r.stderr}`) };
+      if (cmd === 'gh' && TRANSIENT_GH_ERROR.test(`${r.stdout}\n${r.stderr}`)) throw new PendingError(outcome);
+      throw new PhaseStop(outcome);
+    }
     return r.stdout;
   }
 
@@ -403,7 +429,14 @@ class Release {
       }
     } catch (error) {
       if (error instanceof PhaseStop) return error.outcome;
-      return { status: 'fail', note: error instanceof Error ? error.message : String(error) };
+      if (error instanceof PendingError) {
+        if (this.opts.drive) throw error;
+        return error.outcome;
+      }
+      const note = error instanceof Error ? error.message : String(error);
+      // A gate read that hit a GitHub 5xx (GhChecksError) is retried under --drive.
+      if (this.opts.drive && TRANSIENT_GH_ERROR.test(note)) throw new PendingError({ status: 'fail', note });
+      return { status: 'fail', note };
     }
   }
 
@@ -640,7 +673,9 @@ class Release {
         const problem = check();
         if (problem) problems.push(`${what}: ${problem}`);
       } catch (error) {
-        problems.push(`${what}: ${error instanceof PhaseStop ? error.outcome.note : error instanceof Error ? error.message : String(error)}`);
+        // A transient GitHub error while re-checking is no verdict on the phase: the drive loop retries.
+        if (error instanceof PendingError && this.opts.drive) throw error;
+        problems.push(`${what}: ${error instanceof PhaseStop || error instanceof PendingError ? error.outcome.note : error instanceof Error ? error.message : String(error)}`);
       }
     }
     return problems;
@@ -798,9 +833,9 @@ class Release {
       this.deps.log(`  gh run rerun ${id} --failed (the one automatic rerun)`);
       this.must('gh', ['run', 'rerun', id, '--failed']);
       for (let polls = 0; this.runAttempt(id) <= before; polls++) {
-        if (polls >= RERUN_START_POLLS || this.deps.now() >= this.deadline) {
-          blocked(`run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`);
-        }
+        const note = `run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`;
+        if (polls >= RERUN_START_POLLS) blocked(note);
+        if (this.deps.now() >= this.deadline) pendingWait(note);
         await this.deps.sleep(pollMs);
       }
     }
@@ -860,7 +895,7 @@ class Release {
       }
       const config: LoadedShipConfig = this.deps.loadShipConfig({ exec: this.deps.exec, root: this.deps.root, base, baseSha: view.baseRefOid, repoUrl: prRepoUrl(view.url) });
       const remainingMin = Math.max(0, (this.deadline - this.deps.now()) / 60_000);
-      if (remainingMin <= 0) blocked(`PR #${pr}: CI still pending at the --timeout; re-run omg release ${this.v} --from ${phase}`);
+      if (remainingMin <= 0) pendingWait(`PR #${pr}: CI still pending at the --timeout; re-run omg release ${this.v} --from ${phase}`);
       const { report, timedOut } = await watchGates({
         exec: this.deps.exec,
         pr,
@@ -873,6 +908,8 @@ class Release {
         sleep: this.deps.sleep,
         now: this.deps.now,
         onReport: (r) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
+        retryTransient: this.opts.drive,
+        onTransient: (message) => this.deps.progress({ phase, status: 'heartbeat', note: `PR #${pr}: transient GitHub error, retrying (${message.slice(0, 120)})` }),
       });
       if (report.verdict === 'green') {
         const command = ['pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', view.headRefOid];
@@ -912,11 +949,12 @@ class Release {
       const view = this.viewPr(pr);
       if (view.state !== 'OPEN') return;
       if (expected ? view.headRefOid === expected : this.headContains(ancestor!, base, view.headRefOid)) return;
-      if (polls >= HEAD_SYNC_POLLS || this.deps.now() >= this.deadline) {
-        blocked(expected
-          ? `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`
-          : `PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${ancestor!.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`);
-      }
+      const note = expected
+        ? `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`
+        : `PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${ancestor!.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`;
+      // Three minutes of a head that does not move is a real mismatch; the --timeout running out first is only a wait.
+      if (polls >= HEAD_SYNC_POLLS) blocked(note);
+      if (this.deps.now() >= this.deadline) pendingWait(note);
       await this.deps.sleep(HEAD_SYNC_POLL_MS);
     }
   }
@@ -932,8 +970,11 @@ class Release {
       const r = this.run('gh', command);
       if (r.status === 0) return;
       const output = `${r.stdout}\n${r.stderr}`;
-      if (attempt >= MERGE_RETRY_BACKOFF_MS.length || !TRANSIENT_GH_ERROR.test(output)) {
-        fail(`gh ${command.join(' ')} failed (exit ${r.status})`, tail(output));
+      const transient = TRANSIENT_GH_ERROR.test(output);
+      if (attempt >= MERGE_RETRY_BACKOFF_MS.length || !transient) {
+        const outcome: PhaseOutcome = { status: 'fail', note: `gh ${command.join(' ')} failed (exit ${r.status})`, details: tail(output) };
+        // Out of retries on a transient error: under --drive the next round re-views the PR (merged anyway?) and retries.
+        throw transient ? new PendingError(outcome) : new PhaseStop(outcome);
       }
       this.deps.log(`  transient GitHub error; retrying gh pr merge in ${MERGE_RETRY_BACKOFF_MS[attempt] / 1000} s`);
       await this.deps.sleep(MERGE_RETRY_BACKOFF_MS[attempt]);
@@ -973,6 +1014,10 @@ class Release {
     const warn = smoke === 'ok' ? '' : ` WARNING: the live Tier 2 smoke ${smoke === 'skipped' ? 'was skipped' : 'has not passed'}.`;
     const action = local.status === 0 ? 'Push the existing local' : 'Create and push';
     if (this.opts.yes && smoke !== 'ok') this.deps.log(`  !!${warn}`);
+    // A drive never prompts (it may run detached, with nobody at the terminal) and never implies --yes.
+    if (!this.opts.yes && this.opts.drive) {
+      blocked(`${tag} needs confirmation: re-run omg release ${v} --from tag in a terminal to confirm, or with --yes${warn}`);
+    }
     if (!this.opts.yes && !(await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha!.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`))) {
       blocked(`${tag} not pushed: the confirmation was declined or there is no interactive terminal (pass --yes to confirm without a prompt)`);
     }
@@ -1032,7 +1077,7 @@ class Release {
         if (await this.rerunOnce([String(run.databaseId)], 'verify', 30_000)) continue;
         fail(`tag run ${run.databaseId} ${run.conclusion} after the one automatic rerun`, details());
       }
-      if (this.deps.now() >= this.deadline) blocked(`tag run for ${tag} ${run ? `still ${run.status}` : 'not found yet'}; re-run omg release ${v} --from verify`);
+      if (this.deps.now() >= this.deadline) pendingWait(`tag run for ${tag} ${run ? `still ${run.status}` : 'not found yet'}; re-run omg release ${v} --from verify`);
       this.deps.progress({ phase: 'verify', status: 'heartbeat', note: run ? `tag run ${run.databaseId} ${run.status}` : `waiting for the ${tag} tag run` });
       await this.deps.sleep(30_000);
     }
@@ -1103,8 +1148,23 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
     deps.log(`release ${v}: every selected phase is already ok (state ${statePath}); pass --from <phase> to re-run one`);
     return { ok: true, version: v, dryRun: false, statePath, phases: [] };
   }
+  /** Drive mode: no record for the waiting phase (nor any later one), so a resume without --from starts there. */
+  const pendingResult = (id: PhaseId, error: PendingError): ReleaseResult => {
+    const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES.indexOf(p as PhaseId) < PHASES.indexOf(id)));
+    release.save({ phases: kept });
+    const note = `pending: ${error.outcome.note}`;
+    deps.progress({ phase: id, status: 'heartbeat', note });
+    deps.log(`[${id}] ${note}`);
+    return { ok: false, version: v, dryRun: false, statePath, phases: results, pending: { phase: id, note: error.outcome.note } };
+  };
   // Skipping a phase (resume or --from) needs its recorded result to still hold; --from preflight starts over.
-  const skip = selected[0] === 'preflight' ? [] : release.skipProblems(selected[0]);
+  let skip: string[];
+  try {
+    skip = selected[0] === 'preflight' ? [] : release.skipProblems(selected[0]);
+  } catch (error) {
+    if (error instanceof PendingError) return pendingResult(selected[0], error);
+    throw error;
+  }
   if (skip.length > 0) {
     const note = `cannot start at ${selected[0]}: ${skip[0]}${skip.length > 1 ? ` (+${skip.length - 1} more)` : ''}; fix it, or re-run the phase with --from (--from preflight starts over)`;
     deps.progress({ phase: selected[0], status: 'blocked', note });
@@ -1116,7 +1176,13 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
   for (const id of selected) {
     deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
     deps.progress({ phase: id, status: 'start' });
-    const outcome = await release.phase(id);
+    let outcome: PhaseOutcome;
+    try {
+      outcome = await release.phase(id);
+    } catch (error) {
+      if (error instanceof PendingError) return pendingResult(id, error);
+      throw error;
+    }
     const record: PhaseRecord = { ...outcome, at: new Date(deps.now()).toISOString() };
     // A re-run phase voids every later record: they were built on its previous result.
     const kept = Object.fromEntries(Object.entries(release.current.phases).filter(([p]) => PHASES.indexOf(p as PhaseId) < PHASES.indexOf(id)));
