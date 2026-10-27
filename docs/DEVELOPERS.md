@@ -164,6 +164,38 @@ These were verified against Copilot CLI 1.0.91.
 - **Trusted folders are camelCase.** Write `trustedFolders` in `$COPILOT_HOME/config.json` so `-p` runs in the temp project without a trust prompt.
 - **No `installed_plugins.json`.** Installed plugins live under `~/.copilot/installed-plugins/`.
 
+### Copilot CLI facts for the HUD
+
+Read from the Copilot CLI 1.0.103 bundle. The field names are verified; the values have not yet been observed in a live capture, so treat them as unverified until a real payload is recorded.
+
+`statusLine.command` gets one JSON object on stdin (then stdin is closed). Settings live in `~/.copilot/settings.json` since CLI 1.0.35, there is no feature flag, the timeout is 10 s, and a failed command blanks the line. See `.omc/skills/copilot-cli-statusline-windows-expertise.md`.
+
+| Field | Notes |
+|---|---|
+| `cwd`, `workspace.current_dir` | session directory |
+| `session_id`, `session_name` | `session_name` since 1.0.12; both may be null |
+| `transcript_path` | see below |
+| `model.id`, `model.display_name`, `model.auto_tier`, `model.pending_auto_tier` | tiers only when `id` is `auto` |
+| `username` | GitHub login or null |
+| `remote` | `{connected: false}` or `{connected: true, indicator, task_id, task_name, task_url, task_type, repository, pull_request_number, context}` |
+| `version` | the Copilot CLI version, not Claude Code's |
+| `cost` | `total_api_duration_ms`, `total_lines_added`, `total_lines_removed`, `total_duration_ms`, `total_premium_requests` |
+| `context_window` | token totals, `context_window_size`, `used_percentage`, `remaining_percentage`, `current_context_tokens`, `current_context_used_percentage`, `displayed_context_limit`, optional `current_usage`. Which percentage matches `/context` is unverified |
+| `ai_used` | `total_nano_aiu` (1e9 per AI credit) and a `formatted` string whose format is unverified |
+| `allow_all_enabled` | yolo state, since 1.0.62 |
+
+Absent compared with Claude Code: `effort`, `rate_limits`, `output_style`, `thinking`, `fast_mode`, `cost.total_cost_usd`, `workspace.project_dir`, and the agent mode, quota and git branch. The HUD takes mode and effort from `events.jsonl` instead.
+
+**`transcript_path` is the session state directory**, not a file. On disk it is `~/.copilot/session-state/<id>/` and holds `events.jsonl`. The HUD resolves `events.jsonl` from it (`resolveCopilotEventsPath` accepts the directory, the file, or a sibling), and reads only the last 4 MB, so counts derived from it undercount in long sessions. Whether a future CLI passes a file inside the directory instead is unverified.
+
+**Capturing a real payload.** The HUD already writes each payload to `<worktree>/.omg/state/sessions/<session_id>/hud-stdin-cache.json`. Open `copilot` in a scratch repo with the plugin HUD, wait for the footer, run `/model` to switch to auto and back (no prompt, no premium request), exit, and copy the file. Capture again after one cheap prompt to get non-zero context and cost. For a raw capture without the HUD, point `statusLine.command` at:
+
+```
+node -e "process.stdin.pipe(require('fs').createWriteStream(process.env.USERPROFILE+'/sl.json'))"
+```
+
+Scrub the user name and paths before committing a capture to `src/__tests__/hud/fixtures/`. Statusline rendering in `-p` mode is unverified, so do not rely on headless capture.
+
 ## Copilot CLI hook events
 
 `copilot/hooks.json` keeps the upstream PascalCase event names. Copilot CLI accepts PascalCase names alongside its own camelCase names (changelog 1.0.6) and sends PascalCase hooks Claude-style snake_case payloads (changelog 1.0.21), except PermissionRequest and SubagentStart, which arrive camelCase (live 1.0.91). The table below was audited against the Copilot CLI 1.0.103 hooks reference and `@github/copilot-sdk` 1.0.26 (2026-10-23); the payloads and behaviour marked "live" were recorded on the installed CLI 1.0.91 the same day.

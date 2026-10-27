@@ -1,41 +1,37 @@
+---
 # Copilot CLI StatusLine on Windows
 
 ## The Insight
-On Windows, Copilot CLI executes statusLine commands through bash, which spawns a **separate console window**. This means stdout from the bash process never flows back to Copilot CLI's terminal. The fix is to use a `.cmd` wrapper instead of `.sh` — cmd.exe inherits the parent console and stdout is captured correctly.
+Copilot CLI runs the `statusLine` command itself, feeds the session payload on stdin, and shows stdout. On Windows it spawns the command with `shell: true`, so cmd.exe runs it inside the parent console and stdout comes back. Use a direct `node <script>` command. A bash `.sh` wrapper or a separate console window never returns stdout. (An earlier version of this note said a `.cmd` wrapper was required; a direct node command works and is what the installer writes.)
+
+Facts checked against the Copilot CLI 1.0.103 bundle and changelog (2026-10-27).
 
 ## Why This Matters
-Without this knowledge, you'll spend hours debugging why the HUD script "works" (proof files get written) but nothing renders in Copilot CLI. The script runs, produces output, but the output goes to a ghost console window that flashes and disappears.
+When a status line is blank, the cause is almost always the command failing, not a missing flag. Knowing the contract below saves hours of guessing.
 
 ## Recognition Pattern
-- HUD statusLine configured in `config.json` with `experimental: true`
-- Script is verified to produce output when run manually (`echo '{}' | node script.js`)
-- But nothing shows in Copilot CLI on Windows
-- Bash terminal windows flash open briefly when Copilot CLI starts
+- The HUD script prints output when run by hand (`echo {} | node dist/hud/index.js`).
+- Nothing shows in Copilot CLI, or the line goes blank after working once.
+- One warning appears: "Status line command failed; the status line will be blank."
 
-## The Approach
-Three facts must all be true for statusLine to work in Copilot CLI:
-
-1. **Config location**: `~/.copilot/config.json` (NOT `settings.json`)
-2. **Experimental flag**: `"experimental": true` in config.json
-3. **Platform-appropriate wrapper**:
-   - **Windows**: `.cmd` file — `@echo off\r\nnode "path\to\hud.js"\r\n`
-   - **Unix**: `.sh` file — `#!/bin/bash\ncat | node path/to/hud.js`
-
-The `.cmd` vs `.sh` choice is critical on Windows. Both execute, but only `.cmd` returns stdout to the parent process.
+## The Contract
+1. **Config location**: `~/.copilot/settings.json` (or `$COPILOT_HOME/settings.json`), key `statusLine`. Settings moved there from `config.json` in CLI 1.0.35.
+2. **No experimental flag.** The bundle has no `STATUS_LINE` gate. `"experimental": true` is not needed.
+3. **Command**: `{"type": "command", "command": "node C:/Users/<you>/.copilot/hud/omg-hud.mjs"}`. Use forward slashes. `~` and `$VAR` are expanded by Copilot, but write absolute paths on Windows.
+4. **Input**: the payload JSON on stdin, then stdin is closed. The script must not wait for more input.
+5. **Timeout**: 10 s, then SIGKILL on Windows.
+6. **Failure blanks the line**: a non-zero exit, a signal or a timeout blanks the status line. Keep the HUD fast and have it exit 0 even on internal errors. Run Copilot with `--log-level all` to see stderr (capped at 2048 chars).
+7. **Output**: stdout is trimmed and split on newlines. Each line is left-padded by `padding`.
+8. **Cadence**: re-runs on payload changes, debounced 200 ms. Set `refreshInterval` (seconds) to add a timer.
 
 ## Example
-```cmd
-@echo off
-node "C:\Users\username\.copilot\installed-plugins\omg\oh-my-copilot\dist\hud\index.js"
-```
-
-Config in `~/.copilot/config.json`:
 ```json
 {
-  "experimental": true,
   "statusLine": {
     "type": "command",
-    "command": "C:/Users/username/.copilot/copilot-hud.cmd"
+    "command": "node C:/Users/username/.copilot/hud/omg-hud.mjs"
   }
 }
 ```
+
+The payload field list and a capture recipe are in `docs/DEVELOPERS.md`, section "Copilot CLI facts for the HUD".

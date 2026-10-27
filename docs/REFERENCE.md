@@ -1778,7 +1778,25 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `autopilot`  | Show autopilot status                                                                                                | `true`  |
 | `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
 
-**Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript: session duration, context %, tokens, AI credits, agents, skills, call counts and tools come from there. `model`, `effort`, `cwd` and `gitBranch` default to off, because Copilot's own footer shows them; set them to `true` to show them anyway. `rateLimits`, `enterpriseMode`/`showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary` and the payload warning have no data source under Copilot and stay off there.
+**Host matrix.** The HUD detects the host from the statusline payload and applies a Copilot overlay over the preset, under your own config. Claude Code output is unchanged.
+
+| Element | Claude Code | Copilot CLI | Copilot data source |
+| --- | --- | --- | --- |
+| `omcLabel` (`omgLabel`) | on | on | label `[oh-my-copilot#version]` on both hosts |
+| `contextBar` | on | on | payload `context_window` |
+| `sessionHealth` | on | on | payload `cost.total_duration_ms` |
+| `creditBudget` | on | on | payload `ai_used.total_nano_aiu` (`cr:0.42`), or the budget ledger when a `softLimit` is set |
+| `agents`, `activeSkills`, `lastSkill`, call counts (`T:` `A:` `S:`), `showLastTool`, `showRecentTools` | on | on | the tail of the session's `events.jsonl` |
+| `ralph`, `autopilot`, `prdStory`, `backgroundTasks` | on | on | OMC state files |
+| `copilotMode` | off | on | `session.mode_changed` events (plan or autopilot) and the payload `allow_all_enabled` (yolo) |
+| `team` | off | on | live `omg team` run state |
+| `ultragoal` | off | on | open ultragoal plan |
+| `model`, `effort`, `cwd`, `gitBranch` | model, effort on; cwd, gitBranch per config | off | Copilot's footer already shows them; set `true` to show them anyway |
+| `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, payload warning | per config | off, forced | no Copilot data source; ignored even when set to `true` |
+
+`copilotMode`, `team` and `ultragoal` are new elements. They are on by default under Copilot and off under Claude Code unless you set them to `true`.
+
+**Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript. Effort, when shown, comes from the `reasoningEffort` of the latest `session.start`, `session.resume` or `session.model_change` event. Session credits come from the payload's nano-AIU total converted to credits, with two decimals below 0.1, and the element is hidden only at exactly zero. `T:`, `A:`, `S:` and the agent counts come from the last 4 MB of `events.jsonl`, so they undercount in long sessions.
 
 **Update hint.** When an OMC update is available, the label reads `[oh-my-copilot#5.13.1] -> 5.13.2` and a detail line gives the command for your install channel:
 

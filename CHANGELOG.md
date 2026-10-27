@@ -4,7 +4,28 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **HUD elements for Copilot CLI.** New `copilotMode` (native plan or
+  autopilot mode and yolo), `team` (live `omg team` run) and `ultragoal`
+  (open plan progress) elements. They are on under Copilot and off under
+  Claude Code unless set to `true`.
+
 ### Changed
+
+- **The HUD detects its host.** The label reads `[oh-my-copilot#version]` on
+  both hosts, and `omgLabel` is an alias of `omcLabel`. Under Copilot CLI,
+  `model`, `effort`, `cwd` and `gitBranch` default to off (Copilot's footer
+  shows them), and `rateLimits`, `enterpriseMode`, `showEnterpriseCost`,
+  `apiKeySource`, `thinking`, `todos` and `sessionSummary` are forced off
+  for lack of a data source. Session time, context, credits, agents, skills
+  and call counts come from the statusline payload and `events.jsonl`.
+  Claude Code output is unchanged. See
+  [MIGRATION.md](docs/MIGRATION.md#unreleased-hud-host-detection-and-copilot-defaults).
+- **Update hints name the right command.** The update check refreshes at most
+  every 6 hours, recognises Copilot plugin installs, and prints
+  `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc`
+  or `npm i -g oh-my-copilot@latest` for your channel.
 
 - **The budget counts AI Credits.** Copilot bills AI Credits since
   2026-06-01, so `omg budget`, the SessionStart summary, the soft-limit
