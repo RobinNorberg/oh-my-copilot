@@ -6,7 +6,7 @@
  *
  * argv[2] is the phase: `start` (SessionStart) records the session and prints the
  * budget summary line, `turn` (Stop) records the turn's usage and marks a crossed
- * soft/hard limit, `submit` (UserPromptSubmit) delivers that pending notice as context. The
+ * warn-only soft limit, `submit` (UserPromptSubmit) delivers that pending notice as context. The
  * logic lives in dist/budget/governor.js (src/budget, docs/REFERENCE.md
  * "AI Credits budget").
  *

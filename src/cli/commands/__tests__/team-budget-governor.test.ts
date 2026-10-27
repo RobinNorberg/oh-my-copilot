@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ledgerPath, recordUsage } from '../../../budget/ledger.js';
+
 const runtimeV2Mocks = vi.hoisted(() => ({
   isRuntimeV2Enabled: vi.fn(() => true),
-  startTeamV2: vi.fn(),
+  startTeamV2: vi.fn(async () => { throw new Error('launch captured'); }),
   monitorTeamV2: vi.fn(),
   findActiveTeamsV2: vi.fn(async () => []),
 }));
@@ -15,8 +17,8 @@ vi.mock('../../../team/runtime-v2.js', async (importOriginal) => {
   return { ...actual, ...runtimeV2Mocks };
 });
 
-// `omg team` start path -> applyBudgetGovernor -> governTeamFanout (src/budget).
-describe('omg team start under budget.mode "enforce"', () => {
+// Budgets are reported, never enforced: `omg team` starts every worker whatever the ledger says.
+describe('omg team start over budget', () => {
   const originalCwd = process.cwd();
   let root: string;
   let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -28,7 +30,9 @@ describe('omg team start under budget.mode "enforce"', () => {
     vi.stubEnv('XDG_CONFIG_HOME', join(root, 'appdata'));
     vi.stubEnv('OMC_BUDGET_GOVERNOR', '');
     mkdirSync(join(root, '.copilot'), { recursive: true });
-    writeFileSync(join(root, '.copilot', 'omg.jsonc'), JSON.stringify({ budget: { mode: 'enforce', perTeamLimit: 1 } }));
+    // Every retired enforcement key, far below what the ledger already holds.
+    writeFileSync(join(root, '.copilot', 'omg.jsonc'), JSON.stringify({ budget: { mode: 'enforce', unit: 'premiumRequests', softLimit: 1, hardLimit: 1, perTeamLimit: 1 } }));
+    recordUsage(ledgerPath(root), 's1', { premiumRequests: 500, credits: 500, source: 'measured', detail: 'test', updatedAt: new Date().toISOString() });
     process.chdir(root);
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -43,11 +47,20 @@ describe('omg team start under budget.mode "enforce"', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('refuses a mixed-provider launch over budget without starting any worker', async () => {
+  it('starts the full worker count without a clamp or refusal', async () => {
     const { teamCommand } = await import('../team.js');
-    await teamCommand(['2:copilot,1:claude', 'fix the bug']);
-    expect(runtimeV2Mocks.startTeamV2).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-    expect(errorSpy.mock.calls.flat().join('\n')).toMatch(/projected \d+ AI credits \(2 copilot worker\(s\) x \d+ credit cap\) exceeds budget\.perTeamLimit 1; team launch refused/);
+    await teamCommand(['4:copilot', 'fix the bug']);
+    expect(runtimeV2Mocks.startTeamV2).toHaveBeenCalledTimes(1);
+    expect(runtimeV2Mocks.startTeamV2).toHaveBeenCalledWith(expect.objectContaining({ workerCount: 4, agentTypes: ['copilot', 'copilot', 'copilot', 'copilot'] }));
+    const stderr = errorSpy.mock.calls.flat().join('\n');
+    expect(stderr).not.toMatch(/clamped|refused|projected/);
+  });
+
+  it('accepts --budget-override as a no-op that warns once', async () => {
+    const { teamCommand } = await import('../team.js');
+    await teamCommand(['2:copilot,1:claude', '--budget-override', 'fix the bug']);
+    expect(runtimeV2Mocks.startTeamV2).toHaveBeenCalledWith(expect.objectContaining({ workerCount: 3, agentTypes: ['copilot', 'copilot', 'claude'] }));
+    const warnings = errorSpy.mock.calls.flat().filter((m: unknown) => String(m).includes('--budget-override'));
+    expect(warnings).toEqual(['[omg team] --budget-override is deprecated and does nothing: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).']);
   });
 });

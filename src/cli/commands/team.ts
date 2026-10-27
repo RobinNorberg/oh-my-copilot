@@ -70,7 +70,7 @@ Transport:
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
-  --budget-override    Start even when budget.mode "enforce" would refuse or clamp the fan-out.
+  --budget-override    Deprecated no-op: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
   --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
                         Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
@@ -325,7 +325,7 @@ export interface ParsedTeamArgs {
   noDecompose: boolean;
   /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
   transport?: 'pane' | 'sdk' | 'auto';
-  /** `--budget-override`: start even when budget.mode "enforce" would refuse or clamp. */
+  /** `--budget-override`: deprecated no-op, accepted with one warning at start. */
   budgetOverride?: true;
 }
 
@@ -839,39 +839,6 @@ async function collectStartRolePromptOptions(parsed: ParsedTeamArgs): Promise<{
   };
 }
 
-/**
- * AI Credits budget governor (src/budget): warn about, clamp or refuse
- * the copilot fan-out. Only a refusal throws; a governor failure starts the
- * team unchanged (fail-open).
- */
-export async function applyBudgetGovernor(parsed: ParsedTeamArgs, workerCount: number, clampable: boolean, cwd: string): Promise<number> {
-  let decision: { workerCount: number; notice?: string; refusal?: string };
-  try {
-    const { loadBudgetSettings, governTeamFanout } = await import('../../budget/governor.js');
-    const { ledgerPath, ledgerTotals, readLedger } = await import('../../budget/ledger.js');
-    const { resolveSdkTeamSettings } = await import('../../team/runtime-v2.js');
-    const { settings } = loadBudgetSettings(cwd);
-    let maxCreditsPerWorker = resolveSdkTeamSettings({}).maxCreditsPerWorker;
-    try {
-      const { loadConfig } = await import('../../config/loader.js');
-      maxCreditsPerWorker = resolveSdkTeamSettings(loadConfig()).maxCreditsPerWorker;
-    } catch { /* the default cap */ }
-    decision = governTeamFanout({
-      settings,
-      totals: ledgerTotals(readLedger(ledgerPath(cwd))),
-      agentTypes: parsed.agentTypes.slice(0, workerCount),
-      maxCreditsPerWorker,
-      override: parsed.budgetOverride === true,
-      clampable,
-    });
-  } catch {
-    return workerCount;
-  }
-  if (decision.notice) console.error(decision.notice);
-  if (decision.refusal) throw new Error(decision.refusal);
-  return decision.workerCount;
-}
-
 async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<void> {
   const { isRuntimeV2Enabled, startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
   if (!isRuntimeV2Enabled()) {
@@ -890,9 +857,11 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
     decomposition,
     parsed.noDecompose,
   );
-  // Clamping drops workers, so only when no worker owns a decomposed subtask.
-  const clampable = parsed.noDecompose || decomposition.subtasks.length <= 1;
-  const effectiveWorkerCount = await applyBudgetGovernor(parsed, fanoutWorkerCount, clampable, cwd);
+  // Budgets are reported, never enforced: the flag survives only for old scripts.
+  if (parsed.budgetOverride) {
+    console.error('[omg team] --budget-override is deprecated and does nothing: omg team no longer clamps or refuses on budget (docs/MIGRATION.md).');
+  }
+  const effectiveWorkerCount = fanoutWorkerCount;
 
   const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
   const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd);

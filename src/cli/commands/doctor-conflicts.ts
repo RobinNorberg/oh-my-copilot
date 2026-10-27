@@ -914,7 +914,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     lines.push(colors.bold('💳 AI Credits Budget'));
     lines.push('');
     for (const issue of report.budgetIssues) lines.push(`  ${colors.yellow('⚠')} ${issue}`);
-    lines.push(`    ${colors.gray('Invalid values are ignored (the governor stays warn-only); deprecated ones still work. Fix the "budget" block in .copilot/omg.jsonc.')}`);
+    lines.push(`    ${colors.gray('Invalid and deprecated values are ignored (the governor only reports). Fix the "budget" block in .copilot/omg.jsonc.')}`);
     lines.push('');
   }
 
