@@ -20,7 +20,7 @@
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
@@ -781,6 +781,11 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
             }
             catch { /* gone */ }
         }
+        // The relocated cache holds the CLI runtime it downloaded (100+ MB), not evidence: keep it out of a kept home.
+        try {
+            rmSync(join(env.COPILOT_CACHE_HOME, 'pkg'), { recursive: true, force: true });
+        }
+        catch { /* best effort */ }
     }
 }
 /** The session's offered tools (no model call); initializes the tool set first when it is not built yet. */

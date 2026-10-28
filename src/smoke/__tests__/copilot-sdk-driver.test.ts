@@ -311,9 +311,16 @@ describe('runSdkTier (fake SDK)', () => {
   it('sdk.sandbox spawn canary: a sandboxed echo on a second runtime with the allowlisted lane env, no prompt', async () => {
     const { loaded, rec } = fakeSdk({
       hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] },
-      shellExec: (command) => ({ result: { success: true, exitCode: 0, output: command.replace(/^echo /, '') }, sandboxed: true }),
+      shellExec: (command) => {
+        // The runtime downloads its package into the relocated cache.
+        mkdirSync(pkgCache, { recursive: true });
+        return { result: { success: true, exitCode: 0, output: command.replace(/^echo /, '') }, sandboxed: true };
+      },
     });
-    const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
+    const pkgCache = join(parent, 'home', 'sandbox-canary', 'profile', '.cache', 'copilot', 'pkg');
+    const result = await runSdkTier(input(loaded, { scenarios: [], keepHome: true, env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
+    expect(existsSync(join(parent, 'home', 'sandbox-canary', 'profile'))).toBe(true);
+    expect(existsSync(pkgCache)).toBe(false);
     expect(byId(result.checks)['sdk.sandbox']).toMatchObject({ ok: true, detail: expect.stringMatching(/spawn canary: a sandboxed echo with the lane env launched \(sandboxed: true\)$/) });
     // The canary session (s2) ran the echo after its own review policy; the static session (s1) ran nothing.
     expect(rec.ops).toContain(`exec:s2:echo ${SANDBOX_CANARY_TOKEN}`);

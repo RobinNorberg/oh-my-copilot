@@ -629,7 +629,10 @@ jobs:
           pgrep -af "$GITHUB_WORKSPACE/(scripts|dist|bridge)/" && echo "::notice::hook children still running after 30 s; snapshotting anyway" || true
           mkdir -p "$STAGE"
           set +e
-          rsync -a --exclude='cache-occupancy/' --exclude='*.lock' "$SMOKE_ROOT/" "$STAGE/"
+          # .cache/copilot/pkg/ under a relocated profile (COPILOT_CACHE_HOME)
+          # is the Copilot CLI runtime the canary downloads, not an artifact;
+          # its runtime.node holds token-shaped strings that trip the scan.
+          rsync -a --exclude='cache-occupancy/' --exclude='*.lock' --exclude='**/.cache/copilot/pkg/' "$SMOKE_ROOT/" "$STAGE/"
           status=$?
           set -e
           # 24 = some source files vanished during the copy (a late child): the snapshot is still usable.
