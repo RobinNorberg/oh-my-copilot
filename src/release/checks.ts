@@ -1,8 +1,11 @@
 /**
  * Pure checks behind `omg release`: version order, release prose, version
- * stamps, dist orphans, vitest report diffs, smoke reports and tag targets.
+ * stamps, dist orphans, vitest report diffs, flake triage, smoke reports,
+ * the smoke input hash and tag targets.
  * No I/O beyond the `exists` callback, so each rule is tested directly.
  */
+
+import { createHash } from 'crypto';
 
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
@@ -21,7 +24,8 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** `s` as a literal regex source (also a literal `vitest -t` pattern). */
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Problems with the release prose humans or agents write before a release:
@@ -128,6 +132,80 @@ export function parseBaselineTitles(text: string): string[] {
 export function newFailures(failing: readonly string[], baseline: readonly string[]): string[] {
   const known = new Set(baseline);
   return failing.filter((t) => !known.has(t));
+}
+
+/** More new failing titles than this are a real failure: no isolated reruns. */
+export const TRIAGE_CAP = 20;
+
+/**
+ * `real`: failed every isolated rerun (or a file-level collection error);
+ * `load-flaky`: passed every isolated rerun (fails only under suite load, does not block);
+ * `mixed`: failed some isolated reruns (may be a real race, blocks).
+ */
+export type TriageClass = 'real' | 'load-flaky' | 'mixed';
+
+export interface TriageResult {
+  /** `<file> > <full title>` as listed by failingTitlesFromVitestJson. */
+  title: string;
+  file: string;
+  runs: number;
+  passes: number;
+  class: TriageClass;
+}
+
+/** The test file and full title of a failing-title line; `name` is null for a file-level collection error. */
+export function splitFailingTitle(line: string): { file: string; name: string | null } {
+  const at = line.indexOf(' > ');
+  return at < 0 ? { file: line, name: null } : { file: line.slice(0, at), name: line.slice(at + 3) };
+}
+
+export function classifyTriage(runs: number, passes: number, collectionError = false): TriageClass {
+  if (collectionError || runs === 0 || passes === 0) return 'real';
+  return passes === runs ? 'load-flaky' : 'mixed';
+}
+
+/** Whether a vitest JSON report has the test `name` in `file`, and it passed. */
+export function testPassedInReport(text: string, file: string, name: string): boolean {
+  let report: VitestJsonReport;
+  try {
+    report = JSON.parse(text) as VitestJsonReport;
+  } catch {
+    return false;
+  }
+  const entry = (report?.testResults ?? []).find((f) => repoRelativeTestPath(f.name ?? '') === file);
+  const matches = (entry?.assertionResults ?? []).filter((a) => (a.fullName ?? a.title) === name);
+  return matches.length > 0 && matches.every((a) => a.status === 'passed');
+}
+
+/**
+ * `.github/known-flaky-tests.json` entries (file, title, note) plus the
+ * triage evidence, for the owner to approve by hand: the engine never edits
+ * that file.
+ */
+export function flakyCandidates(version: string, triage: readonly TriageResult[]): Array<{ file: string; title: string; note: string; evidence: { class: TriageClass; runs: number; passes: number; release: string } }> {
+  return triage.filter((t) => t.class !== 'real').map((t) => ({
+    file: t.file,
+    title: splitFailingTitle(t.title).name ?? t.title,
+    note: `${t.class === 'load-flaky' ? 'load-sensitive: failed in the full suite, passed' : 'mixed: failed in the full suite, passed'} ${t.passes}/${t.runs} isolated reruns (v${version} release suite)`,
+    evidence: { class: t.class, runs: t.runs, passes: t.passes, release: version },
+  }));
+}
+
+/**
+ * What `bridge/cli.cjs smoke copilot --tier 2` loads: a smoke is reused only while every one of these is unchanged.
+ * Over-inclusion only costs a re-run; a missed input would reuse a stale green. Each is a shipped path (package.json
+ * `files`): the plugin manifests (plugin.json, .claude-plugin), the dirs and .mcp.json the plugin points Copilot at,
+ * scripts/ (copilot/hooks.json runs them; the smoke runs scripts/copilot/build-*.mjs --verify), templates, and
+ * package-lock.json (the SDK version the scenarios load).
+ */
+export const SMOKE_INPUTS = [
+  'dist', 'bridge', 'hooks', 'agents', 'skills', 'commands', 'copilot', 'scripts', 'templates',
+  '.claude-plugin', '.mcp.json', 'plugin.json', 'package.json', 'package-lock.json',
+] as const;
+
+/** sha256 over `<path> <object id>` lines (`-` for an absent path), in SMOKE_INPUTS order. */
+export function smokeInputHash(ids: ReadonlyArray<readonly [string, string | null]>): string {
+  return createHash('sha256').update(ids.map(([path, id]) => `${path} ${id ?? '-'}\n`).join('')).digest('hex');
 }
 
 interface SmokeReportLike {

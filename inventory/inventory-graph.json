@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "46f0e99a690c6f5c514eece8f5c613eb3f6c5332",
-    "sourceSha256": "b8277fdd0f1457e02cc07a928eaa0be6d07564dbba6f4c57aa26f1f4d4a44254",
+    "head": "fe7c9869ba0e45dd435e27edf0cd7fdb9bf3cc0c",
+    "sourceSha256": "f552a4b7b5e078bf92f6b4e1ae59f97fbeba8d6e5716114c4ace9f406f84c5ac",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "46f0e99a690c6f5c514eece8f5c613eb3f6c5332",
-  "sourceSha256": "b8277fdd0f1457e02cc07a928eaa0be6d07564dbba6f4c57aa26f1f4d4a44254",
+  "head": "fe7c9869ba0e45dd435e27edf0cd7fdb9bf3cc0c",
+  "sourceSha256": "f552a4b7b5e078bf92f6b4e1ae59f97fbeba8d6e5716114c4ace9f406f84c5ac",
   "counts": {
     "public": {
       "skills": 63,
@@ -68111,6 +68111,11 @@
       },
       {
         "from": "src/cli/commands/release.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -89446,6 +89451,11 @@
       },
       {
         "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/release/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
         "to": "src/release/drive.ts",
         "kind": "imports"
       },
@@ -89473,6 +89483,11 @@
         "from": "src/release/__tests__/engine.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/release/checks.ts",
+        "to": "external:crypto",
+        "kind": "imports"
       },
       {
         "from": "src/release/drive.ts",
@@ -89546,6 +89561,11 @@
       },
       {
         "from": "src/release/engine.ts",
+        "to": "src/release/checks.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
         "to": "src/release/progress.ts",
         "kind": "type-imports"
       },
@@ -89578,6 +89598,11 @@
         "from": "src/release/engine.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/smoke/copilot-binary.ts",
+        "kind": "imports"
       },
       {
         "from": "src/release/progress.ts",
@@ -103912,11 +103937,11 @@
     ],
     "stats": {
       "nodeCount": 8943,
-      "edgeCount": 10227,
-      "importEdgeCount": 8532,
+      "edgeCount": 10232,
+      "importEdgeCount": 8536,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "33569c51823c17fa49f3c5c03251b91e55f2fec86fb43ef75eb610c26e9e1a45",
-  "manifestSha256": "3dcaf74c3f8139793243ac75a1bffdc2085ddb32099aa195a2b51d3ec4729c15"
+  "manifestSha256": "c2c37c2424be2d6efd6a6bbb96b7d47d1e9f70b5ad80632d96734aa1ea465892"
 }
