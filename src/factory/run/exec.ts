@@ -149,7 +149,7 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
 
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export function gitHardeningArgs(hooksDir: string): string[] {
-  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false'];
+  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
 }
 
 /**

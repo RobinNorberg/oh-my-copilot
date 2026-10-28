@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CopilotRunManager, summarizeChanges, type CopilotRunDeps } from '../../copilot-run/job.js';
 import { COPILOT_RUN_TOOL_NAMES } from '../../copilot-run/names.js';
 import type { LoadedSdk, SdkSessionConfig } from '../../smoke/copilot-sdk-driver.js';
+import { fakeClientRpc, fakeSessionRpc } from '../../copilot-run/__tests__/fake-sdk.js';
 import {
   copilotRunCleanupTool,
   copilotRunStartTool,
@@ -36,7 +37,7 @@ function newCalls(): Calls {
 function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
   class Session {
     sessionId = `sess-${calls.sessions.length}`;
-    rpc = {} as never;
+    rpc = fakeSessionRpc('supported', { optionsUpdates: [] });
     constructor(private readonly cfg: SdkSessionConfig) {}
     private emit(type: string, data: Record<string, unknown> = {}) { this.cfg.onEvent?.({ type, data }); }
     async send({ prompt }: { prompt: string }) {
@@ -63,6 +64,7 @@ function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
   const never = () => new Promise<never>(() => {});
   class Client {
     cliProcess = behavior === 'stuck' ? { pid: 4242 } : null;
+    rpc = fakeClientRpc('supported');
     constructor(_opts: unknown) {}
     async start() { if (behavior === 'slow-start' || behavior === 'stuck') await never(); }
     async stop() { calls.stops += 1; if (behavior === 'stuck') await never(); return []; }
