@@ -16,7 +16,8 @@
  * debugger lanes; and before each lane start `factory.heal.dailyCredits` is
  * checked against the larger of the heal counters and the budget ledger's
  * `factory-lane:heal-*` records. An engine lane is reserved in the counters
- * at its full cap (the engine does not report its measured spend back here).
+ * at its full cap, then settled to its measured spend after its confirmed
+ * end (released when it never started).
  *
  * Known-flaky entries are never written: a diagnosis of class `flaky` gets a
  * printed proposal only (knownFlakyProposal). Nothing in src/factory writes
@@ -27,13 +28,13 @@ import { join } from 'path';
 import { withFileLockSync } from '../../lib/file-lock.js';
 import type { KnownFlakyTest } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
-import { RUNTIME_MIN_MAX_CREDITS, type LaneCapDecision, type LoadedFactoryRunLimits } from '../run/budget.js';
-import { runFactoryEngine, type FactoryEngineOptions, type FactoryRunOutcome } from '../run/engine.js';
+import { RUNTIME_MIN_MAX_CREDITS, type LoadedFactoryRunLimits } from '../run/budget.js';
+import { runFactoryEngine, type FactoryEngineOptions, type FactoryRunOutcome, type HealLaneCapDecision } from '../run/engine.js';
 import type { LaneBackend } from '../run/lane.js';
 import type { GateConfigLoader } from '../run/prepare.js';
 import { healRunKey, readFactoryState, type FactoryHealRecord } from '../run/state.js';
 import type { HealConfig } from './config.js';
-import { closeHeal, HealRunRefused, ledgerHealCredits, readHealCounters, verifyHealSeal, writeHealCounters } from './run.js';
+import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, readHealSealSubject, verifyHealSeal, writeHealCounters, type HealSealSubject } from './run.js';
 import { healStateDir, readHealState, type HealSignatureState } from './state.js';
 
 export const KNOWN_FLAKY_FILE = '.github/known-flaky-tests.json';
@@ -62,20 +63,21 @@ export interface HealEngineOptions {
   dryRun?: boolean;
 }
 
-const testId = (t: { file: string; title?: string }) => (t.title ? `${t.file} > ${t.title}` : t.file);
-
-/** The validated fields a ci-heal run is created from (the record's diagnosis must be valid). */
-export function healRecord(s: HealSignatureState): FactoryHealRecord {
+/**
+ * The validated fields a ci-heal run is created from (the record's diagnosis
+ * must be valid). The class and the classifier fields come from the sealed
+ * snapshot only, never from the record's unsealed class or classification.
+ */
+export function healRecord(s: HealSignatureState, sealed: HealSealSubject): FactoryHealRecord {
   const d = s.diagnosis?.diagnosis;
   if (s.diagnosis?.outcome !== 'valid' || !d) throw new HealRunRefused(`heal ${s.sig8} has no valid diagnosis`);
-  const c = s.classification;
   return {
     sig8: s.sig8,
-    class: s.class,
-    firstRed: { runId: c.firstRed.runId, sha: c.firstRed.sha },
-    ...(c.lastGreen ? { lastGreen: { runId: c.lastGreen.runId, sha: c.lastGreen.sha } } : {}),
-    failingTests: [...new Set(c.jobs.flatMap((j) => j.failingTests.map(testId)))],
-    env: c.jobs.flatMap((j) => j.env.changed.map((e) => ({ field: String(e.field), ...(e.green !== undefined ? { green: e.green } : {}), ...(e.red !== undefined ? { red: e.red } : {}) }))),
+    class: sealed.class,
+    firstRed: { ...sealed.firstRed },
+    ...(sealed.lastGreen ? { lastGreen: { ...sealed.lastGreen } } : {}),
+    failingTests: [...sealed.failingTests],
+    env: sealed.env.map((e) => ({ ...e })),
     diagnosis: {
       class: d.class,
       rootCause: d.rootCause,
@@ -89,10 +91,14 @@ export function healRecord(s: HealSignatureState): FactoryHealRecord {
 
 /**
  * The daily heal cap on one engine lane: what `factory.heal.dailyCredits`
- * leaves today, reserved in the heal counters at the lane's cap.
+ * leaves today, reserved in the heal counters at the lane's cap. The engine
+ * settles the reservation once: to the measured spend after the lane's
+ * confirmed end, or to 0 when the lane never started. A lost or unconfirmed
+ * lane is never settled and keeps its cap.
  */
-export function healLaneCap(root: string, ledgerDir: string, config: HealConfig, now: () => Date): (cap: number) => LaneCapDecision {
-  return (cap) => withFileLockSync(join(healStateDir(root), 'scan.lock'), () => {
+export function healLaneCap(root: string, ledgerDir: string, config: HealConfig, now: () => Date): (cap: number) => HealLaneCapDecision {
+  const lock = join(healStateDir(root), 'scan.lock');
+  return (cap) => withFileLockSync(lock, () => {
     const counters = readHealCounters(root, ledgerDir, now());
     const left = config.dailyCredits - Math.max(counters.credits, ledgerHealCredits(root, counters.day));
     const capped = Math.min(cap, Math.floor(left));
@@ -100,7 +106,19 @@ export function healLaneCap(root: string, ledgerDir: string, config: HealConfig,
       return { ok: false, reason: `heal lanes have ${Math.max(0, left).toFixed(2)} of factory.heal.dailyCredits ${config.dailyCredits} AI credits left today; a lane needs at least ${RUNTIME_MIN_MAX_CREDITS}` };
     }
     writeHealCounters(root, ledgerDir, { ...counters, credits: counters.credits + capped });
-    return { ok: true, cap: capped };
+    let settled = false;
+    const settle = (credits: number) => {
+      if (settled) return;
+      settled = true;
+      withFileLockSync(lock, () => {
+        const c = readHealCounters(root, ledgerDir, now());
+        // A reservation of an earlier UTC day went with that day's counters.
+        if (c.day !== counters.day) return;
+        const spent = Number.isFinite(credits) ? Math.max(0, credits) : capped;
+        writeHealCounters(root, ledgerDir, { ...c, credits: Math.max(0, c.credits - capped + spent) });
+      }, { timeoutMs: 60_000 });
+    };
+    return { ok: true, cap: capped, settle };
   }, { timeoutMs: 60_000 });
 }
 
@@ -123,7 +141,9 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
   if (!existing) {
     if (!s.healRun?.open) throw new HealRunRefused(`heal ${o.sig8} has no open heal run (run omg factory heal run ${o.sig8} first)`);
     if (s.next !== 'heal-approve') throw new HealRunRefused(`heal ${o.sig8} is at ${s.next}; only a valid diagnosis parked at heal-approve starts a ci-heal run`);
-    record = healRecord(s);
+    const sealed = readHealSealSubject(deps.ledgerDir, o.root, o.sig8);
+    if (!sealed) throw new HealRunRefused(`the heal seal of ${o.sig8} holds no valid classification snapshot; rerun omg factory heal run ${o.sig8}`);
+    record = healRecord(s, sealed);
   }
   const { limits, warnings } = deps.limits(o.root);
   for (const w of warnings) deps.warn?.(w);
@@ -165,8 +185,8 @@ export function knownFlakyProposal(s: HealSignatureState): KnownFlakyProposal | 
   const seen = new Set<string>();
   const tests: KnownFlakyTest[] = [];
   for (const t of s.classification.jobs.flatMap((j) => j.failingTests)) {
-    if (!t.title || seen.has(testId(t))) continue;
-    seen.add(testId(t));
+    if (!t.title || seen.has(healTestId(t))) continue;
+    seen.add(healTestId(t));
     tests.push({ file: t.file, title: t.title, note: `CI signature ${s.sig8}: a debugger lane called it flaky (runs ${s.seenRuns.slice(-3).join(', ')})` });
   }
   return tests.length > 0 ? { file: KNOWN_FLAKY_FILE, tests, runs: s.seenRuns.slice(-5) } : null;

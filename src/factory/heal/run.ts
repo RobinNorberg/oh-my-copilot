@@ -31,7 +31,7 @@ import { RUNTIME_MIN_MAX_CREDITS } from '../run/budget.js';
 import { factoryGuardExec, hardenedGitExec } from '../run/exec.js';
 import type { LaneBackend } from '../run/lane.js';
 import { emptyHooksDir } from '../run/ledger.js';
-import { LANE_CLASSES } from './classify.js';
+import { LANE_CLASSES, type HealClass, type HealClassification } from './classify.js';
 import type { HealConfig } from './config.js';
 import { debugPrompt, NO_CONFINEMENT, runDebugLane, type DebugLaneOutcome, type LaneConfinement } from './debug-lane.js';
 import { parseDiagnosisOutput } from './diagnosis-output.js';
@@ -117,10 +117,84 @@ const sealPath = (ledgerDir: string, root: string, sig8: string) => join(healLed
 /** What the seal covers: the heal run, its lanes and its diagnosis. */
 const sealOf = (s: Pick<HealSignatureState, 'healRun' | 'lanes' | 'diagnosis'>) => sha256(JSON.stringify({ healRun: s.healRun ?? null, lanes: s.lanes ?? [], diagnosis: s.diagnosis ?? null }));
 
-export function writeHealSeal(ledgerDir: string, root: string, state: HealSignatureState): void {
+/**
+ * The classifier fields a ci-heal run is built from, as the debugger lane was
+ * given them. A later scan may rewrite the record's classification and a
+ * lane's shell can reach `.omg/`, so they are kept in the out-of-repo seal
+ * file and never read from the record.
+ */
+export interface HealSealSubject {
+  class: HealClass;
+  firstRed: { runId: string; sha: string };
+  lastGreen?: { runId: string; sha: string };
+  /** `file > title` of the failing tests the classifier parsed. */
+  failingTests: string[];
+  env: Array<{ field: string; green?: string; red?: string }>;
+}
+
+const HEAL_CLASSES: readonly string[] = ['infra', 'known-flaky', 'intermittent', 'env-change', 'regression', 'regression-or-env', 'unknown'] satisfies HealClass[];
+const RUN_ID = /^\d{1,20}$/;
+const HEX40 = /^[0-9a-f]{40}$/;
+const MAX_SUBJECT_ITEMS = 200;
+const MAX_SUBJECT_TEXT = 1000;
+
+export const healTestId = (t: { file: string; title?: string }) => (t.title ? `${t.file} > ${t.title}` : t.file);
+
+export function healSealSubject(cls: HealClass, c: HealClassification): HealSealSubject {
+  return {
+    class: cls,
+    firstRed: { runId: c.firstRed.runId, sha: c.firstRed.sha },
+    ...(c.lastGreen ? { lastGreen: { runId: c.lastGreen.runId, sha: c.lastGreen.sha } } : {}),
+    failingTests: [...new Set(c.jobs.flatMap((j) => j.failingTests.map(healTestId)))],
+    env: c.jobs.flatMap((j) => j.env.changed.map((e) => ({ field: String(e.field), ...(e.green !== undefined ? { green: e.green } : {}), ...(e.red !== undefined ? { red: e.red } : {}) }))),
+  };
+}
+
+const isText = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_SUBJECT_TEXT;
+const isRun = (v: unknown): v is { runId: string; sha: string } => {
+  const r = v as { runId?: unknown; sha?: unknown } | null;
+  return typeof r === 'object' && r !== null && typeof r.runId === 'string' && RUN_ID.test(r.runId) && typeof r.sha === 'string' && HEX40.test(r.sha);
+};
+
+/** The subject rebuilt from its validated fields, or null when its shape is wrong. */
+function parseSealSubject(v: unknown): HealSealSubject | null {
+  const s = v as Partial<Record<keyof HealSealSubject, unknown>> | null;
+  if (typeof s !== 'object' || s === null || typeof s.class !== 'string' || !HEAL_CLASSES.includes(s.class)) return null;
+  if (!isRun(s.firstRed) || (s.lastGreen !== undefined && !isRun(s.lastGreen))) return null;
+  if (!Array.isArray(s.failingTests) || s.failingTests.length > MAX_SUBJECT_ITEMS || !s.failingTests.every(isText)) return null;
+  if (!Array.isArray(s.env) || s.env.length > MAX_SUBJECT_ITEMS) return null;
+  const env: HealSealSubject['env'] = [];
+  for (const e of s.env as Array<{ field?: unknown; green?: unknown; red?: unknown } | null>) {
+    if (typeof e !== 'object' || e === null || !isText(e.field) || (e.green !== undefined && !isText(e.green)) || (e.red !== undefined && !isText(e.red))) return null;
+    env.push({ field: e.field, ...(e.green !== undefined ? { green: e.green } : {}), ...(e.red !== undefined ? { red: e.red } : {}) });
+  }
+  return {
+    class: s.class as HealClass,
+    firstRed: { runId: s.firstRed.runId, sha: s.firstRed.sha },
+    ...(s.lastGreen ? { lastGreen: { runId: s.lastGreen.runId, sha: s.lastGreen.sha } } : {}),
+    failingTests: [...(s.failingTests as string[])],
+    env,
+  };
+}
+
+/** The sealed classifier snapshot of `sig8`, or null when the seal file holds none or a malformed one. */
+export function readHealSealSubject(ledgerDir: string, root: string, sig8: string): HealSealSubject | null {
+  try {
+    return parseSealSubject((JSON.parse(readFileSync(sealPath(ledgerDir, root, sig8), 'utf8')) as { subject?: unknown } | null)?.subject);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Seal the recorded heal run. `subject` is the classifier snapshot the
+ * current debugger lane was given; without it the seal file keeps its own.
+ */
+export function writeHealSeal(ledgerDir: string, root: string, state: HealSignatureState, subject?: HealSealSubject): void {
   const path = sealPath(ledgerDir, root, state.sig8);
+  const kept = subject ?? readHealSealSubject(ledgerDir, root, state.sig8);
   ensureDirSync(healLedgerDir(ledgerDir, root));
-  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state) }, null, 2)}\n`);
+  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
 }
 
 /** `ok` when the recorded heal run matches its out-of-repo seal; `none` without a heal run. */
@@ -244,6 +318,8 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   const bundle: EvidenceBundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs));
   const delimiter = (deps.delimiter ?? newDelimiter)();
   const prompt = debugPrompt(c, bundle, delimiter);
+  // What the lane is given is what a ci-heal run is built from (sealed outside the repository).
+  const subject = healSealSubject(initial.class, c);
   if (o.dryRun) {
     writeEvidence(o.root, bundle);
     return { sig8: o.sig8, exitCode: 0, next: initial.next, message: `dry run: wrote the evidence bundle; a debugger lane would start capped at ${o.config.debugLaneMaxCredits} AI credits`, bundleDir, prompt };
@@ -299,7 +375,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
     };
     writeHealCounters(o.root, deps.ledgerDir, { ...counters, healRuns: counters.healRuns + (fresh ? 1 : 0), debugLanes: counters.debugLanes + 1, credits: counters.credits + budget.cap });
     writeHealState(o.root, next);
-    writeHealSeal(deps.ledgerDir, o.root, next);
+    writeHealSeal(deps.ledgerDir, o.root, next, subject);
     return { state: next, lane };
   });
 
@@ -376,7 +452,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
       updatedAt: now(),
     };
     writeHealState(o.root, state);
-    writeHealSeal(deps.ledgerDir, o.root, state);
+    writeHealSeal(deps.ledgerDir, o.root, state, subject);
     // The reserved cap becomes the measured spend (a lost or unconfirmed lane keeps its cap).
     const counters = readHealCounters(o.root, deps.ledgerDir, deps.now());
     if (counters.day === reserved.lane.startedAt.slice(0, 10)) {
