@@ -70,7 +70,7 @@ export declare const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{
  * tokens (`"omg" 'team'` -> `omg team`), so quoting cannot dodge a pattern.
  */
 export declare function normalizeShellCommand(command: string): string;
-/** True when `p` is `root` or lies below it (realpath, case-folded on win32). */
+/** True when `p` is `root` or lies below it (canon: realpath of the deepest existing ancestor, case-folded on win32). Throws as canon does. */
 export declare function isUnderRoot(p: string, root: string, platform?: NodeJS.Platform): boolean;
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export declare function shellDenyPrefixes(denyTools?: readonly string[]): string[];

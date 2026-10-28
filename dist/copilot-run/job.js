@@ -57,7 +57,7 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import { ensureWorkerWorktree, getBranchName, getWorktreePath, hostGitDriverOverrides, hostGitEnv, hostGitAttrSourceProblem, hostGitHardeningArgs, readWorktreeGitLinks, recordWorktreeGitLinks, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../team/git-worktree.js';
-import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, normalizeShellCommand, } from '../team/sdk-policy.js';
+import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderRoot, normalizeShellCommand, } from '../team/sdk-policy.js';
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
@@ -405,6 +405,22 @@ export class CopilotRunManager {
             if (missing.length) {
                 throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(' and ')} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
             }
+            // isolation "none": the sandbox grants the repository top read-write, and the OMC state root (the job dir with
+            // the job home and events.jsonl, the budget ledger) usually lies inside it. Fail closed rather than hand the
+            // lane what the unsandboxed engine and runtime read back. detect-only promises no sandbox: it is checked again
+            // (structurally) when the policy is built, and falls back to its unsandboxed run there.
+            const top = repoRoot ? resolve(repoRoot) : cwd;
+            if (isolation === 'none' && profile === 'write' && sandboxSettings.writeUnsandboxed !== 'detect-only') {
+                const omcRoot = getOmcRoot(top);
+                let inside = true;
+                try {
+                    inside = isUnderRoot(omcRoot, top, this.deps.platform);
+                }
+                catch { /* unresolvable: refuse */ }
+                if (inside) {
+                    throw new CopilotRunError(`copilot_run_start: a sandboxed write job with isolation "none" would let the lane write the job's state in ${omcRoot}, which lies inside ${top}. Use isolation "worktree" (the default), or the review profile.`);
+                }
+            }
         }
         const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
         if (running >= MAX_RUNNING_JOBS) {
@@ -445,6 +461,17 @@ export class CopilotRunManager {
             // moves the job's branch after the session (syncJobBranch).
             const commonRaw = git(ledgerCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
             commonGitDir = commonRaw ? resolve(commonRaw) : null;
+            // With extensions.worktreeConfig git reads the admin dir's config.worktree, and the sandbox keeps only an
+            // existing file read-only (buildSandboxConfig): create an empty one before the links are recorded.
+            if (git(ledgerCwd, ['config', '--bool', 'extensions.worktreeConfig']) === 'true') {
+                const admin = readWorktreeGitLinks(info.path)?.adminDir;
+                if (admin) {
+                    try {
+                        writeFileSync(join(admin, 'config.worktree'), '', { flag: 'wx' });
+                    }
+                    catch { /* already there */ }
+                }
+            }
             worktreeLinks = readWorktreeGitLinks(info.path);
             const head = info.baseCommit ?? null;
             const recorded = (links) => {
@@ -727,6 +754,17 @@ export class CopilotRunManager {
                 const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
                 if (rel && protectedChanges([rel], job.extraProtected).length > 0)
                     decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+                // Defence in depth for a job dir inside cwd (isolation "none"): of the job dir only the temp dir is writable.
+                if (decision.approve && raw) {
+                    const abs = isAbsolute(raw) ? raw : resolve(job.workCwd, raw);
+                    let jobState = true;
+                    try {
+                        jobState = isUnderRoot(abs, job.jobDir, deps.platform) && !isUnderRoot(abs, env.TEMP, deps.platform);
+                    }
+                    catch { /* unresolvable: refuse */ }
+                    if (jobState)
+                        decision = { approve: false, reason: `write into the job's state dir ${job.jobDir}` };
+                }
             }
             if (decision.approve && job.profile === 'review') {
                 const denial = reviewProfileDenial(req);

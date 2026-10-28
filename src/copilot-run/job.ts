@@ -687,6 +687,12 @@ export class CopilotRunManager {
       // moves the job's branch after the session (syncJobBranch).
       const commonRaw = git(ledgerCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
       commonGitDir = commonRaw ? resolve(commonRaw) : null;
+      // With extensions.worktreeConfig git reads the admin dir's config.worktree, and the sandbox keeps only an
+      // existing file read-only (buildSandboxConfig): create an empty one before the links are recorded.
+      if (git(ledgerCwd, ['config', '--bool', 'extensions.worktreeConfig']) === 'true') {
+        const admin = readWorktreeGitLinks(info.path)?.adminDir;
+        if (admin) { try { writeFileSync(join(admin, 'config.worktree'), '', { flag: 'wx' }); } catch { /* already there */ } }
+      }
       worktreeLinks = readWorktreeGitLinks(info.path);
       const head = info.baseCommit ?? null;
       const recorded = (links: WorktreeGitLinks) => {

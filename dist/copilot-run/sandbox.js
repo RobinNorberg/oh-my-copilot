@@ -146,10 +146,12 @@ function nodeModulesLinkTarget(worktree) {
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir`, `gitdir` and
- * `config.worktree` files (and the worktree's `.git` file) cannot be kept
- * read-only inside it: a lane can create or rename over any of them. The
- * host records them at creation (config.worktree as a hash, absent counts)
+ * in the directory itself. The admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files and the worktree's `.git` file are read-only
+ * entries nested in those grants (buildSandboxConfig): on Copilot CLI 1.0.105
+ * on Windows the sandbox then refuses writing, renaming over and deleting
+ * them, but it cannot protect a name that does not exist yet. The
+ * host also records them at creation (config.worktree as a hash, absent counts)
  * and runs no git in the worktree once they differ (git-worktree.ts
  * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
@@ -159,10 +161,22 @@ function nodeModulesLinkTarget(worktree) {
  */
 export function laneGitWritePaths(ctx) {
     const out = [join(ctx.commonGitDir, 'objects')];
-    const own = ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+    const own = ownGitDir(ctx);
     if (own)
         out.push(own);
     return out;
+}
+/** The session's own `<commonGitDir>/worktrees/<name>` admin dir, or null (isolation "none", or a git dir elsewhere). */
+function ownGitDir(ctx) {
+    return ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+}
+function existingFile(p) {
+    try {
+        return lstatSync(p).isFile() ? p : null;
+    }
+    catch {
+        return null;
+    }
 }
 /**
  * The sandboxConfig for a session. `review` is §4.2 exactly. `write` with
@@ -199,6 +213,15 @@ export function buildSandboxConfig(profile, ctx, host) {
     const relocated = relocatedProfileEnv(ctx.jobHome);
     const laneHome = [relocated.TEMP, relocated.USERPROFILE];
     const gitConfigDir = dirname(relocated.GIT_CONFIG_GLOBAL);
+    // The unsandboxed runtime runs git in the worktree too: a lane that rewrote the worktree's `.git` gitfile or
+    // the admin dir's commondir or config.worktree would point that git at its own config (core.fsmonitor, a filter
+    // driver). The sandbox keeps a read-only file nested in a read-write dir read-only, rename-over and delete
+    // included (Copilot CLI 1.0.105, Windows), but only a file that exists: job.ts creates config.worktree when git
+    // reads one. `<worktree>/.git` is a file only in a linked worktree; with isolation "none" it is the (read-only)
+    // git dir. With hostCommits the whole common git dir, the admin dir in it, is read-only already.
+    const own = ctx.hostCommits ? null : ownGitDir(ctx);
+    const gitLinks = [join(ctx.worktree, '.git'), ...(own ? ['commondir', 'gitdir', 'config.worktree'].map((f) => join(own, f)) : [])]
+        .map(existingFile).filter((p) => p !== null);
     const common = {
         allowBypass: false,
         allowDevToolAccess: false,
@@ -213,17 +236,22 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...common,
             userPolicy: {
                 filesystem: {
-                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...tools, ...settings.extraReadonlyPaths],
+                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
                     readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
                 },
                 network: { allowOutbound: false, allowLocalNetwork: false },
             },
         };
     }
+    // The worktree is read-write: a job dir inside it (isolation "none" with the OMC state root in the repository)
+    // would hand the lane the job home and events.jsonl, which the unsandboxed engine and runtime read back.
+    if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
+        throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
+    }
     const nm = nodeModulesLinkTarget(ctx.worktree);
     const filesystem = {
         readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
         filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));

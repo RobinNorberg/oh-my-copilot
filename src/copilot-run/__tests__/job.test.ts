@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -550,7 +551,8 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     const m = manager();
     const job = await finishedJob(m);
     const links = readWorktreeGitLinks(job.wt)!;
-    expect(links.configWorktree).toBe('absent');
+    // The job created an empty config.worktree (the sandbox keeps only an existing file read-only): its hash is recorded.
+    expect(links.configWorktree).toBe(createHash('sha256').update('').digest('hex'));
     const args = worktreeGitDirArgs(job.wt);
     plantConfigWorktreeFilter(links.adminDir);
     stale(job.wt);

@@ -75,7 +75,7 @@ const startSchema = {
     isolation: z
         .enum(['worktree', 'none'])
         .optional()
-        .describe('"worktree" (default): a new git worktree and branch under .omg/team/copilot-run/worktrees/<jobId>, created from HEAD (or startRef). "none": Copilot edits cwd directly.'),
+        .describe('"worktree" (default): a new git worktree and branch under .omg/team/copilot-run/worktrees/<jobId>, created from HEAD (or startRef). "none": Copilot edits cwd directly; a sandboxed write job refuses it when the OMC state root (.omg) lies inside the repository.'),
     startRef: z
         .string()
         .min(1)

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -157,6 +157,46 @@ describe('buildSandboxConfig', () => {
         expect(() => buildSandboxConfig('write', { ...ctx, settings }, host())).toThrow(/not under the worktree/);
         const inside = { ...ctx.settings, extraReadwritePaths: [join(ctx.worktree, 'out')] };
         expect(buildSandboxConfig('write', { ...ctx, settings: inside }, host()).userPolicy.filesystem.readwritePaths).toContain(join(ctx.worktree, 'out'));
+    });
+    it('keeps the gitfile and the admin dir\'s link files read-only inside their read-write grants', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-links-'));
+        try {
+            const worktree = join(base, 'wt');
+            const commonGitDir = join(base, 'repo', '.git');
+            const gitDir = join(commonGitDir, 'worktrees', 'wt');
+            mkdirSync(worktree, { recursive: true });
+            mkdirSync(gitDir, { recursive: true });
+            writeFileSync(join(worktree, '.git'), `gitdir: ${gitDir}\n`);
+            for (const f of ['commondir', 'gitdir', 'config.worktree'])
+                writeFileSync(join(gitDir, f), 'x\n');
+            const links = [join(worktree, '.git'), ...['commondir', 'gitdir', 'config.worktree'].map((f) => join(gitDir, f))];
+            const c = { ...ctx, worktree, commonGitDir, gitDir };
+            const write = buildSandboxConfig('write', c, host()).userPolicy.filesystem;
+            expect(write.readonlyPaths).toEqual(expect.arrayContaining(links));
+            expect(write.readwritePaths).toEqual(expect.arrayContaining([worktree, gitDir]));
+            expect(buildSandboxConfig('review', c, host()).userPolicy.filesystem.readonlyPaths).toEqual(expect.arrayContaining(links));
+            // hostCommits: the whole common git dir is read-only, so only the gitfile needs an entry.
+            const factory = buildSandboxConfig('write', { ...c, hostCommits: true }, host()).userPolicy.filesystem.readonlyPaths;
+            expect(factory).toContain(join(worktree, '.git'));
+            expect(factory).not.toContain(join(gitDir, 'commondir'));
+            // A missing file gets no entry (a read-only entry cannot protect a name that does not exist); a .git dir is the git dir.
+            rmSync(join(gitDir, 'config.worktree'));
+            rmSync(join(worktree, '.git'));
+            mkdirSync(join(worktree, '.git'));
+            const none = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+            expect(none).not.toContain(join(gitDir, 'config.worktree'));
+            expect(none).not.toContain(join(worktree, '.git'));
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('refuses a write policy whose job dir lies inside the worktree (isolation "none"); a review keeps it', () => {
+        const jobDir = join(ctx.worktree, '.omg', 'state', 'copilot-run', 'cr-1');
+        const none = { ...ctx, jobDir, jobHome: join(jobDir, 'home') };
+        expect(() => buildSandboxConfig('write', none, host())).toThrow(/lies inside the lane-writable worktree/);
+        expect(() => buildSandboxConfig('write', { ...none, hostCommits: true }, host())).toThrow(/lies inside the lane-writable worktree/);
+        expect(buildSandboxConfig('review', none, host()).userPolicy.filesystem.readonlyPaths[0]).toBe(ctx.worktree);
     });
 });
 describe('laneToolPaths', () => {

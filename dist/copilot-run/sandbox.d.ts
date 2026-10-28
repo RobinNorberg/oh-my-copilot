@@ -138,10 +138,12 @@ export declare const REGISTRY_HOSTS: readonly string[];
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir`, `gitdir` and
- * `config.worktree` files (and the worktree's `.git` file) cannot be kept
- * read-only inside it: a lane can create or rename over any of them. The
- * host records them at creation (config.worktree as a hash, absent counts)
+ * in the directory itself. The admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files and the worktree's `.git` file are read-only
+ * entries nested in those grants (buildSandboxConfig): on Copilot CLI 1.0.105
+ * on Windows the sandbox then refuses writing, renaming over and deleting
+ * them, but it cannot protect a name that does not exist yet. The
+ * host also records them at creation (config.worktree as a hash, absent counts)
  * and runs no git in the worktree once they differ (git-worktree.ts
  * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.

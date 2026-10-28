@@ -373,6 +373,23 @@ describe('copilot_run sandbox permissions and env', () => {
   });
 });
 
+describe('copilot_run git link files', () => {
+  it('extensions.worktreeConfig: creates the job admin dir\'s config.worktree so the write policy keeps it read-only', async () => {
+    gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');
+    const m = manager('hang', 'supported');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    const wt = (started.worktree as { path: string }).path;
+    const admin = resolve(wt, readFileSync(join(wt, '.git'), 'utf8').replace(/^gitdir: /, '').trim());
+    expect(readFileSync(join(admin, 'config.worktree'), 'utf8')).toBe('');
+    const ro = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem.readonlyPaths;
+    expect(ro).toEqual(expect.arrayContaining([join(wt, '.git'), join(admin, 'commondir'), join(admin, 'gitdir'), join(admin, 'config.worktree')]));
+    await m.cancel(started.jobId);
+    // The recorded links include the new file: the job did not end as sandbox-escaped.
+    expect((await m.wait(started.jobId, 10_000)).stopRequested).not.toBe('sandbox-escaped');
+  });
+});
+
 describe('copilot_run isolation "none": the job dir inside the lane-writable tree', () => {
   afterEach(() => { vi.unstubAllEnvs(); });
 

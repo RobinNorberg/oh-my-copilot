@@ -5,6 +5,7 @@ import { join, resolve } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CopilotRunManager, summarizeChanges } from '../../copilot-run/job.js';
 import { COPILOT_RUN_TOOL_NAMES } from '../../copilot-run/names.js';
+import { DEFAULT_SANDBOX_SETTINGS } from '../../copilot-run/sandbox.js';
 import { fakeClientRpc, fakeSessionRpc } from '../../copilot-run/__tests__/fake-sdk.js';
 import { copilotRunCleanupTool, copilotRunStartTool, copilotRunWaitTool, setCopilotRunManagerForTests, } from '../../tools/copilot-run-tools.js';
 import { allTools, buildListToolsResponse } from '../tool-registry.js';
@@ -73,6 +74,9 @@ const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 
 let root;
 let repo;
 let calls;
+// The lifecycle tests run isolation "none" in `repo`, whose state root `.omg` lies in the tree: a sandboxed
+// write job refuses that (job.sandbox.test.ts), so they run with the sandbox switched off.
+const UNSANDBOXED = { sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, enabled: false }, warnings: [] }) };
 function deps(behavior, overrides = {}) {
     return {
         env: { OMG_COPILOT_RUN_ALLOW: '1', PATH: process.env.PATH ?? '' },
@@ -83,6 +87,7 @@ function deps(behavior, overrides = {}) {
         userConfigDir: () => join(root, 'user-copilot'),
         isAlive: () => false,
         killTree: () => { },
+        sandboxTrialLaunch: () => null,
         ...overrides,
     };
 }
@@ -165,7 +170,7 @@ describe('copilot_run_start gate and validation', () => {
             teams: {},
             notified: {},
         }));
-        const m = new CopilotRunManager(deps('complete'));
+        const m = new CopilotRunManager(deps('complete', UNSANDBOXED));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         expect(started.notes ?? []).not.toContainEqual(expect.stringMatching(/budget/));
         const done = await m.wait(started.jobId, 10_000);
@@ -183,7 +188,7 @@ describe('copilot_run_start gate and validation', () => {
         expect(calls.connections).toHaveLength(0);
     });
     it('caps concurrent jobs', async () => {
-        const m = new CopilotRunManager(deps('hang'));
+        const m = new CopilotRunManager(deps('hang', UNSANDBOXED));
         const a = m.start({ prompt: 'a', cwd: repo, isolation: 'none' });
         const b = m.start({ prompt: 'b', cwd: repo, isolation: 'none' });
         expect(() => m.start({ prompt: 'c', cwd: repo, isolation: 'none' })).toThrow(/2 job\(s\) already running/);
@@ -256,7 +261,7 @@ describe('copilot_run job lifecycle', () => {
         expect(cancelled.endedAt).toEqual(expect.any(String));
     });
     it('times out: aborts the turn and reports timeout', async () => {
-        const m = new CopilotRunManager(deps('hang'));
+        const m = new CopilotRunManager(deps('hang', UNSANDBOXED));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none', timeoutMs: 100 });
         const done = await m.wait(started.jobId, 10_000);
         expect(done.status).toBe('timeout');
@@ -264,14 +269,14 @@ describe('copilot_run job lifecycle', () => {
         expect(calls.aborts).toBe(1);
     });
     it('wait returns the running status when its own timeout passes first', async () => {
-        const m = new CopilotRunManager(deps('hang'));
+        const m = new CopilotRunManager(deps('hang', UNSANDBOXED));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         const waited = await m.wait(started.jobId, 30);
         expect(['starting', 'running']).toContain(waited.status);
         await m.cancel(started.jobId);
     });
     it('aborts at the credit cap', async () => {
-        const m = new CopilotRunManager(deps('burn'));
+        const m = new CopilotRunManager(deps('burn', UNSANDBOXED));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none', maxCredits: 5 });
         const done = await m.wait(started.jobId, 10_000);
         expect(done.status).toBe('failed');
@@ -279,7 +284,7 @@ describe('copilot_run job lifecycle', () => {
         expect(calls.aborts).toBe(1);
     });
     it('fails cleanly when the SDK is not installed', async () => {
-        const m = new CopilotRunManager(deps('complete', { loadSdk: async () => null }));
+        const m = new CopilotRunManager(deps('complete', { ...UNSANDBOXED, loadSdk: async () => null }));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         const done = await m.wait(started.jobId, 10_000);
         expect(done.status).toBe('failed');
@@ -361,7 +366,7 @@ describe('copilot_run job lifecycle', () => {
 });
 describe('copilot_run stop paths', () => {
     it('cancel during a slow client start stops the client and reports cancelled', async () => {
-        const m = new CopilotRunManager(deps('slow-start'));
+        const m = new CopilotRunManager(deps('slow-start', UNSANDBOXED));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         await new Promise((r) => setTimeout(r, 30));
         expect(m.status(started.jobId)).toMatchObject({ status: 'starting', stopRequested: null });
@@ -373,7 +378,7 @@ describe('copilot_run stop paths', () => {
     it('escalates to killing the runtime when start and stop hang', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         const kills = [];
-        const m = new CopilotRunManager(deps('stuck', { isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
+        const m = new CopilotRunManager(deps('stuck', { ...UNSANDBOXED, isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         await vi.advanceTimersByTimeAsync(61_000); // client.start() timeout
         expect(kills).toEqual([]);
@@ -387,7 +392,7 @@ describe('copilot_run stop paths', () => {
     it('stopAll cancels live jobs and kills runtimes still alive after the grace period', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         const kills = [];
-        const m = new CopilotRunManager(deps('stuck', { isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
+        const m = new CopilotRunManager(deps('stuck', { ...UNSANDBOXED, isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
         const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
         await vi.advanceTimersByTimeAsync(10);
         const stopping = m.stopAll(3_000);
