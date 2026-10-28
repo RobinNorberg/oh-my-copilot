@@ -3,11 +3,16 @@
  * resumable phases (src/release/engine.ts). `--dry-run` prints the plan and
  * runs nothing; without `--from` a run resumes at the first phase not yet ok.
  *
+ * `--drive` keeps going through CI waits and transient GitHub errors until a
+ * terminal state; `--detach` runs that loop in a detached process, and
+ * `--status` / `--stop` inspect or end it (src/release/drive.ts).
+ *
  * Exit codes: 0 ok, 1 a phase failed or is blocked, 2 usage error.
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { join, resolve } from 'path';
 import { createInterface } from 'readline/promises';
 import { loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -16,6 +21,7 @@ import {
   defaultReleaseExec,
   isPhaseId,
   PHASES,
+  readReleaseState,
   runRelease,
   UsageError,
   type PhaseId,
@@ -24,7 +30,22 @@ import {
   type ReleaseResult,
   type SuiteLevel,
 } from '../../release/engine.js';
-import { emitReleaseProgress } from '../../release/progress.js';
+import { emitReleaseProgress, releaseProgressFile } from '../../release/progress.js';
+import {
+  defaultDriveProcess,
+  detachDriver,
+  driveLockPath,
+  driveLogPath,
+  driveRelease,
+  DRIVE_MAX_HOURS,
+  lastLines,
+  readDriveLock,
+  stopDriver,
+  throttleHeartbeats,
+  withDriveLock,
+  type DriveProcess,
+  type DriveSpawn,
+} from '../../release/drive.js';
 
 function phaseOption(raw: string | undefined, flag: string): PhaseId | undefined {
   if (raw === undefined) return undefined;
@@ -60,6 +81,36 @@ function printResult(result: ReleaseResult): void {
 
 export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
   exec?: ReleaseExec;
+  /** Drive-mode process probes and the detached spawn (tests). */
+  driveProcess?: DriveProcess;
+  spawnDriver?: DriveSpawn;
+  /** CLI script the detached driver runs (default: the one running now). */
+  entry?: string;
+}
+
+interface ReleaseCliOptions {
+  from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
+  liveSmoke?: boolean; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
+  drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean;
+}
+
+/** The detached driver's command line: this invocation with --drive and without --detach / --json. */
+export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline?: string): string[] {
+  return [
+    'release', version, '--drive', '--drive-max', o.driveMax, '--timeout', o.timeout,
+    ...(o.from ? ['--from', o.from] : []),
+    ...(o.to ? ['--to', o.to] : []),
+    ...(o.yes ? ['--yes'] : []),
+    ...(o.suite ? ['--suite', o.suite] : []),
+    ...(baseline ? ['--baseline', baseline] : []),
+    ...(o.liveSmoke ? ['--live-smoke'] : []),
+    ...(o.allowSkippedSmoke ? ['--allow-skipped-smoke'] : []),
+    ...(o.fixOrphans ? ['--fix-orphans'] : []),
+  ];
+}
+
+function monitorHint(progressFile: string): string {
+  return `omg progress watch --file ${progressFile} --until settled --stall 30m`;
 }
 
 export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
@@ -78,10 +129,12 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--allow-skipped-smoke', 'Let the pr phase run although the live smoke was skipped')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
     .option('--timeout <minutes>', 'Minutes the pr / promote / verify phases wait on CI per run', '60')
-    .action(async (versionRaw: string, o: {
-      from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
-      liveSmoke?: boolean; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
-    }) => {
+    .option('--drive', 'Keep driving until done, a real failure or a human decision: a CI wait past --timeout or a transient GitHub error resumes after a minute (never prompts; the tag still needs --yes)')
+    .option('--drive-max <hours>', 'Hard ceiling of a --drive run; then blocked', String(DRIVE_MAX_HOURS))
+    .option('--detach', 'Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)')
+    .option('--status', 'Print the drive lock, the last progress events and the phase table, run nothing')
+    .option('--stop', 'Stop the detached driver of this release and remove its lock')
+    .action(async (versionRaw: string, o: ReleaseCliOptions) => {
       const json = Boolean(o.json);
       try {
         let version: string;
@@ -94,6 +147,10 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
         if (o.baseline && o.suite !== undefined && o.suite !== 'full') throw new UsageError('--baseline needs --suite full');
         const timeoutMinutes = Number(o.timeout);
         if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) throw new UsageError('--timeout must be a positive number of minutes');
+        const driveMaxHours = Number(o.driveMax);
+        if (!Number.isFinite(driveMaxHours) || driveMaxHours <= 0) throw new UsageError('--drive-max must be a positive number of hours');
+        if (o.status && o.stop) throw new UsageError('pass one of --status / --stop');
+        if (o.detach && o.dryRun) throw new UsageError('--detach runs the release; drop --dry-run');
         const from = phaseOption(o.from, '--from');
         const to = phaseOption(o.to, '--to');
         if (from && to && PHASES.indexOf(from) > PHASES.indexOf(to)) throw new UsageError(`--from ${from} comes after --to ${to}`);
@@ -119,7 +176,64 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           sleep: overrides.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
           now: overrides.now ?? (() => Date.now()),
         };
-        const result = await runRelease(deps, {
+        const proc = overrides.driveProcess ?? defaultDriveProcess;
+        const releaseDir = join(stateRoot, 'release');
+        const lockPath = driveLockPath(releaseDir, version);
+        const logPath = driveLogPath(releaseDir, version);
+        const progressFile = releaseProgressFile(stateRoot);
+        if (o.status) {
+          const lock = readDriveLock(lockPath);
+          const liveness = lock ? await proc.liveness(lock) : undefined;
+          const state = readReleaseState(stateRoot, version);
+          const events = lastLines(progressFile, 5);
+          if (json) {
+            console.log(JSON.stringify({ lock, liveness, lockPath, logPath, progressFile, events, phases: state?.phases ?? {} }, null, 2));
+          } else {
+            console.log(lock
+              ? `driver: pid ${lock.pid} on ${lock.host} since ${lock.startedAt} (${liveness}); log ${logPath}`
+              : `driver: none (no ${lockPath})`);
+            if (lock && liveness === 'live') console.log(`wake on it: ${monitorHint(progressFile)}`);
+            else console.log(`resume: omg release ${version} --drive --detach`);
+            console.log(`last events (${progressFile}):`);
+            for (const line of events) console.log(`  ${line}`);
+            for (const id of PHASES) {
+              const p = state?.phases[id];
+              console.log(`  ${id.padEnd(9)} ${p ? `${p.status}: ${p.note}` : '-'}`);
+            }
+          }
+          process.exitCode = 0;
+          return;
+        }
+        if (o.stop) {
+          const stopped = await stopDriver(lockPath, proc);
+          if (stopped.stopped) {
+            deps.progress({ phase: 'release', status: 'blocked', note: `drive of ${version} stopped by --stop (pid ${stopped.pid}); resume: omg release ${version} --drive --detach` });
+          }
+          const message = stopped.stopped ? `stopped the driver (pid ${stopped.pid}) and removed ${lockPath}` : stopped.reason;
+          if (json) console.log(JSON.stringify({ ...stopped, lockPath }, null, 2));
+          else console.log(message);
+          process.exitCode = !stopped.stopped && stopped.refused ? 1 : 0;
+          return;
+        }
+        const baseline = o.baseline ? resolve(o.baseline) : undefined;
+        if (o.detach) {
+          const argv = releaseDriveArgv(version, o, baseline);
+          const detached = await detachDriver({
+            lockPath, logPath, argv, cwd: root, proc, sleep: deps.sleep, spawnImpl: overrides.spawnDriver,
+            entry: overrides.entry ?? process.argv[1], statusCommand: `omg release ${version} --status`,
+          });
+          if (json) console.log(JSON.stringify({ ...detached, lockPath, logPath, progressFile, monitor: monitorHint(progressFile) }, null, 2));
+          else if (!detached.ok) console.error(chalk.red(`Error: ${detached.reason}`));
+          else {
+            console.log(chalk.green(`release ${version}: driving detached as pid ${detached.pid}${detached.locked ? '' : ' (it has not taken the lock yet; check --status and the log)'}`));
+            console.log(`  log      ${logPath}`);
+            console.log(`  status   omg release ${version} --status   stop: omg release ${version} --stop`);
+            console.log(`  wake on  ${monitorHint(progressFile)}`);
+          }
+          process.exitCode = detached.ok ? 0 : 1;
+          return;
+        }
+        const options = {
           version,
           from,
           to,
@@ -131,7 +245,26 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           allowSkippedSmoke: o.allowSkippedSmoke,
           fixOrphans: o.fixOrphans,
           timeoutMinutes,
-        });
+        };
+        let result: ReleaseResult;
+        if (o.drive && !o.dryRun) {
+          const driveDeps: ReleaseDeps = { ...deps, progress: throttleHeartbeats(deps.progress, deps.now) };
+          const held = await withDriveLock(lockPath, process.argv.slice(2), proc, deps.log, async () => {
+            try {
+              return await driveRelease(driveDeps, options, { maxHours: driveMaxHours });
+            } catch (error) {
+              // A terminal event for the Monitor even when the engine throws (bad state file, usage error).
+              deps.progress({ phase: 'release', status: 'fail', note: `${error instanceof Error ? error.message : String(error)}; fix it, then omg release ${version} --drive --detach` });
+              throw error;
+            }
+          });
+          if (!held.held) {
+            throw new Error(`another driver holds ${lockPath}${held.holder ? ` (pid ${held.holder.pid} on ${held.holder.host}, started ${held.holder.startedAt})` : ''}; see omg release ${version} --status`);
+          }
+          result = held.value;
+        } else {
+          result = await runRelease(deps, { ...options, drive: o.drive });
+        }
         if (json) console.log(JSON.stringify(result, null, 2));
         else printResult(result);
         process.exitCode = result.ok ? 0 : 1;

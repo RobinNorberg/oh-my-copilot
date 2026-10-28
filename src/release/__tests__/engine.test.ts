@@ -18,6 +18,7 @@ import {
   type ReleaseState,
 } from '../engine.js';
 import type { ReleaseProgressInput } from '../progress.js';
+import { driveRelease } from '../drive.js';
 
 const V = '5.12.2';
 const HEAD = '1'.repeat(40);
@@ -864,6 +865,155 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const result = await release({ to: 'pr' });
       expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/PR #301 is still not merged after \d+ rounds/) });
     });
+
+    describe('drive mode', () => {
+      /** A clock that moves only when the engine sleeps. */
+      let t: number;
+      let sleeps: number[];
+      const clocked = (): ReleaseDeps => ({ ...deps(), now: () => t, sleep: async (ms) => { sleeps.push(ms); t += ms; } });
+      const inProgress = () => JSON.stringify([{ name: 'Test', state: 'IN_PROGRESS', link: 'https://github.com/o/r/actions/runs/77/job/88' }]);
+
+      beforeEach(() => {
+        t = Date.parse('2026-10-21T12:00:00Z');
+        sleeps = [];
+        shipBlock = { ...shipBlock, advisoryChecks: [] };
+      });
+
+      it('CI pending at the --timeout: blocked without --drive, pending (no pr record) with it', async () => {
+        checksJson = inProgress();
+        const plain = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 });
+        expect(plain.pending).toBeUndefined();
+        expect(plain.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/CI still pending at the --timeout/) });
+        expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('blocked');
+
+        events = [];
+        const driven = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5, drive: true });
+        expect(driven.ok).toBe(false);
+        expect(driven.pending).toMatchObject({ phase: 'pr', note: expect.stringMatching(/CI still pending at the --timeout/) });
+        expect(readReleaseState(stateRoot, V)!.phases.pr).toBeUndefined();
+        expect(readReleaseState(stateRoot, V)!.phases.smoke?.status).toBe('ok');
+        expect(events.some((e) => e.phase === 'pr' && e.status === 'blocked')).toBe(false);
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'heartbeat', note: expect.stringMatching(/^pending: /) });
+        expect(resumePoint(readReleaseState(stateRoot, V))).toBe('pr');
+      });
+
+      it('driveRelease re-enters after one poll interval and lands once CI turns green', async () => {
+        checksJson = inProgress();
+        let views = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr checks 301')) {
+            views += 1;
+            // Pending through the first run's --timeout window, green on the resumed run.
+            if (t >= Date.parse('2026-10-21T12:06:00Z')) return ok(checks('SUCCESS'));
+          }
+          return undefined;
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(result.pending).toBeUndefined();
+        expect(sleeps).toContain(60_000);
+        expect(views).toBeGreaterThan(1);
+        expect(calls.filter((c) => c.startsWith('gh pr merge 301'))).toHaveLength(1);
+        expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: MERGE, phases: { pr: { status: 'ok' } } });
+        expect(events.filter((e) => e.status === 'start' && e.phase === 'pr').length).toBe(2);
+        expect(events.at(-1)).toMatchObject({ phase: 'release', status: 'done' });
+      });
+
+      it('--drive-max turns an endless wait into blocked with the next command', async () => {
+        checksJson = inProgress();
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 30 }, { maxHours: 1, pollMs: 60_000 });
+        expect(result.ok).toBe(false);
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'blocked', note: expect.stringMatching(/--drive-max 1 h reached .*omg release 5\.12\.2 --drive --detach/) });
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'blocked' });
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+
+      it('a transient GitHub error on the gate read: a retry under --drive, a failure without it', async () => {
+        let reads = 0;
+        handlers.unshift((key) => {
+          if (!key.startsWith('gh pr checks 301')) return undefined;
+          reads += 1;
+          return reads === 1 ? no('HTTP 502: Bad Gateway (https://api.github.com/graphql)') : ok(checks('SUCCESS'));
+        });
+        const plain = await runRelease(clocked(), { version: V, to: 'pr' });
+        expect(plain.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/502/) });
+
+        reads = 0;
+        calls = [];
+        const driven = await driveRelease(clocked(), { version: V, from: 'pr', to: 'pr' });
+        expect(driven.ok).toBe(true);
+        expect(reads).toBe(2);
+        expect(calls.filter((c) => c.startsWith('gh pr merge 301'))).toHaveLength(1);
+      });
+
+      it('a transient error from a gh command the phase must run is pending under --drive and resumed', async () => {
+        let lists = 0;
+        handlers.unshift((key) => {
+          if (!key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return undefined;
+          lists += 1;
+          return lists === 1 ? no('GraphQL: Something went wrong while executing your query.') : ok('[]');
+        });
+        handlers.unshift((key) => (key.startsWith('gh pr checks 301') ? ok(checks('SUCCESS')) : undefined));
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(lists).toBe(2);
+        expect(sleeps).toContain(60_000);
+      });
+
+      it('a real CI failure under --drive ends as fail and is not resumed', async () => {
+        checksJson = checks('SUCCESS', 'FAILURE');
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(false);
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'fail' });
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'fail' });
+        expect(sleeps).not.toContain(60_000);
+        expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('fail');
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+
+      it('a transient error from gh pr create reuses the PR it created, never a second one', async () => {
+        let lists = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) {
+            lists += 1;
+            return ok(lists === 1 ? '[]' : '[{"number":301,"state":"OPEN"}]');
+          }
+          if (key.startsWith('gh pr create --base dev')) return no('HTTP 502: Bad Gateway');
+          if (key.startsWith('gh pr checks 301')) return ok(checks('SUCCESS'));
+          return undefined;
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(calls.filter((c) => c.startsWith('gh pr create'))).toHaveLength(1);
+        expect(readReleaseState(stateRoot, V)!.devPr).toBe(301);
+      });
+
+      it('a head mismatch still blocks under --drive with a --timeout shorter than the head-sync window', async () => {
+        prHead = OTHER;
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 1 }, { pollMs: 60_000 });
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'blocked', note: expect.stringMatching(/not local HEAD/) });
+        expect(sleeps).not.toContain(60_000);
+      });
+
+      it('merge retries spent on transient errors: the next drive round re-views and merges', async () => {
+        let merges = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr checks 301')) return ok(checks('SUCCESS'));
+          if (!key.startsWith('gh pr merge 301')) return undefined;
+          merges += 1;
+          if (merges <= 3) return no('HTTP 503: Service Unavailable');
+          prState = 'MERGED';
+          return ok();
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(merges).toBe(4);
+        expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: MERGE });
+      });
+    });
   });
 
   describe('promote: only a merged release', () => {
@@ -973,6 +1123,19 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.phases[0].status).toBe('blocked');
       expect(confirms).toEqual([`Create and push annotated tag v${V} on main 333333333333? This publishes oh-my-copilot@${V} to npm.`]);
       expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+    });
+
+    it('under --drive never prompts and never implies --yes: blocked with the next command; --yes still tags', async () => {
+      confirmAnswer = true;
+      const driven = await driveRelease(deps(), { version: V, to: 'tag' });
+      expect(driven.phases.at(-1)).toMatchObject({ id: 'tag', status: 'blocked', note: expect.stringMatching(/v5\.12\.2 needs confirmation: re-run omg release 5\.12\.2 --from tag in a terminal to confirm, or with --yes/) });
+      expect(confirms).toEqual([]);
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+
+      const yes = await driveRelease(deps(), { version: V, to: 'tag', yes: true });
+      expect(yes.ok).toBe(true);
+      expect(pushed).toBe(true);
+      expect(confirms).toEqual([]);
     });
 
     it('warns in the confirmation when the live smoke was skipped', async () => {
