@@ -12,6 +12,7 @@ import { summarizeChanges } from '../../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
+import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { LaneProcessOps } from '../engine.js';
 import type { GateConfigLoader } from '../prepare.js';
@@ -79,6 +80,8 @@ export class FakeLanes implements LaneBackend {
     mkdirSync(join(worktree, '..'), { recursive: true });
     const baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
     gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
+    // Like copilot_run: the git links are recorded at creation.
+    recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree)!);
     this.jobs.set(remoteId, { ctx: { input, worktree, branch, baseSha, root: this.root }, script, runningPolls: this.runningPolls[n] ?? 0 });
     return { remoteId };
   }

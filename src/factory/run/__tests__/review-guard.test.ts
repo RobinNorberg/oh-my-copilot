@@ -7,6 +7,7 @@ import { defaultExec } from '../../../ship/exec.js';
 import { factoryGuardExec } from '../exec.js';
 import type { LaneResult } from '../lane.js';
 import { compareSnapshots, snapshotRepo, stableStatus, verifyReviewWorktree } from '../review-guard.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { gitIn, harness, type Harness } from './fake-lanes.js';
 
 let h: Harness;
@@ -31,6 +32,7 @@ function addLaneWorktree(): void {
   wt = join(h.root, '.omg', 'team', 'copilot-run', 'worktrees', 'cr-rev');
   mkdirSync(join(wt, '..'), { recursive: true });
   gitIn(h.root, 'worktree', 'add', '-q', '-b', branch, wt, head);
+  recordWorktreeGitLinks(wt, readWorktreeGitLinks(wt)!);
 }
 
 function laneResult(): LaneResult {
@@ -173,8 +175,21 @@ describe('review-lane tamper check', () => {
     stale();
     const result = { ...laneResult(), changes: { diffStat: '', changedFiles: [], untrackedFiles: [], protectedChanges: [] } };
     stale();
+    // The config.worktree differs from the one recorded at the lane's creation: no git runs.
+    expect(verifyReviewWorktree(result, head, join(h.root, '.git')).join('\n')).toMatch(/cannot be read: sandbox-escaped: .*config\.worktree/);
+    expect(existsSync(marker)).toBe(false);
+    // Recorded with the plant (by hand), host git runs and still applies no lane attribute or driver.
+    forgetWorktreeGitLinks(wt);
+    recordWorktreeGitLinks(wt, readWorktreeGitLinks(wt)!);
+    stale();
     expect(verifyReviewWorktree(result, head, join(h.root, '.git'))).toEqual([]);
     expect(existsSync(marker)).toBe(false);
+  });
+
+  it('a lane worktree whose git links were never recorded is not read', () => {
+    addLaneWorktree();
+    forgetWorktreeGitLinks(wt);
+    expect(verifyReviewWorktree(laneResult(), head, join(h.root, '.git')).join('\n')).toMatch(/no git links were recorded for it at its creation/);
   });
 
   it('a stale worktree pruned with its config.worktree (copilot_run prunes before adding a lane) is not tampering', () => {

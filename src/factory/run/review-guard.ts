@@ -59,7 +59,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpat
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { readWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
+import { recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
 import type { LaneResult } from './lane.js';
 import { FOR_EACH_REF_FORMAT } from './exec.js';
 
@@ -457,21 +457,23 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
  *
  * The lane could write its `.git` file, its admin dir (`commondir`,
  * `config.worktree`) and its attributes, so git here never discovers the git
- * dir: the `.git` file is read once, its admin dir must be a direct child of
- * the repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE
- * and GIT_COMMON_DIR to those paths, hardened. Its `config.worktree` is not
- * blanked by any `-c` (git merges it into every command); what keeps a
- * planted key from running here is the shared-state comparison before this
- * call, which hashes every `worktrees/<id>/config.worktree`, and on `status`
- * runHostGit's blanking of every filter and diff driver, system-scope
- * `filter.lfs` included (git-lfs would run `lfs.extension.*` programs).
+ * dir: it uses the links copilot_run recorded at the lane's creation
+ * (recordWorktreeGitLinks), whose admin dir must be a direct child of the
+ * repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE and
+ * GIT_COMMON_DIR to those paths, hardened, after comparing them (and
+ * `config.worktree`) with the disk. No attribute applies there
+ * (GIT_ATTR_SOURCE is the empty tree), so no filter, diff driver or git-lfs
+ * runs whatever a config level defines, and no submodule is entered; the
+ * shared-state comparison before this call and the driver blanking stay as
+ * further layers.
  */
 export function verifyReviewWorktree(result: LaneResult, head: string, commonDir?: string): string[] {
   const problems: string[] = [];
   if (result.baseSha !== head) problems.push(`the lane started at ${result.baseSha?.slice(0, 12) ?? 'unknown'}, not the head ${head.slice(0, 12)}`);
   if (!result.worktree) return [...problems, 'the lane reported no worktree to verify'];
-  const links = readWorktreeGitLinks(result.worktree);
-  if (!links) return [...problems, 'the lane worktree cannot be read: its .git file or admin dir is missing, a link or malformed'];
+  // The links recorded when copilot_run created the lane, never ones read now (runHostGit compares them with the disk).
+  const links = recordedWorktreeGitLinks(result.worktree);
+  if (!links) return [...problems, 'the lane worktree cannot be read: no git links were recorded for it at its creation'];
   const laneCommon = dirname(dirname(links.adminDir));
   if (basename(dirname(links.adminDir)) !== 'worktrees' || (commonDir !== undefined && !samePath(laneCommon, commonDir))) {
     return [...problems, `the lane worktree's git dir is ${links.adminDir}, not the repository's ${join(commonDir ?? laneCommon, 'worktrees')}/<name>`];
@@ -479,7 +481,7 @@ export function verifyReviewWorktree(result: LaneResult, head: string, commonDir
   let laneHead = '';
   let status = '';
   try {
-    const gitDirArgs = worktreeGitDirArgs(result.worktree, links);
+    const gitDirArgs = worktreeGitDirArgs(result.worktree);
     laneHead = runHostGit(result.worktree, [...gitDirArgs, 'rev-parse', 'HEAD']).trim();
     status = runHostGit(result.worktree, [...gitDirArgs, 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
   } catch (error) {

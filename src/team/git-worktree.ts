@@ -183,12 +183,13 @@ const WORK_TREE_SUBCOMMANDS = new Set([
 /** Global options before a subcommand that take the next argument as their value. */
 const GLOBAL_OPTIONS_WITH_VALUE = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
 
-function gitSubcommand(args: readonly string[]): string | undefined {
+/** The index of the subcommand in `args`, or -1. */
+function gitSubcommandIndex(args: readonly string[]): number {
   for (let i = 0; i < args.length; i++) {
     if (GLOBAL_OPTIONS_WITH_VALUE.has(args[i])) i++;
-    else if (!args[i].startsWith('-')) return args[i];
+    else if (!args[i].startsWith('-')) return i;
   }
-  return undefined;
+  return -1;
 }
 
 /**
@@ -271,7 +272,14 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
  * work tree and common dir pinned in the environment (hostGitEnv) when the
  * args name a recorded git dir. A git dir worktreeGitDirArgs named is checked
  * against its recorded links (config.worktree included) before every command,
- * so a change after the caller's check still runs no git. Raw stdout; throws
+ * so a change after the caller's check still runs no git. In such a lane
+ * worktree GIT_ATTR_SOURCE names the empty tree, so no attribute (and so no
+ * driver, whatever any config level defines) applies, and no submodule is
+ * entered (LANE_SUBMODULE_OVERRIDES, `--ignore-submodules=all`); the driver
+ * blanking stays as a second layer. Without attributes no eol/text
+ * conversion applies either: in a repository that relies on `.gitattributes`
+ * eol (and no core.autocrlf) a stat-dirty file may show as modified, so the
+ * worktree is kept, never lost. Raw stdout; throws
  * what execFileSync throws, when the drivers cannot be listed, or
  * `sandbox-escaped:` when the recorded links changed.
  */
@@ -281,13 +289,65 @@ export function runHostGit(cwd: string, args: readonly string[], timeout?: numbe
   if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
     throw new Error(`sandbox-escaped: the git links or config.worktree of ${recorded.wtPath} changed since they were recorded; no git ran in it`);
   }
+  const at = gitSubcommandIndex(args);
+  const subcommand = at >= 0 ? args[at] : '';
   let tree: string[] = [];
-  if (WORK_TREE_SUBCOMMANDS.has(gitSubcommand(args) ?? '')) {
+  if (WORK_TREE_SUBCOMMANDS.has(subcommand)) {
     const drivers = hostGitDriverOverrides(cwd, env, timeout);
     if (drivers === null) throw new Error('host git: the filter and diff drivers cannot be listed or overridden; refusing to run it in the work tree');
     tree = ['-c', `core.attributesFile=${hostAttributesFile()}`, ...drivers];
   }
-  return execFileSync('git', [...hostGitHardeningArgs(), ...tree, ...args], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
+  let finalArgs: readonly string[] = args;
+  if (recorded) {
+    // A lane worktree: no attribute applies (no filter, diff, textconv or merge driver can be selected, whatever its config
+    // says, also in a submodule child), and git never enters a nested repository the lane made.
+    env.GIT_ATTR_SOURCE = recorded.emptyTree;
+    tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ['-c', kv])];
+    if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), '--ignore-submodules=all', ...args.slice(at + 1)];
+  }
+  return execFileSync('git', [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
+}
+
+/** `-c` pairs on every host command in a lane worktree: no submodule recursion, status or summary. */
+const LANE_SUBMODULE_OVERRIDES = ['submodule.recurse=false', 'diff.ignoreSubmodules=all', 'status.submoduleSummary=false'];
+
+/** Subcommands that take `--ignore-submodules` (it also beats a lane's per-submodule `submodule.<name>.ignore`). */
+const IGNORE_SUBMODULES_SUBCOMMANDS = new Set(['status', 'diff', 'diff-files', 'diff-index', 'diff-tree']);
+
+/** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
+const EMPTY_TREE: Record<string, string> = {
+  sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+  sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
+};
+
+/** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */
+export const HOST_GIT_ATTR_SOURCE_MIN = '2.41.0';
+
+let hostGitVersionCache: string | null | undefined;
+
+/**
+ * Why the host git cannot inspect a sandboxed lane, or null when it can: a
+ * git older than HOST_GIT_ATTR_SOURCE_MIN ignores GIT_ATTR_SOURCE, so the
+ * lane's `.gitattributes` would still select drivers and only the driver
+ * blanking would stand. `version` is `git --version` output (default: run it).
+ */
+export function hostGitAttrSourceProblem(version?: string | null): string | null {
+  if (version === undefined) {
+    if (hostGitVersionCache === undefined) {
+      try {
+        hostGitVersionCache = execFileSync('git', ['--version'], { encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+      } catch {
+        hostGitVersionCache = null;
+      }
+    }
+    version = hostGitVersionCache;
+  }
+  const m = version ? /(\d+)\.(\d+)\.(\d+)/.exec(version) : null;
+  if (!m) return `cannot read the git version (${version ?? 'git --version failed'}); a sandboxed lane needs git ${HOST_GIT_ATTR_SOURCE_MIN} or newer`;
+  const [maj, min, patch] = HOST_GIT_ATTR_SOURCE_MIN.split('.').map(Number);
+  const v = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const ok = v[0] !== maj ? v[0] > maj : v[1] !== min ? v[1] > min : v[2] >= patch;
+  return ok ? null : `${version} does not honour GIT_ATTR_SOURCE; a sandboxed lane needs git ${HOST_GIT_ATTR_SOURCE_MIN} or newer, so host git reads none of the lane's .gitattributes`;
 }
 
 function git(repoRoot: string, args: string[], cwd = repoRoot): string {
@@ -357,8 +417,48 @@ function sameGitLinks(now: WorktreeGitLinks | null, expected: WorktreeGitLinks):
   return now !== null && (['adminDir', 'dotGit', 'gitdir', 'commondir', 'configWorktree'] as const).every((k) => now[k] === expected[k]);
 }
 
-/** The worktree and links behind each git dir worktreeGitDirArgs named, re-checked by runHostGit before every command. */
-const recordedGitDirs = new Map<string, { wtPath: string; links: WorktreeGitLinks }>();
+/**
+ * The worktree, links and empty tree (GIT_ATTR_SOURCE) behind each recorded
+ * git dir (recordWorktreeGitLinks), re-checked by runHostGit before every command.
+ */
+const recordedGitDirs = new Map<string, { wtPath: string; links: WorktreeGitLinks; emptyTree: string }>();
+
+const pathKey = (path: string) => (process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path));
+
+function recordedEntry(wtPath: string): { wtPath: string; links: WorktreeGitLinks; emptyTree: string } | undefined {
+  return [...recordedGitDirs.values()].find((e) => pathKey(e.wtPath) === pathKey(wtPath));
+}
+
+/**
+ * Record a worktree's git links once, when it is created (before any agent
+ * ran in it): later host git uses only this record (worktreeGitDirArgs), and
+ * a second record of other links throws instead of replacing it. Also reads
+ * the repository's object format, for the empty tree runHostGit names in
+ * GIT_ATTR_SOURCE; throws when git cannot tell.
+ */
+export function recordWorktreeGitLinks(wtPath: string, links: WorktreeGitLinks): void {
+  const existing = recordedEntry(wtPath) ?? recordedGitDirs.get(resolve(links.adminDir));
+  if (existing) {
+    if (pathKey(existing.wtPath) === pathKey(wtPath) && sameGitLinks(existing.links, links)) return;
+    throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
+  }
+  const args = ['--git-dir', links.adminDir, '--work-tree', wtPath];
+  const format = execFileSync('git', [...hostGitHardeningArgs(), ...args, 'rev-parse', '--show-object-format'], { cwd: wtPath, env: hostGitEnv(args), encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
+  recordedGitDirs.set(resolve(links.adminDir), { wtPath, links, emptyTree });
+}
+
+/** The links recorded for `wtPath` at its creation, or null. */
+export function recordedWorktreeGitLinks(wtPath: string): WorktreeGitLinks | null {
+  return recordedEntry(wtPath)?.links ?? null;
+}
+
+/** Drop the record of a removed worktree. */
+export function forgetWorktreeGitLinks(wtPath: string): void {
+  const entry = recordedEntry(wtPath);
+  if (entry) recordedGitDirs.delete(resolve(entry.links.adminDir));
+}
 
 /** Whether `adminDir` is a direct child of `<commonGitDir>/worktrees`. */
 function isAdminDirOf(commonGitDir: string, adminDir: string): boolean {
@@ -376,12 +476,14 @@ export function worktreeGitLinksIntact(wtPath: string, expected: WorktreeGitLink
 
 /**
  * Host git arguments that name the worktree's recorded git dir and work tree
- * instead of discovering them; runHostGit checks `links` again before every
- * command that passes them.
+ * (recordWorktreeGitLinks) instead of discovering them; runHostGit checks the
+ * record again before every command that passes them. Throws when nothing
+ * was recorded for `wtPath`.
  */
-export function worktreeGitDirArgs(wtPath: string, links: WorktreeGitLinks): string[] {
-  recordedGitDirs.set(resolve(links.adminDir), { wtPath, links });
-  return ['--git-dir', links.adminDir, '--work-tree', wtPath];
+export function worktreeGitDirArgs(wtPath: string): string[] {
+  const entry = recordedEntry(wtPath);
+  if (!entry) throw new Error(`host git: no git links were recorded for ${wtPath} at its creation`);
+  return ['--git-dir', entry.links.adminDir, '--work-tree', entry.wtPath];
 }
 
 function isInsideGitRepo(repoRoot: string): boolean {
@@ -1247,9 +1349,12 @@ export function removeWorkerWorktree(
       const commonDir = gitOrNull(['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot);
       if (!commonDir) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot locate the git directory)`);
       if (!worktreeGitLinksIntact(wtPath, options.gitLinks, commonDir)) {
-        return { tampered: removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, options.gitLinks, commonDir) };
+        const tampered = removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, options.gitLinks, commonDir);
+        forgetWorktreeGitLinks(wtPath);
+        return { tampered };
       }
-      gitDirArgs = worktreeGitDirArgs(wtPath, options.gitLinks);
+      recordWorktreeGitLinks(wtPath, options.gitLinks);
+      gitDirArgs = worktreeGitDirArgs(wtPath);
       laneCommonDir = commonDir;
     }
     prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
@@ -1359,6 +1464,7 @@ export function removeWorkerWorktree(
     }
 
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
+    forgetWorktreeGitLinks(wtPath);
     return { tampered: null };
   });
 }

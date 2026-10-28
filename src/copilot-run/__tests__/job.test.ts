@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -12,8 +12,22 @@ import {
   reviewProfileDenial,
   summarizeChanges,
 } from '../job.js';
-import { hostGitEnv, readWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import {
+  forgetWorktreeGitLinks,
+  hostGitAttrSourceProblem,
+  hostGitEnv,
+  readWorktreeGitLinks,
+  recordWorktreeGitLinks,
+  recordedWorktreeGitLinks,
+  runHostGit,
+  worktreeGitDirArgs,
+  worktreeGitLinksIntact,
+} from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
+import { SANDBOX_KILL_ENV } from '../sandbox.js';
+
+/** What host status reports for the stat-dirty CRLF file (no eol attribute applies there; trimmed). */
+const EOL_STATUS = 'M a.txt';
 import { fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls } from './fake-sdk.js';
 
 let root: string;
@@ -446,7 +460,7 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     const m = manager();
     const job = await finishedJob(m);
     const links = readWorktreeGitLinks(job.wt)!;
-    const args = worktreeGitDirArgs(job.wt, links);
+    const args = worktreeGitDirArgs(job.wt);
     expect(worktreeGitLinksIntact(job.wt, links, join(repo, '.git'))).toBe(true);
     // A surviving lane child flips the link between the check and the git call.
     const evil = evilGitDir();
@@ -472,8 +486,16 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
   }
 
   let tick = 0;
-  /** Same bytes, new mtime: git must hash README.md again, through the clean filter. */
-  const stale = (wt: string) => { const t = new Date(Date.UTC(2001, 0, 1 + ++tick)); utimesSync(join(wt, 'README.md'), t, t); };
+  /** Same bytes, new mtime: git must hash the file again, through the clean filter. */
+  const stale = (wt: string, file = 'README.md') => { const t = new Date(Date.UTC(2001, 0, 1 + ++tick)); utimesSync(join(wt, file), t, t); };
+
+  /** Replace the creation record with the links on disk now (a test-only shortcut past the record-once rule). */
+  function rerecordLinks(wt: string) {
+    const links = readWorktreeGitLinks(wt)!;
+    forgetWorktreeGitLinks(wt);
+    recordWorktreeGitLinks(wt, links);
+    return links;
+  }
 
   /** A filter planted in the admin dir's config.worktree, with its attributes outside the worktree (core.attributesFile). */
   function plantConfigWorktreeFilter(adminDir: string): void {
@@ -488,7 +510,7 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     const job = await finishedJob(m);
     const links = readWorktreeGitLinks(job.wt)!;
     expect(links.configWorktree).toBe('absent');
-    const args = worktreeGitDirArgs(job.wt, links);
+    const args = worktreeGitDirArgs(job.wt);
     plantConfigWorktreeFilter(links.adminDir);
     stale(job.wt);
     execFileSync('git', ['status', '--porcelain'], { cwd: job.wt, stdio: 'pipe' });
@@ -525,9 +547,9 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     const m = manager();
     const job = await finishedJob(m);
     plantConfigWorktreeFilter(adminDirOf(job.wt));
-    // Recorded after the plant: only the driver blanking stands between it and host git.
-    const links = readWorktreeGitLinks(job.wt)!;
-    const args = worktreeGitDirArgs(job.wt, links);
+    // Recorded after the plant (the record is replaced by hand): no attributes and the driver blanking stand between it and host git.
+    rerecordLinks(job.wt);
+    const args = worktreeGitDirArgs(job.wt);
     stale(job.wt);
     expect(hostGit(job.wt, [...args, 'status', '--porcelain'])).toBe('');
     stale(job.wt);
@@ -558,9 +580,9 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     expect(existsSync(marker())).toBe(true);
     rmSync(marker());
 
-    // Recorded after the plant: the driver blanking alone keeps git-lfs out of host git.
-    const links = readWorktreeGitLinks(job.wt)!;
-    const args = worktreeGitDirArgs(job.wt, links);
+    // Recorded after the plant (the record is replaced by hand): no attributes and the driver blanking keep git-lfs out of host git.
+    const links = rerecordLinks(job.wt);
+    const args = worktreeGitDirArgs(job.wt);
     stale(job.wt);
     expect(hostGit(job.wt, [...args, 'status', '--porcelain'])).not.toBeNull();
     stale(job.wt);
@@ -570,6 +592,143 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     expect(existsSync(marker())).toBe(false);
     // The job's own links, recorded at creation, refuse it outright.
     expectRemovedByPath(m, job, links.adminDir);
+  });
+
+  /** A nested repository whose own config and attributes run a clean filter, added to the lane's index as a gitlink. */
+  function plantNestedGitlink(wt: string): string {
+    const sub = join(wt, 'sub');
+    gitIn(root, 'init', '-q', sub);
+    gitIn(sub, 'config', 'filter.evil.clean', `sh "${markerFilter()}"`);
+    writeFileSync(join(sub, '.gitattributes'), '* filter=evil\n');
+    writeFileSync(join(sub, 'f.txt'), 'f\n');
+    gitIn(sub, 'add', '.');
+    gitIn(sub, 'commit', '-q', '-m', 'sub');
+    gitIn(wt, 'add', 'sub');
+    rmSync(marker(), { force: true });
+    stale(sub, 'f.txt');
+    return sub;
+  }
+
+  it('a nested repository the lane adds as a gitlink runs none of its filters in host git; the summary flags it', async () => {
+    const m = manager();
+    const job = await finishedJob(m);
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    const sub = plantNestedGitlink(job.wt);
+    // Control: a plain diff enters the gitlink (git status in sub) and runs its filter.
+    execFileSync('git', ['diff', '--stat', base], { cwd: job.wt, stdio: 'pipe' });
+    expect(existsSync(marker())).toBe(true);
+    rmSync(marker());
+
+    const args = worktreeGitDirArgs(job.wt);
+    stale(sub, 'f.txt');
+    expect(hostGit(job.wt, [...args, 'diff', '--stat', base, '--'])).not.toBeNull();
+    stale(sub, 'f.txt');
+    expect(hostGit(job.wt, [...args, 'status', '--porcelain'])).not.toBeNull();
+    stale(sub, 'f.txt');
+    writeFileSync(join(job.wt, 'README.md'), 'a real edit\n');
+    const summary = summarizeChanges(job.wt, base, [], args);
+    // Real diffs still show without attributes.
+    expect(summary?.diffStat).toMatch(/README\.md \| +\d+ [+-]+/);
+    expect(summary?.newGitlinks).toEqual(['sub']);
+    expect(summary?.changedFiles).toContain('sub');
+    expect(summary?.protectedChanges).toContain('sub');
+    expect(existsSync(marker())).toBe(false);
+  });
+
+  it('a gitlink added during the session fails the job as sandbox-escaped', async () => {
+    const m = manager('hang');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    plantNestedGitlink((started.worktree as { path: string }).path);
+    const done = await m.cancel(started.jobId as string);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^sandbox-escaped: the session added nested repositories as gitlinks \(sub\)/);
+    expect((done.changes as { protectedChanges: string[] } | null)?.protectedChanges).toContain('sub');
+    expect(existsSync(marker())).toBe(false);
+  });
+
+  it('no lane attribute applies in host git: a config.worktree a surviving child flips during 100 host diffs never runs its filter', async () => {
+    gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');
+    const m = manager();
+    const job = await finishedJob(m);
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    const args = worktreeGitDirArgs(job.wt);
+    const configWorktree = join(adminDirOf(job.wt), 'config.worktree');
+    writeFileSync(join(job.wt, '.gitattributes'), '* filter=evil2\n');
+    const evil = `[filter "evil2"]\n\tclean = sh "${markerFilter()}"\n`;
+    // Host git reads no .gitattributes of the lane (GIT_ATTR_SOURCE is the empty tree).
+    expect(gitIn(job.wt, 'check-attr', 'filter', 'README.md')).toBe('README.md: filter: evil2');
+    expect(runHostGit(job.wt, [...args, 'check-attr', 'filter', 'README.md']).trim()).toBe('README.md: filter: unspecified');
+    // Control: plain git with the flipped config runs the filter.
+    writeFileSync(configWorktree, evil);
+    stale(job.wt);
+    execFileSync('git', ['diff', '--stat', base], { cwd: job.wt, stdio: 'pipe' });
+    expect(existsSync(marker())).toBe(true);
+    rmSync(marker());
+    rmSync(configWorktree);
+
+    const flip = `const fs=require('fs');const p=${JSON.stringify(configWorktree)};const c=${JSON.stringify(evil)};for(;;){try{fs.writeFileSync(p,c)}catch{}try{fs.rmSync(p,{force:true})}catch{}}`;
+    const flipper = spawn(process.execPath, ['-e', flip], { stdio: 'ignore' });
+    const exited = new Promise((r) => flipper.once('exit', r));
+    try {
+      for (let i = 0; i < 100; i++) {
+        stale(job.wt);
+        try { runHostGit(job.wt, [...args, 'diff', '--no-ext-diff', '--stat', base, '--']); } catch { /* refused: the flip was seen */ }
+      }
+    } finally {
+      flipper.kill();
+      await exited;
+    }
+    expect(existsSync(marker())).toBe(false);
+  }, 120_000);
+
+  it('a repository relying on .gitattributes eol: host status may see a stat-dirty file as modified, which keeps the worktree', async () => {
+    // As on Linux and macOS: no core.autocrlf (Git for Windows sets it in the system config, and it converts without attributes).
+    gitIn(repo, 'config', 'core.autocrlf', 'false');
+    writeFileSync(join(repo, '.gitattributes'), '*.txt text eol=crlf\n');
+    writeFileSync(join(repo, 'a.txt'), 'one\ntwo\n');
+    gitIn(repo, 'add', '.gitattributes', 'a.txt');
+    gitIn(repo, 'commit', '-q', '-m', 'eol');
+    const m = manager();
+    const job = await finishedJob(m);
+    const args = worktreeGitDirArgs(job.wt);
+    expect(readFileSync(join(job.wt, 'a.txt'), 'utf8')).toBe('one\r\ntwo\r\n');
+    stale(job.wt, 'a.txt');
+    // Plain git converts with the attributes and sees no change.
+    expect(gitIn(job.wt, 'status', '--porcelain')).toBe('');
+    stale(job.wt, 'a.txt');
+    const status = hostGit(job.wt, [...args, 'status', '--porcelain']);
+    expect(status).toBe(EOL_STATUS);
+    // A worktree that looks dirty is kept, never removed.
+    expect(() => m.cleanup(job.id)).toThrow(/kept/);
+    expect(existsSync(job.wt)).toBe(true);
+  });
+
+  it('refuses a sandboxed job when the host git ignores GIT_ATTR_SOURCE (older than 2.41.0)', () => {
+    expect(hostGitAttrSourceProblem('git version 2.40.1')).toMatch(/does not honour GIT_ATTR_SOURCE; .* 2\.41\.0 or newer/);
+    expect(hostGitAttrSourceProblem('git version 1.99.0')).not.toBeNull();
+    expect(hostGitAttrSourceProblem('git version 2.41.0')).toBeNull();
+    expect(hostGitAttrSourceProblem('git version 2.51.2.windows.1')).toBeNull();
+    expect(hostGitAttrSourceProblem('git version 3.0.0')).toBeNull();
+    expect(hostGitAttrSourceProblem(null)).toMatch(/cannot read the git version/);
+    expect(hostGitAttrSourceProblem()).toBeNull();
+    const old = (env: NodeJS.ProcessEnv) => new CopilotRunManager({ ...fakeDeps(root, 'idle', calls, env), hostGitAttrSourceProblem: () => 'git version 2.40.1 does not honour GIT_ATTR_SOURCE' });
+    expect(() => old({ OMG_COPILOT_RUN_ALLOW: '1' }).start({ prompt: 'x', cwd: repo })).toThrow(/copilot_run_start: git version 2\.40\.1 does not honour GIT_ATTR_SOURCE/);
+    expect(existsSync(worktreesDir())).toBe(false);
+    expect(() => old({ OMG_COPILOT_RUN_ALLOW: '1', [SANDBOX_KILL_ENV]: 'off' }).start({ prompt: 'x', cwd: repo })).not.toThrow();
+  });
+
+  it('the git links are recorded once at creation and dropped with the worktree', async () => {
+    const m = manager();
+    const job = await finishedJob(m);
+    const created = recordedWorktreeGitLinks(job.wt)!;
+    expect(created).toEqual(readWorktreeGitLinks(job.wt));
+    // A second record with other links never replaces it.
+    expect(() => recordWorktreeGitLinks(job.wt, { ...created, configWorktree: 'other' })).toThrow(/never replaced/);
+    expect(recordedWorktreeGitLinks(job.wt)).toEqual(created);
+    expect(m.cleanup(job.id).cleanup).toContain('removed worktree');
+    expect(recordedWorktreeGitLinks(job.wt)).toBeNull();
+    expect(() => worktreeGitDirArgs(job.wt)).toThrow(/no git links were recorded/);
   });
 
   it('the session commits on a detached HEAD; the host moves only the job\'s own branch after it', async () => {

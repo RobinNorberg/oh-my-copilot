@@ -73,8 +73,10 @@ import {
   getWorktreePath,
   hostGitDriverOverrides,
   hostGitEnv,
+  hostGitAttrSourceProblem,
   hostGitHardeningArgs,
   readWorktreeGitLinks,
+  recordWorktreeGitLinks,
   removeWorkerWorktree,
   runHostGit,
   worktreeGitDirArgs,
@@ -283,6 +285,8 @@ export interface CopilotRunDeps {
   realHome?: () => string;
   /** The sandbox settings for a job in `root` (default loadSandboxSettings: user config, project may only tighten). */
   sandboxSettings?: (root: string, scope: SandboxScope) => { settings: SandboxSettings; warnings: string[] };
+  /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
+  hostGitAttrSourceProblem?: () => string | null;
 }
 
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
@@ -340,6 +344,13 @@ export interface ChangeSummary {
   untrackedFiles: string[];
   /** Changed files that hit the ship merge-rule paths (writes there are refused, shell can still reach them). */
   protectedChanges: string[];
+  /**
+   * Gitlinks (mode 160000: a nested repository) in the index or HEAD that the
+   * base does not have. Host git never enters them, so their content is not
+   * inspected: a policy violation (the job fails as sandbox-escaped); they are
+   * also listed in changedFiles and protectedChanges.
+   */
+  newGitlinks?: string[];
 }
 
 interface Job {
@@ -472,14 +483,21 @@ export function summarizeChanges(cwd: string, base: string | null, extraProtecte
   if (!top) return null;
   const stat = git(top, [...gitDirArgs, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
   const names = git(top, [...gitDirArgs, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
-  if (stat === null || names === null) return null;
-  const changedFiles = lines(names);
+  // In a lane worktree the diff ignores submodules, so gitlinks come from the index and trees (no git runs in them).
+  const gitlinks = (out: string | null) => (out === null ? null : out.split('\0').filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)));
+  const indexLinks = gitlinks(git(top, [...gitDirArgs, 'ls-files', '-z', '--stage']));
+  const headLinks = gitlinks(git(top, [...gitDirArgs, 'ls-tree', '-r', '-z', '--full-tree', 'HEAD']));
+  const baseLinks = gitlinks(git(top, [...gitDirArgs, 'ls-tree', '-r', '-z', '--full-tree', base]));
+  if (stat === null || names === null || indexLinks === null || headLinks === null || baseLinks === null) return null;
+  const newGitlinks = [...new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
+  const changedFiles = [...new Set([...lines(names), ...newGitlinks])];
   const untrackedFiles = lines(git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']));
   return {
     diffStat: stat,
     changedFiles,
     untrackedFiles,
-    protectedChanges: protectedChanges([...changedFiles, ...untrackedFiles], extraProtected),
+    protectedChanges: [...new Set([...protectedChanges([...changedFiles, ...untrackedFiles], extraProtected), ...newGitlinks])],
+    newGitlinks,
   };
 }
 
@@ -504,7 +522,11 @@ function jobGitDirArgs(job: Pick<Job, 'worktree' | 'worktreeLinks' | 'commonGitD
   if (!job.worktree) return [];
   const { worktreeLinks: links, commonGitDir } = job;
   if (!links || !commonGitDir || !worktreeGitLinksIntact(job.worktree.path, links, commonGitDir)) return null;
-  return worktreeGitDirArgs(job.worktree.path, links);
+  try {
+    return worktreeGitDirArgs(job.worktree.path);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -591,6 +613,11 @@ export class CopilotRunManager {
     } catch (err) {
       throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText(err)}`);
     }
+    // Host git reads a sandboxed lane with GIT_ATTR_SOURCE (no lane attributes, so no driver): an older git fails closed.
+    if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off') {
+      const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
+      if (problem) throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
+    }
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
     if (running >= MAX_RUNNING_JOBS) {
@@ -629,9 +656,12 @@ export class CopilotRunManager {
       commonGitDir = commonRaw ? resolve(commonRaw) : null;
       worktreeLinks = readWorktreeGitLinks(info.path);
       const head = info.baseCommit ?? null;
+      const recorded = (links: WorktreeGitLinks) => {
+        try { recordWorktreeGitLinks(info.path, links); return true; } catch { return false; }
+      };
       const detached = worktreeLinks !== null && commonGitDir !== null && head !== null
-        && worktreeGitLinksIntact(info.path, worktreeLinks, commonGitDir)
-        && git(info.path, [...worktreeGitDirArgs(info.path, worktreeLinks), 'update-ref', '--no-deref', '-m', 'copilot_run: detach for the session', 'HEAD', head]) !== null;
+        && worktreeGitLinksIntact(info.path, worktreeLinks, commonGitDir) && recorded(worktreeLinks)
+        && git(info.path, [...worktreeGitDirArgs(info.path), 'update-ref', '--no-deref', '-m', 'copilot_run: detach for the session', 'HEAD', head]) !== null;
       if (!detached) {
         try { removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd); } catch { /* reported below */ }
         const left = existsSync(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : '';
@@ -721,6 +751,13 @@ export class CopilotRunManager {
             job.headCommit = git(job.worktree.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
           }
           job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs);
+          const nested = job.changes?.newGitlinks ?? [];
+          if (job.worktree && nested.length > 0) {
+            const why = `sandbox-escaped: the session added nested repositories as gitlinks (${nested.slice(0, 5).join(', ')}); host git does not enter them, so their content was not inspected`;
+            job.error = job.error ? `${why}; ${job.error}` : why;
+            job.stopReason ??= 'sandbox-escaped';
+            outcome = 'failed';
+          }
         }
         job.endedAt = new Date().toISOString();
         job.status = outcome;
