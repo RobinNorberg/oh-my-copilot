@@ -6,7 +6,8 @@
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
  * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
- *   in fixed shapes, plus ship's `gh pr view|checks` and `gh run list|view|rerun`.
+ *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
+ *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
@@ -36,8 +37,8 @@ const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
 const BRANCH = /^[\w.][\w./-]*$/;
 const REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
 export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
-/** The local branch of the engine-owned prepare checkout (getBranchName(FACTORY_CHECKOUT_TEAM, `issue-<n>`)). */
-const CHECKOUT_BRANCH = /^omc-team\/factory-run\/issue-\d+$/;
+/** The local branch of the engine-owned prepare checkout (getBranchName(FACTORY_CHECKOUT_TEAM, `issue-<n>` or `heal-<sig8>`)). */
+const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
 
 const isBranch = (s: string | undefined): s is string => typeof s === 'string' && BRANCH.test(s) && !s.includes('..') && !s.endsWith('/') && !s.endsWith('.lock');
 const isFile = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
@@ -110,6 +111,8 @@ function factoryGh(a: string[]): boolean | null {
     if (sub === 'merge') return false;
     return null;
   }
+  // A ci-heal run has no issue url: GitHub's url of the checkout's repository (the remote check compares origin with it).
+  if (group === 'repo') return sub === 'view' && same(r, ['--json', 'url']);
   return null;
 }
 

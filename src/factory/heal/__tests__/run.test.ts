@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,14 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseKnownFlaky } from '../../../ship/config.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import type { LaneBackend, LaneResult, LaneStartInput } from '../../run/lane.js';
+import { HEAL_APPROVE_GATE } from '../../run/state.js';
 import { classifyRun, type HealClassification } from '../classify.js';
 import { healCommand, renderHealState, type HealDeps } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG, type HealConfig } from '../config.js';
 import type { LaneConfinement } from '../debug-lane.js';
 import { evidenceDir } from '../evidence.js';
+import { runHealEngine } from '../implement.js';
 import { parseJob } from '../logs.js';
-import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, readHealCounters, runHeal, verifyHealSeal, type HealRunDeps } from '../run.js';
+import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, healSealSubject, readHealCounters, readHealSealSubject, runHeal, verifyHealSeal, writeHealScanRecord, writeHealSeal, type HealRunDeps } from '../run.js';
 import { DELIMITER_PREFIX } from '../sanitize.js';
 import { runSignature } from '../signature.js';
 import { dailyCountersPath, foldSignature, readHealState, writeDailyCountersAt, writeHealState, type HealSignatureState } from '../state.js';
@@ -53,6 +56,7 @@ function classification(): HealClassification {
 function seed(c = classification()): HealSignatureState {
   const { state } = foldSignature(null, { classification: c, runId: c.firstRed.runId, source: 'push' }, [], { day: '2026-10-28', healRuns: 0, debugLanes: 0, credits: 0 }, DEFAULT_HEAL_CONFIG, NOW);
   writeHealState(root, state);
+  writeHealScanRecord(ledgerDir, root, state);
   return state;
 }
 
@@ -169,6 +173,8 @@ describe('omg factory heal run', () => {
     expect(verifyHealSeal(ledgerDir, root, state)).toBe('ok');
     writeHealState(root, { ...state, diagnosis: { ...state.diagnosis!, outcome: 'valid', reason: 'forged' } });
     expect(verifyHealSeal(ledgerDir, root, readHealState(root, s.sig8)!)).toBe('mismatch');
+    await expect(run(lanes)).rejects.toThrow(/seal: mismatch/);
+    writeHealState(root, state);
     await expect(run(lanes)).rejects.toThrow(/heal-approve/);
   });
 
@@ -213,8 +219,10 @@ describe('omg factory heal run', () => {
     await expect(run(new FakeLanes(answer(GOOD)))).rejects.toThrow(/1 other heal run\(s\) open/);
     rmSync(join(dirname(dailyCountersPath(root)), 'abcdef12.json'));
     // A spent run: three lanes of 31 against the 120 cap leave less than one lane.
-    writeHealState(root, { ...readHealState(root, s.sig8)!, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() }, next: 'heal-diagnosis',
-      lanes: [1, 2, 3].map((n) => ({ id: `heal-${s.sig8}-debug-${n}`, kind: 'debug' as const, startSha: redSha, status: 'failed' as const, maxCredits: 30, startedAt: NOW.toISOString(), pid: 1, confinement: 'none', usage: { credits: 31, premiumRequests: 0, source: 'measured' as const } })) });
+    const spent: HealSignatureState = { ...readHealState(root, s.sig8)!, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() }, next: 'heal-diagnosis',
+      lanes: [1, 2, 3].map((n) => ({ id: `heal-${s.sig8}-debug-${n}`, kind: 'debug' as const, startSha: redSha, status: 'failed' as const, maxCredits: 30, startedAt: NOW.toISOString(), pid: 1, confinement: 'none', usage: { credits: 31, premiumRequests: 0, source: 'measured' as const } })) };
+    writeHealState(root, spent);
+    writeHealSeal(ledgerDir, root, spent, healSealSubject(s.class, s.classification));
     await expect(run(new FakeLanes(answer(GOOD)))).rejects.toThrow(/heal run has 27\.00 of factory\.heal\.maxRunCredits 120/);
   });
 
@@ -236,8 +244,10 @@ describe('omg factory heal run', () => {
 
   it('settles a running lane left by a dead process as lost, counted at its cap', async () => {
     const s = seed();
-    writeHealState(root, { ...s, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() },
-      lanes: [{ id: `heal-${s.sig8}-debug-1`, kind: 'debug', startSha: redSha, status: 'running', maxCredits: 30, startedAt: NOW.toISOString(), pid: 2 ** 22 + 12345, confinement: 'none' }] });
+    const stale: HealSignatureState = { ...s, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() },
+      lanes: [{ id: `heal-${s.sig8}-debug-1`, kind: 'debug', startSha: redSha, status: 'running', maxCredits: 30, startedAt: NOW.toISOString(), pid: 2 ** 22 + 12345, confinement: 'none' }] };
+    writeHealState(root, stale);
+    writeHealSeal(ledgerDir, root, stale, healSealSubject(s.class, s.classification));
     const out = await run(new FakeLanes(answer(GOOD)));
     expect(out.next).toBe('heal-approve');
     const lanes = readHealState(root, s.sig8)!.lanes!;
@@ -259,7 +269,7 @@ describe('omg factory heal run', () => {
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     const cliExec: Exec = (cmd, args, opts) => (cmd === 'git' && args[0] === 'rev-parse' && args[1] === '--show-toplevel' ? { status: 0, stdout: `${root}\n`, stderr: '' } : exec(cmd, args, opts));
-    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, run: { delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {} } };
+    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, runLimits: () => ({ limits: DEFAULT_FACTORY_RUN_LIMITS, warnings: [] }), run: { delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {} } };
     const cli = async (...argv: string[]) => { process.exitCode = undefined; await healCommand(d).parseAsync(argv, { from: 'user' }); return Number(process.exitCode ?? 0); };
     const sig8 = classification().sig8;
     expect(await cli('run', sig8)).toBe(4);
@@ -280,7 +290,9 @@ describe('omg factory heal run', () => {
     const c = classification();
     const fold = (prev: HealSignatureState | null, cl: HealClassification, runId: string, source: 'push' | 'pr') =>
       foldSignature(prev, { classification: cl, runId, source, ...(source === 'pr' ? { prBranches: ['a', 'b'] } : {}) }, [], { day: '2026-10-28', healRuns: 0, debugLanes: 0, credits: 0 }, DEFAULT_HEAL_CONFIG, NOW).state;
-    writeHealState(root, fold(null, c, '1', 'pr'));
+    const prOnly = fold(null, c, '1', 'pr');
+    writeHealState(root, prOnly);
+    writeHealScanRecord(ledgerDir, root, prOnly);
     const lanes = new FakeLanes(answer(GOOD));
     await expect(run(lanes)).rejects.toThrow(/pull request runs only/);
     expect(lanes.starts).toHaveLength(0);
@@ -299,7 +311,7 @@ describe('omg factory heal run', () => {
     writeFileSync(join(root, 'README.md'), 'pr\n');
     git('commit', '-q', '-am', 'pr');
     const prSha = git('rev-parse', 'HEAD');
-    writeHealState(root, { ...s, classification: { ...s.classification, firstRed: { ...s.classification.firstRed, sha: prSha } } });
+    writeHealScanRecord(ledgerDir, root, { ...s, classification: { ...s.classification, firstRed: { ...s.classification.firstRed, sha: prSha } } });
     const lanes = new FakeLanes(answer(GOOD));
     await expect(run(lanes)).rejects.toThrow(/is not on origin\/dev/);
     expect(lanes.starts).toHaveLength(0);
@@ -349,6 +361,7 @@ describe('omg factory heal run', () => {
     await run(new FakeLanes(answer(GOOD)));
     const other = { ...s, sig8: 'abcdef12', classification: { ...s.classification, sig8: 'abcdef12' } };
     writeHealState(root, other);
+    writeHealScanRecord(ledgerDir, root, other);
     await expect(run(new FakeLanes(answer(GOOD)), {}, {}, 'abcdef12')).rejects.toThrow(/1 other heal run\(s\) open/);
     const closed = closeHeal(root, s.sig8, { ledgerDir, now: () => NOW });
     expect(closed.healRun).toMatchObject({ open: false, closedAt: NOW.toISOString() });
@@ -357,6 +370,67 @@ describe('omg factory heal run', () => {
     expect((await run(new FakeLanes(answer(GOOD)), {}, {}, 'abcdef12')).next).toBe('heal-approve');
     writeHealState(root, { ...readHealState(root, 'abcdef12')!, next: 'debug-lane' });
     expect(() => closeHeal(root, 'abcdef12', { ledgerDir, now: () => NOW })).toThrow(/only a heal run parked/);
+  });
+
+  const scanRecordFile = (sig8: string) => {
+    for (const d of readdirSync(join(ledgerDir, 'heal'))) {
+      const p = join(ledgerDir, 'heal', d, `${sig8}.subject.json`);
+      if (existsSync(p)) return p;
+    }
+    throw new Error(`no scan-time record of ${sig8}`);
+  };
+
+  it('a class edited in .omg/ between two heal runs is ignored: the second run keeps the scan-time class and autoImplement still excludes regression-or-env', async () => {
+    const s = seed({ ...classification(), class: 'regression-or-env' });
+    const forge = () => writeHealState(root, { ...readHealState(root, s.sig8)!, class: 'regression', classification: { ...readHealState(root, s.sig8)!.classification, class: 'regression' } });
+    // Lane 1 rewrites the class and returns an invalid diagnosis, so the run parks at heal-diagnosis.
+    const first = await run(new FakeLanes(answer({ ...GOOD, evidence: ['failures/1.log:99999'] }), forge));
+    expect(first.next).toBe('heal-diagnosis');
+    forge();
+    expect(verifyHealSeal(ledgerDir, root, readHealState(root, s.sig8)!)).toBe('ok');
+    const warnings: string[] = [];
+    const second = await run(new FakeLanes(answer(GOOD)), {}, { warn: (m) => warnings.push(m) });
+    expect(second.next).toBe('heal-approve');
+    expect(warnings.join('\n')).toMatch(/differs from the scan-time record outside the repository; it is ignored/);
+    expect(readHealSealSubject(ledgerDir, root, s.sig8)!.class).toBe('regression-or-env');
+    expect(readHealState(root, s.sig8)!.class).toBe('regression-or-env');
+    forge();
+    const engine = await runHealEngine({ root, base: 'dev', sig8: s.sig8, config: { ...DEFAULT_HEAL_CONFIG, autoImplement: true }, approved: false, dryRun: true },
+      { exec, lanes: () => new FakeLanes(''), limits: () => ({ limits: DEFAULT_FACTORY_RUN_LIMITS, warnings: [] }), ledgerDir, now: () => NOW, warn: () => {} });
+    expect(engine.plan).toMatchObject({ next: 'awaiting-human', reason: HEAL_APPROVE_GATE });
+  });
+
+  it('a missing or corrupt scan-time record refuses and asks for heal scan', async () => {
+    const s = seed();
+    const lanes = new FakeLanes(answer(GOOD));
+    const file = scanRecordFile(s.sig8);
+    const good = readFileSync(file, 'utf8');
+    writeFileSync(file, good.replace('"class": "env-change"', '"class": "regression"'));
+    await expect(run(lanes)).rejects.toThrow(/scan-time classification outside the repository is missing or corrupt; re-run omg factory heal scan/);
+    writeFileSync(file, '{not json');
+    await expect(run(lanes)).rejects.toThrow(/re-run omg factory heal scan/);
+    rmSync(file);
+    await expect(run(lanes, {}, {}, s.sig8, true)).rejects.toThrow(/re-run omg factory heal scan/);
+    expect(lanes.starts).toHaveLength(0);
+    writeFileSync(file, good);
+    expect((await run(lanes)).next).toBe('heal-approve');
+  });
+
+  it('a tampered seal is refused: a changed seal, a deleted seal, a record stripped of its heal run', async () => {
+    const s = seed();
+    await run(new FakeLanes(answer({ ...GOOD, evidence: ['failures/1.log:99999'] })));
+    const sealFile = join(dirname(scanRecordFile(s.sig8)), `${s.sig8}.seal.json`);
+    const sealed = readFileSync(sealFile, 'utf8');
+    const lanes = new FakeLanes(answer(GOOD));
+    writeFileSync(sealFile, sealed.replace(/"seal": "[0-9a-f]+"/, `"seal": "${'0'.repeat(64)}"`));
+    await expect(run(lanes)).rejects.toThrow(/seal: mismatch/);
+    rmSync(sealFile);
+    await expect(run(lanes)).rejects.toThrow(/seal: missing/);
+    writeFileSync(sealFile, sealed);
+    const { healRun: _h, lanes: _l, diagnosis: _d, ...stripped } = readHealState(root, s.sig8)!;
+    writeHealState(root, stripped);
+    await expect(run(lanes)).rejects.toThrow(/seal: mismatch/);
+    expect(lanes.starts).toHaveLength(0);
   });
 
   it('heal status strips control characters from state text', () => {

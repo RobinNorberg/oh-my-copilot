@@ -91,6 +91,16 @@ export function parseDiagnosisOutput(finalText: string | null | undefined, bundl
   } catch (error) {
     return invalid(`diagnosis block is not JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
+  return checkDiagnosis(raw, bundle);
+}
+
+/**
+ * The contract on a parsed diagnosis object. `bundle` null skips the
+ * citation check only: the ci-heal engine re-checks its sealed copy of a
+ * diagnosis whose citations were checked when the lane answered.
+ */
+export function checkDiagnosis(raw: unknown, bundle: EvidenceBundle | null): ParsedDiagnosis {
+  const invalid = (reason: string): ParsedDiagnosis => ({ kind: 'invalid', reason });
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return invalid('diagnosis block is not an object');
   const o = raw as Record<string, unknown>;
   const allowed = new Set(['class', 'rootCause', 'evidence', 'reproduced', 'reproCommand', 'fix']);
@@ -105,7 +115,7 @@ export function parseDiagnosisOutput(finalText: string | null | undefined, bundl
   const evidence: string[] = [];
   for (const [i, e] of o.evidence.entries()) {
     if (typeof e !== 'string' || e.length > DIAGNOSIS_LIMITS.citation) return invalid(`evidence[${i}] must be a string of at most ${DIAGNOSIS_LIMITS.citation} characters`);
-    const problem = citationProblem(e, bundle);
+    const problem = bundle ? citationProblem(e, bundle) : null;
     if (problem) return invalid(problem);
     evidence.push(e);
   }

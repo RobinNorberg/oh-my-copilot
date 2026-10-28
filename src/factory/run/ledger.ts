@@ -32,7 +32,7 @@ import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import type { RepoSnapshot } from './review-guard.js';
-import type { FactoryLaneKind } from './state.js';
+import type { FactoryLaneKind, FactoryRunKey } from './state.js';
 
 export class LedgerError extends Error {
   constructor(message: string) {
@@ -57,7 +57,8 @@ export interface LedgerRecheck {
 interface LedgerData {
   version: 1;
   root: string;
-  issue: number;
+  /** The run key (an issue number, or `heal-<sig8>`). */
+  issue: FactoryRunKey;
   files: Record<string, LedgerFile>;
   /** Shared git state before each running lane started (lane id -> snapshot). */
   baselines: Record<string, RepoSnapshot>;
@@ -72,8 +73,9 @@ export function defaultLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(base, 'factory-ledger');
 }
 
-export function ledgerFilePath(dir: string, root: string, issue: number): string {
-  return join(dir, sha256(resolve(root).toLowerCase()).slice(0, 16), `run-${issue}.json`);
+/** `run-<issue>.json`, or `run-heal-<sig8>.json` for a ci-heal run. */
+export function ledgerFilePath(dir: string, root: string, key: FactoryRunKey): string {
+  return join(dir, sha256(resolve(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
 }
 
 /** The empty directory the engine passes as core.hooksPath (exec.ts hardenedGitExec). */
@@ -92,7 +94,7 @@ export class EngineLedger {
   private constructor(readonly file: string, private readonly data: LedgerData, readonly existed: boolean) {}
 
   /** Load the sidecar for (root, issue), or start an empty one; a malformed sidecar is refused. */
-  static open(dir: string, root: string, issue: number): EngineLedger {
+  static open(dir: string, root: string, issue: FactoryRunKey): EngineLedger {
     const file = ledgerFilePath(dir, root, issue);
     if (!existsSync(file)) return new EngineLedger(file, { version: 1, root: resolve(root), issue, files: {}, baselines: {} }, false);
     let parsed: unknown;

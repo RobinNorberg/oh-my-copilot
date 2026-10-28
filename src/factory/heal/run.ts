@@ -18,6 +18,8 @@
  * The counters and a seal of the recorded heal run are mirrored outside the
  * repository (the factory ledger directory), because a lane's shell can reach
  * `.omg/`: the larger counter wins, and `heal status` reports a seal mismatch.
+ * The class and classification come only from the scan-time record there; an
+ * open heal run reuses the subject it was sealed with.
  */
 
 import { createHash } from 'crypto';
@@ -31,7 +33,7 @@ import { RUNTIME_MIN_MAX_CREDITS } from '../run/budget.js';
 import { factoryGuardExec, hardenedGitExec } from '../run/exec.js';
 import type { LaneBackend } from '../run/lane.js';
 import { emptyHooksDir } from '../run/ledger.js';
-import { LANE_CLASSES } from './classify.js';
+import { LANE_CLASSES, type HealClass, type HealClassification } from './classify.js';
 import type { HealConfig } from './config.js';
 import { debugPrompt, NO_CONFINEMENT, runDebugLane, type DebugLaneOutcome, type LaneConfinement } from './debug-lane.js';
 import { parseDiagnosisOutput } from './diagnosis-output.js';
@@ -117,16 +119,124 @@ const sealPath = (ledgerDir: string, root: string, sig8: string) => join(healLed
 /** What the seal covers: the heal run, its lanes and its diagnosis. */
 const sealOf = (s: Pick<HealSignatureState, 'healRun' | 'lanes' | 'diagnosis'>) => sha256(JSON.stringify({ healRun: s.healRun ?? null, lanes: s.lanes ?? [], diagnosis: s.diagnosis ?? null }));
 
-export function writeHealSeal(ledgerDir: string, root: string, state: HealSignatureState): void {
-  const path = sealPath(ledgerDir, root, state.sig8);
-  ensureDirSync(healLedgerDir(ledgerDir, root));
-  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state) }, null, 2)}\n`);
+/**
+ * The classifier fields a ci-heal run is built from, as the debugger lane was
+ * given them. A later scan may rewrite the record's classification and a
+ * lane's shell can reach `.omg/`, so they are kept in the out-of-repo seal
+ * file and never read from the record.
+ */
+export interface HealSealSubject {
+  class: HealClass;
+  firstRed: { runId: string; sha: string };
+  lastGreen?: { runId: string; sha: string };
+  /** `file > title` of the failing tests the classifier parsed. */
+  failingTests: string[];
+  env: Array<{ field: string; green?: string; red?: string }>;
 }
 
-/** `ok` when the recorded heal run matches its out-of-repo seal; `none` without a heal run. */
-export function verifyHealSeal(ledgerDir: string, root: string, state: HealSignatureState): 'ok' | 'none' | 'missing' | 'mismatch' {
-  if (!state.healRun && !state.diagnosis && !state.lanes?.length) return 'none';
+const HEAL_CLASSES: readonly string[] = ['infra', 'known-flaky', 'intermittent', 'env-change', 'regression', 'regression-or-env', 'unknown'] satisfies HealClass[];
+const RUN_ID = /^\d{1,20}$/;
+const HEX40 = /^[0-9a-f]{40}$/;
+const MAX_SUBJECT_ITEMS = 200;
+const MAX_SUBJECT_TEXT = 1000;
+
+export const healTestId = (t: { file: string; title?: string }) => (t.title ? `${t.file} > ${t.title}` : t.file);
+
+export function healSealSubject(cls: HealClass, c: HealClassification): HealSealSubject {
+  return {
+    class: cls,
+    firstRed: { runId: c.firstRed.runId, sha: c.firstRed.sha },
+    ...(c.lastGreen ? { lastGreen: { runId: c.lastGreen.runId, sha: c.lastGreen.sha } } : {}),
+    failingTests: [...new Set(c.jobs.flatMap((j) => j.failingTests.map(healTestId)))],
+    env: c.jobs.flatMap((j) => j.env.changed.map((e) => ({ field: String(e.field), ...(e.green !== undefined ? { green: e.green } : {}), ...(e.red !== undefined ? { red: e.red } : {}) }))),
+  };
+}
+
+const isText = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_SUBJECT_TEXT;
+const isRun = (v: unknown): v is { runId: string; sha: string } => {
+  const r = v as { runId?: unknown; sha?: unknown } | null;
+  return typeof r === 'object' && r !== null && typeof r.runId === 'string' && RUN_ID.test(r.runId) && typeof r.sha === 'string' && HEX40.test(r.sha);
+};
+
+/** The subject rebuilt from its validated fields, or null when its shape is wrong. */
+function parseSealSubject(v: unknown): HealSealSubject | null {
+  const s = v as Partial<Record<keyof HealSealSubject, unknown>> | null;
+  if (typeof s !== 'object' || s === null || typeof s.class !== 'string' || !HEAL_CLASSES.includes(s.class)) return null;
+  if (!isRun(s.firstRed) || (s.lastGreen !== undefined && !isRun(s.lastGreen))) return null;
+  if (!Array.isArray(s.failingTests) || s.failingTests.length > MAX_SUBJECT_ITEMS || !s.failingTests.every(isText)) return null;
+  if (!Array.isArray(s.env) || s.env.length > MAX_SUBJECT_ITEMS) return null;
+  const env: HealSealSubject['env'] = [];
+  for (const e of s.env as Array<{ field?: unknown; green?: unknown; red?: unknown } | null>) {
+    if (typeof e !== 'object' || e === null || !isText(e.field) || (e.green !== undefined && !isText(e.green)) || (e.red !== undefined && !isText(e.red))) return null;
+    env.push({ field: e.field, ...(e.green !== undefined ? { green: e.green } : {}), ...(e.red !== undefined ? { red: e.red } : {}) });
+  }
+  return {
+    class: s.class as HealClass,
+    firstRed: { runId: s.firstRed.runId, sha: s.firstRed.sha },
+    ...(s.lastGreen ? { lastGreen: { runId: s.lastGreen.runId, sha: s.lastGreen.sha } } : {}),
+    failingTests: [...(s.failingTests as string[])],
+    env,
+  };
+}
+
+/** The sealed classifier snapshot of `sig8`, or null when the seal file holds none or a malformed one. */
+export function readHealSealSubject(ledgerDir: string, root: string, sig8: string): HealSealSubject | null {
+  try {
+    return parseSealSubject((JSON.parse(readFileSync(sealPath(ledgerDir, root, sig8), 'utf8')) as { subject?: unknown } | null)?.subject);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Seal the recorded heal run. `subject` is the classifier snapshot the
+ * current debugger lane was given; without it the seal file keeps its own.
+ */
+export function writeHealSeal(ledgerDir: string, root: string, state: HealSignatureState, subject?: HealSealSubject): void {
   const path = sealPath(ledgerDir, root, state.sig8);
+  const kept = subject ?? readHealSealSubject(ledgerDir, root, state.sig8);
+  ensureDirSync(healLedgerDir(ledgerDir, root));
+  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+}
+
+const scanRecordPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.subject.json`);
+const scanRecordHash = (r: HealScanRecord) => sha256(JSON.stringify({ sig8: r.sig8, class: r.class, classification: r.classification }));
+
+/**
+ * The class and classification `heal scan` derived from GitHub data, kept
+ * outside the repository: `heal run` takes them only from here, never from
+ * the in-repo record a lane's shell can reach.
+ */
+export interface HealScanRecord {
+  sig8: string;
+  class: HealClass;
+  classification: HealClassification;
+}
+
+export function writeHealScanRecord(ledgerDir: string, root: string, r: HealScanRecord): void {
+  const record: HealScanRecord = { sig8: r.sig8, class: r.class, classification: r.classification };
+  ensureDirSync(healLedgerDir(ledgerDir, root));
+  atomicWriteFileSync(scanRecordPath(ledgerDir, root, r.sig8), `${JSON.stringify({ ...record, hash: scanRecordHash(record) }, null, 2)}\n`);
+}
+
+/** The scan-time record of `sig8`, or null when it is missing, corrupt or fails its integrity hash. */
+export function readHealScanRecord(ledgerDir: string, root: string, sig8: string): HealScanRecord | null {
+  try {
+    const v = JSON.parse(readFileSync(scanRecordPath(ledgerDir, root, sig8), 'utf8')) as Partial<HealScanRecord> & { hash?: unknown };
+    if (v.sig8 !== sig8 || typeof v.class !== 'string' || !HEAL_CLASSES.includes(v.class) || v.classification?.sig8 !== sig8 || v.classification.class !== v.class) return null;
+    const record: HealScanRecord = { sig8, class: v.class, classification: v.classification };
+    if (v.hash !== scanRecordHash(record) || !parseSealSubject(healSealSubject(record.class, record.classification))) return null;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+/** `ok` when the recorded heal run matches its out-of-repo seal; `none` without a heal run (and no seal). */
+export function verifyHealSeal(ledgerDir: string, root: string, state: HealSignatureState): 'ok' | 'none' | 'missing' | 'mismatch' {
+  const path = sealPath(ledgerDir, root, state.sig8);
+  // A record stripped of the heal run its seal covers is a changed record.
+  if (!state.healRun && !state.diagnosis && !state.lanes?.length) return existsSync(path) ? 'mismatch' : 'none';
   if (!existsSync(path)) return 'missing';
   try {
     return (JSON.parse(readFileSync(path, 'utf8')) as { seal?: unknown }).seal === sealOf(state) ? 'ok' : 'mismatch';
@@ -142,7 +252,7 @@ export function readHealCounters(root: string, ledgerDir: string, now: Date): He
   return { day: a.day, healRuns: Math.max(a.healRuns, b.healRuns), debugLanes: Math.max(a.debugLanes, b.debugLanes), credits: Math.max(a.credits, b.credits) };
 }
 
-function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void {
+export function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void {
   writeDailyCountersAt(dailyCountersPath(root), counters);
   writeDailyCountersAt(mirrorCountersPath(ledgerDir, root), counters);
 }
@@ -231,9 +341,28 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
 
   const initial = readHealState(o.root, o.sig8);
   if (!initial) throw new HealRunRefused(`no heal signature ${o.sig8} (run omg factory heal scan first)`);
-  const why = eligibility(initial);
+  // The class and classification come only from the scan-time record outside the repository.
+  const scanned = readHealScanRecord(deps.ledgerDir, o.root, o.sig8);
+  if (!scanned) throw new HealRunRefused(`heal ${o.sig8}: the scan-time classification outside the repository is missing or corrupt; re-run omg factory heal scan`);
+  const trusted = (s: HealSignatureState): HealSignatureState => ({ ...s, class: scanned.class, classification: scanned.classification });
+  if (initial.class !== scanned.class || JSON.stringify(initial.classification) !== JSON.stringify(scanned.classification)) {
+    (deps.warn ?? console.error)(`WARNING: the class or classification in the heal record of ${o.sig8} differs from the scan-time record outside the repository; it is ignored`);
+  }
+  const scannedSubject = healSealSubject(scanned.class, scanned.classification);
+  // An open heal run keeps the subject it was sealed with; only a fresh run takes the scan-time one.
+  const subjectFor = (s: HealSignatureState): HealSealSubject => {
+    const seal = verifyHealSeal(deps.ledgerDir, o.root, s);
+    if (seal === 'missing' || seal === 'mismatch') throw new HealRunRefused(`the heal record of ${o.sig8} does not match the one the heal run wrote (seal: ${seal}); do not act on it`);
+    if (!s.healRun?.open) return scannedSubject;
+    const sealed = readHealSealSubject(deps.ledgerDir, o.root, o.sig8);
+    if (!sealed) throw new HealRunRefused(`the heal seal of ${o.sig8} holds no valid classification snapshot; close the heal run (omg factory heal close ${o.sig8}) to start a fresh one`);
+    if (JSON.stringify(sealed) !== JSON.stringify(scannedSubject)) throw new HealRunRefused(`the scan-time classification of ${o.sig8} differs from the one its open heal run was sealed with; close the heal run (omg factory heal close ${o.sig8}) to start a fresh one`);
+    return sealed;
+  };
+  subjectFor(initial);
+  const why = eligibility(trusted(initial));
   if (why) throw new HealRunRefused(`heal ${o.sig8}: ${why}`);
-  const c = initial.classification;
+  const c = scanned.classification;
   if (healExec('git', ['cat-file', '-e', `${c.firstRed.sha}^{commit}`], { cwd: o.root }).status !== 0) {
     throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not in the local repository; fetch origin first`);
   }
@@ -260,6 +389,9 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   const reserved = locked(() => {
     let s = readHealState(o.root, o.sig8);
     if (!s) throw new HealRunRefused(`heal signature ${o.sig8} disappeared`);
+    // What the lane is given is what a ci-heal run is built from (sealed outside the repository).
+    const subject = subjectFor(s);
+    s = trusted(s);
     const stale = s.lanes?.at(-1);
     if (stale?.status === 'running') {
       if (stale.pid !== process.pid && pidAlive(stale.pid)) throw new HealRunRefused(`debugger lane ${stale.id} is still running in process ${stale.pid}`);
@@ -299,8 +431,8 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
     };
     writeHealCounters(o.root, deps.ledgerDir, { ...counters, healRuns: counters.healRuns + (fresh ? 1 : 0), debugLanes: counters.debugLanes + 1, credits: counters.credits + budget.cap });
     writeHealState(o.root, next);
-    writeHealSeal(deps.ledgerDir, o.root, next);
-    return { state: next, lane };
+    writeHealSeal(deps.ledgerDir, o.root, next, subject);
+    return { state: next, lane, subject };
   });
 
   const { hashes } = writeEvidence(o.root, bundle);
@@ -368,7 +500,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
     };
     const next: HealNext = diagnosis.outcome === 'valid' ? 'heal-approve' : 'heal-diagnosis';
     const state: HealSignatureState = {
-      ...base,
+      ...trusted(base),
       healRun: reserved.state.healRun,
       lanes: [...(reserved.state.lanes ?? []).slice(0, -1), lane],
       diagnosis,
@@ -376,7 +508,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
       updatedAt: now(),
     };
     writeHealState(o.root, state);
-    writeHealSeal(deps.ledgerDir, o.root, state);
+    writeHealSeal(deps.ledgerDir, o.root, state, reserved.subject);
     // The reserved cap becomes the measured spend (a lost or unconfirmed lane keeps its cap).
     const counters = readHealCounters(o.root, deps.ledgerDir, deps.now());
     if (counters.day === reserved.lane.startedAt.slice(0, 10)) {

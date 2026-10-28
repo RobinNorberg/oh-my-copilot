@@ -8,10 +8,12 @@ import { factoryCommand } from '../../../cli/commands/factory.js';
 import type { Exec } from '../../../ship/exec.js';
 import { healCommand, runHealScan, type HealDeps, type ScanResult } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../config.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { acquireFileLockSync, releaseFileLockSync } from '../../../lib/file-lock.js';
 import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
 import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
-import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue } from '../state.js';
+import { readHealScanRecord } from '../run.js';
+import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue, writeHealState } from '../state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
@@ -63,7 +65,7 @@ function fakeExec(push: RunFixture[], pr: RunFixture[], range = { count: '0', fi
   };
 }
 
-const scan = (exec: Exec, dryRun = false): ScanResult => runHealScan({ exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun, warn: () => {} });
+const scan = (exec: Exec, dryRun = false): ScanResult => runHealScan({ exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun, warn: () => {}, ledgerDir: join(root, '.omg', 'test-ledger') });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-heal-cli-'));
@@ -115,6 +117,24 @@ describe('omg factory heal scan', () => {
     expect(listHealStates(root)[0].count).toBe(1);
   });
 
+  it('the scan keeps the class and classification it derived from GitHub outside the repository, and restores a missing record', () => {
+    const ledgerDir = join(root, '.omg', 'test-ledger');
+    const redPush: RunFixture = { ...SECOND_PR, databaseId: 40700000001, event: 'push', headBranch: 'dev', headSha: 'a'.repeat(40), createdAt: '2026-10-27T22:00:00Z' };
+    const exec = fakeExec([redPush, run(40584638028)], [], { count: '2', files: 'src/tools/state-tools.ts\ndocs/x.md\n' });
+    scan(exec);
+    const [state] = listHealStates(root);
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)).toEqual({ sig8: state.sig8, class: 'regression-or-env', classification: state.classification });
+    // An in-repo edit never reaches the record; a lost record is classified again from GitHub, counted once.
+    writeHealState(root, { ...state, class: 'regression' });
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)!.class).toBe('regression-or-env');
+    rmSync(join(ledgerDir, 'heal'), { recursive: true, force: true });
+    expect(scan(exec, true).entries).toEqual([]);
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)).toBeNull();
+    expect(scan(exec).entries).toEqual([expect.objectContaining({ runId: '40700000001', recorded: true, reason: expect.stringMatching(/recorded outside the repository again/) })]);
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)!.class).toBe('regression-or-env');
+    expect(listHealStates(root)[0].count).toBe(1);
+  });
+
   it('policy-only PR failures never starve a real cross-branch failure of a candidate slot', () => {
     const policy = Array.from({ length: 6 }, (_, i): RunFixture => ({ ...run(40584652986), databaseId: 40600000000 + i, headBranch: `feat/p${i}`, createdAt: `2026-10-27T20:0${i}:00Z` }));
     const result = scan(fakeExec([run(40584638028)], [...policy, run(40542274776), SECOND_PR]));
@@ -127,7 +147,7 @@ describe('omg factory heal scan', () => {
     const exec = fakeExec([run(40584638028)], [run(40542274776), SECOND_PR]);
     const handle = acquireFileLockSync(join(healStateDir(root), 'scan.lock'))!;
     try {
-      expect(() => runHealScan({ exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: false, warn: () => {}, lockTimeoutMs: 100 })).toThrow(/Failed to acquire file lock/);
+      expect(() => runHealScan({ exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: false, warn: () => {}, ledgerDir: join(root, '.omg', 'test-ledger'), lockTimeoutMs: 100 })).toThrow(/Failed to acquire file lock/);
       expect(() => scan(exec, true)).not.toThrow();
     } finally {
       releaseFileLockSync(handle);
@@ -166,7 +186,7 @@ describe('heal command guard', () => {
 
 describe('omg factory heal CLI', () => {
   const noLanes = () => { throw new Error('no lane in these tests'); };
-  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: noLanes, ledgerDir: join(root, '.omg', 'test-ledger') });
+  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: noLanes, ledgerDir: join(root, '.omg', 'test-ledger'), runLimits: () => ({ limits: DEFAULT_FACTORY_RUN_LIMITS, warnings: [] }) });
   async function cli(d: HealDeps, ...argv: string[]): Promise<number> {
     process.exitCode = undefined;
     await healCommand(d).parseAsync(argv, { from: 'user' });
