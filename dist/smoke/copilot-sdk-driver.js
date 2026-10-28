@@ -703,22 +703,29 @@ async function sandboxProbe(client, session, input, loaded, bin) {
  * MCP server run that one), the PATH git and, when `gitShell` is given
  * (win32), git's `usr\bin\sh.exe`, which runs git hooks. A shell builtin
  * (`echo`) would pass while the sandbox denies every child .exe, so each
- * node line is labelled and sh prints its marker itself.
+ * node line is labelled and sh prints its marker itself. sh runs last and
+ * its exit code is printed, so a failed sh leaves the call's own exit 0.
  */
 export function sandboxCanaryCommand(platform, nodePath, gitShell = null) {
     if (platform === 'win32') {
         const q = (p) => `'${p.replace(/'/g, "''")}'`;
-        return `"engine-node $(& ${q(nodePath)} --version)"; "path-node $(node --version)"; git --version${gitShell ? `; & ${q(gitShell)} -c 'echo git-sh-ok'` : ''}`;
+        return `"engine-node $(& ${q(nodePath)} --version)"; "path-node $(node --version)"; git --version${gitShell ? `; & ${q(gitShell)} -c 'echo git-sh-ok'; "git-sh-exit $LASTEXITCODE"` : ''}`;
     }
     return `echo "engine-node $('${nodePath.replace(/'/g, `'\\''`)}' --version)"; echo "path-node $(node --version)"; git --version`;
 }
-/** Which canary programs printed their line (`engine-node v<n>.<n>`, `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`). */
+/**
+ * Which canary programs printed their line (`engine-node v<n>.<n>`,
+ * `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`), and sh's exit code
+ * (`git-sh-exit <n>`) when printed.
+ */
 export function sandboxCanaryLaunched(output) {
+    const exit = /^git-sh-exit (-?\d+)/m.exec(output);
     return {
         engineNode: /^engine-node v\d+\.\d+/m.test(output),
         pathNode: /^path-node v\d+\.\d+/m.test(output),
         git: /^git version \d/m.test(output),
         gitShell: /^git-sh-ok\r?$/m.test(output),
+        gitShellExit: exit ? Number(exit[1]) : null,
     };
 }
 /**
@@ -789,17 +796,22 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
             ...(ran.engineNode ? [] : [`node (${process.execPath})`]),
             ...(ran.pathNode ? [] : ['node from the lane PATH']),
             ...(ran.git ? [] : ['git']),
-            ...(gitShell && !ran.gitShell ? [`git's sh (${gitShell})`] : []),
         ];
         if (r?.success !== true || denied.length) {
             const why = typeof r?.error === 'string' && r.error ? r.error : `exit ${String(r?.exitCode)}, output ${JSON.stringify(excerpt(output, 200))}`;
             return { ok: false, detail: `the sandboxed launch failed (${denied.length ? `${denied.join(', ')} did not run` : 'every program printed its line, but the call reported failure'}): ${excerpt(why, 300)}` };
         }
-        const programs = `node --version (engine and PATH), git --version${gitShell ? " and git's sh -c" : ''}`;
+        const programs = 'node --version (engine and PATH) and git --version';
         if (attested !== true)
             return { ok: false, detail: `${programs} ran, but their completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
-        const noShell = platform === 'win32' && !gitShell ? "; git's sh.exe not checked (git is not a Git for Windows install)" : '';
-        return { ok: true, detail: `sandboxed ${programs} with the lane env and tool grants launched (sandboxed: true)${noShell}` };
+        // Informational: on Copilot CLI 1.0.105 git's MSYS sh.exe exits 0xC0000142 (STATUS_DLL_INIT_FAILED) inside the Windows sandbox.
+        const exit = ran.gitShellExit;
+        const shNote = !gitShell
+            ? (platform === 'win32' ? "; git's sh.exe not checked (git is not a Git for Windows install)" : '')
+            : ran.gitShell
+                ? `; git's sh -c ran`
+                : `; git's sh (${gitShell}) did not start in the sandbox (exit ${exit === null ? 'unknown' : exit < 0 ? `0x${(exit >>> 0).toString(16).toUpperCase()}` : exit}): git hooks cannot run in lanes`;
+        return { ok: true, detail: `sandboxed ${programs} with the lane env and tool grants launched (sandboxed: true)${shNote}` };
     }
     catch (err) {
         return { ok: false, detail: `the canary runtime failed: ${excerpt(errText(err), 200)}` };

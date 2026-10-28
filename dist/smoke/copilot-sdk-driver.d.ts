@@ -269,14 +269,20 @@ export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
  * MCP server run that one), the PATH git and, when `gitShell` is given
  * (win32), git's `usr\bin\sh.exe`, which runs git hooks. A shell builtin
  * (`echo`) would pass while the sandbox denies every child .exe, so each
- * node line is labelled and sh prints its marker itself.
+ * node line is labelled and sh prints its marker itself. sh runs last and
+ * its exit code is printed, so a failed sh leaves the call's own exit 0.
  */
 export declare function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string, gitShell?: string | null): string;
-/** Which canary programs printed their line (`engine-node v<n>.<n>`, `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`). */
+/**
+ * Which canary programs printed their line (`engine-node v<n>.<n>`,
+ * `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`), and sh's exit code
+ * (`git-sh-exit <n>`) when printed.
+ */
 export declare function sandboxCanaryLaunched(output: string): {
     engineNode: boolean;
     pathNode: boolean;
     git: boolean;
     gitShell: boolean;
+    gitShellExit: number | null;
 };
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map

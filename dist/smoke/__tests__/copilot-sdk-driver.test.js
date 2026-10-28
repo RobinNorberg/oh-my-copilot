@@ -265,8 +265,10 @@ describe('runSdkTier (fake SDK)', () => {
         expect(existsSync(join(parent, 'home', 'sandbox-canary', 'profile'))).toBe(true);
         expect(existsSync(pkgCache)).toBe(false);
         const win = process.platform === 'win32';
-        const programs = `node --version (engine and PATH), git --version${win ? " and git's sh -c" : ''}`;
-        expect(byId(result.checks)['sdk.sandbox']).toMatchObject({ ok: true, detail: expect.stringContaining(`spawn canary: sandboxed ${programs} with the lane env and tool grants launched (sandboxed: true)`) });
+        expect(byId(result.checks)['sdk.sandbox']).toMatchObject({
+            ok: true,
+            detail: expect.stringMatching(new RegExp(`spawn canary: sandboxed node --version \\(engine and PATH\\) and git --version with the lane env and tool grants launched \\(sandboxed: true\\)${win ? "; git's sh -c ran" : ''}$`)),
+        });
         // The canary session (s2) ran real programs after its own review policy; the static session (s1) ran nothing.
         expect(rec.ops).toContain(`exec:s2:${sandboxCanaryCommand(process.platform, process.execPath, win ? sh : null)}`);
         expect(rec.optionUpdates?.map((u) => u.id)).toEqual(['s1', 's2']);
@@ -287,14 +289,14 @@ describe('runSdkTier (fake SDK)', () => {
     it('sandboxCanaryCommand launches the engine node, the PATH node, git and git\'s sh, quoted for powershell and bash', () => {
         expect(sandboxCanaryCommand('win32', "C:\\Program Files\\it's\\node.exe")).toBe(`"engine-node $(& 'C:\\Program Files\\it''s\\node.exe' --version)"; "path-node $(node --version)"; git --version`);
         expect(sandboxCanaryCommand('win32', 'C:\\nodejs\\node.exe', "C:\\Program Files\\Git's\\usr\\bin\\sh.exe"))
-            .toBe(`"engine-node $(& 'C:\\nodejs\\node.exe' --version)"; "path-node $(node --version)"; git --version; & 'C:\\Program Files\\Git''s\\usr\\bin\\sh.exe' -c 'echo git-sh-ok'`);
+            .toBe(`"engine-node $(& 'C:\\nodejs\\node.exe' --version)"; "path-node $(node --version)"; git --version; & 'C:\\Program Files\\Git''s\\usr\\bin\\sh.exe' -c 'echo git-sh-ok'; "git-sh-exit $LASTEXITCODE"`);
         expect(sandboxCanaryCommand('linux', "/opt/it's/node")).toBe(`echo "engine-node $('/opt/it'\\''s/node' --version)"; echo "path-node $(node --version)"; git --version`);
     });
     it('sandboxCanaryLaunched needs each labelled line, not just any version', () => {
-        expect(sandboxCanaryLaunched('engine-node v25.0.0\r\npath-node v22.1.0\r\ngit version 2.51.0\r\ngit-sh-ok\r\n')).toEqual({ engineNode: true, pathNode: true, git: true, gitShell: true });
+        expect(sandboxCanaryLaunched('engine-node v25.0.0\r\npath-node v22.1.0\r\ngit version 2.51.0\r\ngit-sh-ok\r\ngit-sh-exit 0\r\n')).toEqual({ engineNode: true, pathNode: true, git: true, gitShell: true, gitShellExit: 0 });
         // A failed launch inside "$(...)" still prints the label, without a version.
-        expect(sandboxCanaryLaunched('engine-node v25.0.0\npath-node \ngit version 2.51.0\n')).toEqual({ engineNode: true, pathNode: false, git: true, gitShell: false });
-        expect(sandboxCanaryLaunched('v25.0.0\n& sh.exe -c \'echo git-sh-ok\' failed\n')).toEqual({ engineNode: false, pathNode: false, git: false, gitShell: false });
+        expect(sandboxCanaryLaunched('engine-node v25.0.0\npath-node \ngit version 2.51.0\n')).toEqual({ engineNode: true, pathNode: false, git: true, gitShell: false, gitShellExit: null });
+        expect(sandboxCanaryLaunched('v25.0.0\n& sh.exe -c \'echo git-sh-ok\' failed\ngit-sh-exit -1073741502\n')).toEqual({ engineNode: false, pathNode: false, git: false, gitShell: false, gitShellExit: -1073741502 });
     });
     it('sdk.sandbox spawn canary: a launch the sandbox rejects, node denied, an unattested launch, or a lane env without LOCALAPPDATA fails', async () => {
         const supported = { supported: true, capabilities: [{ name: 'shell', supported: true }] };
@@ -308,15 +310,19 @@ describe('runSdkTier (fake SDK)', () => {
         const nodeDenied = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 1, output: denied }, sandboxed: true }) });
         const d = byId((await runSdkTier(input(nodeDenied.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
         expect(d).toMatchObject({ ok: false, detail: expect.stringMatching(/the sandboxed launch failed \(node \([^)]+\) did not run\): exit 1, output .*Access is denied/) });
-        // The hooks' node (the PATH one) or git's sh denied while the engine node ran.
+        // The hooks' node (the PATH one) denied while the engine node ran.
         const sh = 'C:\\Git\\usr\\bin\\sh.exe';
         const pathDenied = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 1, output: 'engine-node v25.0.0\npath-node \ngit version 2.51.0\n' }, sandboxed: true }) });
         const pd = byId((await runSdkTier(input(pathDenied.loaded, { scenarios: [], platform: 'win32', canaryGitShell: () => sh, env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
-        expect(pd).toMatchObject({ ok: false, detail: expect.stringContaining(`the sandboxed launch failed (node from the lane PATH, git's sh (${sh}) did not run)`) });
+        expect(pd).toMatchObject({ ok: false, detail: expect.stringContaining('the sandboxed launch failed (node from the lane PATH did not run)') });
         expect(pathDenied.rec.ops).toContain(`exec:s2:${sandboxCanaryCommand('win32', process.execPath, sh)}`);
+        // The live 2026-10-28 result on Copilot CLI 1.0.105: git's MSYS sh.exe fails DLL init in the sandbox. Reported, not failed.
+        const shFails = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 0, output: 'engine-node v25.1.0\npath-node v25.1.0\ngit version 2.51.2.windows.1\ngit-sh-exit -1073741502\n' }, sandboxed: true }) });
+        const sf = byId((await runSdkTier(input(shFails.loaded, { scenarios: [], platform: 'win32', canaryGitShell: () => sh, env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
+        expect(sf).toMatchObject({ ok: true, detail: expect.stringContaining(`; git's sh (${sh}) did not start in the sandbox (exit 0xC0000142): git hooks cannot run in lanes`) });
         const unattested = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 0, output: 'engine-node v25.0.0\npath-node v25.0.0\ngit version 2.51.0\n' } }) });
         const u = byId((await runSdkTier(input(unattested.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
-        expect(u).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: node --version \(engine and PATH\), git --version ran, but their completion was not attested sandboxed/) });
+        expect(u).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: node --version \(engine and PATH\) and git --version ran, but their completion was not attested sandboxed/) });
         // A win32 git outside a Git for Windows root: sh is not launched, and the pass says so.
         const noRoot = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 0, output: 'engine-node v25.0.0\npath-node v25.0.0\ngit version 2.51.0\n' }, sandboxed: true }) });
         const nr = byId((await runSdkTier(input(noRoot.loaded, { scenarios: [], platform: 'win32', env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
