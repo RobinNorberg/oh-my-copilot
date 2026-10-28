@@ -19,9 +19,10 @@
  * Upstream text reaches the reconcile lane and the lane shares the common git
  * dir, so every host git command runs through the port guard (guard.ts:
  * allowlisted shapes, no hooks, fsmonitor, pager, external diff or filter),
- * the shared git state, the main index, the main checkout's applied files and
- * the gates' node_modules entry files are snapshotted before the lane and
- * compared after its confirmed end (factory review-guard.ts, hostBaseline),
+ * the shared git state, the main index and its flags, the content of every
+ * tracked file of the main checkout and the gates' node_modules entry files
+ * are snapshotted before the lane and compared after its confirmed end
+ * (factory review-guard.ts, hostBaseline),
  * and the lane's tree may differ from the pre-lane index only on the
  * conflicted, non-protected paths, as regular files.
  */
@@ -570,7 +571,9 @@ export const GATE_ENTRY_FILES = [
 interface HostBaseline {
   /** `git ls-files -s -z` of the main index: adoptLaneTree's baseline. */
   index: string;
-  /** Main worktree content of the applied and conflicted paths. */
+  /** `git ls-files -v -z`: an assume-unchanged or skip-worktree flag hides a rewrite from git status. */
+  flags: string;
+  /** Main worktree content of every tracked, applied and conflicted path, read from disk (never git's stat cache). */
   worktree: string;
   /** GATE_ENTRY_FILES content. */
   gateEntries: string;
@@ -591,9 +594,11 @@ const hashPaths = (cwd: string, paths: readonly string[]) => sha256([...paths].s
 
 function hostBaseline(gitOk: GitOk, cwd: string, preApply: string, conflicted: readonly string[]): HostBaseline {
   const applied = gitOk(['diff', '--cached', '--name-only', '-z', '--no-renames', preApply]).split('\0').filter(Boolean);
+  const tracked = gitOk(['ls-files', '-z']).split('\0').filter(Boolean);
   return {
     index: gitOk(['ls-files', '-s', '-z']),
-    worktree: hashPaths(cwd, [...new Set([...applied, ...conflicted])]),
+    flags: sha256(gitOk(['ls-files', '-v', '-z'])),
+    worktree: hashPaths(cwd, [...new Set([...tracked, ...applied, ...conflicted])]),
     gateEntries: hashPaths(cwd, GATE_ENTRY_FILES),
   };
 }
@@ -601,7 +606,8 @@ function hostBaseline(gitOk: GitOk, cwd: string, preApply: string, conflicted: r
 function hostChanges(before: HostBaseline, after: HostBaseline): string[] {
   const problems: string[] = [];
   if (before.index !== after.index) problems.push(`the main checkout's index changed (git ls-files -s differs from before the lane)`);
-  if (before.worktree !== after.worktree) problems.push('the main checkout\'s copy of an applied or conflicted file changed');
+  if (before.flags !== after.flags) problems.push(`the main index's flags changed (git ls-files -v differs: assume-unchanged or skip-worktree)`);
+  if (before.worktree !== after.worktree) problems.push('the main checkout\'s copy of a tracked file changed (content hash)');
   if (before.gateEntries !== after.gateEntries) problems.push(`a node_modules file the gates run changed (${GATE_ENTRY_FILES.join(', ')})`);
   return problems;
 }

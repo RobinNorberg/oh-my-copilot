@@ -5,7 +5,7 @@
  * seam, and the reconcile lane is a mock LaneBackend (no live Copilot).
  */
 import { spawnSync } from 'child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -392,15 +392,27 @@ describe('omg port drive: tamper check around the reconcile lane', () => {
   });
 
   const hostCases: Array<[string, (f: Fixture) => () => void, string]> = [
-    ['rewrites the main copy of a conflicted file', (f) => () => writeFileSync(join(f.fork, 'src/a.ts'), 'swapped\n'), 'copy of an applied or conflicted file changed'],
+    ['rewrites the main copy of a conflicted file', (f) => () => writeFileSync(join(f.fork, 'src/a.ts'), 'swapped\n'), 'copy of a tracked file changed'],
     ['rewrites a gate entry file in node_modules', (f) => () => {
       mkdirSync(join(f.fork, 'node_modules/vitest'), { recursive: true });
       writeFileSync(join(f.fork, 'node_modules/vitest/vitest.mjs'), 'process.exit(0)\n');
     }, 'a node_modules file the gates run changed'],
+    // git status trusts the stat cache: both rewrites below leave it empty.
+    ['marks a gate script assume-unchanged and rewrites it', (f) => () => {
+      git(f.fork, 'update-index', '--assume-unchanged', 'scripts/ci/check-multirepo-paths.mjs');
+      writeFileSync(join(f.fork, 'scripts/ci/check-multirepo-paths.mjs'), 'process.exit(0)\n');
+    }, 'copy of a tracked file changed'],
+    ['rewrites a config file at the same size and restores its mtime', (f) => () => {
+      const path = join(f.fork, 'vitest.config.ts');
+      const st = statSync(path);
+      writeFileSync(path, 'pwned!\n');
+      utimesSync(path, st.atime, st.mtime);
+    }, 'copy of a tracked file changed'],
+    ['adds a skip-worktree flag', (f) => () => { git(f.fork, 'update-index', '--skip-worktree', 'src/b.ts'); }, "the main index's flags changed"],
   ];
   for (const [name, plant, problem] of hostCases) {
     it(`parks the run when the lane ${name}`, async () => {
-      const f = conflictFixture();
+      const f = conflictFixture({ 'scripts/ci/check-multirepo-paths.mjs': 'gate\n', 'vitest.config.ts': 'config\n' });
       const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { plant: plant(f) }), reconcileLane: LANE }).promise;
       expect(r.status, r.message).toBe('blocked');
       expect(r.message).toContain(problem);
