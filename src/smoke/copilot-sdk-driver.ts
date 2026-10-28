@@ -31,6 +31,7 @@ import {
   applySandboxConfig,
   buildSandboxConfig,
   DEFAULT_SANDBOX_SETTINGS,
+  gitForWindowsShell,
   laneToolPaths,
   missingSandboxEnv,
   probeHostSupport,
@@ -512,6 +513,8 @@ export interface SdkTierInput {
   killTree?: (pid: number) => void;
   /** Test seam: the Linux trial sandbox launch behind sdk.sandbox's host support (default cachedBwrapTrialLaunchError). */
   sandboxTrialLaunch?: () => string | null;
+  /** Test seam: git's sh.exe the win32 spawn canary launches (default gitForWindowsShell). */
+  canaryGitShell?: (env: NodeJS.ProcessEnv) => string | null;
   /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
   runChain: typeof runChainScenario;
   /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
@@ -831,27 +834,43 @@ async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, inpu
 }
 
 /**
- * The spawn canary's command: two external programs every lane starts, the
- * engine's node and the PATH git. A shell builtin (`echo`) would pass while
- * the sandbox denies every child .exe.
+ * The spawn canary's command: the external programs every lane starts, the
+ * engine's node, the `node` on the lane's PATH (the plugin hooks and the `t`
+ * MCP server run that one), the PATH git and, when `gitShell` is given
+ * (win32), git's `usr\bin\sh.exe`, which runs git hooks. A shell builtin
+ * (`echo`) would pass while the sandbox denies every child .exe, so each
+ * node line is labelled and sh prints its marker itself. sh runs last and
+ * its exit code is printed, so a failed sh leaves the call's own exit 0.
  */
-export function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string): string {
-  return platform === 'win32'
-    ? `& '${nodePath.replace(/'/g, "''")}' --version; git --version`
-    : `'${nodePath.replace(/'/g, `'\\''`)}' --version; git --version`;
+export function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string, gitShell: string | null = null): string {
+  if (platform === 'win32') {
+    const q = (p: string) => `'${p.replace(/'/g, "''")}'`;
+    return `"engine-node $(& ${q(nodePath)} --version)"; "path-node $(node --version)"; git --version${gitShell ? `; & ${q(gitShell)} -c 'echo git-sh-ok'; "git-sh-exit $LASTEXITCODE"` : ''}`;
+  }
+  return `echo "engine-node $('${nodePath.replace(/'/g, `'\\''`)}' --version)"; echo "path-node $(node --version)"; git --version`;
 }
 
-/** Which canary programs printed their version (node `v<major>.<minor>`, `git version <n>`). */
-export function sandboxCanaryLaunched(output: string): { node: boolean; git: boolean } {
-  return { node: /^v\d+\.\d+/m.test(output), git: /^git version \d/m.test(output) };
+/**
+ * Which canary programs printed their line (`engine-node v<n>.<n>`,
+ * `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`), and sh's exit code
+ * (`git-sh-exit <n>`) when printed.
+ */
+export function sandboxCanaryLaunched(output: string): { engineNode: boolean; pathNode: boolean; git: boolean; gitShell: boolean; gitShellExit: number | null } {
+  const exit = /^git-sh-exit (-?\d+)/m.exec(output);
+  return {
+    engineNode: /^engine-node v\d+\.\d+/m.test(output),
+    pathNode: /^path-node v\d+\.\d+/m.test(output),
+    git: /^git version \d/m.test(output),
+    gitShell: /^git-sh-ok\r?$/m.test(output),
+    gitShellExit: exit ? Number(exit[1]) : null,
+  };
 }
 
 /**
  * The free spawn canary: a second runtime on copilot_run's lane env
  * (allowlistSessionEnv, profile relocated, temp dir in the job home), a
  * session with the review policy and the lane tool grants, and one
- * `shell.executeUserRequested` of `node --version` and `git --version` (no
- * model turn). It launches real programs through the OS sandbox with the env
+ * `shell.executeUserRequested` of sandboxCanaryCommand (no model turn). It launches real programs through the OS sandbox with the env
  * and policy a lane gets, so a launch the sandbox rejects (Windows MXC: a
  * missing required variable, an ungranted tool dir) fails here instead of
  * in a lane that bills credits.
@@ -897,7 +916,8 @@ async function sandboxSpawnCanary(loaded: LoadedSdk, bin: string, input: SdkTier
     }, host);
     const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
     if (applyError) return { ok: false, detail: `the review policy was not applied to the canary session: ${applyError}` };
-    const command = sandboxCanaryCommand(platform, process.execPath);
+    const gitShell = platform === 'win32' ? (input.canaryGitShell ?? gitForWindowsShell)(env) : null;
+    const command = sandboxCanaryCommand(platform, process.execPath, gitShell);
     const r = await withTimeout(shell.executeUserRequested.call(shell, { requestId: randomUUID(), command }), RPC_TIMEOUT_MS, 'shell.executeUserRequested()') as Record<string, unknown> | null;
     // The completion event can trail the RPC answer.
     const id = typeof r?.toolCallId === 'string' ? r.toolCallId : '';
@@ -905,13 +925,25 @@ async function sandboxSpawnCanary(loaded: LoadedSdk, bin: string, input: SdkTier
     const attested = sandboxed.get(id);
     const output = typeof r?.output === 'string' ? r.output : '';
     const ran = sandboxCanaryLaunched(output);
-    if (r?.success !== true || !ran.node || !ran.git) {
-      const denied = [...(ran.node ? [] : [`node (${process.execPath})`]), ...(ran.git ? [] : ['git'])].join(' and ');
+    const denied = [
+      ...(ran.engineNode ? [] : [`node (${process.execPath})`]),
+      ...(ran.pathNode ? [] : ['node from the lane PATH']),
+      ...(ran.git ? [] : ['git']),
+    ];
+    if (r?.success !== true || denied.length) {
       const why = typeof r?.error === 'string' && r.error ? r.error : `exit ${String(r?.exitCode)}, output ${JSON.stringify(excerpt(output, 200))}`;
-      return { ok: false, detail: `the sandboxed launch failed (${denied ? `${denied} did not run` : 'both printed a version, but the call reported failure'}): ${excerpt(why, 300)}` };
+      return { ok: false, detail: `the sandboxed launch failed (${denied.length ? `${denied.join(', ')} did not run` : 'every program printed its line, but the call reported failure'}): ${excerpt(why, 300)}` };
     }
-    if (attested !== true) return { ok: false, detail: `node and git ran, but their completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
-    return { ok: true, detail: 'sandboxed node --version and git --version with the lane env and tool grants launched (sandboxed: true)' };
+    const programs = 'node --version (engine and PATH) and git --version';
+    if (attested !== true) return { ok: false, detail: `${programs} ran, but their completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
+    // Informational: on Copilot CLI 1.0.105 git's MSYS sh.exe exits 0xC0000142 (STATUS_DLL_INIT_FAILED) inside the Windows sandbox.
+    const exit = ran.gitShellExit;
+    const shNote = !gitShell
+      ? (platform === 'win32' ? "; git's sh.exe not checked (git is not a Git for Windows install)" : '')
+      : ran.gitShell
+        ? `; git's sh -c ran`
+        : `; git's sh (${gitShell}) did not start in the sandbox (exit ${exit === null ? 'unknown' : exit < 0 ? `0x${(exit >>> 0).toString(16).toUpperCase()}` : exit}): git hooks cannot run in lanes`;
+    return { ok: true, detail: `sandboxed ${programs} with the lane env and tool grants launched (sandboxed: true)${shNote}` };
   } catch (err) {
     return { ok: false, detail: `the canary runtime failed: ${excerpt(errText(err), 200)}` };
   } finally {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -89,6 +89,26 @@ describe('buildSandboxConfig', () => {
         }
         expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
     });
+    it('drops a tool dir that holds the worktree, the common git dir or the job dir', () => {
+        const win = {
+            ...ctx,
+            platform: 'win32',
+            worktree: 'D:\\dev\\wt',
+            commonGitDir: 'D:\\src\\repo\\.git',
+            jobDir: 'E:\\jobs\\cr-1',
+            jobHome: 'E:\\jobs\\cr-1\\home',
+            realHome: 'C:\\Users\\me',
+            toolPaths: ['D:\\dev', 'd:\\SRC', 'E:\\jobs', 'C:\\Program Files\\nodejs', 'D:\\dev\\wt\\bin'],
+        };
+        for (const profile of ['review', 'write']) {
+            const ro = buildSandboxConfig(profile, win, host()).userPolicy.filesystem.readonlyPaths;
+            for (const p of ['D:\\dev', 'd:\\SRC', 'E:\\jobs'])
+                expect(ro, p).not.toContain(p);
+            expect(ro).toContain('C:\\Program Files\\nodejs');
+            // A dir inside the worktree holds none of them: it stays.
+            expect(ro).toContain('D:\\dev\\wt\\bin');
+        }
+    });
     it('refuses an extra read-write path outside the worktree', () => {
         const settings = { ...ctx.settings, extraReadwritePaths: [join(root, 'elsewhere')] };
         expect(() => buildSandboxConfig('write', { ...ctx, settings }, host())).toThrow(/not under the worktree/);
@@ -119,6 +139,13 @@ describe('laneToolPaths', () => {
         }));
         expect(paths).toEqual(['D:\\tools\\node', 'D:\\scoop\\shims', 'D:\\scoop\\apps\\git\\current\\mingw64\\libexec\\git-core']);
     });
+    it("gitForWindowsShell: <root>\\usr\\bin\\sh.exe from git's exec path, or null without a Git for Windows layout or git", () => {
+        const gitProbe = (execDir, git = 'C:\\Program Files\\Git\\cmd\\git.exe') => probe({ found: git ? { git } : {}, gitExecPath: () => execDir });
+        expect(gitForWindowsShell({}, gitProbe('C:/Program Files/Git/mingw64/libexec/git-core'))).toBe('C:\\Program Files\\Git\\usr\\bin\\sh.exe');
+        expect(gitForWindowsShell({}, gitProbe('C:\\tools\\git\\bin'))).toBeNull();
+        expect(gitForWindowsShell({}, gitProbe(null))).toBeNull();
+        expect(gitForWindowsShell({}, gitProbe('C:/Program Files/Git/mingw64/libexec/git-core', null))).toBeNull();
+    });
     it('posix: the node and git binary dirs with their realpaths, and the git exec path', () => {
         const real = { '/home/u/.nvm/current/bin/node': '/home/u/.nvm/versions/node/v22/bin/node' };
         const paths = laneToolPaths({}, 'linux', probe({
@@ -139,6 +166,15 @@ describe('laneToolPaths', () => {
         expect(findOnPath('git', { Path: '.;;"C:\\Git\\cmd"', PATHEXT: '.COM;.EXE' }, 'win32', exists)).toBe('C:\\Git\\cmd\\git.EXE');
         expect(findOnPath('git', { PATH: ':bin:/usr/bin' }, 'linux', exists)).toBe('/usr/bin/git');
         expect(findOnPath('git', {}, 'linux', exists)).toBeNull();
+    });
+    it('findOnPath skips PATH entries under a node_modules dir', () => {
+        const files = new Set(['C:\\repo\\node_modules\\.bin\\git.CMD', 'C:\\Git\\cmd\\git.EXE', '/repo/node_modules/.bin/git', '/usr/bin/git']);
+        const exists = (p) => files.has(p);
+        expect(findOnPath('git', { PATH: 'C:\\repo\\Node_Modules\\.bin;C:\\repo\\node_modules\\.bin;C:\\Git\\cmd', PATHEXT: '.EXE;.CMD' }, 'win32', exists)).toBe('C:\\Git\\cmd\\git.EXE');
+        expect(findOnPath('git', { PATH: '/repo/node_modules/.bin:/usr/bin' }, 'linux', exists)).toBe('/usr/bin/git');
+        // Only a whole path segment counts.
+        files.add('/opt/my_node_modules_tools/git');
+        expect(findOnPath('git', { PATH: '/opt/my_node_modules_tools:/usr/bin' }, 'linux', exists)).toBe('/opt/my_node_modules_tools/git');
     });
     it('the default probe finds the real node of this process', () => {
         expect(laneToolPaths({ PATH: '' }, process.platform)).toContain(dirname(process.execPath));

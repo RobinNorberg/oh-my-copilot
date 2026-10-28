@@ -5,7 +5,7 @@
  * to help Claude recover gracefully.
  */
 
-import * as fs from 'fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import {
   TOKEN_LIMIT_PATTERNS,
   TOKEN_LIMIT_KEYWORDS,
@@ -32,7 +32,7 @@ function debugLog(...args: unknown[]): void {
         typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
       )
       .join(' ')}\n`;
-    fs.appendFileSync(DEBUG_FILE, msg);
+    appendFileNoFollow(DEBUG_FILE, msg);
   }
 }
 

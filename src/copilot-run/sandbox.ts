@@ -252,8 +252,9 @@ export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir'
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
  * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
- * are read-only in both profiles; one that holds the real home or is a
- * filesystem root is dropped.
+ * are read-only in both profiles; one that holds the real home, the worktree,
+ * the common git dir or the job dir (a `D:\dev\node.exe` with every repo
+ * beside it), or is a filesystem root, is dropped.
  */
 export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig {
   const { settings } = ctx;
@@ -261,7 +262,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     if (!isUnderRoot(p, ctx.worktree, ctx.platform)) throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
   }
   const P = ctx.platform === 'win32' ? win32 : posix;
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && !isUnderRoot(ctx.realHome, p, ctx.platform));
+  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
   const common = {
     allowBypass: false as const,
     allowDevToolAccess: false as const,
@@ -314,13 +315,19 @@ export interface ToolPathProbe {
 
 const isFile = (p: string): boolean => { try { return statSync(p).isFile(); } catch { return false; } };
 
-/** `name` on `env`'s PATH (PATHEXT on win32), or null; empty and relative entries are skipped. */
+/**
+ * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
+ * entries are skipped, and so is any entry under a `node_modules` dir (npx
+ * and npm scripts put `node_modules/.bin` first, so a package's shim would
+ * stand in for the host git that `git --exec-path` runs).
+ */
 export function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, exists: (p: string) => boolean = isFile): string | null {
   const P = platform === 'win32' ? win32 : posix;
   const exts = platform === 'win32' ? (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  const inNodeModules = platform === 'win32' ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
   for (const raw of (envValue(env, 'PATH') ?? '').split(P.delimiter)) {
     const dir = raw.trim().replace(/^"(.*)"$/, '$1');
-    if (!dir || !P.isAbsolute(dir)) continue;
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
     for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
   }
   return null;
@@ -366,7 +373,7 @@ export function laneToolPaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform,
   const git = probe.which('git');
   if (git) {
     const execDir = probe.gitExecPath(git);
-    const root = platform === 'win32' && execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? P.resolve(execDir, '..', '..', '..') : null;
+    const root = platform === 'win32' ? gitForWindowsRoot(execDir) : null;
     const under = (p: string, dir: string) => { const rel = P.relative(dir, p); return !!rel && !rel.startsWith('..') && !P.isAbsolute(rel); };
     if (root && under(real(git), root)) out.push(root);
     else out.push(...binDirs(git), ...(execDir ? [execDir] : []));
@@ -378,6 +385,18 @@ export function laneToolPaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform,
     seen.add(key);
     return true;
   });
+}
+
+/** Git for Windows's install root from its `--exec-path` (`<root>\mingw64\libexec\git-core`), or null. */
+function gitForWindowsRoot(execDir: string | null): string | null {
+  return execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? win32.resolve(execDir, '..', '..', '..') : null;
+}
+
+/** `<root>\usr\bin\sh.exe`, the shell Git for Windows runs hooks with, for the git on `env`'s PATH; or null. */
+export function gitForWindowsShell(env: NodeJS.ProcessEnv, probe: ToolPathProbe = defaultToolPathProbe(env, 'win32')): string | null {
+  const git = probe.which('git');
+  const root = git ? gitForWindowsRoot(probe.gitExecPath(git)) : null;
+  return root ? win32.join(root, 'usr', 'bin', 'sh.exe') : null;
 }
 
 // ---------------------------------------------------------------------------

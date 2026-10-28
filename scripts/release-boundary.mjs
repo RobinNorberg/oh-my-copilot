@@ -7,11 +7,13 @@ import {
   readFileSync,
   lstatSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 
 const PACKAGE_NAME = 'oh-my-copilot';
 const PLUGIN_NAME = 'oh-my-copilot';
@@ -1162,7 +1164,16 @@ export async function cliMain(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').href) {
+// realpath on both sides: new URL(argv[1], 'file:') never matched a Windows path, so the CLI was a silent no-op there.
+function isMainModule() {
+  try {
+    return !!process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   cliMain().catch(error => {
     process.stderr.write(`release-boundary: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

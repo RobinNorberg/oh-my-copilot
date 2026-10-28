@@ -161,8 +161,9 @@ export declare function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commo
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
  * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
- * are read-only in both profiles; one that holds the real home or is a
- * filesystem root is dropped.
+ * are read-only in both profiles; one that holds the real home, the worktree,
+ * the common git dir or the job dir (a `D:\dev\node.exe` with every repo
+ * beside it), or is a filesystem root, is dropped.
  */
 export declare function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig;
 /** The host lookups behind laneToolPaths (a test seam). */
@@ -175,7 +176,12 @@ export interface ToolPathProbe {
     gitExecPath: (git: string) => string | null;
     realpath: (p: string) => string;
 }
-/** `name` on `env`'s PATH (PATHEXT on win32), or null; empty and relative entries are skipped. */
+/**
+ * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
+ * entries are skipped, and so is any entry under a `node_modules` dir (npx
+ * and npm scripts put `node_modules/.bin` first, so a package's shim would
+ * stand in for the host git that `git --exec-path` runs).
+ */
 export declare function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, exists?: (p: string) => boolean): string | null;
 /**
  * The install dirs of the programs every lane starts: node (the plugin
@@ -196,6 +202,8 @@ export declare function findOnPath(name: string, env: NodeJS.ProcessEnv, platfor
  * under it; elsewhere the git binary's dir and its exec path.
  */
 export declare function laneToolPaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, probe?: ToolPathProbe): string[];
+/** `<root>\usr\bin\sh.exe`, the shell Git for Windows runs hooks with, for the git on `env`'s PATH; or null. */
+export declare function gitForWindowsShell(env: NodeJS.ProcessEnv, probe?: ToolPathProbe): string | null;
 /** Runs `cmd args` to completion, shaped like spawnSync's result. */
 export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => {
     error?: Error;

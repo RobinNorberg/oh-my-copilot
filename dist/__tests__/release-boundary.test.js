@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 // @ts-expect-error The release helper is intentionally dependency-free ESM without declarations.
 import * as releaseBoundary from '../../scripts/release-boundary.mjs';
 const { assertArchive, assertEvidence, assertNpmAbsent, assertSlsaProvenance, assertTrigger, buildEvidenceFromBytes, cliMain, decodeDssePayload, prepareStage, selectSlsaAttestation, verifyRegistry, writeEvidence, } = releaseBoundary;
@@ -236,6 +237,12 @@ afterEach(() => {
     }
 });
 describe('release-boundary.mjs', () => {
+    it('runs as a CLI: an unknown subcommand exits non-zero (was a silent no-op on Windows)', () => {
+        const script = fileURLToPath(new URL('../../scripts/release-boundary.mjs', import.meta.url));
+        const r = spawnSync(process.execPath, [script, 'no-such-command'], { encoding: 'utf8' });
+        expect(r.status).toBe(1);
+        expect(r.stderr).toContain('release-boundary: unknown command: no-such-command');
+    });
     it('fails closed for npm collision, status, malformed-body, transport, and timeout states', async () => {
         const server = await startServer((request, response) => {
             switch (request.url) {
