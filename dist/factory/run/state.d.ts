@@ -19,6 +19,7 @@
  */
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
+import type { ForgeKind } from '../../forge/types.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -147,6 +148,12 @@ export interface FactoryRunState {
     /** The issue number; 0 for a ci-heal run, which has no issue. */
     issue: number;
     heal?: FactoryHealRecord;
+    /**
+     * The forge the run started on (critic amendments §A.9). Absent in states
+     * written before forges existed, which ran on GitHub; optional, so their
+     * integrity seal still verifies.
+     */
+    forgeKind?: ForgeKind;
     repoUrl: string;
     base: string;
     branch: string;
@@ -234,6 +241,11 @@ export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: s
 export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState;
 export declare function computeFactoryIntegrity(state: FactoryRunState): string;
 export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
+/**
+ * Why a resume must refuse, or null (critic amendments §A.9): a config change
+ * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ */
+export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal'>, resolved: ForgeKind): string | null;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
 export declare function readFactoryState(root: string, key: FactoryRunKey): FactoryRunState | null;
 /** Parse and shape-check the bytes of a state file (read once by the caller). */

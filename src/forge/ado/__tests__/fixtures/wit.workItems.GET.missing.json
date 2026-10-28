@@ -1,0 +1,9 @@
+{
+  "provenance": "synthetic: format example of a failed call (az exits 1 with the REST error on stderr)",
+  "route": "wit.workItems.GET",
+  "routeParameters": { "project": "Web", "id": "404" },
+  "queryParameters": { "$expand": "relations" },
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "ERROR: TF401232: Work item 404 does not exist, or you do not have permissions to read it."
+}

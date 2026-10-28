@@ -1,0 +1,334 @@
+/**
+ * `factory.forge`, `factory.intake`, `factory.check` and `factory.progress`
+ * (factory forges design §3). Trust follows loadTrustedShipConfig: the
+ * caller passes the user config at its default location (userConfigLayers
+ * `trustedUser`), the `.copilot/omg.jsonc` committed on the verified base
+ * (readBaseFile), and the working-tree project config. The resolver is pure
+ * (no git, no spawn), like resolveFactoryRunLimits.
+ *
+ * | Keys                               | Sources (high -> low)                | Working-tree file          |
+ * |------------------------------------|--------------------------------------|----------------------------|
+ * | forge.* (identity)                 | user -> base -> origin detection     | ignored, warned on a diff  |
+ * | forge.azureDevOps.trustedAuthors   | user only                            | ignored, warned            |
+ * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
+ * | intake.*, check.*                  | project -> user -> base -> defaults  | allowed                    |
+ *
+ * Config can pin the forge, never redirect it: a kind, org, project or repo
+ * that disagrees with the origin remote is refused (`forge-mismatch`).
+ */
+import { parseRemoteUrl } from '../providers/index.js';
+import { PROGRESS_STAGES, } from './types.js';
+export class ForgeConfigError extends Error {
+    code;
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+        this.name = 'ForgeConfigError';
+    }
+}
+export const DEFAULT_ADO_API_VERSION = '7.1';
+export const DEFAULT_INTAKE_LIMIT = 50;
+export const MAX_INTAKE_LIMIT = 200;
+export const DEFAULT_INTAKE_MARKER = 'factory-ready';
+export const DEFAULT_ADO_ITEM_TYPES = ['User Story', 'Bug', 'Product Backlog Item'];
+export const DEFAULT_CHECK_CONFIG = Object.freeze({ maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 20_000 });
+/** GitHub default label family (design §7); `cancelled` removes the family, so it has no label. */
+export function defaultProgressStages(kind) {
+    if (kind !== 'github')
+        return {};
+    const stages = {};
+    for (const stage of PROGRESS_STAGES)
+        if (stage !== 'cancelled')
+            stages[stage] = { label: `factory:${stage}` };
+    return stages;
+}
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** One ADO name segment (org, project, repo, team, board): no path separators or control characters. */
+const SEGMENT = /^[^/\\\p{Cc}]{1,256}$/u;
+/** A GitHub label or ADO tag: no `,` (gh --remove-label lists) or `;` (ADO tag separator), no leading `-` or space. */
+const TRACKER_NAME = /^[^\s,;\-\p{Cc}][^,;\p{Cc}]{0,49}$/u;
+/** Free text written to config (board column, state, area path, milestone). */
+const TEXT = /^[^\p{Cc}]{1,256}$/u;
+function object(value, what) {
+    if (value === undefined || value === null)
+        return {};
+    if (typeof value !== 'object' || Array.isArray(value))
+        throw new ForgeConfigError('invalid', `${what} must be an object`);
+    return value;
+}
+/** `factory.<name>` of one config layer; {} when absent. */
+function factoryBlock(config, name, source) {
+    const factory = object(config?.factory, `${source}: factory config`);
+    return { ...object(factory[name], `${source}: factory.${name}`) };
+}
+function text(value, re, key, source) {
+    if (typeof value !== 'string' || !re.test(value) || value.trim() !== value)
+        throw new ForgeConfigError('invalid', `${source}: factory.${key} must be a plain name`);
+    return value;
+}
+function count(value, key, source, min, max = Number.MAX_SAFE_INTEGER) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+        throw new ForgeConfigError('invalid', `${source}: factory.${key} must be an integer from ${min} to ${max}`);
+    }
+    return value;
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** `%20` and friends decoded; a malformed escape keeps the raw segment. */
+const decode = (s) => {
+    try {
+        return decodeURIComponent(s);
+    }
+    catch {
+        return s;
+    }
+};
+/** ADO names compare case-insensitively with escapes decoded (design §8.3). */
+const fold = (s) => decode(s).toLowerCase();
+/** The forge kind and repository the origin remote names. */
+export function detectForgeRepo(originUrl) {
+    const parsed = parseRemoteUrl(originUrl);
+    if (!parsed)
+        throw new ForgeConfigError('forge-unsupported', `cannot parse the origin remote ${JSON.stringify(originUrl)}`);
+    if (parsed.provider === 'azure-devops') {
+        const [org, project, ...rest] = parsed.owner.split('/');
+        if (!org || !project || rest.length > 0)
+            throw new ForgeConfigError('forge-unsupported', `cannot parse the Azure DevOps remote ${JSON.stringify(originUrl)}`);
+        const o = decode(org), p = decode(project), r = decode(parsed.repo);
+        return {
+            kind: 'azure-devops',
+            host: 'dev.azure.com',
+            owner: o,
+            project: p,
+            name: r,
+            url: `https://dev.azure.com/${encodeURIComponent(o)}/${encodeURIComponent(p)}/_git/${encodeURIComponent(r)}`,
+        };
+    }
+    // github.com, or a host detectProvider cannot name (GitHub Enterprise): today's GitHub behaviour.
+    if (parsed.provider !== 'github' && parsed.provider !== 'unknown') {
+        throw new ForgeConfigError('forge-unsupported', `unsupported forge ${parsed.provider} (${parsed.host}); omg factory supports github and azure-devops`);
+    }
+    return { kind: 'github', host: parsed.host, owner: parsed.owner, name: parsed.repo, url: `https://${parsed.host}/${parsed.owner}/${parsed.repo}` };
+}
+function mismatch(key, configured, remote) {
+    throw new ForgeConfigError('forge-mismatch', `factory.forge.${key} is ${JSON.stringify(configured)}, but the origin remote is ${JSON.stringify(remote)}; config can pin the forge, never redirect it`);
+}
+function intakeSource(value, kind, source) {
+    const s = object(value, `${source}: factory.intake.source`);
+    const key = 'intake.source';
+    const ado = kind === 'azure-devops';
+    const want = (k) => {
+        if (k !== kind)
+            throw new ForgeConfigError('invalid', `${source}: factory.intake.source type ${String(s.type)} is for ${k}, but the forge is ${kind}`);
+    };
+    switch (s.type) {
+        case 'label':
+            want('github');
+            return { type: 'label', label: text(s.label, TRACKER_NAME, `${key}.label`, source) };
+        case 'milestone':
+            want('github');
+            return { type: 'milestone', milestone: text(s.milestone, TEXT, `${key}.milestone`, source) };
+        case 'wiql-query':
+            want('azure-devops');
+            if (typeof s.queryId !== 'string' || !GUID.test(s.queryId))
+                throw new ForgeConfigError('invalid', `${source}: factory.${key}.queryId must be a saved-query GUID`);
+            return { type: 'wiql-query', queryId: s.queryId.toLowerCase() };
+        case 'board-column':
+            want('azure-devops');
+            return {
+                type: 'board-column',
+                team: text(s.team, SEGMENT, `${key}.team`, source),
+                board: text(s.board, SEGMENT, `${key}.board`, source),
+                column: text(s.column, TEXT, `${key}.column`, source),
+            };
+        case 'area-tag':
+            want('azure-devops');
+            return { type: 'area-tag', areaPath: text(s.areaPath, TEXT, `${key}.areaPath`, source), tag: text(s.tag, TRACKER_NAME, `${key}.tag`, source) };
+        default:
+            throw new ForgeConfigError('invalid', `${source}: factory.intake.source.type must be one of ${ado ? 'wiql-query, board-column, area-tag' : 'label, milestone'}`);
+    }
+}
+function resolveIntake(layer, kind) {
+    const source = 'factory config';
+    const intake = {
+        itemTypes: [...DEFAULT_ADO_ITEM_TYPES],
+        limit: DEFAULT_INTAKE_LIMIT,
+        marker: DEFAULT_INTAKE_MARKER,
+    };
+    if (layer.source !== undefined)
+        intake.source = intakeSource(layer.source, kind, source);
+    if (layer.itemTypes !== undefined) {
+        if (!Array.isArray(layer.itemTypes) || layer.itemTypes.length === 0)
+            throw new ForgeConfigError('invalid', `${source}: factory.intake.itemTypes must be a non-empty array of work item types`);
+        intake.itemTypes = [...new Set(layer.itemTypes.map((t) => text(t, TEXT, 'intake.itemTypes', source)))];
+    }
+    if (layer.limit !== undefined)
+        intake.limit = count(layer.limit, 'intake.limit', source, 1, MAX_INTAKE_LIMIT);
+    if (layer.marker !== undefined)
+        intake.marker = text(layer.marker, TRACKER_NAME, 'intake.marker', source);
+    return intake;
+}
+function resolveCheck(layer) {
+    const check = { ...DEFAULT_CHECK_CONFIG };
+    for (const key of Object.keys(DEFAULT_CHECK_CONFIG)) {
+        if (layer[key] !== undefined)
+            check[key] = count(layer[key], `check.${key}`, 'factory config', 1);
+    }
+    return check;
+}
+function resolveProgress(layer, kind, source) {
+    const progress = { enabled: true, stages: defaultProgressStages(kind) };
+    if (layer.enabled !== undefined) {
+        if (typeof layer.enabled !== 'boolean')
+            throw new ForgeConfigError('invalid', `${source}: factory.progress.enabled must be true or false`);
+        progress.enabled = layer.enabled;
+    }
+    const stages = object(layer.stages, `${source}: factory.progress.stages`);
+    for (const [stage, raw] of Object.entries(stages)) {
+        if (!PROGRESS_STAGES.includes(stage))
+            throw new ForgeConfigError('invalid', `${source}: factory.progress.stages.${stage} is not a stage (${PROGRESS_STAGES.join(', ')})`);
+        const m = object(raw, `${source}: factory.progress.stages.${stage}`);
+        const key = `progress.stages.${stage}`;
+        const allowed = kind === 'github' ? ['label'] : ['column', 'state'];
+        const extra = Object.keys(m).find((k) => !allowed.includes(k));
+        if (extra)
+            throw new ForgeConfigError('invalid', `${source}: factory.${key}.${extra} is not used on ${kind} (allowed: ${allowed.join(', ')})`);
+        // blocked and cancelled never change the work item state (design §4 step 5).
+        if (m.state !== undefined && (stage === 'blocked' || stage === 'cancelled')) {
+            throw new ForgeConfigError('invalid', `${source}: factory.${key}.state is not allowed; ${stage} never changes the work item state`);
+        }
+        const mapping = {};
+        if (m.label !== undefined)
+            mapping.label = text(m.label, TRACKER_NAME, `${key}.label`, source);
+        if (m.column !== undefined)
+            mapping.column = text(m.column, TEXT, `${key}.column`, source);
+        if (m.state !== undefined)
+            mapping.state = text(m.state, TEXT, `${key}.state`, source);
+        progress.stages[stage] = mapping;
+    }
+    return progress;
+}
+/**
+ * Resolve the forge settings of one repository.
+ * @param trustedUser the user config at its default location (userConfigLayers().trustedUser)
+ * @param base the parsed `.copilot/omg.jsonc` committed on the verified base, or undefined when that layer was skipped
+ * @param project the parsed working-tree project config
+ * @param originUrl `git remote get-url origin`
+ * Throws ForgeConfigError: `forge-mismatch` when config disagrees with the
+ * remote, `forge-unsupported` for a remote that is neither GitHub nor Azure
+ * DevOps, `invalid` for an ill-typed value.
+ */
+export function resolveForgeConfig(trustedUser, base, project, originUrl) {
+    const warnings = [];
+    const baseSource = 'base-branch .copilot/omg.jsonc';
+    // forge.* identity: user -> base; the working tree never sets it.
+    const uForge = factoryBlock(trustedUser, 'forge', 'user config');
+    const bForge = factoryBlock(base, 'forge', baseSource);
+    const pForge = factoryBlock(project, 'forge', 'project config');
+    const uAdo = { ...object(uForge.azureDevOps, 'user config: factory.forge.azureDevOps') };
+    const bAdo = { ...object(bForge.azureDevOps, `${baseSource}: factory.forge.azureDevOps`) };
+    const pAdo = { ...object(pForge.azureDevOps, 'project config: factory.forge.azureDevOps') };
+    const trustedAuthors = uAdo.trustedAuthors;
+    for (const [layer, source] of [[bAdo, baseSource], [pAdo, 'the working-tree project config']]) {
+        if (layer.trustedAuthors === undefined)
+            continue;
+        warnings.push(`omg factory: ignoring factory.forge.azureDevOps.trustedAuthors from ${source}; it is read only from the user config`);
+    }
+    delete uAdo.trustedAuthors;
+    delete bAdo.trustedAuthors;
+    delete pAdo.trustedAuthors;
+    const withAdo = (f, ado) => {
+        const { azureDevOps: _drop, ...rest } = f;
+        return Object.keys(ado).length > 0 ? { ...rest, azureDevOps: ado } : rest;
+    };
+    if (Object.keys(pForge).length > 0 && !same(withAdo(pForge, pAdo), withAdo(bForge, bAdo))) {
+        warnings.push(`omg factory: ignoring factory.forge from the working-tree project config; it is read only from the user config or ${baseSource}`);
+    }
+    const remote = detectForgeRepo(originUrl);
+    const kindRaw = uForge.kind ?? bForge.kind;
+    if (kindRaw !== undefined && kindRaw !== 'github' && kindRaw !== 'azure-devops') {
+        throw new ForgeConfigError('invalid', 'factory.forge.kind must be "github" or "azure-devops"');
+    }
+    if (kindRaw !== undefined && kindRaw !== remote.kind)
+        mismatch('kind', kindRaw, remote.kind);
+    const kind = remote.kind;
+    const source = 'factory config';
+    let azureDevOps;
+    if (kind === 'github') {
+        const gh = { ...object(bForge.github, `${baseSource}: factory.forge.github`), ...object(uForge.github, 'user config: factory.forge.github') };
+        if (gh.repo !== undefined) {
+            const repo = text(gh.repo, /^[^/\s]+\/[^/\s]+$/, 'forge.github.repo', source);
+            if (repo.toLowerCase() !== `${remote.owner}/${remote.name}`.toLowerCase())
+                mismatch('github.repo', repo, `${remote.owner}/${remote.name}`);
+        }
+        if (gh.host !== undefined) {
+            const host = text(gh.host, SEGMENT, 'forge.github.host', source);
+            if (host.toLowerCase() !== remote.host.toLowerCase())
+                mismatch('github.host', host, remote.host);
+        }
+    }
+    else {
+        const ado = { ...bAdo, ...uAdo };
+        const pin = (key, actual) => {
+            if (ado[key] === undefined)
+                return;
+            const value = text(ado[key], SEGMENT, `forge.azureDevOps.${key}`, source);
+            if (fold(value) !== fold(actual))
+                mismatch(`azureDevOps.${key}`, value, actual);
+        };
+        pin('org', remote.owner);
+        pin('project', remote.project);
+        pin('repo', remote.name);
+        if (ado.apiVersion !== undefined && ado.apiVersion !== DEFAULT_ADO_API_VERSION) {
+            throw new ForgeConfigError('invalid', `factory.forge.azureDevOps.apiVersion must be "${DEFAULT_ADO_API_VERSION}" (per-route versions are pinned in src/forge/ado/routes.ts)`);
+        }
+        let authors = [];
+        if (trustedAuthors !== undefined) {
+            if (!Array.isArray(trustedAuthors))
+                throw new ForgeConfigError('invalid', 'user config: factory.forge.azureDevOps.trustedAuthors must be an array of uniqueNames');
+            authors = [...new Set(trustedAuthors.map((a) => text(a, TEXT, 'forge.azureDevOps.trustedAuthors', 'user config').toLowerCase()))];
+        }
+        azureDevOps = {
+            org: remote.owner,
+            project: remote.project,
+            repo: remote.name,
+            workItemProject: ado.workItemProject === undefined ? remote.project : text(ado.workItemProject, SEGMENT, 'forge.azureDevOps.workItemProject', source),
+            ...(ado.team === undefined ? {} : { team: text(ado.team, SEGMENT, 'forge.azureDevOps.team', source) }),
+            apiVersion: DEFAULT_ADO_API_VERSION,
+            trustedAuthors: authors,
+        };
+    }
+    // intake.* and check.*: selection and scoring only (runs stay manual), so the working tree may set them.
+    const intake = { ...factoryBlock(base, 'intake', baseSource), ...factoryBlock(trustedUser, 'intake', 'user config'), ...factoryBlock(project, 'intake', 'project config') };
+    const check = { ...factoryBlock(base, 'check', baseSource), ...factoryBlock(trustedUser, 'check', 'user config'), ...factoryBlock(project, 'check', 'project config') };
+    // progress.* writes to the tracker: user -> base only.
+    const bProgress = factoryBlock(base, 'progress', baseSource);
+    const uProgress = factoryBlock(trustedUser, 'progress', 'user config');
+    const pProgress = factoryBlock(project, 'progress', 'project config');
+    if (Object.keys(pProgress).length > 0 && !same(pProgress, bProgress)) {
+        warnings.push(`omg factory: ignoring factory.progress from the working-tree project config; it is read only from the user config or ${baseSource}`);
+    }
+    return {
+        config: {
+            kind,
+            repo: remote,
+            ...(azureDevOps ? { azureDevOps } : {}),
+            intake: resolveIntake(intake, kind),
+            check: resolveCheck(check),
+            progress: resolveProgress({ ...bProgress, ...uProgress }, kind, source),
+        },
+        warnings,
+    };
+}
+/**
+ * Whether an ADO identity is in trustedAuthors (critic amendments §A.10):
+ * `uniqueName` only, case-insensitive; the display name is never consulted
+ * (anyone can choose it).
+ */
+export function isTrustedAdoAuthor(createdBy, trustedAuthors) {
+    const unique = createdBy?.uniqueName;
+    if (typeof unique !== 'string' || !unique.trim())
+        return false;
+    const name = unique.trim().toLowerCase();
+    return trustedAuthors.some((a) => a.toLowerCase() === name);
+}
+//# sourceMappingURL=config.js.map
