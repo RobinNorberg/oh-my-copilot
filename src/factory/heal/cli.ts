@@ -1,9 +1,11 @@
 /**
- * `omg factory heal scan|status` (experimental, design §10 PR 1). The scan
- * polls CI runs on the integration branch, computes failure signatures,
+ * `omg factory heal scan|status|run` (experimental, design §10 PR 1-2). The
+ * scan polls CI runs on the integration branch, computes failure signatures,
  * classifies new red runs deterministically and records them in heal state.
  * It makes no LLM call and no GitHub write: every command goes through
- * healGuardExec, and a rerun probe is recorded as an intent only.
+ * healGuardExec, and a rerun probe is recorded as an intent only. `run`
+ * starts the read-only debugger lane for one signature (run.ts); `close`
+ * lets a human close a parked heal run.
  */
 
 import { join } from 'path';
@@ -17,7 +19,9 @@ import { HEAL_WORKFLOW, type HealConfig } from './config.js';
 import { healGuardExec, jobLog, listRuns, shaRange, viewRunJobs, type HealJob, type HealRun } from './history.js';
 import { parseJob, type ParsedJob } from './logs.js';
 import { runSignature } from './signature.js';
-import { foldSignature, healStateDir, listHealStates, readDailyCounters, readHealState, SIG8, writeHealState, type HealSignatureState } from './state.js';
+import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState, type HealSignatureState } from './state.js';
+import type { LaneBackend } from '../run/lane.js';
+import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, runHeal, verifyHealSeal, type HealRunDeps } from './run.js';
 
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
 export const SCAN_LIMITS = Object.freeze({
@@ -35,6 +39,12 @@ export interface HealDeps {
   base: (root: string) => string;
   config: (root: string) => { config: HealConfig; warnings: string[] };
   now: () => Date;
+  /** The debugger lane backend (`omg factory heal run` without --dry-run is the opt-in to a billed lane). */
+  lanes: (root: string) => LaneBackend;
+  /** Out-of-repository heal ledger directory (counters mirror, seals). */
+  ledgerDir: string;
+  /** Test seams for `heal run`. */
+  run?: Pick<HealRunDeps, 'clock' | 'pollMs' | 'confinement' | 'delimiter' | 'env' | 'warn'>;
 }
 
 export interface ScanEntry {
@@ -54,6 +64,8 @@ export interface ScanResult {
   base: string;
   dryRun: boolean;
   entries: ScanEntry[];
+  /** Webhook-queued runs still waiting (not in the listed window yet). */
+  queued: number;
 }
 
 class HealUsageError extends Error {}
@@ -182,7 +194,10 @@ function scanOnce(opts: ScanOpts): ScanResult {
   // Rule 1: a red push run on the base branch (cancelled, skipped and in-progress runs never count).
   // Skipped runs never enter seenRuns, so only runs that reach classification use a candidate slot.
   let pushSlots = SCAN_LIMITS.pushCandidates;
-  for (const run of pushRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id))) {
+  // Runs the webhook enqueued take the first slots; every other fact about them comes from gh, not the payload.
+  const queued = new Set(readWebhookQueue(opts.root).map((q) => q.runId));
+  const candidates = pushRuns.filter((r) => r.conclusion === 'failure' && !seen.has(r.id));
+  for (const run of [...candidates.filter((r) => queued.has(r.id)), ...candidates.filter((r) => !queued.has(r.id))]) {
     if (pushSlots <= 0) break;
     const { counted, ignored } = failedJobs(ctx, run);
     if (counted.length === 0) { skip(run, ignored.length ? `ignored: only PR-policy job(s) failed (${ignored.join(', ')})` : 'no failed job'); continue; }
@@ -215,21 +230,30 @@ function scanOnce(opts: ScanOpts): ScanResult {
     const c = classifyRed(ctx, oldest[0], group.jobs, greenPush, allRuns, pushRuns);
     for (const run of oldest) record(run, c, 'pr', branches);
   }
-  return { base: opts.base, dryRun: opts.dryRun, entries };
+  // A queued run the scan listed is handled (or skipped by the rules above); one beyond the list window expires.
+  const listed = new Set([...seen, ...allRuns.map((r) => r.id)]);
+  const left = opts.dryRun ? [...queued].filter((id) => !listed.has(id)).length : pruneWebhookQueue(opts.root, listed, opts.now).length;
+  return { base: opts.base, dryRun: opts.dryRun, entries, queued: left };
 }
 
+/** Text from CI logs, lane output or a state file, safe for the terminal: control and format characters become spaces. */
+export const termSafe = (v: unknown): string => String(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+
 function renderEntry(e: ScanEntry): string {
-  if (!e.sig8) return chalk.gray(`  run ${e.runId} (${e.event} ${e.headBranch}): ${e.reason}`);
-  const flags = [e.next ? `next=${e.next}` : '', e.blocked ? chalk.yellow('blocked: rate-limit') : ''].filter(Boolean).join(' ');
-  const lines = [`  run ${e.runId} (${e.event} ${e.headBranch}) ${chalk.bold(e.sig8)} ${chalk.cyan(e.class)} ${flags}`, `    ${e.reason}`];
-  if (e.rerunIntent) lines.push(`    rerun: ${e.rerunIntent}`);
+  const t = termSafe;
+  if (!e.sig8) return chalk.gray(`  run ${t(e.runId)} (${t(e.event)} ${t(e.headBranch)}): ${t(e.reason)}`);
+  const flags = [e.next ? `next=${t(e.next)}` : '', e.blocked ? chalk.yellow('blocked: rate-limit') : ''].filter(Boolean).join(' ');
+  const lines = [`  run ${t(e.runId)} (${t(e.event)} ${t(e.headBranch)}) ${chalk.bold(t(e.sig8))} ${chalk.cyan(t(e.class))} ${flags}`, `    ${t(e.reason)}`];
+  if (e.rerunIntent) lines.push(`    rerun: ${t(e.rerunIntent)}`);
   return lines.join('\n');
 }
 
 export function renderHealState(s: HealSignatureState): string {
   const c = s.classification;
+  const t = termSafe;
+  // Line 0 carries chalk escapes, so its state values are made safe one by one; every later line is plain text.
+  const head = `${chalk.bold(`heal ${t(s.sig8)}`)}  class=${chalk.cyan(t(s.class))}  next=${t(s.next)}${s.blocked ? chalk.yellow('  blocked: rate-limit') : ''}  count=${t(s.count)}  source=${t(s.source)}`;
   const lines = [
-    `${chalk.bold(`heal ${s.sig8}`)}  class=${chalk.cyan(s.class)}  next=${s.next}${s.blocked ? chalk.yellow('  blocked: rate-limit') : ''}  count=${s.count}  source=${s.source}`,
     `first red run ${c.firstRed.runId} @ ${c.firstRed.sha.slice(0, 9)}${c.lastGreen ? `  last green run ${c.lastGreen.runId} @ ${c.lastGreen.sha.slice(0, 9)}` : '  no green run compared'}`,
   ];
   if (c.range) lines.push(`sha range: ${c.range.commits} commit(s), ${c.range.codeFiles} code file(s)`);
@@ -239,17 +263,31 @@ export function renderHealState(s: HealSignatureState): string {
     for (const ch of j.env.changed) lines.push(`    env ${ch.field}: ${ch.green ?? '?'} -> ${ch.red ?? '?'}`);
   }
   for (const r of s.rerunIntents) lines.push(`rerun intent: ${r.command} (recorded, not issued)`);
-  return lines.join('\n');
+  if (s.healRun) lines.push(`heal run ${s.healRun.id} ${s.healRun.open ? 'open' : 'closed'} since ${s.healRun.startedAt}`);
+  for (const l of s.lanes ?? []) {
+    lines.push(`  lane ${l.id} ${l.status} cap ${l.maxCredits}${l.usage ? ` spent ${Number(l.usage.credits).toFixed(2)} (${l.usage.source})` : ''} confinement=${l.confinement}${l.unconfinedOptIn ? ' (OMG_HEAL_UNCONFINED=1)' : ''}${l.note ? ` (${l.note})` : ''}`);
+  }
+  const d = s.diagnosis;
+  if (d) {
+    lines.push(`diagnosis ${d.outcome}${d.reason ? `: ${d.reason}` : ''} (lane output derived from untrusted CI logs)`);
+    if (d.diagnosis) {
+      lines.push(`  class ${d.diagnosis.class}  reproduced=${d.diagnosis.reproduced}${d.diagnosis.reproCommand ? `  repro: ${d.diagnosis.reproCommand}` : ''}`);
+      lines.push(`  root cause: ${d.diagnosis.rootCause.replace(/\s+/g, ' ').slice(0, 500)}`);
+      lines.push(`  evidence: ${d.diagnosis.evidence.join(', ')}`);
+      if (d.diagnosis.fix) lines.push(`  fix: ${d.diagnosis.fix.summary.replace(/\s+/g, ' ').slice(0, 300)} [${d.diagnosis.fix.files.join(', ')}]`);
+    }
+  }
+  return [head, ...lines.map(t)].join('\n');
 }
 
-async function guarded(json: boolean, fn: () => number): Promise<void> {
+async function guarded(json: boolean, fn: () => number | Promise<number>): Promise<void> {
   try {
-    process.exitCode = fn();
+    process.exitCode = await fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
     else console.error(chalk.red(`Error: ${message}`));
-    process.exitCode = error instanceof HealUsageError ? 2 : 1;
+    process.exitCode = error instanceof HealUsageError ? 2 : error instanceof HealRunRefused ? EXIT_HEAL_REFUSED : 1;
   }
 }
 
@@ -259,10 +297,10 @@ function healRoot(exec: Exec): string {
   return r.stdout.trim();
 }
 
-/** `omg factory heal scan|status` (experimental; no LLM, no GitHub writes). */
+/** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
 export function healCommand(deps: HealDeps): Command {
   const heal = new Command('heal');
-  heal.description('Experimental: classify red CI runs on the integration branch (deterministic; no LLM, no GitHub writes)');
+  heal.description('Experimental: classify red CI runs on the integration branch and diagnose them in a read-only lane (no GitHub writes)');
 
   heal
     .command('scan')
@@ -296,13 +334,59 @@ export function healCommand(deps: HealDeps): Command {
           if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
           const state = readHealState(root, sig8);
           if (!state) throw new HealUsageError(`no heal signature ${sig8}`);
-          console.log(json ? JSON.stringify(state, null, 2) : renderHealState(state));
+          const seal = verifyHealSeal(deps.ledgerDir, root, state);
+          if (json) console.log(JSON.stringify(seal === 'none' ? state : { ...state, seal }, null, 2));
+          else {
+            console.log(renderHealState(state));
+            if (seal !== 'none') console.log(seal === 'ok' ? 'seal: ok' : chalk.red(`seal: ${seal} (the heal record differs from the one the engine wrote; do not act on it)`));
+          }
           return 0;
         }
         const states = listHealStates(root);
         if (json) console.log(JSON.stringify({ ok: true, signatures: states }, null, 2));
         else if (states.length === 0) console.log('no heal signatures recorded');
-        else for (const s of states) console.log(`${s.sig8}  ${s.class.padEnd(17)} count=${s.count}  next=${s.next}${s.blocked ? '  blocked: rate-limit' : ''}  last run ${s.lastSeen.runId}`);
+        else for (const s of states) console.log(termSafe(`${s.sig8}  ${String(s.class).padEnd(17)} count=${s.count}  next=${s.next}${s.blocked ? '  blocked: rate-limit' : ''}  last run ${s.lastSeen.runId}`));
+        const queued = readWebhookQueue(root).length;
+        if (!json && queued > 0) console.log(`${queued} webhook-queued run(s) wait for the next scan`);
+        return 0;
+      }));
+
+  heal
+    .command('run <sig8>')
+    .description('Run the read-only debugger lane for a queued signature (billed, capped), record its diagnosis and park at awaiting-human')
+    .option('--dry-run', 'Write the evidence bundle and print the debugger prompt; start no lane')
+    .option('--json', 'JSON output')
+    .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
+      guarded(Boolean(o.json), async () => {
+        if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+        const root = healRoot(deps.exec);
+        const { config, warnings } = deps.config(root);
+        for (const w of warnings) console.error(chalk.yellow(w));
+        const outcome = await runHeal(
+          { root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) },
+          { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.run },
+        );
+        if (o.json) console.log(JSON.stringify({ ok: true, ...outcome }, null, 2));
+        else {
+          if (outcome.prompt) console.log(outcome.prompt);
+          console.log(`${chalk.bold(`factory heal run ${sig8}`)}  ${termSafe(outcome.message)}`);
+          console.log(`  evidence: ${outcome.bundleDir}`);
+          if (outcome.lane) console.log(`  lane ${outcome.lane.id} ${outcome.lane.status}, ${outcome.lane.usage?.credits.toFixed(2) ?? '?'} of ${outcome.lane.maxCredits} AI credits`);
+        }
+        return outcome.exitCode;
+      }));
+
+  heal
+    .command('close <sig8>')
+    .description('Close an open heal run parked at heal-approve or heal-diagnosis (a human decision; frees the open-run slot)')
+    .option('--json', 'JSON output')
+    .action((sig8: string, o: { json?: boolean }) =>
+      guarded(Boolean(o.json), () => {
+        if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+        const root = healRoot(deps.exec);
+        const state = closeHeal(root, sig8, { ledgerDir: deps.ledgerDir, now: deps.now });
+        if (o.json) console.log(JSON.stringify({ ok: true, sig8, healRun: state.healRun, next: state.next }, null, 2));
+        else console.log(`${chalk.bold(`factory heal close ${sig8}`)}  closed heal run ${termSafe(state.healRun!.id)}`);
         return 0;
       }));
   return heal;
