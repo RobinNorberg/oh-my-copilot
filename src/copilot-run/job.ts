@@ -927,10 +927,13 @@ export class CopilotRunManager {
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
+    // No session needs git credentials (the host pushes). An empty helper in the read-only global config clears the
+    // system one (Git for Windows: manager), so the session's git fetch or `git credential fill` never asks GCM.
+    writeFileSync(env.GIT_CONFIG_GLOBAL!, '[credential]\n\thelper =\n');
     // A session the host commits for never commits, so it gets no identity.
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
-    Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
+    Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;

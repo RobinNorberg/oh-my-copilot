@@ -298,6 +298,14 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.GH_CONFIG_DIR).toBeUndefined();
     // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
     expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]git[\\/]config$/);
+    // No session's git reaches a credential helper (Git for Windows' system config sets manager) or prompts.
+    for (const [i, env] of [lane, plain].entries()) {
+      const globalConfig = join(root, `global-gitconfig-${i}`);
+      writeFileSync(globalConfig, calls.globalGitConfigs[i] ?? '');
+      const helpers = execFileSync('git', ['config', '--get-all', 'credential.helper'], { cwd: repo, env: { ...env, GIT_CONFIG_GLOBAL: globalConfig }, encoding: 'utf8' });
+      expect(helpers.split(/\r?\n/).slice(0, -1).at(-1)).toBe('');
+      expect(env).toMatchObject({ GCM_INTERACTIVE: 'never', GIT_TERMINAL_PROMPT: '0' });
+    }
   });
 
   it('scrubLaneCredentials removes every Azure DevOps and Azure credential in any letter case and points az at the empty dir', () => {
