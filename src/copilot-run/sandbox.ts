@@ -17,7 +17,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join, posix, resolve, win32 } from 'node:path';
+import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
@@ -266,8 +266,10 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
   // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
   // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
+  // The lane's global git config is read-only.
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP!, relocated.USERPROFILE!];
+  const gitConfigDir = dirname(relocated.GIT_CONFIG_GLOBAL!);
   const common = {
     allowBypass: false as const,
     allowDevToolAccess: false as const,
@@ -282,7 +284,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...common,
       userPolicy: {
         filesystem: {
-          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ...tools, ...settings.extraReadonlyPaths],
+          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...tools, ...settings.extraReadonlyPaths],
           readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
         },
         network: { allowOutbound: false, allowLocalNetwork: false },
@@ -292,7 +294,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
     filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
@@ -631,7 +633,13 @@ export function scrubTokens(text: string, secrets: readonly string[]): string {
  * grants the sandbox read-write on the dir its own TEMP names ("temporary
  * storage" in the SDK's allowDevToolAccess doc; the host value was the
  * user's whole %TEMP%, other jobs' homes and repositories included), and
- * no temp dir at all when that dir is missing.
+ * no temp dir at all when that dir is missing. The temp and profile dirs
+ * are lane-writable (buildSandboxConfig), so nothing the unsandboxed
+ * runtime loads code or config from sits in them: the global git config
+ * (the runtime runs git itself, and core.fsmonitor or a filter driver would
+ * run unsandboxed) is read-only in `<jobHome>/git`, the package cache sits
+ * in `<jobHome>/.cache`, and node's compile cache, which defaults to the
+ * temp dir, is off.
  */
 export function relocatedProfileEnv(jobHome: string): Record<string, string> {
   const profile = join(jobHome, 'profile');
@@ -643,7 +651,8 @@ export function relocatedProfileEnv(jobHome: string): Record<string, string> {
     USERPROFILE: profile,
     HOME: profile,
     XDG_CONFIG_HOME: join(profile, '.config'),
-    GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
+    GIT_CONFIG_GLOBAL: join(jobHome, 'git', 'config'),
+    NODE_DISABLE_COMPILE_CACHE: '1',
     // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant
     // anchored on it, in the job home but outside the lane-writable profile: the runtime loads code from its pkg dir.
     COPILOT_CACHE_HOME: join(jobHome, '.cache', 'copilot'),

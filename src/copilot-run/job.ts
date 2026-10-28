@@ -44,7 +44,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
@@ -893,6 +893,7 @@ export class CopilotRunManager {
     const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
     const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+    mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
     // A session the host commits for never commits, so it gets no identity.
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);

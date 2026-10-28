@@ -43,7 +43,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { openAppendExclusive } from '../lib/append-no-follow.js';
@@ -683,6 +683,7 @@ export class CopilotRunManager {
         const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
         const gitHubToken = sessionGitHubToken(deps.env);
         mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+        mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
         mkdirSync(env.TEMP, { recursive: true });
         // A session the host commits for never commits, so it gets no identity.
         if (!job.hostCommits)
@@ -708,8 +709,9 @@ export class CopilotRunManager {
         }
         const policy = {
             cwd: job.workCwd,
-            // The job's home, never the job dir: the runtime's file tools must not reach events.jsonl.
-            stateRoot: job.home,
+            // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
+            // the runtime reads back from the job home (config.json, session state, policies, logs, the package cache).
+            stateRoot: env.TEMP,
             pluginRoot,
             readRoots: [job.home],
             mcpServer: MCP_SERVER,

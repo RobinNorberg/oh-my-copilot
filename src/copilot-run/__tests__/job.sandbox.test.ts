@@ -343,7 +343,7 @@ describe('copilot_run sandbox permissions and env', () => {
     expect(env).toMatchObject({ TEMP: join(home, 'tmp'), TMP: join(home, 'tmp'), TMPDIR: join(home, 'tmp') });
     expect(existsSync(join(home, 'tmp'))).toBe(true);
     const profile = join(home, 'profile');
-    expect(env).toMatchObject({ HOME: profile, USERPROFILE: profile, XDG_CONFIG_HOME: join(profile, '.config'), GIT_CONFIG_GLOBAL: join(profile, '.gitconfig') });
+    expect(env).toMatchObject({ HOME: profile, USERPROFILE: profile, XDG_CONFIG_HOME: join(profile, '.config'), GIT_CONFIG_GLOBAL: join(home, 'git', 'config'), NODE_DISABLE_COMPILE_CACHE: '1' });
     const gitconfig = readFileSync(env.GIT_CONFIG_GLOBAL!, 'utf8');
     expect(gitconfig).toContain('Lane Owner');
     expect(gitconfig).toContain('owner@example.invalid');

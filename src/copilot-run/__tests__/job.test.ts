@@ -181,7 +181,7 @@ describe('copilot_run review profile', () => {
     expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', 'tmp', 'x') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
     expect(await decide({ kind: 'write', path: eventsPath }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
     expect(await decide({ kind: 'write', fileName: join(dirname(eventsPath), 'home', '..', 'events.jsonl') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
-    for (const p of ['config.json', join('session-state', 's', 'events.jsonl'), join('.cache', 'copilot', 'pkg', 'runtime.node'), join('profile', '.gitconfig')]) {
+    for (const p of ['config.json', join('session-state', 's', 'events.jsonl'), join('.cache', 'copilot', 'pkg', 'runtime.node'), join('git', 'config')]) {
       expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', p) }, { sessionId: 's' }), p).toMatchObject({ kind: 'reject' });
     }
     await m.cancel(started.jobId as string);
@@ -293,7 +293,7 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.NPM_TOKEN).toBeUndefined();
     expect(plain.GH_CONFIG_DIR).toBeUndefined();
     // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
-    expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]\.gitconfig$/);
+    expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]git[\\/]config$/);
   });
 
   it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {

@@ -63,7 +63,7 @@ describe('buildSandboxConfig', () => {
       sandboxLspServers: true,
       auth: { git: false, gh: false },
       userPolicy: {
-        filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot], readwritePaths: [...laneHome()] },
+        filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')], readwritePaths: [...laneHome()] },
         network: { allowOutbound: false, allowLocalNetwork: false },
       },
     });
@@ -75,7 +75,7 @@ describe('buildSandboxConfig', () => {
     // Without a linked worktree only objects/ is granted: config and hooks stay read-only.
     expect(plain.userPolicy.filesystem).toEqual({
       readwritePaths: [ctx.worktree, ...laneHome(), join(ctx.commonGitDir, 'objects')],
-      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')],
     });
     const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
     const linked = buildSandboxConfig('write', { ...ctx, gitDir }, host());
@@ -98,7 +98,7 @@ describe('buildSandboxConfig', () => {
     const cfg = buildSandboxConfig('write', { ...ctx, gitDir, hostCommits: true }, host());
     expect(cfg.userPolicy.filesystem).toEqual({
       readwritePaths: [ctx.worktree, ...laneHome()],
-      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')],
     });
     expect(cfg.addCurrentWorkingDirectory).toBe(true);
   });
@@ -113,6 +113,7 @@ describe('buildSandboxConfig', () => {
       join(ctx.jobHome, 'policies'),
       join(ctx.jobHome, 'logs'),
       join(env.COPILOT_CACHE_HOME!, 'pkg'),
+      env.GIT_CONFIG_GLOBAL!,
     ];
     for (const cfg of [buildSandboxConfig('review', ctx, host()), buildSandboxConfig('write', ctx, host()), buildSandboxConfig('write', { ...ctx, hostCommits: true }, host())]) {
       const { readwritePaths, readonlyPaths } = cfg.userPolicy.filesystem;
@@ -157,7 +158,7 @@ describe('buildSandboxConfig', () => {
     const toolPaths = [join(root, 'nodejs'), join(root, 'git'), root, join(root, 'me', '..'), resolve('/')];
     for (const profile of ['review', 'write'] as const) {
       const fs = buildSandboxConfig(profile, { ...ctx, toolPaths }, host()).userPolicy.filesystem;
-      expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
+      expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p) && p !== join(ctx.jobHome, 'git'))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
       expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
     }
     expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
@@ -354,7 +355,7 @@ describe('detection helpers', () => {
       // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
       TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
-      XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
+      XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'git', 'config'), NODE_DISABLE_COMPILE_CACHE: '1',
       // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
       COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
     });

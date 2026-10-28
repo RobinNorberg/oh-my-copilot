@@ -289,7 +289,13 @@ export declare function scrubTokens(text: string, secrets: readonly string[]): s
  * grants the sandbox read-write on the dir its own TEMP names ("temporary
  * storage" in the SDK's allowDevToolAccess doc; the host value was the
  * user's whole %TEMP%, other jobs' homes and repositories included), and
- * no temp dir at all when that dir is missing.
+ * no temp dir at all when that dir is missing. The temp and profile dirs
+ * are lane-writable (buildSandboxConfig), so nothing the unsandboxed
+ * runtime loads code or config from sits in them: the global git config
+ * (the runtime runs git itself, and core.fsmonitor or a filter driver would
+ * run unsandboxed) is read-only in `<jobHome>/git`, the package cache sits
+ * in `<jobHome>/.cache`, and node's compile cache, which defaults to the
+ * temp dir, is off.
  */
 export declare function relocatedProfileEnv(jobHome: string): Record<string, string>;
 /**
