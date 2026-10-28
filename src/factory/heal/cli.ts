@@ -29,7 +29,7 @@ import type { FactoryRunOutcome } from '../run/engine.js';
 import type { GateConfigLoader } from '../run/prepare.js';
 import { factoryCancelRequested, healRunKey, readFactoryState, requestFactoryCancel } from '../run/state.js';
 import { knownFlakyProposal, renderKnownFlakyProposal, runHealEngine, type HealEngineDeps } from './implement.js';
-import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, runHeal, verifyHealSeal, type HealRunDeps } from './run.js';
+import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, readHealScanRecord, runHeal, verifyHealSeal, writeHealScanRecord, type HealRunDeps } from './run.js';
 
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
 export const SCAN_LIMITS = Object.freeze({
@@ -165,7 +165,8 @@ function loadKnownFlaky(exec: Exec, root: string, base: string, warn: (m: string
   return parseKnownFlaky(r.stdout, `origin/${base}:${file}`);
 }
 
-type ScanOpts = { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void; lockTimeoutMs?: number };
+/** `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept. */
+type ScanOpts = { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void; ledgerDir: string; lockTimeoutMs?: number };
 
 /** One writing scan at a time: the read-fold-write of heal state is held under a lock file. */
 export function runHealScan(opts: ScanOpts): ScanResult {
@@ -183,16 +184,35 @@ function scanOnce(opts: ScanOpts): ScanResult {
     .filter((r) => completed(r) && Date.parse(r.createdAt) >= since);
   const allRuns = [...pushRuns, ...prRuns];
   const states = listHealStates(opts.root);
-  const seen = new Set(states.flatMap((s) => s.seenRuns));
+  // A signature without a valid scan-time record outside the repository has its runs classified again from GitHub.
+  const unrecorded = new Set(opts.dryRun ? [] : states.filter((s) => !readHealScanRecord(opts.ledgerDir, opts.root, s.sig8)).map((s) => s.sig8));
+  const seen = new Set(states.filter((s) => !unrecorded.has(s.sig8)).flatMap((s) => s.seenRuns));
   const counters = readDailyCounters(opts.root, opts.now);
   const entries: ScanEntry[] = [];
   const pending = new Map(states.map((s) => [s.sig8, s] as const));
 
   const record = (run: HealRun, c: HealClassification, source: 'push' | 'pr', prBranches?: string[]) => {
     const prev = pending.get(c.sig8) ?? null;
+    if (prev?.seenRuns.includes(run.id)) {
+      // An already counted run only restores the missing scan-time record (a PR run never replaces a push one).
+      const restore = unrecorded.has(c.sig8) && (prev.source !== 'push' || source === 'push');
+      if (restore) {
+        writeHealScanRecord(opts.ledgerDir, opts.root, { sig8: c.sig8, class: c.class, classification: c });
+        unrecorded.delete(c.sig8);
+      }
+      entries.push({ runId: run.id, event: run.event, headBranch: run.headBranch, sig8: c.sig8, class: c.class, reason: restore ? 'already counted; scan-time classification recorded outside the repository again' : 'already counted', next: prev.next, recorded: restore });
+      return;
+    }
     const { state, changed, suppressed } = foldSignature(prev, { classification: c, runId: run.id, source, ...(prBranches ? { prBranches } : {}) }, [...pending.values()], counters, opts.config, opts.now);
     if (changed) pending.set(state.sig8, state);
-    if (changed && !opts.dryRun) writeHealState(opts.root, state);
+    if (changed && !opts.dryRun) {
+      writeHealState(opts.root, state);
+      // Only a classification derived from GitHub data in this scan goes to the out-of-repo record.
+      if (!suppressed && state.classification === c) {
+        writeHealScanRecord(opts.ledgerDir, opts.root, state);
+        unrecorded.delete(c.sig8);
+      }
+    }
     const reasons = [...new Set(c.jobs.map((j) => `${j.job}: ${j.reason}`))].join('; ');
     entries.push({
       runId: run.id, event: run.event, headBranch: run.headBranch, sig8: c.sig8, class: state.class,
@@ -349,7 +369,7 @@ export function healCommand(deps: HealDeps): Command {
         const root = healRoot(deps.exec);
         const { config, warnings } = deps.config(root);
         for (const w of warnings) console.error(chalk.yellow(w));
-        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)) });
+        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir });
         if (o.json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
         else {
           console.log(`${chalk.bold('factory heal scan')}  base=${result.base}${result.dryRun ? '  (dry run: no state written)' : ''}`);

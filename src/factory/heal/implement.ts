@@ -34,7 +34,7 @@ import type { LaneBackend } from '../run/lane.js';
 import type { GateConfigLoader } from '../run/prepare.js';
 import { healRunKey, readFactoryState, type FactoryHealRecord } from '../run/state.js';
 import type { HealConfig } from './config.js';
-import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, readHealSealSubject, verifyHealSeal, writeHealCounters, type HealSealSubject } from './run.js';
+import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, healSealSubject, readHealSealSubject, verifyHealSeal, writeHealCounters, type HealSealSubject } from './run.js';
 import { healStateDir, readHealState, type HealSignatureState } from './state.js';
 
 export const KNOWN_FLAKY_FILE = '.github/known-flaky-tests.json';
@@ -143,6 +143,9 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
     if (s.next !== 'heal-approve') throw new HealRunRefused(`heal ${o.sig8} is at ${s.next}; only a valid diagnosis parked at heal-approve starts a ci-heal run`);
     const sealed = readHealSealSubject(deps.ledgerDir, o.root, o.sig8);
     if (!sealed) throw new HealRunRefused(`the heal seal of ${o.sig8} holds no valid classification snapshot; rerun omg factory heal run ${o.sig8}`);
+    let same = false;
+    try { same = JSON.stringify(healSealSubject(s.class, s.classification)) === JSON.stringify(sealed); } catch { /* malformed: differs */ }
+    if (!same) deps.warn?.(`the class or classification in the heal record of ${o.sig8} differs from the sealed one outside the repository; it is ignored`);
     record = healRecord(s, sealed);
   }
   const { limits, warnings } = deps.limits(o.root);

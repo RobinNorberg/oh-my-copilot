@@ -1914,8 +1914,14 @@ class FactoryEngine {
     const startedAt = this.iso();
     const record: FactoryLaneRecord = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt };
     // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
-    this.ledger.setBaseline(id, before);
-    this.save((s) => ({ ...s, lanes: [...s.lanes, record] }));
+    try {
+      this.ledger.setBaseline(id, before);
+      this.save((s) => ({ ...s, lanes: [...s.lanes, record] }));
+    } catch (error) {
+      // No lane started: the heal reservation is released before the step fails.
+      settleHeal(0);
+      throw error;
+    }
     let remoteId: string;
     try {
       ({ remoteId } = await this.o.lanes.start({
