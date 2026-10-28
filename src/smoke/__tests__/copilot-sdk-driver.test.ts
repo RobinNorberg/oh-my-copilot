@@ -221,6 +221,7 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
     runChain: async () => { throw new Error('chain runner not stubbed'); },
     runTeam: async () => { throw new Error('team runner not stubbed'); },
     runCli: async () => { throw new Error('cli runner not stubbed'); },
+    runFactory: async () => { throw new Error('factory runner not stubbed'); },
     ...over,
   };
 }
@@ -493,6 +494,21 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     expect(result.cost).toMatchObject({ premiumRequests: 2, credits: 50 });
     const c = byId(result.checks);
     for (const id of scenarioCheckIds('smoke')) expect(c[id]).toMatchObject({ ok: false, detail: CREDIT_CAP_SKIP_DETAIL });
+    expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
+  });
+
+  it('factory run scenarios run through runFactory with the run budget, never as an SDK session', async () => {
+    const { loaded, rec } = fakeSdk();
+    const calls: string[] = [];
+    await runSdkTier(input(loaded, {
+      scenarios: ['factory-run', 'factory-run-fix'],
+      maxCredits: 30,
+      runFactory: async (f) => {
+        calls.push(`${f.name}:${f.budget}`);
+        return { name: f.name, timeoutMs: 1, model: 'lanes', maxCredits: f.maxCredits, budget: f.budget, capped: false, wedged: false, events: [], idle: true, timedOut: false };
+      },
+    }));
+    expect(calls).toEqual(['factory-run:30', 'factory-run-fix:30']);
     expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
   });
 

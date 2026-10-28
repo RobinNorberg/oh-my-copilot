@@ -29,6 +29,7 @@ import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-e
 import {
   chooseModel,
   CLI_SCENARIOS,
+  FACTORY_RUN_SCENARIOS,
   CREDIT_CAP_SKIP_DETAIL,
   evaluateScenario,
   evaluateSdkAgents,
@@ -53,6 +54,7 @@ import {
   usageCredits,
   type FiletoolsEvidence,
   type CliScenario,
+  type FactoryRunScenario,
   type PermissionRequestLike,
   type ProbeRecord,
   type Rpc,
@@ -63,9 +65,10 @@ import {
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
 // Type-only: the team bundle reaches this driver (runtime-v2, sdk-host), and the
 // chain scenario pulls in the factory CLI (commander). The smoke entry injects
-// the runners as `runChain` and `runTeam`.
+// the runners as `runChain`, `runTeam` and `runFactory` (the factory engine).
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runCliScenario } from './copilot-cli-scenarios.js';
+import type { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
 
 // ---------------------------------------------------------------------------
@@ -496,6 +499,8 @@ export interface SdkTierInput {
   runTeam: typeof runTeamScenario;
   /** The CLI scenarios' runner ({@link runCliScenario}, headless copilot sessions), injected by the smoke entry. */
   runCli: typeof runCliScenario;
+  /** The `factory-run` scenarios' runner ({@link runFactoryRunScenario}, the engine with real lanes), injected by the smoke entry. */
+  runFactory: typeof runFactoryRunScenario;
 }
 
 export interface SdkTierResult {
@@ -510,6 +515,10 @@ export interface SdkTierResult {
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export function runtimeCreditCap(maxCredits: number): number {
   return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
+}
+
+function isFactoryRunScenario(name: Scenario): name is FactoryRunScenario {
+  return (FACTORY_RUN_SCENARIOS as readonly Scenario[]).includes(name);
 }
 
 function isCliScenario(name: Scenario): name is CliScenario {
@@ -652,7 +661,22 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
               eventsPath: path,
               spawnSync: input.spawnSync,
             })
-            : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+            // The factory run scenarios drive the engine in-process with copilot_run lanes.
+            : isFactoryRunScenario(name)
+              ? await input.runFactory({
+                name,
+                bin,
+                root: input.root,
+                env: input.env,
+                projectDir: input.projectDir,
+                home: input.home,
+                timeoutMs: input.timeoutMs,
+                maxCredits: input.maxCredits,
+                budget: input.maxCredits - total.credits,
+                eventsPath: path,
+                spawnSync: input.spawnSync,
+              })
+              : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
       const cost = runCost(run);
       total.premiumRequests += cost.premiumRequests;
