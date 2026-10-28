@@ -140,6 +140,12 @@ describe('sdk permission policy', () => {
     }
   });
 
+  it('refuses a .. segment in any path field, not only the first', () => {
+    const clean = join(worktree, 'x.txt');
+    expect(decideSdkPermission({ kind: 'write', resolvedPath: clean, path: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+    expect(decideSdkPermission({ kind: 'read', resolvedPath: clean, fileName: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+  });
+
   // A hard link needs no privilege on Windows (NTFS); realpath cannot see it.
   it('refuses a write to a hard-linked or non-regular existing target', () => {
     const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
