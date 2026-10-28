@@ -131,7 +131,7 @@ export function debugLaneProblems(exec: Exec, root: string, before: RepoSnapshot
   const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : undefined;
   const shared = compareSnapshots(before, after, allowed, newWorktree ? { newWorktree } : {});
   if (shared.length > 0) return shared;
-  return verifyReviewWorktree(exec, result, startSha, after.commonDir);
+  return verifyReviewWorktree(result, startSha, after.commonDir);
 }
 
 /** Start the debugger lane, wait for it, and run the tamper check around it. */

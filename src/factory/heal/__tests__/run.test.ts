@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseKnownFlaky } from '../../../ship/config.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
+import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import type { LaneBackend, LaneResult, LaneStartInput } from '../../run/lane.js';
 import { HEAL_APPROVE_GATE } from '../../run/state.js';
@@ -89,6 +90,8 @@ class FakeLanes implements LaneBackend {
     const id = `job${++laneSeq}`;
     const wt = join(wtBase, id);
     git('worktree', 'add', '-q', '-b', `omc-team/copilot-run/${id}`, wt, input.baseRef);
+    // Like copilot_run: the git links are recorded at creation.
+    recordWorktreeGitLinks(wt, readWorktreeGitLinks(wt)!);
     this.lanes.set(id, { input, wt });
     this.during?.(wt);
     return { remoteId: id };

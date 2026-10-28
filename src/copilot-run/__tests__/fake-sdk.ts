@@ -10,13 +10,52 @@ import type { LoadedSdk, SdkSessionConfig } from '../../smoke/copilot-sdk-driver
 /** `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles. */
 export type FakeBehavior = 'idle' | 'commit' | 'hang';
 
+/**
+ * The fake runtime's sandbox: `supported` (default) confirms it; `unsupported`
+ * reports no host support; `blocked` reports enforcement blocked;
+ * `update-fails` rejects options.update; `no-rpc` has no sandbox RPCs (an old SDK).
+ */
+export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc';
+
 export interface FakeCalls {
   connections: Array<{ path?: string; args?: string[]; env?: NodeJS.ProcessEnv }>;
   sessions: SdkSessionConfig[];
   prompts: string[];
+  /** Every session.rpc.options.update payload. */
+  optionsUpdates: Array<Record<string, unknown>>;
 }
 
-export const newCalls = (): FakeCalls => ({ connections: [], sessions: [], prompts: [] });
+export const newCalls = (): FakeCalls => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [] });
+
+/** The server `rpc` of a fake client with sandbox support `sandbox`. */
+export function fakeClientRpc(sandbox: FakeSandbox): unknown {
+  if (sandbox === 'no-rpc') return undefined;
+  const supported = sandbox !== 'unsupported';
+  return {
+    sandbox: {
+      getHostSupport: async () => ({
+        supported,
+        ...(supported ? {} : { reason: 'MXC is not available on this host' }),
+        capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: false }],
+      }),
+    },
+  };
+}
+
+/** The session `rpc` of a fake session with sandbox support `sandbox`. */
+export function fakeSessionRpc(sandbox: FakeSandbox, calls: { optionsUpdates: Array<Record<string, unknown>> }): never {
+  if (sandbox === 'no-rpc') return {} as never;
+  return {
+    options: {
+      update: async (params: Record<string, unknown>) => {
+        calls.optionsUpdates.push(params);
+        if (sandbox === 'update-fails') throw new Error('policy conflict');
+        return { success: true };
+      },
+    },
+    sandbox: { getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }) },
+  } as never;
+}
 
 export const gitIn = (cwd: string, ...args: string[]) =>
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], {
@@ -25,10 +64,10 @@ export const gitIn = (cwd: string, ...args: string[]) =>
     stdio: 'pipe',
   }).trim();
 
-export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls): LoadedSdk {
+export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeSandbox = 'supported'): LoadedSdk {
   class Session {
     sessionId = `sess-${calls.sessions.length}`;
-    rpc = {} as never;
+    rpc = fakeSessionRpc(sandbox, calls);
     constructor(private readonly cfg: SdkSessionConfig) {}
     private emit(type: string, data: Record<string, unknown> = {}) { this.cfg.onEvent?.({ type, data }); }
     async send({ prompt }: { prompt: string }) {
@@ -50,6 +89,7 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls): LoadedSdk {
   }
   class Client {
     cliProcess = null;
+    rpc = fakeClientRpc(sandbox);
     constructor(_opts: unknown) {}
     async start() {}
     async stop() { return []; }
@@ -68,11 +108,11 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls): LoadedSdk {
   };
 }
 
-export function fakeDeps(root: string, behavior: FakeBehavior, calls: FakeCalls, env: NodeJS.ProcessEnv): CopilotRunDeps {
+export function fakeDeps(root: string, behavior: FakeBehavior, calls: FakeCalls, env: NodeJS.ProcessEnv, sandbox: FakeSandbox = 'supported'): CopilotRunDeps {
   return {
     env: { PATH: process.env.PATH ?? '', ...env },
     platform: 'linux',
-    loadSdk: async () => fakeSdk(behavior, calls),
+    loadSdk: async () => fakeSdk(behavior, calls, sandbox),
     resolveBin: () => '/usr/bin/copilot',
     pluginRoot: () => '/plugin',
     userConfigDir: () => join(root, 'user-copilot'),
