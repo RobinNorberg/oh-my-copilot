@@ -192,12 +192,15 @@ function scanOnce(opts: ScanOpts): ScanResult {
   const pending = new Map(states.map((s) => [s.sig8, s] as const));
 
   const record = (run: HealRun, c: HealClassification, source: 'push' | 'pr', prBranches?: string[]) => {
-    const prev = pending.get(c.sig8) ?? null;
+    // The source is the one in the record outside the repository, never the one in `.omg/`.
+    const stored = readHealScanRecord(opts.ledgerDir, opts.root, c.sig8);
+    const inRepo = pending.get(c.sig8) ?? null;
+    const prev = inRepo && stored ? { ...inRepo, source: stored.source } : inRepo;
     if (prev?.seenRuns.includes(run.id)) {
       // An already counted run only restores the missing scan-time record (a PR run never replaces a push one).
       const restore = unrecorded.has(c.sig8) && (prev.source !== 'push' || source === 'push');
       if (restore) {
-        writeHealScanRecord(opts.ledgerDir, opts.root, { sig8: c.sig8, class: c.class, classification: c });
+        writeHealScanRecord(opts.ledgerDir, opts.root, { sig8: c.sig8, class: c.class, source, classification: c });
         unrecorded.delete(c.sig8);
       }
       entries.push({ runId: run.id, event: run.event, headBranch: run.headBranch, sig8: c.sig8, class: c.class, reason: restore ? 'already counted; scan-time classification recorded outside the repository again' : 'already counted', next: prev.next, recorded: restore });
@@ -208,7 +211,7 @@ function scanOnce(opts: ScanOpts): ScanResult {
     if (changed && !opts.dryRun) {
       writeHealState(opts.root, state);
       // Only a classification derived from GitHub data in this scan goes to the out-of-repo record.
-      if (!suppressed && state.classification === c) {
+      if (!suppressed && state.classification === c && !(stored?.source === 'push' && source === 'pr')) {
         writeHealScanRecord(opts.ledgerDir, opts.root, state);
         unrecorded.delete(c.sig8);
       }
