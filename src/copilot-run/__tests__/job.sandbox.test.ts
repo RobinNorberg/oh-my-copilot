@@ -1,5 +1,5 @@
 import { readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CopilotRunManager, type CopilotRunDeps } from '../job.js';
@@ -175,6 +175,17 @@ describe('copilot_run sandbox attestation', () => {
     expect((await m.wait(started.jobId, 10_000)).stopRequested).toBe('sandbox-escaped');
   });
 
+  it('in an enforced session a call of an unknown tool without the sandboxed field is an escape', async () => {
+    const m = manager('hang', 'supported');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    expect(m.status(started.jobId).sandbox?.mode).toBe('enforced');
+    calls.sessions[0].onEvent!({ type: 'tool.execution_complete', data: { toolCallId: 'y', success: true } });
+    const done = await m.wait(started.jobId, 10_000);
+    expect(done.stopRequested).toBe('sandbox-escaped');
+    expect(done.error).toMatch(/sandboxed: undefined/);
+  });
+
   it('a sandboxed shell call passes; detect-only counts an unsandboxed one without stopping', async () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'implement', cwd: repo });
@@ -214,6 +225,58 @@ describe('copilot_run sandbox permissions and env', () => {
     await m.cancel(started.jobId);
   });
 
+  it('a review gets no shell when the sandbox is switched off: detect-only is for write sessions only', async () => {
+    for (const [over, env] of [[{ enabled: false }, {}], [{}, { OMG_SANDBOX: 'off' }]] as const) {
+      calls = newCalls();
+      const m = manager('hang', 'supported', { sandboxSettings: settings(over) }, env);
+      const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });
+      await settle();
+      expect(m.status(started.jobId).sandbox?.mode).toBe('read-only-no-shell');
+      expect(tools()).not.toEqual(expect.arrayContaining(['powershell']));
+      expect(tools()).not.toEqual(expect.arrayContaining(['bash']));
+      const out = await calls.sessions[0].onPermissionRequest({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' });
+      expect(out).toMatchObject({ kind: 'reject', feedback: expect.stringContaining('no shell without a confirmed sandbox') });
+      await m.cancel(started.jobId);
+    }
+    // A write session switched off still runs detect-only.
+    calls = newCalls();
+    const w = manager('hang', 'supported', { sandboxSettings: settings({ enabled: false }) });
+    const ws = w.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    expect(w.status(ws.jobId).sandbox?.mode).toBe('detect-only');
+    await w.cancel(ws.jobId);
+  });
+
+  it('scrubs GitHub tokens and the caller token from the final text, notes and events', async () => {
+    const secret = 'cop-secret-value';
+    const leaked = `ghp_${'Z9y8'.repeat(9)}`;
+    const m = manager('hang', 'supported', {}, { COPILOT_GITHUB_TOKEN: secret });
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    calls.sessions[0].onEvent!({ type: 'assistant.message', data: { content: `token ${secret} and ${leaked}` } });
+    const done = await m.cancel(started.jobId);
+    expect(done.finalText).toBe('token [redacted] and [redacted]');
+    const events = readFileSync(done.eventsPath as string, 'utf8');
+    expect(events).not.toContain(secret);
+    expect(events).not.toContain(leaked);
+  });
+
+  it('the write policy leaves config and hooks read-only, so a planted hook or fsmonitor cannot be written', async () => {
+    const m = manager('hang', 'supported');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    const fs = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem;
+    const common = gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+    const gitDir = gitIn((started.worktree as { path: string }).path, 'rev-parse', '--path-format=absolute', '--git-dir');
+    expect(fs.readonlyPaths).toContain(resolve(common));
+    expect(fs.readwritePaths).toEqual(expect.arrayContaining([join(resolve(common), 'objects'), resolve(gitDir)]));
+    for (const p of ['config', 'hooks', join('hooks', 'post-checkout'), 'info']) {
+      const target = join(resolve(common), p);
+      expect(fs.readwritePaths.some((rw) => rw.startsWith(resolve(common)) && (target === rw || target.startsWith(`${rw}\\`) || target.startsWith(`${rw}/`))), p).toBe(false);
+    }
+    await m.cancel(started.jobId);
+  });
+
   it('the review allowlist replaces the denylist in an enforced review', async () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });
@@ -241,7 +304,10 @@ describe('copilot_run sandbox permissions and env', () => {
     await settle();
     const env = calls.connections[0].env!;
     for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'AWS_PROFILE', 'NPM_TOKEN', 'NODE_OPTIONS', 'OMG_COPILOT_RUN_ALLOW']) expect(env[key], key).toBeUndefined();
-    expect(env).toMatchObject({ COPILOT_GITHUB_TOKEN: 'cop', LC_ALL: 'C', TEMP: '/tmp', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
+    // The Copilot token reaches the session over RPC, never the env its shell children inherit.
+    expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(calls.sessions[0].gitHubToken).toBe('cop');
+    expect(env).toMatchObject({ LC_ALL: 'C', TEMP: '/tmp', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
     expect(env.PATH).toBe(process.env.PATH ?? '');
     const home = env.COPILOT_HOME!;
     const profile = join(home, 'profile');

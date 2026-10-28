@@ -88,6 +88,8 @@ export interface SdkSessionConfig {
   availableTools?: string[];
   /** Only for an SDK whose createSession forwards it ({@link sdkCreateSessionAcceptsSandbox}); 1.0.16 takes it through `rpc.options.update`. */
   sandboxConfig?: unknown;
+  /** Per-session GitHub token, sent over the session RPC (not the runtime env). */
+  gitHubToken?: string;
 }
 
 export interface SdkSessionLike {
@@ -125,6 +127,16 @@ export interface SdkClientLike {
  * than 1.0.16, which takes it only through `rpc.options.update`): its source
  * names the field. False when it cannot be read; the caller then patches the
  * session after create, which works on every SDK with the options RPC.
+ *
+ * A source regex is a weak signal, and it is safe here because it only picks
+ * HOW the config is sent, never whether the session counts as sandboxed. A
+ * false negative only sends the config through `rpc.options.update` before
+ * the first turn. A false positive (the name appears but the field is
+ * dropped) leaves the runtime unconfined; enforcement is still confirmed:
+ * `sandbox.getEnforcementStatus` must not report blocked (confirmSandbox),
+ * and every shell call must carry the runtime's `sandboxed: true`
+ * attestation, so the first unconfined call stops the session with
+ * `sandbox-escaped` (job.ts, the tool.execution_complete handler).
  */
 export function sdkCreateSessionAcceptsSandbox(loaded: LoadedSdk): boolean {
   try {

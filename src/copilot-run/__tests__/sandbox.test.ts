@@ -8,9 +8,13 @@ import {
   DEFAULT_SANDBOX_SETTINGS,
   allowlistSessionEnv,
   buildSandboxConfig,
+  laneGitWritePaths,
   loadSandboxSettings,
   probeHostSupport,
   resolveSandboxSettings,
+  scrubTokens,
+  secretValues,
+  sessionGitHubToken,
   unconfirmedMode,
   type SandboxHostRecord,
   type SandboxPolicyContext,
@@ -55,10 +59,27 @@ describe('buildSandboxConfig', () => {
     });
   });
 
-  it('write keeps the common git dir read-write (commits stay in the lane until PR 2) and denies home paths only when supported', () => {
+  it('write makes the common git dir read-only except objects, its own admin dir and its branch refs; denies home paths only when supported', () => {
     const plain = buildSandboxConfig('write', ctx, host());
     expect(plain).toMatchObject({ enabled: true, addCurrentWorkingDirectory: true, allowBypass: false, allowDevToolAccess: false, auth: { git: false, gh: false } });
-    expect(plain.userPolicy.filesystem).toEqual({ readwritePaths: [ctx.worktree, ctx.jobDir, ctx.commonGitDir], readonlyPaths: [ctx.pluginRoot, ctx.jobHome] });
+    // Without a linked worktree only objects/ is granted: config and hooks stay read-only.
+    expect(plain.userPolicy.filesystem).toEqual({
+      readwritePaths: [ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects')],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+    });
+    const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
+    const linked = buildSandboxConfig('write', { ...ctx, gitDir, branch: 'omc-team/copilot-run/cr-1' }, host());
+    expect(linked.userPolicy.filesystem.readwritePaths).toEqual([
+      ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects'), gitDir,
+      join(ctx.commonGitDir, 'refs', 'heads', 'omc-team', 'copilot-run'), join(ctx.commonGitDir, 'logs', 'refs', 'heads', 'omc-team', 'copilot-run'),
+    ]);
+    for (const p of ['config', 'hooks', 'info', 'packed-refs']) {
+      const carveOuts = linked.userPolicy.filesystem.readwritePaths.filter((rw) => rw.startsWith(ctx.commonGitDir));
+      expect(carveOuts.some((rw) => join(ctx.commonGitDir, p).startsWith(rw)), p).toBe(false);
+    }
+    // A git dir outside <common>/worktrees, or a branch with a .. segment, grants nothing more.
+    expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere'), branch: 'b' })).toEqual([join(ctx.commonGitDir, 'objects')]);
+    expect(laneGitWritePaths({ ...ctx, gitDir, branch: '../../config/x' })).toEqual([join(ctx.commonGitDir, 'objects'), gitDir]);
     expect(plain.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
     const denied = buildSandboxConfig('write', ctx, host({ shell: true, denied_paths: true }));
     expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p)));
@@ -142,5 +163,26 @@ describe('detection helpers', () => {
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
       XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
     });
+  });
+
+  it('keeps every token out of the runtime env; the Copilot token goes to the session option instead', () => {
+    const caller = { copilot_github_token: 'cop-secret', GH_TOKEN: 'gh-secret-1', GITHUB_TOKEN: 'ghs', PATH: 'p' };
+    const env = allowlistSessionEnv(caller, join(root, 'h'));
+    expect(Object.keys(env).map((k) => k.toUpperCase())).not.toEqual(expect.arrayContaining(['COPILOT_GITHUB_TOKEN']));
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(sessionGitHubToken(caller)).toBe('cop-secret');
+    expect(sessionGitHubToken({ COPILOT_GITHUB_TOKEN: ' ' })).toBeUndefined();
+    // Values shorter than 8 characters are not scrubbed verbatim (they would mangle ordinary words).
+    expect(secretValues(caller)).toEqual(['cop-secret', 'gh-secret-1']);
+  });
+
+  it('scrubTokens redacts every GitHub token shape and the exact secret values', () => {
+    const tokens = ['ghp_', 'gho_', 'ghu_', 'ghs_', 'ghr_'].map((p) => `${p}${'A1b2'.repeat(9)}`);
+    const pat = `github_pat_11ABCDEFG0_${'x'.repeat(40)}`;
+    const text = `found ${tokens.join(' and ')} plus ${pat}, then cop-secret in a log; ghp_short stays`;
+    const out = scrubTokens(text, ['cop-secret']);
+    for (const t of [...tokens, pat, 'cop-secret']) expect(out).not.toContain(t);
+    expect(out).toContain('ghp_short stays');
+    expect(out.match(/\[redacted\]/g)).toHaveLength(7);
   });
 });

@@ -340,7 +340,7 @@ describe('hardened engine git', () => {
     exec('git', ['push', 'origin', `${SHA}:refs/heads/factory/issue-7`]);
     exec('gh', ['pr', 'view', '42']);
     expect(seen).toEqual([
-      ['git', '-c', `core.hooksPath=${hooks}`, '-c', 'core.fsmonitor=false', 'push', 'origin', `${SHA}:refs/heads/factory/issue-7`],
+      ['git', '-c', `core.hooksPath=${hooks}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external=', 'push', 'origin', `${SHA}:refs/heads/factory/issue-7`],
       ['gh', 'pr', 'view', '42'],
     ]);
   });

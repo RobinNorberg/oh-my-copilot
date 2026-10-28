@@ -42,8 +42,8 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
@@ -89,6 +89,9 @@ import {
   loadSandboxSettings,
   probeHostSupport,
   readEnforcement,
+  scrubTokens,
+  secretValues,
+  sessionGitHubToken,
   unconfirmedMode,
   type CopilotRunSandboxState,
   type SandboxConfig,
@@ -323,6 +326,8 @@ interface Job {
   cleanedUp: boolean;
   sandboxSettings: SandboxSettings;
   sandbox: CopilotRunSandboxState | null;
+  /** The caller's token values, scrubbed from lane output (scrubTokens). */
+  secrets: string[];
   stopReason: CopilotRunStopReason | null;
   requestStop: (reason: CopilotRunStopReason) => void;
   stopped: Promise<void>;
@@ -350,19 +355,42 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
   ]).finally(() => clearTimeout(timer));
 }
 
-/**
- * One git command as an argv array (never a shell); trimmed stdout, or null
- * on failure. fsmonitor is off: these run in the caller's process on a job
- * worktree the job's agent could configure (omg factory run reads the
- * change summary before its tamper check).
- */
-function git(cwd: string, args: string[]): string | null {
+let emptyHooksDir: string | null = null;
+
+/** A host-owned empty directory for core.hooksPath; a fresh one whenever the last is gone or not empty. */
+function hostHooksDir(): string {
   try {
-    return execFileSync('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
+    if (emptyHooksDir && readdirSync(emptyHooksDir).length === 0) return emptyHooksDir;
+  } catch { /* gone: make a new one */ }
+  emptyHooksDir = mkdtempSync(join(tmpdir(), 'omg-copilot-run-nohooks-'));
+  return emptyHooksDir;
+}
+
+/**
+ * `-c` pairs on every host-side git command: no hook, no fsmonitor, no pager
+ * and no external diff a job's agent planted in a config level it can write
+ * (the worktree's config.worktree, an include) runs in the caller's process.
+ * Command-line config wins over every file. Diffs also pass --no-ext-diff
+ * and --no-textconv, and summarizeChanges adds filterDriverOverrides.
+ */
+export function hostGitHardeningArgs(): string[] {
+  return ['-c', `core.hooksPath=${hostHooksDir()}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
+}
+
+/**
+ * One git command as an argv array (never a shell), hardened
+ * (hostGitHardeningArgs); trimmed stdout, or null on failure. These run in
+ * the caller's process on a job worktree the job's agent could configure
+ * (omg factory run reads the change summary before its tamper check).
+ */
+export function hostGit(cwd: string, args: string[]): string | null {
+  try {
+    return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
   } catch {
     return null;
   }
 }
+const git = hostGit;
 
 const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
@@ -380,7 +408,7 @@ const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.
 export function filterDriverOverrides(cwd: string): string[] | null {
   let out: string;
   try {
-    out = execFileSync('git', ['-c', 'core.fsmonitor=false', 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
+    out = execFileSync('git', [...hostGitHardeningArgs(), 'config','--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
   } catch (err) {
     // Exit 1: no key matches.
     return (err as { status?: number }).status === 1 ? [] : null;
@@ -589,6 +617,7 @@ export class CopilotRunManager {
       cleanedUp: false,
       sandboxSettings,
       sandbox: null,
+      secrets: secretValues(this.deps.env),
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
@@ -712,6 +741,7 @@ export class CopilotRunManager {
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
     // An env allowlist with the profile relocated into the job's home (sandbox.ts).
     const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
+    const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
@@ -743,7 +773,8 @@ export class CopilotRunManager {
         const mode = job.sandbox?.mode;
         if (denial) decision = { approve: false, reason: denial };
         else if (req.kind === 'shell') {
-          decision = mode === 'enforced' || mode === 'detect-only'
+          // A review session gets a shell only in an enforced sandbox; detect-only is for write sessions.
+          decision = mode === 'enforced'
             ? reviewShellAllowlist(req, { cwd: job.workCwd, platform: deps.platform })
             : { approve: false, reason: 'review profile: no shell without a confirmed sandbox' };
         }
@@ -761,19 +792,22 @@ export class CopilotRunManager {
     const shutdown = new Promise<void>((r) => { onShutdown = r; });
     const toolNames = new Map<string, string>();
     const onEvent = (event: CopilotEvent) => {
-      try { appendFileSync(job.eventsPath, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`); } catch { /* evidence only */ }
+      try { appendFileSync(job.eventsPath, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`); } catch { /* evidence only */ }
       const data = (event.data ?? {}) as Record<string, unknown>;
       switch (event.type) {
         case 'tool.execution_start':
           if (typeof data.toolCallId === 'string' && typeof data.toolName === 'string') toolNames.set(data.toolCallId, data.toolName);
           break;
         case 'tool.execution_complete': {
-          // Attestation (§5): a shell call must report sandboxed: true; an unknown tool must not report false.
+          // Attestation (§5): a shell call must report sandboxed: true. A call of an unknown tool must not
+          // report false, and in an enforced session it must report true (a missing field is an escape).
           const id = String(data.toolCallId ?? '');
           const name = toolNames.get(id) ?? (typeof data.toolName === 'string' ? data.toolName : null);
           toolNames.delete(id);
           const sbx = job.sandbox;
-          const escaped = name === null ? data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+          const escaped = name === null
+            ? (sbx?.mode === 'enforced' ? data.sandboxed !== true : data.sandboxed === false)
+            : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
           if (sbx && escaped) {
             sbx.unsandboxedCalls += 1;
             if (sbx.mode !== 'detect-only' && !job.stopReason) {
@@ -787,7 +821,7 @@ export class CopilotRunManager {
           if (sent) onIdle();
           break;
         case 'assistant.message':
-          if (typeof data.content === 'string' && data.content.trim()) job.finalText = data.content;
+          if (typeof data.content === 'string' && data.content.trim()) job.finalText = scrubTokens(data.content, job.secrets);
           break;
         case 'assistant.usage':
           job.usage.credits += usageCredits(event);
@@ -840,13 +874,16 @@ export class CopilotRunManager {
       const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
       if (!job.stopReason && !refused()) {
         const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded);
-        const shell = sandboxConfig !== null || job.sandbox?.mode === 'detect-only';
+        // Review: the shell tools only while an enforced sandbox is still possible (confirmSandbox hides them on a downgrade).
+        const shell = sandboxConfig !== null;
         session = await withTimeout(client.createSession({
           onPermissionRequest,
           onEvent,
           pluginDirectories: [pluginRoot],
           workingDirectory: job.workCwd,
           disabledMcpServers: ['github-mcp-server'],
+          // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
+          ...(gitHubToken ? { gitHubToken } : {}),
           excludedTools: buildSdkExcludedTools(MCP_SERVER),
           ...(job.profile === 'review' ? { availableTools: [...REVIEW_READ_TOOLS, ...(shell ? REVIEW_SHELL_TOOLS : [])] } : {}),
           ...(atCreate ? { sandboxConfig } : {}),
@@ -925,8 +962,14 @@ export class CopilotRunManager {
     const settings = job.sandboxSettings;
     const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
     if (off) {
-      job.sandbox = { ...base, mode: 'detect-only', reason: off };
-      job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+      // detect-only applies to write sessions only: a review without an enforced sandbox has no shell.
+      if (job.profile === 'review') {
+        job.sandbox = { ...base, mode: 'read-only-no-shell', reason: off };
+        job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
+      } else {
+        job.sandbox = { ...base, mode: 'detect-only', reason: off };
+        job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+      }
       return null;
     }
     const fallback = (reason: string) => {
@@ -940,10 +983,17 @@ export class CopilotRunManager {
     }
     const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
     const commonRaw = git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const gitDirRaw = git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
     try {
+      const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
+      const branch = job.worktree?.branch ?? null;
+      // The branch's reflog directory must exist: the session may not create it under the read-only logs/.
+      if (branch && job.profile === 'write') mkdirSync(join(commonGitDir, 'logs', 'refs', 'heads', ...branch.split('/').slice(0, -1)), { recursive: true });
       const config = buildSandboxConfig(job.profile, {
         worktree: resolve(top),
-        commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
+        commonGitDir,
+        ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
+        branch,
         pluginRoot,
         jobHome: job.home,
         jobDir: job.jobDir,
@@ -994,6 +1044,7 @@ export class CopilotRunManager {
       source: job.usage.measured ? 'measured' as const : 'estimated' as const,
       summary: `${formatAmount(job.usage.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(job.usage.credits.toFixed(3)), 'credits')}`,
     };
+    const scrub = (text: string) => scrubTokens(text, job.secrets);
     return {
       jobId: job.id,
       status: job.status,
@@ -1010,13 +1061,14 @@ export class CopilotRunManager {
       timeoutMs: job.timeoutMs,
       maxCredits: job.maxCredits,
       sessionId: job.sessionId,
-      finalText: job.finalText,
-      error: job.error,
+      // Lane output reaches state, PR comments and the ledger from here: no token passes.
+      finalText: job.finalText === null ? null : scrub(job.finalText),
+      error: job.error === null ? null : scrub(job.error),
       usage,
       ...(job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp } } : {}),
       ...(job.changes ? { changes: job.changes } : {}),
-      ...(job.denied.length ? { deniedPermissions: job.denied } : {}),
-      ...(job.notes.length ? { notes: job.notes } : {}),
+      ...(job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {}),
+      ...(job.notes.length ? { notes: job.notes.map(scrub) } : {}),
       eventsPath: job.eventsPath,
       ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
       ...(job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}),

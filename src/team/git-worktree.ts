@@ -109,8 +109,14 @@ export function getBranchName(teamName: string, workerName: string): string {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
 
+/**
+ * Worker worktrees are configured by their agents; no fsmonitor command or
+ * pager a worker planted runs in the leader's process.
+ */
+const NO_FSMONITOR = ['-c', 'core.fsmonitor=false', '-c', 'core.pager=cat'];
+
 function git(repoRoot: string, args: string[], cwd = repoRoot): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  return execFileSync('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
 }
 
 function isInsideGitRepo(repoRoot: string): boolean {
@@ -225,7 +231,7 @@ function isRegisteredWorktreePath(repoRoot: string, wtPath: string): boolean {
 
 function isDetached(wtPath: string): boolean {
   try {
-    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    const branch = execFileSync('git', [...NO_FSMONITOR, 'branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
     return branch.length === 0;
   } catch {
     return false;
@@ -292,7 +298,7 @@ function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = []):
   try {
     const ignored = new Set(ignoredRootPaths);
     const runtimePrefixes = worktreeRuntimeStatePrefixes(wtPath);
-    const entries = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
+    const entries = execFileSync('git', [...NO_FSMONITOR, 'status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
       .split('\n')
       .filter(line => line.trim().length > 0);
     const isRuntime = (line: string) => line.startsWith('?? ') && runtimePrefixes.some(([prefix, rest]) => {
@@ -387,7 +393,7 @@ function unlinkUntrackedWorktreeLinks(wtPath: string): void {
 
 function gitOrNull(args: string[], cwd: string): string | null {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    return execFileSync('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
   } catch {
     return null;
   }

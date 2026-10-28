@@ -7,6 +7,8 @@ import {
   CopilotRunManager,
   STOP_CONTINUATION_SKIP_TOKEN,
   filterDriverOverrides,
+  hostGit,
+  hostGitHardeningArgs,
   reviewProfileDenial,
   summarizeChanges,
 } from '../job.js';
@@ -269,6 +271,31 @@ describe('copilot_run change summary', () => {
     const summary = summarizeChanges(repo, base);
     expect(existsSync(marker)).toBe(false);
     expect(summary?.changedFiles).toEqual(expect.arrayContaining(['README.md', 'notes.txt']));
+  });
+
+  it('host-side git runs no hook, fsmonitor or external diff a write lane planted', () => {
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    const marker = join(root, 'planted').replace(/\\/g, '/');
+    const script = join(root, 'planted.sh');
+    writeFileSync(script, `#!/bin/sh\necho "$0" >> "${marker}"\nexit 1\n`, { mode: 0o755 });
+    const hooks = join(repo, '.git', 'hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(join(hooks, 'post-checkout'), `#!/bin/sh\necho hook >> "${marker}"\n`, { mode: 0o755 });
+    gitIn(repo, 'config', 'core.fsmonitor', script.replace(/\\/g, '/'));
+    gitIn(repo, 'config', 'diff.external', script.replace(/\\/g, '/'));
+    gitIn(repo, 'config', 'core.pager', `sh "${script.replace(/\\/g, '/')}"`);
+    writeFileSync(join(repo, 'README.md'), 'changed by the lane\n');
+    // Control: plain git runs the planted fsmonitor and hook.
+    gitIn(repo, 'status', '--porcelain');
+    gitIn(repo, 'checkout', '-q', '-b', 'control');
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+
+    expect(summarizeChanges(repo, base)?.changedFiles).toContain('README.md');
+    expect(hostGit(repo, ['checkout', '-q', '-b', 'hardened'])).toBe('');
+    expect(hostGit(repo, ['status', '--porcelain'])).toContain('README.md');
+    expect(hostGitHardeningArgs()).toEqual(expect.arrayContaining(['core.fsmonitor=false', 'core.pager=cat', 'diff.external=']));
+    expect(existsSync(marker)).toBe(false);
   });
 
   it('lists every filter driver name and fails closed on one that cannot be overridden', () => {

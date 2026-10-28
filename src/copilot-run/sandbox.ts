@@ -16,7 +16,7 @@
  */
 
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
@@ -183,6 +183,10 @@ export interface SandboxConfig {
 export interface SandboxPolicyContext {
   worktree: string;
   commonGitDir: string;
+  /** The session's own git dir (`<commonGitDir>/worktrees/<name>` for a linked worktree). */
+  gitDir?: string;
+  /** The branch a write session commits on (its worktree's branch). */
+  branch?: string | null;
   pluginRoot: string;
   /** The job's COPILOT_HOME (and relocated profile). */
   jobHome: string;
@@ -203,11 +207,35 @@ function nodeModulesLinkTarget(worktree: string): string | null {
 }
 
 /**
+ * The read-write carve-outs of the read-only common git dir for a write
+ * session: `objects/`, its own `worktrees/<name>` admin dir (index, HEAD, its
+ * reflog) and the directories holding its branch's ref and reflog (a ref
+ * update writes `<ref>.lock` beside the ref). Without a linked worktree
+ * (isolation "none") the git dir is the common dir and only `objects/` is
+ * granted: the session cannot commit, it fails closed.
+ */
+export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | 'branch' | 'platform'>): string[] {
+  const out = [join(ctx.commonGitDir, 'objects')];
+  const own = ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+  if (!own) return out;
+  out.push(own);
+  const parts = (ctx.branch ?? '').split('/');
+  if (ctx.branch && parts.every((p) => p !== '' && p !== '.' && p !== '..')) {
+    const dir = parts.slice(0, -1);
+    out.push(join(ctx.commonGitDir, 'refs', 'heads', ...dir), join(ctx.commonGitDir, 'logs', 'refs', 'heads', ...dir));
+  }
+  return out;
+}
+
+/**
  * The sandboxConfig for a session. `review` is §4.2 exactly. `write` is the
- * PR 1 policy: §4.3 except that the common git dir stays read-write, because
- * write sessions still commit in their worktree until the engine commits for
- * them (PR 2). `deniedPaths` is sent only when the host reports `denied_paths`.
- * An extra read-write path outside the worktree throws.
+ * PR 1 policy: §4.3 except that a write session still commits in its worktree
+ * until the engine commits for it (PR 2), so the common git dir is read-only
+ * except what a commit on its own branch writes (laneGitWritePaths). Config,
+ * hooks, info, packed-refs and every other ref stay read-only: the session
+ * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
+ * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
+ * read-write path outside the worktree throws.
  */
 export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig {
   const { settings } = ctx;
@@ -237,8 +265,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   }
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
-    readwritePaths: [ctx.worktree, ctx.jobDir, ctx.commonGitDir, ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...settings.extraReadonlyPaths],
+    readwritePaths: [ctx.worktree, ctx.jobDir, ...laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
     filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
@@ -337,15 +365,51 @@ export function unconfirmedMode(profile: SandboxProfile, settings: SandboxSettin
 // Environment (§4.3 L4)
 // ---------------------------------------------------------------------------
 
-/** Caller variables the runtime keeps (case-insensitive); everything else, secrets included, is dropped. */
+/**
+ * Caller variables the runtime keeps (case-insensitive); everything else,
+ * secrets included, is dropped. No credential passes: the runtime's env is
+ * what its shell children inherit, so COPILOT_GITHUB_TOKEN goes to the
+ * session over RPC instead (sessionGitHubToken).
+ */
 export const SESSION_ENV_ALLOWLIST: readonly string[] = [
   'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'LANG',
   // Non-secret OS variables shells and git expect.
   'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
   'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
-  // The explicit Copilot credential (the runtime's own login), never a generic GitHub token.
-  'COPILOT_GITHUB_TOKEN',
 ];
+
+/** The caller's env value for `name`, looked up case-insensitively (Windows env keys). */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === undefined ? undefined : env[key];
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+/**
+ * The explicit Copilot credential for the session's `gitHubToken` option
+ * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
+ * runtime's env, unlike the client-level option).
+ */
+export function sessionGitHubToken(env: NodeJS.ProcessEnv): string | undefined {
+  return envValue(env, 'COPILOT_GITHUB_TOKEN');
+}
+
+/** GitHub token shapes: classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained github_pat_. */
+const TOKEN_PATTERN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
+
+/** The token values in the caller's env that lane output must never carry. */
+export function secretValues(env: NodeJS.ProcessEnv): string[] {
+  return ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN']
+    .map((n) => envValue(env, n))
+    .filter((v): v is string => v !== undefined && v.length >= 8);
+}
+
+/** `text` with every GitHub token shape and every exact `secrets` value replaced by `[redacted]`. */
+export function scrubTokens(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const s of secrets) out = out.split(s).join('[redacted]');
+  return out.replace(TOKEN_PATTERN, '[redacted]');
+}
 
 /** The relocated profile variables, all under `<jobHome>/profile`. */
 export function relocatedProfileEnv(jobHome: string): Record<string, string> {
