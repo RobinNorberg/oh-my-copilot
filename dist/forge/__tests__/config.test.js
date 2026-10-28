@@ -55,13 +55,23 @@ describe('resolveForgeConfig: trust layering (design §3)', () => {
         expect(config.azureDevOps?.team).toBe('Web Team');
     });
     it('forge.* identity: the base branch pins it when the user config does not', () => {
-        const { config, warnings } = resolveForgeConfig(undefined, f({ forge: { azureDevOps: { workItemProject: 'Tracker' } } }), undefined, ADO);
-        expect(config.azureDevOps?.workItemProject).toBe('Tracker');
+        const { config, warnings } = resolveForgeConfig(undefined, f({ forge: { azureDevOps: { team: 'Base Team' } } }), undefined, ADO);
+        expect(config.azureDevOps?.team).toBe('Base Team');
         expect(warnings).toEqual([]);
     });
     it('forge.* identity: the user config wins over the base branch', () => {
-        const { config } = resolveForgeConfig(f({ forge: { azureDevOps: { team: 'User Team' } } }), f({ forge: { azureDevOps: { team: 'Base Team', workItemProject: 'Tracker' } } }), undefined, ADO);
-        expect(config.azureDevOps).toMatchObject({ team: 'User Team', workItemProject: 'Tracker' });
+        const { config } = resolveForgeConfig(f({ forge: { azureDevOps: { team: 'User Team' } } }), f({ forge: { azureDevOps: { team: 'Base Team', workItemProject: 'web%20apps' } } }), undefined, ADO);
+        expect(config.azureDevOps).toMatchObject({ team: 'User Team', workItemProject: 'Web Apps' });
+    });
+    it('forge.* identity: a workItemProject other than the repo project is refused (not supported yet)', () => {
+        for (const layers of [[f({ forge: { azureDevOps: { workItemProject: 'Tracker' } } }), undefined], [undefined, f({ forge: { azureDevOps: { workItemProject: 'Tracker' } } })]]) {
+            expect(code(() => resolveForgeConfig(layers[0], layers[1], undefined, ADO))).toBe('forge-unsupported');
+        }
+    });
+    it('forge.* identity: key order alone never warns', () => {
+        const base = f({ forge: { kind: 'azure-devops', azureDevOps: { team: 'T', org: 'contoso' } } });
+        const tree = f({ forge: { azureDevOps: { org: 'contoso', team: 'T' }, kind: 'azure-devops' } });
+        expect(resolveForgeConfig(undefined, base, tree, ADO).warnings).toEqual([]);
     });
     it('forge.* identity: the working tree is ignored with a warning when it differs from base', () => {
         const { config, warnings } = resolveForgeConfig(undefined, f({ forge: { azureDevOps: { team: 'Base Team' } } }), f({ forge: { azureDevOps: { team: 'Lane Team' } } }), ADO);

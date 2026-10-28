@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import type { GitProvider, PRInfo, IssueInfo, WorkItem } from './types.js';
+import { isAzureDevOpsHost } from './remote-url.js';
+
+export { isAzureDevOpsHost };
 
 export type AdoErrorType = 'auth' | 'not-found' | 'timeout' | 'unknown';
 
@@ -29,11 +32,6 @@ function classifyError(err: unknown): AdoError {
 
 function stripRefPrefix(ref: string): string {
   return ref.replace(/^refs\/heads\//, '');
-}
-
-export function isAzureDevOpsHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/\.$/, '');
-  return normalized === 'dev.azure.com' || normalized === 'ssh.dev.azure.com' || normalized.endsWith('.visualstudio.com');
 }
 
 export class AzureDevOpsProvider implements GitProvider {

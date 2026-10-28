@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8c99ae1adec74a77238cc8239c5f6d8185665229",
-    "sourceSha256": "681aa85991a5f70e18b8417220069060fd5701f381465d50300665d8aafea2fe",
+    "head": "d1d20bb56caf3c6802ac57d345496da2de981b67",
+    "sourceSha256": "2a69050d16767a8990f2e35d45356ec8c4aa3061da532054b8bd40071e0175d2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8c99ae1adec74a77238cc8239c5f6d8185665229",
-  "sourceSha256": "681aa85991a5f70e18b8417220069060fd5701f381465d50300665d8aafea2fe",
+  "head": "d1d20bb56caf3c6802ac57d345496da2de981b67",
+  "sourceSha256": "2a69050d16767a8990f2e35d45356ec8c4aa3061da532054b8bd40071e0175d2",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1781,
-      "total": 1805
+      "srcFiles": 1782,
+      "total": 1806
     },
     "generated": {
-      "distFiles": 6752,
+      "distFiles": 6756,
       "bridgeFiles": 9,
-      "total": 6761
+      "total": 6765
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6131,6 +6131,10 @@
       "dist/providers/index.d.ts.map",
       "dist/providers/index.js",
       "dist/providers/index.js.map",
+      "dist/providers/remote-url.d.ts",
+      "dist/providers/remote-url.d.ts.map",
+      "dist/providers/remote-url.js",
+      "dist/providers/remote-url.js.map",
       "dist/providers/types.d.ts",
       "dist/providers/types.d.ts.map",
       "dist/providers/types.js",
@@ -35182,6 +35186,26 @@
         "path": "dist/providers/index.js.map"
       },
       {
+        "id": "dist/providers/remote-url.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/providers/remote-url.d.ts"
+      },
+      {
+        "id": "dist/providers/remote-url.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/providers/remote-url.d.ts.map"
+      },
+      {
+        "id": "dist/providers/remote-url.js",
+        "kind": "generated-dist",
+        "path": "dist/providers/remote-url.js"
+      },
+      {
+        "id": "dist/providers/remote-url.js.map",
+        "kind": "generated-dist",
+        "path": "dist/providers/remote-url.js.map"
+      },
+      {
         "id": "dist/providers/types.d.ts",
         "kind": "generated-dist",
         "path": "dist/providers/types.d.ts"
@@ -52070,6 +52094,11 @@
         "id": "src/providers/index.ts",
         "kind": "src",
         "path": "src/providers/index.ts"
+      },
+      {
+        "id": "src/providers/remote-url.ts",
+        "kind": "src",
+        "path": "src/providers/remote-url.ts"
       },
       {
         "id": "src/providers/types.ts",
@@ -76484,6 +76513,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/ado/__tests__/routes.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/az-binary.ts",
         "to": "external:path",
         "kind": "imports"
@@ -76500,7 +76534,7 @@
       },
       {
         "from": "src/forge/config.ts",
-        "to": "src/providers/index.ts",
+        "to": "src/providers/remote-url.ts",
         "kind": "imports"
       },
       {
@@ -93285,6 +93319,11 @@
       },
       {
         "from": "src/providers/azure-devops.ts",
+        "to": "src/providers/remote-url.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/providers/azure-devops.ts",
         "to": "src/providers/types.ts",
         "kind": "type-imports"
       },
@@ -93365,6 +93404,16 @@
       },
       {
         "from": "src/providers/index.ts",
+        "to": "src/providers/remote-url.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/providers/index.ts",
+        "to": "src/providers/remote-url.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/providers/index.ts",
         "to": "src/providers/types.ts",
         "kind": "type-exports"
       },
@@ -93374,7 +93423,12 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/providers/index.ts",
+        "from": "src/providers/remote-url.ts",
+        "to": "src/providers/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/providers/remote-url.ts",
         "to": "src/utils/url.ts",
         "kind": "imports"
       },
@@ -108535,12 +108589,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9274,
-      "edgeCount": 10766,
-      "importEdgeCount": 8913,
+      "nodeCount": 9279,
+      "edgeCount": 10771,
+      "importEdgeCount": 8915,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c50e3aec44fee67bf12d735031512472eab2530f6e68ea05549ea8575770206a",
-  "manifestSha256": "45e95ca88b5649857d44ef31a53ac37910d41cddce7ad8781f8bccf2cbe991a2"
+  "inventorySha256": "11ad328ed002149d846526249aced9cc70ced80ae67ca8f624dea746e71e6d6e",
+  "manifestSha256": "b5d18e16530b40cb0c53dc8f79b7bb163ab138d3e41cb4b65860f2e1a6f1fbbb"
 }

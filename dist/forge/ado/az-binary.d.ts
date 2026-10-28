@@ -27,15 +27,21 @@ export interface AzBinaryDeps {
     /** PATH (Windows: `Path` is accepted too). */
     env: Readonly<Record<string, string | undefined>>;
     isFile(path: string): boolean;
+    /**
+     * Roots a lane or job can write: the repository and its worktrees, lane and
+     * job roots. A PATH entry at or under one is never searched for az.cmd.
+     */
+    untrustedRoots: readonly string[];
 }
 export declare const AZ_PYTHON_PREFIX: readonly string[];
 export declare class AzBinaryError extends Error {
     constructor(message: string);
 }
 /**
- * Resolve the az entry point once. Windows: the first absolute PATH entry
- * holding az.cmd wins (a relative entry would resolve against the checkout,
- * which a lane controls), and `<that dir>\..\python.exe` must exist.
+ * Resolve the az entry point once. Windows: the first searchable PATH entry
+ * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
+ * next to `<dir>\..\Lib\site-packages\azure\cli` (checked through its
+ * `__main__.py`, the module `-m azure.cli` runs).
  */
 export declare function resolveAzEntry(deps: AzBinaryDeps): AzEntry;
 //# sourceMappingURL=az-binary.d.ts.map

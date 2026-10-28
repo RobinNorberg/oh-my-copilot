@@ -134,8 +134,14 @@ export interface ForgeReviews {
 }
 
 export interface ForgeChecks {
-  /** fetchChecks semantics ("no checks reported" = []). */
-  checks(pr: number): ForgeCheck[];
+  /**
+   * fetchChecks semantics ("no checks reported" = []) for exactly `headSha`.
+   * GitHub `pr checks` already reports the head. ADO keeps a status-policy
+   * evaluation only when it belongs to the PR iteration whose
+   * sourceRefCommit.commitId is `headSha`; an older iteration's status is
+   * dropped, so a stale green never counts for a new push.
+   */
+  checks(pr: number, headSha: string): ForgeCheck[];
   /**
    * fetchWorkflowRuns semantics: only runs for exactly `headSha` (foreign head
    * dropped). ADO lists the builds of `refs/pull/{pr}/merge` and keeps those
@@ -143,8 +149,15 @@ export interface ForgeChecks {
    */
   runsForHead(pr: number, headSha: string): ForgeRun[];
   jobLog(jobId: string): { ok: boolean; text: string };
-  /** GitHub `run rerun --failed` | ADO policy evaluation requeue. */
-  rerun(runId: string): { ok: boolean; stderr: string };
+  /**
+   * Rerun the failed part of one run of `pr` (a ForgeRun databaseId or a
+   * ForgeCheck runId). GitHub: `run rerun <runId> --failed`. ADO: a build is
+   * requeued through its policy evaluation, so the adapter lists the PR's
+   * evaluations (policy/evaluations, artifactId =
+   * `vstfs:///CodeReview/CodeReviewId/{projectId}/{pr}`), takes the one whose context.buildId is `runId`, and PATCHes
+   * that evaluationId; no matching evaluation is `ok: false`, never a guess.
+   */
+  rerun(pr: number, runId: string): { ok: boolean; stderr: string };
   /** TRANSIENT_GH_ERROR for GitHub; ADO 5xx/TF400898/VS800075. */
   readonly transientError: RegExp;
 }
@@ -186,7 +199,11 @@ export interface AzureDevOpsForgeConfig {
   org: string;
   project: string;
   repo: string;
-  /** Default: project. */
+  /**
+   * Always `project` for now: the resolver refuses a different value, because
+   * the routes.ts guard pins every `project` route parameter to the repo's
+   * project (a cross-project tracker is a known limitation).
+   */
   workItemProject: string;
   /** Board-column intake and progress columns. */
   team?: string;

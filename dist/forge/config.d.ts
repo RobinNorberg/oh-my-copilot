@@ -15,6 +15,12 @@
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
  * that disagrees with the origin remote is refused (`forge-mismatch`).
+ *
+ * Limitation: `forge.azureDevOps.workItemProject` must equal the repo's
+ * project (folded like the other names) or be omitted. The invoke guard pins
+ * every `project` route parameter to the repo's project (routes.ts), so work
+ * items tracked in another project are not supported yet; a different value
+ * is refused (`forge-unsupported`) rather than failing later at the guard.
  */
 import { type ForgeCheckConfig, type ForgeKind, type ForgeRepo, type ProgressMapping, type ProgressStage, type ResolvedForgeConfig } from './types.js';
 export type ForgeConfigErrorCode = 'forge-mismatch' | 'forge-unsupported' | 'invalid';

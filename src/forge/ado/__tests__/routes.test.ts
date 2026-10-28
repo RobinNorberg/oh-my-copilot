@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADO_ROUTES, ADO_WRITE_ALLOWLIST, adoRouteById, findAdoRoute } from '../routes.js';
+import { ADO_ROUTES, ADO_WRITE_ALLOWLIST, adoRouteById, findAdoRoute, validateAdoBody, type AdoObjectBody } from '../routes.js';
 
 const tuple = (r: { area: string; resource: string; method: string }) => `${r.area}/${r.resource} ${r.method}`;
 
@@ -42,7 +42,7 @@ describe('ADO route table invariants', () => {
       for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) expect(findAdoRoute(area, resource, method), `${area}/${resource} ${method}`).toBeUndefined();
     }
     const patch = adoRouteById('git.pullRequests.PATCH').body;
-    expect(patch).toEqual({ kind: 'object', keys: ['isDraft'], required: ['isDraft'] });
+    expect(patch).toEqual({ kind: 'object', keys: ['isDraft'], required: ['isDraft'], values: { isDraft: { const: false } } });
     const post = adoRouteById('git.pullRequests.POST').body;
     expect(post?.kind === 'object' && post.keys).not.toContain('autoCompleteSetBy');
     expect(post?.kind === 'object' && post.keys).not.toContain('completionOptions');
@@ -51,7 +51,7 @@ describe('ADO route table invariants', () => {
   it('the work-item JSON-patch reaches only rev, tags, state and the Kanban column', () => {
     const body = adoRouteById('wit.workItems.PATCH').body;
     if (body?.kind !== 'json-patch') throw new Error('expected a json-patch body');
-    const ok = (path: string) => body.paths.some((re) => re.test(path));
+    const ok = (path: string) => body.paths.some((p) => p.path.test(path));
     expect(['/rev', '/fields/System.Tags', '/fields/System.State', '/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column'].every(ok)).toBe(true);
     expect(['/fields/System.AssignedTo', '/fields/System.Description', '/relations/-', '/fields/System.Tags/x'].some(ok)).toBe(false);
     expect(body.ops).toEqual(['test', 'add']);
@@ -60,5 +60,73 @@ describe('ADO route table invariants', () => {
   it('findAdoRoute compares names case-insensitively', () => {
     expect(findAdoRoute('Git', 'PULLREQUESTS', 'patch')?.id).toBe('git.pullRequests.PATCH');
     expect(findAdoRoute('git', 'pullRequests', 'DELETE')).toBeUndefined();
+  });
+
+  it('every object body key has a value rule, nested ones included', () => {
+    const check = (shape: AdoObjectBody, at: string): void => {
+      expect(Object.keys(shape.values).sort(), at).toEqual([...shape.keys].sort());
+      for (const r of shape.required) expect(shape.keys, at).toContain(r);
+      for (const [k, v] of Object.entries(shape.values)) if ('type' in v && v.type === 'array') check(v.items, `${at}.${k}`);
+    };
+    for (const r of ADO_ROUTES) if (r.body?.kind === 'object') check(r.body, r.id);
+  });
+});
+
+describe('validateAdoBody (the guard hook for PR 5)', () => {
+  const v = (id: string, body: unknown) => validateAdoBody(adoRouteById(id), body);
+  const pr = { sourceRefName: 'refs/heads/factory/42-fix', targetRefName: 'refs/heads/main', title: 'Fix it', isDraft: true };
+
+  it('POST pullRequests: a draft only, branch refs only', () => {
+    expect(v('git.pullRequests.POST', pr)).toBeUndefined();
+    expect(v('git.pullRequests.POST', { ...pr, description: 'body', workItemRefs: [{ id: '42' }] })).toBeUndefined();
+    expect(v('git.pullRequests.POST', { ...pr, isDraft: false })).toMatch(/isDraft must be true/);
+    expect(v('git.pullRequests.POST', { ...pr, isDraft: 'true' })).toMatch(/isDraft/);
+    expect(v('git.pullRequests.POST', { ...pr, targetRefName: 'refs/pull/1/merge' })).toMatch(/targetRefName/);
+    expect(v('git.pullRequests.POST', { ...pr, sourceRefName: 'refs/heads/a/../b' })).toMatch(/sourceRefName/);
+    expect(v('git.pullRequests.POST', { ...pr, workItemRefs: [{ id: '42', url: 'x' }] })).toMatch(/workItemRefs\[0\]\.url is not allowed/);
+    expect(v('git.pullRequests.POST', { ...pr, completionOptions: {} })).toMatch(/completionOptions is not allowed/);
+    const { isDraft: _drop, ...noDraft } = pr;
+    expect(v('git.pullRequests.POST', noDraft)).toMatch(/isDraft is required/);
+  });
+
+  it('PATCH pullRequests: isDraft false only (mark ready)', () => {
+    expect(v('git.pullRequests.PATCH', { isDraft: false })).toBeUndefined();
+    expect(v('git.pullRequests.PATCH', { isDraft: true })).toMatch(/isDraft must be false/);
+    expect(v('git.pullRequests.PATCH', { isDraft: false, status: 'completed' })).toMatch(/status is not allowed/);
+  });
+
+  it('POST pullRequestThreads: exactly one top-level text comment', () => {
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi', commentType: 1, parentCommentId: 0 }], status: 'active' })).toBeUndefined();
+    expect(v('git.pullRequestThreads.POST', { comments: [] })).toMatch(/comments must be an array of 1 to 1/);
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi' }, { content: 'again' }] })).toMatch(/comments/);
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi', commentType: 2 }] })).toMatch(/commentType/);
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi', parentCommentId: 7 }] })).toMatch(/parentCommentId/);
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi', author: { id: 'x' } }] })).toMatch(/comments\[0\]\.author is not allowed/);
+    expect(v('git.pullRequestThreads.POST', { comments: [{ content: 'hi' }], status: 'fixed' })).toMatch(/status/);
+  });
+
+  it('PATCH workItems: allowlisted ops and paths with typed values', () => {
+    const ok = [
+      { op: 'test', path: '/rev', value: 3 },
+      { op: 'add', path: '/fields/System.Tags', value: 'factory; factory:building' },
+    ];
+    expect(v('wit.workItems.PATCH', ok)).toBeUndefined();
+    expect(v('wit.workItems.PATCH', [])).toMatch(/non-empty/);
+    expect(v('wit.workItems.PATCH', [{ op: 'remove', path: '/fields/System.Tags' }])).toMatch(/op must be/);
+    expect(v('wit.workItems.PATCH', [{ op: 'add', path: '/fields/System.AssignedTo', value: 'x' }])).toMatch(/path is not allowed/);
+    expect(v('wit.workItems.PATCH', [{ op: 'test', path: '/rev', value: '3' }])).toMatch(/integer/);
+    expect(v('wit.workItems.PATCH', [{ op: 'add', path: '/fields/System.State', value: { name: 'Done' } }])).toMatch(/string/);
+    expect(v('wit.workItems.PATCH', [{ op: 'add', path: '/fields/System.State', value: 'Done', from: '/x' }])).toMatch(/from is not allowed/);
+  });
+
+  it('none-bodied writes, reads and other object bodies', () => {
+    expect(v('policy.evaluations.PATCH', undefined)).toBeUndefined();
+    expect(v('policy.evaluations.PATCH', {})).toMatch(/takes no body/);
+    expect(v('git.pullRequests.GET', {})).toMatch(/takes no body/);
+    expect(v('wit.comments.POST', { text: 'done' })).toBeUndefined();
+    expect(v('wit.comments.POST', { text: '' })).toMatch(/non-empty/);
+    expect(v('wit.comments.POST', JSON.parse('{"text":"x","__proto__":{"a":1}}'))).toMatch(/__proto__ is not allowed/);
+    expect(v('wit.wiql.POST', { query: 'SELECT [System.Id] FROM WorkItems' })).toBeUndefined();
+    expect(v('wit.wiql.POST', ['x'])).toMatch(/must be an object/);
   });
 });

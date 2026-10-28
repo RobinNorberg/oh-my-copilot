@@ -28,10 +28,29 @@ function pathEnv(env, platform) {
     const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH');
     return (key ? env[key] : undefined) ?? '';
 }
+const fold = (p) => win32.resolve(p).replace(/[\\/]+$/, '').toLowerCase();
+const within = (dir, root) => {
+    const d = fold(dir), r = fold(root);
+    return d === r || d.startsWith(`${r}\\`);
+};
 /**
- * Resolve the az entry point once. Windows: the first absolute PATH entry
- * holding az.cmd wins (a relative entry would resolve against the checkout,
- * which a lane controls), and `<that dir>\..\python.exe` must exist.
+ * Whether a PATH entry may be searched: a drive-absolute path (a relative,
+ * drive-relative or `\\` UNC/device entry is refused: it resolves against the
+ * checkout or a share), no `node_modules` segment (a dependency can plant
+ * `.bin\az.cmd`), and not at or under an untrusted root.
+ */
+function searchable(dir, untrustedRoots) {
+    if (!/^[A-Za-z]:[\\/]/.test(dir))
+        return false;
+    if (win32.resolve(dir).split('\\').some((s) => s.toLowerCase() === 'node_modules'))
+        return false;
+    return !untrustedRoots.some((root) => root.trim() !== '' && within(dir, root));
+}
+/**
+ * Resolve the az entry point once. Windows: the first searchable PATH entry
+ * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
+ * next to `<dir>\..\Lib\site-packages\azure\cli` (checked through its
+ * `__main__.py`, the module `-m azure.cli` runs).
  */
 export function resolveAzEntry(deps) {
     if (deps.platform !== 'win32')
@@ -39,13 +58,15 @@ export function resolveAzEntry(deps) {
     const dirs = pathEnv(deps.env, deps.platform)
         .split(';')
         .map((d) => d.trim().replace(/^"(.*)"$/, '$1'))
-        .filter((d) => d !== '' && win32.isAbsolute(d) && !d.startsWith('\\\\?\\'));
-    const azCmd = dirs.map((d) => win32.join(d, 'az.cmd')).find((p) => deps.isFile(p));
-    if (!azCmd)
-        throw new AzBinaryError('Azure CLI not found: no az.cmd on an absolute PATH entry. Install it with the MSI (https://aka.ms/installazurecliwindows).');
+        .filter((d) => d !== '' && searchable(d, deps.untrustedRoots));
+    const azCmd = dirs.map((d) => win32.join(win32.resolve(d), 'az.cmd')).find((p) => deps.isFile(p));
+    if (!azCmd) {
+        throw new AzBinaryError('Azure CLI not found: no az.cmd on a drive-absolute PATH entry outside node_modules and the repository, lane and job roots. Install it with the MSI (https://aka.ms/installazurecliwindows).');
+    }
     const python = win32.resolve(win32.dirname(azCmd), '..', 'python.exe');
-    if (!deps.isFile(python)) {
-        throw new AzBinaryError(`Azure CLI at ${azCmd} has no bundled ${python} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`);
+    const cliPackage = win32.resolve(win32.dirname(azCmd), '..', 'Lib', 'site-packages', 'azure', 'cli');
+    if (!deps.isFile(python) || !deps.isFile(win32.join(cliPackage, '__main__.py'))) {
+        throw new AzBinaryError(`Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`);
     }
     return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: 'MSI' } };
 }

@@ -8,6 +8,8 @@
 export const TRUSTED_PLAN_AUTHORS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 export const PLAN_LINK = /^[^\S\r\n]*omg-plan:[^\S\r\n]*(\S+)[^\S\r\n]*$/im;
 export const ACCEPTANCE = /^[^\S\r\n]*#{1,6}[^\S\r\n]*acceptance criteria\b/im;
+/** A trusted association (GitHub OWNER/MEMBER/COLLABORATOR) or an adapter-vouched comment. */
+export const commentTrusted = (c) => c.trusted === true || trustedAssociation(c.authorAssociation);
 const loginOf = (author) => {
     const login = author?.login;
     return typeof login === 'string' ? login.toLowerCase() : '';
@@ -33,14 +35,15 @@ export function issueAuthorTrusted(v) {
 /**
  * The issue body's `omg-plan:` line when its author is trusted
  * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
+ * MEMBER or COLLABORATOR, or marked `trusted: true` by a forge adapter
+ * (anyone else could redirect the plan).
  */
 export function findPlanLink(body, comments = [], bodyAuthorTrusted = false) {
     const inBody = bodyAuthorTrusted ? PLAN_LINK.exec(body)?.[1] : undefined;
     if (inBody)
         return inBody;
     for (const c of [...comments].reverse()) {
-        if (typeof c.authorAssociation !== 'string' || !TRUSTED_PLAN_AUTHORS.includes(c.authorAssociation))
+        if (!commentTrusted(c))
             continue;
         const m = typeof c.body === 'string' ? PLAN_LINK.exec(c.body)?.[1] : undefined;
         if (m)

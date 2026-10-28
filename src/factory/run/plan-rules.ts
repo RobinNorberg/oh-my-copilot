@@ -15,7 +15,16 @@ export interface IssueComment {
   body?: unknown;
   authorAssociation?: unknown;
   author?: unknown;
+  /**
+   * Set by a forge adapter (ForgeComment.trusted, e.g. ADO createdBy.uniqueName
+   * in trustedAuthors): `true` counts as a trusted association. Only the
+   * boolean true does; raw `gh --json` comments have no such field.
+   */
+  trusted?: unknown;
 }
+
+/** A trusted association (GitHub OWNER/MEMBER/COLLABORATOR) or an adapter-vouched comment. */
+export const commentTrusted = (c: IssueComment): boolean => c.trusted === true || trustedAssociation(c.authorAssociation);
 
 const loginOf = (author: unknown): string => {
   const login = (author as { login?: unknown } | null | undefined)?.login;
@@ -42,13 +51,14 @@ export function issueAuthorTrusted(v: { author?: unknown; url?: unknown; comment
 /**
  * The issue body's `omg-plan:` line when its author is trusted
  * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
+ * MEMBER or COLLABORATOR, or marked `trusted: true` by a forge adapter
+ * (anyone else could redirect the plan).
  */
 export function findPlanLink(body: string, comments: ReadonlyArray<IssueComment> = [], bodyAuthorTrusted = false): string | undefined {
   const inBody = bodyAuthorTrusted ? PLAN_LINK.exec(body)?.[1] : undefined;
   if (inBody) return inBody;
   for (const c of [...comments].reverse()) {
-    if (typeof c.authorAssociation !== 'string' || !TRUSTED_PLAN_AUTHORS.includes(c.authorAssociation)) continue;
+    if (!commentTrusted(c)) continue;
     const m = typeof c.body === 'string' ? PLAN_LINK.exec(c.body)?.[1] : undefined;
     if (m) return m;
   }

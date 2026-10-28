@@ -15,4 +15,15 @@ describe('plan rules are shared, not copied', () => {
     expect(rules.ACCEPTANCE.test('### Acceptance Criteria')).toBe(true);
     expect(rules.ACCEPTANCE.test('Acceptance criteria')).toBe(false);
   });
+
+  it('a ForgeComment with trusted: true counts as a trusted association (ADO seam)', () => {
+    const plan = 'omg-plan: docs/ado.md';
+    expect(rules.findPlanLink('', [{ body: plan, author: 'dev@contoso.com', trusted: true }])).toBe('docs/ado.md');
+    expect(rules.findPlanLink('', [{ body: plan, author: 'dev@contoso.com', trusted: false }])).toBeUndefined();
+    // Only the boolean true; a truthy string or a missing field is untrusted.
+    expect(rules.findPlanLink('', [{ body: plan, trusted: 'true' }])).toBeUndefined();
+    expect(rules.findPlanLink('', [{ body: plan }])).toBeUndefined();
+    expect(rules.findPlanLink('', [{ body: plan, authorAssociation: 'MEMBER' }])).toBe('docs/ado.md');
+    expect(rules.commentTrusted({ authorAssociation: 'NONE', trusted: true })).toBe(true);
+  });
 });

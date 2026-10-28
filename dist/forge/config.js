@@ -15,8 +15,14 @@
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
  * that disagrees with the origin remote is refused (`forge-mismatch`).
+ *
+ * Limitation: `forge.azureDevOps.workItemProject` must equal the repo's
+ * project (folded like the other names) or be omitted. The invoke guard pins
+ * every `project` route parameter to the repo's project (routes.ts), so work
+ * items tracked in another project are not supported yet; a different value
+ * is refused (`forge-unsupported`) rather than failing later at the guard.
  */
-import { parseRemoteUrl } from '../providers/index.js';
+import { parseRemoteUrl } from '../providers/remote-url.js';
 import { PROGRESS_STAGES, } from './types.js';
 export class ForgeConfigError extends Error {
     code;
@@ -72,7 +78,13 @@ function count(value, key, source, min, max = Number.MAX_SAFE_INTEGER) {
     }
     return value;
 }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** JSON with object keys sorted at every depth, so key order never matters. */
+const canonical = (v) => Array.isArray(v)
+    ? v.map(canonical)
+    : v !== null && typeof v === 'object'
+        ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]))
+        : v;
+const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 /** `%20` and friends decoded; a malformed escape keeps the raw segment. */
 const decode = (s) => {
     try {
@@ -287,11 +299,18 @@ export function resolveForgeConfig(trustedUser, base, project, originUrl) {
                 throw new ForgeConfigError('invalid', 'user config: factory.forge.azureDevOps.trustedAuthors must be an array of uniqueNames');
             authors = [...new Set(trustedAuthors.map((a) => text(a, TEXT, 'forge.azureDevOps.trustedAuthors', 'user config').toLowerCase()))];
         }
+        // A cross-project tracker is refused for now (see the header: the guard pins `project`).
+        if (ado.workItemProject !== undefined) {
+            const wip = text(ado.workItemProject, SEGMENT, 'forge.azureDevOps.workItemProject', source);
+            if (fold(wip) !== fold(remote.project)) {
+                throw new ForgeConfigError('forge-unsupported', `factory.forge.azureDevOps.workItemProject ${JSON.stringify(wip)} differs from the repository project ${JSON.stringify(remote.project)}; work items in another project are not supported yet`);
+            }
+        }
         azureDevOps = {
             org: remote.owner,
             project: remote.project,
             repo: remote.name,
-            workItemProject: ado.workItemProject === undefined ? remote.project : text(ado.workItemProject, SEGMENT, 'forge.azureDevOps.workItemProject', source),
+            workItemProject: remote.project,
             ...(ado.team === undefined ? {} : { team: text(ado.team, SEGMENT, 'forge.azureDevOps.team', source) }),
             apiVersion: DEFAULT_ADO_API_VERSION,
             trustedAuthors: authors,

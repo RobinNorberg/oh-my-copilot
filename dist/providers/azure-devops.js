@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { isAzureDevOpsHost } from './remote-url.js';
+export { isAzureDevOpsHost };
 export class AdoError extends Error {
     type;
     constructor(message, type) {
@@ -23,10 +25,6 @@ function classifyError(err) {
 }
 function stripRefPrefix(ref) {
     return ref.replace(/^refs\/heads\//, '');
-}
-export function isAzureDevOpsHost(host) {
-    const normalized = host.toLowerCase().replace(/\.$/, '');
-    return normalized === 'dev.azure.com' || normalized === 'ssh.dev.azure.com' || normalized.endsWith('.visualstudio.com');
 }
 export class AzureDevOpsProvider {
     name = 'azure-devops';

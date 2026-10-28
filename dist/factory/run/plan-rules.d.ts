@@ -12,7 +12,15 @@ export interface IssueComment {
     body?: unknown;
     authorAssociation?: unknown;
     author?: unknown;
+    /**
+     * Set by a forge adapter (ForgeComment.trusted, e.g. ADO createdBy.uniqueName
+     * in trustedAuthors): `true` counts as a trusted association. Only the
+     * boolean true does; raw `gh --json` comments have no such field.
+     */
+    trusted?: unknown;
 }
+/** A trusted association (GitHub OWNER/MEMBER/COLLABORATOR) or an adapter-vouched comment. */
+export declare const commentTrusted: (c: IssueComment) => boolean;
 /**
  * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
  * view --json` has no authorAssociation for the issue itself, so: the author
@@ -28,7 +36,8 @@ export declare function issueAuthorTrusted(v: {
 /**
  * The issue body's `omg-plan:` line when its author is trusted
  * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
+ * MEMBER or COLLABORATOR, or marked `trusted: true` by a forge adapter
+ * (anyone else could redirect the plan).
  */
 export declare function findPlanLink(body: string, comments?: ReadonlyArray<IssueComment>, bodyAuthorTrusted?: boolean): string | undefined;
 export declare function hasAcceptanceCriteria(body: string): boolean;

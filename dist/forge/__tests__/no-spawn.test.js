@@ -1,36 +1,103 @@
-import { readdirSync, readFileSync } from 'fs';
-import { dirname, join, relative } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 // Forge adapters get the caller's guarded Exec and never spawn (design §1).
+// The rule covers adapter (production) code: tests and test helpers under
+// __tests__ may spawn (the gh-argv baselines drive the real engines). It is
+// transitive: a production file must not reach child_process through any
+// value import, so src/forge imports URL parsing from the pure
+// src/providers/remote-url.ts, not src/providers/index.ts.
 const FORGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+const SRC_DIR = join(FORGE_DIR, '..');
 const SPAWN_IMPORT = [
     /\bfrom\s*['"](?:node:)?child_process['"]/,
     /\bimport\s*['"](?:node:)?child_process['"]/,
     /\b(?:require|import)\s*\(\s*['"](?:node:)?child_process['"]\s*\)/,
 ];
+/** Relative value imports and re-exports; `import type`/`export type` are erased and never load. */
+const RELATIVE_IMPORT = [
+    /^[^\S\r\n]*(?:import|export)\s+(?!type\b)([^'";]*?)\s*from\s*['"](\.{1,2}\/[^'"]+)['"]/gm,
+    /^[^\S\r\n]*import\s*['"](\.{1,2}\/[^'"]+)['"]/gm,
+    /\b(?:require|import)\s*\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g,
+];
+const isTestFile = (path) => /[\\/]__tests__[\\/]/.test(path) || /\.test\.[cm]?[tj]s$/.test(path);
 function sources(dir) {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
         const path = join(dir, e.name);
         if (e.isDirectory())
             return sources(path);
-        return /\.(?:ts|mts|cts|js|mjs|cjs)$/.test(e.name) ? [path] : [];
+        return /\.(?:ts|mts|cts|js|mjs|cjs)$/.test(e.name) && !e.name.endsWith('.d.ts') ? [path] : [];
     });
 }
-describe('src/forge never spawns', () => {
-    it('has sources to check', () => {
-        expect(sources(FORGE_DIR).length).toBeGreaterThan(3);
+/** `{ type A, type B }` only: erased like `import type`. */
+const typeOnlyClause = (clause) => {
+    const named = /^\{([^}]*)\}$/.exec(clause.trim())?.[1];
+    if (named === undefined)
+        return false;
+    const members = named.split(',').map((m) => m.trim()).filter(Boolean);
+    return members.length > 0 && members.every((m) => /^type\s/.test(m));
+};
+/** The source files `file` loads at runtime, resolved `.js` -> `.ts`. */
+function valueImports(file, text) {
+    const specs = [];
+    for (const m of text.matchAll(RELATIVE_IMPORT[0]))
+        if (!typeOnlyClause(m[1]))
+            specs.push(m[2]);
+    for (const re of RELATIVE_IMPORT.slice(1))
+        for (const m of text.matchAll(re))
+            specs.push(m[1]);
+    return specs.map((spec) => {
+        const base = resolve(dirname(file), spec);
+        const candidates = [base.replace(/\.js$/, '.ts'), base.replace(/\.mjs$/, '.mts'), base, `${base}.ts`, join(base, 'index.ts')];
+        const found = candidates.find((c) => existsSync(c) && statSync(c).isFile());
+        if (!found)
+            throw new Error(`${relative(SRC_DIR, file)}: cannot resolve ${spec}`);
+        return found;
     });
-    it('no file under src/forge imports child_process', () => {
-        // This file quotes the import forms below, so it is the one file not scanned.
-        const self = fileURLToPath(import.meta.url);
-        const offenders = sources(FORGE_DIR).filter((file) => {
-            if (file === self)
-                return false;
-            const text = readFileSync(file, 'utf8');
-            return SPAWN_IMPORT.some((re) => re.test(text));
-        });
-        expect(offenders.map((f) => relative(FORGE_DIR, f))).toEqual([]);
+}
+/** Every production file under src/forge whose runtime import graph reaches child_process, with the chain. */
+function spawningChains() {
+    const offenders = [];
+    const memo = new Map();
+    const visit = (file, stack) => {
+        if (memo.has(file))
+            return memo.get(file);
+        if (stack.has(file))
+            return null;
+        stack.add(file);
+        const text = readFileSync(file, 'utf8');
+        let chain = SPAWN_IMPORT.some((re) => re.test(text)) ? [file] : null;
+        for (const dep of chain ? [] : valueImports(file, text)) {
+            const sub = visit(dep, stack);
+            if (sub) {
+                chain = [file, ...sub];
+                break;
+            }
+        }
+        stack.delete(file);
+        memo.set(file, chain);
+        return chain;
+    };
+    for (const file of sources(FORGE_DIR).filter((f) => !isTestFile(f))) {
+        const chain = visit(file, new Set());
+        if (chain)
+            offenders.push(chain.map((f) => relative(SRC_DIR, f).replace(/\\/g, '/')).join(' -> '));
+    }
+    return offenders;
+}
+describe('src/forge never spawns', () => {
+    it('has production sources to check', () => {
+        expect(sources(FORGE_DIR).filter((f) => !isTestFile(f)).length).toBeGreaterThan(3);
+    });
+    it('no production file under src/forge reaches child_process through its imports', () => {
+        expect(spawningChains()).toEqual([]);
+    });
+    it('test files and helpers are out of scope', () => {
+        expect(isTestFile(join(FORGE_DIR, '__tests__', 'recording-exec.ts'))).toBe(true);
+        expect(isTestFile(join(FORGE_DIR, 'ado', '__tests__', 'fixtures.ts'))).toBe(true);
+        expect(isTestFile(join(FORGE_DIR, 'config.test.ts'))).toBe(true);
+        expect(isTestFile(join(FORGE_DIR, 'config.ts'))).toBe(false);
     });
     it('the patterns catch every import form', () => {
         const forms = [
@@ -42,6 +109,20 @@ describe('src/forge never spawns', () => {
         ];
         for (const form of forms)
             expect(SPAWN_IMPORT.some((re) => re.test(form)), form).toBe(true);
+    });
+    it('follows value imports and skips type-only ones', () => {
+        const file = join(FORGE_DIR, 'x.ts');
+        const text = [
+            '// a comment that says import (PR 2).',
+            "import type { Exec } from '../ship/exec.js';",
+            "import { parseRemoteUrl } from '../providers/index.js';",
+            "import type { Exec } from '../ship/exec.js';",
+            "import { type GhCheck } from '../ship/gates.js';",
+            "export { isAzureDevOpsHost } from '../providers/remote-url.js';",
+        ].join('\n');
+        expect(valueImports(file, text).map((f) => relative(SRC_DIR, f).replace(/\\/g, '/'))).toEqual(['providers/index.ts', 'providers/remote-url.ts']);
+        // providers/index.ts spawns git, so importing it from src/forge would fail the rule above.
+        expect(SPAWN_IMPORT.some((re) => re.test(readFileSync(join(SRC_DIR, 'providers', 'index.ts'), 'utf8')))).toBe(true);
     });
 });
 //# sourceMappingURL=no-spawn.test.js.map
