@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f018bfe023992ecebf45e81576fcbd89360d25d4",
-    "sourceSha256": "9d02e3a97f66c867a363554f630a0b490257bbaae51e1dea4eea0798584dbe1d",
+    "head": "d8d7610633949c7434d8e2dc9ad61cdf875f2761",
+    "sourceSha256": "1ca7df3f49fc8811c08c05f2044cc7dbd990da36c00fbe976bbb2b19b0db08a9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f018bfe023992ecebf45e81576fcbd89360d25d4",
-  "sourceSha256": "9d02e3a97f66c867a363554f630a0b490257bbaae51e1dea4eea0798584dbe1d",
+  "head": "d8d7610633949c7434d8e2dc9ad61cdf875f2761",
+  "sourceSha256": "1ca7df3f49fc8811c08c05f2044cc7dbd990da36c00fbe976bbb2b19b0db08a9",
   "counts": {
     "public": {
       "skills": 63,
@@ -41701,6 +41701,11 @@
         "id": "docs/design/FACTORY-FINAL-DESIGN.md",
         "kind": "other",
         "path": "docs/design/FACTORY-FINAL-DESIGN.md"
+      },
+      {
+        "id": "docs/design/FACTORY-RUN-UPSTREAM-DELTA.md",
+        "kind": "other",
+        "path": "docs/design/FACTORY-RUN-UPSTREAM-DELTA.md"
       },
       {
         "id": "docs/design/ISSUE-3698-LIGHTWEIGHT-WORKFLOW-PLAN.md",
@@ -103821,12 +103826,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8934,
+      "nodeCount": 8935,
       "edgeCount": 10218,
       "importEdgeCount": 8524,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b69ed5e66cbed7b55973e90960a823c092e46f73ece5f9c2de43fbba78fbad6d",
-  "manifestSha256": "ab059020f49bc3734754c6ff4708c45b5df4447a3d138a6951cc4675dba9f331"
+  "inventorySha256": "54e1afeb90e9e993c96bfcd0b288c3b05a487bbb471e17695090ca0bbff9f1c5",
+  "manifestSha256": "3b13971f0bc547a33097cdf0e4e5827a1171cb36e5b19ce5ea18c98577f1545c"
 }
