@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cb41ac762235e4410eb9596172056a08b6901ecf",
-    "sourceSha256": "0263759ab5e81dc3e6079f559baa220a41460842a6df4aaa1e2aadb1fb844c3f",
+    "head": "8c99ae1adec74a77238cc8239c5f6d8185665229",
+    "sourceSha256": "681aa85991a5f70e18b8417220069060fd5701f381465d50300665d8aafea2fe",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cb41ac762235e4410eb9596172056a08b6901ecf",
-  "sourceSha256": "0263759ab5e81dc3e6079f559baa220a41460842a6df4aaa1e2aadb1fb844c3f",
+  "head": "8c99ae1adec74a77238cc8239c5f6d8185665229",
+  "sourceSha256": "681aa85991a5f70e18b8417220069060fd5701f381465d50300665d8aafea2fe",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1776,
-      "total": 1800
+      "srcFiles": 1781,
+      "total": 1805
     },
     "generated": {
-      "distFiles": 6732,
+      "distFiles": 6752,
       "bridgeFiles": 9,
-      "total": 6741
+      "total": 6761
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3525,10 +3525,30 @@
       "dist/forge/__tests__/config.test.d.ts.map",
       "dist/forge/__tests__/config.test.js",
       "dist/forge/__tests__/config.test.js.map",
+      "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts",
+      "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts.map",
+      "dist/forge/__tests__/gh-argv-baseline.chain.test.js",
+      "dist/forge/__tests__/gh-argv-baseline.chain.test.js.map",
+      "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts",
+      "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts.map",
+      "dist/forge/__tests__/gh-argv-baseline.factory.test.js",
+      "dist/forge/__tests__/gh-argv-baseline.factory.test.js.map",
+      "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts",
+      "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts.map",
+      "dist/forge/__tests__/gh-argv-baseline.heal.test.js",
+      "dist/forge/__tests__/gh-argv-baseline.heal.test.js.map",
+      "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts",
+      "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts.map",
+      "dist/forge/__tests__/gh-argv-baseline.ship.test.js",
+      "dist/forge/__tests__/gh-argv-baseline.ship.test.js.map",
       "dist/forge/__tests__/no-spawn.test.d.ts",
       "dist/forge/__tests__/no-spawn.test.d.ts.map",
       "dist/forge/__tests__/no-spawn.test.js",
       "dist/forge/__tests__/no-spawn.test.js.map",
+      "dist/forge/__tests__/recording-exec.d.ts",
+      "dist/forge/__tests__/recording-exec.d.ts.map",
+      "dist/forge/__tests__/recording-exec.js",
+      "dist/forge/__tests__/recording-exec.js.map",
       "dist/forge/ado/__tests__/az-binary.test.d.ts",
       "dist/forge/ado/__tests__/az-binary.test.d.ts.map",
       "dist/forge/ado/__tests__/az-binary.test.js",
@@ -22132,6 +22152,86 @@
         "path": "dist/forge/__tests__/config.test.js.map"
       },
       {
+        "id": "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.chain.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.chain.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.chain.test.js"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.chain.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.chain.test.js.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.factory.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.factory.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.factory.test.js"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.factory.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.factory.test.js.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.heal.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.heal.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.heal.test.js"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.heal.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.heal.test.js.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.ship.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.ship.test.js"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.ship.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.ship.test.js.map"
+      },
+      {
         "id": "dist/forge/__tests__/no-spawn.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/no-spawn.test.d.ts"
@@ -22150,6 +22250,26 @@
         "id": "dist/forge/__tests__/no-spawn.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/no-spawn.test.js.map"
+      },
+      {
+        "id": "dist/forge/__tests__/recording-exec.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/recording-exec.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/recording-exec.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/recording-exec.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/recording-exec.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/recording-exec.js"
+      },
+      {
+        "id": "dist/forge/__tests__/recording-exec.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/recording-exec.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/az-binary.test.d.ts",
@@ -48602,9 +48722,34 @@
         "path": "src/forge/__tests__/config.test.ts"
       },
       {
+        "id": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/gh-argv-baseline.chain.test.ts"
+      },
+      {
+        "id": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/gh-argv-baseline.factory.test.ts"
+      },
+      {
+        "id": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/gh-argv-baseline.heal.test.ts"
+      },
+      {
+        "id": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/gh-argv-baseline.ship.test.ts"
+      },
+      {
         "id": "src/forge/__tests__/no-spawn.test.ts",
         "kind": "src",
         "path": "src/forge/__tests__/no-spawn.test.ts"
+      },
+      {
+        "id": "src/forge/__tests__/recording-exec.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/recording-exec.ts"
       },
       {
         "id": "src/forge/ado/__tests__/az-binary.test.ts",
@@ -75969,6 +76114,266 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.chain.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.factory.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/cli/commands/ship.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/cli/commands/ship.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.ship.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/forge/__tests__/no-spawn.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -75987,6 +76392,11 @@
         "from": "src/forge/__tests__/no-spawn.test.ts",
         "to": "external:vitest",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/recording-exec.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/ado/__tests__/az-binary.test.ts",
@@ -108125,12 +108535,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9249,
-      "edgeCount": 10713,
-      "importEdgeCount": 8872,
+      "nodeCount": 9274,
+      "edgeCount": 10766,
+      "importEdgeCount": 8913,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a5f2b206ea30a6a9f7f62b8013fe17468d2f36e3ca6491ad9c92787ad6455619",
-  "manifestSha256": "1a559d1ff74784ec70f7f6c75e841257a01378f70eb969cf88080e6374aaf77d"
+  "inventorySha256": "c50e3aec44fee67bf12d735031512472eab2530f6e68ea05549ea8575770206a",
+  "manifestSha256": "45e95ca88b5649857d44ef31a53ac37910d41cddce7ad8781f8bccf2cbe991a2"
 }
