@@ -430,7 +430,6 @@ describe('no code path writes the known-flaky list', () => {
     'factory/heal/cli.ts': 1, // loadKnownFlaky: `git show origin/<base>:<file>` (read)
     'factory/heal/debug-lane.ts': 1, // debugger lane prompt: never propose a fix touching it (text)
     'factory/heal/implement.ts': 2, // module doc + KNOWN_FLAKY_FILE of the printed proposal
-    'factory/run/engine.ts': 3, // implement, fix and review lane prompts: do not edit it (text)
     'ship/config.ts': 1, // DEFAULT_SHIP_CONFIG.knownFlakyFile, read from the base commit
     'ship/merge.ts': 1, // the merge rule's protected paths
     'cli/commands/release.ts': 2, // --flaky-candidates help and printed instructions
