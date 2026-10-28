@@ -28,6 +28,7 @@ function classifyError(err: unknown): AdoError {
 }
 
 const SHA_RE = /^[0-9a-f]{40}$/i;
+const REF_REFUSE_RE = /[:\s]/;
 
 function stripRefPrefix(ref: string): string {
   return ref.replace(/^refs\/heads\//, '');
@@ -338,7 +339,7 @@ export class AzureDevOpsProvider implements GitProvider {
 
   /**
    * The az CLI has no PR diff subcommand. Read the PR's refs and merge commits with
-   * `az repos pr show`, fetch both refs, then diff the two commits locally.
+   * `az repos pr show`, fetch `refs/pull/<id>/merge` (branch refs as fallback), then diff the two commits locally.
    * https://learn.microsoft.com/en-us/cli/azure/repos/pr#az-repos-pr-show
    * https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1
    */
@@ -363,6 +364,7 @@ export class AzureDevOpsProvider implements GitProvider {
       const targetSha = pr.lastMergeTargetCommit?.commitId;
       if (
         !sourceRef?.startsWith('refs/') || !targetRef?.startsWith('refs/') ||
+        REF_REFUSE_RE.test(sourceRef) || REF_REFUSE_RE.test(targetRef) ||
         !sourceSha || !targetSha || !SHA_RE.test(sourceSha) || !SHA_RE.test(targetSha)
       ) {
         throw new Error(`PR ${prId} is missing source/target refs or merge commits`);
@@ -374,7 +376,13 @@ export class AzureDevOpsProvider implements GitProvider {
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
-      git(['fetch', '--no-tags', 'origin', sourceRef, targetRef]);
+      // refs/pull/<id>/merge has the target and source commits as parents and survives fork PRs
+      // and deleted source branches; the branch refs are only a fallback.
+      try {
+        git(['fetch', '--no-tags', 'origin', `refs/pull/${prId}/merge`]);
+      } catch {
+        git(['fetch', '--no-tags', 'origin', sourceRef, targetRef]);
+      }
       return git(['diff', `${targetSha}...${sourceSha}`]);
     } catch (err) {
       throw classifyError(err);

@@ -126,9 +126,9 @@ az CLI:
 ```bash
 # PR refs and merge commits (the az CLI has no PR diff subcommand)
 az repos pr show --id {prId} --org "{org}" -o json 2>&1
-# Then fetch sourceRefName and targetRefName from the output and diff the merge commits
-git fetch --no-tags origin {sourceRefName} {targetRefName}
-git diff {lastMergeTargetCommit}...{lastMergeSourceCommit}
+# Fetch the merge ref (works for fork PRs and deleted source branches), then diff the merge commits
+git fetch --no-tags origin refs/pull/{prId}/merge || git fetch --no-tags origin {sourceRefName} {targetRefName}
+git diff {lastMergeTargetCommit.commitId}...{lastMergeSourceCommit.commitId}
 ```
 
 **4b. Retrieve PR details and linked work items for spec compliance context:**
@@ -367,9 +367,9 @@ az repos pr show --id {prId} --org "{org}" -o json
 # Get PR unified diff
 # PR refs and merge commits (the az CLI has no PR diff subcommand)
 az repos pr show --id {prId} --org "{org}" -o json 2>&1
-# Then fetch sourceRefName and targetRefName from the output and diff the merge commits
-git fetch --no-tags origin {sourceRefName} {targetRefName}
-git diff {lastMergeTargetCommit}...{lastMergeSourceCommit}
+# Fetch the merge ref (works for fork PRs and deleted source branches), then diff the merge commits
+git fetch --no-tags origin refs/pull/{prId}/merge || git fetch --no-tags origin {sourceRefName} {targetRefName}
+git diff {lastMergeTargetCommit.commitId}...{lastMergeSourceCommit.commitId}
 
 # Post a general comment
 # {"comments":[{"parentCommentId":0,"content":"{comment}","commentType":1}],"status":1}
@@ -425,4 +425,4 @@ az repos pr set-vote \
 
 All `autoReview` fields are optional. Defaults are applied when the key is absent.
 
-> The `az` CLI has no PR comment or PR diff subcommand. Comments use the Pull Request Threads REST API through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke). The diff comes from `git fetch` of the PR source and target refs plus `git diff` of `lastMergeTargetCommit...lastMergeSourceCommit` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1).
+> The `az` CLI has no PR comment or PR diff subcommand. Comments use the Pull Request Threads REST API through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke). The diff comes from `git fetch` of `refs/pull/{prId}/merge` (source and target branch refs as fallback) plus `git diff` of `lastMergeTargetCommit.commitId...lastMergeSourceCommit.commitId` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1).
