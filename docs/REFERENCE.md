@@ -909,6 +909,21 @@ omg factory run cancel <issue>                 # stop the running engine and its
 - **Residual risk:** lanes are not sandboxed. A lane whose shell reaches your home directory can also rewrite the engine's record there. The engine-held record and the checks above narrow that, and a human gate always comes before the merge. Running lanes under Copilot CLI's `--sandbox` (CLI 1.0.93+) is a planned follow-up.
 - **State and resume:** state lives in `.omg/state/factory/run-<issue>.json`. Rerun the same command to resume after any `awaiting-human` stop. Exit codes are 0 for the `prepare` park or a cancel, 4 for other `awaiting-human` stops, 1 for a failure and 2 for a usage error. The full docs come with the rest of the engine.
 
+#### `omg factory heal` (experimental)
+
+`omg factory heal scan` reads recent `ci.yml` runs and classifies new red runs. It makes no LLM call and no GitHub write. It starts no lane, and a rerun is recorded as an intent but never issued.
+
+```bash
+omg factory heal scan [--dry-run] [--json]    # classify new red runs; --dry-run writes no state
+omg factory heal status [<sig8>] [--json]     # list recorded signatures, or one classification
+```
+
+- **Candidates:** a red push run on the integration branch, or one failure signature on PR runs of two or more head branches in 72 hours. Cancelled, skipped and in-progress runs never count. Jobs in `factory.heal.ignoreJobs` never count. The defaults are "No Committed Build Artifacts" and "Version Consistency Check".
+- **Signature:** each failed job contributes its name and its sorted failing tests. A job with no failing test contributes its failing step and its first `##[error]` line, normalized. The sha256 of the job signatures is the dedupe key, and its first 8 hex characters are the `sig8`.
+- **Classes:** the classifier checks, in order, infra patterns, the known-flaky list at `origin/<base>`, the dev history and an environment diff. The diff covers image, image version, runner, git, node and npm. When the environment changed and the red sha adds no code the green sha lacks, the class is `env-change`. A sha that is green on one image version and red on another is also `env-change`. The other classes are `infra`, `known-flaky`, `intermittent`, `regression`, `regression-or-env` and `unknown`.
+- **State and limits:** each signature is stored in `.omg/state/factory/heal/<sig8>.json`. A run is counted once per signature. The fixed limits are one open heal run and one recorded rerun per signature. The user config sets `factory.heal.dailyRuns` (default 3) and `factory.heal.dailyDebugLanes` (default 4). The project config can only lower them. Over a limit, a signature is queued as `blocked: rate-limit`.
+- **Untrusted logs:** CI logs are only matched against fixed patterns, never run or put into a command. A log is capped at 8 MiB and each line at 4000 characters. All `gh` and `git` calls go through a read-only allowlist.
+
 ### `omg smoke copilot`
 
 Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a throwaway `COPILOT_HOME`. Use it on a local build before opening a PR or tagging a release.
