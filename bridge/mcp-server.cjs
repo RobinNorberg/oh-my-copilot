@@ -42543,10 +42543,10 @@ var init_debug_lane = __esm({
   }
 });
 
-// src/factory/heal/evidence.ts
+// src/factory/heal/heal-evidence.ts
 var import_crypto23, import_fs68, import_path85, EVIDENCE_LIMITS;
-var init_evidence = __esm({
-  "src/factory/heal/evidence.ts"() {
+var init_heal_evidence = __esm({
+  "src/factory/heal/heal-evidence.ts"() {
     "use strict";
     import_crypto23 = require("crypto");
     import_fs68 = require("fs");
@@ -42588,7 +42588,7 @@ var init_run = __esm({
     init_classify();
     init_debug_lane();
     init_diagnosis_output();
-    init_evidence();
+    init_heal_evidence();
     init_history();
     init_sanitize();
     init_state3();

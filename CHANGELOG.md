@@ -2,6 +2,28 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.17.1
+
+## [5.17.1] - 2026-10-28
+
+Fork **v5.17.1** (from v5.16.0) is the first published release of the 5.17
+line. v5.17.0 was tagged but never published: its tag run failed the release
+boundary while building the staged archive, so nothing reached npm or GitHub
+Releases. Everything listed under 5.17.0 below ships in
+5.17.1, together with the fix that follows. Upgrade from v5.16.0 directly;
+there is no v5.17.0 package to install.
+
+### Fixed
+
+- **The package archive passes the release boundary again.**
+  `src/factory/heal/evidence.ts` compiled to `dist/factory/heal/evidence.js`,
+  a name the release boundary rejects as an operational artifact, so the
+  v5.17.0 staged archive failed. The module is now `heal-evidence`, and the
+  boundary rule is unchanged. A new test,
+  `src/__tests__/release-archive-paths.test.ts`, runs the same rule over
+  every packaged tracked file and the dist output of every tracked source, so
+  a forbidden name now fails the normal suite instead of the tag run (#318).
+
 # oh-my-copilot v5.17.0
 
 ## [5.17.0] - 2026-10-28
