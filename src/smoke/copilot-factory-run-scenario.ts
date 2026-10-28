@@ -41,6 +41,7 @@ import {
   FACTORY_RUN_ISSUE,
   FACTORY_RUN_PR,
   FACTORY_RUN_REPO_URL,
+  laneModelLabel,
   SCENARIOS,
   type FactoryRunEvidence,
   type FactoryRunScenario,
@@ -81,6 +82,8 @@ export interface FactoryRunScenarioInput {
   lanes?: (repoRoot: string) => LaneBackend;
   now?: () => number;
   engine?: Pick<FactoryEngineOptions, 'pollMs' | 'processes' | 'sleep'>;
+  /** The model every lane runs on (the driver's cheap pick); unset: runtime auto. */
+  model?: string;
 }
 
 /** What the scripted gh saw. */
@@ -211,7 +214,8 @@ export class RecordingLanes implements LaneBackend {
   readonly results = new Map<string, LaneResult>();
   private reviews = 0;
 
-  constructor(private readonly inner: LaneBackend, private readonly requestChangesOnce: boolean) {
+  /** `model`: pinned on every lane start (the engine sets none, so lanes would run on runtime auto). */
+  constructor(private readonly inner: LaneBackend, private readonly requestChangesOnce: boolean, private readonly model?: string) {
     this.kind = inner.kind;
   }
 
@@ -219,7 +223,7 @@ export class RecordingLanes implements LaneBackend {
     this.starts.push({ laneId: input.laneId, profile: input.profile, maxCredits: input.maxCredits, baseRef: input.baseRef });
     const firstReview = input.profile === 'review' && this.reviews++ === 0;
     const prompt = firstReview && this.requestChangesOnce ? `${input.prompt}\n${FIX_REVIEW_INSTRUCTION}` : input.prompt;
-    return this.inner.start({ ...input, prompt });
+    return this.inner.start({ ...input, prompt, ...(this.model ? { model: this.model } : {}) });
   }
 
   async poll(remoteId: string): Promise<LaneResult> {
@@ -277,7 +281,7 @@ export async function runFactoryRunScenario(input: FactoryRunScenarioInput): Pro
   const base = {
     name: input.name,
     timeoutMs: limits.laneTimeoutMs,
-    model: 'copilot_run lanes (runtime auto)',
+    model: laneModelLabel(input.model, []),
     maxCredits: input.maxCredits,
     budget: input.budget,
     capped: false,
@@ -290,7 +294,7 @@ export async function runFactoryRunScenario(input: FactoryRunScenarioInput): Pro
   const bare = join(dir, 'remote.git');
   const baseBefore = bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`);
   const gh = scriptedFactoryGh(bare);
-  const lanes = new RecordingLanes(input.lanes ? input.lanes(repo) : copilotLanes(input), input.name === 'factory-run-fix');
+  const lanes = new RecordingLanes(input.lanes ? input.lanes(repo) : copilotLanes(input), input.name === 'factory-run-fix', input.model);
   const warnings: string[] = [];
 
   let outcome: Awaited<ReturnType<typeof runFactoryEngine>> | null = null;
@@ -345,5 +349,6 @@ export async function runFactoryRunScenario(input: FactoryRunScenarioInput): Pro
   try { writeFileSync(input.eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : '')); } catch { /* best effort */ }
   const parked = evidence.outcome?.gate === 'merge';
   error ??= parked ? undefined : `run did not park at awaiting-human: merge: ${evidence.outcome?.message ?? 'no outcome'}`;
-  return { ...base, events, idle: parked && !error, timedOut: false, ...(error ? { error } : {}), factory: evidence };
+  const model = laneModelLabel(input.model, [...lanes.results.values()].map((r) => r.model ?? null));
+  return { ...base, model, events, idle: parked && !error, timedOut: false, ...(error ? { error } : {}), factory: evidence };
 }

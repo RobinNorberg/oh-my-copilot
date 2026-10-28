@@ -86,6 +86,15 @@ describe('copilot_run sandbox fail-closed', () => {
     expect(calls.prompts).toHaveLength(0);
   });
 
+  it('a Linux host the runtime calls supported but where the trial launch fails refuses a write with that reason', async () => {
+    const m = manager('idle', 'supported', { platform: 'linux', sandboxTrialLaunch: () => 'unprivileged user namespaces are restricted' });
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^sandbox-unavailable: .*unprivileged user namespaces are restricted/);
+    expect(done.sandbox).toMatchObject({ mode: 'refused', applied: 'none', host: { supported: false, launchFailed: true } });
+    expect(calls.sessions).toHaveLength(0);
+  });
+
   it('writeUnsandboxed "detect-only" runs a write session unsandboxed, with a note', async () => {
     const m = manager('idle', 'unsupported', { sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) });
     const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
@@ -331,6 +340,27 @@ describe('copilot_run sandbox permissions and env', () => {
     const gitconfig = readFileSync(env.GIT_CONFIG_GLOBAL!, 'utf8');
     expect(gitconfig).toContain('Lane Owner');
     expect(gitconfig).toContain('owner@example.invalid');
+    await m.cancel(started.jobId);
+  });
+
+  it('win32: a host without LOCALAPPDATA refuses at start with the variable named, before any runtime starts', async () => {
+    const m = manager('hang', 'supported', { platform: 'win32' }, { SystemRoot: 'C:\\Windows' });
+    expect(() => m.start({ prompt: 'implement', cwd: repo })).toThrow(/copilot_run_start: the Windows sandbox needs LOCALAPPDATA in the environment .*sandbox\.enabled false/);
+    expect(calls.connections).toHaveLength(0);
+    // Switched off, no sandbox launches anything: no refusal.
+    const off = manager('hang', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, { SystemRoot: 'C:\\Windows' });
+    const started = off.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    await off.cancel(started.jobId);
+  });
+
+  it('win32: the host LOCALAPPDATA and SystemRoot reach the runtime env verbatim', async () => {
+    const m = manager('hang', 'supported', { platform: 'win32' }, { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' });
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    const env = calls.connections[0].env!;
+    expect(env).toMatchObject({ SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' });
+    expect(env.COPILOT_CACHE_HOME).toBe(join(env.COPILOT_HOME!, 'profile', '.cache', 'copilot'));
     await m.cancel(started.jobId);
   });
 });

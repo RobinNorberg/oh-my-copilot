@@ -15,6 +15,7 @@
  * reports as not sandboxed stops the session with `sandbox-escaped`.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
@@ -31,6 +32,8 @@ export interface SandboxHostRecord {
   supported: boolean;
   reason?: string;
   capabilities: Record<string, boolean>;
+  /** The runtime reported support but the trial launch failed (Linux); `reason` says why. */
+  launchFailed?: true;
 }
 
 /** `CopilotRunSnapshot.sandbox` (§5). */
@@ -314,8 +317,66 @@ function rpcMethod(root: unknown, path: string[], name: string): (() => Promise<
   }
 }
 
-/** `client.rpc.sandbox.getHostSupport()`; supported only with the `shell` capability. */
-export async function probeHostSupport(client: unknown, timeoutMs: number): Promise<SandboxHostRecord> {
+/** Runs `cmd args` to completion, shaped like spawnSync's result. */
+export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string };
+
+/**
+ * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
+ * creates, network included (`--unshare-all`; policies without outbound
+ * access get an empty net namespace), around `true`.
+ */
+export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--', 'true'];
+
+const defaultTrialSpawner: SandboxTrialSpawner = (cmd, args, timeoutMs) => {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
+  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '' };
+};
+
+/**
+ * Whether bwrap can launch a process here: null when it can, else why not.
+ * `sandbox.getHostSupport` reports a host with bwrap installed as supported
+ * even where unprivileged user namespaces lack capabilities (Ubuntu 24.04's
+ * AppArmor default), and there every sandboxed launch fails.
+ */
+export function bwrapTrialLaunchError(spawn: SandboxTrialSpawner = defaultTrialSpawner, timeoutMs = 10_000): string | null {
+  const r = spawn('bwrap', BWRAP_TRIAL_ARGS, timeoutMs);
+  if ((r.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return 'bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap';
+  if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
+  if (r.status === 0) return null;
+  const stderr = r.stderr.trim().slice(0, 200);
+  if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
+    return 'unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; '
+      + `see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
+  }
+  return `a trial bwrap launch failed (exit ${String(r.status)})${stderr ? `: ${stderr}` : ''}`;
+}
+
+let cachedBwrapTrial: string | null | undefined;
+/** bwrapTrialLaunchError with the real bwrap, run once per process. */
+export function cachedBwrapTrialLaunchError(): string | null {
+  if (cachedBwrapTrial === undefined) cachedBwrapTrial = bwrapTrialLaunchError();
+  return cachedBwrapTrial;
+}
+
+export interface HostLaunchCheck {
+  /** Default process.platform; the trial launch runs on linux only. */
+  platform?: NodeJS.Platform;
+  /** Test seam: the trial launch (default cachedBwrapTrialLaunchError). */
+  trialLaunch?: () => string | null;
+}
+
+/**
+ * `client.rpc.sandbox.getHostSupport()`; supported only with the `shell`
+ * capability and, on Linux, a trial bwrap launch that succeeds.
+ */
+export async function probeHostSupport(client: unknown, timeoutMs: number, launch: HostLaunchCheck = {}): Promise<SandboxHostRecord> {
+  const host = await askHostSupport(client, timeoutMs);
+  if (!host.supported || (launch.platform ?? process.platform) !== 'linux') return host;
+  const launchError = (launch.trialLaunch ?? cachedBwrapTrialLaunchError)();
+  return launchError ? { supported: false, reason: launchError, capabilities: host.capabilities, launchFailed: true } : host;
+}
+
+async function askHostSupport(client: unknown, timeoutMs: number): Promise<SandboxHostRecord> {
   const call = rpcMethod(client, ['rpc', 'sandbox'], 'getHostSupport') as (() => Promise<unknown>) | null;
   if (!call) return { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} };
   try {
@@ -387,7 +448,30 @@ export const SESSION_ENV_ALLOWLIST: readonly string[] = [
   // Non-secret OS variables shells and git expect.
   'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
   'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
+  // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
+  // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
+  // paths from it (python-repl/paths.ts, utils/paths.ts getDataDir/getStateDir) finds them, but sandboxed writes there
+  // are denied, so the effect is breakage or shared read state, never escalation.
+  'LOCALAPPDATA',
 ];
+
+/**
+ * The variables the Windows sandbox (MXC) needs to launch any process,
+ * hook or shell, with the runtime's env taken verbatim
+ * (`inheritDefaultEnv` false): presence only, the value is not checked.
+ * Copilot CLI 1.0.105 rejects a launch without them ("policy_validation:
+ * ... missing the required variable(s)"). In runtime.node 1.0.105 only
+ * SYSTEMROOT sits next to that message; LOCALAPPDATA comes from separate MXC
+ * strings ("LOCALAPPDATA and USERPROFILE both unset", "no user-profile
+ * grants: %LOCALAPPDATA% is unset ... Programs") and from the live error.
+ * SystemRoot locates the system DLLs, LOCALAPPDATA the container's profile.
+ */
+export const MXC_REQUIRED_ENV: readonly string[] = ['SYSTEMROOT', 'LOCALAPPDATA'];
+
+/** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
+export function missingSandboxEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+  return platform === 'win32' ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === undefined) : [];
+}
 
 /** The caller's env value for `name`, looked up case-insensitively (Windows env keys). */
 function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -435,6 +519,8 @@ export function relocatedProfileEnv(jobHome: string): Record<string, string> {
     HOME: profile,
     XDG_CONFIG_HOME: join(profile, '.config'),
     GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
+    // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant anchored on it, in the profile.
+    COPILOT_CACHE_HOME: join(profile, '.cache', 'copilot'),
   };
 }
 

@@ -56,6 +56,8 @@ export interface FactoryRunScenarioInput {
     lanes?: (repoRoot: string) => LaneBackend;
     now?: () => number;
     engine?: Pick<FactoryEngineOptions, 'pollMs' | 'processes' | 'sleep'>;
+    /** The model every lane runs on (the driver's cheap pick); unset: runtime auto. */
+    model?: string;
 }
 /** What the scripted gh saw. */
 export interface ScriptedGhRecord {
@@ -93,11 +95,13 @@ export declare function prepareFactoryRepo(dir: string): string | null;
 export declare class RecordingLanes implements LaneBackend {
     private readonly inner;
     private readonly requestChangesOnce;
+    private readonly model?;
     readonly kind: LaneBackend['kind'];
     readonly starts: Array<Pick<LaneStartInput, 'laneId' | 'profile' | 'maxCredits' | 'baseRef'>>;
     readonly results: Map<string, LaneResult>;
     private reviews;
-    constructor(inner: LaneBackend, requestChangesOnce: boolean);
+    /** `model`: pinned on every lane start (the engine sets none, so lanes would run on runtime auto). */
+    constructor(inner: LaneBackend, requestChangesOnce: boolean, model?: string | undefined);
     start(input: LaneStartInput): Promise<{
         remoteId: string;
     }>;

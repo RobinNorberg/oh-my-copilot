@@ -5,11 +5,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
 import {
+  BWRAP_TRIAL_ARGS,
   DEFAULT_SANDBOX_SETTINGS,
   allowlistSessionEnv,
+  bwrapTrialLaunchError,
   buildSandboxConfig,
   laneGitWritePaths,
   loadSandboxSettings,
+  missingSandboxEnv,
+  MXC_REQUIRED_ENV,
   probeHostSupport,
   resolveSandboxSettings,
   scrubTokens,
@@ -149,11 +153,40 @@ describe('sandbox settings', () => {
 describe('detection helpers', () => {
   it('probeHostSupport needs supported and the shell capability, and survives a throwing RPC', async () => {
     const client = (res: unknown) => ({ rpc: { sandbox: { getHostSupport: async () => res } } });
-    expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: true }] }), 1000)).toEqual({ supported: true, capabilities: { shell: true } });
+    expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: true }] }), 1000, { platform: 'win32' })).toEqual({ supported: true, capabilities: { shell: true } });
     expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: false }] }), 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('no shell') });
     expect(await probeHostSupport(client({ supported: false, reason: 'old build', capabilities: [] }), 1000)).toMatchObject({ supported: false, reason: 'old build' });
     expect(await probeHostSupport({ rpc: { sandbox: { getHostSupport: async () => { throw new Error('boom'); } } } }, 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('boom') });
     expect(await probeHostSupport({}, 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('no sandbox.getHostSupport') });
+  });
+
+  it('probeHostSupport on Linux also needs a trial launch, which only a runtime-supported host gets', async () => {
+    const supported = { rpc: { sandbox: { getHostSupport: async () => ({ supported: true, capabilities: [{ name: 'shell', supported: true }] }) } } };
+    let trials = 0;
+    const trial = (err: string | null) => () => { trials++; return err; };
+    expect(await probeHostSupport(supported, 1000, { platform: 'linux', trialLaunch: trial(null) })).toEqual({ supported: true, capabilities: { shell: true } });
+    expect(await probeHostSupport(supported, 1000, { platform: 'linux', trialLaunch: trial('userns restricted') }))
+      .toEqual({ supported: false, reason: 'userns restricted', capabilities: { shell: true }, launchFailed: true });
+    expect(trials).toBe(2);
+    const unsupported = { rpc: { sandbox: { getHostSupport: async () => ({ supported: false, reason: 'no bwrap', capabilities: [] }) } } };
+    expect(await probeHostSupport(unsupported, 1000, { platform: 'linux', trialLaunch: trial(null) })).toMatchObject({ supported: false, reason: 'no bwrap' });
+    expect(await probeHostSupport(supported, 1000, { platform: 'darwin', trialLaunch: trial('x') })).toMatchObject({ supported: true });
+    expect(trials).toBe(2);
+  });
+
+  it('bwrapTrialLaunchError runs bwrap with the namespace and network flags and names the failure', () => {
+    const calls: Array<{ cmd: string; args: readonly string[] }> = [];
+    const spawner = (res: { error?: Error; status: number | null; stderr: string }) => (cmd: string, args: readonly string[]) => { calls.push({ cmd, args }); return res; };
+    expect(bwrapTrialLaunchError(spawner({ status: 0, stderr: '' }))).toBeNull();
+    expect(calls[0]).toEqual({ cmd: 'bwrap', args: BWRAP_TRIAL_ARGS });
+    expect(BWRAP_TRIAL_ARGS).toContain('--unshare-all');
+    const restricted = bwrapTrialLaunchError(spawner({ status: 1, stderr: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n' }));
+    expect(restricted).toMatch(/^unprivileged user namespaces are restricted \(AppArmor kernel\.apparmor_restrict_unprivileged_userns=1\)/);
+    expect(restricted).toContain('docs/REFERENCE.md');
+    expect(restricted).toContain('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted)');
+    const missing = Object.assign(new Error('spawnSync bwrap ENOENT'), { code: 'ENOENT' });
+    expect(bwrapTrialLaunchError(spawner({ error: missing, status: null, stderr: '' }))).toMatch(/^bwrap \(bubblewrap\) is not on PATH/);
+    expect(bwrapTrialLaunchError(spawner({ status: 2, stderr: 'bwrap: something else' }))).toBe('a trial bwrap launch failed (exit 2): bwrap: something else');
   });
 
   it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
@@ -165,12 +198,31 @@ describe('detection helpers', () => {
   });
 
   it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
-    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a' }, join(root, 'h'));
+    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local' }, join(root, 'h'));
     expect(env).toEqual({
-      Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1',
+      Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
       XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
+      // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.
+      COPILOT_CACHE_HOME: join(root, 'h', 'profile', '.cache', 'copilot'),
     });
+  });
+
+  it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {
+    const hostEnv = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', GH_TOKEN: 'ghp_x' };
+    const env = allowlistSessionEnv(hostEnv, join(root, 'h'));
+    expect(MXC_REQUIRED_ENV).toEqual(['SYSTEMROOT', 'LOCALAPPDATA']);
+    expect(missingSandboxEnv(env, 'win32')).toEqual([]);
+    expect(env).toMatchObject({ SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' });
+    expect(env.GH_TOKEN).toBeUndefined();
+  });
+
+  it('missingSandboxEnv names the absent or blank required variables on win32 only', () => {
+    expect(missingSandboxEnv({ SystemRoot: 'C:\\Windows' }, 'win32')).toEqual(['LOCALAPPDATA']);
+    expect(missingSandboxEnv({ systemroot: 'C:\\Windows', LOCALAPPDATA: ' ' }, 'win32')).toEqual(['LOCALAPPDATA']);
+    expect(missingSandboxEnv({}, 'win32')).toEqual(['SYSTEMROOT', 'LOCALAPPDATA']);
+    expect(missingSandboxEnv({}, 'linux')).toEqual([]);
+    expect(missingSandboxEnv({}, 'darwin')).toEqual([]);
   });
 
   it('keeps every token out of the runtime env; the Copilot token goes to the session option instead', () => {

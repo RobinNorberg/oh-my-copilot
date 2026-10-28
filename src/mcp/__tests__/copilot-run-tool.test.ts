@@ -100,6 +100,7 @@ function deps(behavior: Behavior, overrides: Partial<CopilotRunDeps> = {}): Copi
     userConfigDir: () => join(root, 'user-copilot'),
     isAlive: () => false,
     killTree: () => {},
+    sandboxTrialLaunch: () => null,
     ...overrides,
   };
 }

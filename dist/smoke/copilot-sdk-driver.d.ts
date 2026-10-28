@@ -231,6 +231,8 @@ export interface SdkTierInput {
     platform?: NodeJS.Platform;
     isAlive?: (pid: number) => boolean;
     killTree?: (pid: number) => void;
+    /** Test seam: the Linux trial sandbox launch behind sdk.sandbox's host support (default cachedBwrapTrialLaunchError). */
+    sandboxTrialLaunch?: () => string | null;
     /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
     runChain: typeof runChainScenario;
     /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
@@ -259,4 +261,6 @@ export interface SdkTierResult {
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
 export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
+/** The spawn canary's command: a shell builtin in powershell and bash, so the launch itself is what is tested. */
+export declare const SANDBOX_CANARY_TOKEN = "omg-sandbox-canary-ok";
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map

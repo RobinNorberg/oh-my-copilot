@@ -102,6 +102,7 @@ import {
   applySandboxConfig,
   buildSandboxConfig,
   loadSandboxSettings,
+  missingSandboxEnv,
   probeHostSupport,
   readEnforcement,
   scrubTokens,
@@ -293,6 +294,8 @@ export interface CopilotRunDeps {
   sandboxSettings?: (root: string, scope: SandboxScope) => { settings: SandboxSettings; warnings: string[] };
   /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
   hostGitAttrSourceProblem?: () => string | null;
+  /** Why a trial sandbox launch failed on Linux, or null (default cachedBwrapTrialLaunchError). */
+  sandboxTrialLaunch?: () => string | null;
 }
 
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
@@ -624,6 +627,11 @@ export class CopilotRunManager {
     if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off') {
       const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
       if (problem) throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
+      // The session env passes these through (SESSION_ENV_ALLOWLIST); without one, MXC rejects every hook and shell launch.
+      const missing = missingSandboxEnv(this.deps.env, this.deps.platform);
+      if (missing.length) {
+        throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(' and ')} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
+      }
     }
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
@@ -1117,7 +1125,7 @@ export class CopilotRunManager {
       const status = await withTimeout(client.getStatus(), RPC_TIMEOUT_MS, 'getStatus()');
       if (typeof status.version === 'string') cliVersion = status.version;
     } catch { /* recorded as unknown */ }
-    const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+    const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: deps.platform, ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}) });
     const base = { host, applied: 'none' as const, canary: 'skipped' as const, unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
     const settings = job.sandboxSettings;
     const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
