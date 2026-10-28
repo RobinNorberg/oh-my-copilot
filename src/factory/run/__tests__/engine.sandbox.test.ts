@@ -4,7 +4,7 @@
  * them through hardened host git (lane-commit.ts); the lane's sandbox is
  * recorded in its lane state and a detect-only lane on the PR.
  */
-import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -318,6 +318,22 @@ describe('commitLaneWork', () => {
       expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
     } finally {
       unlinkSync(link);
+    }
+  });
+
+  it('a hard link to a file outside the worktree refuses and leaves nothing staged', () => {
+    const { worktree, start, branch } = laneTree('cr-hardlink');
+    const secret = join(outsideDir(), 'secret.txt');
+    writeFileSync(secret, 'top secret\n');
+    const stolen = join(worktree, 'stolen.txt');
+    linkSync(secret, stolen);
+    try {
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res).toMatchObject({ ok: false, refusal: 'escaped', reason: expect.stringContaining('stolen.txt') });
+      expect(gitIn(worktree, 'ls-files', '--stage')).not.toMatch(/stolen\.txt/);
+      expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
+    } finally {
+      unlinkSync(stolen);
     }
   });
 

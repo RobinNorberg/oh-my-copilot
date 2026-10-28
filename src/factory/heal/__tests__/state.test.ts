@@ -95,9 +95,19 @@ describe('factory.heal config', () => {
     const user = { factory: { heal: { dailyRuns: 5, ignoreJobs: ['Policy'] } } };
     const project = { factory: { heal: { dailyRuns: 9, dailyDebugLanes: 1, ignoreJobs: ['Test'] } } };
     const { config, warnings } = resolveHealConfig(user, project);
-    expect(config).toEqual({ ignoreJobs: ['Policy'], dailyRuns: 5, dailyDebugLanes: 1, debugLaneMaxCredits: 30, maxRunCredits: 120, dailyCredits: 150 });
+    expect(config).toEqual({ ignoreJobs: ['Policy'], dailyRuns: 5, dailyDebugLanes: 1, debugLaneMaxCredits: 30, maxRunCredits: 120, dailyCredits: 150, autoImplement: false });
     expect(warnings).toHaveLength(2);
     expect(() => resolveHealConfig({ factory: { heal: { dailyRuns: -1 } } }, undefined)).toThrow(/non-negative integer/);
+  });
+
+  it('autoImplement defaults to false; only the user config turns it on, the project config only turns it off', () => {
+    expect(resolveHealConfig(undefined, undefined).config.autoImplement).toBe(false);
+    const fromProject = resolveHealConfig(undefined, { factory: { heal: { autoImplement: true } } });
+    expect(fromProject.config.autoImplement).toBe(false);
+    expect(fromProject.warnings.join('\n')).toMatch(/autoImplement .* only the user config turns it on/);
+    expect(resolveHealConfig({ factory: { heal: { autoImplement: true } } }, undefined).config.autoImplement).toBe(true);
+    expect(resolveHealConfig({ factory: { heal: { autoImplement: true } } }, { factory: { heal: { autoImplement: false } } }).config.autoImplement).toBe(false);
+    expect(() => resolveHealConfig({ factory: { heal: { autoImplement: 'yes' } } }, undefined)).toThrow(/true or false/);
   });
 
   it('credit caps: the lane cap never goes under the CLI floor, the project only lowers', () => {

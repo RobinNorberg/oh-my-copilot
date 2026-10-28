@@ -13,6 +13,7 @@ import type { Exec } from '../../ship/exec.js';
 import { evaluateGates } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview, type MergeDecision, type PrView } from '../../ship/merge.js';
 import { latestVerdict, type ShipState } from '../../ship/state.js';
+import { runLabel, type FactoryRunKey } from './state.js';
 
 /** `gh pr view --json` fields the merge step reads. */
 export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
@@ -51,11 +52,12 @@ export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: M
 }
 
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */
-export function mergeComment(issue: number, decision: MergeDecision): string {
+export function mergeComment(issue: FactoryRunKey, decision: MergeDecision, resume = `omg factory run ${issue}`): string {
   const cmd = decision.command.join(' ');
+  const label = runLabel(issue);
   return decision.ok
     ? [
-      `Factory run for #${issue}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
+      `Factory run for ${label}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
       '',
       'Merge is a human step. To merge exactly the head the gates checked:',
       '',
@@ -63,15 +65,15 @@ export function mergeComment(issue: number, decision: MergeDecision): string {
       cmd,
       '```',
       '',
-      `Then run \`omg factory run ${issue}\` to finish the run as merged.`,
+      `Then run \`${resume}\` to finish the run as merged.`,
       '',
     ].join('\n')
     : [
-      `Factory run for #${issue}: \`omg ship\`'s merge rule refuses this head:`,
+      `Factory run for ${label}: \`omg ship\`'s merge rule refuses this head:`,
       '',
       ...decision.reasons.map((r) => `- ${r}`),
       '',
-      `Resolve it, then rerun \`omg factory run ${issue}\`. The command the rule would allow is \`${cmd}\`.`,
+      `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`.`,
       '',
     ].join('\n');
 }

@@ -295,6 +295,8 @@ export interface PluginConfig {
       ignoreJobs?: string[];
       dailyRuns?: number;
       dailyDebugLanes?: number;
+      /** User config only; never for regression-or-env (default false). */
+      autoImplement?: boolean;
     };
     [key: string]: unknown;
   };

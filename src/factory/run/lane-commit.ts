@@ -251,6 +251,15 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     const files = git(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', input.start, '--']).split('\0').filter(Boolean);
     const outside = outsideWorktree(input.worktree, files);
     if (outside.length > 0) return refuse('escaped', `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(', ')}`);
+    // A hard link to a file outside the worktree passes the link walk and the realpath check, but shares its inode.
+    const hardLinked = files.filter((f) => {
+      try {
+        return lstatSync(join(input.worktree, f)).nlink > 1;
+      } catch {
+        return false; // deleted by the lane
+      }
+    });
+    if (hardLinked.length > 0) return refuse('escaped', `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(', ')}`);
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
     if (hit.length > 0) return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
     const tree = git(['write-tree']);
