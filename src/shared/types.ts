@@ -290,7 +290,12 @@ export interface PluginConfig {
 
   /** Software factory settings; `factory.heal` configures `omg factory heal` (experimental). */
   factory?: {
-    heal?: import("../factory/heal/config.js").HealConfigInput;
+    // Shape mirrors HealConfigInput in src/factory/heal/config.ts; inlined so the team bundle never reaches factory.
+    heal?: {
+      ignoreJobs?: string[];
+      dailyRuns?: number;
+      dailyDebugLanes?: number;
+    };
     [key: string]: unknown;
   };
 }
