@@ -92,6 +92,9 @@ export class GhChecksError extends Error {
   }
 }
 
+/** A transient GitHub failure (5xx, GraphQL "Something went wrong"): worth a retry, never a verdict. */
+export const TRANSIENT_GH_ERROR = /Something went wrong|HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error/i;
+
 /** Parse `gh pr checks --json` stdout; throws GhChecksError on anything but an array of {name,state}. */
 export function parseChecksJson(stdout: string): GhCheck[] {
   let parsed: unknown;
@@ -397,6 +400,9 @@ export interface WatchOptions {
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   onReport?: (report: GateReport) => void;
+  /** Drive mode: a transient GitHub error while reading the gates is a pending poll, not a thrown error. */
+  retryTransient?: boolean;
+  onTransient?: (message: string) => void;
 }
 
 export interface WatchResult {
@@ -417,7 +423,17 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
   const deadline = config.watchTimeoutMinutes > 0 ? opts.now() + config.watchTimeoutMinutes * 60_000 : Infinity;
   const rerun: string[] = [];
   for (;;) {
-    const report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
+    let report: GateReport;
+    try {
+      report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!opts.retryTransient || !opts.watch || !(error instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message)) throw error;
+      opts.onTransient?.(message);
+      if (opts.now() >= deadline) throw error;
+      await opts.sleep(Math.min(config.pollIntervalSeconds * 1000, Math.max(0, deadline - opts.now())));
+      continue;
+    }
     opts.onReport?.(report);
     if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed') {
       return { report, rerun, timedOut: false };
