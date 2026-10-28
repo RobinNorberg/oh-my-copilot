@@ -24,6 +24,7 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
+import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
 
 export const FACTORY_PHASES = [
@@ -58,6 +59,8 @@ export interface FactoryLaneRecord {
    * adopted only when a review lane the engine ran carries its hash.
    */
   verdictHash?: string;
+  /** The local job's OS sandbox as it ended (mode, host support, attestation; design §5); absent for remote lanes. */
+  sandbox?: CopilotRunSandboxState;
   note?: string;
   startedAt: string;
   endedAt?: string;
@@ -247,7 +250,9 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (!isStr(s.implementer) || !s.implementer) return 'implementer';
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l as Record<string, unknown>;
-    return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number';
+    const sbx = x?.sandbox as Record<string, unknown> | undefined;
+    return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
+      && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)));
   })) return 'lanes';
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';
   if (typeof s.lostStreak !== 'object' || s.lostStreak === null) return 'lostStreak';

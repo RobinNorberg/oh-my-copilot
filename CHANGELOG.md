@@ -45,6 +45,24 @@ command guard refuses `gh pr merge`. See the
 - **Prepare runs under the tamper checks.** Prepare's checks run the PR's own
   code, so the engine snapshots the shared git state around them like a lane.
   A crash between prepare's push and its record repeats nothing.
+- **Behaviour change: write lanes refuse to run without an OS sandbox.** An
+  `omg factory run` write lane (implement, fix, conflict-fix, ci-fix) whose
+  Copilot sandbox is not confirmed parks at `awaiting-human:
+  sandbox-unavailable` instead of running unsandboxed. Set
+  `factory.run.sandbox.writeUnsandboxed: "detect-only"` in your user
+  `omg.jsonc` to run it anyway. The engine then warns, records
+  `sandbox.mode: "detect-only"` on the lane, and says so in the PR body. A
+  repository config cannot set it.
+- **The engine commits for write lanes.** A write lane's sandbox keeps the git
+  directory read-only, so the lane leaves its changes uncommitted. After the
+  lane ends and passes the tamper check, the engine commits them with hardened
+  git: no hooks, no filters, and a fixed `omg factory` identity, with the
+  lane's final message as the commit message. It refuses an empty change, a
+  merge-rule path, a nested repository (`sandbox-escaped`), or a lane that
+  committed itself. A conflict-fix lane starts from the engine's merge of the
+  base with the conflict markers in place, and the engine commits the
+  resolution as the merge of both. Each lane's sandbox state is recorded in
+  the run state.
 
 ### Security
 

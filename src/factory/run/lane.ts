@@ -44,7 +44,7 @@ export interface LaneStartInput {
   baseRef: string;
   prompt: string;
   /**
-   * `write` (default) may commit in its worktree. `review` denies the write
+   * `write` (default) edits its worktree. `review` denies the write
    * tool and runs only the read-only shell allowlist, and only inside a
    * confirmed OS sandbox (otherwise without a shell); the engine still
    * verifies the worktree after the lane (refs, config and HEAD unchanged).
@@ -55,6 +55,12 @@ export interface LaneStartInput {
    * (scrubLaneCredentials in copilot-run/job.ts). The heal debugger lane sets it.
    */
   scrubCredentials?: boolean;
+  /**
+   * A write lane whose changes the engine commits after it (lane-commit.ts):
+   * the local backend's sandbox keeps the whole common git dir read-only
+   * (copilot_run `hostCommits`), so the lane leaves its changes uncommitted.
+   */
+  engineCommits?: boolean;
   model?: string;
   /** Cloud backends only. */
   customAgent?: string;
@@ -165,7 +171,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}) },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) },
     );
     return { remoteId: snap.jobId };
   }

@@ -166,13 +166,11 @@ export class FakeProcesses implements LaneProcessOps {
   }
 }
 
-/** Lane scripts. */
+/** Lane scripts. A write lane leaves its change uncommitted: the engine commits it (lane-commit.ts). */
 export const commitFile = (path: string, content = 'work\n', credits = 5): LaneScript => ({ worktree }) => {
   mkdirSync(join(worktree, path, '..'), { recursive: true });
   writeFileSync(join(worktree, path), content);
-  gitIn(worktree, 'add', '--', path);
-  gitIn(worktree, 'commit', '-q', '-m', `lane: ${path}`);
-  return { finalText: 'Committed.', credits };
+  return { finalText: `Changed ${path}.`, credits };
 };
 
 export const noCommit: LaneScript = () => ({ finalText: 'Nothing to do.' });

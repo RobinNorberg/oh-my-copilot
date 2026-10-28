@@ -277,6 +277,22 @@ describe('copilot_run sandbox permissions and env', () => {
     await m.cancel(started.jobId);
   });
 
+  it('hostCommits: a write session gets no git-dir write grant and no seeded identity', async () => {
+    gitIn(repo, 'config', 'user.name', 'Lane Owner');
+    const m = manager('hang', 'supported');
+    const started = m.start({ prompt: 'implement', cwd: repo }, { hostCommits: true });
+    await settle();
+    const fs = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem;
+    const common = resolve(gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'));
+    expect(fs.readonlyPaths).toContain(common);
+    expect(fs.readwritePaths.filter((rw) => rw.startsWith(common))).toEqual([]);
+    const env = calls.connections[0].env!;
+    let gitconfig = '';
+    try { gitconfig = readFileSync(env.GIT_CONFIG_GLOBAL!, 'utf8'); } catch { /* never written */ }
+    expect(gitconfig).not.toContain('Lane Owner');
+    await m.cancel(started.jobId);
+  });
+
   it('the review allowlist replaces the denylist in an enforced review', async () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });

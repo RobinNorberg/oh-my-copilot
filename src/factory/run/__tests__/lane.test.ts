@@ -107,6 +107,20 @@ describe('CopilotLaneBackend', () => {
     expect(result.changes?.changedFiles).toEqual([]);
   });
 
+  it('passes engineCommits through as the job\'s hostCommits', async () => {
+    const started: Array<Parameters<LaneJobManager['start']>> = [];
+    const real = managerFor('idle');
+    const spy: LaneJobManager = {
+      start: (...args) => { started.push(args); return real.start(...args); },
+      status: (id) => real.status(id),
+      wait: (id, ms) => real.wait(id, ms),
+      cancel: (id) => real.cancel(id),
+    };
+    const lanes = new CopilotLaneBackend(spy, { allowLive: true });
+    await lanes.wait((await lanes.start(input({ engineCommits: true }))).remoteId, 10_000);
+    expect(started[0][1]).toMatchObject({ sandboxScope: 'factory', hostCommits: true });
+  });
+
   it('without allowLive falls back to the env opt-in and refuses', async () => {
     const lanes = new CopilotLaneBackend(managerFor('idle'), { allowLive: false });
     await expect(lanes.start(input())).rejects.toThrow('OMG_COPILOT_RUN_ALLOW=1');
