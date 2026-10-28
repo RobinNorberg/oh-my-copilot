@@ -216,6 +216,8 @@ describe('omg port drive: human gates', () => {
 interface LaneScript {
   /** Extra edits in the lane worktree before its commit (beyond resolving src/a.ts). */
   edit?: (wt: string) => void;
+  /** Index edits in the lane worktree after its `git add -A`, before its commit. */
+  stage?: (wt: string) => void;
   /** Runs after the lane's commit: tampering with shared git state. */
   plant?: (wt: string) => void;
   /** State `wait` reports (default completed). */
@@ -242,6 +244,7 @@ function mockLane(f: Fixture, resolved: string, seen: LaneStartInput[], s: LaneS
       writeFileSync(join(wt, 'src/a.ts'), resolved);
       s.edit?.(wt);
       git(wt, 'add', '-A');
+      s.stage?.(wt);
       git(wt, 'commit', '-q', '--no-verify', '-m', 'port: reconcile upstream conflicts');
       headSha = git(wt, 'rev-parse', 'HEAD');
       s.plant?.(wt);
@@ -316,6 +319,17 @@ describe('omg port drive: the lane may change only the conflicted paths', () => 
     });
   }
 
+  it('blocks a lane that resolves a conflicted path as a symlink', async () => {
+    const f = conflictFixture();
+    const stage = (wt: string) => { git(wt, 'update-index', '--cacheinfo', `120000,${git(wt, 'rev-parse', 'HEAD:src/b.ts')},src/a.ts`); };
+    const before = git(f.fork, 'rev-parse', 'HEAD');
+    const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { stage }), reconcileLane: LANE }).promise;
+    expect(r.status, r.message).toBe('blocked');
+    expect(r.message).toContain('symlink, gitlink or other non-regular entry, so nothing was adopted: src/a.ts');
+    expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(before);
+    expect(git(f.origin, 'for-each-ref')).toBe('');
+  });
+
   it('never starts the lane when a conflict is on a protected path (eslint config)', async () => {
     const f = fixture({ 'eslint.config.js': 'base\n' }, { 'eslint.config.js': 'fork\n' }, { 'eslint.config.js': 'upstream\n' });
     let started = 0;
@@ -361,6 +375,35 @@ describe('omg port drive: tamper check around the reconcile lane', () => {
       expect(r.laneCredits).toBe(2.5);
       expect(existsSync(sentinel(f))).toBe(false);
       expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(before);
+      expect(git(f.origin, 'for-each-ref')).toBe('');
+    });
+  }
+
+  it('parks the run when the lane re-stages a non-conflicted path in the main index and matches it in its own tree', async () => {
+    const f = conflictFixture();
+    const edit = (wt: string) => writeFileSync(join(wt, 'src/b.ts'), 'swapped\n');
+    const plant = () => { writeFileSync(join(f.fork, 'src/b.ts'), 'swapped\n'); git(f.fork, 'add', '--', 'src/b.ts'); };
+    const before = git(f.fork, 'rev-parse', 'HEAD');
+    const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { edit, plant }), reconcileLane: LANE }).promise;
+    expect(r.status, r.message).toBe('blocked');
+    expect(r.message).toContain("the main checkout's index changed");
+    expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(before);
+    expect(git(f.origin, 'for-each-ref')).toBe('');
+  });
+
+  const hostCases: Array<[string, (f: Fixture) => () => void, string]> = [
+    ['rewrites the main copy of a conflicted file', (f) => () => writeFileSync(join(f.fork, 'src/a.ts'), 'swapped\n'), 'copy of an applied or conflicted file changed'],
+    ['rewrites a gate entry file in node_modules', (f) => () => {
+      mkdirSync(join(f.fork, 'node_modules/vitest'), { recursive: true });
+      writeFileSync(join(f.fork, 'node_modules/vitest/vitest.mjs'), 'process.exit(0)\n');
+    }, 'a node_modules file the gates run changed'],
+  ];
+  for (const [name, plant, problem] of hostCases) {
+    it(`parks the run when the lane ${name}`, async () => {
+      const f = conflictFixture();
+      const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { plant: plant(f) }), reconcileLane: LANE }).promise;
+      expect(r.status, r.message).toBe('blocked');
+      expect(r.message).toContain(problem);
       expect(git(f.origin, 'for-each-ref')).toBe('');
     });
   }

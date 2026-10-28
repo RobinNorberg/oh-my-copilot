@@ -19,12 +19,15 @@
  * Upstream text reaches the reconcile lane and the lane shares the common git
  * dir, so every host git command runs through the port guard (guard.ts:
  * allowlisted shapes, no hooks, fsmonitor, pager, external diff or filter),
- * the shared git state is snapshotted before the lane and compared after its
- * confirmed end (factory review-guard.ts), and the lane's tree may differ from
- * the host-applied index only on the conflicted, non-protected paths.
+ * the shared git state, the main index, the main checkout's applied files and
+ * the gates' node_modules entry files are snapshotted before the lane and
+ * compared after its confirmed end (factory review-guard.ts, hostBaseline),
+ * and the lane's tree may differ from the pre-lane index only on the
+ * conflicted, non-protected paths, as regular files.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { createHash } from 'crypto';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'fs';
 import { isAbsolute, join, relative } from 'path';
 import { isTerminalLaneState, type LaneBackend, type LaneResult, type LaneUsage } from '../factory/run/lane.js';
 import { emptyHooksDir } from '../factory/run/ledger.js';
@@ -346,8 +349,10 @@ export async function runPortDrive(opts: PortDriveOptions): Promise<PortDriveRes
           // Paid lane only when nothing else would stop the run anyway.
           const lanes = opts.lanes();
           let before: RepoSnapshot;
+          let host: HostBaseline;
           try {
             before = snapshotRepo(exec, cwd, stateRootRel);
+            host = hostBaseline(gitOk, cwd, preApply, conflicts.map((c) => c.path));
           } catch (error) {
             throw new PortStop('fail', phase, `the pre-lane snapshot failed: ${error instanceof Error ? error.message : String(error)}`);
           }
@@ -356,7 +361,7 @@ export async function runPortDrive(opts: PortDriveOptions): Promise<PortDriveRes
           if (!lane.confirmed || !lane.result) {
             throw new PortStop('blocked', phase, `reconcile lane ${lane.remoteId} ${lane.why}; it may still run, so its tamper check cannot be trusted yet (nothing committed or pushed). Stop the job, then resolve by hand per ${brief} and run ${resumeCmd}`, resumeCmd);
           }
-          const tampered = laneTamperProblems(exec, cwd, stateRootRel, before, lane.result);
+          const tampered = laneTamperProblems(exec, cwd, stateRootRel, before, lane.result, () => hostChanges(host, hostBaseline(gitOk, cwd, preApply, conflicts.map((c) => c.path))));
           if (tampered.length > 0) {
             throw new PortStop('blocked', phase, `the reconcile lane changed shared git state, so nothing was adopted, committed or pushed: ${tampered.join('; ')}. Inspect and undo it, then resolve by hand per ${brief} and run ${resumeCmd}`, resumeCmd);
           }
@@ -364,7 +369,7 @@ export async function runPortDrive(opts: PortDriveOptions): Promise<PortDriveRes
           if (lane.result.state !== 'completed' || !laneHead || laneHead === preApply) {
             throw new PortStop('blocked', phase, `reconcile lane ${lane.remoteId} ended ${lane.result.state}${lane.result.error ? `: ${lane.result.error}` : ''} without a commit; resolve by hand per ${brief}`, resumeCmd);
           }
-          adoptLaneTree(git, gitOk, preApply, laneHead, conflicts.map((c) => c.path));
+          adoptLaneTree(git, gitOk, preApply, laneHead, conflicts.map((c) => c.path), indexEntries(host.index));
         }
       }
       if (blockers.length > 0) {
@@ -536,22 +541,75 @@ async function runReconcileLane(
   }
 }
 
-/** The post-lane snapshot against the pre-lane one: only the lane's own branch and worktree entry may appear. */
-function laneTamperProblems(exec: Exec, cwd: string, stateRootRel: string | null, before: RepoSnapshot, lane: LaneResult): string[] {
+/**
+ * The post-lane snapshot against the pre-lane one: only the lane's own branch
+ * and worktree entry may appear. `hostProblems` compares the host baseline.
+ */
+function laneTamperProblems(exec: Exec, cwd: string, stateRootRel: string | null, before: RepoSnapshot, lane: LaneResult, hostProblems: () => string[]): string[] {
   try {
     const after = snapshotRepo(exec, cwd, stateRootRel, before);
     const allowed = lane.branch ? { [`refs/heads/${lane.branch}`]: lane.headSha ?? '*' } : {};
     const newWorktree = lane.worktree ? { path: lane.worktree } : lane.remoteId ? { id: lane.remoteId } : undefined;
-    return compareSnapshots(before, after, allowed, newWorktree ? { newWorktree } : {});
+    return [...compareSnapshots(before, after, allowed, newWorktree ? { newWorktree } : {}), ...hostProblems()];
   } catch (error) {
     return [`the post-lane snapshot failed: ${error instanceof Error ? error.message : String(error)}`];
   }
 }
 
-/** `path -> "mode sha"` of the index (unmerged paths: `unmerged`). */
-function indexEntries(gitOk: GitOk): Map<string, string> {
+/**
+ * The node_modules files the gates run (the lane's worktree may reach them
+ * through a node_modules junction): each package.json and gate entry file.
+ */
+export const GATE_ENTRY_FILES = [
+  'node_modules/typescript/package.json', 'node_modules/typescript/bin/tsc', 'node_modules/typescript/lib/tsc.js',
+  'node_modules/eslint/package.json', 'node_modules/eslint/bin/eslint.js',
+  'node_modules/vitest/package.json', 'node_modules/vitest/vitest.mjs',
+];
+
+/** The host state the lane must leave alone, beyond the shared git snapshot. */
+interface HostBaseline {
+  /** `git ls-files -s -z` of the main index: adoptLaneTree's baseline. */
+  index: string;
+  /** Main worktree content of the applied and conflicted paths. */
+  worktree: string;
+  /** GATE_ENTRY_FILES content. */
+  gateEntries: string;
+}
+
+const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
+
+/** What a path in the main checkout holds (lstat: a symlink is never followed). */
+function contentHash(path: string): string {
+  let st;
+  try { st = lstatSync(path); } catch { return 'absent'; }
+  if (st.isSymbolicLink()) return `l ${readlinkSync(path)}`;
+  if (st.isDirectory()) return 'd';
+  return `f ${st.mode & 0o111 ? 'x' : '-'} ${sha256(readFileSync(path))}`;
+}
+
+const hashPaths = (cwd: string, paths: readonly string[]) => sha256([...paths].sort().map((p) => `${p} ${contentHash(join(cwd, p))}`).join('\n'));
+
+function hostBaseline(gitOk: GitOk, cwd: string, preApply: string, conflicted: readonly string[]): HostBaseline {
+  const applied = gitOk(['diff', '--cached', '--name-only', '-z', '--no-renames', preApply]).split('\0').filter(Boolean);
+  return {
+    index: gitOk(['ls-files', '-s', '-z']),
+    worktree: hashPaths(cwd, [...new Set([...applied, ...conflicted])]),
+    gateEntries: hashPaths(cwd, GATE_ENTRY_FILES),
+  };
+}
+
+function hostChanges(before: HostBaseline, after: HostBaseline): string[] {
+  const problems: string[] = [];
+  if (before.index !== after.index) problems.push(`the main checkout's index changed (git ls-files -s differs from before the lane)`);
+  if (before.worktree !== after.worktree) problems.push('the main checkout\'s copy of an applied or conflicted file changed');
+  if (before.gateEntries !== after.gateEntries) problems.push(`a node_modules file the gates run changed (${GATE_ENTRY_FILES.join(', ')})`);
+  return problems;
+}
+
+/** `path -> "mode sha"` of `git ls-files -s -z` output (unmerged paths: `unmerged`). */
+function indexEntries(raw: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const rec of gitOk(['ls-files', '-s', '-z']).split('\0')) {
+  for (const rec of raw.split('\0')) {
     const m = /^(\d+) ([0-9a-f]+) (\d)\t([\s\S]+)$/.exec(rec);
     if (m) out.set(m[4], m[3] === '0' ? `${m[1]} ${m[2]}` : 'unmerged');
   }
@@ -576,11 +634,10 @@ function treeEntries(gitOk: GitOk, rev: string): Map<string, string> {
  * paths are checked out from the lane (or removed when it deleted them),
  * without a reset, and the result is proven equal to the lane's tree.
  */
-function adoptLaneTree(git: Git, gitOk: GitOk, preApply: string, laneHead: string, conflicted: string[]): void {
+function adoptLaneTree(git: Git, gitOk: GitOk, preApply: string, laneHead: string, conflicted: string[], index: Map<string, string>): void {
   if (git('merge-base', '--is-ancestor', preApply, laneHead).status !== 0) {
     throw new PortStop('fail', 'reconcile', `lane head ${short(laneHead)} does not descend from ${short(preApply)}`);
   }
-  const index = indexEntries(gitOk);
   const lane = treeEntries(gitOk, laneHead);
   const conflictSet = new Set(conflicted);
   const differs = [...new Set([...index.keys(), ...lane.keys()])].filter((p) => !isJunk(p) && index.get(p) !== lane.get(p)).sort();
@@ -591,6 +648,11 @@ function adoptLaneTree(git: Git, gitOk: GitOk, preApply: string, laneHead: strin
   const forbidden = laneForbidden(differs);
   if (forbidden.length > 0) {
     throw new PortStop('blocked', 'reconcile', `the reconcile lane changed protected paths, so nothing was adopted: ${listed(forbidden)}; resolve by hand`);
+  }
+  // Only regular files: a symlink (120000) or gitlink (160000) the lane wrote blocks.
+  const oddMode = differs.filter((p) => lane.has(p) && !/^100(644|755) /.test(lane.get(p)!));
+  if (oddMode.length > 0) {
+    throw new PortStop('blocked', 'reconcile', `the reconcile lane wrote a symlink, gitlink or other non-regular entry, so nothing was adopted: ${listed(oddMode)}; resolve by hand`);
   }
   const changed = lines(gitOk(['diff', '--name-only', '--no-renames', preApply, laneHead]));
   const marked: string[] = [];
