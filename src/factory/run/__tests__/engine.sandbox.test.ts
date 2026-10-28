@@ -4,7 +4,7 @@
  * them through hardened host git (lane-commit.ts); the lane's sandbox is
  * recorded in its lane state and a detect-only lane on the PR.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +12,7 @@ import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
-import { commitLaneWork, ENGINE_COMMIT_IDENTITY, laneCommitMessage } from '../lane-commit.js';
+import { commitLaneWork, ENGINE_COMMIT_IDENTITY, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
 import { readFactoryState } from '../state.js';
 import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, noCommit, remoteHead, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
 
@@ -48,7 +48,55 @@ const edit = (path: string, content: string, sandbox?: CopilotRunSandboxState): 
   return { finalText: `Added ${path}.\nTests pass.`, credits: 4, ...(sandbox ? { sandbox } : {}) };
 };
 
+const DIR_LINK = process.platform === 'win32' ? 'junction' : 'dir';
+
+/** A directory link at `path` to `target`; the returned function removes the link itself, never its target. */
+function dirLink(target: string, path: string, type: 'junction' | 'dir' = DIR_LINK): () => void {
+  mkdirSync(join(path, '..'), { recursive: true });
+  symlinkSync(target, path, type);
+  return () => (process.platform === 'win32' ? rmdirSync(path) : unlinkSync(path));
+}
+
+/** A directory outside every worktree holding a secret file. */
+function outsideDir(): string {
+  const dir = join(h.dir, 'outside');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'id_rsa'), 'SECRET\n');
+  return dir;
+}
+
 describe('engine-side commit of a write lane', () => {
+  it('a lane that leaves a directory link to outside its worktree parks at sandbox-escaped; nothing is committed or pushed', async () => {
+    const target = outsideDir();
+    let unlink = () => {};
+    const linking: LaneScript = ({ worktree }) => {
+      writeFileSync(join(worktree, 'a.ts'), 'a\n');
+      unlink = dirLink(target, join(worktree, 'junc'));
+      return { finalText: 'Linked.' };
+    };
+    try {
+      const out = await run([linking]).done;
+      expect(out.gate?.name, out.message).toBe('sandbox-escaped');
+      expect(out.gate?.reason).toMatch(/link at junc/);
+      const lane = readFactoryState(h.root, ISSUE)!.lanes[0];
+      expect(gitIn(lane.worktree!, 'rev-parse', 'HEAD')).toBe(lane.startSha);
+      expect(gitIn(lane.worktree!, 'ls-files', '--stage')).not.toMatch(/junc/);
+      expect(remoteHead(h)).toBeNull();
+    } finally {
+      unlink();
+    }
+  });
+
+  it('a detect-only fix lane after the PR exists is recorded in a PR comment', async () => {
+    const finding = { severity: 'major', file: 'a.ts', line: 1, summary: 'a must be b' };
+    const out = await run([edit('a.ts', 'a\n'), review('request-changes', [finding]), edit('a.ts', 'b\n', sandboxOf('detect-only')), review('approve')]).done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    const create = h.raw.find((c) => c.cmd === 'gh' && c.args.includes('create'))!;
+    expect(readFileSync(create.args[create.args.indexOf('--body-file') + 1], 'utf8')).not.toContain('detect-only');
+    const notes = h.raw.filter((c) => c.cmd === 'gh' && c.args[1] === 'comment').map((c) => readFileSync(c.args[c.args.indexOf('--body-file') + 1], 'utf8'));
+    expect(notes.filter((b) => b.includes('Sandbox: detect-only'))).toEqual([expect.stringContaining(`fix lane issue-${ISSUE}-fix-1`)]);
+  });
+
   it('commits the lane\'s uncommitted changes with the engine identity and the lane\'s summary, and records the lane\'s sandbox', async () => {
     const { lanes, done } = run([edit('src/greet.ts', 'export const greet = () => "hi";\n', sandboxOf('enforced')), review('approve')]);
     const out = await done;
@@ -188,5 +236,122 @@ describe('commitLaneWork', () => {
   it('laneCommitMessage drops control characters and bounds the text', () => {
     expect(laneCommitMessage('fix:\x1b[31m t\nitle', 'a\r\nb\x00c')).toBe('fix: [31m t itle\n\na\nb c');
     expect(laneCommitMessage('t', 'x'.repeat(10_000)).length).toBeLessThan(4_100);
+  });
+
+  it('laneCommitMessage drops skip-CI markers, lane trailers and format characters', () => {
+    expect(laneCommitMessage('fix: t [skip ci]', 'Body [CI SKIP] x [no ci][Skip Actions]\n\nCo-authored-by: Evil <e@x.invalid>\nSigned-off-by: a\nskip-checks: true'))
+      .toBe('fix: t\n\nBody  x');
+    // A trailer-shaped line counts only in the last paragraph; the credit trailers count on any line.
+    expect(laneCommitMessage('t', 'Note: kept\nco-authored-by: Evil <e@x.invalid>\n\nDone.\n\nKey: v\n  continued\nOther: w')).toBe('t\n\nNote: kept\n\nDone.');
+    // A format or bidi character cannot hide or rebuild a marker.
+    expect(laneCommitMessage('a‮b​c', '[sk​ip ci] [skip [ci skip]ci] ok')).toBe('abc\n\nok');
+    expect(laneCommitMessage('t', 'Skip-Checks: true')).toBe('t');
+  });
+
+  it('a junction to outside the worktree refuses before anything is staged (win32 only: junctions are a Windows link type)', ({ skip }) => {
+    if (process.platform !== 'win32') skip();
+    const { worktree, start, branch } = laneTree('cr-junction');
+    const unlink = dirLink(outsideDir(), join(worktree, 'junc'), 'junction');
+    try {
+      writeFileSync(join(worktree, 'a.ts'), 'a\n');
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res).toMatchObject({ ok: false, refusal: 'escaped', reason: expect.stringContaining('link at junc') });
+      expect(gitIn(worktree, 'ls-files', '--stage')).not.toMatch(/junc|a\.ts/);
+      expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
+    } finally {
+      unlink();
+    }
+  });
+
+  it('a symlinked directory to outside the worktree refuses (POSIX only: a directory symlink on win32 needs Developer Mode)', ({ skip }) => {
+    if (process.platform === 'win32') skip();
+    const { worktree, start, branch } = laneTree('cr-dirlink');
+    const unlink = dirLink(outsideDir(), join(worktree, 'junc'), 'dir');
+    try {
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res).toMatchObject({ ok: false, refusal: 'escaped', reason: expect.stringContaining('link at junc') });
+      expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
+    } finally {
+      unlink();
+    }
+  });
+
+  it('a directory link deep in the tree refuses too, while one in an ignored directory is not entered', () => {
+    const { worktree, start, branch } = laneTree('cr-deep');
+    const target = outsideDir();
+    const ignored = dirLink(target, join(worktree, 'build', 'cache', 'link'));
+    writeFileSync(join(worktree, '.gitignore'), 'build/\n');
+    writeFileSync(join(worktree, 'a.ts'), 'a\n');
+    let deep = () => {};
+    try {
+      // The ignored link alone commits: git never enters build/.
+      const ok = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(ok.ok, JSON.stringify(ok)).toBe(true);
+      const sha = (ok as { sha: string }).sha;
+      writeFileSync(join(worktree, 'b.ts'), 'b\n');
+      deep = dirLink(target, join(worktree, 'src', 'a', 'b', 'c', 'd', 'junc'));
+      const res = commitLaneWork({ worktree, start: sha, parents: [sha], repoRoot: h.root, branch, message: 'x' });
+      expect(res).toMatchObject({ ok: false, refusal: 'escaped', reason: expect.stringContaining('link at src/a/b/c/d/junc') });
+      expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(sha);
+      expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', sha)).not.toMatch(/id_rsa/);
+    } finally {
+      deep();
+      ignored();
+    }
+  });
+
+  it('a new symlink file refuses and leaves nothing staged', ({ skip }) => {
+    const { worktree, start, branch } = laneTree('cr-symlink');
+    const target = join(outsideDir(), 'id_rsa');
+    const link = join(worktree, 'key.txt');
+    try {
+      symlinkSync(target, link, 'file');
+    } catch (err) {
+      // win32 without Developer Mode or admin rights cannot create a file symlink (EPERM).
+      if ((err as NodeJS.ErrnoException).code === 'EPERM') return skip();
+      throw err;
+    }
+    try {
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res).toMatchObject({ ok: false, refusal: 'escaped' });
+      expect(gitIn(worktree, 'ls-files', '--stage')).not.toMatch(/key\.txt/);
+      expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
+    } finally {
+      unlinkSync(link);
+    }
+  });
+
+  it('commits beside runtime state in a repository that ignores .omg/ (an exclude of an ignored path would fail add)', () => {
+    const { worktree, start, branch } = laneTree('cr-ignored-state');
+    writeFileSync(join(worktree, '.gitignore'), '.omg/\n');
+    mkdirSync(join(worktree, '.omg', 'state'), { recursive: true });
+    writeFileSync(join(worktree, '.omg', 'state', 'session.json'), '{}');
+    writeFileSync(join(worktree, 'a.ts'), 'a\n');
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+    expect(res.ok, JSON.stringify(res)).toBe(true);
+    expect((res as { files: string[] }).files).toContain('a.ts');
+  });
+
+  it('outsideWorktree names a staged path whose real directory is outside the worktree', () => {
+    const { worktree } = laneTree('cr-outside');
+    const unlink = dirLink(outsideDir(), join(worktree, 'junc'));
+    try {
+      expect(outsideWorktree(worktree, ['junc/id_rsa', 'a.ts', 'gone/x.ts'])).toEqual(['junc/id_rsa']);
+    } finally {
+      unlink();
+    }
+  });
+
+  it('refuses the lane-protected paths (agent instructions, hooks, skills, CI) and resets the index', () => {
+    for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
+      const { worktree, start, branch } = laneTree(`cr-p-${path.replace(/[^a-z]/gi, '')}`);
+      // The harness repository ignores .omg/: a repository that commits its skills does not.
+      writeFileSync(join(worktree, '.gitignore'), '');
+      mkdirSync(join(worktree, path, '..'), { recursive: true });
+      writeFileSync(join(worktree, path), 'x\n');
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(path) });
+      expect(gitIn(worktree, 'diff', '--cached', '--name-only'), path).toBe('');
+    }
   });
 });
