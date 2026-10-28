@@ -401,8 +401,6 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
-  /** merge -> gates returns in this invocation (MAX_MERGE_BOUNCES). */
-  private mergeBounces = 0;
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
     this.exec = factoryGuardExec(hardenedGitExec(o.exec, hooksDir), () => [o.base]);
@@ -1181,6 +1179,7 @@ class FactoryEngine {
     if (s.prepared && view.headRefOid === s.prepared.head) {
       const prepared = s.prepared;
       // The step boundary compared the shared git state with that push's tracking-ref move allowed; it is the new baseline.
+      if (this.recheckFailed('resuming a recorded prepare')) return;
       this.rebaseRecheck();
       if (head !== prepared.head) this.save((x) => ({ ...x, head: prepared.head }));
       return this.recordPrepared(pr, prepared);
@@ -1197,6 +1196,8 @@ class FactoryEngine {
     }
     if (view.isDraft) this.run(['pr', 'ready', String(pr)], 'gh');
 
+    // A restarted prepare no longer owns a recorded push: the recheck stops tolerating its tracking-ref move.
+    if (s.prepared) this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
     if (this.recheckFailed('before prepare')) return;
     this.discardCheckout();
     const path = checkoutPath(this.o.root, this.o.issue);
@@ -1273,6 +1274,12 @@ class FactoryEngine {
   private publishPrepared(pr: number, reviewed: string, next: string, housekeeping: string[], baseSha: string): void {
     const s = this.state;
     if (next !== reviewed) {
+      // PR code ran in the checkout: anything beyond the engine's own recorded commits is unreviewed.
+      const extra = this.run(['rev-list', next, `^${reviewed}`, `^${baseSha}`]).split('\n').map((l) => l.trim()).filter((l) => l && !housekeeping.includes(l));
+      if (extra.length > 0) {
+        this.gate('lane-tampered', `prepare's checks (the PR's own code) added commit(s) the engine did not make: ${extra.slice(0, 5).map((c) => c.slice(0, 12)).join(', ')}; nothing was pushed`);
+        return;
+      }
       const files = listChangedFiles(this.exec, this.o.root, baseSha, next);
       if (files === null) throw new FactoryStepError(`git diff ${baseSha.slice(0, 12)}...${next.slice(0, 12)} failed`);
       const hit = protectedChanges(files);
@@ -1429,8 +1436,10 @@ class FactoryEngine {
     const { config, known } = this.gateConfig(view);
     const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known);
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
-      // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per invocation.
-      if (++this.mergeBounces > MAX_MERGE_BOUNCES) {
+      // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.
+      const bounces = (this.state.mergeBounces ?? 0) + 1;
+      this.save((x) => ({ ...x, mergeBounces: bounces }));
+      if (bounces > MAX_MERGE_BOUNCES) {
         this.gate('gates-disagree', `the merge rule's gate read at ${head.slice(0, 12)} disagreed with the gates loop ${MAX_MERGE_BOUNCES} times: ${decision.reasons.join('; ')}; check the PR's checks by hand`);
         return;
       }

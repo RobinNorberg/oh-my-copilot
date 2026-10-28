@@ -74,6 +74,9 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
       return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
     case 'diff':
       return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
+    case 'rev-list':
+      // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
+      return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case 'worktree':
       // The engine-owned prepare checkout only (prepare.ts): its own branch, at an exact commit. Removal goes through removeWorkerWorktree.
       return r.length === 5 && r[0] === 'add' && r[1] === '-B' && CHECKOUT_BRANCH.test(r[2]) && isAbsolute(r[3]) && isFile(r[3]) && /^[0-9a-f]{40}$/.test(r[4]);

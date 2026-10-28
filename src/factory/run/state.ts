@@ -125,6 +125,8 @@ export interface FactoryRunState {
   ciFailure?: FactoryCiFailure;
   /** A prepare pushed `head` with these housekeeping commits; ship records them before gates. */
   prepared?: { head: string; housekeeping: string[] };
+  /** merge -> gates returns so far; the cap holds across reruns. */
+  mergeBounces?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
