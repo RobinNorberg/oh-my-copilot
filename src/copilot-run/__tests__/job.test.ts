@@ -211,6 +211,34 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.OMC_SKIP_HOOKS).toBeUndefined();
     expect(plain.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
   });
+
+  it('scrubCredentials: no GitHub tokens or other secrets, an empty gh config, no git credential helper; COPILOT_GITHUB_TOKEN stays', async () => {
+    const secrets = {
+      GH_TOKEN: 'ghp_x', GITHUB_TOKEN: 'ghs_x', GH_ENTERPRISE_TOKEN: 'e', GITHUB_ENTERPRISE_TOKEN: 'e', NPM_TOKEN: 'n', AWS_SECRET_ACCESS_KEY: 'a',
+      SSH_AUTH_SOCK: '/tmp/agent', GIT_ASKPASS: 'askpass', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: 'store', MY_API_KEY: 'k',
+    };
+    const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', COPILOT_GITHUB_TOKEN: 'copilot-only', GH_CONFIG_DIR: '/home/me/.config/gh', ...secrets });
+    await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
+    await m.wait(m.start({ prompt: 'b', cwd: repo }, { allowLive: true }).jobId, 10_000);
+    const [lane, plain] = calls.connections.map((c) => c.env!);
+    for (const key of Object.keys(secrets)) expect(lane[key], key).toBeUndefined();
+    expect(lane.COPILOT_GITHUB_TOKEN).toBe('copilot-only');
+    expect(lane.GH_CONFIG_DIR).not.toBe('/home/me/.config/gh');
+    expect(lane).toMatchObject({ GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
+    // The empty gh config dir is removed with the session.
+    expect(existsSync(lane.GH_CONFIG_DIR!)).toBe(false);
+    expect(plain.NPM_TOKEN).toBe('n');
+    expect(plain.GH_CONFIG_DIR).toBe('/home/me/.config/gh');
+  });
+
+  it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {
+    rmSync(join(root, 'user-copilot', 'config.json'));
+    const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', GH_TOKEN: 'ghp_x' });
+    const done = await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(String(done.error)).toMatch(/needs a stored Copilot login .* or COPILOT_GITHUB_TOKEN/);
+    expect(calls.connections).toHaveLength(0);
+  });
 });
 
 describe('copilot_run lane skip token in the Stop hook scripts', () => {

@@ -387,6 +387,51 @@ describe('prepare: crash window, PR code and failing checks', () => {
     expect(pushes()).toHaveLength(1);
   });
 
+  it('a commit PR code adds in the checkout is not one of the engine\'s housekeeping commits: lane-tampered and nothing is pushed', async () => {
+    h.node = (args) => {
+      if (isTsc(args)) gitIn(checkoutPath(h.root, ISSUE), 'commit', '-q', '--allow-empty', '-m', 'unreviewed');
+      return okRun;
+    };
+    const out = await run([commitFile('src/greet.ts', 'x\n'), review('approve')]).done;
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.message).toMatch(/added commit\(s\) the engine did not make/);
+    expect(pushes()).toHaveLength(1);
+    expect(readShipState(h.root, PR)!.phase).toBe('prepare');
+  });
+
+  it('resuming a recorded prepare re-checks the shared git state first', async () => {
+    before(PREPARE_VIEW, () => moveBase('inventory/graph.json', '{"base":true}\n'));
+    let n = 0;
+    const crashing: Exec = (cmd, args, opts) => {
+      const res = h.exec(cmd, args, opts);
+      if (cmd === 'git' && args.includes('push') && ++n === 2) throw new Error('simulated crash after the prepare push');
+      return res;
+    };
+    await run([commitFile('inventory/graph.json', '{"lane":true}\n'), review('approve')], { exec: crashing }).done;
+    gitIn(h.root, 'branch', 'evil', 'HEAD');
+    const out = await run([]).done;
+    expect(out.gate?.name, out.message).toBe('review-tampered');
+    expect(out.message).toMatch(/tampered|shared git state changed/);
+    expect(readFactoryState(h.root, ISSUE)!.phase).toBe('review');
+  });
+
+  it('a restarted prepare drops the recorded push, so a stale tracking-ref move is no longer tolerated', async () => {
+    before(PREPARE_VIEW, () => moveBase('inventory/graph.json', '{"base":true}\n'));
+    let n = 0;
+    const crashing: Exec = (cmd, args, opts) => {
+      const res = h.exec(cmd, args, opts);
+      if (cmd === 'git' && args.includes('push') && ++n === 2) throw new Error('simulated crash after the prepare push');
+      return res;
+    };
+    await run([commitFile('inventory/graph.json', '{"lane":true}\n'), review('approve')], { exec: crashing }).done;
+    // The PR head is back at the reviewed head, so the recorded prepare is not what is on GitHub: prepare restarts.
+    h.gh.headOverride = readFactoryState(h.root, ISSUE)!.head!;
+    const out = await run([]).done;
+    expect(out.gate?.name, out.message).toBe('review-tampered');
+    expect(out.message).toMatch(/before prepare/);
+    expect(readFactoryState(h.root, ISSUE)!.prepared).toBeUndefined();
+  });
+
   it('a failing prepare check starts one ci-fix lane at the checkout head, then a new review and a clean prepare', async () => {
     let tsc = 0;
     h.node = (args) => (isTsc(args) && ++tsc === 1 ? { status: 1, stdout: 'src/greet.ts(1,1): error TS1005: expected', stderr: '' } : okRun);
@@ -492,6 +537,8 @@ describe('gates: ci-fix tampering, cancel and resume', () => {
     h.gh.gates = Array.from({ length: 40 }, (_, i) => (i % 2 === 0 ? greenGates() : failedGates()));
     const out = await run([commitFile('a.ts'), review('approve')]).done;
     expect(out.gate?.name, out.message).toBe('gates-disagree');
+    // Persisted in the state, so a rerun does not get a fresh allowance.
+    expect(readFactoryState(h.root, ISSUE)!.mergeBounces).toBe(3);
     expect(h.calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
   });
 });

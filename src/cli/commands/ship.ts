@@ -32,11 +32,13 @@
  * briefs or slip, not against one that rewrites its own environment.
  *
  * Exit codes: 0 ok / green / ready, 1 refused or failed, 2 usage error,
- * 8 gates still pending (re-run to keep watching).
+ * 8 gates still pending (re-run to keep watching; `gates --drive` never
+ * exits 8: it watches up to --drive-max hours, see src/release/drive.ts).
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { dirname } from 'path';
 import {
   DEFAULT_SHIP_CONFIG,
   isPlainBranchName,
@@ -48,7 +50,22 @@ import {
   type ShipConfig,
 } from '../../ship/config.js';
 import { defaultExec, guardExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { watchGates, type GateReport } from '../../ship/gates.js';
+import { TRANSIENT_GH_ERROR, watchGates, type GateReport, type WatchResult } from '../../ship/gates.js';
+import { emitProgress, resolveProgressFile } from '../../lib/agent-progress.js';
+import {
+  defaultDriveProcess,
+  detachDriver,
+  driveLockPath,
+  driveLogPath,
+  DRIVE_HEARTBEAT_MS,
+  DRIVE_MAX_HOURS,
+  lastLines,
+  readDriveLock,
+  stopDriver,
+  withDriveLock,
+  type DriveProcess,
+  type DriveSpawn,
+} from '../../release/drive.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview, type PrView } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import {
@@ -120,6 +137,18 @@ function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string; re
   return { base: info.baseRefName, baseSha: info.baseRefOid, repoUrl: prRepoUrl(info.url) };
 }
 
+/** prBaseInfo, retried (up to two more times) while GitHub answers with a transient error. */
+async function prBaseInfoRetrying(exec: Exec, pr: number, sleep: (ms: number) => Promise<void>): Promise<ReturnType<typeof prBaseInfo>> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return prBaseInfo(exec, pr);
+    } catch (error) {
+      if (attempt >= 2 || !TRANSIENT_GH_ERROR.test(error instanceof Error ? error.message : String(error))) throw error;
+      await sleep(5_000 * (attempt + 1));
+    }
+  }
+}
+
 /**
  * OMG_SHIP_HUMAN=1: the owner's override for replacing a terminal or
  * hand-edited run. Lane briefs forbid it; like every environment input it is
@@ -185,7 +214,23 @@ export function gateExit(report: GateReport, timedOut = false): number {
   return report.verdict === 'pending' || (timedOut && report.verdict === 'flaky') ? EXIT_PENDING : 1;
 }
 
-export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipConfigLoader = shipConfig): Command {
+/** `gates --drive`: the clock, process probes and the detached spawn (tests). */
+export interface ShipDriveDeps {
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+  proc: DriveProcess;
+  spawnDriver?: DriveSpawn;
+  /** CLI script the detached driver runs (default: the one running now). */
+  entry?: string;
+}
+
+const defaultShipDrive: ShipDriveDeps = {
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+  proc: defaultDriveProcess,
+};
+
+export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipConfigLoader = shipConfig, drive: ShipDriveDeps = defaultShipDrive): Command {
   // The guard also refuses pushes to the run's base once a command knows it.
   let runBase: string[] = [];
   const exec = guardExec(execImpl, () => runBase);
@@ -331,42 +376,136 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
     .option('--interval <seconds>', 'Poll interval (default ship.pollIntervalSeconds, 30)')
     .option('--timeout <minutes>', 'Stop watching after this long (default ship.watchTimeoutMinutes, 9; 0 = no limit)')
     .option('--no-rerun', 'Never rerun known-flaky failures automatically')
+    .option('--drive', 'Watch until green or a real failure with no watch window (exit 0 or 1, never 8); transient GitHub errors are retried; progress events under agent=ship-<pr>')
+    .option('--drive-max <hours>', 'Hard ceiling of a --drive watch; then blocked (exit 1)', String(DRIVE_MAX_HOURS))
+    .option('--detach', 'Run the --drive watch as a detached process that outlives this session')
+    .option('--status', 'Print the drive lock and the last progress events of this PR, run nothing')
+    .option('--stop', 'Stop the detached driver of this PR and remove its lock')
     .option('--json', 'JSON output')
-    .action((prRaw: string, o: { watch?: boolean; interval?: string; timeout?: string; rerun?: boolean; json?: boolean }) =>
+    .action((prRaw: string, o: {
+      watch?: boolean; interval?: string; timeout?: string; rerun?: boolean; json?: boolean;
+      drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean;
+    }) =>
       guarded(Boolean(o.json), async () => {
         const pr = parsePr(prRaw);
+        const driveMaxHours = Number(o.driveMax);
+        if (!Number.isFinite(driveMaxHours) || driveMaxHours <= 0) throw new UsageError('--drive-max must be a positive number of hours');
+        if (o.status && o.stop) throw new UsageError('pass one of --status / --stop');
         const root = repoRoot(exec);
+        const agent = `ship-${pr}`;
+        const progressFile = resolveProgressFile(agent, undefined, root);
+        const progress = (phase: string, status: 'start' | 'heartbeat' | 'done' | 'fail' | 'blocked', note: string) => { emitProgress({ phase, status, note, agent, cwd: root }); };
+        const driveDir = dirname(shipStatePath(root, pr));
+        const lockPath = driveLockPath(driveDir, String(pr));
+        const logPath = driveLogPath(driveDir, String(pr));
+        const monitor = `omg progress watch --file ${progressFile} --until settled --stall 30m`;
+        if (o.status) {
+          const lock = readDriveLock(lockPath);
+          const liveness = lock ? await drive.proc.liveness(lock) : undefined;
+          const events = lastLines(progressFile, 5);
+          emit(Boolean(o.json), { lock, liveness, lockPath, logPath, progressFile, events }, () => {
+            console.log(lock ? `driver: pid ${lock.pid} on ${lock.host} since ${lock.startedAt} (${liveness}); log ${logPath}` : `driver: none (no ${lockPath})`);
+            console.log(lock && liveness === 'live' ? `wake on it: ${monitor}` : `drive: omg ship gates ${pr} --drive --detach`);
+            for (const line of events) console.log(`  ${line}`);
+          });
+          return 0;
+        }
+        if (o.stop) {
+          const stopped = await stopDriver(lockPath, drive.proc);
+          if (stopped.stopped) progress('gates', 'blocked', `drive of PR #${pr} stopped by --stop (pid ${stopped.pid}); resume: omg ship gates ${pr} --drive --detach`);
+          emit(Boolean(o.json), { ...stopped, lockPath }, () => console.log(stopped.stopped ? `stopped the driver (pid ${stopped.pid}) and removed ${lockPath}` : stopped.reason));
+          return !stopped.stopped && stopped.refused ? 1 : 0;
+        }
+        if (o.detach) {
+          const argv = ['ship', 'gates', String(pr), '--drive', '--drive-max', o.driveMax, ...(o.interval ? ['--interval', o.interval] : []), ...(o.rerun === false ? ['--no-rerun'] : [])];
+          const detached = await detachDriver({
+            lockPath, logPath, argv, cwd: root, proc: drive.proc, sleep: drive.sleep, spawnImpl: drive.spawnDriver,
+            entry: drive.entry ?? process.argv[1], statusCommand: `omg ship gates ${pr} --status`,
+          });
+          emit(Boolean(o.json), { ...detached, lockPath, logPath, progressFile, monitor }, () => {
+            if (!detached.ok) console.error(chalk.red(`Error: ${detached.reason}`));
+            else {
+              console.log(chalk.green(`gates PR #${pr}: driving detached as pid ${detached.pid}${detached.locked ? '' : ' (it has not taken the lock yet; check --status and the log)'}`));
+              console.log(`  log      ${logPath}`);
+              console.log(`  status   omg ship gates ${pr} --status   stop: omg ship gates ${pr} --stop`);
+              console.log(`  wake on  ${monitor}`);
+            }
+          });
+          return detached.ok ? 0 : 1;
+        }
         const existing = readShipState(root, pr);
         // GitHub's base, never the state's: a retargeted PR is gated under its real base.
-        const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
-        if (existing && existing.base !== prBaseBranch) {
-          console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
+        let loaded: LoadedShipConfig;
+        let config: ShipConfig;
+        try {
+          const { base: prBaseBranch, baseSha, repoUrl } = await prBaseInfoRetrying(exec, pr, drive.sleep);
+          if (existing && existing.base !== prBaseBranch) {
+            console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
+          }
+          loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha, repoUrl });
+          config = {
+            ...loaded,
+            pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
+            // --drive: no watch window but the --drive-max ceiling.
+            watchTimeoutMinutes: o.drive ? driveMaxHours * 60 : parseNumber(o.timeout, '--timeout') ?? loaded.watchTimeoutMinutes,
+            autoRerunFlaky: loaded.autoRerunFlaky && o.rerun !== false,
+          };
+        } catch (error) {
+          // Before the lock: a detached driver dies here, so the Monitor needs its terminal event.
+          if (o.drive) progress('gates', 'fail', `PR #${pr}: ${error instanceof Error ? error.message : String(error)}; next: omg ship gates ${pr} --drive --detach`);
+          throw error;
         }
-        const loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha, repoUrl });
-        const config: ShipConfig = {
-          ...loaded,
-          pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
-          watchTimeoutMinutes: parseNumber(o.timeout, '--timeout') ?? loaded.watchTimeoutMinutes,
-          autoRerunFlaky: loaded.autoRerunFlaky && o.rerun !== false,
-        };
         const hasState = existing !== null;
-        const result = await watchGates({
+        let lastBeat = -Infinity;
+        const beat = (note: string) => {
+          if (drive.now() - lastBeat < DRIVE_HEARTBEAT_MS) return;
+          lastBeat = drive.now();
+          progress('gates', 'heartbeat', note);
+        };
+        const watch = (): Promise<WatchResult> => watchGates({
           exec,
           pr,
           config,
           known: loadBaseKnownFlaky(exec, root, loaded.trustedBaseCommit, config.knownFlakyFile),
           cwd: root,
-          watch: Boolean(o.watch),
+          watch: Boolean(o.watch || o.drive),
           reruns: hasState
             ? {
                 count: (id) => readShipState(root, pr)?.reruns[id] ?? 0,
                 record: (id) => { updateShipState(root, pr, (s) => ({ ...s!, reruns: { ...s!.reruns, [id]: (s!.reruns[id] ?? 0) + 1 }, updatedAt: now() })); },
               }
             : undefined,
-          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-          now: () => Date.now(),
-          onReport: (r) => { if (o.watch && !o.json) console.error(chalk.gray(`[${now()}] gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`)); },
+          sleep: drive.sleep,
+          now: drive.now,
+          onReport: (r) => {
+            if ((o.watch || o.drive) && !o.json) console.error(chalk.gray(`[${now()}] gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`));
+            if (o.drive) beat(`PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`);
+          },
+          retryTransient: o.drive,
+          onTransient: (message) => { if (o.drive) beat(`PR #${pr}: transient GitHub error, retrying (${message.slice(0, 120)})`); },
         });
+        let result: WatchResult;
+        if (o.drive) {
+          const held = await withDriveLock(lockPath, process.argv.slice(2), drive.proc, (line) => console.error(line), async () => {
+            progress('gates', 'start', `PR #${pr}: driving the gates (--drive-max ${driveMaxHours} h)`);
+            try {
+              return await watch();
+            } catch (error) {
+              progress('gates', 'fail', `PR #${pr}: ${error instanceof Error ? error.message : String(error)}; next: omg ship gates ${pr} --drive --detach`);
+              throw error;
+            }
+          });
+          if (!held.held) {
+            throw new Error(`another driver holds ${lockPath}${held.holder ? ` (pid ${held.holder.pid} on ${held.holder.host})` : ''}; see omg ship gates ${pr} --status`);
+          }
+          result = held.value;
+          const r = result.report;
+          if (r.verdict === 'green') progress('gates', 'done', `PR #${pr} gates green; next: omg ship merge ${pr}`);
+          else if (result.timedOut) progress('gates', 'blocked', `PR #${pr} gates still ${r.verdict} at --drive-max ${driveMaxHours} h (${r.pending.length} pending); check CI, then omg ship gates ${pr} --drive --detach`);
+          else progress('gates', 'fail', `PR #${pr} gates ${r.verdict}: ${[...r.failed, ...r.suggestions].join('; ').slice(0, 300) || 'see omg ship gates'}; next: fix, push, omg ship gates ${pr} --drive --detach`);
+        } else {
+          result = await watch();
+        }
         const { report } = result;
         if (hasState) {
           updateShipState(root, pr, (s) => {
@@ -379,8 +518,10 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         emit(Boolean(o.json), { ...report, rerun: result.rerun, timedOut: result.timedOut }, () => {
           printGates(report);
           if (result.rerun.length > 0) console.log(`reran (once each): ${result.rerun.join(', ')}`);
-          if (result.timedOut) console.log(chalk.yellow('watch window elapsed; run the same command again to keep watching'));
+          if (result.timedOut) console.log(chalk.yellow(o.drive ? `--drive-max ${driveMaxHours} h elapsed; blocked` : 'watch window elapsed; run the same command again to keep watching'));
         });
+        // --drive never exits 8: green or not, the watch is over.
+        if (o.drive) return report.verdict === 'green' ? 0 : 1;
         return gateExit(report, result.timedOut);
       }));
 
