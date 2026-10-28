@@ -143,7 +143,9 @@ function checkPath(value: string, quoted: boolean, gitRev: boolean, ctx: ShellAl
     // A backslash separates path segments on every platform (`src\a.ts`, `..\..\x`).
     const slashed = part.replace(/\\/g, '/');
     const abs = isAbsolute(slashed) ? slashed : resolve(ctx.cwd, slashed);
-    if (!isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform)) return `path outside the worktree: ${part}`;
+    let inside = false;
+    try { inside = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform); } catch { return `path not resolvable: ${part}`; }
+    if (!inside) return `path outside the worktree: ${part}`;
   }
   return null;
 }

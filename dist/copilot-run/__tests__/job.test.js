@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, summarizeChanges, } from '../job.js';
 import { forgetWorktreeGitLinks, hostGitAttrSourceProblem, hostGitEnv, readWorktreeGitLinks, recordWorktreeGitLinks, recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../../team/git-worktree.js';
@@ -69,6 +70,43 @@ describe('copilot_run startRef', () => {
         expect(() => manager().start({ prompt: 'x', cwd: repo, isolation: 'none', startRef: 'main' })).toThrow('needs isolation "worktree"');
     });
 });
+describe('copilot_run events.jsonl', () => {
+    it('fails the job, writing nothing, when the name already exists (a planted link where the host allows one)', async () => {
+        const victim = join(root, 'victim');
+        writeFileSync(victim, 'keep\n');
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        // The log is opened after the first await in the job: plant the name before it.
+        const eventsPath = started.eventsPath;
+        let planted = 'symlink';
+        try {
+            symlinkSync(victim, eventsPath, 'file');
+        }
+        catch {
+            writeFileSync(eventsPath, '');
+            planted = 'file';
+        }
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status, planted).toBe('failed');
+        expect(done.error).toContain('events log');
+        // The runtime never started: no session exists.
+        expect(calls.sessions).toHaveLength(0);
+        expect(readFileSync(victim, 'utf8')).toBe('keep\n');
+    });
+    it('keeps writing the opened file after its name is renamed and replaced', async () => {
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const eventsPath = started.eventsPath;
+        const moved = `${eventsPath}.moved`;
+        renameSync(eventsPath, moved);
+        writeFileSync(eventsPath, '');
+        calls.sessions[0].onEvent({ type: 'assistant.message', data: { content: 'after the swap' } });
+        await m.cancel(started.jobId);
+        expect(readFileSync(moved, 'utf8')).toContain('after the swap');
+        expect(readFileSync(eventsPath, 'utf8')).toBe('');
+    });
+});
 describe('copilot_run review profile', () => {
     it('denies every write and the tree-changing git commands, allows reads and read-only git', async () => {
         const m = manager('hang');
@@ -110,6 +148,14 @@ describe('copilot_run review profile', () => {
         const wt = started.worktree.path;
         expect(await decide({ kind: 'shell', fullCommandText: 'git commit -am x' }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
         expect(await decide({ kind: 'write', path: join(wt, 'README.md') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        // The file tools reach the job's temp dir, never the engine's events.jsonl nor what the runtime reads back from the home.
+        const eventsPath = started.eventsPath;
+        expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', 'tmp', 'x') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        expect(await decide({ kind: 'write', path: eventsPath }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+        expect(await decide({ kind: 'write', fileName: join(dirname(eventsPath), 'home', '..', 'events.jsonl') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+        for (const p of ['config.json', join('session-state', 's', 'events.jsonl'), join('.cache', 'copilot', 'pkg', 'runtime.node'), join('git', 'config')]) {
+            expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', p) }, { sessionId: 's' }), p).toMatchObject({ kind: 'reject' });
+        }
         await m.cancel(started.jobId);
     });
     it('reviewProfileDenial leaves other request kinds to the worker policy', () => {
@@ -212,7 +258,7 @@ describe('copilot_run allowLive and session env', () => {
         expect(plain.NPM_TOKEN).toBeUndefined();
         expect(plain.GH_CONFIG_DIR).toBeUndefined();
         // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
-        expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]\.gitconfig$/);
+        expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]git[\\/]config$/);
     });
     it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {
         rmSync(join(root, 'user-copilot', 'config.json'));
@@ -450,7 +496,8 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
         const m = manager();
         const job = await finishedJob(m);
         const links = readWorktreeGitLinks(job.wt);
-        expect(links.configWorktree).toBe('absent');
+        // The job created an empty config.worktree (the sandbox keeps only an existing file read-only): its hash is recorded.
+        expect(links.configWorktree).toBe(createHash('sha256').update('').digest('hex'));
         const args = worktreeGitDirArgs(job.wt);
         plantConfigWorktreeFilter(links.adminDir);
         stale(job.wt);

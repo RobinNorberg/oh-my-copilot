@@ -138,10 +138,12 @@ export declare const REGISTRY_HOSTS: readonly string[];
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir`, `gitdir` and
- * `config.worktree` files (and the worktree's `.git` file) cannot be kept
- * read-only inside it: a lane can create or rename over any of them. The
- * host records them at creation (config.worktree as a hash, absent counts)
+ * in the directory itself. The admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files and the worktree's `.git` file are read-only
+ * entries nested in those grants (buildSandboxConfig): on Copilot CLI 1.0.105
+ * on Windows the sandbox then refuses writing, renaming over and deleting
+ * them, but it cannot protect a name that does not exist yet. The
+ * host also records them at creation (config.worktree as a hash, absent counts)
  * and runs no git in the worktree once they differ (git-worktree.ts
  * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
@@ -289,7 +291,13 @@ export declare function scrubTokens(text: string, secrets: readonly string[]): s
  * grants the sandbox read-write on the dir its own TEMP names ("temporary
  * storage" in the SDK's allowDevToolAccess doc; the host value was the
  * user's whole %TEMP%, other jobs' homes and repositories included), and
- * no temp dir at all when that dir is missing.
+ * no temp dir at all when that dir is missing. The temp and profile dirs
+ * are lane-writable (buildSandboxConfig), so nothing the unsandboxed
+ * runtime loads code or config from sits in them: the global git config
+ * (the runtime runs git itself, and core.fsmonitor or a filter driver would
+ * run unsandboxed) is read-only in `<jobHome>/git`, the package cache sits
+ * in `<jobHome>/.cache`, and node's compile cache, which defaults to the
+ * temp dir, is off.
  */
 export declare function relocatedProfileEnv(jobHome: string): Record<string, string>;
 /**

@@ -6,8 +6,8 @@
  * and removes tools up front with {@link buildSdkExcludedTools}.
  */
 
-import { realpathSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 
 /** The subset of the SDK PermissionRequest the policy reads (SDK 1.0.16). */
@@ -100,14 +100,37 @@ export function normalizeShellCommand(command: string): string {
   return command.replace(/''|""/g, '').replace(/(["'])([^"'\s]+)\1/g, '$2');
 }
 
+/**
+ * The realpath of the deepest existing ancestor plus the missing components:
+ * `<root>/link/new.txt` with `link` a planted junction or symlink resolves
+ * through the link, so a write that creates a file is judged where it lands.
+ * A missing name that is itself a (dangling) link, and a realpath error
+ * other than ENOENT, throw: the permission callers deny.
+ */
 function canon(p: string, platform: NodeJS.Platform): string {
-  let out = resolve(p);
-  try { out = realpathSync.native(out); } catch { /* missing: keep the resolved form */ }
+  let cur = resolve(p);
+  const rest: string[] = [];
+  let out: string;
+  for (;;) {
+    try {
+      out = join(realpathSync.native(cur), ...rest.reverse());
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      let link = false;
+      try { lstatSync(cur); link = true; } catch { /* truly missing */ }
+      if (link) throw new Error(`dangling link ${cur}`);
+      const up = dirname(cur);
+      if (up === cur) { out = resolve(p); break; }
+      rest.push(basename(cur));
+      cur = up;
+    }
+  }
   out = out.replace(/\\/g, '/').replace(/\/+$/, '');
   return platform === 'win32' ? out.toLowerCase() : out;
 }
 
-/** True when `p` is `root` or lies below it (realpath, case-folded on win32). */
+/** True when `p` is `root` or lies below it (canon: realpath of the deepest existing ancestor, case-folded on win32). Throws as canon does. */
 export function isUnderRoot(p: string, root: string, platform: NodeJS.Platform = process.platform): boolean {
   if (!p || !root) return false;
   const child = canon(p, platform);
@@ -154,16 +177,24 @@ export function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyCon
       const path = requestPath(req, ctx.cwd);
       if (!path) return { approve: true, reason: 'read without a path' };
       const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
-      return roots.some((root) => isUnderRoot(path, root, platform))
-        ? { approve: true, reason: 'read inside worker roots' }
-        : { approve: false, reason: `read outside worker roots: ${path}` };
+      try {
+        return roots.some((root) => isUnderRoot(path, root, platform))
+          ? { approve: true, reason: 'read inside worker roots' }
+          : { approve: false, reason: `read outside worker roots: ${path}` };
+      } catch (err) {
+        return { approve: false, reason: `read path not resolvable: ${path}: ${(err as Error).message}` };
+      }
     }
     case 'write': {
       const path = requestPath(req, ctx.cwd);
       if (!path) return { approve: false, reason: 'write without a path' };
-      return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
-        ? { approve: true, reason: 'write inside worktree or team state' }
-        : { approve: false, reason: `write outside worktree and team state: ${path}` };
+      try {
+        return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
+          ? { approve: true, reason: 'write inside worktree or team state' }
+          : { approve: false, reason: `write outside worktree and team state: ${path}` };
+      } catch (err) {
+        return { approve: false, reason: `write path not resolvable: ${path}: ${(err as Error).message}` };
+      }
     }
     case 'shell': {
       const command = String(req.fullCommandText ?? '');

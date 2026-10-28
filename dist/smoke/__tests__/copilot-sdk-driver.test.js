@@ -259,7 +259,7 @@ describe('runSdkTier (fake SDK)', () => {
                 return { result: { success: true, exitCode: 0, output: `engine-node ${process.version}\r\npath-node v22.1.0\r\ngit version 2.51.0\r\ngit-sh-ok\r\n` }, sandboxed: true };
             },
         });
-        const pkgCache = join(parent, 'home', 'sandbox-canary', 'profile', '.cache', 'copilot', 'pkg');
+        const pkgCache = join(parent, 'home', 'sandbox-canary', '.cache', 'copilot', 'pkg');
         const sh = 'C:\\Git\\usr\\bin\\sh.exe';
         const result = await runSdkTier(input(loaded, { scenarios: [], keepHome: true, canaryGitShell: () => sh, env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
         expect(existsSync(join(parent, 'home', 'sandbox-canary', 'profile'))).toBe(true);

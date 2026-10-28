@@ -1,12 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
 import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
+/** The job home's lane-writable dirs: the relocated temp and profile, nothing else of it. */
+const laneHome = () => [join(ctx.jobHome, 'tmp'), join(ctx.jobHome, 'profile')];
 beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'omg-sbx-cfg-'));
     ctx = {
@@ -34,7 +36,7 @@ describe('buildSandboxConfig', () => {
             sandboxLspServers: true,
             auth: { git: false, gh: false },
             userPolicy: {
-                filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome], readwritePaths: [ctx.jobDir] },
+                filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')], readwritePaths: [...laneHome()] },
                 network: { allowOutbound: false, allowLocalNetwork: false },
             },
         });
@@ -44,12 +46,12 @@ describe('buildSandboxConfig', () => {
         expect(plain).toMatchObject({ enabled: true, addCurrentWorkingDirectory: true, allowBypass: false, allowDevToolAccess: false, auth: { git: false, gh: false } });
         // Without a linked worktree only objects/ is granted: config and hooks stay read-only.
         expect(plain.userPolicy.filesystem).toEqual({
-            readwritePaths: [ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects')],
-            readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+            readwritePaths: [ctx.worktree, ...laneHome(), join(ctx.commonGitDir, 'objects')],
+            readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')],
         });
         const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
         const linked = buildSandboxConfig('write', { ...ctx, gitDir }, host());
-        expect(linked.userPolicy.filesystem.readwritePaths).toEqual([ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects'), gitDir]);
+        expect(linked.userPolicy.filesystem.readwritePaths).toEqual([ctx.worktree, ...laneHome(), join(ctx.commonGitDir, 'objects'), gitDir]);
         // No ref dir or reflog is writable: another job's branch omc-team/copilot-run/cr-2 stays read-only.
         const otherJob = ['refs', 'logs/refs'].map((d) => join(ctx.commonGitDir, ...d.split('/'), 'heads', 'omc-team', 'copilot-run', 'cr-2'));
         for (const p of ['config', 'hooks', 'info', 'packed-refs', 'refs', 'logs', ...otherJob]) {
@@ -66,10 +68,51 @@ describe('buildSandboxConfig', () => {
         const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
         const cfg = buildSandboxConfig('write', { ...ctx, gitDir, hostCommits: true }, host());
         expect(cfg.userPolicy.filesystem).toEqual({
-            readwritePaths: [ctx.worktree, ctx.jobDir],
-            readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+            readwritePaths: [ctx.worktree, ...laneHome()],
+            readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, join(ctx.jobHome, 'git')],
         });
         expect(cfg.addCurrentWorkingDirectory).toBe(true);
+    });
+    it('grants only the job home\'s temp and profile dirs, never what the engine or the runtime reads back', () => {
+        const env = allowlistSessionEnv({}, ctx.jobHome);
+        // The engine's event log, the runtime's config, session state, policies and logs, and its package cache.
+        const readBack = [
+            join(ctx.jobDir, 'events.jsonl'),
+            join(ctx.jobHome, 'config.json'),
+            join(ctx.jobHome, 'session-state'),
+            join(ctx.jobHome, 'policies'),
+            join(ctx.jobHome, 'logs'),
+            join(env.COPILOT_CACHE_HOME, 'pkg'),
+            env.GIT_CONFIG_GLOBAL,
+        ];
+        for (const cfg of [buildSandboxConfig('review', ctx, host()), buildSandboxConfig('write', ctx, host()), buildSandboxConfig('write', { ...ctx, hostCommits: true }, host())]) {
+            const { readwritePaths, readonlyPaths } = cfg.userPolicy.filesystem;
+            expect(readwritePaths).toEqual(expect.arrayContaining(laneHome()));
+            expect(readwritePaths).not.toContain(ctx.jobHome);
+            expect(readwritePaths).not.toContain(ctx.jobDir);
+            expect(readonlyPaths).not.toContain(ctx.jobDir);
+            for (const p of readwritePaths) {
+                for (const target of readBack)
+                    expect(target === p || target.startsWith(`${p}${sep}`), `${target} under ${p}`).toBe(false);
+            }
+        }
+        // The lane env's temp and profile are exactly the granted dirs.
+        expect([env.TEMP, env.USERPROFILE]).toEqual(laneHome());
+    });
+    it('drops a tool dir that is a link to a filesystem root', () => {
+        const link = join(root, 'rootlink');
+        symlinkSync(resolve('/'), link, process.platform === 'win32' ? 'junction' : 'dir');
+        try {
+            for (const profile of ['review', 'write']) {
+                const ro = buildSandboxConfig(profile, { ...ctx, platform: process.platform, toolPaths: [link, join(root, 'nodejs')] }, host()).userPolicy.filesystem.readonlyPaths;
+                expect(ro).not.toContain(link);
+                expect(ro).toContain(join(root, 'nodejs'));
+            }
+        }
+        finally {
+            // Removes the link itself, before afterAll's recursive rmSync could meet it.
+            unlinkSync(link);
+        }
     });
     it('registry network: npm hosts plus extras, allowLocalNetwork only on Windows', () => {
         const settings = { ...ctx.settings, writeNetwork: 'registry', allowedHosts: ['npm.example.com'] };
@@ -84,7 +127,7 @@ describe('buildSandboxConfig', () => {
         const toolPaths = [join(root, 'nodejs'), join(root, 'git'), root, join(root, 'me', '..'), resolve('/')];
         for (const profile of ['review', 'write']) {
             const fs = buildSandboxConfig(profile, { ...ctx, toolPaths }, host()).userPolicy.filesystem;
-            expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
+            expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p) && p !== join(ctx.jobHome, 'git'))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
             expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
         }
         expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
@@ -114,6 +157,46 @@ describe('buildSandboxConfig', () => {
         expect(() => buildSandboxConfig('write', { ...ctx, settings }, host())).toThrow(/not under the worktree/);
         const inside = { ...ctx.settings, extraReadwritePaths: [join(ctx.worktree, 'out')] };
         expect(buildSandboxConfig('write', { ...ctx, settings: inside }, host()).userPolicy.filesystem.readwritePaths).toContain(join(ctx.worktree, 'out'));
+    });
+    it('keeps the gitfile and the admin dir\'s link files read-only inside their read-write grants', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-links-'));
+        try {
+            const worktree = join(base, 'wt');
+            const commonGitDir = join(base, 'repo', '.git');
+            const gitDir = join(commonGitDir, 'worktrees', 'wt');
+            mkdirSync(worktree, { recursive: true });
+            mkdirSync(gitDir, { recursive: true });
+            writeFileSync(join(worktree, '.git'), `gitdir: ${gitDir}\n`);
+            for (const f of ['commondir', 'gitdir', 'config.worktree'])
+                writeFileSync(join(gitDir, f), 'x\n');
+            const links = [join(worktree, '.git'), ...['commondir', 'gitdir', 'config.worktree'].map((f) => join(gitDir, f))];
+            const c = { ...ctx, worktree, commonGitDir, gitDir };
+            const write = buildSandboxConfig('write', c, host()).userPolicy.filesystem;
+            expect(write.readonlyPaths).toEqual(expect.arrayContaining(links));
+            expect(write.readwritePaths).toEqual(expect.arrayContaining([worktree, gitDir]));
+            expect(buildSandboxConfig('review', c, host()).userPolicy.filesystem.readonlyPaths).toEqual(expect.arrayContaining(links));
+            // hostCommits: the whole common git dir is read-only, so only the gitfile needs an entry.
+            const factory = buildSandboxConfig('write', { ...c, hostCommits: true }, host()).userPolicy.filesystem.readonlyPaths;
+            expect(factory).toContain(join(worktree, '.git'));
+            expect(factory).not.toContain(join(gitDir, 'commondir'));
+            // A missing file gets no entry (a read-only entry cannot protect a name that does not exist); a .git dir is the git dir.
+            rmSync(join(gitDir, 'config.worktree'));
+            rmSync(join(worktree, '.git'));
+            mkdirSync(join(worktree, '.git'));
+            const none = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+            expect(none).not.toContain(join(gitDir, 'config.worktree'));
+            expect(none).not.toContain(join(worktree, '.git'));
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('refuses a write policy whose job dir lies inside the worktree (isolation "none"); a review keeps it', () => {
+        const jobDir = join(ctx.worktree, '.omg', 'state', 'copilot-run', 'cr-1');
+        const none = { ...ctx, jobDir, jobHome: join(jobDir, 'home') };
+        expect(() => buildSandboxConfig('write', none, host())).toThrow(/lies inside the lane-writable worktree/);
+        expect(() => buildSandboxConfig('write', { ...none, hostCommits: true }, host())).toThrow(/lies inside the lane-writable worktree/);
+        expect(buildSandboxConfig('review', none, host()).userPolicy.filesystem.readonlyPaths[0]).toBe(ctx.worktree);
     });
 });
 describe('laneToolPaths', () => {
@@ -266,9 +349,9 @@ describe('detection helpers', () => {
             // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
             TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
             USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
-            XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
-            // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.
-            COPILOT_CACHE_HOME: join(root, 'h', 'profile', '.cache', 'copilot'),
+            XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'git', 'config'), NODE_DISABLE_COMPILE_CACHE: '1',
+            // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
+            COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
         });
     });
     it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4104cc69647a82e1e358ededce99a404bca32254",
-    "sourceSha256": "a1b2c602a038b5ca3b85191a78c34c173e17379c6df567469082972f7c5a8db8",
+    "head": "fe0ed9c2ef4bdee29456ed306314a1f85922dbf5",
+    "sourceSha256": "1242effcc54a64a4d3739003dd8afeff22b884d467f4bbf22bee6b1298b3cc2f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4104cc69647a82e1e358ededce99a404bca32254",
-  "sourceSha256": "a1b2c602a038b5ca3b85191a78c34c173e17379c6df567469082972f7c5a8db8",
+  "head": "fe0ed9c2ef4bdee29456ed306314a1f85922dbf5",
+  "sourceSha256": "1242effcc54a64a4d3739003dd8afeff22b884d467f4bbf22bee6b1298b3cc2f",
   "counts": {
     "public": {
       "skills": 63,
@@ -70871,6 +70871,11 @@
       },
       {
         "from": "src/copilot-run/__tests__/job.sandbox.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.sandbox.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -70912,6 +70917,11 @@
       {
         "from": "src/copilot-run/__tests__/job.test.ts",
         "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.test.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -71053,6 +71063,11 @@
         "from": "src/copilot-run/job.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/copilot-run/job.ts",
@@ -88526,6 +88541,11 @@
       },
       {
         "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -88537,6 +88557,11 @@
       {
         "from": "src/lib/__tests__/append-no-follow.test.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -89662,6 +89687,11 @@
       {
         "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
         "to": "src/copilot-run/names.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
       {
@@ -107392,11 +107422,11 @@
     ],
     "stats": {
       "nodeCount": 9167,
-      "edgeCount": 10661,
-      "importEdgeCount": 8837,
+      "edgeCount": 10667,
+      "importEdgeCount": 8843,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "4d6a48423c5a67217f7715d66a505e02bcd4c48b9f3d2a73f4dd7f0753223c13",
-  "manifestSha256": "6085d819a536da9962f3779267bf93d796e91c712d94fb1969ef947d58261015"
+  "manifestSha256": "c040c64c5b14140a0f3c9c7a10afd96a249fc3fd964694f718af624007052135"
 }

@@ -16,7 +16,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join, posix, resolve, win32 } from 'node:path';
+import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
@@ -146,10 +146,12 @@ function nodeModulesLinkTarget(worktree) {
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir`, `gitdir` and
- * `config.worktree` files (and the worktree's `.git` file) cannot be kept
- * read-only inside it: a lane can create or rename over any of them. The
- * host records them at creation (config.worktree as a hash, absent counts)
+ * in the directory itself. The admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files and the worktree's `.git` file are read-only
+ * entries nested in those grants (buildSandboxConfig): on Copilot CLI 1.0.105
+ * on Windows the sandbox then refuses writing, renaming over and deleting
+ * them, but it cannot protect a name that does not exist yet. The
+ * host also records them at creation (config.worktree as a hash, absent counts)
  * and runs no git in the worktree once they differ (git-worktree.ts
  * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
@@ -159,10 +161,22 @@ function nodeModulesLinkTarget(worktree) {
  */
 export function laneGitWritePaths(ctx) {
     const out = [join(ctx.commonGitDir, 'objects')];
-    const own = ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+    const own = ownGitDir(ctx);
     if (own)
         out.push(own);
     return out;
+}
+/** The session's own `<commonGitDir>/worktrees/<name>` admin dir, or null (isolation "none", or a git dir elsewhere). */
+function ownGitDir(ctx) {
+    return ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+}
+function existingFile(p) {
+    try {
+        return lstatSync(p).isFile() ? p : null;
+    }
+    catch {
+        return null;
+    }
 }
 /**
  * The sandboxConfig for a session. `review` is §4.2 exactly. `write` with
@@ -186,7 +200,28 @@ export function buildSandboxConfig(profile, ctx, host) {
             throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
     }
     const P = ctx.platform === 'win32' ? win32 : posix;
-    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+    const real = (p) => { try {
+        return realpathSync.native(p);
+    }
+    catch {
+        return p;
+    } };
+    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+    // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
+    // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
+    // The lane's global git config is read-only.
+    const relocated = relocatedProfileEnv(ctx.jobHome);
+    const laneHome = [relocated.TEMP, relocated.USERPROFILE];
+    const gitConfigDir = dirname(relocated.GIT_CONFIG_GLOBAL);
+    // The unsandboxed runtime runs git in the worktree too: a lane that rewrote the worktree's `.git` gitfile or
+    // the admin dir's commondir or config.worktree would point that git at its own config (core.fsmonitor, a filter
+    // driver). The sandbox keeps a read-only file nested in a read-write dir read-only, rename-over and delete
+    // included (Copilot CLI 1.0.105, Windows), but only a file that exists: job.ts creates config.worktree when git
+    // reads one. `<worktree>/.git` is a file only in a linked worktree; with isolation "none" it is the (read-only)
+    // git dir. With hostCommits the whole common git dir, the admin dir in it, is read-only already.
+    const own = ctx.hostCommits ? null : ownGitDir(ctx);
+    const gitLinks = [join(ctx.worktree, '.git'), ...(own ? ['commondir', 'gitdir', 'config.worktree'].map((f) => join(own, f)) : [])]
+        .map(existingFile).filter((p) => p !== null);
     const common = {
         allowBypass: false,
         allowDevToolAccess: false,
@@ -201,17 +236,22 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...common,
             userPolicy: {
                 filesystem: {
-                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...tools, ...settings.extraReadonlyPaths],
-                    readwritePaths: [ctx.jobDir, ...settings.extraReadwritePaths],
+                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
+                    readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
                 },
                 network: { allowOutbound: false, allowLocalNetwork: false },
             },
         };
     }
+    // The worktree is read-write: a job dir inside it (isolation "none" with the OMC state root in the repository)
+    // would hand the lane the job home and events.jsonl, which the unsandboxed engine and runtime read back.
+    if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
+        throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
+    }
     const nm = nodeModulesLinkTarget(ctx.worktree);
     const filesystem = {
-        readwritePaths: [ctx.worktree, ctx.jobDir, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+        readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
         filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
@@ -530,7 +570,13 @@ export function scrubTokens(text, secrets) {
  * grants the sandbox read-write on the dir its own TEMP names ("temporary
  * storage" in the SDK's allowDevToolAccess doc; the host value was the
  * user's whole %TEMP%, other jobs' homes and repositories included), and
- * no temp dir at all when that dir is missing.
+ * no temp dir at all when that dir is missing. The temp and profile dirs
+ * are lane-writable (buildSandboxConfig), so nothing the unsandboxed
+ * runtime loads code or config from sits in them: the global git config
+ * (the runtime runs git itself, and core.fsmonitor or a filter driver would
+ * run unsandboxed) is read-only in `<jobHome>/git`, the package cache sits
+ * in `<jobHome>/.cache`, and node's compile cache, which defaults to the
+ * temp dir, is off.
  */
 export function relocatedProfileEnv(jobHome) {
     const profile = join(jobHome, 'profile');
@@ -542,9 +588,11 @@ export function relocatedProfileEnv(jobHome) {
         USERPROFILE: profile,
         HOME: profile,
         XDG_CONFIG_HOME: join(profile, '.config'),
-        GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
-        // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant anchored on it, in the profile.
-        COPILOT_CACHE_HOME: join(profile, '.cache', 'copilot'),
+        GIT_CONFIG_GLOBAL: join(jobHome, 'git', 'config'),
+        NODE_DISABLE_COMPILE_CACHE: '1',
+        // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant
+        // anchored on it, in the job home but outside the lane-writable profile: the runtime loads code from its pkg dir.
+        COPILOT_CACHE_HOME: join(jobHome, '.cache', 'copilot'),
     };
 }
 /**

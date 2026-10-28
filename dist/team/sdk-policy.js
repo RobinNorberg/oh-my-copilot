@@ -5,8 +5,8 @@
  * host answers every `onPermissionRequest` with {@link decideSdkPermission},
  * and removes tools up front with {@link buildSdkExcludedTools}.
  */
-import { realpathSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 /**
  * git's global options before the subcommand: `-C <dir>`, `-c <k=v>`, the long
@@ -58,16 +58,46 @@ export const SDK_SHELL_DENY_PATTERNS = [
 export function normalizeShellCommand(command) {
     return command.replace(/''|""/g, '').replace(/(["'])([^"'\s]+)\1/g, '$2');
 }
+/**
+ * The realpath of the deepest existing ancestor plus the missing components:
+ * `<root>/link/new.txt` with `link` a planted junction or symlink resolves
+ * through the link, so a write that creates a file is judged where it lands.
+ * A missing name that is itself a (dangling) link, and a realpath error
+ * other than ENOENT, throw: the permission callers deny.
+ */
 function canon(p, platform) {
-    let out = resolve(p);
-    try {
-        out = realpathSync.native(out);
+    let cur = resolve(p);
+    const rest = [];
+    let out;
+    for (;;) {
+        try {
+            out = join(realpathSync.native(cur), ...rest.reverse());
+            break;
+        }
+        catch (err) {
+            if (err.code !== 'ENOENT')
+                throw err;
+            let link = false;
+            try {
+                lstatSync(cur);
+                link = true;
+            }
+            catch { /* truly missing */ }
+            if (link)
+                throw new Error(`dangling link ${cur}`);
+            const up = dirname(cur);
+            if (up === cur) {
+                out = resolve(p);
+                break;
+            }
+            rest.push(basename(cur));
+            cur = up;
+        }
     }
-    catch { /* missing: keep the resolved form */ }
     out = out.replace(/\\/g, '/').replace(/\/+$/, '');
     return platform === 'win32' ? out.toLowerCase() : out;
 }
-/** True when `p` is `root` or lies below it (realpath, case-folded on win32). */
+/** True when `p` is `root` or lies below it (canon: realpath of the deepest existing ancestor, case-folded on win32). Throws as canon does. */
 export function isUnderRoot(p, root, platform = process.platform) {
     if (!p || !root)
         return false;
@@ -118,17 +148,27 @@ export function decideSdkPermission(req, ctx) {
             if (!path)
                 return { approve: true, reason: 'read without a path' };
             const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
-            return roots.some((root) => isUnderRoot(path, root, platform))
-                ? { approve: true, reason: 'read inside worker roots' }
-                : { approve: false, reason: `read outside worker roots: ${path}` };
+            try {
+                return roots.some((root) => isUnderRoot(path, root, platform))
+                    ? { approve: true, reason: 'read inside worker roots' }
+                    : { approve: false, reason: `read outside worker roots: ${path}` };
+            }
+            catch (err) {
+                return { approve: false, reason: `read path not resolvable: ${path}: ${err.message}` };
+            }
         }
         case 'write': {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: false, reason: 'write without a path' };
-            return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
-                ? { approve: true, reason: 'write inside worktree or team state' }
-                : { approve: false, reason: `write outside worktree and team state: ${path}` };
+            try {
+                return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
+                    ? { approve: true, reason: 'write inside worktree or team state' }
+                    : { approve: false, reason: `write outside worktree and team state: ${path}` };
+            }
+            catch (err) {
+                return { approve: false, reason: `write path not resolvable: ${path}: ${err.message}` };
+            }
         }
         case 'shell': {
             const command = String(req.fullCommandText ?? '');

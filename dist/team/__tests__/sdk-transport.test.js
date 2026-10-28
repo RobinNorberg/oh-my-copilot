@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -79,6 +79,25 @@ describe('sdk permission policy', () => {
     ];
     it.each(cases)('%s -> approve=%s', (_label, req, approve) => {
         expect(decideSdkPermission(req(), ctx()).approve).toBe(approve);
+    });
+    // A junction needs no privilege on Windows; elsewhere the type is ignored and a symlink is made.
+    it.each(['cwd', 'stateRoot'])('refuses a new file under a link planted in the %s root', (rootName) => {
+        const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+        try {
+            const root = rootName === 'cwd' ? worktree : stateRoot;
+            symlinkSync(outside, join(root, 'd'), 'junction');
+            for (const fileName of [join(root, 'd', 'new.txt'), join(root, 'd', 'sub', 'new.txt')]) {
+                expect(decideSdkPermission({ kind: 'write', fileName }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/outside/) });
+            }
+            // A missing leaf under a real dir still resolves inside.
+            expect(decideSdkPermission({ kind: 'write', fileName: join(root, 'real', 'new.txt') }, ctx()).approve).toBe(true);
+            // A dangling link at the missing name fails closed.
+            symlinkSync(join(outside, 'gone'), join(root, 'dangling'), 'junction');
+            expect(decideSdkPermission({ kind: 'write', fileName: join(root, 'dangling', 'new.txt') }, ctx()).approve).toBe(false);
+        }
+        finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
     });
     // Review cases: quoted tokens, doubled whitespace, variable indirection, and
     // the false positives of a loose `git ... push` match. The policy is a

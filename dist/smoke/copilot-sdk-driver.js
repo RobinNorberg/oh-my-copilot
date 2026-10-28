@@ -745,6 +745,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
     if (missing.length)
         return { ok: false, detail: `the lane env lacks ${missing.join(', ')}, which the Windows sandbox needs to launch any process; not launched` };
     mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+    mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
     mkdirSync(env.TEMP, { recursive: true });
     const { CopilotClient, RuntimeConnection } = loaded.module;
     const client = new CopilotClient({

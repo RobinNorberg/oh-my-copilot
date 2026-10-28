@@ -42,12 +42,13 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { openAppendExclusive } from '../lib/append-no-follow.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
@@ -87,6 +88,7 @@ import {
   buildSdkExcludedTools,
   decideSdkPermission,
   gitSubcommandDeny,
+  isUnderRoot,
   normalizeShellCommand,
   type SdkPermissionRequest,
 } from '../team/sdk-policy.js';
@@ -635,6 +637,19 @@ export class CopilotRunManager {
       if (missing.length) {
         throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(' and ')} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
       }
+      // isolation "none": the sandbox grants the repository top read-write, and the OMC state root (the job dir with
+      // the job home and events.jsonl, the budget ledger) usually lies inside it. Fail closed rather than hand the
+      // lane what the unsandboxed engine and runtime read back. detect-only promises no sandbox: it is checked again
+      // (structurally) when the policy is built, and falls back to its unsandboxed run there.
+      const top = repoRoot ? resolve(repoRoot) : cwd;
+      if (isolation === 'none' && profile === 'write' && sandboxSettings.writeUnsandboxed !== 'detect-only') {
+        const omcRoot = getOmcRoot(top);
+        let inside = true;
+        try { inside = isUnderRoot(omcRoot, top, this.deps.platform); } catch { /* unresolvable: refuse */ }
+        if (inside) {
+          throw new CopilotRunError(`copilot_run_start: a sandboxed write job with isolation "none" would let the lane write the job's state in ${omcRoot}, which lies inside ${top}. Use isolation "worktree" (the default), or the review profile.`);
+        }
+      }
     }
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
@@ -672,6 +687,12 @@ export class CopilotRunManager {
       // moves the job's branch after the session (syncJobBranch).
       const commonRaw = git(ledgerCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
       commonGitDir = commonRaw ? resolve(commonRaw) : null;
+      // With extensions.worktreeConfig git reads the admin dir's config.worktree, and the sandbox keeps only an
+      // existing file read-only (buildSandboxConfig): create an empty one before the links are recorded.
+      if (git(ledgerCwd, ['config', '--bool', 'extensions.worktreeConfig']) === 'true') {
+        const admin = readWorktreeGitLinks(info.path)?.adminDir;
+        if (admin) { try { writeFileSync(join(admin, 'config.worktree'), '', { flag: 'wx' }); } catch { /* already there */ } }
+      }
       worktreeLinks = readWorktreeGitLinks(info.path);
       const head = info.baseCommit ?? null;
       const recorded = (links: WorktreeGitLinks) => {
@@ -892,6 +913,7 @@ export class CopilotRunManager {
     const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
     const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+    mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
     // A session the host commits for never commits, so it gets no identity.
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
@@ -916,7 +938,9 @@ export class CopilotRunManager {
 
     const policy = {
       cwd: job.workCwd,
-      stateRoot: job.jobDir,
+      // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
+      // the runtime reads back from the job home (config.json, session state, policies, logs, the package cache).
+      stateRoot: env.TEMP!,
       pluginRoot,
       readRoots: [job.home],
       mcpServer: MCP_SERVER,
@@ -931,6 +955,13 @@ export class CopilotRunManager {
         const raw = [req.resolvedPath, req.path, req.fileName].find((v): v is string => typeof v === 'string' && v.trim() !== '');
         const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
         if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+        // Defence in depth for a job dir inside cwd (isolation "none"): of the job dir only the temp dir is writable.
+        if (decision.approve && raw) {
+          const abs = isAbsolute(raw) ? raw : resolve(job.workCwd, raw);
+          let jobState = true;
+          try { jobState = isUnderRoot(abs, job.jobDir, deps.platform) && !isUnderRoot(abs, env.TEMP!, deps.platform); } catch { /* unresolvable: refuse */ }
+          if (jobState) decision = { approve: false, reason: `write into the job's state dir ${job.jobDir}` };
+        }
       }
       if (decision.approve && job.profile === 'review') {
         const denial = reviewProfileDenial(req);
@@ -955,8 +986,11 @@ export class CopilotRunManager {
     let idle = new Promise<void>((r) => { onIdle = r; });
     const shutdown = new Promise<void>((r) => { onShutdown = r; });
     const toolNames = new Map<string, string>();
+    let eventsFd: number | null = null;
     const onEvent = (event: CopilotEvent) => {
-      try { appendFileSync(job.eventsPath, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`); } catch { /* evidence only */ }
+      if (eventsFd !== null) {
+        try { writeSync(eventsFd, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`); } catch { /* evidence only */ }
+      }
       const data = (event.data ?? {}) as Record<string, unknown>;
       switch (event.type) {
         case 'tool.execution_start':
@@ -1019,6 +1053,17 @@ export class CopilotRunManager {
       baseDirectory: job.home,
       workingDirectory: job.workCwd,
     });
+    // events.jsonl is opened once, before the runtime starts (client.start()),
+    // and written only through this fd: O_EXCL refuses a name that already
+    // exists (a planted link included), and a later rename or replace of the
+    // name cannot redirect the writes. Job ids are fresh, so an existing file fails the job.
+    try {
+      eventsFd = openAppendExclusive(job.eventsPath);
+    } catch (err) {
+      if (scrubDir) rmSync(scrubDir, { recursive: true, force: true });
+      job.error = `events log ${job.eventsPath}: ${errText(err)}`;
+      return 'failed';
+    }
     let session: SdkSessionLike | null = null;
     let pid: number | undefined;
     let outcome: CopilotRunStatus = 'failed';
@@ -1105,6 +1150,10 @@ export class CopilotRunManager {
         try { await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS, 'client.forceStop()'); } catch { /* gone */ }
       }
       if (pid && deps.isAlive(pid)) deps.killTree(pid);
+      // The runtime is gone: no event follows, and a late one must not reach a reused fd number.
+      const fd = eventsFd;
+      eventsFd = null;
+      if (fd !== null) closeSync(fd);
       if (scrubDir) rmSync(scrubDir, { recursive: true, force: true });
       // The final totals: a few retries if a hook holds the ledger lock.
       for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep(50);
