@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { releaseCommand } from '../release.js';
 import type { ReleaseExec } from '../../../release/engine.js';
+import type { DriveProcess, DriverLiveness } from '../../../release/drive.js';
+import type { ReleaseProgressInput } from '../../../release/progress.js';
 
 describe('omg release CLI', () => {
   let root: string;
@@ -81,5 +83,92 @@ describe('omg release CLI', () => {
     err = [];
     expect(await run('5.12.2', '--to', 'suite', '--suite', 'full', '--dry-run')).toBe(0);
     expect(err.join('\n')).not.toMatch(/stops before the suite phase/);
+  });
+
+  describe('drive mode: --detach, --status, --stop', () => {
+    let liveness: DriverLiveness;
+    let killed: number[];
+    let spawned: Array<{ args: string[]; options: Record<string, unknown> }>;
+    let events: ReleaseProgressInput[];
+    const proc: DriveProcess = { identity: async () => 'ticks:1', liveness: async () => liveness, kill: async (pid) => { killed.push(pid); return true; } };
+    const lockPath = () => join(root, '.omg', 'release', '5.12.2.drive.json');
+    const lock = (pid: number) => JSON.stringify({ pid, startedAt: '2026-10-28T00:00:00.000Z', argv: [], host: 'h', identity: 'ticks:9' });
+
+    async function drive(...argv: string[]): Promise<number> {
+      process.exitCode = undefined;
+      await releaseCommand({
+        exec, root, stateRoot: join(root, '.omg'), progress: (e) => { events.push(e); }, driveProcess: proc, entry: '/x/cli.cjs', sleep: async () => {},
+        spawnDriver: (_command, args, options) => {
+          spawned.push({ args, options: options as Record<string, unknown> });
+          writeFileSync(lockPath(), lock(777));
+          return { pid: 777, unref: () => {} };
+        },
+      }).parseAsync(argv, { from: 'user' });
+      const code = Number(process.exitCode ?? 0);
+      process.exitCode = undefined;
+      return code;
+    }
+
+    beforeEach(() => {
+      liveness = 'live';
+      killed = [];
+      spawned = [];
+      events = [];
+    });
+
+    it('--detach re-spawns the same release with --drive (no --detach, absolute --baseline) and prints the Monitor command', async () => {
+      expect(await drive('5.12.2', '--detach', '--yes', '--suite', 'full', '--baseline', 'base.json', '--from', 'pr', '--drive-max', '3')).toBe(0);
+      expect(spawned).toHaveLength(1);
+      const args = spawned[0].args;
+      expect(args.slice(0, 7)).toEqual(['/x/cli.cjs', 'release', '5.12.2', '--drive', '--drive-max', '3', '--timeout']);
+      expect(args).toEqual(expect.arrayContaining(['--yes', '--from', 'pr', '--suite', 'full', '--baseline', resolve('base.json')]));
+      expect(args).not.toContain('--detach');
+      expect(spawned[0].options).toMatchObject({ cwd: root, detached: true, windowsHide: true });
+      expect(out.join('\n')).toMatch(/driving detached as pid 777/);
+      expect(out.join('\n')).toMatch(/omg progress watch --file .* --until settled/);
+      expect(calls).toEqual([]);
+
+      // A second --detach (or a foreground --drive) refuses while the driver lives.
+      expect(await drive('5.12.2', '--detach')).toBe(1);
+      expect(err.join('\n')).toMatch(/a driver already runs \(pid 777/);
+      expect(await drive('5.12.2', '--drive')).toBe(1);
+      expect(err.join('\n')).toMatch(/another driver holds .*5\.12\.2\.drive\.json/);
+      expect(spawned).toHaveLength(1);
+      expect(calls).toEqual([]);
+    });
+
+    it('--status prints the driver, the last events and the phase table; --stop kills it and emits blocked', async () => {
+      mkdirSync(join(root, '.omg', 'release'), { recursive: true });
+      expect(await drive('5.12.2', '--status')).toBe(0);
+      expect(out.join('\n')).toMatch(/driver: none/);
+      expect(out.join('\n')).toMatch(/resume: omg release 5\.12\.2 --drive --detach/);
+
+      writeFileSync(lockPath(), lock(4242));
+      out = [];
+      expect(await drive('5.12.2', '--status')).toBe(0);
+      expect(out.join('\n')).toMatch(/driver: pid 4242 on h since .* \(live\)/);
+      expect(out.join('\n')).toMatch(/preflight +-/);
+
+      expect(await drive('5.12.2', '--stop')).toBe(0);
+      expect(killed).toEqual([4242]);
+      expect(existsSync(lockPath())).toBe(false);
+      expect(events).toEqual([expect.objectContaining({ phase: 'release', status: 'blocked', note: expect.stringMatching(/stopped by --stop/) })]);
+
+      // An unprobeable holder is left alone (exit 1).
+      writeFileSync(lockPath(), lock(4243));
+      liveness = 'unknown';
+      expect(await drive('5.12.2', '--stop')).toBe(1);
+      expect(killed).toEqual([4242]);
+      expect(existsSync(lockPath())).toBe(true);
+    });
+
+    it.each([
+      [['--drive-max', '0'], /--drive-max must be a positive number of hours/],
+      [['--status', '--stop'], /pass one of --status \/ --stop/],
+      [['--detach', '--dry-run'], /--detach runs the release; drop --dry-run/],
+    ])('usage error %j exits 2', async (argv, message) => {
+      expect(await drive('5.12.2', ...argv)).toBe(2);
+      expect(err.join('\n')).toMatch(message);
+    });
   });
 });
