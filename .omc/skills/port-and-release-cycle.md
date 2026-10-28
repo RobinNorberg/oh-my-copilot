@@ -19,6 +19,11 @@ delegate implementation to subagents; no force-pushes anywhere; recycle agents
 when their report is processed. Every lane brief carries the progress snippet
 from `agent-progress-events.md`, and the lead arms one Monitor on
 `omg progress watch --dir <dir> --stall 10m` instead of polling lanes.
+CI waits are driven, not polled: the release runs as
+`omg release X --drive --detach --yes` and a port PR's gates as
+`omg ship gates <pr> --drive --detach`; each prints the
+`omg progress watch --file <log> --until settled` command for one Monitor
+that wakes only on done / fail / blocked. No cron heartbeat for releases.
 
 ## Inputs
 - Last ported upstream sha (memory `omc-upstream-porting`), `origin/dev`, a
@@ -50,7 +55,9 @@ from `agent-progress-events.md`, and the lead arms one Monitor on
    `tests/fixtures/prompt-projection/claude-managed-block.golden` →
    `npm run generate:prompt-projections` (reads `package.json`).
    Steps 3 to 5 after the port commit are `omg release X` (resumable phases;
-   `omg-release-runbook.md` "Primary path"); the chain below is the fallback.
+   `omg-release-runbook.md` "Primary path"), with `--drive --detach` from
+   `pr` on so the CI waits of steps 4 and 5 need no polling; the chain below
+   is the fallback.
 4. **One gated chain (lead, background, every step `&&`):** port commit →
    tsc → `npm run build` → `verify:prompt-projections` → generators
    `--verify` → path gate → `git add -f dist bridge && git add -A` →

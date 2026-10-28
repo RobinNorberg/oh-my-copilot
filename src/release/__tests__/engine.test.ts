@@ -7,6 +7,7 @@ import { resolveShipConfig } from '../../ship/config.js';
 import {
   defaultReleaseExec,
   PHASES,
+  phasePlan,
   readReleaseState,
   releaseStatePath,
   resumePoint,
@@ -17,6 +18,7 @@ import {
   type ReleaseState,
 } from '../engine.js';
 import type { ReleaseProgressInput } from '../progress.js';
+import { driveRelease } from '../drive.js';
 
 const V = '5.12.2';
 const HEAD = '1'.repeat(40);
@@ -212,6 +214,18 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.phases[0].details).toContain('error TS2322: bad');
       expect(calls.some((c) => c.startsWith('git commit'))).toBe(false);
       expect(resumePoint(readReleaseState(stateRoot, V))).toBe('gates');
+    });
+
+    it('runs full eslint src in the gates, after tsc; a lint error fails gates before any commit', async () => {
+      seedState('build');
+      handlers.push((key) => (key === 'node node_modules/eslint/bin/eslint.js src' ? no('src/x.ts\n  1:10  error  \'y\' is defined but never used  @typescript-eslint/no-unused-vars') : undefined));
+      const result = await release({ to: 'commit' });
+      expect(result.phases.map((p) => `${p.id}:${p.status}`)).toEqual(['gates:fail']);
+      expect(result.phases[0].note).toMatch(/eslint\.js src failed/);
+      expect(result.phases[0].details!.join('\n')).toMatch(/no-unused-vars/);
+      expect(calls.indexOf('node node_modules/eslint/bin/eslint.js src')).toBeGreaterThan(calls.indexOf('node node_modules/typescript/bin/tsc --noEmit'));
+      expect(calls.some((c) => c.startsWith('git commit'))).toBe(false);
+      expect(phasePlan('gates', V, { version: V })).toContain('eslint src (0 errors; warnings allowed, same scope as CI Lint)');
     });
 
     it('refuses --from past a phase that never passed', async () => {
@@ -647,11 +661,91 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(calls.some((c) => c.includes('--force') || c.startsWith('gh pr merge'))).toBe(false);
     });
 
-    it('refuses to merge a PR whose head is not local HEAD', async () => {
+    it('refuses to merge a PR whose head is not local HEAD, after waiting for GitHub to catch up, without reading its gates', async () => {
       prHead = OTHER;
       const result = await release({ to: 'pr' });
       expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/head is 555555555555, not local HEAD 111111111111/) });
       expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      expect(calls.some((c) => c.startsWith('gh pr checks') || c.startsWith('gh run'))).toBe(false);
+      expect(calls.filter((c) => c.startsWith('gh pr view 301 --json number,state')).length).toBeGreaterThan(30);
+    });
+
+    it('stale head right after the push: waits for headRefOid to reach HEAD, never reruns or fails on the old head (regression)', async () => {
+      // The previous head failed CI (that is why the release was re-pushed); gh pr view lags the push twice.
+      let views = 0;
+      const stale = () => views <= 2;
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr view 301 --json number,state')) {
+          views += 1;
+          return ok(prJson(301, 'dev', prState, prState === 'MERGED' ? MERGE : null, stale() ? OTHER : HEAD));
+        }
+        if (key === 'gh pr view 301 --json headRefOid') return ok(JSON.stringify({ headRefOid: stale() ? OTHER : HEAD }));
+        if (key.startsWith('gh pr checks 301') && stale()) return ok(checks('FAILURE', 'FAILURE'));
+        if (key.startsWith(`gh run list --commit ${OTHER}`)) return ok(`[{"databaseId":66,"status":"completed","conclusion":"failure","workflowName":"CI","headSha":"${OTHER}"}]`);
+        return undefined;
+      });
+      const result = await release({ to: 'pr' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`gh pr merge 301 --admin --merge --match-head-commit ${HEAD}`);
+      expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+      expect(calls.some((c) => c.startsWith(`gh run list --commit ${OTHER}`))).toBe(false);
+      // No gate was read before the PR head reached local HEAD.
+      const firstChecks = calls.findIndex((c) => c.startsWith('gh pr checks 301'));
+      const pushedViews = calls.slice(0, firstChecks).filter((c) => c.startsWith('gh pr view 301 --json number,state'));
+      expect(pushedViews.length).toBeGreaterThan(2);
+      expect(readReleaseState(stateRoot, V)!.reruns).toEqual({});
+    });
+
+    it('re-checks the head before acting on a failed verdict: a head that moved after the read is not rerun', async () => {
+      shipBlock = { ...shipBlock, advisoryChecks: [] };
+      // The second land() view (taken after the failed read) names a newer head; GitHub then settles on HEAD, now green.
+      let views = 0;
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr view 301 --json number,state')) {
+          views += 1;
+          return ok(prJson(301, 'dev', prState, prState === 'MERGED' ? MERGE : null, views === 2 ? OTHER : HEAD));
+        }
+        if (key.startsWith('gh pr checks 301')) return ok(views < 2 ? checks('FAILURE', 'FAILURE') : checks('SUCCESS'));
+        return undefined;
+      });
+      const result = await release({ to: 'pr' });
+      expect(result.ok).toBe(true);
+      expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+      expect(readReleaseState(stateRoot, V)!.reruns).toEqual({});
+    });
+
+    it('retries gh pr merge on a transient GitHub error, with backoff', async () => {
+      let merges = 0;
+      const sleeps: number[] = [];
+      handlers.unshift((key) => {
+        if (!key.startsWith('gh pr merge 301')) return undefined;
+        merges += 1;
+        if (merges === 1) return no('GraphQL: Something went wrong while executing your query. (mergePullRequest)');
+        if (merges === 2) return no('HTTP 502: Bad Gateway (https://api.github.com/graphql)');
+        prState = 'MERGED';
+        return ok();
+      });
+      const result = await runRelease({ ...deps(), sleep: async (ms) => { sleeps.push(ms); } }, { version: V, to: 'pr' });
+      expect(result.ok).toBe(true);
+      expect(merges).toBe(3);
+      expect(sleeps).toEqual(expect.arrayContaining([10_000, 30_000]));
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: MERGE });
+    });
+
+    it('gives up on gh pr merge after two transient retries, and never retries a policy or conflict refusal', async () => {
+      handlers.unshift((key) => (key.startsWith('gh pr merge 301') ? no('GraphQL: Something went wrong while executing your query.') : undefined));
+      const flaky = await release({ to: 'pr' });
+      expect(flaky.phases[0].status).toBe('fail');
+      expect(calls.filter((c) => c.startsWith('gh pr merge'))).toHaveLength(3);
+
+      for (const refusal of ['GraphQL: Base branch policy prohibits the merge. (mergePullRequest)', 'GraphQL: Pull request #502 is not mergeable: the merge commit cannot be cleanly created. (mergePullRequest)']) {
+        calls = [];
+        handlers[0] = (key) => (key.startsWith('gh pr merge 301') ? no(refusal) : undefined);
+        const result = await release({ from: 'pr', to: 'pr' });
+        expect(result.phases[0].status).toBe('fail');
+        expect(result.phases[0].details!.join('\n')).toContain(refusal);
+        expect(calls.filter((c) => c.startsWith('gh pr merge'))).toHaveLength(1);
+      }
     });
 
     it('waits for the rerun attempt to start before re-reading the checks', async () => {
@@ -771,6 +865,155 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const result = await release({ to: 'pr' });
       expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/PR #301 is still not merged after \d+ rounds/) });
     });
+
+    describe('drive mode', () => {
+      /** A clock that moves only when the engine sleeps. */
+      let t: number;
+      let sleeps: number[];
+      const clocked = (): ReleaseDeps => ({ ...deps(), now: () => t, sleep: async (ms) => { sleeps.push(ms); t += ms; } });
+      const inProgress = () => JSON.stringify([{ name: 'Test', state: 'IN_PROGRESS', link: 'https://github.com/o/r/actions/runs/77/job/88' }]);
+
+      beforeEach(() => {
+        t = Date.parse('2026-10-21T12:00:00Z');
+        sleeps = [];
+        shipBlock = { ...shipBlock, advisoryChecks: [] };
+      });
+
+      it('CI pending at the --timeout: blocked without --drive, pending (no pr record) with it', async () => {
+        checksJson = inProgress();
+        const plain = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 });
+        expect(plain.pending).toBeUndefined();
+        expect(plain.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/CI still pending at the --timeout/) });
+        expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('blocked');
+
+        events = [];
+        const driven = await runRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5, drive: true });
+        expect(driven.ok).toBe(false);
+        expect(driven.pending).toMatchObject({ phase: 'pr', note: expect.stringMatching(/CI still pending at the --timeout/) });
+        expect(readReleaseState(stateRoot, V)!.phases.pr).toBeUndefined();
+        expect(readReleaseState(stateRoot, V)!.phases.smoke?.status).toBe('ok');
+        expect(events.some((e) => e.phase === 'pr' && e.status === 'blocked')).toBe(false);
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'heartbeat', note: expect.stringMatching(/^pending: /) });
+        expect(resumePoint(readReleaseState(stateRoot, V))).toBe('pr');
+      });
+
+      it('driveRelease re-enters after one poll interval and lands once CI turns green', async () => {
+        checksJson = inProgress();
+        let views = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr checks 301')) {
+            views += 1;
+            // Pending through the first run's --timeout window, green on the resumed run.
+            if (t >= Date.parse('2026-10-21T12:06:00Z')) return ok(checks('SUCCESS'));
+          }
+          return undefined;
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 5 }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(result.pending).toBeUndefined();
+        expect(sleeps).toContain(60_000);
+        expect(views).toBeGreaterThan(1);
+        expect(calls.filter((c) => c.startsWith('gh pr merge 301'))).toHaveLength(1);
+        expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: MERGE, phases: { pr: { status: 'ok' } } });
+        expect(events.filter((e) => e.status === 'start' && e.phase === 'pr').length).toBe(2);
+        expect(events.at(-1)).toMatchObject({ phase: 'release', status: 'done' });
+      });
+
+      it('--drive-max turns an endless wait into blocked with the next command', async () => {
+        checksJson = inProgress();
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 30 }, { maxHours: 1, pollMs: 60_000 });
+        expect(result.ok).toBe(false);
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'blocked', note: expect.stringMatching(/--drive-max 1 h reached .*omg release 5\.12\.2 --drive --detach/) });
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'blocked' });
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+
+      it('a transient GitHub error on the gate read: a retry under --drive, a failure without it', async () => {
+        let reads = 0;
+        handlers.unshift((key) => {
+          if (!key.startsWith('gh pr checks 301')) return undefined;
+          reads += 1;
+          return reads === 1 ? no('HTTP 502: Bad Gateway (https://api.github.com/graphql)') : ok(checks('SUCCESS'));
+        });
+        const plain = await runRelease(clocked(), { version: V, to: 'pr' });
+        expect(plain.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/502/) });
+
+        reads = 0;
+        calls = [];
+        const driven = await driveRelease(clocked(), { version: V, from: 'pr', to: 'pr' });
+        expect(driven.ok).toBe(true);
+        expect(reads).toBe(2);
+        expect(calls.filter((c) => c.startsWith('gh pr merge 301'))).toHaveLength(1);
+      });
+
+      it('a transient error from a gh command the phase must run is pending under --drive and resumed', async () => {
+        let lists = 0;
+        handlers.unshift((key) => {
+          if (!key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return undefined;
+          lists += 1;
+          return lists === 1 ? no('GraphQL: Something went wrong while executing your query.') : ok('[]');
+        });
+        handlers.unshift((key) => (key.startsWith('gh pr checks 301') ? ok(checks('SUCCESS')) : undefined));
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(lists).toBe(2);
+        expect(sleeps).toContain(60_000);
+      });
+
+      it('a real CI failure under --drive ends as fail and is not resumed', async () => {
+        checksJson = checks('SUCCESS', 'FAILURE');
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(false);
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'fail' });
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'fail' });
+        expect(sleeps).not.toContain(60_000);
+        expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('fail');
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+
+      it('a transient error from gh pr create reuses the PR it created, never a second one', async () => {
+        let lists = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) {
+            lists += 1;
+            return ok(lists === 1 ? '[]' : '[{"number":301,"state":"OPEN"}]');
+          }
+          if (key.startsWith('gh pr create --base dev')) return no('HTTP 502: Bad Gateway');
+          if (key.startsWith('gh pr checks 301')) return ok(checks('SUCCESS'));
+          return undefined;
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(calls.filter((c) => c.startsWith('gh pr create'))).toHaveLength(1);
+        expect(readReleaseState(stateRoot, V)!.devPr).toBe(301);
+      });
+
+      it('a head mismatch still blocks under --drive with a --timeout shorter than the head-sync window', async () => {
+        prHead = OTHER;
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 1 }, { pollMs: 60_000 });
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'blocked', note: expect.stringMatching(/not local HEAD/) });
+        expect(sleeps).not.toContain(60_000);
+      });
+
+      it('merge retries spent on transient errors: the next drive round re-views and merges', async () => {
+        let merges = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr checks 301')) return ok(checks('SUCCESS'));
+          if (!key.startsWith('gh pr merge 301')) return undefined;
+          merges += 1;
+          if (merges <= 3) return no('HTTP 503: Service Unavailable');
+          prState = 'MERGED';
+          return ok();
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(merges).toBe(4);
+        expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: MERGE });
+      });
+    });
   });
 
   describe('promote: only a merged release', () => {
@@ -794,6 +1037,31 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const result = await release({ to: 'promote' });
       expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/PR #302 head 555555555555 does not contain 666666666666/) });
       expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    });
+
+    it('stale promotion view right after the dev merge: waits for the head to contain it, reads no gates for the old head (regression)', async () => {
+      let views = 0;
+      let merged = false;
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr view 302 --json number,state')) {
+          views += 1;
+          const head = views <= 2 ? OTHER : HEAD;
+          return ok(prJson(302, 'main', merged ? 'MERGED' : 'OPEN', merged ? MERGE : null, head));
+        }
+        if (key === 'gh pr view 302 --json headRefOid') return ok(JSON.stringify({ headRefOid: views <= 2 ? OTHER : HEAD }));
+        if (key === `git merge-base --is-ancestor ${DEVMERGE} ${OTHER}`) return no('', 1);
+        if (key.startsWith('gh pr checks 302')) return ok(JSON.stringify([{ name: 'Test', state: views <= 2 ? 'FAILURE' : 'SUCCESS', link: 'https://github.com/o/r/actions/runs/79/job/91' }]));
+        if (key.startsWith(`gh run list --commit ${OTHER}`)) return ok(`[{"databaseId":66,"status":"completed","conclusion":"failure","workflowName":"CI","headSha":"${OTHER}"}]`);
+        if (key.startsWith('gh run list --commit')) return ok('[]');
+        if (key.startsWith('gh pr merge 302')) { merged = true; return ok(); }
+        return undefined;
+      });
+      const result = await release({ to: 'promote' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`gh pr merge 302 --admin --merge --match-head-commit ${HEAD}`);
+      expect(calls.some((c) => c.startsWith('gh run rerun') || c.startsWith(`gh run list --commit ${OTHER}`))).toBe(false);
+      const firstChecks = calls.findIndex((c) => c.startsWith('gh pr checks 302'));
+      expect(calls.slice(0, firstChecks).filter((c) => c.startsWith('gh pr view 302 --json number,state')).length).toBeGreaterThan(2);
     });
 
     it('records the main merge when it contains the dev merge', async () => {
@@ -855,6 +1123,19 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.phases[0].status).toBe('blocked');
       expect(confirms).toEqual([`Create and push annotated tag v${V} on main 333333333333? This publishes oh-my-copilot@${V} to npm.`]);
       expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+    });
+
+    it('under --drive never prompts and never implies --yes: blocked with the next command; --yes still tags', async () => {
+      confirmAnswer = true;
+      const driven = await driveRelease(deps(), { version: V, to: 'tag' });
+      expect(driven.phases.at(-1)).toMatchObject({ id: 'tag', status: 'blocked', note: expect.stringMatching(/v5\.12\.2 needs confirmation: re-run omg release 5\.12\.2 --from tag in a terminal to confirm, or with --yes/) });
+      expect(confirms).toEqual([]);
+      expect(calls.some((c) => c.startsWith('git tag') || c.startsWith('git push'))).toBe(false);
+
+      const yes = await driveRelease(deps(), { version: V, to: 'tag', yes: true });
+      expect(yes.ok).toBe(true);
+      expect(pushed).toBe(true);
+      expect(confirms).toEqual([]);
     });
 
     it('warns in the confirmation when the live smoke was skipped', async () => {
