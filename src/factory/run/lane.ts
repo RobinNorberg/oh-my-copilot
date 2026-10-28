@@ -15,8 +15,6 @@
  * `poll` throws {@link LaneLostError}, which the engine records as `lost`.
  */
 
-import { execFileSync } from 'node:child_process';
-
 import {
   CopilotRunError,
   type ChangeSummary,
@@ -145,14 +143,6 @@ const STATE_OF: Record<CopilotRunStatus, LaneState> = {
   cancelled: 'cancelled',
 };
 
-function headOf(worktree: string): string | null {
-  try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: 30_000 }).trim() || null;
-  } catch {
-    return null;
-  }
-}
-
 export class CopilotLaneBackend implements LaneBackend {
   readonly kind = 'local-sdk' as const;
 
@@ -214,7 +204,8 @@ export class CopilotLaneBackend implements LaneBackend {
       state,
       branch: snap.worktree?.branch ?? null,
       pr: null,
-      headSha: worktree && isTerminalLaneState(state) ? headOf(worktree) : null,
+      // Read by the job when it ended, through the recorded git dir, hardened: never via the lane-writable `.git` file.
+      headSha: worktree && isTerminalLaneState(state) ? snap.worktree?.headCommit ?? null : null,
       baseSha: snap.worktree?.baseCommit ?? null,
       worktree,
       changes: snap.changes ?? null,

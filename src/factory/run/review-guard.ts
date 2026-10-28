@@ -57,8 +57,9 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, isAbsolute, join, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { readWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
 import type { LaneResult } from './lane.js';
 import { FOR_EACH_REF_FORMAT } from './exec.js';
 
@@ -453,21 +454,30 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
  * The review lane's own worktree after it ended: its git dir is the repo's,
  * it is at the reviewed sha, nothing changed. Run only after the shared-state
  * comparison passed (git here reads that shared config).
+ *
+ * The lane could write its `.git` file, its admin dir (`commondir`,
+ * `config.worktree`) and its attributes, so git here never discovers the git
+ * dir: the `.git` file is read once, its admin dir must be a direct child of
+ * the repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE
+ * and GIT_COMMON_DIR to those paths, hardened, with every filter and diff
+ * driver blanked (no lane-planted program runs in the engine).
  */
-export function verifyReviewWorktree(exec: Exec, result: LaneResult, head: string, commonDir?: string): string[] {
+export function verifyReviewWorktree(result: LaneResult, head: string, commonDir?: string): string[] {
   const problems: string[] = [];
   if (result.baseSha !== head) problems.push(`the lane started at ${result.baseSha?.slice(0, 12) ?? 'unknown'}, not the head ${head.slice(0, 12)}`);
   if (!result.worktree) return [...problems, 'the lane reported no worktree to verify'];
+  const links = readWorktreeGitLinks(result.worktree);
+  if (!links) return [...problems, 'the lane worktree cannot be read: its .git file or admin dir is missing, a link or malformed'];
+  const laneCommon = dirname(dirname(links.adminDir));
+  if (basename(dirname(links.adminDir)) !== 'worktrees' || (commonDir !== undefined && !samePath(laneCommon, commonDir))) {
+    return [...problems, `the lane worktree's git dir is ${links.adminDir}, not the repository's ${join(commonDir ?? laneCommon, 'worktrees')}/<name>`];
+  }
   let laneHead = '';
   let status = '';
   try {
-    if (commonDir !== undefined) {
-      const raw = run(exec, result.worktree, ['rev-parse', '--git-common-dir']).trim();
-      const laneCommon = isAbsolute(raw) ? raw : resolve(result.worktree, raw);
-      if (!samePath(laneCommon, commonDir)) return [...problems, `the lane worktree's git dir is ${laneCommon}, not the repository's ${commonDir}`];
-    }
-    laneHead = run(exec, result.worktree, ['rev-parse', 'HEAD']).trim();
-    status = run(exec, result.worktree, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    const gitDirArgs = worktreeGitDirArgs(result.worktree, links);
+    laneHead = runHostGit(result.worktree, [...gitDirArgs, 'rev-parse', 'HEAD']).trim();
+    status = runHostGit(result.worktree, [...gitDirArgs, 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
   } catch (error) {
     return [...problems, `the lane worktree cannot be read: ${error instanceof Error ? error.message : String(error)}`];
   }

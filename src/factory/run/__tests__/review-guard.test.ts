@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,7 +47,7 @@ function problemsAfter(tamper: () => void): string[] {
   addLaneWorktree();
   tamper();
   const after = snapshotRepo(exec, h.root);
-  return [...compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }, { newWorktree: { path: wt } }), ...verifyReviewWorktree(exec, laneResult(), head, after.commonDir)];
+  return [...compareSnapshots(before, after, { [`refs/heads/${branch}`]: head }, { newWorktree: { path: wt } }), ...verifyReviewWorktree(laneResult(), head, after.commonDir)];
 }
 
 const git = (...args: string[]) => gitIn(h.root, ...args);
@@ -148,7 +148,33 @@ describe('review-lane tamper check', () => {
 
   it('a lane worktree whose git dir is not the repository\'s fails before git reads it', () => {
     addLaneWorktree();
-    expect(verifyReviewWorktree(exec, laneResult(), head, join(h.dir, 'elsewhere', '.git')).join('\n')).toMatch(/git dir is .*not the repository's/);
+    expect(verifyReviewWorktree(laneResult(), head, join(h.dir, 'elsewhere', '.git')).join('\n')).toMatch(/git dir is .*not the repository's/);
+  });
+
+  it('runs no filter a review lane planted in its config.worktree (extensions.worktreeConfig) while verifying the worktree', () => {
+    git('config', 'extensions.worktreeConfig', 'true');
+    addLaneWorktree();
+    const marker = join(h.dir, 'filter-ran');
+    const script = join(h.dir, 'filter.sh');
+    writeFileSync(script, `#!/bin/sh\necho filter >> "${marker.replace(/\\/g, '/')}"\ncat\n`, { mode: 0o755 });
+    const attrs = join(h.dir, 'lane-attributes');
+    writeFileSync(attrs, '* filter=x\n');
+    const admin = join(h.root, '.git', 'worktrees', 'cr-rev');
+    writeFileSync(join(admin, 'config.worktree'), `[filter "x"]\n\tclean = sh "${script.replace(/\\/g, '/')}"\n[core]\n\tattributesFile = ${attrs.replace(/\\/g, '/')}\n`);
+    const tracked = gitIn(wt, 'ls-files').split('\n')[0];
+    let tick = 0;
+    const stale = () => { const t = new Date(Date.UTC(2001, 0, 1 + ++tick)); utimesSync(join(wt, tracked), t, t); };
+    stale();
+    // Control: plain git status in the lane worktree runs the lane's filter.
+    gitIn(wt, 'status', '--porcelain');
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+
+    stale();
+    const result = { ...laneResult(), changes: { diffStat: '', changedFiles: [], untrackedFiles: [], protectedChanges: [] } };
+    stale();
+    expect(verifyReviewWorktree(result, head, join(h.root, '.git'))).toEqual([]);
+    expect(existsSync(marker)).toBe(false);
   });
 
   it('a stale worktree pruned with its config.worktree (copilot_run prunes before adding a lane) is not tampering', () => {
@@ -161,9 +187,9 @@ describe('review-lane tamper check', () => {
 
   it('a lane that started at another sha, or reports no worktree or change summary, fails', () => {
     addLaneWorktree();
-    expect(verifyReviewWorktree(exec, { ...laneResult(), baseSha: 'c'.repeat(40) }, head).join('\n')).toMatch(/started at cccccccccccc/);
-    expect(verifyReviewWorktree(exec, { ...laneResult(), worktree: null }, head).join('\n')).toMatch(/no worktree/);
-    expect(verifyReviewWorktree(exec, { ...laneResult(), changes: null }, head).join('\n')).toMatch(/no change summary/);
+    expect(verifyReviewWorktree({ ...laneResult(), baseSha: 'c'.repeat(40) }, head).join('\n')).toMatch(/started at cccccccccccc/);
+    expect(verifyReviewWorktree({ ...laneResult(), worktree: null }, head).join('\n')).toMatch(/no worktree/);
+    expect(verifyReviewWorktree({ ...laneResult(), changes: null }, head).join('\n')).toMatch(/no change summary/);
   });
 
   it('ignores untracked files under the state root, but not under .omg/skills or tracked changes there', () => {

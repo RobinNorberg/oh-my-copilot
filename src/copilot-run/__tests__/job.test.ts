@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -12,6 +12,7 @@ import {
   reviewProfileDenial,
   summarizeChanges,
 } from '../job.js';
+import { readWorktreeGitLinks, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls } from './fake-sdk.js';
 
@@ -294,7 +295,10 @@ describe('copilot_run change summary', () => {
     expect(summarizeChanges(repo, base)?.changedFiles).toContain('README.md');
     expect(hostGit(repo, ['checkout', '-q', '-b', 'hardened'])).toBe('');
     expect(hostGit(repo, ['status', '--porcelain'])).toContain('README.md');
-    expect(hostGitHardeningArgs()).toEqual(expect.arrayContaining(['core.fsmonitor=false', 'core.pager=cat', 'diff.external=']));
+    expect(hostGitHardeningArgs()).toEqual(expect.arrayContaining([
+      'core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.sshCommand=ssh', 'credential.helper=',
+      'gpg.program=gpg', 'core.editor=:', 'sequence.editor=:',
+    ]));
     expect(existsSync(marker)).toBe(false);
   });
 
@@ -394,6 +398,58 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     expect(existsSync(marker())).toBe(false);
   });
 
+  it('a commondir flipped after the link check is never read: host git pins the recorded git dirs', async () => {
+    const m = manager();
+    const job = await finishedJob(m);
+    const links = readWorktreeGitLinks(job.wt)!;
+    const args = worktreeGitDirArgs(job.wt, links);
+    expect(worktreeGitLinksIntact(job.wt, links, join(repo, '.git'))).toBe(true);
+    // A surviving lane child flips the link between the check and the git call.
+    const evil = evilGitDir();
+    gitIn(root, '--git-dir', evil, 'config', 'omg.flipped', 'yes');
+    writeFileSync(join(links.adminDir, 'commondir'), `${evil}\n`);
+    // Control: git with only --git-dir follows the flipped link.
+    expect(execFileSync('git', [...args, 'config', '--get', 'omg.flipped'], { cwd: job.wt, encoding: 'utf8', stdio: 'pipe' }).trim()).toBe('yes');
+    rmSync(marker(), { force: true });
+
+    expect(hostGit(job.wt, [...args, 'config', '--get', 'omg.flipped'])).toBeNull();
+    expect(hostGit(job.wt, [...args, 'rev-parse', '--path-format=absolute', '--git-common-dir'])?.toLowerCase()).toBe(join(repo, '.git').replace(/\\/g, '/').toLowerCase());
+    expect(hostGit(job.wt, [...args, 'status', '--porcelain'])).not.toBeNull();
+    expect(existsSync(marker())).toBe(false);
+  });
+
+  it('a filter planted in config.worktree (extensions.worktreeConfig) never runs in host status, the change summary or cleanup', async () => {
+    gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');
+    const m = manager();
+    const job = await finishedJob(m);
+    const links = readWorktreeGitLinks(job.wt)!;
+    const args = worktreeGitDirArgs(job.wt, links);
+    const script = join(root, 'filter.sh');
+    writeFileSync(script, `#!/bin/sh\necho filter >> "${marker().replace(/\\/g, '/')}"\ncat\n`, { mode: 0o755 });
+    // The attributes live outside the worktree (core.attributesFile), so the worktree stays clean and cleanup proceeds.
+    const attrs = join(root, 'lane-attributes');
+    writeFileSync(attrs, '* filter=x\n');
+    writeFileSync(join(links.adminDir, 'config.worktree'), `[filter "x"]\n\tclean = sh "${script.replace(/\\/g, '/')}"\n[core]\n\tattributesFile = ${attrs.replace(/\\/g, '/')}\n`);
+    let tick = 0;
+    // Same bytes, new mtime: git must hash README.md again, through the clean filter.
+    const stale = () => { const t = new Date(Date.UTC(2001, 0, 1 + ++tick)); utimesSync(join(job.wt, 'README.md'), t, t); };
+    stale();
+    execFileSync('git', ['status', '--porcelain'], { cwd: job.wt, stdio: 'pipe' });
+    expect(existsSync(marker())).toBe(true);
+    rmSync(marker());
+
+    stale();
+    expect(hostGit(job.wt, [...args, 'status', '--porcelain'])).toBe('');
+    stale();
+    expect(summarizeChanges(job.wt, gitIn(repo, 'rev-parse', 'HEAD'), [], args)?.changedFiles).toEqual([]);
+    stale();
+    expect(m.cleanup(job.id).cleanup).toMatch(/^removed worktree/);
+    expect(existsSync(marker())).toBe(false);
+    expect(existsSync(job.wt)).toBe(false);
+    expect(existsSync(links.adminDir)).toBe(false);
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).not.toContain(job.id);
+  });
+
   it('the session commits on a detached HEAD; the host moves only the job\'s own branch after it', async () => {
     const base = gitIn(repo, 'rev-parse', 'HEAD');
     const m = manager('commit');
@@ -403,5 +459,30 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
     expect(head).not.toBe(base);
     expect(gitIn(repo, 'rev-parse', `refs/heads/${job.branch}`)).toBe(head);
     expect(gitIn(repo, 'rev-parse', 'refs/heads/main')).toBe(base);
+  });
+});
+
+describe('copilot_run session end', () => {
+  it('kills the runtime\'s process tree before client.stop(), also on a clean end', async () => {
+    const order: string[] = [];
+    const deps = fakeDeps(root, 'idle', calls, { OMG_COPILOT_RUN_ALLOW: '1' });
+    const sdk = (await deps.loadSdk())!;
+    const Base = sdk.module.CopilotClient as unknown as new (o: unknown) => { cliProcess: unknown; stop(): Promise<unknown> };
+    class WithChild extends Base {
+      constructor(o: unknown) { super(o); this.cliProcess = { pid: 4321 }; }
+      async stop() { order.push('stop'); return super.stop(); }
+    }
+    let alive = true;
+    const m = new CopilotRunManager({
+      ...deps,
+      loadSdk: async () => ({ ...sdk, module: { ...sdk.module, CopilotClient: WithChild as never } }),
+      processIdentity: async () => null,
+      isAlive: () => alive,
+      killTree: (pid) => { order.push(`kill:${pid}`); alive = false; },
+    });
+    const done = await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId as string, 10_000);
+    expect(done.status).toBe('completed');
+    expect(order).toEqual(['kill:4321', 'stop']);
+    expect(done.worktree?.headCommit).toBe(gitIn(repo, 'rev-parse', 'HEAD'));
   });
 });

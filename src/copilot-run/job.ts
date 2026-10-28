@@ -40,7 +40,7 @@
  *   node_modules) are unlinked first so their targets survive.
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
@@ -71,9 +71,12 @@ import {
   ensureWorkerWorktree,
   getBranchName,
   getWorktreePath,
+  hostGitDriverOverrides,
+  hostGitEnv,
   hostGitHardeningArgs,
   readWorktreeGitLinks,
   removeWorkerWorktree,
+  runHostGit,
   worktreeGitDirArgs,
   worktreeGitLinksIntact,
   type WorktreeGitLinks,
@@ -267,7 +270,8 @@ export type CopilotRunSnapshot = {
   finalText: string | null;
   error: string | null;
   usage: { premiumRequests: number; credits: number; source: 'measured' | 'estimated'; summary: string };
-  worktree?: WorktreeSummary & { baseCommit: string | null; removed: boolean };
+  /** `headCommit`: the worktree's HEAD when the job ended, read through the recorded git dir (absent while running or when its links changed). */
+  worktree?: WorktreeSummary & { baseCommit: string | null; removed: boolean; headCommit?: string };
   changes?: ChangeSummary;
   deniedPermissions?: Array<{ kind: string; reason: string }>;
   notes?: string[];
@@ -317,6 +321,8 @@ interface Job {
   home: string;
   eventsPath: string;
   baseCommit: string | null;
+  /** The worktree's HEAD when the job ended (hardened, recorded git dir); null before or when unreadable. */
+  headCommit: string | null;
   worktree: WorktreeSummary | null;
   /** The worktree's git links as git wrote them at creation; host git runs in the worktree only while they still match. */
   worktreeLinks: WorktreeGitLinks | null;
@@ -371,25 +377,27 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
 
 /**
  * `-c` pairs on every host-side git command (src/team/git-worktree.ts): no
- * hook, fsmonitor, pager or external diff a job's agent planted runs in the
- * caller's process. Diffs also pass --no-ext-diff and --no-textconv, and
- * summarizeChanges adds filterDriverOverrides.
+ * hook, fsmonitor, pager, external diff or other program a job's agent
+ * planted runs in the caller's process. Diffs also pass --no-ext-diff and
+ * --no-textconv, and runHostGit adds the driver overrides on every command
+ * that touches the work tree.
  */
 export { hostGitHardeningArgs };
 
 /**
- * One git command as an argv array (never a shell), hardened
- * (hostGitHardeningArgs); trimmed stdout, or null on failure. These run in
- * the caller's process on a job worktree the job's agent could configure
- * (omg factory run reads the change summary before its tamper check). The
- * worktree's repository config counts as agent-controlled: in a job worktree
- * these commands pass the recorded `--git-dir` (worktreeGitDirArgs) after
- * worktreeGitLinksIntact, and they only read (diff, ls-files, rev-parse,
- * config --get) or move the job's own branch from the repository root.
+ * One git command as an argv array (never a shell), run through runHostGit;
+ * trimmed stdout, or null on failure. These run in the caller's process on a
+ * job worktree the job's agent could configure (omg factory run reads the
+ * change summary before its tamper check). The worktree's repository config
+ * counts as agent-controlled: in a job worktree these commands pass the
+ * recorded `--git-dir` (worktreeGitDirArgs) after worktreeGitLinksIntact,
+ * which pins the git dir, work tree and common dir in the environment, and
+ * they only read (diff, ls-files, rev-parse, config --get) or move the job's
+ * own branch from the repository root.
  */
 export function hostGit(cwd: string, args: string[]): string | null {
   try {
-    return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS }).trim();
+    return runHostGit(cwd, args, GIT_TIMEOUT_MS).trim();
   } catch {
     return null;
   }
@@ -398,37 +406,9 @@ const git = hostGit;
 
 const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-/**
- * `-c` pairs that switch off every filter driver a config level the job's
- * agent can write (local, worktree, global, an include, the command line)
- * defines: empty `clean`, `smudge` and `process`, `required=false`. Git runs
- * a driver only when its command is non-empty, so a diff against the working
- * tree then reads file bytes as they are. A driver set only in the system
- * config (admin rights to write; Git for Windows ships `filter.lfs` there) is
- * kept. Listing the config runs nothing. Null when the drivers cannot be
- * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
- * the caller fails closed.
- */
+/** hostGitDriverOverrides for the repository at `cwd` (or the recorded git dir `gitDirArgs` names). */
 export function filterDriverOverrides(cwd: string, gitDirArgs: readonly string[] = []): string[] | null {
-  let out: string;
-  try {
-    out = execFileSync('git', [...hostGitHardeningArgs(), ...gitDirArgs, 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
-  } catch (err) {
-    // Exit 1: no key matches.
-    return (err as { status?: number }).status === 1 ? [] : null;
-  }
-  const parts = out.split('\0');
-  const names = new Set<string>();
-  // `--show-scope --null`: scope NUL key NUL, per entry.
-  for (let i = 0; i + 1 < parts.length; i += 2) {
-    const [scope, key] = [parts[i], parts[i + 1]];
-    const dot = key.lastIndexOf('.');
-    if (!key.startsWith('filter.') || dot <= 'filter'.length) return null;
-    const name = key.slice('filter.'.length, dot);
-    if (/[=\r\n]/.test(name)) return null;
-    if (scope !== 'system') names.add(name);
-  }
-  return [...names].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`]));
+  return hostGitDriverOverrides(cwd, hostGitEnv(gitDirArgs), GIT_TIMEOUT_MS);
 }
 
 /**
@@ -439,16 +419,15 @@ export function filterDriverOverrides(cwd: string, gitDirArgs: readonly string[]
  * The job's agent may have written the worktree's attributes and config, and
  * omg factory run reads this summary before its tamper check, so the diff
  * runs no external diff driver, no textconv, no fsmonitor and no filter
- * driver (filterDriverOverrides).
+ * driver (runHostGit's driver overrides; a driver it cannot override fails
+ * the diff, so the summary is null).
  */
 export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = [], gitDirArgs: readonly string[] = []): ChangeSummary | null {
   if (!base) return null;
   const top = git(cwd, [...gitDirArgs, 'rev-parse', '--show-toplevel']);
   if (!top) return null;
-  const noFilters = filterDriverOverrides(top, gitDirArgs);
-  if (noFilters === null) return null;
-  const stat = git(top, [...gitDirArgs, ...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
-  const names = git(top, [...gitDirArgs, ...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
+  const stat = git(top, [...gitDirArgs, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+  const names = git(top, [...gitDirArgs, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
   const untrackedFiles = lines(git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']));
@@ -651,6 +630,7 @@ export class CopilotRunManager {
       home: join(jobDir, 'home'),
       eventsPath: join(jobDir, 'events.jsonl'),
       baseCommit,
+      headCommit: null,
       worktree,
       worktreeLinks,
       commonGitDir,
@@ -691,7 +671,10 @@ export class CopilotRunManager {
           job.stopReason ??= 'sandbox-escaped';
           outcome = 'failed';
         } else {
-          if (job.worktree) syncJobBranch(job, gitDirArgs);
+          if (job.worktree) {
+            syncJobBranch(job, gitDirArgs);
+            job.headCommit = git(job.worktree.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+          }
           job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs);
         }
         job.endedAt = new Date().toISOString();
@@ -992,6 +975,13 @@ export class CopilotRunManager {
       }
       pid ??= runtimePid(client);
       job.pid = pid;
+      // A session's shell may have left children (a detached one survives a
+      // clean client.stop()): kill the runtime's whole tree while it is still
+      // their parent, clean end or not, before any host git reads the worktree.
+      // Without a session no tool ran, so the plain stop below is enough.
+      if (session && pid && deps.isAlive(pid)) {
+        try { deps.killTree(pid); } catch { /* best effort; host git pins its git dir anyway */ }
+      }
       let stopped = false;
       try { await withTimeout(client.stop(), STOP_TIMEOUT_MS, 'client.stop()'); stopped = true; } catch { /* escalate */ }
       if (!stopped) {
@@ -1127,7 +1117,7 @@ export class CopilotRunManager {
       finalText: job.finalText === null ? null : scrub(job.finalText),
       error: job.error === null ? null : scrub(job.error),
       usage,
-      ...(job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp } } : {}),
+      ...(job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...(job.headCommit ? { headCommit: job.headCommit } : {}) } } : {}),
       ...(job.changes ? { changes: job.changes } : {}),
       ...(job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {}),
       ...(job.notes.length ? { notes: job.notes.map(scrub) } : {}),

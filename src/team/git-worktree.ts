@@ -137,15 +137,145 @@ function hostHooksDir(): string {
  * relies on. `worktree add` stays unhardened so the repository's own
  * post-checkout hook still runs at creation, before any agent ran there.
  * A future fetch, push, commit or merge from an agent's worktree must also
- * pass an explicit `--git-dir` (the repository's common dir): settings such
- * as core.sshCommand, credential.helper or gpg.program are not overridden here.
+ * pass an explicit `--git-dir` (the repository's common dir).
+ *
+ * Every other config key that names a program is pinned too (ssh, credential
+ * helper, signing programs, editors): an agent can write `config.worktree`
+ * once the repository sets `extensions.worktreeConfig` (sparse-checkout does).
+ * `-c extensions.worktreeConfig=false` is no defence: git reads extensions
+ * from the repository config file only, so config.worktree is still read.
+ * Drivers have agent-chosen names (`filter.<name>.clean`, `diff.<name>.textconv`),
+ * so runHostGit lists and blanks them per command (hostGitDriverOverrides).
  */
 export function hostGitHardeningArgs(): string[] {
-  return ['-c', `core.hooksPath=${hostHooksDir()}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
+  return [
+    '-c', `core.hooksPath=${hostHooksDir()}`,
+    ...EXEC_KEY_OVERRIDES.flatMap((kv) => ['-c', kv]),
+  ];
+}
+
+const EXEC_KEY_OVERRIDES = [
+  'core.fsmonitor=false', 'core.pager=cat', 'diff.external=', 'core.sshCommand=ssh', 'credential.helper=',
+  'gpg.program=gpg', 'gpg.ssh.program=ssh-keygen', 'gpg.x509.program=gpgsm', 'core.editor=:', 'sequence.editor=:',
+];
+
+let emptyAttributesFile: string | null = null;
+
+/** A host-owned empty file for core.attributesFile; a fresh one whenever the last is gone or not empty. */
+function hostAttributesFile(): string {
+  try {
+    if (emptyAttributesFile && readFileSync(emptyAttributesFile, 'utf-8') === '') return emptyAttributesFile;
+  } catch { /* gone: make a new one */ }
+  emptyAttributesFile = join(mkdtempSync(join(tmpdir(), 'omg-host-git-noattrs-')), 'attributes');
+  writeFileSync(emptyAttributesFile, '');
+  return emptyAttributesFile;
+}
+
+/** Subcommands that read or write work-tree files, so a clean, smudge or process filter (or a textconv) can run. */
+const WORK_TREE_SUBCOMMANDS = new Set([
+  'status', 'diff', 'diff-files', 'diff-index', 'ls-files', 'worktree', 'checkout', 'checkout-index', 'restore',
+  'switch', 'reset', 'add', 'stash', 'merge', 'commit', 'update-index', 'read-tree', 'apply', 'rm', 'mv', 'clean',
+]);
+
+/** Global options before a subcommand that take the next argument as their value. */
+const GLOBAL_OPTIONS_WITH_VALUE = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+
+function gitSubcommand(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    if (GLOBAL_OPTIONS_WITH_VALUE.has(args[i])) i++;
+    else if (!args[i].startsWith('-')) return args[i];
+  }
+  return undefined;
+}
+
+/**
+ * The environment of a host git command that names a worktree's recorded git
+ * dir (`--git-dir <common>/worktrees/<name> --work-tree <path>`, from
+ * worktreeGitDirArgs): GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR pinned to the
+ * recorded paths, so git reads no link file (the admin dir's `commondir`, the
+ * worktree's `.git`) after worktreeGitLinksIntact checked them; a lane child
+ * that survived the session cannot flip them in between. Undefined (inherit)
+ * for a command that names no git dir.
+ */
+export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv | undefined {
+  const valueOf = (flag: string) => {
+    const i = args.indexOf(flag);
+    return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
+  };
+  const gitDir = valueOf('--git-dir');
+  if (!gitDir) return undefined;
+  const env: NodeJS.ProcessEnv = { ...base, GIT_DIR: resolve(gitDir) };
+  const workTree = valueOf('--work-tree');
+  if (workTree) env.GIT_WORK_TREE = resolve(workTree);
+  // worktreeGitLinksIntact proved the admin dir is a direct child of <common>/worktrees.
+  if (basename(dirname(resolve(gitDir))) === 'worktrees') env.GIT_COMMON_DIR = dirname(dirname(resolve(gitDir)));
+  return env;
+}
+
+/**
+ * `-c` pairs that switch off every filter and diff driver a config level an
+ * agent can write (local, worktree, global, an include) defines: empty
+ * `clean`, `smudge` and `process` with `required=false`, empty `textconv` and
+ * `command`. Git runs a driver only when its command is non-empty, so status
+ * and diff read file bytes as they are. A driver set only in the system config
+ * (admin rights to write; Git for Windows ships `filter.lfs` there) is kept.
+ * Listing the config runs nothing. Null when the drivers cannot be listed or a
+ * filter name cannot be passed as `-c` (it holds `=` or a line break): the
+ * caller fails closed.
+ */
+export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, timeout?: number): string[] | null {
+  let out: string;
+  try {
+    out = execFileSync('git', [...hostGitHardeningArgs(), 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^(filter|diff)\\.'], { cwd, env, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout });
+  } catch (err) {
+    // Exit 1: no key matches.
+    return (err as { status?: number }).status === 1 ? [] : null;
+  }
+  const parts = out.split('\0');
+  const filters = new Set<string>();
+  const diffs = new Set<string>();
+  // `--show-scope --null`: scope NUL key NUL, per entry.
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [scope, key] = [parts[i], parts[i + 1]];
+    const section = key.startsWith('filter.') ? 'filter' : key.startsWith('diff.') ? 'diff' : null;
+    const dot = key.lastIndexOf('.');
+    if (section === null) return null;
+    // `diff.renames` and friends have no driver name; a two-level filter key is malformed.
+    if (dot <= section.length) {
+      if (section === 'filter') return null;
+      continue;
+    }
+    const name = key.slice(section.length + 1, dot);
+    if (/[=\r\n]/.test(name)) return null;
+    if (scope !== 'system') (section === 'filter' ? filters : diffs).add(name);
+  }
+  return [
+    ...[...filters].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`])),
+    ...[...diffs].flatMap((n) => ['textconv=', 'command='].flatMap((kv) => ['-c', `diff.${n}.${kv}`])),
+  ];
+}
+
+/**
+ * Run one host git command, hardened: hostGitHardeningArgs on every command;
+ * on a command that touches work-tree files (WORK_TREE_SUBCOMMANDS) also an
+ * empty core.attributesFile and hostGitDriverOverrides; and the git dir,
+ * work tree and common dir pinned in the environment (hostGitEnv) when the
+ * args name a recorded git dir. Raw stdout; throws what execFileSync throws,
+ * or when the drivers cannot be listed.
+ */
+export function runHostGit(cwd: string, args: readonly string[], timeout?: number): string {
+  const env = hostGitEnv(args);
+  let tree: string[] = [];
+  if (WORK_TREE_SUBCOMMANDS.has(gitSubcommand(args) ?? '')) {
+    const drivers = hostGitDriverOverrides(cwd, env, timeout);
+    if (drivers === null) throw new Error('host git: the filter and diff drivers cannot be listed or overridden; refusing to run it in the work tree');
+    tree = ['-c', `core.attributesFile=${hostAttributesFile()}`, ...drivers];
+  }
+  return execFileSync('git', [...hostGitHardeningArgs(), ...tree, ...args], { cwd, env, encoding: 'utf-8', stdio: 'pipe', windowsHide: true, timeout });
 }
 
 function git(repoRoot: string, args: string[], cwd = repoRoot): string {
-  return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  return runHostGit(cwd, args).trim();
 }
 
 /**
@@ -320,7 +450,7 @@ function isRegisteredWorktreePath(repoRoot: string, wtPath: string): boolean {
 
 function isDetached(wtPath: string): boolean {
   try {
-    const branch = execFileSync('git', [...hostGitHardeningArgs(), 'branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    const branch = runHostGit(wtPath, ['branch', '--show-current']).trim();
     return branch.length === 0;
   } catch {
     return false;
@@ -387,7 +517,7 @@ function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = [], 
   try {
     const ignored = new Set(ignoredRootPaths);
     const runtimePrefixes = worktreeRuntimeStatePrefixes(wtPath);
-    const entries = execFileSync('git', [...hostGitHardeningArgs(), ...gitDirArgs, 'status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
+    const entries = runHostGit(wtPath, [...gitDirArgs, 'status', '--porcelain', '--untracked-files=all'])
       .split('\n')
       .filter(line => line.trim().length > 0);
     const isRuntime = (line: string) => line.startsWith('?? ') && runtimePrefixes.some(([prefix, rest]) => {
@@ -482,7 +612,7 @@ function unlinkUntrackedWorktreeLinks(wtPath: string, gitDirArgs: readonly strin
 
 function gitOrNull(args: string[], cwd: string): string | null {
   try {
-    return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    return runHostGit(cwd, args).trim();
   } catch {
     return null;
   }
@@ -527,7 +657,7 @@ function branchRefStored(repoRoot: string, branch: string): boolean {
  */
 function resolveBranchCommit(repoRoot: string, branch: string): string | null {
   try {
-    execFileSync('git', [...hostGitHardeningArgs(), 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+    runHostGit(repoRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
   } catch (err) {
     // show-ref exits 1 for a missing ref, and also for a garbage or empty
     // loose ref file: only a ref stored nowhere counts as missing.
@@ -901,7 +1031,7 @@ export function ensureWorkerWorktree(
   validateResolvedPath(wtPath, join(getOmcRoot(repoRoot), 'team'));
 
   try {
-    execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+    runHostGit(repoRoot, ['worktree', 'prune']);
   } catch { /* ignore */ }
 
   if (existsSync(wtPath)) {
@@ -1058,6 +1188,7 @@ export function removeWorkerWorktree(
     // With recorded git links, git runs in the worktree only while they are
     // intact, and then on the recorded git dir, never a discovered one.
     let gitDirArgs: string[] = [];
+    let laneCommonDir: string | null = null;
     if (options.gitLinks) {
       const commonDir = gitOrNull(['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot);
       if (!commonDir) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot locate the git directory)`);
@@ -1065,6 +1196,7 @@ export function removeWorkerWorktree(
         return { tampered: removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, options.gitLinks, commonDir) };
       }
       gitDirArgs = worktreeGitDirArgs(wtPath, options.gitLinks);
+      laneCommonDir = commonDir;
     }
     prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
 
@@ -1117,7 +1249,28 @@ export function removeWorkerWorktree(
     }
     if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
     try {
-      execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      if (options.gitLinks && laneCommonDir) {
+        // An agent's worktree goes by path, not `git worktree remove`: that
+        // spawns git in the worktree, under config (config.worktree) and
+        // attributes the agent may have written. The checks above passed.
+        if (existsSync(wtPath)) {
+          validateWorktreeRemovalTarget({
+            candidatePath: wtPath,
+            expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
+            mainRepoRoots: [repoRoot],
+          });
+        }
+        try {
+          removeTreeByPath(wtPath);
+        } catch (err) {
+          // Only OMC runtime state is left (checked above), maybe still busy on win32.
+          if (!force) throw err;
+          removeRuntimeLeftover(wtPath);
+        }
+        if (isAdminDirOf(laneCommonDir, options.gitLinks.adminDir)) removeTreeByPath(options.gitLinks.adminDir);
+      } else {
+        runHostGit(repoRoot, ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath]);
+      }
     } catch (err) {
       // A forced removal can fail half way on win32 when a process (a worker's
       // SessionEnd action runner) still has its cwd in the runtime state: git
@@ -1133,7 +1286,7 @@ export function removeWorkerWorktree(
     }
 
     try {
-      execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      runHostGit(repoRoot, ['worktree', 'prune']);
     } catch { /* ignore */ }
 
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
@@ -1156,6 +1309,18 @@ export function removeWorkerWorktree(
   });
 }
 
+/** Delete a directory without git: every link inside is unlinked first (targets untouched), a link itself is only unlinked. */
+function removeTreeByPath(dir: string): void {
+  let stat;
+  try { stat = lstatSync(dir); } catch { return; }
+  if (stat.isSymbolicLink()) {
+    try { unlinkSync(dir); } catch { rmdirSync(dir); }
+    return;
+  }
+  unlinkUntrackedWorktreeLinks(dir, [], false);
+  rmSync(dir, { recursive: true, force: true });
+}
+
 /**
  * Remove a worktree whose git links no longer match the record, without
  * running git in it: its git dir may be one the agent controls, with hooks
@@ -1164,16 +1329,7 @@ export function removeWorkerWorktree(
  * repository's `worktrees/`. The branch is kept for inspection. Returns why.
  */
 function removeTamperedWorktree(repoRoot: string, teamName: string, workerName: string, wtPath: string, links: WorktreeGitLinks, commonDir: string): string {
-  const removeTree = (dir: string) => {
-    let stat;
-    try { stat = lstatSync(dir); } catch { return; }
-    if (stat.isSymbolicLink()) {
-      try { unlinkSync(dir); } catch { rmdirSync(dir); }
-      return;
-    }
-    unlinkUntrackedWorktreeLinks(dir, [], false);
-    rmSync(dir, { recursive: true, force: true });
-  };
+  const removeTree = removeTreeByPath;
   if (existsSync(wtPath)) {
     validateWorktreeRemovalTarget({
       candidatePath: wtPath,

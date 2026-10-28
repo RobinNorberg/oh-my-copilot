@@ -880,7 +880,7 @@ class FactoryEngine {
     const { result, lane, after } = out;
 
     // The shared git state passed in runLane; now the lane's own worktree (its git dir, HEAD and files).
-    const problems = verifyReviewWorktree(this.exec, result, head, after.commonDir);
+    const problems = verifyReviewWorktree(result, head, after.commonDir);
     if (problems.length > 0) {
       this.markVerdict(lane.id, 'invalid', `tampered: ${problems.join('; ')}`);
       this.gate('review-tampered', `review lane ${lane.id} changed its worktree or reports another one, so its verdict is discarded: ${problems.slice(0, 5).join('; ')}`);
