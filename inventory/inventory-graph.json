@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8f15f3be0273c191728f4d14723bd8f39c4e3cce",
-    "sourceSha256": "2d8425205e3fed8f133b13c98329690d5a4642cb02e886ac43a97ca24eaf52b9",
+    "head": "bab86bced422debf3e1980c80f785c58804a629e",
+    "sourceSha256": "20b2de9c49fd4cf73ced74e2e6ece4f8d00b1cd7333b0872e5e681ce80b557fb",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8f15f3be0273c191728f4d14723bd8f39c4e3cce",
-  "sourceSha256": "2d8425205e3fed8f133b13c98329690d5a4642cb02e886ac43a97ca24eaf52b9",
+  "head": "bab86bced422debf3e1980c80f785c58804a629e",
+  "sourceSha256": "20b2de9c49fd4cf73ced74e2e6ece4f8d00b1cd7333b0872e5e681ce80b557fb",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1743,
-      "total": 1767
+      "srcFiles": 1745,
+      "total": 1769
     },
     "generated": {
       "distFiles": 6480,
@@ -46478,6 +46478,11 @@
         "path": "src/factory/map-run.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.sandbox.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.test.ts"
@@ -46531,6 +46536,11 @@
         "id": "src/factory/run/gates-driver.ts",
         "kind": "src",
         "path": "src/factory/run/gates-driver.ts"
+      },
+      {
+        "id": "src/factory/run/lane-commit.ts",
+        "kind": "src",
+        "path": "src/factory/run/lane-commit.ts"
       },
       {
         "id": "src/factory/run/lane.ts",
@@ -71090,6 +71100,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -71611,6 +71681,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -71778,6 +71853,21 @@
         "from": "src/factory/run/gates-driver.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/lane.ts",
@@ -71983,6 +72073,11 @@
         "from": "src/factory/run/state.ts",
         "to": "external:path",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/state.ts",
@@ -105276,12 +105371,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8964,
-      "edgeCount": 10479,
-      "importEdgeCount": 8712,
+      "nodeCount": 8966,
+      "edgeCount": 10496,
+      "importEdgeCount": 8725,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "74f59ba491d3004d92a72181decba0a223ae4eea467fded036ddf1340e97bd19",
-  "manifestSha256": "325f13ec311131ced03633ba493fc42e4cb29341811640ec6b510a841bf09100"
+  "inventorySha256": "a55aab382a3c42fcb3ad3c0f4a37326391ddc2dcd01bf7636bfed7b9324746b9",
+  "manifestSha256": "871bd87a311328f1f2e17ef9042e63ac2ce9a167dac95ac57cc4a89ba0d011ac"
 }
