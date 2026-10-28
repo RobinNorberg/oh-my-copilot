@@ -68,6 +68,9 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
         if (m) return REPO_PATH.test(m[2]) && !m[2].split('/').includes('..');
       }
       return null;
+    case 'config':
+      // The tamper check hashes the file core.excludesFile names; ship decides the rest.
+      return same(r, ['--get', 'core.excludesFile']) ? true : null;
     case 'for-each-ref':
       return same(r, [FOR_EACH_REF_FORMAT]);
     case 'status':

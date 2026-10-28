@@ -142,6 +142,7 @@ describe("upstream-drift --apply, clean range", () => {
       "CHANGELOG.md": "# changes\n- upstream\n",
       "package.json": '{\n  "name": "oh-my-claudecode",\n  "version": "1.1.0",\n  "files": ["dist", "new"]\n}\n',
       ".github/RELEASE_SIGNOFF": "signed\n",
+      ".gjc/session.json": "{}\n",
       ".github/workflows/ci.yml": "name: ci\n",
       ".github/actions/setup/action.yml": "name: setup\n",
       "assets/logo.bin": "\u0000\u0001\u0003",
@@ -177,6 +178,7 @@ describe("upstream-drift --apply, clean range", () => {
     expect(read(pair.fork, "CHANGELOG.md")).toBe("# changes\n");
     expect(read(pair.fork, "package.json")).toContain('"version": "5.8.1"');
     expect(existsSync(join(pair.fork, ".github/RELEASE_SIGNOFF"))).toBe(false);
+    expect(existsSync(join(pair.fork, ".gjc"))).toBe(false);
     expect(existsSync(join(pair.fork, ".github/workflows/ci.yml"))).toBe(false);
     expect(existsSync(join(pair.fork, ".github/actions/setup/action.yml"))).toBe(false);
     expect(JSON.parse(read(pair.fork, ".github/upstream-port.json"))).toEqual({
@@ -193,6 +195,7 @@ describe("upstream-drift --apply, clean range", () => {
       { status: "A", path: ".github/RELEASE_SIGNOFF", action: "dropped" },
       { status: "A", path: ".github/actions/setup/action.yml", action: "skipped" },
       { status: "A", path: ".github/workflows/ci.yml", action: "skipped" },
+      { status: "A", path: ".gjc/session.json", action: "dropped" },
       { status: "M", path: "CHANGELOG.md", action: "excluded" },
       { status: "M", path: "assets/logo.bin", action: "apply" },
       { status: "M", path: "package.json", action: "excluded" },
@@ -203,10 +206,16 @@ describe("upstream-drift --apply, clean range", () => {
     ]);
     expect(report.package_json_delta).toContain('-  "version": "1.0.0"');
     expect(report.package_json_delta).toContain('+  "files": ["dist", "new"]');
+    expect(report.package_delta).toEqual([
+      { key: "files", before: null, after: ["dist", "new"], action: "human" },
+      { key: "version", before: "1.0.0", after: "1.1.0", action: "ignored" },
+    ]);
     expect(report.leaks).toEqual([]);
     const md = drift(pair.fork, "--report", "--base", pair.base, "--markdown").stdout;
     expect(md.startsWith(`<!-- upstream-drift-head: ${pair.head} -->\n<!-- upstream-drift-base: ${pair.base} -->\n`)).toBe(true);
     expect(md).toContain("applied cleanly");
+    expect(md).toContain(`omg port drive --head ${pair.head}`);
+    expect(md).toContain("- **human** `files`");
     expect(md).toContain("```diff");
   });
 
@@ -324,6 +333,44 @@ describe("upstream-drift --apply, entries the rename pass must not touch", () =>
       expect(git(pair.fork, "diff", "--name-only", "--", "src/link")).toBe("");
     }
     expect(result.stdout).not.toMatch(/renamed .* in (src\/link|vendor\/sub)/);
+  });
+});
+
+describe("upstream-drift --package-delta", () => {
+  const pkg = (body: object) => `${JSON.stringify({ name: "oh-my-claudecode", ...body }, null, 2)}\n`;
+  const delta = (before: object, after: object) => {
+    const pair = makePair({ "package.json": pkg(before) }, {}, { "package.json": pkg(after) });
+    const res = drift(pair.fork, "--package-delta", "--head", pair.head, "--json");
+    return { status: res.status, stderr: res.stderr, out: JSON.parse(res.stdout || "{}") };
+  };
+
+  it("ignores a version-only delta (exit 0)", () => {
+    const r = delta({ version: "1.0.0", scripts: { test: "vitest" } }, { version: "1.0.1", scripts: { test: "vitest" } });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.out.needsHuman).toBe(false);
+    expect(r.out.changes).toEqual([{ key: "version", before: "1.0.0", after: "1.0.1", action: "ignored" }]);
+  });
+
+  it("surfaces scripts, files and dependency changes per entry for a human (exit 1)", () => {
+    const r = delta(
+      { version: "1.0.0", scripts: { test: "vitest" }, files: ["dist"], dependencies: { a: "^1.0.0", gone: "^2.0.0" } },
+      { version: "1.1.0", scripts: { test: "vitest run", lint: "eslint src" }, files: ["dist", "bridge"], dependencies: { a: "^1.1.0", fresh: "^3.0.0" } },
+    );
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.out.needsHuman).toBe(true);
+    expect(r.out.changes.map((c: { key: string; action: string }) => `${c.action} ${c.key}`)).toEqual([
+      "human dependencies.a", "human dependencies.fresh", "human dependencies.gone",
+      "human files",
+      "human scripts.lint", "human scripts.test",
+      "ignored version",
+    ]);
+  });
+
+  it("reports no delta when package.json did not change", () => {
+    const pair = makePair({ "package.json": pkg({ version: "1.0.0" }), "src/a.ts": "a\n" }, {}, { "src/a.ts": "b\n" });
+    const res = drift(pair.fork, "--package-delta", "--head", pair.head);
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toContain("no upstream delta");
   });
 });
 
