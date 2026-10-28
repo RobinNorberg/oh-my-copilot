@@ -863,7 +863,7 @@ async function sandboxSpawnCanary(loaded: LoadedSdk, bin: string, input: SdkTier
       excludedTools: [],
     }), RPC_TIMEOUT_MS, 'canary createSession()');
     const shell = (session.rpc as { shell?: { executeUserRequested?: (p: { requestId: string; command: string }) => Promise<unknown> } }).shell;
-    if (typeof shell?.executeUserRequested !== 'function') return { ok: true, detail: 'skipped: the SDK has no shell.executeUserRequested RPC' };
+    if (typeof shell?.executeUserRequested !== 'function') return { ok: false, detail: 'the SDK has no shell.executeUserRequested RPC, so the spawn canary cannot run (not a pass)' };
     const config = buildSandboxConfig('review', {
       worktree: input.projectDir,
       commonGitDir: join(input.projectDir, '.git'),

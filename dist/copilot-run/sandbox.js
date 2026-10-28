@@ -318,6 +318,9 @@ export const SESSION_ENV_ALLOWLIST = [
     'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
     // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
+    // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
+    // paths from it (python-repl/paths.ts, utils/paths.ts getDataDir/getStateDir) finds them, but sandboxed writes there
+    // are denied, so the effect is breakage or shared read state, never escalation.
     'LOCALAPPDATA',
 ];
 /**
@@ -325,9 +328,11 @@ export const SESSION_ENV_ALLOWLIST = [
  * hook or shell, with the runtime's env taken verbatim
  * (`inheritDefaultEnv` false): presence only, the value is not checked.
  * Copilot CLI 1.0.105 rejects a launch without them ("policy_validation:
- * ... missing the required variable(s)"); the list is the `&str` table next
- * to that message in prebuilds/win32-x64/runtime.node. SystemRoot locates
- * the system DLLs, LOCALAPPDATA the container's profile.
+ * ... missing the required variable(s)"). In runtime.node 1.0.105 only
+ * SYSTEMROOT sits next to that message; LOCALAPPDATA comes from separate MXC
+ * strings ("LOCALAPPDATA and USERPROFILE both unset", "no user-profile
+ * grants: %LOCALAPPDATA% is unset ... Programs") and from the live error.
+ * SystemRoot locates the system DLLs, LOCALAPPDATA the container's profile.
  */
 export const MXC_REQUIRED_ENV = ['SYSTEMROOT', 'LOCALAPPDATA'];
 /** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */

@@ -277,8 +277,9 @@ describe('runSdkTier (fake SDK)', () => {
     const { loaded, rec } = fakeSdk({ hostSupport: { supported: true, capabilities: caps } });
     const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }));
     const check = byId(result.checks)['sdk.sandbox'];
-    expect(check.ok).toBe(true);
-    expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: skipped: the SDK has no shell\.executeUserRequested RPC$/);
+    // An SDK without shell.executeUserRequested cannot run the canary: that is not a pass.
+    expect(check.ok).toBe(false);
+    expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: the SDK has no shell\.executeUserRequested RPC, so the spawn canary cannot run \(not a pass\)$/);
     expect(rec.optionUpdates).toHaveLength(1);
     const update = rec.optionUpdates![0];
     expect(update.params.sandboxConfigSource).toBe('session_flag');

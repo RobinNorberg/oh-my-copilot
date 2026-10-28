@@ -949,7 +949,7 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   const reach = (r: { ok: boolean; status?: number; error?: string } | null | undefined) => (!r ? 'not tried' : r.ok ? `REACHED (HTTP ${r.status ?? '?'})` : `blocked (${excerpt(r.error ?? 'error', 80)})`);
 
   const enforcedLanes = e.lanes.filter(enforced);
-  const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.shellCalls > 0
+  const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0
     && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
 
   const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;

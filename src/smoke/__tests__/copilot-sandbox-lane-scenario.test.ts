@@ -252,6 +252,8 @@ describe('sandbox-lane scenario', () => {
     expect(checks['scn.sandbox-lane.q2_git_dir']).toMatchObject({ ok: false, detail: expect.stringMatching(/^Q2 unanswered: the write lane's probe never ran/) });
     expect(checks['scn.sandbox-lane.network_blocked'].ok).toBe(false);
     expect(checks['scn.sandbox-lane.write_inside'].ok).toBe(false);
+    // A hook-denied completion still carries sandboxed:true, but no command ran: that is no attestation.
+    expect(checks['scn.sandbox-lane.attested'].ok).toBe(false);
   });
 
   it('pins every lane to the requested model and reports the model each lane ran on', async () => {
