@@ -202,8 +202,31 @@ describe('AzureDevOpsProvider - extended', () => {
             const calls = mockExecFileSync.mock.calls.map((c) => [c[0], c[1]]);
             expect(calls[0][0]).toBe('az');
             expect(calls[0][1]).toEqual(['repos', 'pr', 'show', '--id', '42', '--output', 'json', '--org', 'https://dev.azure.com/myorg']);
-            expect(calls[1]).toEqual(['git', ['fetch', '--no-tags', 'origin', 'refs/heads/feature/x', 'refs/heads/main']]);
+            expect(calls[1]).toEqual(['git', ['fetch', '--no-tags', 'origin', 'refs/pull/42/merge']]);
             expect(calls[2]).toEqual(['git', ['diff', `${TGT}...${SRC}`]]);
+        });
+        it('falls back to the branch refs when the merge ref cannot be fetched', () => {
+            const gitCalls = [];
+            mockExecFileSync.mockImplementation(((cmd, args) => {
+                if (cmd === 'az')
+                    return prJson;
+                gitCalls.push(args);
+                if (args[0] === 'fetch' && args[3] === 'refs/pull/42/merge')
+                    throw new Error('no such ref');
+                return args[0] === 'diff' ? 'D' : '';
+            }));
+            expect(provider.getPRDiff(42)).toBe('D');
+            expect(gitCalls[1]).toEqual(['fetch', '--no-tags', 'origin', 'refs/heads/feature/x', 'refs/heads/main']);
+        });
+        it.each(['refs/heads/a:b', 'refs/heads/a b'])('refuses ref %s', (ref) => {
+            mockExecFileSync.mockReturnValue(JSON.stringify({
+                sourceRefName: ref,
+                targetRefName: 'refs/heads/main',
+                lastMergeSourceCommit: { commitId: SRC },
+                lastMergeTargetCommit: { commitId: TGT },
+            }));
+            expect(() => provider.getPRDiff(42)).toThrow('missing source/target refs');
+            expect(mockExecFileSync).toHaveBeenCalledTimes(1);
         });
         it('never calls an az diff subcommand', () => {
             fakeExec('');
