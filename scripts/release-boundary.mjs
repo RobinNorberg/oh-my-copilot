@@ -325,7 +325,7 @@ function assertExactBins(packageJson) {
   }
 }
 
-function assertForbiddenArchivePaths(entries) {
+export function assertForbiddenArchivePaths(entries) {
   for (const entry of entries) {
     const path = entry.path.slice('package/'.length);
     const basenamePart = basename(path).toLowerCase();

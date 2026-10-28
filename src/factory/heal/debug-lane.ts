@@ -28,7 +28,7 @@ import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneResult, 
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from '../run/review-guard.js';
 import type { HealClassification } from './classify.js';
 import { DIAGNOSIS_CLASSES } from './diagnosis-output.js';
-import type { EvidenceBundle } from './evidence.js';
+import type { EvidenceBundle } from './heal-evidence.js';
 import { fenceUntrusted } from './sanitize.js';
 
 /** Grace after the lane's own timeout before the runner cancels it. */

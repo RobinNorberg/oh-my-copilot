@@ -6,7 +6,7 @@ import { parseKnownFlaky } from '../../../ship/config.js';
 import { classifyRun, type HealClassification } from '../classify.js';
 import { debugPrompt } from '../debug-lane.js';
 import { citationProblem, parseDiagnosisOutput } from '../diagnosis-output.js';
-import { buildEvidence, bundleBytes, EVIDENCE_LIMITS, failureWindows, type EvidenceBundle } from '../evidence.js';
+import { buildEvidence, bundleBytes, EVIDENCE_LIMITS, failureWindows, type EvidenceBundle } from '../heal-evidence.js';
 import { parseJob } from '../logs.js';
 import { capBytes, carriesDelimiter, DELIMITER_PREFIX, fenceUntrusted, MAX_EVIDENCE_LINE_CHARS, newDelimiter, REDACTED, redactSecrets, sanitizeJson, sanitizeLine, sanitizeLines } from '../sanitize.js';
 import { runSignature } from '../signature.js';

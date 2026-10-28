@@ -18,7 +18,7 @@
 
 import { protectedChanges } from '../../ship/merge.js';
 import { ANY_JSON_FENCE, FENCE } from '../run/review-output.js';
-import type { EvidenceBundle } from './evidence.js';
+import type { EvidenceBundle } from './heal-evidence.js';
 
 export const DIAGNOSIS_CLASSES = ['regression', 'env-change', 'test-bug', 'flaky', 'unknown'] as const;
 export type DiagnosisClass = (typeof DIAGNOSIS_CLASSES)[number];
