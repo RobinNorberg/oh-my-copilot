@@ -42,8 +42,8 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir, userInfo } from 'node:os';
+import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { userInfo } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
@@ -67,7 +67,17 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
-import { ensureWorkerWorktree, getBranchName, getWorktreePath, removeWorkerWorktree } from '../team/git-worktree.js';
+import {
+  ensureWorkerWorktree,
+  getBranchName,
+  getWorktreePath,
+  hostGitHardeningArgs,
+  readWorktreeGitLinks,
+  removeWorkerWorktree,
+  worktreeGitDirArgs,
+  worktreeGitLinksIntact,
+  type WorktreeGitLinks,
+} from '../team/git-worktree.js';
 import {
   buildSdkExcludedTools,
   decideSdkPermission,
@@ -308,6 +318,10 @@ interface Job {
   eventsPath: string;
   baseCommit: string | null;
   worktree: WorktreeSummary | null;
+  /** The worktree's git links as git wrote them at creation; host git runs in the worktree only while they still match. */
+  worktreeLinks: WorktreeGitLinks | null;
+  /** The repository's common git dir (resolved from the repository root at creation). */
+  commonGitDir: string | null;
   /** Configured merge-rule paths beyond PROTECTED_PATHS (ship.knownFlakyFile). */
   extraProtected: string[];
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -355,33 +369,23 @@ function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
   ]).finally(() => clearTimeout(timer));
 }
 
-let emptyHooksDir: string | null = null;
-
-/** A host-owned empty directory for core.hooksPath; a fresh one whenever the last is gone or not empty. */
-function hostHooksDir(): string {
-  try {
-    if (emptyHooksDir && readdirSync(emptyHooksDir).length === 0) return emptyHooksDir;
-  } catch { /* gone: make a new one */ }
-  emptyHooksDir = mkdtempSync(join(tmpdir(), 'omg-copilot-run-nohooks-'));
-  return emptyHooksDir;
-}
-
 /**
- * `-c` pairs on every host-side git command: no hook, no fsmonitor, no pager
- * and no external diff a job's agent planted in a config level it can write
- * (the worktree's config.worktree, an include) runs in the caller's process.
- * Command-line config wins over every file. Diffs also pass --no-ext-diff
- * and --no-textconv, and summarizeChanges adds filterDriverOverrides.
+ * `-c` pairs on every host-side git command (src/team/git-worktree.ts): no
+ * hook, fsmonitor, pager or external diff a job's agent planted runs in the
+ * caller's process. Diffs also pass --no-ext-diff and --no-textconv, and
+ * summarizeChanges adds filterDriverOverrides.
  */
-export function hostGitHardeningArgs(): string[] {
-  return ['-c', `core.hooksPath=${hostHooksDir()}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
-}
+export { hostGitHardeningArgs };
 
 /**
  * One git command as an argv array (never a shell), hardened
  * (hostGitHardeningArgs); trimmed stdout, or null on failure. These run in
  * the caller's process on a job worktree the job's agent could configure
- * (omg factory run reads the change summary before its tamper check).
+ * (omg factory run reads the change summary before its tamper check). The
+ * worktree's repository config counts as agent-controlled: in a job worktree
+ * these commands pass the recorded `--git-dir` (worktreeGitDirArgs) after
+ * worktreeGitLinksIntact, and they only read (diff, ls-files, rev-parse,
+ * config --get) or move the job's own branch from the repository root.
  */
 export function hostGit(cwd: string, args: string[]): string | null {
   try {
@@ -405,10 +409,10 @@ const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.
  * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
  * the caller fails closed.
  */
-export function filterDriverOverrides(cwd: string): string[] | null {
+export function filterDriverOverrides(cwd: string, gitDirArgs: readonly string[] = []): string[] | null {
   let out: string;
   try {
-    out = execFileSync('git', [...hostGitHardeningArgs(), 'config','--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
+    out = execFileSync('git', [...hostGitHardeningArgs(), ...gitDirArgs, 'config', '--null', '--show-scope', '--name-only', '--get-regexp', '^filter\\.'], { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: GIT_TIMEOUT_MS });
   } catch (err) {
     // Exit 1: no key matches.
     return (err as { status?: number }).status === 1 ? [] : null;
@@ -437,17 +441,17 @@ export function filterDriverOverrides(cwd: string): string[] | null {
  * runs no external diff driver, no textconv, no fsmonitor and no filter
  * driver (filterDriverOverrides).
  */
-export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = []): ChangeSummary | null {
+export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = [], gitDirArgs: readonly string[] = []): ChangeSummary | null {
   if (!base) return null;
-  const top = git(cwd, ['rev-parse', '--show-toplevel']);
+  const top = git(cwd, [...gitDirArgs, 'rev-parse', '--show-toplevel']);
   if (!top) return null;
-  const noFilters = filterDriverOverrides(top);
+  const noFilters = filterDriverOverrides(top, gitDirArgs);
   if (noFilters === null) return null;
-  const stat = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
-  const names = git(top, [...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
+  const stat = git(top, [...gitDirArgs, ...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--stat', base, '--']);
+  const names = git(top, [...gitDirArgs, ...noFilters, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
-  const untrackedFiles = lines(git(top, ['ls-files', '--others', '--exclude-standard']));
+  const untrackedFiles = lines(git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']));
   return {
     diffStat: stat,
     changedFiles,
@@ -465,6 +469,35 @@ function seedGitIdentity(repo: string, globalConfig: string): void {
   for (const key of ['user.name', 'user.email']) {
     const value = git(repo, ['config', '--get', key]);
     if (value) git(repo, ['config', '--file', globalConfig, key, value]);
+  }
+}
+
+/**
+ * The `--git-dir`/`--work-tree` args for host git in the job's worktree:
+ * empty without one (isolation "none"), null when its git links no longer
+ * match what git wrote at creation (then no host git may run in it).
+ */
+function jobGitDirArgs(job: Pick<Job, 'worktree' | 'worktreeLinks' | 'commonGitDir'>): string[] | null {
+  if (!job.worktree) return [];
+  const { worktreeLinks: links, commonGitDir } = job;
+  if (!links || !commonGitDir || !worktreeGitLinksIntact(job.worktree.path, links, commonGitDir)) return null;
+  return worktreeGitDirArgs(job.worktree.path, links);
+}
+
+/**
+ * Move the job's branch to the commit its worktree's HEAD reached. The
+ * session commits on a detached HEAD because the sandbox keeps every ref
+ * read-only, so one job cannot rewrite another job's branch. Run from the
+ * repository root, with the old value, after jobGitDirArgs confirmed the links.
+ */
+function syncJobBranch(job: Job, gitDirArgs: readonly string[]): void {
+  const wt = job.worktree!;
+  const head = git(wt.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+  const ref = `refs/heads/${wt.branch}`;
+  const current = git(wt.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  if (!head || !current || head === current) return;
+  if (git(wt.repoRoot, ['update-ref', '-m', 'copilot_run: the session\'s commits', ref, head, current]) === null) {
+    job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
   }
 }
 
@@ -547,6 +580,8 @@ export class CopilotRunManager {
     const id = `cr-${randomBytes(6).toString('hex')}`;
     let workCwd = cwd;
     let worktree: WorktreeSummary | null = null;
+    let worktreeLinks: WorktreeGitLinks | null = null;
+    let commonGitDir: string | null = null;
     let baseCommit = repoRoot ? git(cwd, ['rev-parse', 'HEAD']) : null;
     if (isolation === 'worktree') {
       let info;
@@ -564,6 +599,21 @@ export class CopilotRunManager {
         throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText(err)}.${left}`);
       }
       if (!info) throw new CopilotRunError('copilot_run_start: worktree creation unexpectedly disabled.');
+      // Record the git links git just wrote, then detach HEAD: the session
+      // commits on it (the sandbox keeps every ref read-only) and the host
+      // moves the job's branch after the session (syncJobBranch).
+      const commonRaw = git(ledgerCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+      commonGitDir = commonRaw ? resolve(commonRaw) : null;
+      worktreeLinks = readWorktreeGitLinks(info.path);
+      const head = info.baseCommit ?? null;
+      const detached = worktreeLinks !== null && commonGitDir !== null && head !== null
+        && worktreeGitLinksIntact(info.path, worktreeLinks, commonGitDir)
+        && git(info.path, [...worktreeGitDirArgs(info.path, worktreeLinks), 'update-ref', '--no-deref', '-m', 'copilot_run: detach for the session', 'HEAD', head]) !== null;
+      if (!detached) {
+        try { removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd); } catch { /* reported below */ }
+        const left = existsSync(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : '';
+        throw new CopilotRunError(`copilot_run_start: could not record and detach the job worktree's git links.${left}`);
+      }
       // The caller's subdirectory, mirrored in the worktree.
       const sub = relativeInside(cwd, ledgerCwd);
       workCwd = sub && existsSync(join(info.path, sub)) ? join(info.path, sub) : info.path;
@@ -602,6 +652,8 @@ export class CopilotRunManager {
       eventsPath: join(jobDir, 'events.jsonl'),
       baseCommit,
       worktree,
+      worktreeLinks,
+      commonGitDir,
       extraProtected,
       pid: undefined,
       pidIdentity: null,
@@ -631,7 +683,17 @@ export class CopilotRunManager {
       .catch((err): CopilotRunStatus => { job.error ??= errText(err); return 'failed'; })
       .then((outcome) => {
         clearTimeout(timer);
-        job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected);
+        const gitDirArgs = jobGitDirArgs(job);
+        if (gitDirArgs === null) {
+          // A redirected .git, gitdir or commondir points host git at a git dir the session controls.
+          const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir or commondir) changed during the session; no host git ran in it';
+          job.error = job.error ? `${why}; ${job.error}` : why;
+          job.stopReason ??= 'sandbox-escaped';
+          outcome = 'failed';
+        } else {
+          if (job.worktree) syncJobBranch(job, gitDirArgs);
+          job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs);
+        }
         job.endedAt = new Date().toISOString();
         job.status = outcome;
       });
@@ -677,9 +739,11 @@ export class CopilotRunManager {
     const job = this.find(jobId);
     if (!isTerminal(job.status)) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} is still ${job.status}; cancel it first.`);
     if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
+    let tampered: string | null = null;
     if (!job.cleanedUp) {
       try {
-        removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot);
+        // With the recorded links, a worktree whose links changed is removed by path and no git runs in it.
+        ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
       } catch (err) {
         throw new CopilotRunError(
           `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText(err)}. `
@@ -689,6 +753,7 @@ export class CopilotRunManager {
       job.cleanedUp = true;
       try { rmSync(job.jobDir, { recursive: true, force: true }); } catch { /* evidence only */ }
     }
+    if (tampered) return { ...this.snapshot(job), cleanup: `sandbox-escaped: ${tampered}` };
     return { ...this.snapshot(job), cleanup: `removed worktree ${job.worktree.path} and branch ${job.worktree.branch}` };
   }
 
@@ -982,18 +1047,15 @@ export class CopilotRunManager {
       return null;
     }
     const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
-    const commonRaw = git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-    const gitDirRaw = git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
+    // A job worktree's git dirs come from the links recorded at creation, never from discovery.
+    const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
     try {
       const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
-      const branch = job.worktree?.branch ?? null;
-      // The branch's reflog directory must exist: the session may not create it under the read-only logs/.
-      if (branch && job.profile === 'write') mkdirSync(join(commonGitDir, 'logs', 'refs', 'heads', ...branch.split('/').slice(0, -1)), { recursive: true });
       const config = buildSandboxConfig(job.profile, {
         worktree: resolve(top),
         commonGitDir,
         ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
-        branch,
         pluginRoot,
         jobHome: job.home,
         jobDir: job.jobDir,

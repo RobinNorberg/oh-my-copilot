@@ -13,7 +13,8 @@
  * worker changes.
  */
 
-import { existsSync, lstatSync, realpathSync, readFileSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, realpathSync, readFileSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
@@ -109,14 +110,102 @@ export function getBranchName(teamName: string, workerName: string): string {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
 
+let emptyHooksDir: string | null = null;
+
+/** A host-owned empty directory for core.hooksPath; a fresh one whenever the last is gone or not empty. */
+function hostHooksDir(): string {
+  try {
+    if (emptyHooksDir && readdirSync(emptyHooksDir).length === 0) return emptyHooksDir;
+  } catch { /* gone: make a new one */ }
+  emptyHooksDir = mkdtempSync(join(tmpdir(), 'omg-host-git-nohooks-'));
+  return emptyHooksDir;
+}
+
 /**
- * Worker worktrees are configured by their agents; no fsmonitor command or
- * pager a worker planted runs in the leader's process.
+ * `-c` pairs on every host-side git command in a worktree an agent may have
+ * configured (a team worker, a copilot_run job): no hook, no fsmonitor, no
+ * pager and no external diff it planted in a config level it can write (the
+ * worktree's config.worktree, an include, a redirected common dir) runs in
+ * the leader's process. Command-line config wins over every file, and git
+ * passes it on to the git children it spawns (`worktree remove` runs
+ * `status`). The system config stays: only an administrator writes it, and
+ * Git for Windows keeps `core.autocrlf` and `filter.lfs` there, so dropping
+ * it (GIT_CONFIG_NOSYSTEM) would make clean worktrees look dirty.
+ *
+ * Every command here only reads, or changes refs and worktree records:
+ * `update-ref` would run a reference-transaction hook, which no team flow
+ * relies on. `worktree add` stays unhardened so the repository's own
+ * post-checkout hook still runs at creation, before any agent ran there.
+ * A future fetch, push, commit or merge from an agent's worktree must also
+ * pass an explicit `--git-dir` (the repository's common dir): settings such
+ * as core.sshCommand, credential.helper or gpg.program are not overridden here.
  */
-const NO_FSMONITOR = ['-c', 'core.fsmonitor=false', '-c', 'core.pager=cat'];
+export function hostGitHardeningArgs(): string[] {
+  return ['-c', `core.hooksPath=${hostHooksDir()}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
+}
 
 function git(repoRoot: string, args: string[], cwd = repoRoot): string {
-  return execFileSync('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+}
+
+/**
+ * What git wrote for a linked worktree: the `<worktree>/.git` file, and the
+ * `gitdir` and `commondir` files of its admin dir (`<common>/worktrees/<name>`).
+ * An agent that can write its worktree and admin dir can redirect them to a
+ * git dir it controls; record them at creation and compare before host git.
+ */
+export interface WorktreeGitLinks {
+  /** The admin dir, resolved from the `.git` file at creation. */
+  adminDir: string;
+  dotGit: string;
+  gitdir: string;
+  commondir: string;
+}
+
+/** A regular file's bytes (never through a link), or null. */
+function readPlainFile(path: string): string | null {
+  try {
+    return lstatSync(path).isFile() ? readFileSync(path, 'utf-8') : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The worktree's git links as they are on disk now (read without git), or null when any is missing, a link or malformed. */
+export function readWorktreeGitLinks(wtPath: string): WorktreeGitLinks | null {
+  const dotGit = readPlainFile(join(wtPath, '.git'));
+  const match = dotGit === null ? null : /^gitdir: (.+?)\r?\n?$/.exec(dotGit);
+  if (!dotGit || !match) return null;
+  const adminDir = resolve(wtPath, match[1]);
+  try {
+    if (!lstatSync(adminDir).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const gitdir = readPlainFile(join(adminDir, 'gitdir'));
+  const commondir = readPlainFile(join(adminDir, 'commondir'));
+  if (gitdir === null || commondir === null) return null;
+  return { adminDir, dotGit, gitdir, commondir };
+}
+
+/** Whether `adminDir` is a direct child of `<commonGitDir>/worktrees`. */
+function isAdminDirOf(commonGitDir: string, adminDir: string): boolean {
+  const rel = relative(resolve(commonGitDir, 'worktrees'), adminDir);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel) && !rel.includes(sep);
+}
+
+/**
+ * Whether the worktree's git links still hold exactly what was recorded, and
+ * the recorded admin dir lies in the repository's own `worktrees/` dir.
+ */
+export function worktreeGitLinksIntact(wtPath: string, expected: WorktreeGitLinks, commonGitDir: string): boolean {
+  const now = readWorktreeGitLinks(wtPath);
+  return isAdminDirOf(commonGitDir, expected.adminDir) && now !== null && (['adminDir', 'dotGit', 'gitdir', 'commondir'] as const).every((k) => now[k] === expected[k]);
+}
+
+/** Host git arguments that name the worktree's recorded git dir and work tree instead of discovering them. */
+export function worktreeGitDirArgs(wtPath: string, links: WorktreeGitLinks): string[] {
+  return ['--git-dir', links.adminDir, '--work-tree', wtPath];
 }
 
 function isInsideGitRepo(repoRoot: string): boolean {
@@ -231,7 +320,7 @@ function isRegisteredWorktreePath(repoRoot: string, wtPath: string): boolean {
 
 function isDetached(wtPath: string): boolean {
   try {
-    const branch = execFileSync('git', [...NO_FSMONITOR, 'branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    const branch = execFileSync('git', [...hostGitHardeningArgs(), 'branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
     return branch.length === 0;
   } catch {
     return false;
@@ -294,11 +383,11 @@ function worktreeRuntimeStatePrefixes(wtPath: string): Array<readonly [string, R
  * anything else under `.omg/` (skills, plans, notepad, project memory, wiki)
  * keeps the worktree.
  */
-function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = []): { dirty: boolean; entries: string[]; runtimeState: boolean } {
+function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = [], gitDirArgs: readonly string[] = []): { dirty: boolean; entries: string[]; runtimeState: boolean } {
   try {
     const ignored = new Set(ignoredRootPaths);
     const runtimePrefixes = worktreeRuntimeStatePrefixes(wtPath);
-    const entries = execFileSync('git', [...NO_FSMONITOR, 'status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
+    const entries = execFileSync('git', [...hostGitHardeningArgs(), ...gitDirArgs, 'status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
       .split('\n')
       .filter(line => line.trim().length > 0);
     const isRuntime = (line: string) => line.startsWith('?? ') && runtimePrefixes.some(([prefix, rest]) => {
@@ -349,9 +438,9 @@ function removeRuntimeLeftover(wtPath: string, retryMs = RUNTIME_LEFTOVER_RETRY_
  * the target is untouched. Tracked symlinks are left to git. Throws
  * `worktree_link_unremovable` when a link cannot be unlinked.
  */
-function unlinkUntrackedWorktreeLinks(wtPath: string): void {
+function unlinkUntrackedWorktreeLinks(wtPath: string, gitDirArgs: readonly string[] = [], keepTracked = true): void {
   const tracked = new Set(
-    (gitOrNull(['ls-files', '-z', '--stage'], wtPath) ?? '')
+    (keepTracked ? gitOrNull([...gitDirArgs, 'ls-files', '-z', '--stage'], wtPath) ?? '' : '')
       .split('\0')
       .filter((entry) => entry.startsWith('120000 '))
       .map((entry) => resolve(wtPath, entry.slice(entry.indexOf('\t') + 1))),
@@ -367,7 +456,7 @@ function unlinkUntrackedWorktreeLinks(wtPath: string): void {
     }
     for (const entry of entries) {
       const path = join(dir, entry.name);
-      if (dir === wtPath && entry.name === '.git') continue;
+      if (keepTracked && dir === wtPath && entry.name === '.git') continue;
       let stat;
       try { stat = lstatSync(path); } catch { continue; }
       if (stat.isSymbolicLink()) {
@@ -393,7 +482,7 @@ function unlinkUntrackedWorktreeLinks(wtPath: string): void {
 
 function gitOrNull(args: string[], cwd: string): string | null {
   try {
-    return execFileSync('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+    return execFileSync('git', [...hostGitHardeningArgs(), ...args], { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
   } catch {
     return null;
   }
@@ -404,8 +493,8 @@ function gitOrNull(args: string[], cwd: string): string | null {
  * when recorded, that are newer than the worktree's base commit): worker work
  * a removal would destroy. Null when git cannot tell.
  */
-function countUnmergedWorkerCommits(repoRoot: string, wtPath: string, baseCommit?: string): number | null {
-  return countUnmergedCommits(repoRoot, gitOrNull(['rev-parse', 'HEAD'], wtPath), baseCommit);
+function countUnmergedWorkerCommits(repoRoot: string, wtPath: string, baseCommit?: string, gitDirArgs: readonly string[] = []): number | null {
+  return countUnmergedCommits(repoRoot, gitOrNull([...gitDirArgs, 'rev-parse', 'HEAD'], wtPath), baseCommit);
 }
 
 function commitCheckFailedError(message: string): Error {
@@ -438,7 +527,7 @@ function branchRefStored(repoRoot: string, branch: string): boolean {
  */
 function resolveBranchCommit(repoRoot: string, branch: string): string | null {
   try {
-    execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+    execFileSync('git', [...hostGitHardeningArgs(), 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
   } catch (err) {
     // show-ref exits 1 for a missing ref, and also for a garbage or empty
     // loose ref file: only a ref stored nowhere counts as missing.
@@ -492,10 +581,10 @@ function countUnmergedCommits(repoRoot: string, head: string | null, baseCommit?
  * gitlink), which a plain `git worktree remove` refuses to drop and a forced
  * one would delete.
  */
-function hasInitializedSubmodules(wtPath: string): boolean {
-  const modulesDir = gitOrNull(['rev-parse', '--git-path', 'modules'], wtPath);
+function hasInitializedSubmodules(wtPath: string, gitDirArgs: readonly string[] = []): boolean {
+  const modulesDir = gitOrNull([...gitDirArgs, 'rev-parse', '--git-path', 'modules'], wtPath);
   if (modulesDir && existsSync(resolve(wtPath, modulesDir))) return true;
-  const staged = gitOrNull(['ls-files', '--stage'], wtPath) ?? '';
+  const staged = gitOrNull([...gitDirArgs, 'ls-files', '--stage'], wtPath) ?? '';
   return staged.split('\n').some((line) => {
     if (!line.startsWith('160000 ')) return false;
     const tab = line.indexOf('\t');
@@ -812,7 +901,7 @@ export function ensureWorkerWorktree(
   validateResolvedPath(wtPath, join(getOmcRoot(repoRoot), 'team'));
 
   try {
-    execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+    execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
   } catch { /* ignore */ }
 
   if (existsSync(wtPath)) {
@@ -886,6 +975,7 @@ export function checkWorkerWorktreeRemovalSafety(
   workerName: string,
   repoRoot: string,
   worktreePath?: string,
+  gitDirArgs: readonly string[] = [],
 ): void {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
   const backup = readRootAgentsBackup(repoRoot, teamName, workerName);
@@ -912,7 +1002,7 @@ export function checkWorkerWorktreeRemovalSafety(
     ignoreRootAgents = true;
   }
 
-  const dirtyCheck = isWorktreeDirtyExcept(wtPath, ignoreRootAgents ? ['AGENTS.md'] : []);
+  const dirtyCheck = isWorktreeDirtyExcept(wtPath, ignoreRootAgents ? ['AGENTS.md'] : [], gitDirArgs);
   if (dirtyCheck.dirty) {
     const error = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
     (error as Error & { code?: string }).code = 'worktree_dirty';
@@ -934,9 +1024,10 @@ export function prepareWorkerWorktreeForRemoval(
   workerName: string,
   repoRoot: string,
   worktreePath?: string,
+  gitDirArgs: readonly string[] = [],
 ): void {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
-  checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath);
+  checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath, gitDirArgs);
 
   const agentsRestore = restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
   if (agentsRestore.reason === 'agents_dirty') {
@@ -957,13 +1048,25 @@ export function removeWorkerWorktree(
   teamName: string,
   workerName: string,
   repoRoot: string,
-): void {
+  options: { gitLinks?: WorktreeGitLinks } = {},
+): { tampered: string | null } {
   const wtPath = getWorktreePath(repoRoot, teamName, workerName);
   const branch = getBranchName(teamName, workerName);
   const metaLockPath = `${getMetadataPath(repoRoot, teamName)}.lock`;
 
-  withFileLockSync(metaLockPath, () => {
-    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath);
+  return withFileLockSync(metaLockPath, () => {
+    // With recorded git links, git runs in the worktree only while they are
+    // intact, and then on the recorded git dir, never a discovered one.
+    let gitDirArgs: string[] = [];
+    if (options.gitLinks) {
+      const commonDir = gitOrNull(['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot);
+      if (!commonDir) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot locate the git directory)`);
+      if (!worktreeGitLinksIntact(wtPath, options.gitLinks, commonDir)) {
+        return { tampered: removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, options.gitLinks, commonDir) };
+      }
+      gitDirArgs = worktreeGitDirArgs(wtPath, options.gitLinks);
+    }
+    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
 
     const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     let registered: { head: string | null; branch: string | null } | null;
@@ -976,11 +1079,11 @@ export function removeWorkerWorktree(
     if (registered && existsSync(wtPath)) {
       // Counts run with cwd=wtPath: only trust them when git resolves that
       // directory to the worktree itself, not to a repository around it.
-      const toplevel = gitOrNull(['rev-parse', '--show-toplevel'], wtPath);
+      const toplevel = gitOrNull([...gitDirArgs, 'rev-parse', '--show-toplevel'], wtPath);
       if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
         throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
       }
-      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit);
+      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit, gitDirArgs);
       if (commits === null) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
     } else if (registered) {
@@ -1002,8 +1105,8 @@ export function removeWorkerWorktree(
     // The safety check above passed, so the only untracked files left are OMC
     // runtime state, which git refuses to drop without --force. A worktree with
     // initialized submodules keeps the plain removal, which refuses it.
-    const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md']).runtimeState;
-    const submodules = existsSync(wtPath) && hasInitializedSubmodules(wtPath);
+    const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md'], gitDirArgs).runtimeState;
+    const submodules = existsSync(wtPath) && hasInitializedSubmodules(wtPath, gitDirArgs);
     const force = runtimeOnly && !submodules;
     if (wasRegisteredWorktree && submodules) {
       // git refuses to remove it: refuse before unlinking, so the kept
@@ -1012,9 +1115,9 @@ export function removeWorkerWorktree(
       (error as Error & { code?: string }).code = 'worktree_remove_failed';
       throw error;
     }
-    if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
+    if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
     try {
-      execFileSync('git', ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch (err) {
       // A forced removal can fail half way on win32 when a process (a worker's
       // SessionEnd action runner) still has its cwd in the runtime state: git
@@ -1030,7 +1133,7 @@ export function removeWorkerWorktree(
     }
 
     try {
-      execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      execFileSync('git', [...hostGitHardeningArgs(), 'worktree', 'prune'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch { /* ignore */ }
 
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
@@ -1049,7 +1152,40 @@ export function removeWorkerWorktree(
     }
 
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
+    return { tampered: null };
   });
+}
+
+/**
+ * Remove a worktree whose git links no longer match the record, without
+ * running git in it: its git dir may be one the agent controls, with hooks
+ * or an fsmonitor. Links inside are unlinked (targets untouched), then the
+ * directory goes by path, and the recorded admin dir when it lies in the
+ * repository's `worktrees/`. The branch is kept for inspection. Returns why.
+ */
+function removeTamperedWorktree(repoRoot: string, teamName: string, workerName: string, wtPath: string, links: WorktreeGitLinks, commonDir: string): string {
+  const removeTree = (dir: string) => {
+    let stat;
+    try { stat = lstatSync(dir); } catch { return; }
+    if (stat.isSymbolicLink()) {
+      try { unlinkSync(dir); } catch { rmdirSync(dir); }
+      return;
+    }
+    unlinkUntrackedWorktreeLinks(dir, [], false);
+    rmSync(dir, { recursive: true, force: true });
+  };
+  if (existsSync(wtPath)) {
+    validateWorktreeRemovalTarget({
+      candidatePath: wtPath,
+      expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
+      mainRepoRoots: [repoRoot],
+    });
+  }
+  removeTree(wtPath);
+  if (isAdminDirOf(commonDir, links.adminDir)) removeTree(links.adminDir);
+  forgetMetadataUnlocked(repoRoot, teamName, workerName);
+  return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir or commondir) changed or are gone, so no git ran in it; `
+    + `the worktree and its admin dir were removed by path and branch ${getBranchName(teamName, workerName)} was kept for inspection`;
 }
 
 /** List all worktrees for a team. */

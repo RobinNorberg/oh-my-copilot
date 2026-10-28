@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
@@ -59,7 +59,7 @@ describe('buildSandboxConfig', () => {
     });
   });
 
-  it('write makes the common git dir read-only except objects, its own admin dir and its branch refs; denies home paths only when supported', () => {
+  it('write makes the common git dir read-only except objects and its own admin dir, no ref at all; denies home paths only when supported', () => {
     const plain = buildSandboxConfig('write', ctx, host());
     expect(plain).toMatchObject({ enabled: true, addCurrentWorkingDirectory: true, allowBypass: false, allowDevToolAccess: false, auth: { git: false, gh: false } });
     // Without a linked worktree only objects/ is granted: config and hooks stay read-only.
@@ -68,18 +68,16 @@ describe('buildSandboxConfig', () => {
       readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
     });
     const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
-    const linked = buildSandboxConfig('write', { ...ctx, gitDir, branch: 'omc-team/copilot-run/cr-1' }, host());
-    expect(linked.userPolicy.filesystem.readwritePaths).toEqual([
-      ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects'), gitDir,
-      join(ctx.commonGitDir, 'refs', 'heads', 'omc-team', 'copilot-run'), join(ctx.commonGitDir, 'logs', 'refs', 'heads', 'omc-team', 'copilot-run'),
-    ]);
-    for (const p of ['config', 'hooks', 'info', 'packed-refs']) {
+    const linked = buildSandboxConfig('write', { ...ctx, gitDir }, host());
+    expect(linked.userPolicy.filesystem.readwritePaths).toEqual([ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects'), gitDir]);
+    // No ref dir or reflog is writable: another job's branch omc-team/copilot-run/cr-2 stays read-only.
+    const otherJob = ['refs', 'logs/refs'].map((d) => join(ctx.commonGitDir, ...d.split('/'), 'heads', 'omc-team', 'copilot-run', 'cr-2'));
+    for (const p of ['config', 'hooks', 'info', 'packed-refs', 'refs', 'logs', ...otherJob]) {
       const carveOuts = linked.userPolicy.filesystem.readwritePaths.filter((rw) => rw.startsWith(ctx.commonGitDir));
-      expect(carveOuts.some((rw) => join(ctx.commonGitDir, p).startsWith(rw)), p).toBe(false);
+      expect(carveOuts.some((rw) => (isAbsolute(p) ? p : join(ctx.commonGitDir, p)).startsWith(rw)), p).toBe(false);
     }
-    // A git dir outside <common>/worktrees, or a branch with a .. segment, grants nothing more.
-    expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere'), branch: 'b' })).toEqual([join(ctx.commonGitDir, 'objects')]);
-    expect(laneGitWritePaths({ ...ctx, gitDir, branch: '../../config/x' })).toEqual([join(ctx.commonGitDir, 'objects'), gitDir]);
+    // A git dir outside <common>/worktrees grants nothing more.
+    expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere') })).toEqual([join(ctx.commonGitDir, 'objects')]);
     expect(plain.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
     const denied = buildSandboxConfig('write', ctx, host({ shell: true, denied_paths: true }));
     expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p)));

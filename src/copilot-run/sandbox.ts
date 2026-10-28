@@ -185,8 +185,6 @@ export interface SandboxPolicyContext {
   commonGitDir: string;
   /** The session's own git dir (`<commonGitDir>/worktrees/<name>` for a linked worktree). */
   gitDir?: string;
-  /** The branch a write session commits on (its worktree's branch). */
-  branch?: string | null;
   pluginRoot: string;
   /** The job's COPILOT_HOME (and relocated profile). */
   jobHome: string;
@@ -208,22 +206,29 @@ function nodeModulesLinkTarget(worktree: string): string | null {
 
 /**
  * The read-write carve-outs of the read-only common git dir for a write
- * session: `objects/`, its own `worktrees/<name>` admin dir (index, HEAD, its
- * reflog) and the directories holding its branch's ref and reflog (a ref
- * update writes `<ref>.lock` beside the ref). Without a linked worktree
- * (isolation "none") the git dir is the common dir and only `objects/` is
- * granted: the session cannot commit, it fails closed.
+ * session: `objects/` and its own `worktrees/<name>` admin dir. No ref is
+ * granted: the job worktree's HEAD is detached, so a commit writes only the
+ * admin dir's HEAD, index and logs/HEAD, and the host moves the job's branch
+ * after the session (job.ts syncJobBranch). One job cannot rewrite another
+ * job's branch. Without a linked worktree (isolation "none") the git dir is
+ * the common dir and only `objects/` is granted: the session cannot commit,
+ * it fails closed.
+ *
+ * The grants are directories, and git writes by lock and rename (`index.lock`
+ * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
+ * in the directory itself, so the admin dir's `commondir` and `gitdir` files
+ * (and the worktree's `.git` file) cannot be kept read-only inside it. The
+ * host records them at creation and runs no git in the worktree once they
+ * differ (git-worktree.ts worktreeGitLinksIntact), with every host git call
+ * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
+ * `objects/info/alternates` is writable for the same reason: it only adds
+ * places to look objects up, runs no code, and cannot forge an object,
+ * because git names every object by the hash of its content.
  */
-export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | 'branch' | 'platform'>): string[] {
+export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | 'platform'>): string[] {
   const out = [join(ctx.commonGitDir, 'objects')];
   const own = ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
-  if (!own) return out;
-  out.push(own);
-  const parts = (ctx.branch ?? '').split('/');
-  if (ctx.branch && parts.every((p) => p !== '' && p !== '.' && p !== '..')) {
-    const dir = parts.slice(0, -1);
-    out.push(join(ctx.commonGitDir, 'refs', 'heads', ...dir), join(ctx.commonGitDir, 'logs', 'refs', 'heads', ...dir));
-  }
+  if (own) out.push(own);
   return out;
 }
 
@@ -231,8 +236,8 @@ export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir'
  * The sandboxConfig for a session. `review` is §4.2 exactly. `write` is the
  * PR 1 policy: §4.3 except that a write session still commits in its worktree
  * until the engine commits for it (PR 2), so the common git dir is read-only
- * except what a commit on its own branch writes (laneGitWritePaths). Config,
- * hooks, info, packed-refs and every other ref stay read-only: the session
+ * except what a commit on its detached HEAD writes (laneGitWritePaths). Config,
+ * hooks, info, packed-refs and every ref stay read-only: the session
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
  * read-write path outside the worktree throws.
@@ -404,7 +409,12 @@ export function secretValues(env: NodeJS.ProcessEnv): string[] {
     .filter((v): v is string => v !== undefined && v.length >= 8);
 }
 
-/** `text` with every GitHub token shape and every exact `secrets` value replaced by `[redacted]`. */
+/**
+ * `text` with every GitHub token shape and every exact `secrets` value
+ * replaced by `[redacted]`. It matches literal text only: a token that is
+ * base64-encoded, URL-encoded, split across lines or events, or otherwise
+ * transformed passes through unredacted.
+ */
 export function scrubTokens(text: string, secrets: readonly string[]): string {
   let out = text;
   for (const s of secrets) out = out.split(s).join('[redacted]');

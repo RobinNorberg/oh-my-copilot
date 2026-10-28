@@ -310,3 +310,98 @@ describe('copilot_run change summary', () => {
     expect(summarizeChanges(repo, gitIn(repo, 'rev-parse', 'HEAD'))).toBeNull();
   });
 });
+
+describe('copilot_run worktree git links (a lane redirecting host git)', () => {
+  const marker = () => join(root, 'evil-ran');
+
+  /** A git dir the lane controls: a hooksPath full of hooks and an fsmonitor, each appending to the marker. */
+  function evilGitDir(): string {
+    const evil = join(root, 'evil');
+    gitIn(root, 'init', '-q', evil);
+    const script = join(root, 'evil.sh');
+    writeFileSync(script, `#!/bin/sh\necho fsmonitor >> "${marker().replace(/\\/g, '/')}"\nexit 1\n`, { mode: 0o755 });
+    const hooks = join(root, 'evil-hooks');
+    mkdirSync(hooks, { recursive: true });
+    for (const hook of ['post-checkout', 'post-index-change', 'reference-transaction', 'pre-auto-gc']) {
+      writeFileSync(join(hooks, hook), `#!/bin/sh\necho ${hook} >> "${marker().replace(/\\/g, '/')}"\n`, { mode: 0o755 });
+    }
+    gitIn(evil, 'config', 'core.hooksPath', hooks.replace(/\\/g, '/'));
+    gitIn(evil, 'config', 'core.fsmonitor', script.replace(/\\/g, '/'));
+    return join(evil, '.git').replace(/\\/g, '/');
+  }
+
+  const adminDirOf = (wt: string) => readFileSync(join(wt, '.git'), 'utf8').replace(/^gitdir: /, '').trim();
+
+  /** Control: plain git in the tampered worktree runs the lane's code. */
+  function expectPlainGitRunsIt(wt: string): void {
+    try { execFileSync('git', ['status', '--porcelain'], { cwd: wt, stdio: 'pipe' }); } catch { /* the marker is what counts */ }
+    expect(existsSync(marker())).toBe(true);
+    rmSync(marker());
+  }
+
+  async function finishedJob(m: CopilotRunManager): Promise<{ id: string; wt: string; branch: string }> {
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    const done = await m.wait(started.jobId as string, 10_000);
+    expect(done.status).toBe('completed');
+    const { path, branch } = done.worktree as { path: string; branch: string };
+    return { id: started.jobId as string, wt: path, branch };
+  }
+
+  function expectRemovedByPath(m: CopilotRunManager, job: { id: string; wt: string; branch: string }, admin: string): void {
+    const res = m.cleanup(job.id);
+    expect(res.cleanup).toMatch(/^sandbox-escaped: .*no git ran in it/);
+    expect(existsSync(marker())).toBe(false);
+    expect(existsSync(job.wt)).toBe(false);
+    expect(existsSync(admin)).toBe(false);
+    // The branch is kept for inspection; the repository itself is unharmed.
+    expect(gitIn(repo, 'rev-parse', '--verify', `refs/heads/${job.branch}`)).toMatch(/^[0-9a-f]{40}$/);
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).not.toContain(job.id);
+  }
+
+  it('cleanup runs no hook or fsmonitor of a git dir the worktree\'s commondir was redirected to, and removes it by path', async () => {
+    const m = manager();
+    const job = await finishedJob(m);
+    const admin = adminDirOf(job.wt);
+    writeFileSync(join(admin, 'commondir'), `${evilGitDir()}\n`);
+    expectPlainGitRunsIt(job.wt);
+    expectRemovedByPath(m, job, admin);
+  });
+
+  it('cleanup runs no hook or fsmonitor of a git dir a rewritten .git file points at, and removes it by path', async () => {
+    const m = manager();
+    const job = await finishedJob(m);
+    const admin = adminDirOf(job.wt);
+    // Replaced, not rewritten in place: git marks the file hidden on Windows.
+    rmSync(join(job.wt, '.git'));
+    writeFileSync(join(job.wt, '.git'), `gitdir: ${evilGitDir()}\n`);
+    expectPlainGitRunsIt(job.wt);
+    expectRemovedByPath(m, job, admin);
+  });
+
+  it('links redirected during the session fail the job as sandbox-escaped with no host git in the worktree', async () => {
+    const m = manager('hang');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const wt = (started.worktree as { path: string }).path;
+    const admin = adminDirOf(wt);
+    writeFileSync(join(admin, 'commondir'), `${evilGitDir()}\n`);
+    const done = await m.cancel(started.jobId as string);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^sandbox-escaped: the job worktree's git links/);
+    expect(done.changes ?? null).toBeNull();
+    expect(existsSync(marker())).toBe(false);
+    expect(m.cleanup(started.jobId as string).cleanup).toMatch(/^sandbox-escaped: /);
+    expect(existsSync(marker())).toBe(false);
+  });
+
+  it('the session commits on a detached HEAD; the host moves only the job\'s own branch after it', async () => {
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    const m = manager('commit');
+    const job = await finishedJob(m);
+    expect(() => gitIn(job.wt, 'symbolic-ref', '-q', 'HEAD')).toThrow();
+    const head = gitIn(job.wt, 'rev-parse', 'HEAD');
+    expect(head).not.toBe(base);
+    expect(gitIn(repo, 'rev-parse', `refs/heads/${job.branch}`)).toBe(head);
+    expect(gitIn(repo, 'rev-parse', 'refs/heads/main')).toBe(base);
+  });
+});
