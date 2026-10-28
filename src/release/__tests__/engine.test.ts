@@ -961,6 +961,43 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(sleeps).toContain(60_000);
       });
 
+      it('a real CI failure under --drive ends as fail and is not resumed', async () => {
+        checksJson = checks('SUCCESS', 'FAILURE');
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(false);
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'fail' });
+        expect(events.at(-1)).toMatchObject({ phase: 'pr', status: 'fail' });
+        expect(sleeps).not.toContain(60_000);
+        expect(readReleaseState(stateRoot, V)!.phases.pr?.status).toBe('fail');
+        expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+      });
+
+      it('a transient error from gh pr create reuses the PR it created, never a second one', async () => {
+        let lists = 0;
+        handlers.unshift((key) => {
+          if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) {
+            lists += 1;
+            return ok(lists === 1 ? '[]' : '[{"number":301,"state":"OPEN"}]');
+          }
+          if (key.startsWith('gh pr create --base dev')) return no('HTTP 502: Bad Gateway');
+          if (key.startsWith('gh pr checks 301')) return ok(checks('SUCCESS'));
+          return undefined;
+        });
+        const result = await driveRelease(clocked(), { version: V, to: 'pr' }, { pollMs: 60_000 });
+        expect(result.ok).toBe(true);
+        expect(calls.filter((c) => c.startsWith('gh pr create'))).toHaveLength(1);
+        expect(readReleaseState(stateRoot, V)!.devPr).toBe(301);
+      });
+
+      it('a head mismatch still blocks under --drive with a --timeout shorter than the head-sync window', async () => {
+        prHead = OTHER;
+        const result = await driveRelease(clocked(), { version: V, to: 'pr', timeoutMinutes: 1 }, { pollMs: 60_000 });
+        expect(result.pending).toBeUndefined();
+        expect(result.phases.at(-1)).toMatchObject({ id: 'pr', status: 'blocked', note: expect.stringMatching(/not local HEAD/) });
+        expect(sleeps).not.toContain(60_000);
+      });
+
       it('merge retries spent on transient errors: the next drive round re-views and merges', async () => {
         let merges = 0;
         handlers.unshift((key) => {

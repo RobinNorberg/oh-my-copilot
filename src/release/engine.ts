@@ -386,7 +386,9 @@ class Release {
     const r = this.run(cmd, args, opts);
     if (r.status !== 0) {
       const outcome: PhaseOutcome = { status: 'fail', note: `${what ?? `${cmd} ${args.join(' ')}`} failed (exit ${r.status})`, details: tail(`${r.stdout}\n${r.stderr}`) };
-      if (cmd === 'gh' && TRANSIENT_GH_ERROR.test(`${r.stdout}\n${r.stderr}`)) throw new PendingError(outcome);
+      // A gh call that changes state (create, merge, rerun) may have taken effect despite the error: never pending without a check by the caller.
+      const mutating = cmd === 'gh' && /^(pr (create|merge)|run rerun)$/.test(args.slice(0, 2).join(' '));
+      if (cmd === 'gh' && !mutating && TRANSIENT_GH_ERROR.test(`${r.stdout}\n${r.stderr}`)) throw new PendingError(outcome);
       throw new PhaseStop(outcome);
     }
     return r.stdout;
@@ -765,7 +767,17 @@ class Release {
   }
 
   private createPr(base: string, head: string, title: string): number {
-    const out = this.must('gh', ['pr', 'create', '--base', base, '--head', head, '--title', title, '--body-file', '.github/release-body.md']);
+    const r = this.run('gh', ['pr', 'create', '--base', base, '--head', head, '--title', title, '--body-file', '.github/release-body.md']);
+    if (r.status !== 0) {
+      const output = `${r.stdout}\n${r.stderr}`;
+      const outcome: PhaseOutcome = { status: 'fail', note: `gh pr create failed (exit ${r.status})`, details: tail(output) };
+      if (!TRANSIENT_GH_ERROR.test(output)) throw new PhaseStop(outcome);
+      // The failed call may have created the PR: reuse an open one, else retry next round.
+      const open = this.findPr(head, base, 'open');
+      if (open !== undefined) return open;
+      throw new PendingError(outcome);
+    }
+    const out = r.stdout;
     const m = /\/pull\/(\d+)/.exec(out);
     if (!m) fail(`gh pr create printed no PR url: ${out.trim()}`);
     return Number(m![1]);
@@ -831,7 +843,11 @@ class Release {
       const before = this.runAttempt(id);
       this.rerunBudget.record(id);
       this.deps.log(`  gh run rerun ${id} --failed (the one automatic rerun)`);
-      this.must('gh', ['run', 'rerun', id, '--failed']);
+      const rr = this.run('gh', ['run', 'rerun', id, '--failed']);
+      // A transient error after the rerun took effect (a new attempt exists) is no failure.
+      if (rr.status !== 0 && !(TRANSIENT_GH_ERROR.test(`${rr.stdout}\n${rr.stderr}`) && this.runAttempt(id) > before)) {
+        throw new PhaseStop({ status: 'fail', note: `gh run rerun ${id} --failed failed (exit ${rr.status})`, details: tail(`${rr.stdout}\n${rr.stderr}`) });
+      }
       for (let polls = 0; this.runAttempt(id) <= before; polls++) {
         const note = `run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`;
         if (polls >= RERUN_START_POLLS) blocked(note);
@@ -952,9 +968,9 @@ class Release {
       const note = expected
         ? `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expected.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`
         : `PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${ancestor!.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`;
-      // Three minutes of a head that does not move is a real mismatch; the --timeout running out first is only a wait.
+      // Three minutes of a head that does not move is a real mismatch, whatever --timeout is left: the limit is
+      // independent of the deadline, or a short --timeout would make every round pending and never block.
       if (polls >= HEAD_SYNC_POLLS) blocked(note);
-      if (this.deps.now() >= this.deadline) pendingWait(note);
       await this.deps.sleep(HEAD_SYNC_POLL_MS);
     }
   }
