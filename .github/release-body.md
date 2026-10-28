@@ -1,40 +1,52 @@
-# oh-my-copilot v5.16.0
+# oh-my-copilot v5.17.0
 
-A minor release from v5.15.0: a HUD overhaul for Copilot CLI. The HUD detects
-its host from the statusline payload, shows real Copilot data, hides what
-Copilot's own footer already shows, and prints the right update command for
-your install channel. Claude Code output is unchanged apart from the label.
+A minor release from v5.16.0 with four themes: self-driving release gates and
+`omg port drive`; `omg factory run` up to the human merge gate; sandboxed
+factory lanes; and self-healing CI. Merge stays a human step everywhere: there
+is no auto-merge, and the factory engine refuses `gh pr merge`.
 
-Install with `npm install -g oh-my-copilot@5.16.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.17.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
 ## Added
 
-- New elements: `copilotMode` (`mode:plan`, `mode:autopilot`, `mode:yolo`),
-  `team` (live `omg team` run) and `ultragoal` (open plan progress). On under
-  Copilot, off under Claude Code unless set to `true`.
-- Real Copilot data: session duration, context %, `cr:` session AI credits,
-  and agent, skill and tool-call counts from the session's `events.jsonl`.
+- `--drive` / `--detach` for `omg release` and `omg ship gates`: the run
+  continues through CI waits and transient GitHub errors until done, a real
+  failure or a human decision (`--drive-max`, default 6 h). Drive never
+  implies `--yes`.
+- Smoke reuse by input hash in `omg release`, and isolated flake triage for
+  new suite failures (three solo reruns; candidates written for the owner,
+  the known-flaky list is never written).
+- `omg port drive`: apply an upstream head, run the gates, commit and open a
+  draft PR, with human gates for package deltas, risky conflicts, leaks and
+  leftover markers. An optional reconcile lane is tamper-checked.
+- `omg factory run` (experimental) now runs prepare, the CI gates and parks at
+  `awaiting-human: merge`, with `conflict-fix` and `ci-fix` lanes and
+  `omg factory run clean`.
+- `omg factory heal` (experimental): `scan` classifies red `dev` runs without
+  an LLM; `run` diagnoses one in a read-only debugger lane; `approve` starts a
+  `ci-heal` run that ends at the human merge gate.
+- Opt-in Tier 2 smoke scenarios `factory-run`, `factory-run-fix` and
+  `sandbox-lane`, and the free `sdk.sandbox` static check.
 
 ## Changed
 
-- The label reads `[oh-my-copilot#version]` on both hosts.
-- Under Copilot, `model`, `effort`, `cwd` and `gitBranch` default to off
-  because Copilot's footer shows them; set one to `true` to keep it.
-  Claude-only elements (`rateLimits`, `enterpriseMode`, `showEnterpriseCost`,
-  `apiKeySource`, `thinking`, `todos`, `sessionSummary`) are off, and the
-  Claude Code update hint is gone.
-- Update hints match your channel. Plugin installs get
-  `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc`;
-  npm installs get `npm i -g oh-my-copilot@latest`. The check is cached for
-  6 hours.
-- Each element renders in its own guard, so a failing element no longer blanks
-  the HUD.
+- Release and ship gates only count runs for the current PR head, `eslint src`
+  is a release gate, and `gh pr merge` retries transient GitHub errors.
+- Factory write lanes refuse to run without the Copilot OS sandbox
+  (`awaiting-human: sandbox-unavailable`) unless the user config sets
+  `factory.run.sandbox.writeUnsandboxed: "detect-only"`. Review lanes without
+  a confirmed sandbox get no shell.
+- The engine commits a write lane's changes with hardened git, and refuses
+  lane changes to agent instructions, hooks, skills and CI.
 
-## Fixed
+## Security
 
-- `omg update --check` queried the wrong GitHub owner and now uses the fork's.
-- Copilot sessions no longer show a bogus Claude Code update hint.
+- The engine refuses to commit links that leave the lane worktree (directory
+  junctions on Windows, new symlinks) and strips skip-CI markers and trailers
+  from lane commit messages.
+- CI logs are treated as untrusted in `omg factory heal`: capped, redacted and
+  fenced, with a token-free lane environment and a sealed diagnosis.
 
 Upgrade notes are in `docs/MIGRATION.md`. Fork deviations (kept and dropped)
 are listed in `CHANGELOG.md`.

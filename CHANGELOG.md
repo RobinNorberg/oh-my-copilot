@@ -2,18 +2,61 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-# oh-my-copilot Unreleased
+# oh-my-copilot v5.17.0
 
-## [Unreleased]
+## [5.17.0] - 2026-10-28
 
-The factory engine, still **experimental**, now runs the whole way to the
-merge gate. `omg factory run <issue>` goes on from the independent review to
-ship's prepare step and the CI gates, then parks at `awaiting-human: merge`.
-Merge stays a human step: there is no auto-merge anywhere, and the engine's
-command guard refuses `gh pr merge`. See the
-[migration note](docs/MIGRATION.md#unreleased-omg-factory-run).
+Fork **v5.17.0** (from v5.16.0) is a minor release with four themes. Release
+and ship gates now drive themselves to a terminal state, and `omg port drive`
+automates an upstream port up to a draft PR. The factory engine, still
+**experimental**, now runs `omg factory run <issue>` from the independent
+review through ship's prepare step and the CI gates to
+`awaiting-human: merge`. Factory lanes run in the Copilot OS sandbox, and the
+engine commits for write lanes with hardened git. Self-healing CI classifies
+red `dev` runs, diagnoses one in a read-only debugger lane, and turns an
+approved diagnosis into a `ci-heal` run. Merge stays a human step everywhere:
+there is no auto-merge, and the engine's command guard refuses `gh pr merge`.
+See the [migration note](docs/MIGRATION.md#unreleased-omg-factory-run).
 
 ### Added
+
+- **`--drive` and `--detach` for `omg release` and `omg ship gates`.** A drive
+  runs until done, a real failure or a human decision. A CI wait past
+  `--timeout` or a transient GitHub error (5xx, GraphQL "Something went
+  wrong") is resumed after one minute, up to `--drive-max` (default 6 h).
+  `--detach` runs the driver as a detached process behind a single-driver
+  lock; `--status` and `--stop` inspect and end it. Every phase and wait
+  writes progress events. Drive never implies `--yes`, so the tag phase still
+  needs your confirmation, and the merge rule is unchanged.
+- **Smoke reuse in `omg release`.** A green Tier 2 smoke is reused when the
+  hash of the shipped inputs (dist, bridge, hooks, agents, skills, commands,
+  copilot, scripts, templates, manifests and lock file) is unchanged, so a
+  test-only rebuild needs no `--allow-skipped-smoke`. `--force-smoke` always
+  runs it, and a red smoke clears the record.
+- **Flake triage in the release suite.** Each new failing test reruns alone
+  three times. Three passes is load-flaky (ok with a warning), three failures
+  is real (fail), and a mix blocks. Candidates are written to
+  `.omg/release/<v>-flaky-candidates.json` for the owner; nothing writes
+  `.github/known-flaky-tests.json`.
+- **`omg port drive`.** It applies an upstream head, drops junk, classifies the
+  package delta, writes a conflict brief, optionally runs a paid reconcile
+  lane (`--reconcile-lane --max-credits N`), runs the gates, commits with the
+  inventory last, pushes `port/upstream-<sha>` and opens a **draft** PR. A
+  non-version package delta, conflicts without a lane or in release, ship,
+  installer or permission paths, leak hits and leftover conflict markers stop
+  at a human gate (exit 3). The reconcile lane is tamper-checked, and every
+  host git and gh call goes through a hardened allowlist.
+- **`omg factory heal` (experimental).** `heal scan` classifies new red
+  `ci.yml` runs on `dev` by failure signature: infra, known-flaky, history,
+  environment change or regression. It makes no LLM call and no GitHub write.
+  `heal run <sig8>` builds a capped, redacted evidence bundle and diagnoses it
+  in a read-only debugger lane, then parks at `heal-approve`. `heal approve`
+  starts a `ci-heal` run from the sealed diagnosis on `factory/heal-<sig8>`,
+  which goes through review, prepare and gates to the human merge gate.
+  `heal status`, `heal cancel` and `heal close` complete the set. A
+  `workflow_run` webhook (HMAC-verified) can enqueue a scan. Daily run, lane
+  and credit caps are reserved before each lane starts, and known-flaky
+  additions are only ever printed as proposals.
 
 - **Prepare, gates and the human merge gate for `omg factory run`.** After an
   approve verdict the engine marks the PR ready and runs ship's prepare in an
@@ -52,6 +95,14 @@ command guard refuses `gh pr merge`. See the
 
 ### Changed
 
+- **Release and ship gates check the head.** In `pr`, gates wait until the
+  PR head equals the pushed HEAD; in `promote`, until it contains the dev
+  merge. Only runs for the current head count, and the head is re-checked on
+  every verdict. This fixes a false stop on a stale run.
+- **`eslint src` (0 errors) is a release gate**, and the path gate scans
+  tracked and untracked-but-not-ignored files instead of the whole tree.
+- **`gh pr merge` is retried** up to twice on GitHub 5xx or GraphQL "Something
+  went wrong" errors. Policy and conflict errors fail at once.
 - **The `merge` park replaces the `prepare` park.** It exits 0, as the
   `prepare` park did. Other `awaiting-human` stops still exit 4. A run parked
   at `prepare` by v5.15.0 goes on when you rerun it.
@@ -102,6 +153,16 @@ command guard refuses `gh pr merge`. See the
   tamper checks, the engine's own state record and hardened engine git stay,
   and a human merge always comes last. The team merge paths still run
   unhardened git in worker worktrees: do not use them with sandboxed lanes.
+- **CI logs are untrusted input to `omg factory heal`.** Reads are capped,
+  logs are only regex-matched, and the evidence bundle redacts token shapes,
+  AWS keys, Bearer values, URL userinfo and PEM blocks, and fences every file
+  with a per-run delimiter. The debugger lane's environment drops GitHub
+  tokens, secret-named variables, ssh-agent and credential helpers. The heal
+  subject (including its `source`) is sealed out of the repository, and the
+  record hash is documented as an integrity hash, not a tamper proof.
+
+Upgrade notes are in
+[MIGRATION.md](docs/MIGRATION.md#unreleased-omg-factory-run).
 
 # oh-my-copilot v5.16.0
 
