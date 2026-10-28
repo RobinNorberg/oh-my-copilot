@@ -62,7 +62,8 @@ describe('buildSandboxConfig', () => {
         expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere') })).toEqual([join(ctx.commonGitDir, 'objects')]);
         expect(plain.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
         const denied = buildSandboxConfig('write', ctx, host({ shell: true, denied_paths: true }));
-        expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p)));
+        expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
+            .map((p) => join(ctx.realHome, p)));
     });
     it('write with hostCommits (the factory engine commits) keeps the whole common git dir read-only (§4.3)', () => {
         const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');

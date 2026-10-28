@@ -11,6 +11,7 @@ import {
   hostGit,
   hostGitHardeningArgs,
   reviewProfileDenial,
+  scrubLaneCredentials,
   summarizeChanges,
 } from '../job.js';
 import {
@@ -277,6 +278,7 @@ describe('copilot_run allowLive and session env', () => {
     const secrets = {
       GH_TOKEN: 'ghp_x', GITHUB_TOKEN: 'ghs_x', GH_ENTERPRISE_TOKEN: 'e', GITHUB_ENTERPRISE_TOKEN: 'e', NPM_TOKEN: 'n', AWS_SECRET_ACCESS_KEY: 'a',
       SSH_AUTH_SOCK: '/tmp/agent', GIT_ASKPASS: 'askpass', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: 'store', MY_API_KEY: 'k',
+      AZURE_DEVOPS_EXT_PAT: 'x', azure_client_certificate_path: '/home/me/sp.pem', OMC_ADO_PAT: 'x',
     };
     const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', COPILOT_GITHUB_TOKEN: 'copilot-only', GH_CONFIG_DIR: '/home/me/.config/gh', ...secrets });
     await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
@@ -287,6 +289,7 @@ describe('copilot_run allowLive and session env', () => {
     expect(lane.COPILOT_GITHUB_TOKEN).toBeUndefined();
     expect(calls.sessions[0].gitHubToken).toBe('copilot-only');
     expect(lane.GH_CONFIG_DIR).not.toBe('/home/me/.config/gh');
+    expect(lane.AZURE_CONFIG_DIR).toBe(lane.GH_CONFIG_DIR);
     expect(lane).toMatchObject({ GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
     // The empty gh config dir is removed with the session.
     expect(existsSync(lane.GH_CONFIG_DIR!)).toBe(false);
@@ -295,6 +298,40 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.GH_CONFIG_DIR).toBeUndefined();
     // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
     expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]git[\\/]config$/);
+    // No session's git reaches a credential helper (Git for Windows' system config sets manager) or prompts.
+    for (const [i, env] of [lane, plain].entries()) {
+      const globalConfig = join(root, `global-gitconfig-${i}`);
+      writeFileSync(globalConfig, calls.globalGitConfigs[i] ?? '');
+      const helpers = execFileSync('git', ['config', '--get-all', 'credential.helper'], { cwd: repo, env: { ...env, GIT_CONFIG_GLOBAL: globalConfig }, encoding: 'utf8' });
+      expect(helpers.split(/\r?\n/).slice(0, -1).at(-1)).toBe('');
+      expect(env).toMatchObject({ GCM_INTERACTIVE: 'never', GIT_TERMINAL_PROMPT: '0' });
+    }
+  });
+
+  it('scrubLaneCredentials removes every Azure DevOps and Azure credential in any letter case and points az at the empty dir', () => {
+    const azure = [
+      'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY', 'AZURE_DEVOPS_EXT_GITHUB_PAT', 'SYSTEM_ACCESSTOKEN',
+      'AZURE_CLIENT_SECRET', 'AZURE_CLIENT_CERTIFICATE_PATH', 'AZURE_FEDERATED_TOKEN_FILE', 'ARM_CLIENT_SECRET',
+      'AZURE_CLIENT_CERTIFICATE_PASSWORD', 'AZURE_PASSWORD', 'IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET',
+      'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH',
+      'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN', 'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
+      // Caught by the name pattern alone (_PAT, PRINCIPAL_KEY).
+      'OMC_ADO_PAT', 'MY_SERVICE_PRINCIPAL_KEY', 'ADO_PAT_VALUE', 'AZURE_DEVOPS_EXT_SERVICEPRINCIPALKEY',
+      'VSS_NUGET_EXTERNAL_FEED_ENDPOINTS', 'ARM_CLIENT_CERTIFICATE',
+    ];
+    // Windows env keys are case-insensitive: a lower- or mixed-case key is the same variable.
+    const mixed = (n: string): string => [...n].map((c, i) => (i % 2 ? c.toLowerCase() : c)).join('');
+    for (const variant of [(n: string) => n, (n: string) => n.toLowerCase(), mixed]) {
+      const emptyDir = join(root, `nocreds-${variant('AB')}`);
+      mkdirSync(emptyDir, { recursive: true });
+      const env: NodeJS.ProcessEnv = { PATH: '/bin', AZURE_CONFIG_DIR: '/home/me/.azure', AZURE_DEVOPS_EXT_PAT: 'x' };
+      for (const name of azure) env[variant(name)] = 'x';
+      scrubLaneCredentials(env, emptyDir);
+      for (const name of azure) expect(env[variant(name)], variant(name)).toBeUndefined();
+      expect(Object.keys(env).filter((k) => azure.includes(k.toUpperCase()))).toEqual([]);
+      expect(env.AZURE_CONFIG_DIR).toBe(emptyDir);
+      expect(env.PATH).toBe('/bin');
+    }
   });
 
   it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {
