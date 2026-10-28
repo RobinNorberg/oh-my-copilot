@@ -20,6 +20,13 @@ export interface HealConfig {
   maxRunCredits: number;
   /** AI credits all heal lanes may spend per UTC day. */
   dailyCredits: number;
+  /**
+   * Implement a valid diagnosis without `omg factory heal approve` (default
+   * false; user config only; never for regression-or-env). The diagnosis is
+   * derived from untrusted CI logs, so the default keeps a human between a
+   * log and a write lane.
+   */
+  autoImplement: boolean;
 }
 
 export type HealConfigInput = Partial<HealConfig>;
@@ -31,6 +38,7 @@ export const DEFAULT_HEAL_CONFIG: Readonly<HealConfig> = Object.freeze({
   debugLaneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
   maxRunCredits: 120,
   dailyCredits: 150,
+  autoImplement: false,
 });
 
 /** The workflow the poller reads (fixed: the heal triggers only on CI). */
@@ -73,8 +81,15 @@ export function resolveHealConfig(trustedUser: unknown, project: unknown): { con
   for (const key of LIMIT_KEYS) {
     if (user[key] !== undefined) config[key] = count(key, user[key], 'user config');
   }
+  if (user.autoImplement !== undefined) {
+    if (typeof user.autoImplement !== 'boolean') throw new Error('user config: factory.heal.autoImplement must be true or false');
+    config.autoImplement = user.autoImplement;
+  }
   const proj = healBlock(project, 'project config');
   if (proj.ignoreJobs !== undefined) warnings.push('omg factory heal: ignoring factory.heal.ignoreJobs from the working-tree project config; only the user config sets it');
+  // The project config may only turn it off (a lane can drop a file into the checkout).
+  if (proj.autoImplement === false) config.autoImplement = false;
+  else if (proj.autoImplement !== undefined) warnings.push('omg factory heal: ignoring factory.heal.autoImplement from the working-tree project config; only the user config turns it on');
   for (const key of LIMIT_KEYS) {
     if (proj[key] === undefined) continue;
     const value = count(key, proj[key], 'project config');
