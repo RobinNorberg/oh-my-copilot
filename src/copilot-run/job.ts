@@ -192,15 +192,26 @@ export const LANE_CREDENTIAL_ENV = [
   'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN',
   'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH', 'GIT_SSH_COMMAND',
   'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL',
+  // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
+  'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY', 'AZURE_DEVOPS_EXT_GITHUB_PAT', 'SYSTEM_ACCESSTOKEN',
+  // azure-identity / az: service principal, certificate, workload identity and managed identity.
+  'AZURE_CLIENT_SECRET', 'AZURE_CLIENT_CERTIFICATE_PATH', 'AZURE_CLIENT_CERTIFICATE_PASSWORD', 'AZURE_PASSWORD',
+  'AZURE_FEDERATED_TOKEN_FILE', 'IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET',
+  // az storage account keys and SAS.
+  'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN',
+  // Terraform azurerm (ARM_*).
+  'ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN',
+  'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
 ] as const;
 /** Names that look like a secret; COPILOT_GITHUB_TOKEN is the session's own credential and stays. */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY/i;
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT\b|PRINCIPAL_KEY/i;
 
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
  * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
- * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` points at an
- * empty dir, so `gh` finds no stored login; git reads no global or system
+ * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` and
+ * `AZURE_CONFIG_DIR` point at an empty dir, so `gh` and `az` (the azure-devops
+ * extension included) find no stored login; git reads no global or system
  * config (no credential helper) and never prompts.
  *
  * Copilot's own auth is kept: the stored login (OS credential store, copied
@@ -221,6 +232,7 @@ export function scrubLaneCredentials(env: NodeJS.ProcessEnv, emptyDir: string): 
   writeFileSync(emptyConfig, '');
   Object.assign(env, {
     GH_CONFIG_DIR: emptyDir,
+    AZURE_CONFIG_DIR: emptyDir,
     GIT_CONFIG_GLOBAL: emptyConfig,
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_TERMINAL_PROMPT: '0',

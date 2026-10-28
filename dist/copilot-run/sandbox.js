@@ -254,7 +254,7 @@ export function buildSandboxConfig(profile, ctx, host) {
         readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
-        filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
+        filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot', '.azure'].map((p) => join(ctx.realHome, p));
     }
     const network = settings.writeNetwork === 'registry'
         ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
