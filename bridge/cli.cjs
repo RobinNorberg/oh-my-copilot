@@ -119939,7 +119939,7 @@ var init_debug_lane = __esm({
   }
 });
 
-// src/factory/heal/evidence.ts
+// src/factory/heal/heal-evidence.ts
 function jsonFile(value, label2) {
   const clean = sanitizeJson(value);
   const keys = /* @__PURE__ */ new Set();
@@ -120117,8 +120117,8 @@ function collectEvidence(exec3, root2, classification, ignoreJobs) {
   return { classification: c, red: red2, green: green2, commits };
 }
 var import_crypto49, import_fs152, import_path180, EVIDENCE_LIMITS, testKey2, SETUP_GROUPS, SETUP_LINE, evidenceDir, sha2563, content;
-var init_evidence = __esm({
-  "src/factory/heal/evidence.ts"() {
+var init_heal_evidence = __esm({
+  "src/factory/heal/heal-evidence.ts"() {
     "use strict";
     import_crypto49 = require("crypto");
     import_fs152 = require("fs");
@@ -120476,7 +120476,7 @@ var init_run = __esm({
     init_classify();
     init_debug_lane();
     init_diagnosis_output();
-    init_evidence();
+    init_heal_evidence();
     init_history();
     init_sanitize();
     init_state4();

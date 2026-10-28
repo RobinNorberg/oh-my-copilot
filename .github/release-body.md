@@ -1,11 +1,16 @@
-# oh-my-copilot v5.17.0
+# oh-my-copilot v5.17.1
 
-A minor release from v5.16.0 with four themes: self-driving release gates and
-`omg port drive`; `omg factory run` up to the human merge gate; sandboxed
-factory lanes; and self-healing CI. Merge stays a human step everywhere: there
-is no auto-merge, and the factory engine refuses `gh pr merge`.
+The first published release of the 5.17 line, from v5.16.0. v5.17.0 was
+tagged but never published: its tag run failed the release boundary while
+building the package archive, so nothing reached npm or GitHub Releases. All
+of the 5.17.0 features below ship in 5.17.1, together with that fix.
 
-Install with `npm install -g oh-my-copilot@5.17.0`, or from the plugin
+Four themes: self-driving release gates and `omg port drive`; `omg factory
+run` up to the human merge gate; sandboxed factory lanes; and self-healing
+CI. Merge stays a human step everywhere: there is no auto-merge, and the
+factory engine refuses `gh pr merge`.
+
+Install with `npm install -g oh-my-copilot@5.17.1`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
 ## Added
@@ -39,6 +44,13 @@ marketplace: `copilot plugin update oh-my-copilot@omc`.
   a confirmed sandbox get no shell.
 - The engine commits a write lane's changes with hardened git, and refuses
   lane changes to agent instructions, hooks, skills and CI.
+
+## Fixed
+
+- The package archive passes the release boundary: the heal evidence module
+  is renamed to `heal-evidence`, and a new suite test runs the boundary's
+  archive-path rule over every packaged file, so a forbidden name fails
+  before tagging (#318).
 
 ## Security
 
