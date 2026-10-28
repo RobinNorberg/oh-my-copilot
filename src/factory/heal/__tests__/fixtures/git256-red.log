@@ -1,0 +1,173 @@
+Test	UNKNOWN STEP	﻿2026-10-27T16:45:59.8525477Z Current runner version: '2.338.0'
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8555200Z ##[group]Runner Image Provisioner
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8556083Z Hosted Compute Agent
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8556848Z Version: 20261021.618
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8557584Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8558389Z Build Date: 2026-10-21T00:45:21Z
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8559273Z Worker ID: {8b5d0593-7866-452e-ab2b-3d24ac068318}
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8560216Z Region: centralus
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8561179Z Cloud: Azure
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8561907Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8563578Z ##[group]Operating System
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8564431Z Ubuntu
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8564956Z 24.04.5
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8565472Z LTS
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8566191Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8566762Z ##[group]Runner Image
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8567493Z Image: ubuntu-24.04
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8568169Z Version: 20261025.353.1
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8569487Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8571388Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8572372Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8573437Z ##[group]GITHUB_TOKEN Permissions
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8575546Z Contents: read
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8576111Z Metadata: read
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8576672Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8578694Z Secret source: Actions
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8579630Z Cache mode: write
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8580321Z Prepare workflow directory
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8933698Z Prepare all required actions
+Test	UNKNOWN STEP	2026-10-27T16:45:59.8985138Z Getting action download info
+Test	UNKNOWN STEP	2026-10-27T16:46:00.2432735Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+Test	UNKNOWN STEP	2026-10-27T16:46:00.3368154Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+Test	UNKNOWN STEP	2026-10-27T16:46:00.5538551Z Complete job name: Test
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6372771Z ##[group]Run actions/checkout@v4
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6373562Z with:
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6374091Z   fetch-depth: 0
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6374595Z   persist-credentials: false
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6375141Z   repository: RobinNorberg/oh-my-copilot
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6378876Z   token: ***
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6379335Z   ssh-strict: true
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6379832Z   ssh-user: git
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6380290Z   clean: true
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6380938Z   sparse-checkout-cone-mode: true
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6381558Z   fetch-tags: false
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6382039Z   show-progress: true
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6382573Z   lfs: false
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6383024Z   submodules: false
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6383492Z   set-safe-directory: true
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6384080Z   allow-unsafe-pr-checkout: false
+Test	UNKNOWN STEP	2026-10-27T16:46:00.6384781Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8432696Z Syncing repository: RobinNorberg/oh-my-copilot
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8435229Z ##[group]Getting Git version info
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8436439Z Working directory is '/home/runner/work/oh-my-copilot/oh-my-copilot'
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8437935Z [command]/usr/bin/git version
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8508452Z git version 2.56.0
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8530664Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8545322Z Temporarily overriding HOME='/home/runner/work/_temp/536e84d4-1f24-4765-8a09-8eb4bfd747cc' before making global git config changes
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8547405Z Adding repository directory to the temporary git global config as a safe directory
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8551289Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-copilot/oh-my-copilot
+Test	UNKNOWN STEP	2026-10-27T16:46:00.8594207Z Deleting the contents of '/home/runner/work/oh-my-copilot/oh-my-copilot'
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0155176Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0181671Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0363890Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0609133Z ##[group]Run actions/setup-node@v4
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0609542Z with:
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0609934Z   node-version: 20
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0610325Z   cache: npm
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0610978Z   always-auth: false
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0611438Z   check-latest: false
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0613860Z   token: ***
+Test	UNKNOWN STEP	2026-10-27T16:46:29.0614264Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:46:29.1970222Z Attempting to download 20...
+Test	UNKNOWN STEP	2026-10-27T16:46:29.2104877Z (node:2183) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Test	UNKNOWN STEP	2026-10-27T16:46:29.9631766Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Test	UNKNOWN STEP	2026-10-27T16:46:29.9661773Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+Test	UNKNOWN STEP	2026-10-27T16:46:30.4336679Z Extracting ...
+Test	UNKNOWN STEP	2026-10-27T16:46:30.4435719Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/4029fbf4-dcd3-48fe-a07d-f4a323306bc1 -f /home/runner/work/_temp/c3da4292-0769-4d26-a571-fb0e4e24eb2a
+Test	UNKNOWN STEP	2026-10-27T16:46:31.5010391Z Adding to the cache ...
+Test	UNKNOWN STEP	2026-10-27T16:46:33.2068830Z ##[group]Environment details
+Test	UNKNOWN STEP	2026-10-27T16:46:33.4239819Z node: v20.20.2
+Test	UNKNOWN STEP	2026-10-27T16:46:33.4240381Z npm: 10.8.2
+Test	UNKNOWN STEP	2026-10-27T16:46:33.4241093Z yarn: 1.22.22
+Test	UNKNOWN STEP	2026-10-27T16:46:33.4241995Z ##[endgroup]
+Test	UNKNOWN STEP	2026-10-27T16:46:33.4258908Z [command]/opt/hostedtoolcache/node/20.20.2/x64/bin/npm config get cache
+Test	UNKNOWN STEP	2026-10-27T16:46:33.5159668Z /home/runner/.npm
+Test	UNKNOWN STEP	2026-10-27T16:46:33.6843245Z Cache hit for: node-cache-Linux-x64-npm-b0d8d3effebba01dec69149355d0850afafc9c8bd986c2b51e1a46e27255d84b
+Test	UNKNOWN STEP	2026-10-27T16:46:33.6972271Z (node:2183) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Test	UNKNOWN STEP	2026-10-27T16:46:34.7494529Z Received 103571251 of 103571251 (100.0%), 107.2 MBs/sec
+Test	UNKNOWN STEP	2026-10-27T16:46:34.7495199Z Cache Size: ~99 MB (103571251 B)
+Test	UNKNOWN STEP	2026-10-27T16:46:34.7534224Z [command]/usr/bin/tar -xf /home/runner/work/_temp/ff3d743d-e79f-44c3-8fd2-12a31c6db9b7/cache.tzst -P -C /home/runner/work/oh-my-copilot/oh-my-copilot --use-compress-program unzstd
+Test	UNKNOWN STEP	2026-10-27T16:46:34.9110375Z Cache restored successfully
+Test	UNKNOWN STEP	2026-10-27T16:52:51.0271488Z cwd /tmp/omc-ralph-afk-lOrS8U; verify: npm test, npm run build
+Test	UNKNOWN STEP	2026-10-27T16:52:51.0273356Z ralph skill materialized: /tmp/omc-ralph-afk-lOrS8U/.claude/skills/ralph/SKILL.md (consider gitignoring .claude/)
+Test	UNKNOWN STEP	2026-10-27T16:52:51.0274161Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6381921Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mjudges clean against its own baseline and fails on a new signature
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6384174Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-9ReeMX/.omg/state/sessions/sess-verify/feedback-baseline.json
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6385389Z ralph verify: clean vs baseline
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6385937Z ralph verify: 1 NEW failure(s) since baseline
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6386633Z   new: npm run test: FAIL brand new regression
+Test	UNKNOWN STEP	2026-10-27T16:52:51.6387253Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:52.1362480Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mreports new test failures even when suite output includes ENOENT
+Test	UNKNOWN STEP	2026-10-27T16:52:52.1364242Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-f4RJLw/.omg/state/sessions/sess-enoent/feedback-baseline.json
+Test	UNKNOWN STEP	2026-10-27T16:52:52.1364820Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:52.6908660Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mstill detects a missing command and does not call a repeatedly unrunnable check clean
+Test	UNKNOWN STEP	2026-10-27T16:52:52.6912330Z [22m[39mralph verify: baseline recorded at /tmp/omc-ralph-afk-P0IV1l/.omg/state/sessions/sess-missing-command/feedback-baseline.json
+Test	UNKNOWN STEP	2026-10-27T16:52:52.6913264Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8669748Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mtreats a missing baseline as a candidate, not a failure
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8675277Z [22m[39mralph verify: no baseline for session sess-nobase — current failures can serve as the baseline; run with --write-baseline at startup
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8678478Z   candidate: npm run test: > node failer.js
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8679137Z   candidate: npm run test: > test
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8679778Z   candidate: npm run test: FAIL whatever
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8680296Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8851928Z [90mstdout[2m | src/cli/__tests__/ralph-afk.test.ts[2m > [22m[2momg ralph verify[2m > [22m[2mreports no feedback commands as a clean no-op
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8882392Z [22m[39mralph verify: no feedback commands: declare feedbackCommands in the PRD or add package.json build/lint/test scripts
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8900992Z 
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8924483Z  [32m✓[39m src/cli/__tests__/ralph-afk.test.ts [2m([22m[2m30 tests[22m[2m)[22m[33m 1899[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:52:52.8925694Z      [33m[2m✓[22m[39m judges clean against its own baseline and fails on a new signature [33m 556[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:24.4657691Z  [32m✓[39m src/hooks/factcheck/__tests__/config-tokens.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:24.5086238Z  [32m✓[39m src/tools/lsp/__tests__/client-singleton.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 18[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:24.7012754Z  [32m✓[39m src/__tests__/mcp-default-config.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:24.8821836Z  [32m✓[39m src/mcp/__tests__/omc-tools-server.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2387402Z  [32m✓[39m src/__tests__/copilot-config-dir-alias.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2708591Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2709688Z [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2709982Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2711216Z [41m[1m FAIL [22m[49m src/tools/__tests__/state-tools-nongit-ownership.test.ts[2m > [22m#3873 real non-git state ownership[2m > [22mrejects legacy sources beneath malformed Git metadata
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2717086Z [31m[1mAssertionError[22m: expected 'Error migrating non-git state: state_…' to contain 'Git metadata'[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2717474Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2717673Z Expected: [32m"Git metadata"[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2718471Z Received: [31m"Error migrating non-git state: state_migrate_non_git refused a failed Git probe"[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2718934Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2719344Z [36m [2m❯[22m src/tools/__tests__/state-tools-nongit-ownership.test.ts:[2m241:36[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2811387Z     [90m239|[39m     }
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2812277Z     [90m240|[39m     [34mexpect[39m(result[33m.[39misError)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2813853Z     [90m241|[39m     [34mexpect[39m(result[33m.[39mcontent[[34m0[39m][33m.[39mtext)[33m.[39m[34mtoContain[39m([32m'Git metadata'[39m)[33m;[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2814509Z     [90m   |[39m                                    [31m^[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2814875Z     [90m242|[39m   })[33m;[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2815141Z     [90m243|[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2815279Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2815524Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2815719Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2817058Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2866149Z [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m937 passed[39m[22m[2m | [22m[33m7 skipped[39m[90m (945)[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2998852Z [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m18660 passed[39m[22m[2m | [22m[33m59 skipped[39m[90m (18720)[39m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.2999486Z [2m   Start at [22m 16:47:58
+Test	UNKNOWN STEP	2026-10-27T16:57:25.3009717Z [2m   Duration [22m 566.32s[2m (transform 24.46s, setup 4.71s, import 163.50s, tests 1391.79s, environment 216ms)[22m
+Test	UNKNOWN STEP	2026-10-27T16:57:25.3011435Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.3156576Z 
+Test	UNKNOWN STEP	2026-10-27T16:57:25.3187568Z ##[error]AssertionError: expected 'Error migrating non-git state: state_…' to contain 'Git metadata'
+Test	UNKNOWN STEP	
+Test	UNKNOWN STEP	Expected: "Git metadata"
+Test	UNKNOWN STEP	Received: "Error migrating non-git state: state_migrate_non_git refused a failed Git probe"
+Test	UNKNOWN STEP	
+Test	UNKNOWN STEP	 ❯ src/tools/__tests__/state-tools-nongit-ownership.test.ts:241:36
+Test	UNKNOWN STEP	
+Test	UNKNOWN STEP	
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4350765Z error during close Error: tests wrote fixture session state into the repository's own state dir (1):
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4351335Z   .omg/state/sessions/test-session
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4351945Z Run the test from a temp repo (useIsolatedCwd in src/__tests__/helpers/isolated-cwd.ts) or point OMC_STATE_DIR at a temp dir.
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4352727Z     at Object.teardown (/home/runner/work/oh-my-copilot/oh-my-copilot/src/__tests__/setup/global-state-guard.ts:72:10)
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4353623Z     at TestProject._teardownGlobalSetup (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:10825:100)
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4354466Z     at file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14004:68
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4355223Z     at Vitest.close (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14025:5)
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4355997Z     at startVitest (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:14643:14)
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4356752Z     at start (file:///home/runner/work/oh-my-copilot/oh-my-copilot/node_modules/vitest/dist/chunks/cac.uFydS1Z4.js:2340:15)
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4800790Z ##[error]Process completed with exit code 1.
+Test	UNKNOWN STEP	2026-10-27T16:57:25.4946063Z Post job cleanup.
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5747198Z [command]/usr/bin/git version
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5782536Z git version 2.56.0
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5818326Z Temporarily overriding HOME='/home/runner/work/_temp/92dcfbbc-c091-4cde-befd-41f3b9477fef' before making global git config changes
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5819545Z Adding repository directory to the temporary git global config as a safe directory
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5822114Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-copilot/oh-my-copilot
+Test	UNKNOWN STEP	2026-10-27T16:57:25.5858031Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
