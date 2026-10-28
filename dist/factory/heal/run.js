@@ -33,7 +33,7 @@ import { emptyHooksDir } from '../run/ledger.js';
 import { LANE_CLASSES } from './classify.js';
 import { debugPrompt, NO_CONFINEMENT, runDebugLane } from './debug-lane.js';
 import { parseDiagnosisOutput } from './diagnosis-output.js';
-import { buildEvidence, changedEvidence, collectEvidence, writeEvidence } from './evidence.js';
+import { buildEvidence, changedEvidence, collectEvidence, writeEvidence } from './heal-evidence.js';
 import { healGuardExec } from './history.js';
 import { newDelimiter } from './sanitize.js';
 import { dailyCountersPath, healStateDir, listHealStates, MAX_OPEN_HEAL_RUNS, readDailyCountersAt, readHealState, writeDailyCountersAt, writeHealState, } from './state.js';
