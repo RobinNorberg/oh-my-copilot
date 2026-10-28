@@ -552,7 +552,7 @@ export interface SdkSandboxProbe {
         blocked: boolean;
         reason?: string;
     } | string;
-    /** The spawn canary (a sandboxed `echo` with the lane env, no model turn); absent when it did not get that far. */
+    /** The spawn canary (sandboxed `node --version` and `git --version` with the lane env and grants, no model turn); absent when it did not get that far. */
     spawn?: {
         ok: boolean;
         detail: string;
@@ -638,6 +638,12 @@ export declare function scenarioCost(events: CopilotEvent[]): ScenarioCost & {
 export declare function adapterErrorLines(logText: string): string[];
 /** Hook script names mentioned in adapter error lines (e.g. wiki-session-end.mjs). */
 export declare function hookScriptNames(lines: string[]): string[];
+/**
+ * The account quota error in a scenario's events, or null: a
+ * `model.call_failure` with HTTP 402 or a quota errorCode
+ * (`quota_exceeded`), or a `session.error` of errorType `quota`.
+ */
+export declare function accountQuotaError(events: CopilotEvent[]): string | null;
 export declare function evaluateScenario(run: ScenarioRun): {
     checks: SmokeCheck[];
     cost: ScenarioCost;

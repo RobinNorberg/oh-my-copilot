@@ -1,12 +1,12 @@
 import { EventEmitter } from 'events';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { PassThrough } from 'stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
-import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, SANDBOX_CANARY_TOKEN, } from '../copilot-sdk-driver.js';
+import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, sandboxCanaryCommand, } from '../copilot-sdk-driver.js';
 import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_STATIC_IDS } from '../copilot-sdk-scenarios.js';
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
@@ -193,6 +193,7 @@ function input(loaded, over = {}, gitCalls = []) {
         skillDirs: ['alpha', 'plan'],
         agentFiles: ['architect.md'],
         mcpServer: 't',
+        sandboxTrialLaunch: () => null,
         runChain: async () => { throw new Error('chain runner not stubbed'); },
         runTeam: async () => { throw new Error('team runner not stubbed'); },
         runCli: async () => { throw new Error('cli runner not stubbed'); },
@@ -220,8 +221,9 @@ describe('runSdkTier (fake SDK)', () => {
         const { loaded, rec } = fakeSdk({ hostSupport: { supported: true, capabilities: caps } });
         const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }));
         const check = byId(result.checks)['sdk.sandbox'];
-        expect(check.ok).toBe(true);
-        expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: skipped: the SDK has no shell\.executeUserRequested RPC$/);
+        // An SDK without shell.executeUserRequested cannot run the canary: that is not a pass.
+        expect(check.ok).toBe(false);
+        expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: the SDK has no shell\.executeUserRequested RPC, so the spawn canary cannot run \(not a pass\)$/);
         expect(rec.optionUpdates).toHaveLength(1);
         const update = rec.optionUpdates[0];
         expect(update.params.sandboxConfigSource).toBe('session_flag');
@@ -233,31 +235,70 @@ describe('runSdkTier (fake SDK)', () => {
         });
         expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
     });
-    it('sdk.sandbox spawn canary: a sandboxed echo on a second runtime with the allowlisted lane env, no prompt', async () => {
+    it('sdk.sandbox: a Linux host the runtime calls supported but where the trial launch fails is not a pass, and runs no canary', async () => {
         const { loaded, rec } = fakeSdk({
             hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] },
-            shellExec: (command) => ({ result: { success: true, exitCode: 0, output: command.replace(/^echo /, '') }, sandboxed: true }),
+            shellExec: () => { throw new Error('the canary must not run'); },
         });
-        const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
-        expect(byId(result.checks)['sdk.sandbox']).toMatchObject({ ok: true, detail: expect.stringMatching(/spawn canary: a sandboxed echo with the lane env launched \(sandboxed: true\)$/) });
-        // The canary session (s2) ran the echo after its own review policy; the static session (s1) ran nothing.
-        expect(rec.ops).toContain(`exec:s2:echo ${SANDBOX_CANARY_TOKEN}`);
+        const result = await runSdkTier(input(loaded, { scenarios: [], platform: 'linux', sandboxTrialLaunch: () => 'unprivileged user namespaces are restricted (AppArmor)' }));
+        const check = byId(result.checks)['sdk.sandbox'];
+        expect(check).toEqual({
+            id: 'sdk.sandbox',
+            ok: false,
+            detail: 'launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: unprivileged user namespaces are restricted (AppArmor); copilot_run sessions here run fail-closed; spawn canary not run (not a pass)',
+        });
+        expect(rec.optionUpdates ?? []).toHaveLength(0);
+    });
+    it('sdk.sandbox spawn canary: sandboxed node and git on a second runtime with the allowlisted lane env and tool grants, no prompt', async () => {
+        const { loaded, rec } = fakeSdk({
+            hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] },
+            shellExec: () => {
+                // The runtime downloads its package into the relocated cache.
+                mkdirSync(pkgCache, { recursive: true });
+                return { result: { success: true, exitCode: 0, output: `${process.version}\r\ngit version 2.51.0\r\n` }, sandboxed: true };
+            },
+        });
+        const pkgCache = join(parent, 'home', 'sandbox-canary', 'profile', '.cache', 'copilot', 'pkg');
+        const result = await runSdkTier(input(loaded, { scenarios: [], keepHome: true, env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
+        expect(existsSync(join(parent, 'home', 'sandbox-canary', 'profile'))).toBe(true);
+        expect(existsSync(pkgCache)).toBe(false);
+        expect(byId(result.checks)['sdk.sandbox']).toMatchObject({ ok: true, detail: expect.stringMatching(/spawn canary: sandboxed node --version and git --version with the lane env and tool grants launched \(sandboxed: true\)$/) });
+        // The canary session (s2) ran real programs after its own review policy; the static session (s1) ran nothing.
+        expect(rec.ops).toContain(`exec:s2:${sandboxCanaryCommand(process.platform, process.execPath)}`);
         expect(rec.optionUpdates?.map((u) => u.id)).toEqual(['s1', 's2']);
-        // The last client constructed is the canary's: the lane env, profile relocated, no token.
+        // Both policies grant the engine's node dir read-only.
+        for (const u of rec.optionUpdates) {
+            const fs = u.params.sandboxConfig.userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(dirname(process.execPath));
+            expect(fs.readwritePaths).not.toContain(dirname(process.execPath));
+        }
+        // The last client constructed is the canary's: the lane env, profile and temp dir relocated, no token.
         const env = rec.connection.env;
-        expect(env).toMatchObject({ LOCALAPPDATA: WIN_ENV.LOCALAPPDATA, SystemRoot: WIN_ENV.SystemRoot, USERPROFILE: join(parent, 'home', 'sandbox-canary', 'profile') });
+        const canaryHome = join(parent, 'home', 'sandbox-canary');
+        expect(env).toMatchObject({ LOCALAPPDATA: WIN_ENV.LOCALAPPDATA, SystemRoot: WIN_ENV.SystemRoot, USERPROFILE: join(canaryHome, 'profile'), TEMP: join(canaryHome, 'tmp'), TMP: join(canaryHome, 'tmp') });
+        expect(existsSync(join(canaryHome, 'tmp'))).toBe(true);
         expect(env.GH_TOKEN).toBeUndefined();
         expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
     });
-    it('sdk.sandbox spawn canary: a launch the sandbox rejects, an unattested echo, or a lane env without LOCALAPPDATA fails', async () => {
+    it('sandboxCanaryCommand launches the node binary and git, quoted for powershell and bash', () => {
+        expect(sandboxCanaryCommand('win32', "C:\\Program Files\\it's\\node.exe")).toBe("& 'C:\\Program Files\\it''s\\node.exe' --version; git --version");
+        expect(sandboxCanaryCommand('linux', "/opt/it's/node")).toBe("'/opt/it'\\''s/node' --version; git --version");
+    });
+    it('sdk.sandbox spawn canary: a launch the sandbox rejects, node denied, an unattested launch, or a lane env without LOCALAPPDATA fails', async () => {
         const supported = { supported: true, capabilities: [{ name: 'shell', supported: true }] };
         const mxc = 'Error executing shell command: GenericFailure, policy_validation: ... missing the required variable(s): LOCALAPPDATA.';
         const rejected = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: false, output: '', error: mxc }, sandboxed: true }) });
         const r = byId((await runSdkTier(input(rejected.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
-        expect(r).toMatchObject({ ok: false, detail: expect.stringContaining('spawn canary: the sandboxed launch failed: Error executing shell command: GenericFailure, policy_validation') });
-        const unattested = fakeSdk({ hostSupport: supported, shellExec: (c) => ({ result: { success: true, exitCode: 0, output: c.slice(5) } }) });
+        expect(r).toMatchObject({ ok: false, detail: expect.stringContaining('the sandboxed launch failed (node (') });
+        expect(r.detail).toContain('policy_validation');
+        // The live 2026-10-28 failure: a shell builtin ran, the child node.exe was denied.
+        const denied = "ResourceUnavailable: Program 'node.exe' failed to run: An error occurred trying to start process 'C:\\Program Files\\nodejs\\node.exe'. Access is denied.\ngit version 2.51.0.windows.1\n";
+        const nodeDenied = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 1, output: denied }, sandboxed: true }) });
+        const d = byId((await runSdkTier(input(nodeDenied.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
+        expect(d).toMatchObject({ ok: false, detail: expect.stringMatching(/the sandboxed launch failed \(node \([^)]+\) did not run\): exit 1, output .*Access is denied/) });
+        const unattested = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: true, exitCode: 0, output: 'v25.0.0\ngit version 2.51.0\n' } }) });
         const u = byId((await runSdkTier(input(unattested.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
-        expect(u).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: the echo ran, but its completion was not attested sandboxed/) });
+        expect(u).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: node and git ran, but their completion was not attested sandboxed/) });
         const noLocal = fakeSdk({ hostSupport: supported, shellExec: () => { throw new Error('the canary must not launch'); } });
         const n = byId((await runSdkTier(input(noLocal.loaded, { scenarios: [], platform: 'win32', env: { ...input(null).env, SystemRoot: 'C:\\Windows' } }))).checks)['sdk.sandbox'];
         expect(n).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: the lane env lacks LOCALAPPDATA, which the Windows sandbox needs to launch any process; not launched$/) });

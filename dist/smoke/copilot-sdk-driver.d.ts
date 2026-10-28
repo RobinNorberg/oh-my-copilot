@@ -261,6 +261,15 @@ export interface SdkTierResult {
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
 export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
-/** The spawn canary's command: a shell builtin in powershell and bash, so the launch itself is what is tested. */
-export declare const SANDBOX_CANARY_TOKEN = "omg-sandbox-canary-ok";
+/**
+ * The spawn canary's command: two external programs every lane starts, the
+ * engine's node and the PATH git. A shell builtin (`echo`) would pass while
+ * the sandbox denies every child .exe.
+ */
+export declare function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string): string;
+/** Which canary programs printed their version (node `v<major>.<minor>`, `git version <n>`). */
+export declare function sandboxCanaryLaunched(output: string): {
+    node: boolean;
+    git: boolean;
+};
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map

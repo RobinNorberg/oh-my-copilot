@@ -154,6 +154,8 @@ export interface CopilotRunDeps {
     processIdentity?: (pid: number) => Promise<string | null>;
     /** The account's real home for the sandbox's denied paths (default os.userInfo().homedir, never HOME). */
     realHome?: () => string;
+    /** The tool dirs the sandbox grants read-only (default laneToolPaths: node and git). */
+    toolPaths?: (env: NodeJS.ProcessEnv, platform: NodeJS.Platform) => string[];
     /** The sandbox settings for a job in `root` (default loadSandboxSettings: user config, project may only tighten). */
     sandboxSettings?: (root: string, scope: SandboxScope) => {
         settings: SandboxSettings;

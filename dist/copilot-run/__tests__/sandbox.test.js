@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, buildSandboxConfig, laneGitWritePaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -80,11 +80,68 @@ describe('buildSandboxConfig', () => {
         // A review never gets the network.
         expect(buildSandboxConfig('review', { ...ctx, settings }, host()).userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
     });
+    it('grants the tool dirs read-only in both profiles, never a filesystem root or a dir holding the real home', () => {
+        const toolPaths = [join(root, 'nodejs'), join(root, 'git'), root, join(root, 'me', '..'), resolve('/')];
+        for (const profile of ['review', 'write']) {
+            const fs = buildSandboxConfig(profile, { ...ctx, toolPaths }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
+            expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
+        }
+        expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
+    });
     it('refuses an extra read-write path outside the worktree', () => {
         const settings = { ...ctx.settings, extraReadwritePaths: [join(root, 'elsewhere')] };
         expect(() => buildSandboxConfig('write', { ...ctx, settings }, host())).toThrow(/not under the worktree/);
         const inside = { ...ctx.settings, extraReadwritePaths: [join(ctx.worktree, 'out')] };
         expect(buildSandboxConfig('write', { ...ctx, settings: inside }, host()).userPolicy.filesystem.readwritePaths).toContain(join(ctx.worktree, 'out'));
+    });
+});
+describe('laneToolPaths', () => {
+    const probe = (p) => ({
+        execPath: p.execPath ?? '/usr/bin/node',
+        which: (name) => p.found?.[name] ?? null,
+        gitExecPath: p.gitExecPath ?? (() => null),
+        realpath: p.realpath ?? ((x) => x),
+    });
+    it('Windows: the node dirs and the Git for Windows install root, deduplicated case-insensitively', () => {
+        const paths = laneToolPaths({}, 'win32', probe({
+            execPath: 'C:\\Program Files\\nodejs\\node.exe',
+            found: { node: 'c:\\program files\\nodejs\\node.exe', git: 'C:\\Program Files\\Git\\cmd\\git.exe' },
+            gitExecPath: () => 'C:/Program Files/Git/mingw64/libexec/git-core',
+        }));
+        expect(paths).toEqual(['C:\\Program Files\\nodejs', 'C:\\Program Files\\Git']);
+    });
+    it('Windows: a git outside the exec-path root grants its own dir and exec path, not a guessed root', () => {
+        const paths = laneToolPaths({}, 'win32', probe({
+            execPath: 'D:\\tools\\node\\node.exe',
+            found: { git: 'D:\\scoop\\shims\\git.exe' },
+            gitExecPath: () => 'D:\\scoop\\apps\\git\\current\\mingw64\\libexec\\git-core',
+        }));
+        expect(paths).toEqual(['D:\\tools\\node', 'D:\\scoop\\shims', 'D:\\scoop\\apps\\git\\current\\mingw64\\libexec\\git-core']);
+    });
+    it('posix: the node and git binary dirs with their realpaths, and the git exec path', () => {
+        const real = { '/home/u/.nvm/current/bin/node': '/home/u/.nvm/versions/node/v22/bin/node' };
+        const paths = laneToolPaths({}, 'linux', probe({
+            execPath: '/opt/hostedtoolcache/node/22/x64/bin/node',
+            found: { node: '/home/u/.nvm/current/bin/node', git: '/usr/bin/git' },
+            gitExecPath: () => '/usr/lib/git-core',
+            realpath: (x) => real[x] ?? x,
+        }));
+        expect(paths).toEqual(['/opt/hostedtoolcache/node/22/x64/bin', '/home/u/.nvm/current/bin', '/home/u/.nvm/versions/node/v22/bin', '/usr/bin', '/usr/lib/git-core']);
+    });
+    it('no git on PATH: only the node dirs', () => {
+        expect(laneToolPaths({}, 'darwin', probe({ execPath: '/opt/homebrew/bin/node', realpath: () => '/opt/homebrew/Cellar/node/25.0.0/bin/node' })))
+            .toEqual(['/opt/homebrew/bin', '/opt/homebrew/Cellar/node/25.0.0/bin']);
+    });
+    it('findOnPath honours PATHEXT and skips relative and empty entries', () => {
+        const files = new Set(['C:\\Git\\cmd\\git.EXE', '/usr/bin/git']);
+        const exists = (p) => files.has(p);
+        expect(findOnPath('git', { Path: '.;;"C:\\Git\\cmd"', PATHEXT: '.COM;.EXE' }, 'win32', exists)).toBe('C:\\Git\\cmd\\git.EXE');
+        expect(findOnPath('git', { PATH: ':bin:/usr/bin' }, 'linux', exists)).toBe('/usr/bin/git');
+        expect(findOnPath('git', {}, 'linux', exists)).toBeNull();
+    });
+    it('the default probe finds the real node of this process', () => {
+        expect(laneToolPaths({ PATH: '' }, process.platform)).toContain(dirname(process.execPath));
     });
 });
 describe('sandbox settings', () => {
@@ -121,11 +178,38 @@ describe('sandbox settings', () => {
 describe('detection helpers', () => {
     it('probeHostSupport needs supported and the shell capability, and survives a throwing RPC', async () => {
         const client = (res) => ({ rpc: { sandbox: { getHostSupport: async () => res } } });
-        expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: true }] }), 1000)).toEqual({ supported: true, capabilities: { shell: true } });
+        expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: true }] }), 1000, { platform: 'win32' })).toEqual({ supported: true, capabilities: { shell: true } });
         expect(await probeHostSupport(client({ supported: true, capabilities: [{ name: 'shell', supported: false }] }), 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('no shell') });
         expect(await probeHostSupport(client({ supported: false, reason: 'old build', capabilities: [] }), 1000)).toMatchObject({ supported: false, reason: 'old build' });
         expect(await probeHostSupport({ rpc: { sandbox: { getHostSupport: async () => { throw new Error('boom'); } } } }, 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('boom') });
         expect(await probeHostSupport({}, 1000)).toMatchObject({ supported: false, reason: expect.stringContaining('no sandbox.getHostSupport') });
+    });
+    it('probeHostSupport on Linux also needs a trial launch, which only a runtime-supported host gets', async () => {
+        const supported = { rpc: { sandbox: { getHostSupport: async () => ({ supported: true, capabilities: [{ name: 'shell', supported: true }] }) } } };
+        let trials = 0;
+        const trial = (err) => () => { trials++; return err; };
+        expect(await probeHostSupport(supported, 1000, { platform: 'linux', trialLaunch: trial(null) })).toEqual({ supported: true, capabilities: { shell: true } });
+        expect(await probeHostSupport(supported, 1000, { platform: 'linux', trialLaunch: trial('userns restricted') }))
+            .toEqual({ supported: false, reason: 'userns restricted', capabilities: { shell: true }, launchFailed: true });
+        expect(trials).toBe(2);
+        const unsupported = { rpc: { sandbox: { getHostSupport: async () => ({ supported: false, reason: 'no bwrap', capabilities: [] }) } } };
+        expect(await probeHostSupport(unsupported, 1000, { platform: 'linux', trialLaunch: trial(null) })).toMatchObject({ supported: false, reason: 'no bwrap' });
+        expect(await probeHostSupport(supported, 1000, { platform: 'darwin', trialLaunch: trial('x') })).toMatchObject({ supported: true });
+        expect(trials).toBe(2);
+    });
+    it('bwrapTrialLaunchError runs bwrap with the namespace and network flags and names the failure', () => {
+        const calls = [];
+        const spawner = (res) => (cmd, args) => { calls.push({ cmd, args }); return res; };
+        expect(bwrapTrialLaunchError(spawner({ status: 0, stderr: '' }))).toBeNull();
+        expect(calls[0]).toEqual({ cmd: 'bwrap', args: BWRAP_TRIAL_ARGS });
+        expect(BWRAP_TRIAL_ARGS).toContain('--unshare-all');
+        const restricted = bwrapTrialLaunchError(spawner({ status: 1, stderr: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n' }));
+        expect(restricted).toMatch(/^unprivileged user namespaces are restricted \(AppArmor kernel\.apparmor_restrict_unprivileged_userns=1\)/);
+        expect(restricted).toContain('docs/REFERENCE.md');
+        expect(restricted).toContain('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted)');
+        const missing = Object.assign(new Error('spawnSync bwrap ENOENT'), { code: 'ENOENT' });
+        expect(bwrapTrialLaunchError(spawner({ error: missing, status: null, stderr: '' }))).toMatch(/^bwrap \(bubblewrap\) is not on PATH/);
+        expect(bwrapTrialLaunchError(spawner({ status: 2, stderr: 'bwrap: something else' }))).toBe('a trial bwrap launch failed (exit 2): bwrap: something else');
     });
     it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
         const sdk = (cls) => ({ module: { CopilotClient: cls, RuntimeConnection: { forStdio: () => ({}) } }, version: 'x', from: 'test' });
@@ -139,9 +223,12 @@ describe('detection helpers', () => {
         expect(sdkCreateSessionAcceptsSandbox(sdk(New))).toBe(true);
     });
     it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
-        const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local' }, join(root, 'h'));
+        const hostTemp = 'C:\\Users\\u\\AppData\\Local\\Temp';
+        const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
         expect(env).toEqual({
             Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
+            // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
+            TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
             USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
             XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
             // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.

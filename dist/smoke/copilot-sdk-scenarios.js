@@ -749,14 +749,17 @@ function evaluateSandboxLane(run) {
     const c = e.canary;
     const cOutside = c ? target(c.targets, 'shared') : undefined;
     const cInside = c ? target(c.targets, 'worktree') : undefined;
-    const q5Answered = enforced(canaryLane) && !!c?.called && !!c.result;
+    // No probe line in the output: the probe never launched (node denied, say), so an outside write that did not land was never tried.
+    const cProbeRan = !!c?.result && parseSandboxProbe(c.result.output) !== null;
+    const q5Answered = enforced(canaryLane) && !!c?.called && cProbeRan;
     const q5Ok = q5Answered && c.sandboxed === true && !!cOutside && !cOutside.landed && !!cInside?.landed;
     const q5Detail = !c?.called ? `Q5 ${unanswered(canaryLane)}`
         : !c.result ? `Q5: shell.executeUserRequested failed: ${excerpt(c.error ?? 'no result', 200)}`
-            : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? 'sandboxed' : c.sandboxed === false ? 'NOT sandboxed' : 'with no sandboxed attestation'}`
-                + ` (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? 'landed' : 'missing'}; `
-                + `onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : 'bypassed'}`
-                + (q5Ok ? ': a free canary through this RPC works' : ': the canary needs a model turn instead');
+            : !cProbeRan ? `Q5 unanswered: probe did not run (exit ${String(c.result.exitCode)}, no ${SANDBOX_PROBE_MARKER.trim()} line; output ${JSON.stringify(excerpt(c.result.output || c.error || '', 200))})`
+                : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? 'sandboxed' : c.sandboxed === false ? 'NOT sandboxed' : 'with no sandboxed attestation'}`
+                    + ` (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? 'landed' : 'missing'}; `
+                    + `onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : 'bypassed'}`
+                    + (q5Ok ? ': a free canary through this RPC works' : ': the canary needs a model turn instead');
     const capsOk = e.lanes.length > 0 && e.lanes.every((l) => l.maxCredits === RUNTIME_MIN_MAX_CREDITS);
     const measured = e.lanes.length > 0 && e.lanes.every((l) => typeof l.credits === 'number');
     const creditsOk = capsOk && measured && e.cost.credits > 0 && e.cost.credits <= SANDBOX_LANE_MAX_CREDITS;
@@ -1389,6 +1392,28 @@ function evaluateCommon(run, cost) {
         },
     ];
 }
+/**
+ * The account quota error in a scenario's events, or null: a
+ * `model.call_failure` with HTTP 402 or a quota errorCode
+ * (`quota_exceeded`), or a `session.error` of errorType `quota`.
+ */
+export function accountQuotaError(events) {
+    for (const e of events) {
+        const d = (e.data ?? {});
+        const code = typeof d.errorCode === 'string' ? d.errorCode : '';
+        if (e.type === 'model.call_failure' && (d.statusCode === 402 || /quota/i.test(code))) {
+            let message = typeof d.errorMessage === 'string' ? d.errorMessage : '';
+            try {
+                message = String(JSON.parse(message).message ?? message);
+            }
+            catch { /* plain text */ }
+            return [String(d.statusCode ?? '?'), code, message && `"${excerpt(message, 120)}"`].filter(Boolean).join(' ');
+        }
+        if (e.type === 'session.error' && d.errorType === 'quota')
+            return `session.error quota${typeof d.message === 'string' ? ` "${excerpt(d.message, 120)}"` : ''}`;
+    }
+    return null;
+}
 export function evaluateScenario(run) {
     const own = {
         smoke: evaluateSmoke,
@@ -1407,10 +1432,19 @@ export function evaluateScenario(run) {
         ultragoal: evaluateUltragoal,
     }[run.name](run);
     const cost = runCost(run);
-    const checks = [...own, ...evaluateCommon(run, cost)];
+    let checks = [...own, ...evaluateCommon(run, cost)];
     const pending = PENDING_SCENARIOS[run.name];
+    if (pending)
+        checks = checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` }));
+    const quota = accountQuotaError(run.events);
+    if (quota) {
+        checks = [
+            { id: `scn.${run.name}.quota`, ok: false, detail: `account quota exhausted (${quota}), not a product failure; the checks below failed because no model call ran` },
+            ...checks.map((c) => (c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })),
+        ];
+    }
     return {
-        checks: pending ? checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` })) : checks,
+        checks,
         cost: { premiumRequests: cost.premiumRequests, credits: cost.credits },
     };
 }
