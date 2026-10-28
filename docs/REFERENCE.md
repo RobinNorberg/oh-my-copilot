@@ -850,6 +850,28 @@ omg release 5.13.0 --flaky-candidates       # known-flaky candidates of the full
 - **Progress:** one line per phase start / end and per CI poll, `<ISO-UTC> phase=<id> status=<start|ok|fail|blocked|heartbeat|done> note=<..>`, to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 - Exit codes: `0` ok, `1` a phase failed or is blocked, `2` usage error. `--json` prints the phase results (or the plan with `--dry-run`).
 
+### `omg port drive`
+
+Maintainer-only automated upstream port. Run it in a clean checkout of `dev` after `git fetch upstream dev`; it works on `port/upstream-<short sha>`.
+
+```bash
+omg port drive --head <upstream sha>                         # apply, gates, commit, push, draft PR
+omg port drive --head <sha> --reconcile-lane --max-credits 40  # conflicts: run the brief as a paid write lane
+omg port drive --head <sha> --continue                       # after a human resolved what blocked the run
+```
+
+- **Phases:** `preflight` (clean tracked tree; creates `port/upstream-<short>`, refuses an existing one without `--continue`) → `apply` (`scripts/port/upstream-drift.mjs --apply --head <sha>`, then `--report`) → `junk` (unstages known upstream junk such as a committed `.gjc/` session dir; the drift script already drops it from the range) → `delta` (`--package-delta`: a `version`-only change is ignored; any `scripts`, `files`, dependency, `bin`, `exports` or other key change is listed in `.omg/port/<short>/package-delta.json` for a human) → `reconcile` (conflicts: writes `.omg/port/<short>/brief.md` with the conflict list, the THEIRS-for-our-returning-fixes rule and the runbook's "Fork Features to Preserve"; only with `--reconcile-lane` it starts one write lane through the factory LaneBackend at the pre-port commit, capped by the mandatory `--max-credits`, `--lane-timeout` minutes (default 60); a lane still running at the timeout is cancelled, and nothing is read until the cancel confirms its end. The shared git state (refs, common and global git config with its includes, `hooks/`, `info/`, worktree entries, the main checkout's status), the main index (`git ls-files -s`) and its assume-unchanged and skip-worktree flags (`git ls-files -v`), a content hash of every tracked, applied and conflicted file of the main checkout (read from disk, not through git's stat cache), and the gates' node_modules entry files (`package.json` and the bin file of typescript, eslint and vitest) are snapshotted before the lane and compared after it, and any difference parks the run with no commit and no push. The lane's tree may differ from the pre-lane index only on the conflicted paths, only as regular files (a symlink or gitlink blocks), never on a protected one (ship's protected paths, the drift script's excluded and skipped paths, `scripts/ci`, `scripts/port`, `scripts/copilot`, the generators, eslint and vitest config, `.gitattributes`, the port engine). Only those paths are adopted, proven equal to the lane tree; a lane that left conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) in any changed file, or no commit, blocks) → `gates` (`tsc --noEmit`, `eslint src` (0 errors), `scripts/ci/check-multirepo-paths.mjs`, prompt projections and copilot hook/agent generators `--verify`, vitest on the tests selected from the staged files) → `commit` (the port commit, then the inventory regenerated as the last commit) → `pr` (plain push to `port/upstream-<short>`, `gh pr create --draft --base dev`; `--no-push` stops after the commits).
+- **Human gates** (stop `blocked` with the next command): a package.json delta beyond `version`; conflicts without `--reconcile-lane`; any conflict under `src/release/`, `src/ship/`, `src/installer/` or `src/hooks/permission-handler/` (no lane is started); new `oh-my-claudecode` lines in `src agents skills hooks` (leak sweep; `--accept-leaks <upstream head sha>` accepts that head's lines and records them in `.omg/port/<short>/accepted-leaks.json`, the port commit and the PR body). The merge of the draft PR is always human. The lane is started only when nothing else would block the run, so no credits are spent on a run that stops anyway.
+- **Resume:** fix, stage, then `--continue` on the port branch: apply is skipped, the delta check is skipped once it ran (it reruns when the run stopped before it), and conflicts, leaks and unstaged files are re-checked. When the port commit already exists (inventory, push or `gh pr create` failed), `--continue` resumes at that step.
+- **Host git:** every engine git command is an allowlisted shape run with an empty `core.hooksPath`, `core.fsmonitor=false`, no pager, no external diff or textconv, and every configured filter driver blanked; the drift script and the inventory generator get the same hooks and fsmonitor settings. The drift script's `git apply --3way` still runs the merge drivers and filters your own git config defines, and upstream's committed `.gitattributes` can name them for upstream paths: review your configured `merge.*.driver` and `filter.*` entries before a port.
+- **Trust:** the gates (tsc, eslint, the generators, vitest on the touched tests) execute upstream code and, after a reconcile lane, lane-authored code on the host, with your credentials. The path rules keep the lane's tree off the gate scripts and their config; the content hash of every tracked file of the main checkout is what catches a lane that rewrites them (or any other tracked file) in place, and the tamper check also covers the node_modules package.json and entry files of typescript, eslint and vitest. The conflicted source and test files the lane resolved still run, and so does every other node_modules file the gates load (a lane worktree that reaches node_modules through a junction can rewrite them). Review the lane's diff before you trust a green gate run from it.
+- **Residual risk:**
+  - Ignored files are only partly covered: `node_modules` beyond the hashed gate entry files is not hashed, and a planted nested `node_modules` can shadow imports.
+  - A process that outlives the lane can rewrite files after the tamper check and before the gates, because the lane runs with an unrestricted shell until sandboxed lanes cover the reconcile lane.
+  - Mitigation: only conflicted, non-protected paths are committed, the push opens a DRAFT PR, and CI re-runs every gate. The merge is always human.
+- **Progress:** `agent=port` lines to `--progress-file`, `$OMG_PROGRESS_FILE` or `.omg/progress/port.log`; the run ends with `phase=report status=<done|blocked|fail>`.
+- Exit codes: `0` done, `1` a phase failed, `2` usage error, `3` blocked on a human. `--json` prints the result.
+
 ### `omg progress`
 
 Agent progress events: lanes push one line per phase boundary, and a lead watches them (Claude Code's Monitor tool) instead of polling agents. Lead recipe and brief snippet: `.omc/skills/agent-progress-events.md`. Library: `src/lib/agent-progress.ts` (`emitProgress({ phase, status, note, agent, file })`, never throws).
@@ -892,22 +914,162 @@ Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91),
 
 #### `omg factory run` (experimental)
 
-`omg factory run <issue>` drives one GitHub issue through these steps. An implement lane commits in its own worktree. The engine then pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The run then parks at `awaiting-human: prepare`. Prepare, gates and the merge stay manual, and merge is always a human step. It runs only when started by hand; the listener never starts it.
+`omg factory run <issue>` drives one GitHub issue to a PR that is ready to merge. An implement lane commits in its own worktree. The engine pushes `factory/issue-<n>` and opens a draft PR. A fresh review lane checks the exact head, and fix rounds run on fresh lanes. The engine then runs ship's prepare step, watches the CI gates, and parks at `awaiting-human: merge`. Merge is always a human step. The run starts only when you start it by hand; the listener never starts it.
+
+The engine is deterministic code that owns every transition. LLM work happens only inside lanes, and the engine treats a lane's output as untrusted data that it validates. Lanes are `copilot_run` jobs used in-process, behind a host-neutral lane interface.
 
 ```bash
-omg factory run <issue> [--dry-run] [--json]   # run or resume; --dry-run reads the issue and plan only
-omg factory run status <issue> [--json]        # the persisted state, read-only
-omg factory run cancel <issue>                 # stop the running engine and its lane; keeps the PR, branch and worktrees
+omg factory run <issue> [--json]          # start, or resume at the recorded phase
+omg factory run <issue> --dry-run         # read the issue and plan and print the next step; no state, lanes or pushes
+omg factory run status <issue> [--json]   # the persisted state, read-only; --json adds integrityOk and runCredits
+omg factory run cancel <issue> [--json]   # ask the running engine to cancel its lane and stop; keeps the PR, branch and worktrees
+omg factory run clean <issue> [--json]    # remove the worktrees and local branches of a merged or cancelled run
 ```
 
-- **Plan:** the issue needs an `Acceptance criteria` heading, or an `omg-plan: <repo path>` line. The line counts in the body when the issue's author owns the repository or has commented as an owner, member or collaborator, and in a comment by an owner, member or collaborator. Without one the run stops at `awaiting-human: needs-plan`.
-- **Credits:** every lane starts with an AI-credit cap, `factory.run.laneMaxCredits`. The default is 30, which is also the CLI minimum. The optional `factory.run.maxRunCredits` stops the run at `awaiting-human: budget`. Both keys come from the user config. The project config can only lower them.
-- **Review:** a review lane runs on the review profile. A ship verdict counts only when the engine recorded it from a review lane it ran.
-- **Tamper checks:** the engine compares the shared git state before and after every lane, write or review. The comparison covers refs, config, `hooks/`, `info/`, `worktrees/`, `modules/`, alternates, your global git config (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config` or `GIT_CONFIG_GLOBAL`) and every file a config includes, both HEADs, the main checkout's status and a short list of ignored files such as `.env*` and `node_modules/.bin`. A `worktrees/` or `modules/` entry that is a symlink or junction, or a live worktree entry that disappears, also counts as a change. A lane may add only its own branch and worktree. Any other change stops the run at `awaiting-human: review-tampered` or `lane-tampered`, drops the verdict and pushes nothing. The check runs again before the engine's next git command and before every push. A lost lane is compared when it is found, and a lane still running at resume is compared on the rerun. When a lane cannot be confirmed stopped, the run stops at `awaiting-human: lane-unconfirmed`. After an engine crash the engine checks the lost lane's recorded Copilot child by pid and start time and kills it if it still runs. When it cannot tell, it stops at `lane-unconfirmed`, and your rerun counts as your word that the job stopped. A lost lane's unknown usage counts as its whole credit cap.
-- **Engine-owned state:** the engine keeps its own record of every state file it writes. The record lives outside the repository, in `~/.omg/factory-ledger/`, or in `$OMC_STATE_DIR/factory-ledger/` when that is set. Any other change to the run state, its owner or lock files, or the PR's ship state stops the run at `awaiting-human: state-tampered`. The changed file is moved aside as `<file>.tampered-<time>` and the engine's copy is restored. `omg factory run cancel` writes a separate request file, so it never touches the state.
-- **Engine git:** the engine runs its own git with an empty `core.hooksPath` and `core.fsmonitor=false`, so a planted hook never runs in the engine. The repository's own hooks do not run on factory pushes either.
-- **Residual risk:** lanes are not sandboxed. A lane whose shell reaches your home directory can also rewrite the engine's record there. The engine-held record and the checks above narrow that, and a human gate always comes before the merge. Running lanes under Copilot CLI's `--sandbox` (CLI 1.0.93+) is a planned follow-up.
-- **State and resume:** state lives in `.omg/state/factory/run-<issue>.json`. Rerun the same command to resume after any `awaiting-human` stop. Exit codes are 0 for the `prepare` park or a cancel, 4 for other `awaiting-human` stops, 1 for a failure and 2 for a usage error. The full docs come with the rest of the engine.
+| Exit code | Meaning |
+|---|---|
+| `0` | Parked at `awaiting-human: merge`, merged, cancelled, a dry run, or a successful `status`, `cancel` or `clean` |
+| `4` | Any other `awaiting-human` stop, or `clean` kept a worktree |
+| `1` | A failure: an engine step failed, or the state is `failed` |
+| `2` | A usage error, such as a missing issue number, or `status` for an issue with no run |
+
+`omg factory run` without `--dry-run` is itself the opt-in to live, billed lanes; no `OMG_COPILOT_RUN_ALLOW` is needed. The first Ctrl+C or SIGTERM cancels the lane after the current poll. A second one exits at once, and the next run treats the lane as lost.
+
+##### Phases
+
+```
+intake → plan → implement → publish → review ─approve─→ prepare → gates ─green─→ merge ─human merges─→ merged
+                                ▲          │                │         │
+                                │   changes-requested    conflict   failed
+                                │          ▼                ▼         ▼
+                                └─ publish ◄─ fix ◄── conflict-fix   ci-fix ─→ publish → review
+any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-human ─rerun─→ same phase
+```
+
+| Phase | What the engine does |
+|---|---|
+| `intake` | Reads the issue with `gh issue view`. A closed issue ends the run as `cancelled`. An open PR that already uses the factory branch stops at `pr-exists`. |
+| `plan` | Resolves the spec. An `omg-plan: <repo path>` line wins. It counts in the body when the issue's author owns the repository or has commented as an owner, member or collaborator, and in a comment by an owner, member or collaborator. The plan file is read from the base branch. Otherwise the issue body counts when it has an `Acceptance criteria` heading. |
+| `implement` | One write lane at `origin/<base>`. The prompt carries the issue and the plan and says to commit, not push. The lane must leave at least one commit that descends from its start. |
+| `publish` | The engine pushes the lane head to `refs/heads/factory/issue-<n>` with a plain refspec. The first publish opens a draft PR with `Closes #<n>` and starts ship state with implementer `factory-impl-<n>`. Before pushing, the engine re-reads the remote branch and the PR, so a crash between push and record repeats nothing. |
+| `review` | One review lane at the exact head. Its prompt has the issue, the plan and the diff against the base, never the implementer's summary. See [Review lanes and verdicts](#review-lanes-and-verdicts). |
+| `fix` | A fresh write lane at the PR head with the review's findings. It never resumes the implementer session. |
+| `prepare` | Marks the PR ready, then runs ship's `runPrepare` with push off in an engine-owned checkout: `.omg/team/factory-run/worktrees/issue-<n>` on the local branch `omc-team/factory-run/issue-<n>`. The engine pushes prepare's housekeeping commits itself and records them in ship state, so they need no new review. |
+| `conflict-fix` | Prepare's base merge conflicted outside `inventory/`. A fresh write lane merges the base and resolves. A merge by a lane is not housekeeping, so it goes back through publish and review. At most 2 rounds. |
+| `gates` | Loops ship's `watchGates` in-process, one ship watch window per call. A window that times out is a heartbeat, not a stop. A read counts only when the PR head is still the pushed head and every check belongs to a workflow run for that head. |
+| `ci-fix` | A real check failure, from prepare or CI. A fresh write lane gets the failing check names and up to 50 failing test titles from the job logs. At most 1 round. |
+| `merge` | Asks ship's merge rule (`decideMerge`) about the current head, comments the decision and the exact merge command on the PR, and parks at `awaiting-human: merge`. |
+
+`merged`, `cancelled` and `failed` are terminal. `awaiting-human` is not a phase: the phase stays, and the gate is recorded next to it.
+
+##### State and resume
+
+- **State file.** `.omg/state/factory/run-<issue>.json`. The engine writes it under a file lock with an atomic write and seals it with a sha256 `integrity` field. It holds the phase, the gate, the issue and plan snapshot, the PR, the pushed head, every lane with its cap, usage and verdict, retries, history and elapsed time. Next to it are `run-<issue>.owner`, the single-runner owner file, and `run-<issue>.cancel`, the cancel request.
+- **Single runner.** A live owner refuses a second run. A dead pid on the same host is taken over and noted in the history. An owner on another host always refuses.
+- **Resume.** Rerun `omg factory run <issue>`. The engine clears the gate and re-evaluates the recorded phase. There is no `--from` and no `--reset`.
+- **Re-read before acting.** `publish` checks the remote branch and an existing PR before pushing or creating. `review` and `gates` read the PR's `headRefOid`. A head the engine did not push stops at `head-moved-externally`.
+- **Ship state.** The engine follows the PR's ship state when it is further along. It adopts a ship verdict only when a review lane it ran carries that verdict's hash.
+- **Lost lanes.** A lane recorded `running` at resume is lost. The engine checks its recorded Copilot child by pid and start time and kills it if it still runs. It keeps the worktree for inspection and respawns one fresh lane. A second loss of the same kind in a row stops at `lane-lost`. A lost lane's unknown usage counts as its whole credit cap.
+- **Failed state.** A state that fails its seal, or that the engine's record does not hold, is `failed` and is not resumed. Move the file aside to start over.
+- **Cancel.** `omg factory run cancel` writes the request file and never touches the state. A running engine sees it between steps and during lane waits, cancels the lane, and moves to `cancelled`. Without a running engine, the next run finishes the cancel. Cancel never closes the PR, deletes branches or removes worktrees.
+- **Clean.** `omg factory run clean <issue>` works only on a merged or cancelled run and refuses while an engine runs. It removes each lane's `copilot_run` worktree and the prepare checkout through the team worktree remover, which unlinks junctions such as `node_modules` first. It keeps a dirty worktree. It also keeps a worktree or branch with a commit that is not in the main checkout's HEAD, the fetched base or the PR branch on `origin`. It never deletes the PR branch on GitHub.
+- **Progress.** The engine writes progress events to `<state root>/progress/factory-<issue>.log`. Lane waits and gate polls emit a heartbeat, so `omg progress watch` sees no false stall.
+
+##### Human gates
+
+Every gate posts one issue comment that names the gate, the reason and the command to resume. It is posted once per gate and head. Fix the cause, then rerun `omg factory run <issue>`.
+
+| Gate | Cause | What to do |
+|---|---|---|
+| `needs-plan` | No `Acceptance criteria` heading and no trusted `omg-plan:` line, or the linked plan is missing or empty on the base | Add acceptance criteria or a plan link |
+| `pr-exists` | An open PR already uses `factory/issue-<n>` | Close that PR or finish it by hand |
+| `implement-failed`, `fix-failed`, `ci-fix-failed` | A write lane failed, timed out, hit its cap or made no commits, after one fresh retry | Read the lane's worktree and the history in `status`; sharpen the plan or raise a limit |
+| `conflict-fix-failed` | The conflict-fix lane's head does not contain the base | Resolve the conflict by hand, or rerun for a fresh lane |
+| `merge-conflicts` | The base still conflicts after 2 conflict-fix rounds | Merge the base into the PR branch by hand |
+| `review-invalid` | The review lane failed, or its output broke the contract, after one fresh retry | Read the lane's final message; rerun for a fresh review |
+| `review-identity` | A review job id is also a write lane's job | Inspect the state file; this is an engine invariant |
+| `fix-rounds-spent` | Ship blocked the PR after `maxFixRounds` changes-requested rounds | Raise `factory.run.maxFixRounds` or `ship.maxFixRounds` in the user config, or fix the PR by hand |
+| `protected-paths` | A lane, or the prepared head, changed paths that ship's merge rule protects | Nothing was pushed; review the change by hand |
+| `lane-tampered`, `review-tampered` | A lane, or prepare's checks, changed shared git state outside its own branch and worktree | Nothing was pushed and the verdict is dropped; inspect the repository by hand (see [Security model](#security-model)) |
+| `lane-unconfirmed` | The engine cannot confirm that a lane's Copilot process stopped | Stop the process yourself; your rerun counts as your word that it stopped |
+| `lane-lost` | Two lanes of the same kind in a row were lost | Find out why the engine died |
+| `state-tampered` | The run state, its owner or lock files, or the PR's ship state changed outside the engine | The changed file is kept as `<file>.tampered-<time>` and the engine's copy is restored; inspect it |
+| `head-moved-externally` | The PR head or the remote branch is at a commit the engine did not push | Reset the branch to the engine's head, or move the change into the plan |
+| `pr-not-open`, `base-changed` | The PR was closed, or retargeted to another base | Reopen or retarget it |
+| `ci-failed` | A real check failure after the ci-fix round | Fix the PR by hand |
+| `ci-flaky` | Known-flaky failures are out of rerun budget | Rerun the job on GitHub |
+| `no-workflows` | No checks and no workflow runs for the head after 5 minutes | Check that workflows trigger for the branch |
+| `gates-timeout` | Gates did not settle within `factory.run.gatesTimeoutMinutes` | Rerun to continue the loop |
+| `gates-disagree` | The merge rule's one-shot read kept disagreeing with the gates loop | Check the PR's checks by hand |
+| `budget` | The run reached `factory.run.maxRunCredits`, or less than the 30-credit lane minimum is left | Raise the limit in the user config |
+| `wall-time` | The run passed `factory.run.maxRunWallTimeMinutes` | Raise the limit in the user config |
+| `merge-refused` | Ship's merge rule refuses the head | Read the reasons in the PR comment and resolve them |
+| `merge` | Review approved and gates are green on the head | See [The merge gate](#the-merge-gate) |
+
+##### The merge gate
+
+Merge is always human. There is no `factory.merge` key and no auto mode, and the engine's command guard refuses `gh pr merge` outright. At the `merge` gate the PR carries the review findings as a comment, the diff, and a comment with the exact command that merges the head the gates checked. Read the diff and run that command yourself. Then run `omg factory run <issue>` once more: the engine reads the PR state and finishes as `merged`.
+
+##### Review lanes and verdicts
+
+- **Identity.** Every write lane runs as `factory-impl-<n>`. Each review lane is `factory-review-<n>-<jobId>`, and ship refuses a verdict from the implementer.
+- **Fresh context.** Each review is a new session in its own worktree at the head, on `copilot_run`'s `review` profile, which cannot write files or commit.
+- **Contract.** The lane's final message must end with exactly one fenced `json` block: `verdict` (`approve` or `request-changes`), `sha` (the 40-hex head), `findings` (each with `severity` `blocker`, `major`, `minor` or `nit`, a `summary`, and optional `file` and `line`) and optional `notes` of at most 500 characters.
+- **Fail closed.** No block, two blocks, text after the block, a wrong sha, bad fields, an edited worktree or a moved PR head make the review `invalid`, and no verdict is recorded. An `approve` with a `blocker` or `major` finding counts as `request-changes`.
+- **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff.
+
+##### Configuration
+
+Keys live under `factory.run`. The engine reads them from the user config at its default location: `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`. The working-tree project config, `.copilot/omg.jsonc`, can only lower a value. A higher one is ignored with a warning, because a lane can drop that file into the checkout. An ill-typed value is an error.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `laneMaxCredits` | `30` | AI-credit cap passed to every lane. Mandatory, and at least 30, the Copilot CLI minimum. |
+| `maxRunCredits` | unset | Cap on the run's measured AI credits, checked at step boundaries. Each lane's cap is lowered to what is left. Must be at least `laneMaxCredits`. |
+| `laneTimeoutMinutes` | `30` | Wall time of one lane, at most `copilot_run`'s maximum timeout |
+| `maxRunWallTimeMinutes` | `240` | Engine wall time across all invocations of one run |
+| `maxRetries` | `1` | Fresh retries of a failed lane per phase |
+| `maxFixRounds` | `2` | Changes-requested rounds before ship blocks the run. Defaults to `ship.maxFixRounds`, which the user config may also set. |
+| `maxCiFixRounds` | `1` | CI-fix rounds; a value above 1 uses 1 |
+| `gatesTimeoutMinutes` | `90` | Overall bound of one gates phase across its watch windows |
+
+The base branch comes from `ship.base`. The gates and the merge rule use ship's config. `requiredChecks`, `advisoryChecks` and the known-flaky list load in strict mode: from the user config, or from `.copilot/omg.jsonc` as committed at GitHub's base sha, never from the working tree or the PR head. A base the engine cannot verify stops the step. See [`omg ship`](#omg-ship) for the ship keys.
+
+##### Security model
+
+Lanes read untrusted issue and PR content, so any lane may be prompt-injected. The design assumes a lane tries anything its tools allow, and the engine decides what counts.
+
+- **Lane rights.** Lanes run with `copilot_run`'s worker policy: a shell denylist that includes `git push`, writes confined to the worktree, and ship's protected paths refused. Lanes have no push or PR rights, and review lanes cannot commit. Only the engine pushes and talks to GitHub. Its command guard allows a fixed list of `gh` and `git` forms, including a plain push of a 40-hex sha to the factory branch, never a `+` refspec and never a protected branch.
+- **Protected paths.** Before every push the engine checks the change against ship's merge-rule paths. A hit stops at `protected-paths`.
+- **Tamper checks.** The engine compares the shared git state before and after every lane, write or review. The comparison covers refs, config, `hooks/`, `info/`, `worktrees/`, `modules/`, alternates, your global git config (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config` or `GIT_CONFIG_GLOBAL`) and every file a config includes, both HEADs, the main checkout's status and a short list of ignored files such as `.env*` and `node_modules/.bin`. A `worktrees/` or `modules/` entry that is a symlink or junction, or a live worktree entry that disappears, also counts as a change. A lane may add only its own branch and worktree. Any other change stops the run at `review-tampered` or `lane-tampered`, drops the verdict and pushes nothing. The check runs again at every step boundary, before the engine's next git command and before every push. A lost lane is compared when it is found. Prepare's checks run the PR's own code, so the engine snapshots around prepare the same way.
+- **Engine-owned state.** The engine keeps its own record of every state file it writes, outside the repository: in `~/.omg/factory-ledger/`, or in `$OMC_STATE_DIR/factory-ledger/` when that is set. Any other change to the run state, its owner or lock files, or the PR's ship state stops the run at `state-tampered`. The sha256 seal on the state file only catches accidental edits, because anyone can recompute it.
+- **Hardened engine git.** The engine runs its own git, including the fetch in `clean`, with an empty `core.hooksPath` and `core.fsmonitor=false`. A hook or fsmonitor that a lane plants never runs in the engine, and the repository's own hooks do not run on factory pushes either.
+- **Residual risk.** Lanes are not sandboxed until the sandbox PRs land. A lane's shell runs as you, so it can reach your home directory, rewrite the engine's record there, or read your credentials. The record and the checks above narrow that, and a human merge always comes last. Until then, run `omg factory run` only on repositories and issues you trust.
+
+##### Cost
+
+AI Credits is the unit. Premium requests are legacy and limit nothing here, and the plugin budget governor is not consulted. Each lane is one `copilot_run` session with its own cap. Copilot checks the cap after each model call, so a lane can overshoot it by one call. Lane usage is measured from the session's shutdown event and goes to the budget ledger for reporting.
+
+| Run shape | Lanes |
+|---|---|
+| Approved at the first review | 2: implement and review |
+| Each changes-requested round | +2: fix and review |
+| Each conflict-fix round | +2: conflict-fix and review |
+| The ci-fix round | +2: ci-fix and review |
+| Each retry or lost-lane respawn | +1 |
+
+With the default limits the worst case is 12 lanes before retries, which is 360 AI credits of caps. Lanes usually spend far less than their cap: the `factory-run` smoke scenario's implement and review lanes are estimated at about 2 AI credits together on a small model. Set `maxRunCredits` to bound a run, and use Copilot admin budgets as the hard stop.
+
+##### Smoke scenarios
+
+Two opt-in tier 2 scenarios run the engine in-process against a sandbox repository with a bare `origin` and a scripted `gh`, so nothing touches GitHub. Neither runs in `all`.
+
+```bash
+omg smoke copilot --tier 2 --scenario factory-run       # implement and review lanes, up to the merge gate (~2 AI credits estimated)
+omg smoke copilot --tier 2 --scenario factory-run-fix   # adds one changes-requested round (~4 AI credits estimated)
+```
+
+See [`omg smoke copilot`](#omg-smoke-copilot) for their checks.
 
 #### `omg factory heal` (experimental)
 
