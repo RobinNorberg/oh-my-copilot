@@ -130,14 +130,19 @@ function checkPath(value: string, quoted: boolean, gitRev: boolean, ctx: ShellAl
   if (value.startsWith('\\\\') || value.startsWith('//')) return `UNC path ${value}`;
   // PowerShell reads `a,b` as two paths.
   for (let part of value.split(',')) {
-    if (part.includes(':') && !/^[A-Za-z]:[\\/]/.test(part)) {
+    // A drive path is refused on every platform: off win32 `C:\x` is not
+    // absolute and would resolve inside the worktree. Worktree paths are relative.
+    if (/^[A-Za-z]:/.test(part)) return `drive path ${part}`;
+    if (part.includes(':')) {
       // `HEAD:src/a.ts`, `:src/a.ts`; a provider path (`env:X`, `HKLM:`) is refused.
       if (!gitRev || part.split(':').length !== 2) return `colon in argument ${part}`;
       part = part.slice(part.indexOf(':') + 1);
     }
     // bash (before 5.2) matches `..` with `.*`.
     if (!quoted && part.split(/[\\/]/).some((seg) => seg.startsWith('.') && /[*?]/.test(seg))) return `hidden-file glob ${part}`;
-    const abs = isAbsolute(part) ? part : resolve(ctx.cwd, part);
+    // A backslash separates path segments on every platform (`src\a.ts`, `..\..\x`).
+    const slashed = part.replace(/\\/g, '/');
+    const abs = isAbsolute(slashed) ? slashed : resolve(ctx.cwd, slashed);
     if (!isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform)) return `path outside the worktree: ${part}`;
   }
   return null;

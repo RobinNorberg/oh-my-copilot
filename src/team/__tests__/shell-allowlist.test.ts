@@ -163,6 +163,8 @@ describe('reviewShellAllowlist refuses everything else', () => {
     // Paths outside the worktree.
     'cat ../../.gitconfig',
     'cat C:\\Users\\x\\.ssh\\id_rsa',
+    'cat C:/Users/x/.ssh/id_rsa',
+    'cat ..\\..\\.gitconfig',
     'cat /etc/passwd',
     'type \\\\host\\share',
     'cat //host/share',
