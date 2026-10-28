@@ -192,15 +192,26 @@ export const LANE_CREDENTIAL_ENV = [
   'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN',
   'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH', 'GIT_SSH_COMMAND',
   'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL',
+  // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
+  'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY', 'AZURE_DEVOPS_EXT_GITHUB_PAT', 'SYSTEM_ACCESSTOKEN',
+  // azure-identity / az: service principal, certificate, workload identity and managed identity.
+  'AZURE_CLIENT_SECRET', 'AZURE_CLIENT_CERTIFICATE_PATH', 'AZURE_CLIENT_CERTIFICATE_PASSWORD', 'AZURE_PASSWORD',
+  'AZURE_FEDERATED_TOKEN_FILE', 'IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET',
+  // az storage account keys and SAS.
+  'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN',
+  // Terraform azurerm (ARM_*).
+  'ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN',
+  'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
 ] as const;
 /** Names that look like a secret; COPILOT_GITHUB_TOKEN is the session's own credential and stays. */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY/i;
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
 
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
  * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
- * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` points at an
- * empty dir, so `gh` finds no stored login; git reads no global or system
+ * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` and
+ * `AZURE_CONFIG_DIR` point at an empty dir, so `gh` and `az` (the azure-devops
+ * extension included) find no stored login; git reads no global or system
  * config (no credential helper) and never prompts.
  *
  * Copilot's own auth is kept: the stored login (OS credential store, copied
@@ -221,6 +232,7 @@ export function scrubLaneCredentials(env: NodeJS.ProcessEnv, emptyDir: string): 
   writeFileSync(emptyConfig, '');
   Object.assign(env, {
     GH_CONFIG_DIR: emptyDir,
+    AZURE_CONFIG_DIR: emptyDir,
     GIT_CONFIG_GLOBAL: emptyConfig,
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_TERMINAL_PROMPT: '0',
@@ -915,10 +927,16 @@ export class CopilotRunManager {
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
+    // No session needs git credentials (the host pushes). An empty helper in the read-only global config clears the
+    // system one (Git for Windows: manager) for the session's plain git fetch or `git credential fill`. Residual: the
+    // session controls its argv, so `git -c credential.helper=...`, `--config-env` or a direct `git credential-manager
+    // get` still reach a helper; the worker deny patterns catch the direct spellings, and the Windows sandbox denies
+    // GCM the credential store (docs/REFERENCE.md). Unprobed on Linux/macOS; unsandboxed sessions are fully exposed.
+    writeFileSync(env.GIT_CONFIG_GLOBAL!, '[credential]\n\thelper =\n');
     // A session the host commits for never commits, so it gets no identity.
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
-    Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
+    Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;

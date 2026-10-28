@@ -18,6 +18,8 @@ export interface FakeCalls {
     prompts: string[];
     /** Every session.rpc.options.update payload. */
     optionsUpdates: Array<Record<string, unknown>>;
+    /** Each connection's GIT_CONFIG_GLOBAL content when it started (the job home is gone afterwards), or null. */
+    globalGitConfigs: Array<string | null>;
 }
 export declare const newCalls: () => FakeCalls;
 /** The server `rpc` of a fake client with sandbox support `sandbox`. */
