@@ -68,6 +68,7 @@ describe('omg release CLI', () => {
     [['5.12.2', '--timeout', '0'], /--timeout must be a positive number/],
     [['5.12.2', '--triage-runs', '0'], /--triage-runs must be a positive whole number/],
     [['5.12.2', '--triage-runs', '2.5'], /--triage-runs must be a positive whole number/],
+    [['5.12.2', '--triage-timeout', '0'], /--triage-timeout must be a positive number/],
     [['5.12.2', '--flaky-candidates', '--status'], /pass one of --status \/ --stop \/ --flaky-candidates/],
   ])('usage error %j exits 2', async (argv, message) => {
     expect(await run(...argv, '--dry-run')).toBe(2);
@@ -100,6 +101,14 @@ describe('omg release CLI', () => {
     expect(text).toMatch(/1 known-flaky candidate\(s\) of the 5\.12\.2 full-suite triage/);
     expect(text).toMatch(/Owner approval needed/);
     expect(JSON.parse(text.slice(text.indexOf('[')))).toEqual(tests);
+    expect(calls).toEqual([]);
+  });
+
+  it('--flaky-candidates on a corrupt candidates file is a clear usage error, not a raw JSON throw', async () => {
+    mkdirSync(join(root, '.omg', 'release'), { recursive: true });
+    writeFileSync(join(root, '.omg', 'release', '5.12.2-flaky-candidates.json'), '{"tests": [');
+    expect(await run('5.12.2', '--flaky-candidates')).toBe(2);
+    expect(err.join('\n')).toMatch(/5\.12\.2-flaky-candidates\.json is not valid JSON .*delete it and re-run/);
     expect(calls).toEqual([]);
   });
 

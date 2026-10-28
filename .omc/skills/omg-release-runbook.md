@@ -83,11 +83,13 @@ reference for what each phase asserts.
    **Smoke reuse.** A green live smoke is recorded as `lastSmoke` (input
    hash, HEAD sha, time) at the top level of the state, so voiding the smoke
    record keeps it. The input hash is sha256 over HEAD's object ids of
-   `dist`, `bridge`, `hooks`, `agents`, `skills`, `.github/plugin`,
-   `copilot` and `package.json`. When a later smoke phase (after
+   `dist`, `bridge`, `hooks`, `agents`, `skills`, `commands`, `copilot`,
+   `scripts`, `templates`, `.claude-plugin`, `.mcp.json`, `plugin.json`,
+   `package.json` and `package-lock.json` (the shipped paths the smoke loads). When a later smoke phase (after
    `--from build` or `--from suite`) sees the same hash, it reuses the green
    smoke without a run and without `--live-smoke`: the note says
-   `reused the green Tier 2 smoke of <sha> run at <time>` and the details
+   `reused the green Tier 2 smoke of <sha> run at <time>` (with the hash and
+   the installed Copilot CLI version) and the details
    carry the full hash. Why: a test-only fix rebuilds byte-identical dist and
    bridge, so it costs no AI credits and needs no `--allow-skipped-smoke`.
    Any change that reaches those paths changes the hash, and the smoke runs
@@ -96,7 +98,9 @@ reference for what each phase asserts.
    **Flake triage.** With `--suite full`, each failing title not in the
    baseline (at most 20; more fail at once) is rerun alone
    `--triage-runs` times (default 3) with
-   `vitest run <file> -t <title> --reporter=json`, sequentially. Passing
+   `vitest run <file> --testNamePattern=<title> --reporter=json`, sequentially,
+   each with a timeout (`--triage-timeout`, default 5 min; a timeout is a
+   failed rerun). A rerun passes only if vitest exits 0 and the report says so. Passing
    every rerun = load-flaky: the suite passes with a warning. Failing every
    rerun (or a file-level collection error) = real: the suite fails. Failing
    only some reruns = mixed: blocked, since it may be a real race. Progress

@@ -190,7 +190,10 @@ describe('smoke input hash', () => {
   const ids = (over: Record<string, string | null> = {}) => SMOKE_INPUTS.map((p) => [p, p in over ? over[p] : `${p}-id`] as const);
 
   it('covers what the Tier 2 smoke loads', () => {
-    expect([...SMOKE_INPUTS]).toEqual(['dist', 'bridge', 'hooks', 'agents', 'skills', '.github/plugin', 'copilot', 'package.json']);
+    expect([...SMOKE_INPUTS]).toEqual([
+      'dist', 'bridge', 'hooks', 'agents', 'skills', 'commands', 'copilot', 'scripts', 'templates',
+      '.claude-plugin', '.mcp.json', 'plugin.json', 'package.json', 'package-lock.json',
+    ]);
   });
 
   it('is a stable sha256 that changes with any input id, absence included', () => {
@@ -198,7 +201,7 @@ describe('smoke input hash', () => {
     expect(base).toMatch(/^[0-9a-f]{64}$/);
     expect(smokeInputHash(ids())).toBe(base);
     for (const p of SMOKE_INPUTS) expect(smokeInputHash(ids({ [p]: 'changed' }))).not.toBe(base);
-    expect(smokeInputHash(ids({ '.github/plugin': null }))).not.toBe(base);
+    expect(smokeInputHash(ids({ 'plugin.json': null }))).not.toBe(base);
   });
 });
 

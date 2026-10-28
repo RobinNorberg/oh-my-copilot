@@ -70,6 +70,7 @@ import {
   VERSION_STAMPS,
   type TriageResult,
 } from './checks.js';
+import { parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
 import type { ReleaseProgressInput } from './progress.js';
 
 export const PHASES = ['preflight', 'bump', 'build', 'gates', 'commit', 'suite', 'smoke', 'pr', 'promote', 'tag', 'verify'] as const;
@@ -189,6 +190,8 @@ export interface ReleaseOptions {
   forceSmoke?: boolean;
   /** Isolated reruns of each new failing full-suite title (default 3). */
   triageRuns?: number;
+  /** Minutes each isolated rerun may take (default 5); a timeout is a failed run. */
+  triageTimeoutMinutes?: number;
   /** Let pr run although the live smoke did not pass (it was skipped). */
   allowSkippedSmoke?: boolean;
   fixOrphans?: boolean;
@@ -656,6 +659,7 @@ class Release {
    */
   private triage(titles: string[], head: string): TriageResult[] {
     const runs = this.opts.triageRuns ?? 3;
+    const timeoutMs = (this.opts.triageTimeoutMinutes ?? 5) * 60_000;
     const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
     const out = join(this.deps.stateRoot, 'release', `${this.v}-triage.json`);
     const results: TriageResult[] = [];
@@ -666,10 +670,12 @@ class Release {
         let passes = 0;
         for (let n = 0; name !== null && n < runs; n++) {
           rmSync(out, { force: true });
-          const args = ['node_modules/vitest/vitest.mjs', 'run', file, '-t', escapeRe(name), '--reporter=json', `--outputFile=${out}`];
-          this.deps.log(`  node ${args.slice(0, 3).join(' ')} -t ${JSON.stringify(args[4])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
-          this.run(this.deps.node, args, { suiteEnv: true });
-          if (existsSync(out) && testPassedInReport(readFileSync(out, 'utf8'), file, name)) passes++;
+          // One --testNamePattern=<pattern> argument: a title starting with "-" is never read as a flag.
+          const args = ['node_modules/vitest/vitest.mjs', 'run', file, `--testNamePattern=${escapeRe(name)}`, '--reporter=json', `--outputFile=${out}`];
+          this.deps.log(`  node ${args.slice(0, 3).join(' ')} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
+          const r = this.run(this.deps.node, args, { suiteEnv: true, timeoutMs });
+          // A pass is exit 0 AND the report saying the test passed; a timeout or crash exits non-zero.
+          if (r.status === 0 && existsSync(out) && testPassedInReport(readFileSync(out, 'utf8'), file, name)) passes++;
         }
         result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
       }
@@ -689,12 +695,20 @@ class Release {
     }));
   }
 
+  /** The installed Copilot CLI version, found as the smoke finds the binary; 'unknown' when absent. */
+  private copilotVersion(): string {
+    const { bin } = resolveCopilotBinary(undefined, process.env);
+    if (!bin) return 'unknown';
+    const v = parseCopilotVersion(this.run(bin, ['--version']).stdout);
+    return v ? `v${v}` : 'unknown';
+  }
+
   private smoke(): PhaseOutcome {
     const head = this.git('rev-parse', 'HEAD');
     const inputHash = this.smokeInputs();
     const last = this.state.lastSmoke;
     if (!this.opts.forceSmoke && last?.inputHash === inputHash) {
-      const note = `reused the green Tier 2 smoke of ${last.headSha.slice(0, 12)} run at ${last.at} (inputs identical, hash ${inputHash.slice(0, 12)}; --force-smoke re-runs it)`;
+      const note = `reused the green Tier 2 smoke of ${last.headSha.slice(0, 12)} run at ${last.at} (inputs identical, hash ${inputHash.slice(0, 12)}, Copilot CLI ${this.copilotVersion()}; --force-smoke re-runs it)`;
       this.deps.log(`  ${note}`);
       return { status: 'ok', note, details: [`input hash ${inputHash}`, `original smoke: ${last.at} on ${last.headSha}`] };
     }

@@ -92,7 +92,7 @@ export interface ReleaseCommandDeps extends Partial<ReleaseDeps> {
 
 interface ReleaseCliOptions {
   from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
-  liveSmoke?: boolean; forceSmoke?: boolean; triageRuns: string; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
+  liveSmoke?: boolean; forceSmoke?: boolean; triageRuns: string; triageTimeout: string; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
   drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean; flakyCandidates?: boolean;
 }
 
@@ -107,7 +107,7 @@ export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline
     ...(baseline ? ['--baseline', baseline] : []),
     ...(o.liveSmoke ? ['--live-smoke'] : []),
     ...(o.forceSmoke ? ['--force-smoke'] : []),
-    '--triage-runs', o.triageRuns,
+    '--triage-runs', o.triageRuns, '--triage-timeout', o.triageTimeout,
     ...(o.allowSkippedSmoke ? ['--allow-skipped-smoke'] : []),
     ...(o.fixOrphans ? ['--fix-orphans'] : []),
   ];
@@ -132,6 +132,7 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--live-smoke', 'Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise')
     .option('--force-smoke', 'Run the live smoke even when its inputs hash to the last green smoke (implies --live-smoke); without it an identical input hash reuses that smoke')
     .option('--triage-runs <n>', 'Isolated reruns of each new failing full-suite title (pass every rerun = load-flaky, warns; fail some = mixed, blocks; fail all = real, fails)', '3')
+    .option('--triage-timeout <minutes>', 'Minutes each isolated rerun may take; a timeout counts as a failed rerun', '5')
     .option('--flaky-candidates', 'Print the known-flaky candidates of the full-suite triage, ready to paste into .github/known-flaky-tests.json after review; run nothing')
     .option('--allow-skipped-smoke', 'Let the pr phase run although the live smoke was skipped')
     .option('--fix-orphans', 'Remove tracked dist outputs whose src source is gone')
@@ -158,6 +159,8 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
         if (!Number.isFinite(driveMaxHours) || driveMaxHours <= 0) throw new UsageError('--drive-max must be a positive number of hours');
         const triageRuns = Number(o.triageRuns);
         if (!Number.isInteger(triageRuns) || triageRuns < 1) throw new UsageError('--triage-runs must be a positive whole number');
+        const triageTimeoutMinutes = Number(o.triageTimeout);
+        if (!Number.isFinite(triageTimeoutMinutes) || triageTimeoutMinutes <= 0) throw new UsageError('--triage-timeout must be a positive number of minutes');
         if ([o.status, o.stop, o.flakyCandidates].filter(Boolean).length > 1) throw new UsageError('pass one of --status / --stop / --flaky-candidates');
         if (o.detach && o.dryRun) throw new UsageError('--detach runs the release; drop --dry-run');
         const from = phaseOption(o.from, '--from');
@@ -216,7 +219,12 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
         if (o.flakyCandidates) {
           const path = flakyCandidatesPath(stateRoot, version);
           const content = existsSync(path) ? readFileSync(path, 'utf8') : null;
-          const tests = content ? (JSON.parse(content) as { tests?: unknown[] }).tests ?? [] : [];
+          let tests: unknown[] = [];
+          try {
+            tests = content ? (JSON.parse(content) as { tests?: unknown[] }).tests ?? [] : [];
+          } catch (error) {
+            throw new UsageError(`${path} is not valid JSON (${(error as Error).message}); delete it and re-run --from suite --suite full to regenerate`);
+          }
           if (json) console.log(JSON.stringify({ path, tests }, null, 2));
           else if (tests.length === 0) console.log(`no known-flaky candidates for ${version} (${path})`);
           else {
@@ -267,6 +275,7 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           liveSmoke: o.liveSmoke,
           forceSmoke: o.forceSmoke,
           triageRuns,
+          triageTimeoutMinutes,
           allowSkippedSmoke: o.allowSkippedSmoke,
           fixOrphans: o.fixOrphans,
           timeoutMinutes,

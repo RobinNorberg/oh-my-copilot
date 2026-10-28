@@ -191,8 +191,17 @@ export function flakyCandidates(version: string, triage: readonly TriageResult[]
   }));
 }
 
-/** What `bridge/cli.cjs smoke copilot --tier 2` loads: a smoke is reused only while every one of these is unchanged. */
-export const SMOKE_INPUTS = ['dist', 'bridge', 'hooks', 'agents', 'skills', '.github/plugin', 'copilot', 'package.json'] as const;
+/**
+ * What `bridge/cli.cjs smoke copilot --tier 2` loads: a smoke is reused only while every one of these is unchanged.
+ * Over-inclusion only costs a re-run; a missed input would reuse a stale green. Each is a shipped path (package.json
+ * `files`): the plugin manifests (plugin.json, .claude-plugin), the dirs and .mcp.json the plugin points Copilot at,
+ * scripts/ (copilot/hooks.json runs them; the smoke runs scripts/copilot/build-*.mjs --verify), templates, and
+ * package-lock.json (the SDK version the scenarios load).
+ */
+export const SMOKE_INPUTS = [
+  'dist', 'bridge', 'hooks', 'agents', 'skills', 'commands', 'copilot', 'scripts', 'templates',
+  '.claude-plugin', '.mcp.json', 'plugin.json', 'package.json', 'package-lock.json',
+] as const;
 
 /** sha256 over `<path> <object id>` lines (`-` for an absent path), in SMOKE_INPUTS order. */
 export function smokeInputHash(ids: ReadonlyArray<readonly [string, string | null]>): string {

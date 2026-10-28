@@ -17,6 +17,7 @@ import {
   type ReleaseOptions,
   type ReleaseState,
 } from '../engine.js';
+import { SMOKE_INPUTS } from '../checks.js';
 import type { ReleaseProgressInput } from '../progress.js';
 import { driveRelease } from '../drive.js';
 
@@ -533,12 +534,12 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const ACK = 'worker-launch-ack > reloads the accepted current recovery launch with its durable context';
       const FILE = 'src/hooks/a.test.ts';
       const suiteReport = (names: string[]) => ({ testResults: [{ name: FILE, status: 'failed', assertionResults: names.map((fullName) => ({ status: 'failed', fullName })) }] });
-      const isolatedRuns = () => calls.filter((c) => c.includes(`vitest.mjs run ${FILE} -t `));
+      const isolatedRuns = () => calls.filter((c) => c.includes(`vitest.mjs run ${FILE} --testNamePattern=`));
 
       /** An isolated `vitest run <file> -t <pattern>` passes per `outcomes[name][n]` on its n-th run. */
       const isolated = (outcomes: Record<string, boolean[]>): Handler => (key, args) => {
-        if (!key.includes('vitest.mjs run') || args[3] !== '-t') return undefined;
-        const name = Object.keys(outcomes).find((n) => new RegExp(`^${args[4]}$`).test(n));
+        if (!key.includes('vitest.mjs run') || !args[3]?.startsWith('--testNamePattern=')) return undefined;
+        const name = Object.keys(outcomes).find((n) => new RegExp(`^${args[3].slice('--testNamePattern='.length)}$`).test(n));
         if (!name) return no('no test matched', 1);
         const n = calls.filter((c) => c === key).length - 1;
         const passed = outcomes[name][n];
@@ -561,8 +562,8 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(logs.join('\n')).toMatch(/!! WARNING full suite: 2 failing/);
         // Three sequential isolated runs per title, with the suite environment, the title escaped for -t.
         expect(isolatedRuns()).toHaveLength(6);
-        expect(inherited.filter((c) => c.includes(' -t '))).toHaveLength(6);
-        expect(calls).toContain(`node node_modules/vitest/vitest.mjs run ${FILE} -t ${LOCK} --reporter=json --outputFile=${join(stateRoot, 'release', `${V}-triage.json`)}`);
+        expect(inherited.filter((c) => c.includes(' --testNamePattern='))).toHaveLength(6);
+        expect(calls).toContain(`node node_modules/vitest/vitest.mjs run ${FILE} --testNamePattern=${LOCK} --reporter=json --outputFile=${join(stateRoot, 'release', `${V}-triage.json`)}`);
 
         const candidates = JSON.parse(readFileSync(join(stateRoot, 'release', `${V}-flaky-candidates.json`), 'utf8')) as { release: string; sha: string; tests: Array<{ file: string; title: string; evidence: object }> };
         expect(candidates).toMatchObject({ release: V, sha: HEAD });
@@ -624,12 +625,59 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(isolatedRuns()).toHaveLength(5);
       });
 
+      it('a rerun passes only when vitest exits 0 as well as the report saying passed', async () => {
+        seedState('commit');
+        handlers.push(
+          (key, args) => {
+            if (!args[3]?.startsWith('--testNamePattern=')) return undefined;
+            writeFileSync(args.find((a) => a.startsWith('--outputFile='))!.slice('--outputFile='.length), JSON.stringify({ testResults: [{ name: join(root, FILE), status: 'passed', assertionResults: [{ fullName: LOCK, status: 'passed' }] }] }));
+            return no('worker crashed after the report', 1);
+          },
+          vitestWrites(suiteReport([LOCK])),
+        );
+        const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
+        expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (passed 0/3 isolated reruns)`] });
+      });
+
+      describe('rerun timeout', () => {
+        const timedOut: ExecResult = { status: 1, stdout: '', stderr: 'spawnSync ETIMEDOUT' };
+        const run = async (extra: Partial<ReleaseOptions>) => {
+          seedState('commit');
+          handlers.push((key, args) => (args[3]?.startsWith('--testNamePattern=') ? timedOut : undefined), vitestWrites(suiteReport([LOCK])));
+          const timeouts: Array<number | undefined> = [];
+          const result = await runRelease(
+            { ...deps(), exec: (cmd, args, opts) => { if (args[3]?.startsWith('--testNamePattern=')) timeouts.push(opts?.timeoutMs); return exec(cmd, args, opts); } },
+            { version: V, from: 'suite', to: 'suite', suite: 'full', ...extra },
+          );
+          return { result, timeouts };
+        };
+
+        it('defaults to 5 minutes, and a timed-out rerun is a failed run', async () => {
+          const { result, timeouts } = await run({});
+          expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} > ${LOCK} (passed 0/3 isolated reruns)`] });
+          expect(timeouts).toEqual([300_000, 300_000, 300_000]);
+        });
+
+        it('--triage-timeout sets it', async () => {
+          expect((await run({ triageTimeoutMinutes: 2 })).timeouts).toEqual([120_000, 120_000, 120_000]);
+        });
+      });
+
+      it('a title starting with "-" is one --testNamePattern argument, never a flag', async () => {
+        seedState('commit');
+        const DASH = '-x leading dash';
+        handlers.push(isolated({ [DASH]: [true, true, true] }), vitestWrites(suiteReport([DASH])));
+        expect((await release({ from: 'suite', to: 'suite', suite: 'full' })).phases[0].status).toBe('ok');
+        expect(isolatedRuns()[0]).toContain(` --testNamePattern=${DASH.replace(/[.*+?^${}()|[]\]/g, '\$&')} `);
+        expect(isolatedRuns().every((c) => !/ -t /.test(c))).toBe(true);
+      });
+
       it('a file-level collection error is real without reruns', async () => {
         seedState('commit');
         handlers.push(vitestWrites({ testResults: [{ name: FILE, status: 'failed', assertionResults: [] }] }));
         const result = await release({ from: 'suite', to: 'suite', suite: 'full' });
         expect(result.phases[0]).toMatchObject({ status: 'fail', details: [`real: ${FILE} (passed 0/0 isolated reruns)`] });
-        expect(calls.filter((c) => c.includes(' -t '))).toEqual([]);
+        expect(calls.filter((c) => c.includes(' --testNamePattern='))).toEqual([]);
       });
 
       it('more than 20 new failing titles fail at once, without triage', async () => {
@@ -713,7 +761,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       const smokeRuns = () => calls.filter((c) => c === SMOKE).length;
 
       beforeEach(() => {
-        trees = { dist: 'd1', bridge: 'b1', hooks: 'h1', agents: 'a1', skills: 's1', copilot: 'c1', 'package.json': 'p1' };
+        trees = Object.fromEntries(SMOKE_INPUTS.map((p) => [p, `${p}-1`]));
         smokeGreen = true;
         handlers.push((key, args) => {
           if (key === 'git rev-parse HEAD') return ok(`${HEAD}\n`);
@@ -744,7 +792,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(resumed.phases[1]).toMatchObject({
           id: 'smoke',
           status: 'ok',
-          note: `reused the green Tier 2 smoke of ${HEAD.slice(0, 12)} run at 2026-10-21T12:00:00.000Z (inputs identical, hash ${recorded.inputHash.slice(0, 12)}; --force-smoke re-runs it)`,
+          note: `reused the green Tier 2 smoke of ${HEAD.slice(0, 12)} run at 2026-10-21T12:00:00.000Z (inputs identical, hash ${recorded.inputHash.slice(0, 12)}, Copilot CLI unknown; --force-smoke re-runs it)`,
           details: [`input hash ${recorded.inputHash}`, `original smoke: 2026-10-21T12:00:00.000Z on ${HEAD}`],
         });
         expect(smokeRuns()).toBe(1);
@@ -760,7 +808,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
         expect(calls.some((c) => c.startsWith('git push'))).toBe(true);
       });
 
-      it.each(['dist', 'bridge', 'hooks', 'agents', 'skills', 'copilot', 'package.json', '.github/plugin'])('a changed %s is a new input hash: no reuse', async (path) => {
+      it.each([...SMOKE_INPUTS])('a changed %s is a new input hash: no reuse', async (path) => {
         seedState('suite');
         await release({ to: 'smoke', liveSmoke: true });
         trees[path] = 'changed';
