@@ -113,12 +113,15 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     let t: number;
     let liveness: DriverLiveness;
     let savedProgressFile: string | undefined;
-    const proc: DriveProcess = { identity: async () => null, liveness: async () => liveness, kill: async () => true };
+    /** The next N reads of the PR's base fail with this stderr. */
+    let baseViewFailures: { count: number; stderr: string };
+    const proc: DriveProcess = { identity: async () => 'ticks:1', liveness: async () => liveness, kill: async () => true };
 
     /** `gh pr checks` answers from `script(read)`; the clock moves only when the watch sleeps. */
     async function drive(script: (read: number) => ExecResult | undefined, ...argv: string[]): Promise<number> {
       let reads = 0;
       const scripted: Exec = (cmd, args, opts) => {
+        if (cmd === 'gh' && args.join(' ') === 'pr view 42 --json baseRefName,baseRefOid,url' && baseViewFailures.count-- > 0) return { status: 1, stdout: '', stderr: baseViewFailures.stderr };
         if (cmd === 'gh' && args[0] === 'pr' && args[1] === 'checks') {
           const r = script(++reads);
           if (r) return r;
@@ -137,6 +140,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     beforeEach(() => {
       t = Date.parse('2026-10-28T00:00:00Z');
       liveness = 'live';
+      baseViewFailures = { count: 0, stderr: '' };
       savedProgressFile = process.env.OMG_PROGRESS_FILE;
       delete process.env.OMG_PROGRESS_FILE;
     });
@@ -164,6 +168,15 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
 
       expect(await drive(() => testIs('FAILURE'))).toBe(1);
       expect(events()).toMatch(/phase=gates status=fail note="PR #42 gates failed: Test/);
+    });
+
+    it('a transient error reading the PR base is retried; a lasting one ends with a fail event', async () => {
+      baseViewFailures = { count: 2, stderr: 'HTTP 502: Bad Gateway' };
+      expect(await drive(() => undefined)).toBe(0);
+
+      baseViewFailures = { count: 9, stderr: 'HTTP 502: Bad Gateway' };
+      expect(await drive(() => undefined)).toBe(1);
+      expect(events()).toMatch(/phase=gates status=fail note="PR #42: gh pr view 42 did not return a base branch/);
     });
 
     it('--drive-max ends an endless wait as blocked (exit 1), and a live driver lock refuses a second driver', async () => {

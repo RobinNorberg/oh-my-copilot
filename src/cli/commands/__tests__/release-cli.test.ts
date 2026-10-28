@@ -90,9 +90,9 @@ describe('omg release CLI', () => {
     let killed: number[];
     let spawned: Array<{ args: string[]; options: Record<string, unknown> }>;
     let events: ReleaseProgressInput[];
-    const proc: DriveProcess = { identity: async () => null, liveness: async () => liveness, kill: async (pid) => { killed.push(pid); return true; } };
+    const proc: DriveProcess = { identity: async () => 'ticks:1', liveness: async () => liveness, kill: async (pid) => { killed.push(pid); return true; } };
     const lockPath = () => join(root, '.omg', 'release', '5.12.2.drive.json');
-    const lock = (pid: number) => JSON.stringify({ pid, startedAt: '2026-10-28T00:00:00.000Z', argv: [], host: 'h', identity: null });
+    const lock = (pid: number) => JSON.stringify({ pid, startedAt: '2026-10-28T00:00:00.000Z', argv: [], host: 'h', identity: 'ticks:9' });
 
     async function drive(...argv: string[]): Promise<number> {
       process.exitCode = undefined;

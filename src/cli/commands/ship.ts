@@ -50,7 +50,7 @@ import {
   type ShipConfig,
 } from '../../ship/config.js';
 import { defaultExec, guardExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { watchGates, type GateReport, type WatchResult } from '../../ship/gates.js';
+import { TRANSIENT_GH_ERROR, watchGates, type GateReport, type WatchResult } from '../../ship/gates.js';
 import { emitProgress, resolveProgressFile } from '../../lib/agent-progress.js';
 import {
   defaultDriveProcess,
@@ -135,6 +135,18 @@ function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string; re
     throw new Error(`gh pr view ${pr} did not return a base branch and sha: ${view.stderr.trim()}`);
   }
   return { base: info.baseRefName, baseSha: info.baseRefOid, repoUrl: prRepoUrl(info.url) };
+}
+
+/** prBaseInfo, retried (up to two more times) while GitHub answers with a transient error. */
+async function prBaseInfoRetrying(exec: Exec, pr: number, sleep: (ms: number) => Promise<void>): Promise<ReturnType<typeof prBaseInfo>> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return prBaseInfo(exec, pr);
+    } catch (error) {
+      if (attempt >= 2 || !TRANSIENT_GH_ERROR.test(error instanceof Error ? error.message : String(error))) throw error;
+      await sleep(5_000 * (attempt + 1));
+    }
+  }
 }
 
 /**
@@ -423,18 +435,26 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         }
         const existing = readShipState(root, pr);
         // GitHub's base, never the state's: a retargeted PR is gated under its real base.
-        const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
-        if (existing && existing.base !== prBaseBranch) {
-          console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
+        let loaded: LoadedShipConfig;
+        let config: ShipConfig;
+        try {
+          const { base: prBaseBranch, baseSha, repoUrl } = await prBaseInfoRetrying(exec, pr, drive.sleep);
+          if (existing && existing.base !== prBaseBranch) {
+            console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
+          }
+          loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha, repoUrl });
+          config = {
+            ...loaded,
+            pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
+            // --drive: no watch window but the --drive-max ceiling.
+            watchTimeoutMinutes: o.drive ? driveMaxHours * 60 : parseNumber(o.timeout, '--timeout') ?? loaded.watchTimeoutMinutes,
+            autoRerunFlaky: loaded.autoRerunFlaky && o.rerun !== false,
+          };
+        } catch (error) {
+          // Before the lock: a detached driver dies here, so the Monitor needs its terminal event.
+          if (o.drive) progress('gates', 'fail', `PR #${pr}: ${error instanceof Error ? error.message : String(error)}; next: omg ship gates ${pr} --drive --detach`);
+          throw error;
         }
-        const loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha, repoUrl });
-        const config: ShipConfig = {
-          ...loaded,
-          pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
-          // --drive: no watch window but the --drive-max ceiling.
-          watchTimeoutMinutes: o.drive ? driveMaxHours * 60 : parseNumber(o.timeout, '--timeout') ?? loaded.watchTimeoutMinutes,
-          autoRerunFlaky: loaded.autoRerunFlaky && o.rerun !== false,
-        };
         const hasState = existing !== null;
         let lastBeat = -Infinity;
         const beat = (note: string) => {
