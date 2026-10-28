@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8863491acf146f0bc6ef2dd57b3d6f6e167f538d",
-    "sourceSha256": "30e6b69089501d36645f556308464aa6cb8e683ea3fb3324f804566b8517a32c",
+    "head": "ce64e2bfdf0e1a5008d9f4432c1ecd526facf23d",
+    "sourceSha256": "c4831b6fa7c666740f051d5e6e9d53bc3c478dc48b4476156cd7e5decb88f9e9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8863491acf146f0bc6ef2dd57b3d6f6e167f538d",
-  "sourceSha256": "30e6b69089501d36645f556308464aa6cb8e683ea3fb3324f804566b8517a32c",
+  "head": "ce64e2bfdf0e1a5008d9f4432c1ecd526facf23d",
+  "sourceSha256": "c4831b6fa7c666740f051d5e6e9d53bc3c478dc48b4476156cd7e5decb88f9e9",
   "counts": {
     "public": {
       "skills": 63,
@@ -69441,6 +69441,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -70367,6 +70372,11 @@
       {
         "from": "src/factory/heal/diagnosis-output.ts",
         "to": "src/factory/run/review-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/diagnosis-output.ts",
+        "to": "src/ship/merge.ts",
         "kind": "imports"
       },
       {
@@ -104297,11 +104307,11 @@
     ],
     "stats": {
       "nodeCount": 8948,
-      "edgeCount": 10299,
-      "importEdgeCount": 8582,
+      "edgeCount": 10301,
+      "importEdgeCount": 8584,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "ca982a7064d0396fc8c9edcb11e28d3f0a1b692b8b82e9478f3ac78b3256c493",
-  "manifestSha256": "6a8660c6013228a732ee0640347c4574eb6a5f24f2eacb52a18db338fc877f41"
+  "manifestSha256": "65b51fff38e5f7a979dc9710a6d9a2928e45140c77e6bcfe353c492761700652"
 }
