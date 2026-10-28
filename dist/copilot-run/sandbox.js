@@ -15,8 +15,8 @@
  * reports as not sandboxed stops the session with `sandbox-escaped`.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join, posix, resolve, win32 } from 'node:path';
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
 import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
@@ -174,7 +174,9 @@ export function laneGitWritePaths(ctx) {
  * config, hooks, info, packed-refs and every ref stay read-only: the session
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
- * read-write path outside the worktree throws.
+ * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
+ * are read-only in both profiles; one that holds the real home or is a
+ * filesystem root is dropped.
  */
 export function buildSandboxConfig(profile, ctx, host) {
     const { settings } = ctx;
@@ -182,6 +184,8 @@ export function buildSandboxConfig(profile, ctx, host) {
         if (!isUnderRoot(p, ctx.worktree, ctx.platform))
             throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
     }
+    const P = ctx.platform === 'win32' ? win32 : posix;
+    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && !isUnderRoot(ctx.realHome, p, ctx.platform));
     const common = {
         allowBypass: false,
         allowDevToolAccess: false,
@@ -196,7 +200,7 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...common,
             userPolicy: {
                 filesystem: {
-                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...settings.extraReadonlyPaths],
+                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...tools, ...settings.extraReadonlyPaths],
                     readwritePaths: [ctx.jobDir, ...settings.extraReadwritePaths],
                 },
                 network: { allowOutbound: false, allowLocalNetwork: false },
@@ -206,7 +210,7 @@ export function buildSandboxConfig(profile, ctx, host) {
     const nm = nodeModulesLinkTarget(ctx.worktree);
     const filesystem = {
         readwritePaths: [ctx.worktree, ctx.jobDir, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...settings.extraReadonlyPaths],
+        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
         filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
@@ -215,6 +219,86 @@ export function buildSandboxConfig(profile, ctx, host) {
         ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
         : { allowOutbound: false, allowLocalNetwork: false };
     return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
+}
+const isFile = (p) => { try {
+    return statSync(p).isFile();
+}
+catch {
+    return false;
+} };
+/** `name` on `env`'s PATH (PATHEXT on win32), or null; empty and relative entries are skipped. */
+export function findOnPath(name, env, platform, exists = isFile) {
+    const P = platform === 'win32' ? win32 : posix;
+    const exts = platform === 'win32' ? (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+    for (const raw of (envValue(env, 'PATH') ?? '').split(P.delimiter)) {
+        const dir = raw.trim().replace(/^"(.*)"$/, '$1');
+        if (!dir || !P.isAbsolute(dir))
+            continue;
+        for (const ext of exts)
+            if (exists(P.join(dir, name + ext)))
+                return P.join(dir, name + ext);
+    }
+    return null;
+}
+function defaultToolPathProbe(env, platform) {
+    return {
+        execPath: process.execPath,
+        which: (name) => findOnPath(name, env, platform),
+        gitExecPath: (git) => {
+            const r = spawnSync(git, ['--exec-path'], { encoding: 'utf8', timeout: 10_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+            const out = r.status === 0 ? (r.stdout ?? '').trim() : '';
+            return out || null;
+        },
+        realpath: (p) => realpathSync.native(p),
+    };
+}
+/**
+ * The install dirs of the programs every lane starts: node (the plugin
+ * hooks and the `t` MCP server run `node`) and git. With
+ * `allowDevToolAccess` off the runtime grants no PATH entry, and on Windows
+ * MXC then denies launching `C:\Program Files\nodejs\node.exe`; on Linux
+ * and macOS the system dirs stay granted, so this matters there for a
+ * toolchain outside them (nvm, the runner's tool cache, Homebrew's Cellar).
+ * They are granted read-only, never read-write, and by name rather than all
+ * of PATH (allowDevToolAccess): PATH entries can be per-user dirs that hold
+ * config or credentials, and a lane needs only these two programs.
+ *
+ * node: the dir of the engine's own binary and of the `node` the lane's
+ * PATH resolves to (both, realpath and link). git: Git for Windows's install
+ * root (`<root>\cmd\git.exe` launches `<root>\mingw64\bin\git.exe`, which
+ * runs `<root>\usr\bin\sh.exe` for hooks), found from `git --exec-path`
+ * (`<root>\mingw64\libexec\git-core`) and kept only when the PATH git lies
+ * under it; elsewhere the git binary's dir and its exec path.
+ */
+export function laneToolPaths(env, platform, probe = defaultToolPathProbe(env, platform)) {
+    const P = platform === 'win32' ? win32 : posix;
+    const out = [];
+    const real = (p) => { try {
+        return probe.realpath(p);
+    }
+    catch {
+        return p;
+    } };
+    const binDirs = (p) => (p ? [P.dirname(p), P.dirname(real(p))] : []);
+    out.push(...binDirs(probe.execPath), ...binDirs(probe.which('node')));
+    const git = probe.which('git');
+    if (git) {
+        const execDir = probe.gitExecPath(git);
+        const root = platform === 'win32' && execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? P.resolve(execDir, '..', '..', '..') : null;
+        const under = (p, dir) => { const rel = P.relative(dir, p); return !!rel && !rel.startsWith('..') && !P.isAbsolute(rel); };
+        if (root && under(real(git), root))
+            out.push(root);
+        else
+            out.push(...binDirs(git), ...(execDir ? [execDir] : []));
+    }
+    const seen = new Set();
+    return out.map((p) => P.resolve(p)).filter((p) => {
+        const key = platform === 'win32' ? p.toLowerCase() : p;
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
 }
 // ---------------------------------------------------------------------------
 // Detection (§5)
@@ -362,7 +446,8 @@ export function unconfirmedMode(profile, settings) {
  * session over RPC instead (sessionGitHubToken).
  */
 export const SESSION_ENV_ALLOWLIST = [
-    'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'LANG',
+    // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
+    'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'LANG',
     // Non-secret OS variables shells and git expect.
     'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
@@ -422,10 +507,21 @@ export function scrubTokens(text, secrets) {
         out = out.split(s).join('[redacted]');
     return out.replace(TOKEN_PATTERN, '[redacted]');
 }
-/** The relocated profile variables, all under `<jobHome>/profile`. */
+/**
+ * The relocated profile variables, all under `<jobHome>/profile`, and the
+ * temp variables, `<jobHome>/tmp` (the caller creates it). The runtime
+ * grants the sandbox read-write on the dir its own TEMP names ("temporary
+ * storage" in the SDK's allowDevToolAccess doc; the host value was the
+ * user's whole %TEMP%, other jobs' homes and repositories included), and
+ * no temp dir at all when that dir is missing.
+ */
 export function relocatedProfileEnv(jobHome) {
     const profile = join(jobHome, 'profile');
+    const tmp = join(jobHome, 'tmp');
     return {
+        TEMP: tmp,
+        TMP: tmp,
+        TMPDIR: tmp,
         USERPROFILE: profile,
         HOME: profile,
         XDG_CONFIG_HOME: join(profile, '.config'),

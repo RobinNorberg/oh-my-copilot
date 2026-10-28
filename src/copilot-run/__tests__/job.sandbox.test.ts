@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -271,13 +271,17 @@ describe('copilot_run sandbox permissions and env', () => {
   });
 
   it('the write policy leaves config and hooks read-only, so a planted hook or fsmonitor cannot be written', async () => {
-    const m = manager('hang', 'supported');
+    const tools = [join(root, 'nodejs'), join(root, 'Git')];
+    const m = manager('hang', 'supported', { toolPaths: (env, platform) => (env.OMG_COPILOT_RUN_ALLOW === '1' && platform === 'linux' ? tools : []) });
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
     const fs = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem;
     const common = gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir');
     const gitDir = gitIn((started.worktree as { path: string }).path, 'rev-parse', '--path-format=absolute', '--git-dir');
     expect(fs.readonlyPaths).toContain(resolve(common));
+    // allowDevToolAccess is off: the lane can still start node (hooks, the MCP server) and git, read-only.
+    expect(fs.readonlyPaths).toEqual(expect.arrayContaining(tools));
+    for (const t of tools) expect(fs.readwritePaths).not.toContain(t);
     expect(fs.readwritePaths).toEqual(expect.arrayContaining([join(resolve(common), 'objects'), resolve(gitDir)]));
     for (const p of ['config', 'hooks', join('hooks', 'post-checkout'), 'info']) {
       const target = join(resolve(common), p);
@@ -332,9 +336,12 @@ describe('copilot_run sandbox permissions and env', () => {
     // The Copilot token reaches the session over RPC, never the env its shell children inherit.
     expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
     expect(calls.sessions[0].gitHubToken).toBe('cop');
-    expect(env).toMatchObject({ LC_ALL: 'C', TEMP: '/tmp', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
+    expect(env).toMatchObject({ LC_ALL: 'C', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
     expect(env.PATH).toBe(process.env.PATH ?? '');
     const home = env.COPILOT_HOME!;
+    // The caller's TEMP never passes (the runtime grants its TEMP read-write): the job's own temp dir, created before the runtime starts.
+    expect(env).toMatchObject({ TEMP: join(home, 'tmp'), TMP: join(home, 'tmp'), TMPDIR: join(home, 'tmp') });
+    expect(existsSync(join(home, 'tmp'))).toBe(true);
     const profile = join(home, 'profile');
     expect(env).toMatchObject({ HOME: profile, USERPROFILE: profile, XDG_CONFIG_HOME: join(profile, '.config'), GIT_CONFIG_GLOBAL: join(profile, '.gitconfig') });
     const gitconfig = readFileSync(env.GIT_CONFIG_GLOBAL!, 'utf8');

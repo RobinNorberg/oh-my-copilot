@@ -122,6 +122,8 @@ export interface SandboxPolicyContext {
     settings: SandboxSettings;
     /** The host commits for a write session (omg factory run): the common git dir is read-only as a whole (§4.3). */
     hostCommits?: boolean;
+    /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
+    toolPaths?: string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
@@ -158,9 +160,42 @@ export declare function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commo
  * config, hooks, info, packed-refs and every ref stay read-only: the session
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
- * read-write path outside the worktree throws.
+ * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
+ * are read-only in both profiles; one that holds the real home or is a
+ * filesystem root is dropped.
  */
 export declare function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig;
+/** The host lookups behind laneToolPaths (a test seam). */
+export interface ToolPathProbe {
+    /** The engine's own node binary (process.execPath). */
+    execPath: string;
+    /** `name` resolved on the lane's PATH, or null. */
+    which: (name: string) => string | null;
+    /** `<git> --exec-path`, or null. */
+    gitExecPath: (git: string) => string | null;
+    realpath: (p: string) => string;
+}
+/** `name` on `env`'s PATH (PATHEXT on win32), or null; empty and relative entries are skipped. */
+export declare function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, exists?: (p: string) => boolean): string | null;
+/**
+ * The install dirs of the programs every lane starts: node (the plugin
+ * hooks and the `t` MCP server run `node`) and git. With
+ * `allowDevToolAccess` off the runtime grants no PATH entry, and on Windows
+ * MXC then denies launching `C:\Program Files\nodejs\node.exe`; on Linux
+ * and macOS the system dirs stay granted, so this matters there for a
+ * toolchain outside them (nvm, the runner's tool cache, Homebrew's Cellar).
+ * They are granted read-only, never read-write, and by name rather than all
+ * of PATH (allowDevToolAccess): PATH entries can be per-user dirs that hold
+ * config or credentials, and a lane needs only these two programs.
+ *
+ * node: the dir of the engine's own binary and of the `node` the lane's
+ * PATH resolves to (both, realpath and link). git: Git for Windows's install
+ * root (`<root>\cmd\git.exe` launches `<root>\mingw64\bin\git.exe`, which
+ * runs `<root>\usr\bin\sh.exe` for hooks), found from `git --exec-path`
+ * (`<root>\mingw64\libexec\git-core`) and kept only when the PATH git lies
+ * under it; elsewhere the git binary's dir and its exec path.
+ */
+export declare function laneToolPaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, probe?: ToolPathProbe): string[];
 /** Runs `cmd args` to completion, shaped like spawnSync's result. */
 export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => {
     error?: Error;
@@ -240,7 +275,14 @@ export declare function secretValues(env: NodeJS.ProcessEnv): string[];
  * transformed passes through unredacted.
  */
 export declare function scrubTokens(text: string, secrets: readonly string[]): string;
-/** The relocated profile variables, all under `<jobHome>/profile`. */
+/**
+ * The relocated profile variables, all under `<jobHome>/profile`, and the
+ * temp variables, `<jobHome>/tmp` (the caller creates it). The runtime
+ * grants the sandbox read-write on the dir its own TEMP names ("temporary
+ * storage" in the SDK's allowDevToolAccess doc; the host value was the
+ * user's whole %TEMP%, other jobs' homes and repositories included), and
+ * no temp dir at all when that dir is missing.
+ */
 export declare function relocatedProfileEnv(jobHome: string): Record<string, string>;
 /**
  * The runtime env from buildSessionEnv's output: allowlisted caller

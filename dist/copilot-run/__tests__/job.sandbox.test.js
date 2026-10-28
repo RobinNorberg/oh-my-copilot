@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CopilotRunManager } from '../job.js';
@@ -72,6 +72,14 @@ describe('copilot_run sandbox fail-closed', () => {
         expect(done.sandbox?.mode).toBe('refused');
         expect(calls.sessions).toHaveLength(0);
         expect(calls.prompts).toHaveLength(0);
+    });
+    it('a Linux host the runtime calls supported but where the trial launch fails refuses a write with that reason', async () => {
+        const m = manager('idle', 'supported', { platform: 'linux', sandboxTrialLaunch: () => 'unprivileged user namespaces are restricted' });
+        const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^sandbox-unavailable: .*unprivileged user namespaces are restricted/);
+        expect(done.sandbox).toMatchObject({ mode: 'refused', applied: 'none', host: { supported: false, launchFailed: true } });
+        expect(calls.sessions).toHaveLength(0);
     });
     it('writeUnsandboxed "detect-only" runs a write session unsandboxed, with a note', async () => {
         const m = manager('idle', 'unsupported', { sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) });
@@ -234,13 +242,18 @@ describe('copilot_run sandbox permissions and env', () => {
         expect(events).not.toContain(leaked);
     });
     it('the write policy leaves config and hooks read-only, so a planted hook or fsmonitor cannot be written', async () => {
-        const m = manager('hang', 'supported');
+        const tools = [join(root, 'nodejs'), join(root, 'Git')];
+        const m = manager('hang', 'supported', { toolPaths: (env, platform) => (env.OMG_COPILOT_RUN_ALLOW === '1' && platform === 'linux' ? tools : []) });
         const started = m.start({ prompt: 'implement', cwd: repo });
         await settle();
         const fs = calls.optionsUpdates[0].sandboxConfig.userPolicy.filesystem;
         const common = gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir');
         const gitDir = gitIn(started.worktree.path, 'rev-parse', '--path-format=absolute', '--git-dir');
         expect(fs.readonlyPaths).toContain(resolve(common));
+        // allowDevToolAccess is off: the lane can still start node (hooks, the MCP server) and git, read-only.
+        expect(fs.readonlyPaths).toEqual(expect.arrayContaining(tools));
+        for (const t of tools)
+            expect(fs.readwritePaths).not.toContain(t);
         expect(fs.readwritePaths).toEqual(expect.arrayContaining([join(resolve(common), 'objects'), resolve(gitDir)]));
         for (const p of ['config', 'hooks', join('hooks', 'post-checkout'), 'info']) {
             const target = join(resolve(common), p);
@@ -296,9 +309,12 @@ describe('copilot_run sandbox permissions and env', () => {
         // The Copilot token reaches the session over RPC, never the env its shell children inherit.
         expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
         expect(calls.sessions[0].gitHubToken).toBe('cop');
-        expect(env).toMatchObject({ LC_ALL: 'C', TEMP: '/tmp', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
+        expect(env).toMatchObject({ LC_ALL: 'C', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
         expect(env.PATH).toBe(process.env.PATH ?? '');
         const home = env.COPILOT_HOME;
+        // The caller's TEMP never passes (the runtime grants its TEMP read-write): the job's own temp dir, created before the runtime starts.
+        expect(env).toMatchObject({ TEMP: join(home, 'tmp'), TMP: join(home, 'tmp'), TMPDIR: join(home, 'tmp') });
+        expect(existsSync(join(home, 'tmp'))).toBe(true);
         const profile = join(home, 'profile');
         expect(env).toMatchObject({ HOME: profile, USERPROFILE: profile, XDG_CONFIG_HOME: join(profile, '.config'), GIT_CONFIG_GLOBAL: join(profile, '.gitconfig') });
         const gitconfig = readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8');

@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
@@ -10,7 +10,9 @@ import {
   allowlistSessionEnv,
   bwrapTrialLaunchError,
   buildSandboxConfig,
+  findOnPath,
   laneGitWritePaths,
+  laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
   MXC_REQUIRED_ENV,
@@ -22,6 +24,7 @@ import {
   unconfirmedMode,
   type SandboxHostRecord,
   type SandboxPolicyContext,
+  type ToolPathProbe,
 } from '../sandbox.js';
 
 let root: string;
@@ -107,11 +110,76 @@ describe('buildSandboxConfig', () => {
     expect(buildSandboxConfig('review', { ...ctx, settings }, host()).userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
   });
 
+  it('grants the tool dirs read-only in both profiles, never a filesystem root or a dir holding the real home', () => {
+    const toolPaths = [join(root, 'nodejs'), join(root, 'git'), root, join(root, 'me', '..'), resolve('/')];
+    for (const profile of ['review', 'write'] as const) {
+      const fs = buildSandboxConfig(profile, { ...ctx, toolPaths }, host()).userPolicy.filesystem;
+      expect(fs.readonlyPaths.filter((p) => !Object.values(ctx).includes(p))).toEqual([join(root, 'nodejs'), join(root, 'git')]);
+      expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
+    }
+    expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
+  });
+
   it('refuses an extra read-write path outside the worktree', () => {
     const settings = { ...ctx.settings, extraReadwritePaths: [join(root, 'elsewhere')] };
     expect(() => buildSandboxConfig('write', { ...ctx, settings }, host())).toThrow(/not under the worktree/);
     const inside = { ...ctx.settings, extraReadwritePaths: [join(ctx.worktree, 'out')] };
     expect(buildSandboxConfig('write', { ...ctx, settings: inside }, host()).userPolicy.filesystem.readwritePaths).toContain(join(ctx.worktree, 'out'));
+  });
+});
+
+describe('laneToolPaths', () => {
+  const probe = (p: Partial<ToolPathProbe> & { found?: Record<string, string> }): ToolPathProbe => ({
+    execPath: p.execPath ?? '/usr/bin/node',
+    which: (name) => p.found?.[name] ?? null,
+    gitExecPath: p.gitExecPath ?? (() => null),
+    realpath: p.realpath ?? ((x) => x),
+  });
+
+  it('Windows: the node dirs and the Git for Windows install root, deduplicated case-insensitively', () => {
+    const paths = laneToolPaths({}, 'win32', probe({
+      execPath: 'C:\\Program Files\\nodejs\\node.exe',
+      found: { node: 'c:\\program files\\nodejs\\node.exe', git: 'C:\\Program Files\\Git\\cmd\\git.exe' },
+      gitExecPath: () => 'C:/Program Files/Git/mingw64/libexec/git-core',
+    }));
+    expect(paths).toEqual(['C:\\Program Files\\nodejs', 'C:\\Program Files\\Git']);
+  });
+
+  it('Windows: a git outside the exec-path root grants its own dir and exec path, not a guessed root', () => {
+    const paths = laneToolPaths({}, 'win32', probe({
+      execPath: 'D:\\tools\\node\\node.exe',
+      found: { git: 'D:\\scoop\\shims\\git.exe' },
+      gitExecPath: () => 'D:\\scoop\\apps\\git\\current\\mingw64\\libexec\\git-core',
+    }));
+    expect(paths).toEqual(['D:\\tools\\node', 'D:\\scoop\\shims', 'D:\\scoop\\apps\\git\\current\\mingw64\\libexec\\git-core']);
+  });
+
+  it('posix: the node and git binary dirs with their realpaths, and the git exec path', () => {
+    const real: Record<string, string> = { '/home/u/.nvm/current/bin/node': '/home/u/.nvm/versions/node/v22/bin/node' };
+    const paths = laneToolPaths({}, 'linux', probe({
+      execPath: '/opt/hostedtoolcache/node/22/x64/bin/node',
+      found: { node: '/home/u/.nvm/current/bin/node', git: '/usr/bin/git' },
+      gitExecPath: () => '/usr/lib/git-core',
+      realpath: (x) => real[x] ?? x,
+    }));
+    expect(paths).toEqual(['/opt/hostedtoolcache/node/22/x64/bin', '/home/u/.nvm/current/bin', '/home/u/.nvm/versions/node/v22/bin', '/usr/bin', '/usr/lib/git-core']);
+  });
+
+  it('no git on PATH: only the node dirs', () => {
+    expect(laneToolPaths({}, 'darwin', probe({ execPath: '/opt/homebrew/bin/node', realpath: () => '/opt/homebrew/Cellar/node/25.0.0/bin/node' })))
+      .toEqual(['/opt/homebrew/bin', '/opt/homebrew/Cellar/node/25.0.0/bin']);
+  });
+
+  it('findOnPath honours PATHEXT and skips relative and empty entries', () => {
+    const files = new Set(['C:\\Git\\cmd\\git.EXE', '/usr/bin/git']);
+    const exists = (p: string) => files.has(p);
+    expect(findOnPath('git', { Path: '.;;"C:\\Git\\cmd"', PATHEXT: '.COM;.EXE' }, 'win32', exists)).toBe('C:\\Git\\cmd\\git.EXE');
+    expect(findOnPath('git', { PATH: ':bin:/usr/bin' }, 'linux', exists)).toBe('/usr/bin/git');
+    expect(findOnPath('git', {}, 'linux', exists)).toBeNull();
+  });
+
+  it('the default probe finds the real node of this process', () => {
+    expect(laneToolPaths({ PATH: '' }, process.platform)).toContain(dirname(process.execPath));
   });
 });
 
@@ -198,9 +266,12 @@ describe('detection helpers', () => {
   });
 
   it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
-    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local' }, join(root, 'h'));
+    const hostTemp = 'C:\\Users\\u\\AppData\\Local\\Temp';
+    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
     expect(env).toEqual({
       Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
+      // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
+      TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
       XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
       // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.

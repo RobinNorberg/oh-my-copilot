@@ -25,7 +25,7 @@ import { createRequire } from 'module';
 import { userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
-import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
+import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
 import { excerpt } from './copilot-session-eval.js';
 import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
@@ -687,6 +687,7 @@ async function sandboxProbe(client, session, input, loaded, bin) {
         realHome: userInfo().homedir,
         platform: input.platform ?? process.platform,
         settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
+        toolPaths: laneToolPaths(input.env, input.platform ?? process.platform),
     }, host);
     const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
     if (applyError)
@@ -696,15 +697,29 @@ async function sandboxProbe(client, session, input, loaded, bin) {
         return { answered, host, applyError, enforcement };
     return { answered, host, applyError, enforcement, spawn: await sandboxSpawnCanary(loaded, bin, input, host) };
 }
-/** The spawn canary's command: a shell builtin in powershell and bash, so the launch itself is what is tested. */
-export const SANDBOX_CANARY_TOKEN = 'omg-sandbox-canary-ok';
+/**
+ * The spawn canary's command: two external programs every lane starts, the
+ * engine's node and the PATH git. A shell builtin (`echo`) would pass while
+ * the sandbox denies every child .exe.
+ */
+export function sandboxCanaryCommand(platform, nodePath) {
+    return platform === 'win32'
+        ? `& '${nodePath.replace(/'/g, "''")}' --version; git --version`
+        : `'${nodePath.replace(/'/g, `'\\''`)}' --version; git --version`;
+}
+/** Which canary programs printed their version (node `v<major>.<minor>`, `git version <n>`). */
+export function sandboxCanaryLaunched(output) {
+    return { node: /^v\d+\.\d+/m.test(output), git: /^git version \d/m.test(output) };
+}
 /**
  * The free spawn canary: a second runtime on copilot_run's lane env
- * (allowlistSessionEnv, profile relocated), a session with the review policy,
- * and one `shell.executeUserRequested` of `echo` (no model turn). It launches
- * a real process through the OS sandbox with the env a lane gets, so a
- * launch the sandbox rejects (Windows MXC: a missing required variable)
- * fails here instead of in a lane that bills credits.
+ * (allowlistSessionEnv, profile relocated, temp dir in the job home), a
+ * session with the review policy and the lane tool grants, and one
+ * `shell.executeUserRequested` of `node --version` and `git --version` (no
+ * model turn). It launches real programs through the OS sandbox with the env
+ * and policy a lane gets, so a launch the sandbox rejects (Windows MXC: a
+ * missing required variable, an ungranted tool dir) fails here instead of
+ * in a lane that bills credits.
  */
 async function sandboxSpawnCanary(loaded, bin, input, host) {
     const platform = input.platform ?? process.platform;
@@ -714,6 +729,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
     if (missing.length)
         return { ok: false, detail: `the lane env lacks ${missing.join(', ')}, which the Windows sandbox needs to launch any process; not launched` };
     mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+    mkdirSync(env.TEMP, { recursive: true });
     const { CopilotClient, RuntimeConnection } = loaded.module;
     const client = new CopilotClient({
         connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
@@ -745,22 +761,28 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
             realHome: userInfo().homedir,
             platform,
             settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
+            toolPaths: laneToolPaths(env, platform),
         }, host);
         const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
         if (applyError)
             return { ok: false, detail: `the review policy was not applied to the canary session: ${applyError}` };
-        const r = await withTimeout(shell.executeUserRequested.call(shell, { requestId: randomUUID(), command: `echo ${SANDBOX_CANARY_TOKEN}` }), RPC_TIMEOUT_MS, 'shell.executeUserRequested()');
+        const command = sandboxCanaryCommand(platform, process.execPath);
+        const r = await withTimeout(shell.executeUserRequested.call(shell, { requestId: randomUUID(), command }), RPC_TIMEOUT_MS, 'shell.executeUserRequested()');
         // The completion event can trail the RPC answer.
         const id = typeof r?.toolCallId === 'string' ? r.toolCallId : '';
         for (let i = 0; i < 20 && id && !sandboxed.has(id); i++)
             await sleep(100);
         const attested = sandboxed.get(id);
-        const launched = r?.success === true && typeof r.output === 'string' && r.output.includes(SANDBOX_CANARY_TOKEN);
-        if (!launched)
-            return { ok: false, detail: `the sandboxed launch failed: ${excerpt(typeof r?.error === 'string' && r.error ? r.error : `exit ${String(r?.exitCode)}, output ${JSON.stringify(excerpt(String(r?.output ?? ''), 80))}`, 300)}` };
+        const output = typeof r?.output === 'string' ? r.output : '';
+        const ran = sandboxCanaryLaunched(output);
+        if (r?.success !== true || !ran.node || !ran.git) {
+            const denied = [...(ran.node ? [] : [`node (${process.execPath})`]), ...(ran.git ? [] : ['git'])].join(' and ');
+            const why = typeof r?.error === 'string' && r.error ? r.error : `exit ${String(r?.exitCode)}, output ${JSON.stringify(excerpt(output, 200))}`;
+            return { ok: false, detail: `the sandboxed launch failed (${denied ? `${denied} did not run` : 'both printed a version, but the call reported failure'}): ${excerpt(why, 300)}` };
+        }
         if (attested !== true)
-            return { ok: false, detail: `the echo ran, but its completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
-        return { ok: true, detail: 'a sandboxed echo with the lane env launched (sandboxed: true)' };
+            return { ok: false, detail: `node and git ran, but their completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
+        return { ok: true, detail: 'sandboxed node --version and git --version with the lane env and tool grants launched (sandboxed: true)' };
     }
     catch (err) {
         return { ok: false, detail: `the canary runtime failed: ${excerpt(errText(err), 200)}` };

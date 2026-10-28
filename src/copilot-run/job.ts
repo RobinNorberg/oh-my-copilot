@@ -101,6 +101,7 @@ import {
   allowlistSessionEnv,
   applySandboxConfig,
   buildSandboxConfig,
+  laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
   probeHostSupport,
@@ -290,6 +291,8 @@ export interface CopilotRunDeps {
   processIdentity?: (pid: number) => Promise<string | null>;
   /** The account's real home for the sandbox's denied paths (default os.userInfo().homedir, never HOME). */
   realHome?: () => string;
+  /** The tool dirs the sandbox grants read-only (default laneToolPaths: node and git). */
+  toolPaths?: (env: NodeJS.ProcessEnv, platform: NodeJS.Platform) => string[];
   /** The sandbox settings for a job in `root` (default loadSandboxSettings: user config, project may only tighten). */
   sandboxSettings?: (root: string, scope: SandboxScope) => { settings: SandboxSettings; warnings: string[] };
   /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
@@ -889,6 +892,7 @@ export class CopilotRunManager {
     const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
     const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+    mkdirSync(env.TEMP!, { recursive: true });
     // A session the host commits for never commits, so it gets no identity.
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
@@ -1166,6 +1170,7 @@ export class CopilotRunManager {
         platform: deps.platform,
         settings,
         hostCommits: job.hostCommits,
+        toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
       }, host);
       job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
       return config;

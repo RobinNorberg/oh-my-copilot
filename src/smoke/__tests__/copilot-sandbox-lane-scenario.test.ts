@@ -138,7 +138,7 @@ const cleanCanary = (probe: SandboxCanaryProbe): Script => ({
   run: (ctx) => {
     // What the wrapped SDK records before the first turn.
     probe.called = true;
-    probe.result = { success: true, exitCode: 0, output: 'probe', toolCallId: 'c1' };
+    probe.result = { success: true, exitCode: 0, output: `${SANDBOX_PROBE_MARKER}${JSON.stringify({ writes: [], net: {} })}`, toolCallId: 'c1' };
     probe.permissionRequests = 1;
     writeFileSync(join(ctx.worktree, SANDBOX_CANARY_FILE), 'x\n');
     return { finalText: 'SANDBOX_CANARY_DONE', credits: 0.3, sandbox: enforced() };
@@ -254,6 +254,20 @@ describe('sandbox-lane scenario', () => {
     expect(checks['scn.sandbox-lane.write_inside'].ok).toBe(false);
     // A hook-denied completion still carries sandboxed:true, but no command ran: that is no attestation.
     expect(checks['scn.sandbox-lane.attested'].ok).toBe(false);
+  });
+
+  it('a canary probe that never launched (node denied: exit 1, no probe line) is Q5 unanswered, not "outside write blocked"', async () => {
+    const deadCanary = (probe: SandboxCanaryProbe): Script => ({
+      run: () => {
+        probe.called = true;
+        probe.result = { success: false, exitCode: 1, output: "ResourceUnavailable: Program 'node.exe' failed to run ... Access is denied.", toolCallId: 'c1' };
+        return { finalText: 'SANDBOX_CANARY_DONE', credits: 0.3, sandbox: enforced() };
+      },
+      events: () => shellCall('c1', true),
+    });
+    const { checks } = await run({ review: cleanReview, write: cleanWrite, canary: deadCanary });
+    expect(checks['scn.sandbox-lane.q5_canary_rpc']).toMatchObject({ ok: false, detail: expect.stringMatching(/^Q5 unanswered: probe did not run \(exit 1, no OMG_SANDBOX_PROBE line; output ".*Access is denied/) });
+    expect(checks['scn.sandbox-lane.q5_canary_rpc'].detail).not.toMatch(/blocked|model turn/);
   });
 
   it('pins every lane to the requested model and reports the model each lane ran on', async () => {

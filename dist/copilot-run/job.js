@@ -60,7 +60,7 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, normaliz
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, laneToolPaths, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -682,6 +682,7 @@ export class CopilotRunManager {
         const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
         const gitHubToken = sessionGitHubToken(deps.env);
         mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+        mkdirSync(env.TEMP, { recursive: true });
         // A session the host commits for never commits, so it gets no identity.
         if (!job.hostCommits)
             seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL);
@@ -1009,6 +1010,7 @@ export class CopilotRunManager {
                 platform: deps.platform,
                 settings,
                 hostCommits: job.hostCommits,
+                toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
             }, host);
             job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
             return config;
