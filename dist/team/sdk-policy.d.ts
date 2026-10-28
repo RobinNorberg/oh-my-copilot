@@ -72,6 +72,11 @@ export declare const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{
 export declare function normalizeShellCommand(command: string): string;
 /** True when `p` is `root` or lies below it (canon: realpath of the deepest existing ancestor, case-folded on win32). Throws as canon does. */
 export declare function isUnderRoot(p: string, root: string, platform?: NodeJS.Platform): boolean;
+/**
+ * True when `p` has a `..` segment. `resolve` collapses `l/../x` lexically to
+ * `x`, but the kernel follows the link `l` first and climbs from its target.
+ */
+export declare function hasDotDotSegment(p: string): boolean;
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export declare function shellDenyPrefixes(denyTools?: readonly string[]): string[];
 export declare function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyContext): SdkPermissionDecision;

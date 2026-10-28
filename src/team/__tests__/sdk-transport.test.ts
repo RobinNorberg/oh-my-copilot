@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -128,6 +128,32 @@ describe('sdk permission policy', () => {
       symlinkSync(join(outside, 'gone'), join(root, 'dangling'), 'junction');
       expect(decideSdkPermission({ kind: 'write', fileName: join(root, 'dangling', 'new.txt') }, ctx()).approve).toBe(false);
     } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  // `resolve` would collapse `l/../x` to `x`; the kernel climbs from the target of the link `l`.
+  it('refuses a read or write path with a .. segment', () => {
+    for (const p of [`${worktree}/l/../x.txt`, `${worktree}\\l\\..\\x.txt`, 'l/../x.txt']) {
+      expect(decideSdkPermission({ kind: 'write', fileName: p }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+      expect(decideSdkPermission({ kind: 'read', path: p }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+    }
+  });
+
+  // A hard link needs no privilege on Windows (NTFS); realpath cannot see it.
+  it('refuses a write to a hard-linked or non-regular existing target', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+    try {
+      writeFileSync(join(outside, 'victim.txt'), 'x');
+      linkSync(join(outside, 'victim.txt'), join(worktree, 'h.txt'));
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'h.txt') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/hard link/) });
+      mkdirSync(join(worktree, 'adir'), { recursive: true });
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'adir') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/not a regular file/) });
+      writeFileSync(join(worktree, 'plain.txt'), 'x');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'plain.txt') }, ctx()).approve).toBe(true);
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'fresh', 'new.txt') }, ctx()).approve).toBe(true);
+    } finally {
+      rmSync(join(worktree, 'h.txt'), { force: true });
       rmSync(outside, { recursive: true, force: true });
     }
   });
