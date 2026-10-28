@@ -14,8 +14,10 @@
  * OS confinement (the sandbox lane) is a separate change. {@link LaneConfinement}
  * is its seam: a confinement may rewrite the start input (for example to run
  * the job inside a sandbox) but may not change its profile, start sha or
- * prompt, or raise its credit cap or timeout. Until one exists the lane runs
- * with {@link NO_CONFINEMENT}, and the record says so.
+ * prompt, drop its credential-free env, or raise its credit cap or timeout.
+ * Until one exists the lane runs with {@link NO_CONFINEMENT} only under the
+ * owner's OMG_HEAL_UNCONFINED=1 (run.ts), and the record says so. Every lane
+ * starts with `scrubCredentials` (no GitHub tokens, an empty gh config).
  */
 
 import { isAbsolute, relative } from 'path';
@@ -141,11 +143,11 @@ export async function runDebugLane(o: DebugLaneOptions): Promise<DebugLaneOutcom
   const clock = o.clock ?? Date.now;
   const zero = { credits: 0, premiumRequests: 0, source: 'measured' as const };
   const capUsage = { credits: o.maxCredits, premiumRequests: 0, source: 'estimated' as const };
-  const base: LaneStartInput = { laneId: o.laneId, cwd: o.root, baseRef: o.startSha, prompt: o.prompt, profile: 'review', timeoutMs: o.timeoutMs, maxCredits: o.maxCredits };
+  const base: LaneStartInput = { laneId: o.laneId, cwd: o.root, baseRef: o.startSha, prompt: o.prompt, profile: 'review', timeoutMs: o.timeoutMs, maxCredits: o.maxCredits, scrubCredentials: true };
   const input = confinement.confine({ ...base });
-  if (input.profile !== 'review' || input.baseRef !== base.baseRef || input.prompt !== base.prompt || input.laneId !== base.laneId
+  if (input.profile !== 'review' || input.baseRef !== base.baseRef || input.prompt !== base.prompt || input.laneId !== base.laneId || input.scrubCredentials !== true
     || !(input.maxCredits >= RUNTIME_MIN_MAX_CREDITS && input.maxCredits <= base.maxCredits) || !(input.timeoutMs <= base.timeoutMs)) {
-    throw new Error(`lane confinement ${confinement.name} loosened the debugger lane (profile, start sha, prompt, credit cap or timeout)`);
+    throw new Error(`lane confinement ${confinement.name} loosened the debugger lane (profile, start sha, prompt, credential-free env, credit cap or timeout)`);
   }
   const before = snapshotRepo(o.exec, o.root, stateRootRel(o.root));
   let remoteId: string;

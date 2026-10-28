@@ -50,6 +50,11 @@ function gitAllowed(a: string[]): boolean {
       return same(r, ['--show-toplevel']);
     case 'cat-file':
       return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
+    case 'merge-base': {
+      // Is the first red sha on the integration branch: git merge-base --is-ancestor <sha> refs/remotes/origin/<base>
+      const m = r.length === 3 && r[0] === '--is-ancestor' && /^[0-9a-f]{40}$/.test(r[1]) ? /^refs\/remotes\/origin\/(.+)$/.exec(r[2]) : null;
+      return Boolean(m) && isBranch(m![1]);
+    }
     case 'rev-list':
       return r.length === 2 && r[0] === '--count' && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[1]);
     case 'log':

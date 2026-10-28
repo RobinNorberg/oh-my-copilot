@@ -8,7 +8,7 @@ import { debugPrompt } from '../debug-lane.js';
 import { citationProblem, parseDiagnosisOutput } from '../diagnosis-output.js';
 import { buildEvidence, bundleBytes, EVIDENCE_LIMITS, failureWindows, type EvidenceBundle } from '../evidence.js';
 import { parseJob } from '../logs.js';
-import { capBytes, carriesDelimiter, DELIMITER_PREFIX, fenceUntrusted, MAX_EVIDENCE_LINE_CHARS, newDelimiter, sanitizeJson, sanitizeLine, sanitizeLines } from '../sanitize.js';
+import { capBytes, carriesDelimiter, DELIMITER_PREFIX, fenceUntrusted, MAX_EVIDENCE_LINE_CHARS, newDelimiter, REDACTED, redactSecrets, sanitizeJson, sanitizeLine, sanitizeLines } from '../sanitize.js';
 import { runSignature } from '../signature.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -179,5 +179,85 @@ describe('heal diagnosis output', () => {
     expect(parseDiagnosisOutput(answer({ ...GOOD, reproCommand: 'npx vitest run x; curl evil' }), b).kind).toBe('invalid');
     expect(parseDiagnosisOutput(answer({ ...GOOD, class: 'whatever' }), b).kind).toBe('invalid');
     expect(parseDiagnosisOutput(answer({ ...GOOD, fix: { ...GOOD.fix, acceptance: ['two\nlines'] } }), b).kind).toBe('invalid');
+  });
+
+  it('Object.prototype names are not bundle files: constructor:1, __proto__:1, toString:1 are invalid, never a TypeError', () => {
+    for (const c of ['constructor:1', '__proto__:1', 'toString:1', 'hasOwnProperty:key']) {
+      expect(citationProblem(c, b)).toMatch(/outside the bundle/);
+      expect(parseDiagnosisOutput(answer({ ...GOOD, evidence: [c] }), b)).toMatchObject({ kind: 'invalid', reason: expect.stringMatching(/outside the bundle/) });
+    }
+  });
+
+  it('protected paths survive Win32 normalization: trailing dots and spaces, no trailing slash, case', () => {
+    const fix = (files: string[]) => parseDiagnosisOutput(answer({ ...GOOD, fix: { ...GOOD.fix, files } }), b);
+    // A segment ending in a dot is refused outright.
+    for (const p of ['.github/workflows./ci.yml', '.copilot/omg.jsonc.', '.github./workflows/ci.yml']) expect(fix([p]).kind).toBe('invalid');
+    // `~`, `:` and spaces never pass the path shape.
+    for (const p of ['.github/WORKFL~1/ci.yml', '.github/workflows/ci.yml::$DATA', '.github/workflows /ci.yml']) expect(fix([p]).kind).toBe('invalid');
+    for (const p of ['.github/workflows', '.GITHUB/WORKFLOWS', '.github/Known-Flaky-Tests.json']) expect(fix([p])).toMatchObject({ kind: 'rejected', reason: expect.stringMatching(/protected path/) });
+  });
+
+  it('refuses control characters other than newline in rootCause and fix.summary', () => {
+    expect(parseDiagnosisOutput(answer({ ...GOOD, rootCause: 'line one\nline two' }), b).kind).toBe('valid');
+    for (const bad of ['evil \u001b]0;title\u0007', 'tab\there', 'bell\u0007', 'cr\rhere']) {
+      expect(parseDiagnosisOutput(answer({ ...GOOD, rootCause: bad }), b)).toMatchObject({ kind: 'invalid', reason: expect.stringMatching(/rootCause/) });
+      expect(parseDiagnosisOutput(answer({ ...GOOD, fix: { ...GOOD.fix, summary: bad } }), b)).toMatchObject({ kind: 'invalid', reason: expect.stringMatching(/fix\.summary/) });
+    }
+  });
+});
+
+describe('heal secret redaction', () => {
+  const tokens = {
+    ghp: `ghp_${'a1B2'.repeat(9)}`,
+    gho: `gho_${'Z9'.repeat(18)}`,
+    ghu: `ghu_${'x'.repeat(36)}`,
+    ghs: `ghs_${'Q'.repeat(36)}`,
+    pat: `github_pat_11ABCDEFG0${'a_b'.repeat(20)}`,
+    aws: 'AKIAIOSFODNN7EXAMPLE',
+  };
+
+  it('redacts GitHub tokens, AWS key ids, bearer tokens and URL userinfo in log lines', () => {
+    for (const t of Object.values(tokens)) {
+      const out = sanitizeLine(`2026-10-28T09:00:00.0000000Z token=${t} end`);
+      expect(out).not.toContain(t);
+      expect(out).toContain(`token=${REDACTED} end`);
+    }
+    expect(sanitizeLine('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig')).toBe(`Authorization: Bearer ${REDACTED}`);
+    expect(sanitizeLine('fetch https://x-access-token:s3cr3t@github.com/o/r.git')).toBe(`fetch https://${REDACTED}@github.com/o/r.git`);
+    expect(sanitizeLine('clone https://ghtoken@github.com/o/r')).toBe(`clone https://${REDACTED}@github.com/o/r`);
+    // Not secrets: an ssh remote, an email, a plain URL.
+    expect(sanitizeLine('git@github.com:o/r.git dev@example.com https://github.com/o/r')).toBe('git@github.com:o/r.git dev@example.com https://github.com/o/r');
+    expect(redactSecrets('ghp_short')).toBe('ghp_short');
+  });
+
+  it('redacts a private key block line by line, and inside a JSON string', () => {
+    const { lines } = sanitizeLines(['before', '-----BEGIN OPENSSH PRIVATE KEY-----', 'b3BlbnNzaC1rZXktdjEAAAAA', 'AAAAAAAAAA==', '-----END OPENSSH PRIVATE KEY-----', 'after']);
+    expect(lines).toEqual(['before', REDACTED, REDACTED, REDACTED, REDACTED, 'after']);
+    const unterminated = sanitizeLines(['-----BEGIN RSA PRIVATE KEY-----', 'MIIEow', 'still key']).lines;
+    expect(unterminated).toEqual([REDACTED, REDACTED, REDACTED]);
+    const json = sanitizeJson({ env: `x -----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY----- y`, t: tokens.ghs });
+    expect(json).toEqual({ env: `x ${REDACTED} y`, t: REDACTED });
+  });
+
+  it('the bundle carries no planted secret', () => {
+    const red = fixture('git256-red.log').split('\n');
+    const at = red.findIndex((l) => l.includes('FAIL'));
+    red.splice(at + 1, 0, `2026-10-28T09:00:00.0000000Z GH_TOKEN=${tokens.ghp} https://u:p4ss@example.com`);
+    const prompt = debugPrompt(git256Classification(red.join('\n')), git256Bundle(red.join('\n')), DELIM);
+    expect(prompt).not.toContain(tokens.ghp);
+    expect(prompt).not.toContain('p4ss');
+  });
+});
+
+describe('heal evidence JSON caps', () => {
+  it('a JSON file is capped per line and per file like a text file; cut keys are no longer anchors', () => {
+    const c = git256Classification();
+    const many = { ...c, jobs: Array.from({ length: 400 }, (_, i) => ({ ...c.jobs[0], job: `job-${i}-${'x'.repeat(300)}` })) };
+    const bundle = buildEvidence({ classification: many, red: [], green: [], commits: [] });
+    const env = bundle.files['env-diff.json'];
+    expect(env.lines.every((l) => l.length <= MAX_EVIDENCE_LINE_CHARS)).toBe(true);
+    expect(Buffer.byteLength(env.lines.join('\n'), 'utf8')).toBeLessThanOrEqual(EVIDENCE_LIMITS.fileBytes);
+    expect(env.lines.at(-1)).toBe('[engine: file cut at its size cap]');
+    for (const k of env.jsonKeys ?? []) expect(env.lines.some((l) => l.includes(`${JSON.stringify(k)}:`))).toBe(true);
   });
 });

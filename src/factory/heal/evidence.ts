@@ -27,7 +27,7 @@ import type { Exec } from '../../ship/exec.js';
 import type { HealClassification } from './classify.js';
 import { jobLog, viewRunJobs, type HealJob } from './history.js';
 import { cleanLine, ENV_FIELDS, type JobEnv } from './logs.js';
-import { capBytes, sanitizeJson, sanitizeLines } from './sanitize.js';
+import { capBytes, MAX_EVIDENCE_LINE_CHARS, sanitizeJson, sanitizeLines } from './sanitize.js';
 import { healStateDir } from './state.js';
 
 export const EVIDENCE_LIMITS = Object.freeze({
@@ -86,7 +86,13 @@ function jsonFile(value: unknown, label: string): EvidenceFile {
     else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { keys.add(k); walk(x); }
   };
   walk(clean);
-  return { lines: JSON.stringify(clean, null, 2).split('\n'), jsonKeys: [...keys].sort(), label };
+  // The same caps as a text file: each line at MAX_EVIDENCE_LINE_CHARS, the file at fileBytes.
+  const all = JSON.stringify(clean, null, 2).split('\n').map((l) => l.slice(0, MAX_EVIDENCE_LINE_CHARS));
+  const capped = capBytes(all, EVIDENCE_LIMITS.fileBytes);
+  const lines = capped.cut ? [...capped.lines.slice(0, -1), '[engine: file cut at its size cap]'] : capped.lines;
+  // A key is a citation anchor only while its line is still in the file.
+  const present = capped.cut ? [...keys].filter((k) => lines.some((l) => l.includes(`${JSON.stringify(k)}:`))) : [...keys];
+  return { lines, jsonKeys: present.sort(), label };
 }
 
 /** Per failing test: its FAIL line through the next FAIL line, at most `failureLines` lines. */

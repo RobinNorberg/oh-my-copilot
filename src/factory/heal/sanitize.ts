@@ -19,9 +19,29 @@ export const MAX_EVIDENCE_LINE_CHARS = 400;
 // Control characters (tab kept), line and paragraph separators, and bidi/format controls.
 const CONTROL = /(?!\t)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
-/** One raw log line as evidence: prefix, ANSI and control characters gone, capped. */
+export const REDACTED = '[redacted]';
+const SECRET_PATTERNS: readonly [RegExp, string][] = [
+  // A whole PEM private key inside one string (JSON values); line by line, sanitizeLines tracks the block.
+  [/-----BEGIN [A-Z0-9 ]*KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*KEY-----|$)/g, REDACTED],
+  [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, REDACTED],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, REDACTED],
+  [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, REDACTED],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`],
+  // URL userinfo: https://user:pass@host, https://token@host.
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, `$1${REDACTED}@`],
+];
+
+/** Secrets a CI log may echo (tokens, keys, URL credentials), replaced by {@link REDACTED}. */
+export function redactSecrets(s: string): string {
+  return SECRET_PATTERNS.reduce((acc, [re, by]) => acc.replace(re, by), s);
+}
+
+const KEY_BEGIN = /-----BEGIN [A-Z0-9 ]*KEY-----/;
+const KEY_END = /-----END [A-Z0-9 ]*KEY-----/;
+
+/** One raw log line as evidence: prefix, ANSI and control characters gone, secrets redacted, capped. */
 export function sanitizeLine(raw: string): string {
-  return cleanLine(raw).replace(CONTROL, ' ').replace(/\s+$/, '').slice(0, MAX_EVIDENCE_LINE_CHARS);
+  return redactSecrets(cleanLine(raw).replace(CONTROL, ' ')).replace(/\s+$/, '').slice(0, MAX_EVIDENCE_LINE_CHARS);
 }
 
 /** True when the line could be read as a fence delimiter (any case). */
@@ -33,7 +53,12 @@ export function carriesDelimiter(line: string): boolean {
 export function sanitizeLines(raw: readonly string[]): { lines: string[]; dropped: number } {
   const lines: string[] = [];
   let dropped = 0;
+  let inKey = false;
   for (const r of raw) {
+    // A private key block spans lines: every line from BEGIN to END is redacted (to the end of the file without END).
+    const clean = cleanLine(r);
+    if (!inKey && KEY_BEGIN.test(clean) && !KEY_END.test(clean)) { inKey = true; lines.push(REDACTED); continue; }
+    if (inKey) { if (KEY_END.test(clean)) inKey = false; lines.push(REDACTED); continue; }
     const line = sanitizeLine(r);
     if (carriesDelimiter(line)) dropped += 1;
     else lines.push(line);
@@ -59,7 +84,7 @@ export function capBytes(lines: readonly string[], maxBytes: number): { lines: s
  * defused, so a log-derived string inside a JSON file cannot fake a fence.
  */
 export function sanitizeJson<T>(value: T, maxString = MAX_EVIDENCE_LINE_CHARS): T {
-  const clean = (s: string) => s.replace(CONTROL, ' ').replace(/HEAL-UNTRUSTED-/gi, 'HEAL_UNTRUSTED_').slice(0, maxString);
+  const clean = (s: string) => redactSecrets(s).replace(CONTROL, ' ').replace(/HEAL-UNTRUSTED-/gi, 'HEAL_UNTRUSTED_').slice(0, maxString);
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return clean(v);
     if (Array.isArray(v)) return v.map(walk);

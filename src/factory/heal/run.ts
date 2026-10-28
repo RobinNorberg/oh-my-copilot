@@ -74,7 +74,19 @@ export interface HealRunDeps {
   confinement?: LaneConfinement;
   /** Test seam: the per-run fence delimiter. */
   delimiter?: () => string;
+  /** Read for {@link HEAL_UNCONFINED_ENV} (default process.env). */
+  env?: NodeJS.ProcessEnv;
+  /** Where the unconfined-lane warning goes (default console.error). */
+  warn?: (message: string) => void;
 }
+
+/**
+ * The owner's opt-in to a debugger lane without OS confinement. The lane's
+ * shell can run repository code at the red sha (`npx vitest run`), so a
+ * non-dry-run `heal run` refuses unless a confinement other than `none` is
+ * set or this is `1`.
+ */
+export const HEAL_UNCONFINED_ENV = 'OMG_HEAL_UNCONFINED';
 
 export interface HealRunOptions {
   root: string;
@@ -161,6 +173,9 @@ function pidAlive(pid: number): boolean {
 /** Why the signature cannot take a debugger lane now, or null. */
 function eligibility(s: HealSignatureState): string | null {
   if (!s.classification.laneEligible || !LANE_CLASSES.includes(s.class)) return `class ${s.class} never goes to a debugger lane`;
+  // Design §8: a lane checks out the red sha and may run its tests on this host, so only a red push run on
+  // the integration branch starts one. PR runs only add weight to such a signature.
+  if (s.source !== 'push') return 'the signature was seen on pull request runs only; a debugger lane needs a red push run on the integration branch';
   if (s.next === 'heal-approve') return 'a valid diagnosis is already recorded; the heal run waits at awaiting-human: heal-approve';
   if (s.next === 'report') return 'the signature is report-only';
   if (s.wontFixAt) return "the signature was closed as won't-fix";
@@ -186,6 +201,27 @@ export function laneBudget(state: HealSignatureState, others: readonly HealSigna
   return { ok: true, cap };
 }
 
+/**
+ * `omg factory heal close <sig8>`: a human closes an open heal run parked at
+ * heal-approve or heal-diagnosis, which frees the MAX_OPEN_HEAL_RUNS slot.
+ * The signature keeps its record; the next red run on it folds in as usual.
+ */
+export function closeHeal(root: string, sig8: string, deps: Pick<HealRunDeps, 'ledgerDir' | 'now'>, lockTimeoutMs = 60_000): HealSignatureState {
+  return withFileLockSync(join(healStateDir(root), 'scan.lock'), () => {
+    const s = readHealState(root, sig8);
+    if (!s) throw new HealRunRefused(`no heal signature ${sig8}`);
+    if (!s.healRun?.open) throw new HealRunRefused(`heal ${sig8} has no open heal run`);
+    const last = s.lanes?.at(-1);
+    if (last?.status === 'running' && pidAlive(last.pid)) throw new HealRunRefused(`debugger lane ${last.id} is still running in process ${last.pid}`);
+    if (s.next !== 'heal-approve' && s.next !== 'heal-diagnosis') throw new HealRunRefused(`heal ${sig8} is at ${s.next}; only a heal run parked at heal-approve or heal-diagnosis can be closed`);
+    const at = deps.now().toISOString();
+    const next: HealSignatureState = { ...s, healRun: { ...s.healRun, open: false, closedAt: at }, updatedAt: at };
+    writeHealState(root, next);
+    writeHealSeal(deps.ledgerDir, root, next);
+    return next;
+  }, { timeoutMs: lockTimeoutMs });
+}
+
 export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<HealRunOutcome> {
   const now = () => deps.now().toISOString();
   const lockPath = join(healStateDir(o.root), 'scan.lock');
@@ -201,6 +237,9 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   if (healExec('git', ['cat-file', '-e', `${c.firstRed.sha}^{commit}`], { cwd: o.root }).status !== 0) {
     throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not in the local repository; fetch origin first`);
   }
+  if (healExec('git', ['merge-base', '--is-ancestor', c.firstRed.sha, `refs/remotes/origin/${o.base}`], { cwd: o.root }).status !== 0) {
+    throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not on origin/${o.base}; a debugger lane only starts at integration-branch code (fetch origin first)`);
+  }
 
   const bundle: EvidenceBundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs));
   const delimiter = (deps.delimiter ?? newDelimiter)();
@@ -208,6 +247,13 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   if (o.dryRun) {
     writeEvidence(o.root, bundle);
     return { sig8: o.sig8, exitCode: 0, next: initial.next, message: `dry run: wrote the evidence bundle; a debugger lane would start capped at ${o.config.debugLaneMaxCredits} AI credits`, bundleDir, prompt };
+  }
+  const unconfined = (deps.confinement ?? NO_CONFINEMENT).name === NO_CONFINEMENT.name;
+  if (unconfined) {
+    if ((deps.env ?? process.env)[HEAL_UNCONFINED_ENV] !== '1') {
+      throw new HealRunRefused(`heal ${o.sig8}: the debugger lane has no OS confinement yet, and its shell can run repository code at the red sha on this host. Set ${HEAL_UNCONFINED_ENV}=1 to accept an unconfined lane, or use --dry-run`);
+    }
+    (deps.warn ?? console.error)(`WARNING: ${HEAL_UNCONFINED_ENV}=1: the debugger lane runs WITHOUT OS confinement. Its shell can run code from the repository at ${c.firstRed.sha.slice(0, 12)} with your user's file access; GitHub tokens are removed from its env. The lane record says so.`);
   }
 
   // Reserve: limits checked and the lane recorded before it exists.
@@ -242,6 +288,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
       startedAt: now(),
       pid: process.pid,
       confinement: (deps.confinement ?? NO_CONFINEMENT).name,
+      ...(unconfined ? { unconfinedOptIn: true as const } : {}),
     };
     const { blocked: _blocked, ...rest } = s;
     const next: HealSignatureState = {
@@ -284,25 +331,31 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   }));
 
   return locked(() => {
-    const cur = readHealState(o.root, o.sig8);
-    const problems = [...outcome.problems];
-    const changed = changedEvidence(o.root, o.sig8, hashes);
-    if (changed.length > 0) problems.push(`the evidence bundle changed while the lane ran: ${changed.slice(0, 5).join(', ')}`);
-    const expected = { healRun: reserved.state.healRun, lanes: reserved.state.lanes };
-    if (!cur || JSON.stringify({ healRun: cur.healRun, lanes: cur.lanes }) !== JSON.stringify(expected)) problems.push('the heal state file changed while the lane ran');
+    // The lane's state file may be anything now; a throw here would leave the lane `running`.
+    let cur: HealSignatureState | null = null;
+    try { cur = readHealState(o.root, o.sig8); } catch { /* unreadable: counted as changed below */ }
     const base = cur ?? reserved.state;
 
     let diagnosis: HealDiagnosisRecord;
     const record = { at: now(), laneId: reserved.lane.id, evidence: hashes };
-    if (problems.length > 0) diagnosis = { ...record, outcome: 'tampered', reason: problems.slice(0, 5).join('; ') };
-    else if (outcome.status !== 'completed') diagnosis = { ...record, outcome: 'lane-failed', reason: `lane ended ${outcome.status}${outcome.error ? `: ${outcome.error}` : ''}` };
-    else {
-      const parsed = parseDiagnosisOutput(outcome.result?.finalText, bundle);
-      diagnosis = parsed.kind === 'invalid'
-        ? { ...record, outcome: 'invalid', reason: parsed.reason }
-        : parsed.kind === 'rejected'
-          ? { ...record, outcome: 'rejected', reason: parsed.reason, diagnosis: parsed.diagnosis }
-          : { ...record, outcome: 'valid', diagnosis: parsed.diagnosis };
+    try {
+      const problems = [...outcome.problems];
+      const changed = changedEvidence(o.root, o.sig8, hashes);
+      if (changed.length > 0) problems.push(`the evidence bundle changed while the lane ran: ${changed.slice(0, 5).join(', ')}`);
+      const expected = { healRun: reserved.state.healRun, lanes: reserved.state.lanes };
+      if (!cur || JSON.stringify({ healRun: cur.healRun, lanes: cur.lanes }) !== JSON.stringify(expected)) problems.push('the heal state file changed while the lane ran');
+      if (problems.length > 0) diagnosis = { ...record, outcome: 'tampered', reason: problems.slice(0, 5).join('; ') };
+      else if (outcome.status !== 'completed') diagnosis = { ...record, outcome: 'lane-failed', reason: `lane ended ${outcome.status}${outcome.error ? `: ${outcome.error}` : ''}` };
+      else {
+        const parsed = parseDiagnosisOutput(outcome.result?.finalText, bundle);
+        diagnosis = parsed.kind === 'invalid'
+          ? { ...record, outcome: 'invalid', reason: parsed.reason }
+          : parsed.kind === 'rejected'
+            ? { ...record, outcome: 'rejected', reason: parsed.reason, diagnosis: parsed.diagnosis }
+            : { ...record, outcome: 'valid', diagnosis: parsed.diagnosis };
+      }
+    } catch (error) {
+      diagnosis = { ...record, outcome: 'invalid', reason: `diagnosis validation failed: ${(error instanceof Error ? error.message : String(error)).slice(0, 300)}` };
     }
     const lane: HealLaneRecord = {
       ...reserved.lane,

@@ -8,12 +8,12 @@ import { parseKnownFlaky } from '../../../ship/config.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import type { LaneBackend, LaneResult, LaneStartInput } from '../../run/lane.js';
 import { classifyRun, type HealClassification } from '../classify.js';
-import { healCommand, type HealDeps } from '../cli.js';
+import { healCommand, renderHealState, type HealDeps } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG, type HealConfig } from '../config.js';
 import type { LaneConfinement } from '../debug-lane.js';
 import { evidenceDir } from '../evidence.js';
 import { parseJob } from '../logs.js';
-import { HealRunRefused, readHealCounters, runHeal, verifyHealSeal, type HealRunDeps } from '../run.js';
+import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, readHealCounters, runHeal, verifyHealSeal, type HealRunDeps } from '../run.js';
 import { DELIMITER_PREFIX } from '../sanitize.js';
 import { runSignature } from '../signature.js';
 import { dailyCountersPath, foldSignature, readHealState, writeDailyCountersAt, writeHealState, type HealSignatureState } from '../state.js';
@@ -105,7 +105,7 @@ class FakeLanes implements LaneBackend {
 }
 
 function deps(lanes: LaneBackend, extra: Partial<HealRunDeps> = {}): HealRunDeps {
-  return { exec, lanes: () => lanes, ledgerDir, now: () => NOW, delimiter: () => DELIM, pollMs: 1, ...extra };
+  return { exec, lanes: () => lanes, ledgerDir, now: () => NOW, delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {}, ...extra };
 }
 
 const run = (lanes: LaneBackend, config: Partial<HealConfig> = {}, extra: Partial<HealRunDeps> = {}, sig8 = classification().sig8, dryRun = false) =>
@@ -127,6 +127,7 @@ beforeEach(() => {
   writeFileSync(join(root, 'README.md'), 'red\n');
   git('commit', '-q', '-am', 'red');
   redSha = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/dev', redSha);
   ghCalls = [];
 });
 
@@ -255,7 +256,7 @@ describe('omg factory heal run', () => {
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     const cliExec: Exec = (cmd, args, opts) => (cmd === 'git' && args[0] === 'rev-parse' && args[1] === '--show-toplevel' ? { status: 0, stdout: `${root}\n`, stderr: '' } : exec(cmd, args, opts));
-    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, run: { delimiter: () => DELIM, pollMs: 1 } };
+    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, run: { delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {} } };
     const cli = async (...argv: string[]) => { process.exitCode = undefined; await healCommand(d).parseAsync(argv, { from: 'user' }); return Number(process.exitCode ?? 0); };
     const sig8 = classification().sig8;
     expect(await cli('run', sig8)).toBe(4);
@@ -266,5 +267,100 @@ describe('omg factory heal run', () => {
     expect(await cli('status', sig8)).toBe(0);
     expect(out.join('\n')).toMatch(/diagnosis valid/);
     expect(out.join('\n')).toMatch(/seal: ok/);
+    out.length = 0;
+    expect(await cli('close', sig8)).toBe(0);
+    expect(out.join('\n')).toMatch(/closed heal run/);
+    expect(await cli('close', sig8)).toBe(3);
+  });
+
+  it('only a dev push signature starts a lane: a PR-only signature is refused, a PR run never replaces the push classification', async () => {
+    const c = classification();
+    const fold = (prev: HealSignatureState | null, cl: HealClassification, runId: string, source: 'push' | 'pr') =>
+      foldSignature(prev, { classification: cl, runId, source, ...(source === 'pr' ? { prBranches: ['a', 'b'] } : {}) }, [], { day: '2026-10-28', healRuns: 0, debugLanes: 0, credits: 0 }, DEFAULT_HEAL_CONFIG, NOW).state;
+    writeHealState(root, fold(null, c, '1', 'pr'));
+    const lanes = new FakeLanes(answer(GOOD));
+    await expect(run(lanes)).rejects.toThrow(/pull request runs only/);
+    expect(lanes.starts).toHaveLength(0);
+    expect(existsSync(dailyCountersPath(root))).toBe(false);
+    // A PR run with its own (attacker) head sha folds into a push signature as weight only.
+    const attacker = { ...c, firstRed: { runId: '2', sha: 'a'.repeat(40) } };
+    const pushed = fold(fold(null, c, '1', 'push'), attacker, '2', 'pr');
+    expect(pushed).toMatchObject({ source: 'push', count: 2, classification: { firstRed: { sha: redSha } } });
+    // A PR signature later seen on a dev push takes the push classification.
+    expect(fold(fold(null, attacker, '1', 'pr'), c, '2', 'push')).toMatchObject({ source: 'push', classification: { firstRed: { sha: redSha } } });
+  });
+
+  it('refuses a red sha that is not on origin/<base>', async () => {
+    const s = seed();
+    git('checkout', '-q', '-b', 'pr-branch');
+    writeFileSync(join(root, 'README.md'), 'pr\n');
+    git('commit', '-q', '-am', 'pr');
+    const prSha = git('rev-parse', 'HEAD');
+    writeHealState(root, { ...s, classification: { ...s.classification, firstRed: { ...s.classification.firstRed, sha: prSha } } });
+    const lanes = new FakeLanes(answer(GOOD));
+    await expect(run(lanes)).rejects.toThrow(/is not on origin\/dev/);
+    expect(lanes.starts).toHaveLength(0);
+  });
+
+  it('an unconfined lane is refused by default; OMG_HEAL_UNCONFINED=1 warns and is recorded; a named confinement needs no opt-in', async () => {
+    const s = seed();
+    const lanes = new FakeLanes(answer({ ...GOOD, evidence: ['nope.txt:1'] }));
+    await expect(run(lanes, {}, { env: {} })).rejects.toThrow(/no OS confinement yet.*OMG_HEAL_UNCONFINED=1/);
+    expect(lanes.starts).toHaveLength(0);
+    expect(existsSync(dailyCountersPath(root))).toBe(false);
+    expect((await run(lanes, {}, {}, s.sig8, true)).exitCode).toBe(0); // --dry-run needs no opt-in
+    const warnings: string[] = [];
+    await run(lanes, {}, { warn: (m) => warnings.push(m) });
+    expect(warnings.join('\n')).toMatch(/WITHOUT OS confinement/);
+    expect(readHealState(root, s.sig8)!.lanes![0]).toMatchObject({ confinement: 'none', unconfinedOptIn: true });
+    const boxed: LaneConfinement = { name: 'test-box', confine: (i) => i };
+    await run(lanes, {}, { env: {}, confinement: boxed });
+    expect(readHealState(root, s.sig8)!.lanes![1]).toMatchObject({ confinement: 'test-box' });
+    expect(readHealState(root, s.sig8)!.lanes![1].unconfinedOptIn).toBeUndefined();
+  });
+
+  it('every lane starts credential-free; a confinement that drops it loosens the lane', async () => {
+    seed();
+    const lanes = new FakeLanes(answer({ ...GOOD, evidence: ['nope.txt:1'] }));
+    await run(lanes);
+    expect(lanes.starts[0].scrubCredentials).toBe(true);
+    const leaky: LaneConfinement = { name: 'leaky', confine: (i) => ({ ...i, scrubCredentials: false }) };
+    const out = await run(lanes, {}, { confinement: leaky });
+    expect(lanes.starts).toHaveLength(1);
+    expect(out.diagnosis).toMatchObject({ outcome: 'lane-failed', reason: expect.stringMatching(/credential-free/) });
+  });
+
+  it('a lane that corrupts its state file or cites Object.prototype names is settled, never left running', async () => {
+    const s = seed();
+    const corrupt = await run(new FakeLanes(answer(GOOD), () => writeFileSync(join(dirname(dailyCountersPath(root)), `${s.sig8}.json`), '{not json')));
+    expect(corrupt).toMatchObject({ next: 'heal-diagnosis', diagnosis: { outcome: 'tampered' }, lane: { status: 'completed' } });
+    expect(readHealState(root, s.sig8)!.lanes!.at(-1)!.status).toBe('completed');
+    const proto = await run(new FakeLanes(answer({ ...GOOD, evidence: ['constructor:1', '__proto__:1'] })));
+    expect(proto).toMatchObject({ next: 'heal-diagnosis', diagnosis: { outcome: 'invalid', reason: expect.stringMatching(/outside the bundle/) } });
+    expect(readHealState(root, s.sig8)!.lanes!.every((l) => l.status !== 'running')).toBe(true);
+  });
+
+  it('heal close frees the open-run slot at heal-approve or heal-diagnosis only', async () => {
+    const s = seed();
+    expect(() => closeHeal(root, s.sig8, { ledgerDir, now: () => NOW })).toThrow(/no open heal run/);
+    await run(new FakeLanes(answer(GOOD)));
+    const other = { ...s, sig8: 'abcdef12', classification: { ...s.classification, sig8: 'abcdef12' } };
+    writeHealState(root, other);
+    await expect(run(new FakeLanes(answer(GOOD)), {}, {}, 'abcdef12')).rejects.toThrow(/1 other heal run\(s\) open/);
+    const closed = closeHeal(root, s.sig8, { ledgerDir, now: () => NOW });
+    expect(closed.healRun).toMatchObject({ open: false, closedAt: NOW.toISOString() });
+    expect(verifyHealSeal(ledgerDir, root, readHealState(root, s.sig8)!)).toBe('ok');
+    expect(() => closeHeal(root, s.sig8, { ledgerDir, now: () => NOW })).toThrow(/no open heal run/);
+    expect((await run(new FakeLanes(answer(GOOD)), {}, {}, 'abcdef12')).next).toBe('heal-approve');
+    writeHealState(root, { ...readHealState(root, 'abcdef12')!, next: 'debug-lane' });
+    expect(() => closeHeal(root, 'abcdef12', { ledgerDir, now: () => NOW })).toThrow(/only a heal run parked/);
+  });
+
+  it('heal status strips control characters from state text', () => {
+    const s = seed();
+    writeHealState(root, { ...s, lanes: [{ id: 'x', kind: 'debug', startSha: redSha, status: 'failed', maxCredits: 30, startedAt: NOW.toISOString(), pid: 1, confinement: 'none', note: 'evil \u001b]0;pwned\u0007 ‮' }] });
+    const text = renderHealState(readHealState(root, s.sig8)!);
+    expect(text).toContain('evil  ]0;pwned');
+    expect(text).not.toMatch(/\u0007|‮|\u001b\]/);
   });
 });

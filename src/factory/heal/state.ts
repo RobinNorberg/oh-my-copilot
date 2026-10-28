@@ -54,6 +54,8 @@ export interface HealLaneRecord {
   /** The process that started the lane (a stale `running` record of a dead process is settled as lost). */
   pid: number;
   confinement: string;
+  /** The lane ran with confinement `none` under OMG_HEAL_UNCONFINED=1. */
+  unconfinedOptIn?: true;
   usage?: { credits: number; premiumRequests: number; source: 'measured' | 'estimated' };
   note?: string;
 }
@@ -82,7 +84,7 @@ export interface HealSignatureState {
   count: number;
   seenRuns: string[];
   prBranches?: string[];
-  healRun?: { id: string; open: boolean; startedAt: string };
+  healRun?: { id: string; open: boolean; startedAt: string; closedAt?: string };
   /** Debugger lanes of the heal run, oldest first. */
   lanes?: HealLaneRecord[];
   diagnosis?: HealDiagnosisRecord;
@@ -193,7 +195,8 @@ export interface RecordResult {
  */
 export function foldSignature(prev: HealSignatureState | null, input: RecordInput, others: readonly HealSignatureState[], counters: HealDailyCounters, config: HealConfig, now: Date): RecordResult {
   const at = now.toISOString();
-  const c = input.classification;
+  // A PR run only adds weight to a dev push signature: its classification (first red sha = PR code) never replaces the push one.
+  const c = prev?.source === 'push' && input.source === 'pr' ? prev.classification : input.classification;
   if (prev?.seenRuns.includes(input.runId)) return { state: prev, changed: false, suppressed: false };
   const wontFix = prev?.wontFixAt !== undefined && now.getTime() - Date.parse(prev.wontFixAt) < WONT_FIX_DAYS * 86_400_000;
   if (prev && (prev.healRun?.open || wontFix)) {

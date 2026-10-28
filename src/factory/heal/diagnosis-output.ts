@@ -16,6 +16,7 @@
  * protected path.
  */
 
+import { protectedChanges } from '../../ship/merge.js';
 import { ANY_JSON_FENCE, FENCE } from '../run/review-output.js';
 import type { EvidenceBundle } from './evidence.js';
 
@@ -32,14 +33,6 @@ export const DIAGNOSIS_LIMITS = Object.freeze({
   acceptance: 10,
   acceptanceItem: 300,
 });
-
-/** Paths a heal fix may never touch (lanes and ship merge refuse them too); any case, for case-insensitive checkouts. */
-export const PROTECTED_FIX_PATHS: readonly RegExp[] = [
-  /^\.github\/workflows\//i,
-  /^\.github\/known-flaky-tests\.json$/i,
-  /^\.copilot\/omg\.jsonc$/i,
-  /^\.copilot\/omc\.jsonc$/i,
-];
 
 const REPO_PATH = /^[\w.@-][\w.@-]*(?:\/[\w.@-][\w.@-]*)*$/;
 const REPRO = /^npx vitest run(?: [\w@./:=-]+)+$/;
@@ -60,13 +53,19 @@ export type ParsedDiagnosis =
 
 const text = (v: unknown, max: number): string | null => (typeof v === 'string' && v.trim() && v.length <= max ? v.trim() : null);
 const oneLine = (s: string) => !/[\r\n\p{Zl}\p{Zp}]/u.test(s);
+/** Multi-line prose: control characters other than newline are refused (they would reach the terminal). */
+const prose = (v: unknown, max: number): string | null => {
+  const t = text(v, max);
+  return t !== null && !/(?!\n)\p{Cc}/u.test(t) ? t : null;
+};
 
 /** Why a citation does not point into the bundle, or null. */
 export function citationProblem(citation: string, bundle: EvidenceBundle): string | null {
   const m = /^([\w./-]+):([\w.-]+)$/.exec(citation);
   if (!m) return `citation ${JSON.stringify(citation.slice(0, 80))} is not <file>:<line or key>`;
   const [, name, anchor] = m;
-  const file = bundle.files[name];
+  // Own keys only: `constructor`, `__proto__` or `toString` must not resolve to Object.prototype.
+  const file = Object.hasOwn(bundle.files, name) ? bundle.files[name] : undefined;
   if (!file) return `citation ${citation} names a file outside the bundle`;
   if (/^\d+$/.test(anchor)) {
     const line = Number(anchor);
@@ -98,8 +97,8 @@ export function parseDiagnosisOutput(finalText: string | null | undefined, bundl
   const extra = Object.keys(o).filter((k) => !allowed.has(k));
   if (extra.length > 0) return invalid(`unknown field(s): ${extra.slice(0, 5).join(', ')}`);
   if (!DIAGNOSIS_CLASSES.includes(o.class as DiagnosisClass)) return invalid(`class must be one of ${DIAGNOSIS_CLASSES.join(', ')}`);
-  const rootCause = text(o.rootCause, DIAGNOSIS_LIMITS.rootCause);
-  if (!rootCause) return invalid(`rootCause must be a non-empty string of at most ${DIAGNOSIS_LIMITS.rootCause} characters`);
+  const rootCause = prose(o.rootCause, DIAGNOSIS_LIMITS.rootCause);
+  if (!rootCause) return invalid(`rootCause must be a non-empty string of at most ${DIAGNOSIS_LIMITS.rootCause} characters without control characters`);
   if (!Array.isArray(o.evidence) || o.evidence.length === 0 || o.evidence.length > DIAGNOSIS_LIMITS.evidence) {
     return invalid(`evidence must be an array of 1 to ${DIAGNOSIS_LIMITS.evidence} citations`);
   }
@@ -121,10 +120,11 @@ export function parseDiagnosisOutput(finalText: string | null | undefined, bundl
   if (o.fix !== null) {
     if (typeof o.fix !== 'object' || o.fix === undefined || Array.isArray(o.fix)) return invalid('fix must be an object or null');
     const f = o.fix as Record<string, unknown>;
-    const summary = text(f.summary, DIAGNOSIS_LIMITS.fixSummary);
-    if (!summary) return invalid(`fix.summary must be a non-empty string of at most ${DIAGNOSIS_LIMITS.fixSummary} characters`);
+    const summary = prose(f.summary, DIAGNOSIS_LIMITS.fixSummary);
+    if (!summary) return invalid(`fix.summary must be a non-empty string of at most ${DIAGNOSIS_LIMITS.fixSummary} characters without control characters`);
+    // A segment ending in `.` is one Windows would resolve to another name (`workflows.` is `workflows`).
     if (!Array.isArray(f.files) || f.files.length === 0 || f.files.length > DIAGNOSIS_LIMITS.fixFiles
-      || !f.files.every((p) => typeof p === 'string' && p.length <= 300 && REPO_PATH.test(p) && !p.split('/').some((s) => s === '.' || s === '..'))) {
+      || !f.files.every((p) => typeof p === 'string' && p.length <= 300 && REPO_PATH.test(p) && !p.split('/').some((s) => s.endsWith('.')))) {
       return invalid(`fix.files must be 1 to ${DIAGNOSIS_LIMITS.fixFiles} repository-relative paths`);
     }
     if (!Array.isArray(f.acceptance) || f.acceptance.length === 0 || f.acceptance.length > DIAGNOSIS_LIMITS.acceptance
@@ -135,7 +135,7 @@ export function parseDiagnosisOutput(finalText: string | null | undefined, bundl
   }
   const diagnosis: Diagnosis = { class: o.class as DiagnosisClass, rootCause, evidence, reproduced: o.reproduced, ...(reproCommand ? { reproCommand } : {}), fix };
   if (diagnosis.class === 'flaky') return { kind: 'rejected', diagnosis, reason: 'class flaky: a known-flaky entry is a human decision, never a heal PR' };
-  const guarded = fix?.files.filter((p) => PROTECTED_FIX_PATHS.some((re) => re.test(p))) ?? [];
+  const guarded = protectedChanges(fix?.files ?? []);
   if (guarded.length > 0) return { kind: 'rejected', diagnosis, reason: `fix.files names protected path(s): ${guarded.join(', ')}` };
   if (!fix) return { kind: 'rejected', diagnosis, reason: 'no fix proposed' };
   return { kind: 'valid', diagnosis };
