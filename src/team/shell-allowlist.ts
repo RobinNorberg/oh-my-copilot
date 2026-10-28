@@ -22,9 +22,19 @@ const MAX_SEGMENTS = 3;
 
 /**
  * Substitution, splatting, here-strings, redirection, chaining, PowerShell
- * escapes and type literals: `|` is the only separator left.
+ * escapes and type literals: `|` is the only separator left. `[` is also a
+ * bash glob, and `%` covers PowerShell's stop-parsing token `--%` and cmd's
+ * `%VAR%`.
  */
-const FORBIDDEN_CHARS = /[`$;&><(){}[\]@!\r\n\0]/;
+const FORBIDDEN_CHARS = /[`$;&><(){}[\]@!%\r\n\0]/;
+
+/**
+ * Anything outside printable ASCII (tab allowed): PowerShell reads the
+ * Unicode quotes U+2018-U+201F as quotes and the dashes U+2013-U+2015 as
+ * `-`, and this parser does not; other code points (spaces, look-alikes) are
+ * refused for the same reason.
+ */
+const NON_ASCII = /[^\t\x20-\x7e]/;
 
 export const ALLOWLIST_SOURCES: ReadonlySet<string> = new Set([
   'git', 'rg', 'grep', 'findstr', 'select-string', 'sls',
@@ -203,8 +213,12 @@ function checkSegment(tokens: Token[], role: 'source' | 'filter', ctx: ShellAllo
   return null;
 }
 
-/** The command names of `text`'s segments, or why it is refused. */
-function checkText(text: string, ctx: ShellAllowlistContext): string[] | string {
+/**
+ * The command names of `text`'s segments, or why it is refused. `raw`: the
+ * text as the shell sees it, whose quoting decides glob expansion (the
+ * normalized text has lost it).
+ */
+function checkText(text: string, ctx: ShellAllowlistContext, raw: boolean): string[] | string {
   const segments = text.split('|');
   if (segments.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
   const names: string[] = [];
@@ -212,6 +226,9 @@ function checkText(text: string, ctx: ShellAllowlistContext): string[] | string 
     const tokens = tokenize(segment);
     if (typeof tokens === 'string') return tokens;
     if (tokens.length === 0) return 'empty pipeline segment';
+    // bash expands an unquoted `*` or `?` (`[` is a forbidden character): a file named `--output=x` would become an option.
+    const glob = raw ? tokens.find((t) => !t.quoted && /[*?]/.test(t.text)) : undefined;
+    if (glob) return `unquoted glob ${glob.text}`;
     const problem = checkSegment(tokens, i === 0 ? 'source' : 'filter', ctx);
     if (problem) return problem;
     names.push(commandName(tokens[0]!.text));
@@ -241,11 +258,13 @@ export function reviewShellAllowlist(req: SdkPermissionRequest, ctx: ShellAllowl
   if (!raw.trim()) return deny('shell without command text');
   if (raw.length > MAX_ALLOWLIST_COMMAND_CHARS) return deny(`command longer than ${MAX_ALLOWLIST_COMMAND_CHARS} characters`);
   if (req.hasWriteFileRedirection === true) return deny('file redirection');
+  const wide = NON_ASCII.exec(raw);
+  if (wide) return deny(`non-ASCII character U+${wide[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`);
   const bad = FORBIDDEN_CHARS.exec(raw);
   if (bad) return deny(`forbidden character ${JSON.stringify(bad[0])}`);
-  const parsed = checkText(raw, ctx);
+  const parsed = checkText(raw, ctx, true);
   if (typeof parsed === 'string') return deny(parsed);
-  const normalized = checkText(normalizeShellCommand(raw), ctx);
+  const normalized = checkText(normalizeShellCommand(raw), ctx, false);
   if (typeof normalized === 'string') return deny(`${normalized} (after quote normalization)`);
   const seen = new Set([...parsed, ...normalized]);
   const unknown = runtimeIdentifiers(req).find((id) => !seen.has(id));

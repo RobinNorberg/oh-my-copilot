@@ -32,7 +32,6 @@ describe('reviewShellAllowlist accepts read-only commands', () => {
     'git show HEAD:src/a.ts',
     'git show :src/a.ts',
     'git log -c -1',
-    'git log --format=%h,%s -5',
     'git diff --no-ext-diff --no-textconv HEAD~1 -- src/a.ts',
     'git blame src/a.ts',
     'git merge-base main HEAD',
@@ -41,7 +40,7 @@ describe('reviewShellAllowlist accepts read-only commands', () => {
     'git cat-file -p HEAD',
     'git rev-parse --show-toplevel',
     'git grep -n foo -- src',
-    'git for-each-ref --format=%H refs/heads',
+    'git for-each-ref refs/heads',
     'git rev-list --count main..HEAD',
     'rg -n foo src',
     'rg -g "*.ts" foo',
@@ -209,5 +208,31 @@ describe('reviewShellAllowlist refuses everything else', () => {
     expect(decide('   ').approve).toBe(false);
     expect(decide(`cat ${'a'.repeat(MAX_ALLOWLIST_COMMAND_CHARS)}`).reason).toContain('longer than');
     expect(reviewShellAllowlist({ kind: 'write', path: 'x' }, { cwd: wt }).approve).toBe(false);
+  });
+
+  it.each([
+    ['git log ‘x’', 'U+2018'],
+    ['git log “x”', 'U+201C'],
+    ['git log ‟x', 'U+201F'],
+    ['git log –output=x', 'U+2013'],
+    ['git log ―-output=x', 'U+2015'],
+    ['cat src/a.ts', 'U+00A0'],
+    ['cat src/ä.ts', 'U+00E4'],
+  ])('refuses the non-ASCII character in %s', (cmd, code) => {
+    expect(decide(cmd).reason).toBe(`review allowlist: non-ASCII character ${code}`);
+  });
+
+  it('refuses unquoted * and ? globs and [ (a matched name could become an option), accepts quoted ones', () => {
+    for (const cmd of ['cat *', 'cat src/*.ts', 'ls ?', 'git diff -- src/*', 'rg -g *.ts foo', 'git log | head -n *']) {
+      expect(decide(cmd).reason, cmd).toMatch(/^review allowlist: unquoted glob /);
+    }
+    expect(decide('cat src/[a].ts').reason).toBe('review allowlist: forbidden character "["');
+    for (const cmd of ['rg -g "*.ts" foo', "grep -n 'a.*b?' src/a.ts"]) expect(decide(cmd).approve, cmd).toBe(true);
+  });
+
+  it('refuses % and the PowerShell stop-parsing token --%', () => {
+    for (const cmd of ['git log --% x', 'git log --format=%h -5', 'type %USERPROFILE%\\.ssh\\id_rsa']) {
+      expect(decide(cmd).reason, cmd).toBe('review allowlist: forbidden character "%"');
+    }
   });
 });
