@@ -9,9 +9,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { LaneBackend, LaneResult, LaneStartInput } from '../../factory/run/lane.js';
+import type { LaneBackend, LaneResult, LaneStartInput, LaneState } from '../../factory/run/lane.js';
 import type { Exec } from '../../ship/exec.js';
-import { DRIFT_SCRIPT, runPortDrive, type PortDriveOptions } from '../engine.js';
+import { DRIFT_SCRIPT, laneForbidden, runPortDrive, type PortDriveOptions } from '../engine.js';
 
 const REPO = join(import.meta.dirname, '../../..');
 const roots: string[] = [];
@@ -69,13 +69,13 @@ function fixture(base: Record<string, string>, forkChange: Record<string, string
   return { fork, origin, head, base: baseSha };
 }
 
-interface Harness { calls: string[][]; failGate?: string }
+interface Harness { calls: string[][]; failGate?: string; failGh?: boolean }
 
 /** git and the drift script run for real; gate scripts, inventory and gh are recorded and stubbed. */
 function harnessExec(h: Harness): Exec {
   return (cmd, args, opts) => {
     h.calls.push([cmd, ...args]);
-    if (cmd === 'gh') return { status: 0, stdout: 'https://github.com/o/r/pull/7\n', stderr: '' };
+    if (cmd === 'gh') return h.failGh ? { status: 1, stdout: '', stderr: 'HTTP 502' } : { status: 0, stdout: 'https://github.com/o/r/pull/7\n', stderr: '' };
     if (cmd === 'git') {
       const r = spawnSync('git', args, { cwd: opts?.cwd, encoding: 'utf8' });
       return { status: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
@@ -134,7 +134,14 @@ describe('omg port drive: clean range', () => {
     const gh = h.calls.find((c) => c[0] === 'gh') as string[];
     expect(gh.slice(1, 7)).toEqual(['pr', 'create', '--draft', '--base', 'dev', '--head']);
     expect(r.pr).toBe('https://github.com/o/r/pull/7');
-    expect(h.calls.some((c) => c[0] === 'git' && (c.includes('--force') || c.includes('-f') && c[1] === 'push'))).toBe(false);
+    const pushes = h.calls.filter((c) => c[0] === 'git' && c.includes('push'));
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].slice(-3)).toEqual(['push', 'origin', `HEAD:refs/heads/${r.branch}`]);
+    // every host git runs hardened
+    for (const c of h.calls.filter((x) => x[0] === 'git' && x[1] !== 'config')) {
+      expect(c).toContain('--no-pager');
+      expect(c.join(' ')).toMatch(/-c core\.hooksPath=\S+ -c core\.fsmonitor=false/);
+    }
     expect(events.at(-1)).toMatch(/^report done draft PR/);
   });
 
@@ -206,32 +213,54 @@ describe('omg port drive: human gates', () => {
   });
 });
 
+interface LaneScript {
+  /** Extra edits in the lane worktree before its commit (beyond resolving src/a.ts). */
+  edit?: (wt: string) => void;
+  /** Runs after the lane's commit: tampering with shared git state. */
+  plant?: (wt: string) => void;
+  /** State `wait` reports (default completed). */
+  waitState?: LaneState;
+  /** State `cancel` reports. */
+  cancelState?: LaneState;
+  cancels?: string[];
+}
+
+/** A write lane that applies the range in its own worktree, resolves src/a.ts to `resolved`, and commits. */
+function mockLane(f: Fixture, resolved: string, seen: LaneStartInput[], s: LaneScript = {}): LaneBackend {
+  let headSha: string | null = null;
+  const wt = join(dirname(f.fork), 'lane-wt');
+  const result = (state: LaneState, credits: number, source: 'measured' | 'estimated'): LaneResult => ({
+    state, branch: 'lane', pr: null, headSha, baseSha: null, worktree: wt, changes: null, finalText: 'staged',
+    logsUrl: null, usage: { premiumRequests: 1, credits, source, detail: '' }, remoteId: 'job-1', error: null, notes: [], process: null,
+  });
+  return {
+    kind: 'local-sdk',
+    start: async (input) => {
+      seen.push(input);
+      git(f.fork, 'worktree', 'add', '-q', '--detach', wt, input.baseRef);
+      spawnSync(process.execPath, [join(REPO, DRIFT_SCRIPT), '--apply', '--head', f.head, '--date', '2026-10-28'], { cwd: wt, encoding: 'utf8' });
+      writeFileSync(join(wt, 'src/a.ts'), resolved);
+      s.edit?.(wt);
+      git(wt, 'add', '-A');
+      git(wt, 'commit', '-q', '--no-verify', '-m', 'port: reconcile upstream conflicts');
+      headSha = git(wt, 'rev-parse', 'HEAD');
+      s.plant?.(wt);
+      return { remoteId: 'job-1' };
+    },
+    poll: async () => result(s.waitState ?? 'completed', 2.5, 'measured'),
+    wait: async () => (s.waitState && s.waitState !== 'completed' ? result(s.waitState, 0.5, 'estimated') : result('completed', 2.5, 'measured')),
+    cancel: async (id) => {
+      s.cancels?.push(id);
+      return { supported: true, result: result(s.cancelState ?? 'cancelled', 1.5, 'measured') };
+    },
+  };
+}
+
+const conflictFixture = (extraBase: Record<string, string> = {}, extraFork: Record<string, string | null> = {}) =>
+  fixture({ 'src/a.ts': 'base\n', 'src/b.ts': 'b\n', ...extraBase }, { 'src/a.ts': 'fork\n', ...extraFork }, { 'src/a.ts': 'upstream\n', 'src/b.ts': 'b2\n' });
+const LANE = { maxCredits: 30, timeoutMs: 60_000 };
+
 describe('omg port drive: reconcile lane', () => {
-  /** A write lane that applies the range in its own worktree, resolves to `resolved`, and commits. */
-  function mockLane(f: Fixture, resolved: string, seen: LaneStartInput[]): LaneBackend {
-    let headSha: string | null = null;
-    const result = (): LaneResult => ({
-      state: 'completed', branch: 'lane', pr: null, headSha, baseSha: null, worktree: null, changes: null, finalText: 'staged',
-      logsUrl: null, usage: { premiumRequests: 1, credits: 2.5, source: 'measured', detail: '' }, remoteId: 'job-1', error: null, notes: [], process: null,
-    });
-    return {
-      kind: 'local-sdk',
-      start: async (input) => {
-        seen.push(input);
-        const wt = join(dirname(f.fork), 'lane-wt');
-        git(f.fork, 'worktree', 'add', '-q', '--detach', wt, input.baseRef);
-        spawnSync(process.execPath, [join(REPO, DRIFT_SCRIPT), '--apply', '--head', f.head, '--date', '2026-10-28'], { cwd: wt, encoding: 'utf8' });
-        writeFileSync(join(wt, 'src/a.ts'), resolved);
-        git(wt, 'add', '-A');
-        git(wt, 'commit', '-q', '--no-verify', '-m', 'port: reconcile upstream conflicts');
-        headSha = git(wt, 'rev-parse', 'HEAD');
-        return { remoteId: 'job-1' };
-      },
-      poll: async () => result(),
-      wait: async () => result(),
-      cancel: async () => ({ supported: false, result: result() }),
-    };
-  }
 
   it('runs the brief as a capped write lane and adopts its tree into the port commit', async () => {
     const f = fixture(
@@ -257,5 +286,180 @@ describe('omg port drive: reconcile lane', () => {
     const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, '<<<<<<< HEAD\nfork\n=======\nupstream\n>>>>>>> x\n', []), reconcileLane: { maxCredits: 30, timeoutMs: 60_000 } }).promise;
     expect(r.status).toBe('blocked');
     expect(r.message).toContain('conflict markers: src/a.ts');
+  });
+
+  it('blocks on a lone ======= separator line too', async () => {
+    const f = conflictFixture();
+    const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork\n=======\nupstream\n', []), reconcileLane: LANE }).promise;
+    expect(r.status).toBe('blocked');
+    expect(r.message).toContain('conflict markers: src/a.ts');
+  });
+});
+
+describe('omg port drive: the lane may change only the conflicted paths', () => {
+  const cases: Array<[string, Record<string, string | null>, (wt: string) => void, string]> = [
+    ['edits a non-conflicted file', {}, (wt) => writeFileSync(join(wt, 'src/b.ts'), 'lane rewrote it\n'), 'src/b.ts'],
+    ['adds a workflow', {}, (wt) => { mkdirSync(join(wt, '.github/workflows'), { recursive: true }); writeFileSync(join(wt, '.github/workflows/x.yml'), 'on: push\n'); }, '.github/workflows/x.yml'],
+    ['edits a gate script', {}, (wt) => { mkdirSync(join(wt, 'scripts/ci'), { recursive: true }); writeFileSync(join(wt, 'scripts/ci/check-multirepo-paths.mjs'), 'process.exit(0)\n'); }, 'scripts/ci/check-multirepo-paths.mjs'],
+    ['deletes a fork-owned file', { 'src/fork-only.ts': 'ours\n' }, (wt) => rmSync(join(wt, 'src/fork-only.ts')), 'src/fork-only.ts'],
+  ];
+  for (const [name, forkExtra, edit, path] of cases) {
+    it(`blocks a lane that ${name}, adopting and committing nothing`, async () => {
+      const f = conflictFixture({}, forkExtra);
+      const before = git(f.fork, 'rev-parse', 'HEAD');
+      const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { edit }), reconcileLane: LANE }).promise;
+      expect(r.status, r.message).toBe('blocked');
+      expect(r.message).toContain(`outside the conflict list, so nothing was adopted: ${path}`);
+      expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(before);
+      expect(git(f.fork, 'ls-files', '-u')).not.toBe('');
+      expect(git(f.origin, 'for-each-ref')).toBe('');
+    });
+  }
+
+  it('never starts the lane when a conflict is on a protected path (eslint config)', async () => {
+    const f = fixture({ 'eslint.config.js': 'base\n' }, { 'eslint.config.js': 'fork\n' }, { 'eslint.config.js': 'upstream\n' });
+    let started = 0;
+    const lanes = () => ({ start: () => { started++; throw new Error('no'); } }) as unknown as LaneBackend;
+    const r = await drive(f, { calls: [] }, { lanes, reconcileLane: LANE }).promise;
+    expect(r.status).toBe('blocked');
+    expect(started).toBe(0);
+    expect(r.blockers[0]).toContain('1 need human review (eslint.config.js)');
+  });
+
+  it('forbids what the drift script excludes or skips, ship protects, and the gates run', async () => {
+    // @ts-expect-error -- plain .mjs script without type declarations
+    const drift = (await import('../../../scripts/port/upstream-drift.mjs')) as { EXCLUDED_PATHS: string[]; SKIPPED_PATHS: string[] };
+    const probe = [...drift.EXCLUDED_PATHS, ...drift.SKIPPED_PATHS.map((p) => `${p}/x.yml`), '.copilot/omg.jsonc', '.github/known-flaky-tests.json',
+      'scripts/ci/check-multirepo-paths.mjs', 'scripts/generate-inventory-graph.mjs', 'scripts/copilot/build-hooks.mjs', 'eslint.config.js',
+      'src/port/engine.ts', 'src/x/.gitattributes'];
+    expect(laneForbidden(probe)).toEqual(probe);
+    expect(laneForbidden(['src/a.ts', 'scripts/dev/x.mjs', 'docs/README.md'])).toEqual([]);
+  });
+});
+
+describe('omg port drive: tamper check around the reconcile lane', () => {
+  const sentinel = (f: Fixture) => join(dirname(f.fork), 'EXECUTED').replace(/\\/g, '/');
+  const hook = (f: Fixture) => `#!/bin/sh\necho ran > "${sentinel(f)}"\n`;
+  const cases: Array<[string, (f: Fixture) => (wt: string) => void, string]> = [
+    ['a post-commit hook', (f) => () => writeFileSync(join(f.fork, '.git/hooks/post-commit'), hook(f), { mode: 0o755 }), 'the hooks/ directory changed'],
+    ['a pre-push hook', (f) => () => writeFileSync(join(f.fork, '.git/hooks/pre-push'), hook(f), { mode: 0o755 }), 'the hooks/ directory changed'],
+    ['a credential.helper', (f) => () => { git(f.fork, 'config', 'credential.helper', `!echo ran > "${sentinel(f)}"`); }, 'the common git config changed'],
+    ['a filter driver', (f) => () => {
+      git(f.fork, 'config', 'filter.evil.clean', `sh -c 'echo ran > "${sentinel(f)}"; cat'`);
+      git(f.fork, 'config', 'filter.evil.smudge', `sh -c 'echo ran > "${sentinel(f)}"; cat'`);
+      writeFileSync(join(f.fork, '.git/info/attributes'), '* filter=evil\n');
+    }, 'the common git config changed'],
+  ];
+  for (const [name, plant, problem] of cases) {
+    it(`parks the run when the lane plants ${name}; nothing runs, nothing is committed or pushed`, async () => {
+      const f = conflictFixture();
+      const before = git(f.fork, 'rev-parse', 'HEAD');
+      const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { plant: plant(f) }), reconcileLane: LANE }).promise;
+      expect(r.status, r.message).toBe('blocked');
+      expect(r.message).toContain('changed shared git state, so nothing was adopted, committed or pushed');
+      expect(r.message).toContain(problem);
+      expect(r.laneCredits).toBe(2.5);
+      expect(existsSync(sentinel(f))).toBe(false);
+      expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(before);
+      expect(git(f.origin, 'for-each-ref')).toBe('');
+    });
+  }
+
+  it('parks the run when the lane plants a credential.helper in the global git config', async () => {
+    const f = conflictFixture();
+    const globalFile = join(dirname(f.fork), 'global.gitconfig');
+    writeFileSync(globalFile, '');
+    const saved = process.env.GIT_CONFIG_GLOBAL;
+    process.env.GIT_CONFIG_GLOBAL = globalFile;
+    try {
+      const plant = () => writeFileSync(globalFile, `[credential]\n\thelper = "!echo ran > ${sentinel(f)}"\n`);
+      const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { plant }), reconcileLane: LANE }).promise;
+      expect(r.status).toBe('blocked');
+      expect(r.message).toContain('the global git config');
+      expect(existsSync(sentinel(f))).toBe(false);
+      expect(git(f.origin, 'for-each-ref')).toBe('');
+    } finally {
+      if (saved === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = saved;
+    }
+  });
+});
+
+describe('omg port drive: lane timeout', () => {
+  it('cancels a lane still running at the timeout, confirms its end, records usage and blocks', async () => {
+    const f = conflictFixture();
+    const cancels: string[] = [];
+    const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { waitState: 'running', cancels }), reconcileLane: LANE }).promise;
+    expect(cancels).toEqual(['job-1']);
+    expect(r.status).toBe('blocked');
+    expect(r.laneCredits).toBe(1.5);
+    expect(r.message).toContain('ended timeout: the lane was still running after 1 min and was cancelled');
+  });
+
+  it('blocks without reading the repository when the cancel is not confirmed', async () => {
+    const f = conflictFixture();
+    const cancels: string[] = [];
+    const r = await drive(f, { calls: [] }, { lanes: () => mockLane(f, 'fork+upstream\n', [], { waitState: 'running', cancelState: 'running', cancels }), reconcileLane: LANE }).promise;
+    expect(cancels).toEqual(['job-1']);
+    expect(r.status).toBe('blocked');
+    expect(r.laneCredits).toBe(1.5);
+    expect(r.message).toContain('its cancel was not confirmed (state running)');
+    expect(r.message).toContain('nothing committed or pushed');
+  });
+});
+
+describe('omg port drive: --continue', () => {
+  it('resumes at the PR step when the port commit exists (gh pr create failed)', async () => {
+    const f = fixture({ 'src/a.ts': 'a\n' }, {}, { 'src/a.ts': 'b\n' });
+    const first = await drive(f, { calls: [], failGh: true }).promise;
+    expect(first.status).toBe('fail');
+    expect(first.message).toContain('gh pr create failed');
+    expect(first.next).toBe(`omg port drive --head ${f.head} --continue`);
+    const portCommit = git(f.fork, 'rev-parse', 'HEAD');
+    expect(first.commits).toEqual([portCommit]);
+
+    const h: Harness = { calls: [] };
+    const resumed = await drive(f, h, { resume: true }).promise;
+    expect(resumed.status, resumed.message).toBe('done');
+    expect(resumed.commits).toEqual([portCommit]);
+    expect(git(f.fork, 'rev-parse', 'HEAD')).toBe(portCommit);
+    expect(resumed.pr).toBe('https://github.com/o/r/pull/7');
+    expect(h.calls.some((c) => c[0] === 'node' && c[1] === DRIFT_SCRIPT && c[2] === '--apply')).toBe(false);
+    const gh = h.calls.find((c) => c[0] === 'gh') as string[];
+    expect(gh[gh.indexOf('--title') + 1]).toBe(`port: upstream ${f.base.slice(0, 9)}..${f.head.slice(0, 9)}`);
+  });
+
+  it('recomputes the package delta when the run stopped before the delta phase', async () => {
+    const f = fixture(
+      { 'src/a.ts': 'a\n', 'package.json': pkg('1.0.0') },
+      {},
+      { 'src/a.ts': 'b\n', 'package.json': pkg('1.0.1', { dependencies: { x: '^1.0.0' } }) },
+    );
+    // A run that died after apply: the branch exists and the range is applied, no delta was recorded.
+    git(f.fork, 'switch', '-q', '-c', `port/upstream-${f.head.slice(0, 9)}`);
+    spawnSync(process.execPath, [join(REPO, DRIFT_SCRIPT), '--apply', '--head', f.head, '--date', '2026-10-28'], { cwd: f.fork, encoding: 'utf8' });
+    const r = await drive(f, { calls: [] }, { resume: true }).promise;
+    expect(r.status).toBe('blocked');
+    expect(r.blockers[0]).toContain('package.json delta needs a human: dependencies.x');
+  });
+});
+
+describe('omg port drive: --accept-leaks', () => {
+  it('accepts the leak lines of the named head and records them in the commit and the PR body', async () => {
+    const f = fixture({ 'src/a.ts': 'a\n' }, {}, { 'src/a.ts': 'see github.com/Yeachan-Heo/oh-my-copilot\n' });
+    const r = await drive(f, { calls: [] }, { acceptLeaks: f.head }).promise;
+    expect(r.status, r.message).toBe('done');
+    expect(r.acceptedLeaks).toEqual(['src/a.ts:1']);
+    expect(git(f.fork, 'log', '-1', '--format=%B')).toContain(`Leak sweep: 1 line(s) accepted with --accept-leaks ${f.head}: src/a.ts:1`);
+    const body = readFileSync(join(f.fork, '.omg', 'port', f.head.slice(0, 9), 'pr-body.md'), 'utf8');
+    expect(body).toContain('leak sweep: 1 line(s) accepted with --accept-leaks: src/a.ts:1');
+    expect(existsSync(join(f.fork, '.omg', 'port', f.head.slice(0, 9), 'accepted-leaks.json'))).toBe(true);
+  });
+
+  it('refuses an --accept-leaks sha that is not the upstream head', async () => {
+    const f = fixture({ 'src/a.ts': 'a\n' }, {}, { 'src/a.ts': 'see github.com/Yeachan-Heo/oh-my-copilot\n' });
+    const r = await drive(f, { calls: [] }, { acceptLeaks: f.base }).promise;
+    expect(r.status).toBe('fail');
+    expect(r.message).toContain('does not name the upstream head');
   });
 });
