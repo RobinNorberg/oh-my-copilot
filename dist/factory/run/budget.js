@@ -10,7 +10,7 @@
  *   at step boundaries; a lane's cap is lowered to what is left, and when less
  *   than the runtime floor is left the run parks at `awaiting-human: budget`.
  * - Wall time per lane and per run, retries per phase, one lost-lane respawn,
- *   ship's fix rounds, and a CI-fix cap of 1.
+ *   ship's fix rounds, a CI-fix cap of 1, and the gates phase's overall bound.
  *
  * Trust: the limits come from `factory.run` in the user config at its default
  * location (trustedUserConfigPath). The working-tree project config can only
@@ -28,6 +28,7 @@ export const DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
     maxLostRespawns: 1,
     maxFixRounds: DEFAULT_SHIP_CONFIG.maxFixRounds,
     maxCiFixRounds: 1,
+    gatesTimeoutMs: 90 * 60_000,
 });
 /** Keys under `factory.run` and their limit fields; minutes convert to ms. */
 const KEYS = {
@@ -38,6 +39,7 @@ const KEYS = {
     maxRetries: { field: 'maxRetries', scale: 1, integer: true },
     maxFixRounds: { field: 'maxFixRounds', scale: 1, integer: true },
     maxCiFixRounds: { field: 'maxCiFixRounds', scale: 1, integer: true },
+    gatesTimeoutMinutes: { field: 'gatesTimeoutMs', scale: 60_000, integer: false },
 };
 function runBlock(config, source) {
     const factory = config?.factory;

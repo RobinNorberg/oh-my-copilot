@@ -80,7 +80,10 @@ export declare function readBaseFile(exec: Exec, cwd: string, commit: string, pa
  * URL fetch really uses) names the PR's repository (`repoUrl`, from
  * `gh pr view --json url` without `/pull/<n>`); otherwise why not. Checked
  * before every fetch of the base, so a lane that points the remote at another
- * repository is refused instead of fetched from.
+ * repository is refused instead of fetched from. Every push URL
+ * (`git remote get-url --push --all`: each `pushurl`, else the URL, with
+ * pushInsteadOf applied) must name it too, so a planted `pushurl` cannot
+ * redirect a push.
  */
 export declare function remoteRepoMismatch(exec: Exec, cwd: string, remote: string, repoUrl: string | undefined): string | null;
 /** The repository URL of a PR URL (`https://github.com/o/r/pull/12` -> `https://github.com/o/r`); undefined when it is not one. */

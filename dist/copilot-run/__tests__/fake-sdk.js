@@ -3,17 +3,48 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-export const newCalls = () => ({ connections: [], sessions: [], prompts: [] });
+export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [] });
+/** The server `rpc` of a fake client with sandbox support `sandbox`. */
+export function fakeClientRpc(sandbox) {
+    if (sandbox === 'no-rpc')
+        return undefined;
+    const supported = sandbox !== 'unsupported';
+    return {
+        sandbox: {
+            getHostSupport: async () => ({
+                supported,
+                ...(supported ? {} : { reason: 'MXC is not available on this host' }),
+                capabilities: [{ name: 'shell', supported }, { name: 'network', supported }, { name: 'denied_paths', supported: false }],
+            }),
+        },
+    };
+}
+/** The session `rpc` of a fake session with sandbox support `sandbox`. */
+export function fakeSessionRpc(sandbox, calls) {
+    if (sandbox === 'no-rpc')
+        return {};
+    return {
+        options: {
+            update: async (params) => {
+                calls.optionsUpdates.push(params);
+                if (sandbox === 'update-fails')
+                    throw new Error('policy conflict');
+                return { success: true };
+            },
+        },
+        sandbox: { getEnforcementStatus: async () => ({ required: false, blocked: sandbox === 'blocked', ...(sandbox === 'blocked' ? { reason: 'managed policy' } : {}) }) },
+    };
+}
 export const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], {
     cwd,
     encoding: 'utf8',
     stdio: 'pipe',
 }).trim();
-export function fakeSdk(behavior, calls) {
+export function fakeSdk(behavior, calls, sandbox = 'supported') {
     class Session {
         cfg;
         sessionId = `sess-${calls.sessions.length}`;
-        rpc = {};
+        rpc = fakeSessionRpc(sandbox, calls);
         constructor(cfg) {
             this.cfg = cfg;
         }
@@ -38,6 +69,7 @@ export function fakeSdk(behavior, calls) {
     }
     class Client {
         cliProcess = null;
+        rpc = fakeClientRpc(sandbox);
         constructor(_opts) { }
         async start() { }
         async stop() { return []; }
@@ -55,11 +87,11 @@ export function fakeSdk(behavior, calls) {
         from: 'test',
     };
 }
-export function fakeDeps(root, behavior, calls, env) {
+export function fakeDeps(root, behavior, calls, env, sandbox = 'supported') {
     return {
         env: { PATH: process.env.PATH ?? '', ...env },
         platform: 'linux',
-        loadSdk: async () => fakeSdk(behavior, calls),
+        loadSdk: async () => fakeSdk(behavior, calls, sandbox),
         resolveBin: () => '/usr/bin/copilot',
         pluginRoot: () => '/plugin',
         userConfigDir: () => join(root, 'user-copilot'),

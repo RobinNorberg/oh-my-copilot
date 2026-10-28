@@ -19,7 +19,8 @@
  *   `config.worktree`, `hooks/`, `info/` and its alternates;
  * - `objects/info/alternates` and `objects/info/http-alternates`;
  * - the global git config the engine's own git reads (GIT_CONFIG_GLOBAL, else
- *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`) and every file an
+ *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`), the user-level ignore
+ *   files (`$XDG_CONFIG_HOME/git/ignore`, `core.excludesFile`) and every file an
  *   `include.path` / `includeIf.*.path` in it or in the repository's config
  *   names, followed {@link MAX_INCLUDE_DEPTH} levels deep: a lane's shell can
  *   reach the home directory and plant `credential.helper=!cmd`,
@@ -114,7 +115,7 @@ export declare function includeTargets(text: string, fromFile: string, home: str
  * in `repoConfigs` (hashed elsewhere themselves), names, up to
  * {@link MAX_INCLUDE_DEPTH} levels.
  */
-export declare function globalConfigHash(repoConfigs: readonly string[], env?: NodeJS.ProcessEnv): string;
+export declare function globalConfigHash(repoConfigs: readonly string[], env?: NodeJS.ProcessEnv, excludesFile?: string): string;
 /**
  * Porcelain `-z` status entries, sorted, minus untracked entries under the
  * engine's own state root (`.omg/`: state, progress, job dirs and lane
@@ -150,6 +151,18 @@ export declare function compareSnapshots(before: RepoSnapshot, after: RepoSnapsh
  * The review lane's own worktree after it ended: its git dir is the repo's,
  * it is at the reviewed sha, nothing changed. Run only after the shared-state
  * comparison passed (git here reads that shared config).
+ *
+ * The lane could write its `.git` file, its admin dir (`commondir`,
+ * `config.worktree`) and its attributes, so git here never discovers the git
+ * dir: it uses the links copilot_run recorded at the lane's creation
+ * (recordWorktreeGitLinks), whose admin dir must be a direct child of the
+ * repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE and
+ * GIT_COMMON_DIR to those paths, hardened, after comparing them (and
+ * `config.worktree`) with the disk. No attribute applies there
+ * (GIT_ATTR_SOURCE is the empty tree), so no filter, diff driver or git-lfs
+ * runs whatever a config level defines, and no submodule is entered; the
+ * shared-state comparison before this call and the driver blanking stay as
+ * further layers.
  */
-export declare function verifyReviewWorktree(exec: Exec, result: LaneResult, head: string, commonDir?: string): string[];
+export declare function verifyReviewWorktree(result: LaneResult, head: string, commonDir?: string): string[];
 //# sourceMappingURL=review-guard.d.ts.map

@@ -5,7 +5,12 @@
  * event streams through the same functions the live driver uses.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | CliScenario;
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | FactoryRunScenario | 'sandbox-lane' | CliScenario;
+/** `omg factory run` end to end, in-process, with real lanes (copilot-factory-run-scenario.ts). */
+export type FactoryRunScenario = 'factory-run' | 'factory-run-fix';
+export declare const FACTORY_RUN_SCENARIOS: readonly FactoryRunScenario[];
+/** Sandboxed copilot_run lanes against the OS sandbox, in-process (copilot-sandbox-lane-scenario.ts). */
+export declare const SANDBOX_LANE_SCENARIO: "sandbox-lane";
 /**
  * Headless `copilot` CLI sessions (copilot-cli-scenarios.ts), not SDK
  * sessions: a stub plugin next to ours, a resumed session, or a seeded state.
@@ -19,7 +24,11 @@ export declare const ALL_SCENARIOS: readonly Scenario[];
  * prompt) lets the model write files and loads a second, probe plugin;
  * `chain` spawns two real headless `copilot -p` factory links (one prompt
  * each) outside the SDK runtime's credit cap; `team` starts a real 2-worker
- * `omg team` with sdk workers (one prompt per worker). The
+ * `omg team` with sdk workers (one prompt per worker); `factory-run` runs
+ * `omg factory run` with a real implement and review lane (two lanes, about
+ * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
+ * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
+ * OS sandbox (three lanes, about 3 AI credits estimated). The
  * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
  * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
  * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
@@ -105,6 +114,13 @@ export declare function permitProjectFiles(req: PermissionRequestLike, ctx: Perm
 export declare const PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
 export declare const EVENTS_MISSING_FILE = "omg-missing-probe.txt";
 export declare const EVENTS_SHELL_TOKEN = "omg-events-probe";
+/** factory-run fixture: the scripted GitHub repository, issue, PR and base, and the one file the issue asks for. */
+export declare const FACTORY_RUN_REPO_URL = "https://github.com/omg-smoke/factory-run";
+export declare const FACTORY_RUN_ISSUE = 1;
+export declare const FACTORY_RUN_PR = 2;
+export declare const FACTORY_RUN_BASE = "dev";
+export declare const FACTORY_RUN_FILE = "greet.txt";
+export declare const FACTORY_RUN_ISSUE_BODY: string;
 export declare const SCENARIOS: Record<Scenario, ScenarioSpec>;
 /** The prompt the `events` scenario resumes its session with: preCompact, no user prompt (the summary still bills AI credits). */
 export declare const COMPACT_PROMPT = "/compact";
@@ -241,6 +257,190 @@ export declare function chainCost(chain: ChainEvidence): ScenarioCost & {
     source: string;
 };
 /**
+ * AI credits ceilings: about 1 credit per lane is the estimate (a small write
+ * or review with a few tool turns), 3 per lane the ceiling, as for chain. It
+ * catches a runaway lane, not a measured figure.
+ */
+export declare const FACTORY_RUN_MAX_CREDITS: Readonly<Record<FactoryRunScenario, number>>;
+/** The lanes each variant must run, in order, with the review verdicts. */
+export declare const FACTORY_RUN_EXPECTED_LANES: Readonly<Record<FactoryRunScenario, ReadonlyArray<{
+    kind: string;
+    verdict?: string;
+}>>>;
+/** What the factory run left behind: the engine outcome, its state, the bare remote and the scripted gh. */
+export interface FactoryRunEvidence {
+    outcome: {
+        exitCode: number;
+        phase: string | null;
+        gate: string | null;
+        message: string;
+        mergeCommand: string | null;
+    } | null;
+    lanes: Array<{
+        id: string;
+        kind: string;
+        status: string;
+        verdict: string | null;
+        jobId: string | null;
+        startSha: string;
+        endSha: string | null;
+        maxCredits: number;
+        credits: number | null;
+        source: string | null;
+    }>;
+    /** Every lane start the backend saw (the engine's caps and profiles). */
+    laneStarts: Array<{
+        laneId: string;
+        profile: string;
+        maxCredits: number;
+    }>;
+    /** The last head the engine pushed, and the bare remote's factory branch. */
+    head: string | null;
+    remoteHead: string | null;
+    /** The bare remote's base branch before and after the run (a merge would move it). */
+    baseBefore: string;
+    baseAfter: string;
+    remoteRefs: string[];
+    shipVerdict: {
+        verdict: string;
+        sha: string;
+        reviewer: string;
+    } | null;
+    /** The factory state passes its integrity seal (a rerun resumes from it). */
+    integrityOk: boolean;
+    /** History notes that mention tampering (lane-tampered, state-tampered). */
+    tamperNotes: string[];
+    gh: {
+        prCreates: string[];
+        ready: boolean;
+        mergeCalls: string[];
+    };
+    warnings: string[];
+    durationMs: number;
+    cost: ScenarioCost & {
+        source: string;
+    };
+}
+/** The file the write lane's probe creates in its worktree, the one change the engine commits. */
+export declare const SANDBOX_LANE_FILE = "sandbox-lane-ok.txt";
+/** The file the review lane is asked to create in its worktree (it must not land). */
+export declare const SANDBOX_REVIEW_FILE = "review-canary.txt";
+/** The file the canary lane's executeUserRequested command creates in its worktree. */
+export declare const SANDBOX_CANARY_FILE = "canary-inside.txt";
+/** The probe script committed at the scenario repository's root; it prints one {@link SANDBOX_PROBE_MARKER} line. */
+export declare const SANDBOX_PROBE_SCRIPT = "sandbox-probe.mjs";
+export declare const SANDBOX_PROBE_MARKER = "OMG_SANDBOX_PROBE ";
+/** A ceiling of 3 AI credits per lane over the three lanes, as for factory-run: it catches a runaway lane. */
+export declare const SANDBOX_LANE_MAX_CREDITS = 9;
+export type SandboxLaneRole = 'review' | 'write' | 'canary';
+/** Where a probe write aimed; the host checks after the lane whether a file landed there. */
+export type SandboxTargetKind = 'main-checkout' | 'shared' | 'git-dir' | 'real-home' | 'profile' | 'worktree';
+export interface SandboxWriteTarget {
+    kind: SandboxTargetKind;
+    path: string;
+    landed: boolean;
+}
+/** The sandbox state of one lane as copilot_run recorded it (CopilotRunSandboxState). */
+export interface SandboxLaneState {
+    mode: string;
+    host: {
+        supported: boolean;
+        reason?: string;
+        capabilities: Record<string, boolean>;
+    };
+    applied: string;
+    enforcement?: {
+        required: boolean;
+        blocked: boolean;
+        reason?: string;
+    };
+    canary: string;
+    unsandboxedCalls: number;
+    reason?: string;
+}
+export interface SandboxLaneRecord {
+    role: SandboxLaneRole;
+    state: string;
+    error: string | null;
+    sandbox: SandboxLaneState | null;
+    /** Completed shell tool calls in the lane's events, and those without `sandboxed: true`. */
+    shellCalls: number;
+    unattestedShellCalls: number;
+    /** Files changed or added in the lane worktree (copilot_run `changes`). */
+    changedFiles: string[];
+    maxCredits: number;
+    credits: number | null;
+}
+/** What the probe script printed (its {@link SANDBOX_PROBE_MARKER} line): per-write outcome and the two network reaches. */
+export interface SandboxProbeOutput {
+    /** `<os.homedir()>/omg-canary-<nonce>` inside the sandbox: the relocated profile. */
+    home?: string;
+    writes: Array<{
+        path: string;
+        ok: boolean;
+        error?: string;
+    }>;
+    net: {
+        local?: {
+            ok: boolean;
+            status?: number;
+            error?: string;
+        } | null;
+        outbound?: {
+            ok: boolean;
+            status?: number;
+            error?: string;
+        } | null;
+    };
+}
+/** The canary lane's `session.rpc.shell.executeUserRequested` call before its first turn (Q5). */
+export interface SandboxCanaryRecord {
+    called: boolean;
+    error?: string;
+    result: {
+        success: boolean;
+        exitCode: number | null;
+        output: string;
+        toolCallId: string;
+    } | null;
+    /** `sandboxed` of the tool.execution_complete with the call's toolCallId (null: no such event, or no field). */
+    sandboxed: boolean | null;
+    /** onPermissionRequest calls the session made while the RPC ran. */
+    permissionRequests: number;
+    targets: SandboxWriteTarget[];
+}
+export interface SandboxLaneEvidence {
+    nonce: string;
+    lanes: SandboxLaneRecord[];
+    reviewTargets: SandboxWriteTarget[];
+    writeTargets: SandboxWriteTarget[];
+    /** The write lane's probe output, read from its shell tool result (null: the probe never ran). */
+    probe: SandboxProbeOutput | null;
+    /** Requests the host's loopback listener received from the write lane's probe. */
+    localHits: number;
+    commit: {
+        ok: boolean;
+        sha?: string;
+        files: string[];
+        reason?: string;
+    } | null;
+    canary: SandboxCanaryRecord | null;
+    /** The OS temp dir: the default sandbox grant includes it, and the scenario repository lives there. */
+    tempDir: string;
+    /** Set when the host probe said unsupported: no lane ran and no credit was spent. */
+    hostUnsupported?: {
+        supported: boolean;
+        reason?: string;
+        capabilities: Record<string, boolean>;
+    };
+    durationMs: number;
+    cost: ScenarioCost & {
+        source: string;
+    };
+}
+/** The probe output line in a tool result text, or null. */
+export declare function parseSandboxProbe(text: string): SandboxProbeOutput | null;
+/**
  * Probe plugin entries, loaded next to ours: each records its stdin payload.
  * PascalCase entries get the Claude-format payload (tool_name, tool_input);
  * camelCase entries the native one (toolName, toolArgs).
@@ -295,7 +495,7 @@ export declare function probeTool(r: ProbeRecord): {
 export declare function scenarioExcludedTools(name: Scenario, mcpServer: string): string[];
 /** Check ids a scenario yields, in report order (stable; Lane B's docs list them). */
 export declare function scenarioCheckIds(name: Scenario): string[];
-export declare const SDK_STATIC_IDS: readonly ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
+export declare const SDK_STATIC_IDS: readonly ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded", "sdk.sandbox"];
 /** Every sdk.* and scn.* id failed with one detail (SDK missing, binary missing, runtime start failure). */
 export declare function failedTier2Checks(scenarios: readonly Scenario[], detail: string, from?: 'all' | 'after-available'): SmokeCheck[];
 /** Copilot CLI rejects `--max-ai-credits` below this (also in `--headless` runtime mode, CLI 1.0.91). */
@@ -327,6 +527,33 @@ export declare function evaluateSdkMcp(mcp: Rpc, tools: Rpc, server: string, exp
  * nothing, e.g. the MCP tools were never offered).
  */
 export declare function evaluateSdkToolsExcluded(meta: Rpc, server: string): SmokeCheck;
+/** The free part of the sandbox probe: host support, then the review policy on the static session and its enforcement. */
+export interface SdkSandboxProbe {
+    /** The host-support RPC answered (false: missing or it threw). */
+    answered: boolean;
+    host: {
+        supported: boolean;
+        reason?: string;
+        capabilities: Record<string, boolean>;
+    };
+    /** Why the review policy was not applied (null: applied); absent when the host is unsupported. */
+    applyError?: string | null;
+    /** The enforcement status after the apply, or why it could not be read. */
+    enforcement?: {
+        required: boolean;
+        blocked: boolean;
+        reason?: string;
+    } | string;
+}
+/**
+ * `sdk.sandbox`, no model call: what copilot_run would decide on this host.
+ * An unsupported host passes (sessions fail closed: no shell for review,
+ * write refuses); a supported host must take the review policy without
+ * enforcement reporting blocked. The detail starts with `supported` or
+ * `unsupported`. No canary runs here: copilot_run records `skipped`, and the
+ * opt-in `sandbox-lane` scenario answers whether the canary RPC is sandboxed.
+ */
+export declare function evaluateSdkSandbox(probe: SdkSandboxProbe): SmokeCheck;
 /**
  * Split runtime log text into windows by each line's leading ISO timestamp:
  * window i holds lines stamped in [starts[i], starts[i+1]); the last window is
@@ -359,13 +586,17 @@ export interface ScenarioRun {
     chain?: ChainEvidence;
     /** team: start, status, tasks, commits and shutdown evidence of the 2-worker sdk team. */
     team?: TeamEvidence;
+    /** factory-run, factory-run-fix: the engine outcome and state, the bare remote and the scripted gh. */
+    factory?: FactoryRunEvidence;
+    /** sandbox-lane: the three lanes, the host-side write checks, the engine commit and the canary RPC. */
+    sandbox?: SandboxLaneEvidence;
     /** filetools: the probe plugin's hook records and the fixture's state after the turn. */
     filetools?: FiletoolsEvidence;
     /** CLI scenarios: the session id, stub nonce, per-process results, stub records and seed. */
     cli?: CliEvidence;
 }
 /** What one scenario run cost: chain and team span several sessions with their own totals. */
-export declare function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): ScenarioCost & {
+export declare function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team' | 'factory' | 'sandbox'>): ScenarioCost & {
     source: string;
 };
 /** AI credits billed, plus the legacy premium request count the CLI still reports. */

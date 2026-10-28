@@ -281,6 +281,17 @@ export interface PluginConfig {
     };
     /** `omg ship` workflow: merge rule, fix-round budget, admin-merge opt-in. */
     ship?: import("../ship/config.js").ShipConfigInput;
+    /** Software factory settings; `factory.heal` configures `omg factory heal` (experimental). */
+    factory?: {
+        heal?: {
+            ignoreJobs?: string[];
+            dailyRuns?: number;
+            dailyDebugLanes?: number;
+            /** User config only; never for regression-or-env (default false). */
+            autoImplement?: boolean;
+        };
+        [key: string]: unknown;
+    };
 }
 export interface SessionState {
     sessionId?: string;

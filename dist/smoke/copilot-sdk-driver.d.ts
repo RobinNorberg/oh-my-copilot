@@ -23,6 +23,8 @@ import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type
 import { type SpawnSyncFn } from './process-utils.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runCliScenario } from './copilot-cli-scenarios.js';
+import type { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
+import type { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
 export type PermissionResult = {
     kind: 'approve-once';
@@ -42,6 +44,12 @@ export interface SdkSessionConfig {
     model?: string;
     /** SDK session tools (`Tool[]`); the team host's in-process plugin tools. */
     tools?: unknown[];
+    /** Allowlist of tool names; `excludedTools` still wins. */
+    availableTools?: string[];
+    /** Only for an SDK whose createSession forwards it ({@link sdkCreateSessionAcceptsSandbox}); 1.0.16 takes it through `rpc.options.update`. */
+    sandboxConfig?: unknown;
+    /** Per-session GitHub token, sent over the session RPC (not the runtime env). */
+    gitHubToken?: string;
 }
 export interface SdkSessionLike {
     sessionId: string;
@@ -71,6 +79,19 @@ export interface SdkSessionLike {
             initializeAndValidate?(): Promise<unknown>;
             getCurrentMetadata?(): Promise<unknown>;
         };
+        /** `sandboxConfig` patch after create (SDK 1.0.16). */
+        options?: {
+            update?(params: Record<string, unknown>): Promise<{
+                success?: boolean;
+            }>;
+        };
+        sandbox?: {
+            getEnforcementStatus?(): Promise<{
+                required?: boolean;
+                blocked?: boolean;
+                reason?: string;
+            }>;
+        };
     };
 }
 export interface SdkClientLike {
@@ -86,7 +107,30 @@ export interface SdkClientLike {
     }>>;
     createSession(config: SdkSessionConfig): Promise<SdkSessionLike>;
     deleteSession(sessionId: string): Promise<void>;
+    /** Server RPCs; `sandbox.getHostSupport` reports whether the host can run the OS sandbox. */
+    rpc?: {
+        sandbox?: {
+            getHostSupport?(): Promise<unknown>;
+        };
+    };
 }
+/**
+ * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
+ * than 1.0.16, which takes it only through `rpc.options.update`): its source
+ * names the field. False when it cannot be read; the caller then patches the
+ * session after create, which works on every SDK with the options RPC.
+ *
+ * A source regex is a weak signal, and it is safe here because it only picks
+ * HOW the config is sent, never whether the session counts as sandboxed. A
+ * false negative only sends the config through `rpc.options.update` before
+ * the first turn. A false positive (the name appears but the field is
+ * dropped) leaves the runtime unconfined; enforcement is still confirmed:
+ * `sandbox.getEnforcementStatus` must not report blocked (confirmSandbox),
+ * and every shell call must carry the runtime's `sandboxed: true`
+ * attestation, so the first unconfined call stops the session with
+ * `sandbox-escaped` (job.ts, the tool.execution_complete handler).
+ */
+export declare function sdkCreateSessionAcceptsSandbox(loaded: LoadedSdk): boolean;
 export interface SdkClientOptions {
     connection: unknown;
     baseDirectory: string;
@@ -193,6 +237,10 @@ export interface SdkTierInput {
     runTeam: typeof runTeamScenario;
     /** The CLI scenarios' runner ({@link runCliScenario}, headless copilot sessions), injected by the smoke entry. */
     runCli: typeof runCliScenario;
+    /** The `factory-run` scenarios' runner ({@link runFactoryRunScenario}, the engine with real lanes), injected by the smoke entry. */
+    runFactory: typeof runFactoryRunScenario;
+    /** The `sandbox-lane` scenario's runner ({@link runSandboxLaneScenario}, copilot_run lanes in the OS sandbox), injected by the smoke entry. */
+    runSandbox: typeof runSandboxLaneScenario;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];

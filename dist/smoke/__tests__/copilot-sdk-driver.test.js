@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
 import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, } from '../copilot-sdk-driver.js';
-import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL } from '../copilot-sdk-scenarios.js';
+import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_STATIC_IDS } from '../copilot-sdk-scenarios.js';
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
 const FIXTURES = join(__dirname, 'fixtures');
@@ -69,6 +69,9 @@ function fakeSdk(opts = {}) {
             return [];
         }
         async forceStop() { rec.ops.push('forceStop'); this.cliProcess = null; }
+        rpc = opts.hostSupport === null ? {} : {
+            sandbox: { getHostSupport: async () => opts.hostSupport ?? { supported: false, reason: 'fake host', capabilities: [{ name: 'shell', supported: false }] } },
+        };
         async getStatus() { return { version: '1.0.91', protocolVersion: 3 }; }
         async listModels() { return (opts.models ?? ['auto']).map((id) => ({ id })); }
         async deleteSession(id) { rec.ops.push(`delete:${id}`); }
@@ -132,6 +135,13 @@ function fakeSdk(opts = {}) {
                                 : [], // CLI 1.0.91 reports an empty list until the tool set is initialized
                         }),
                     },
+                    options: {
+                        update: async (params) => {
+                            (rec.optionUpdates ??= []).push({ id, params });
+                            return { success: true };
+                        },
+                    },
+                    sandbox: { getEnforcementStatus: async () => (opts.enforcement ?? { required: true, blocked: false }) },
                 },
             };
         }
@@ -176,6 +186,8 @@ function input(loaded, over = {}, gitCalls = []) {
         runChain: async () => { throw new Error('chain runner not stubbed'); },
         runTeam: async () => { throw new Error('team runner not stubbed'); },
         runCli: async () => { throw new Error('cli runner not stubbed'); },
+        runFactory: async () => { throw new Error('factory runner not stubbed'); },
+        runSandbox: async () => { throw new Error('sandbox runner not stubbed'); },
         ...over,
     };
 }
@@ -185,11 +197,37 @@ describe('runSdkTier (fake SDK)', () => {
         const result = await runSdkTier(input(null));
         expect(result.skipped).toBe(SDK_MISSING_DETAIL);
         expect(result.checks.map((c) => c.id)).toEqual([
-            'sdk.available', 'sdk.runtime', 'sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded',
+            'sdk.available', 'sdk.runtime', 'sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded', 'sdk.sandbox',
             ...scenarioCheckIds('smoke'), ...scenarioCheckIds('guardrail'),
         ]);
         expect(result.checks.every((c) => !c.ok && c.detail === SDK_MISSING_DETAIL)).toBe(true);
         expect(SDK_MISSING_DETAIL).toBe('@github/copilot-sdk not installed — npm i -g @github/copilot-sdk --omit=optional --ignore-scripts');
+    });
+    it('sdk.sandbox: a supported host gets the review policy on the static session, after the other static RPCs, and no prompt', async () => {
+        const caps = ['shell', 'network', 'network_filtering', 'denied_paths'].map((name) => ({ name, supported: name !== 'denied_paths' }));
+        const { loaded, rec } = fakeSdk({ hostSupport: { supported: true, capabilities: caps } });
+        const result = await runSdkTier(input(loaded, { scenarios: [] }));
+        const check = byId(result.checks)['sdk.sandbox'];
+        expect(check.ok).toBe(true);
+        expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; canary skipped/);
+        expect(rec.optionUpdates).toHaveLength(1);
+        const update = rec.optionUpdates[0];
+        expect(update.params.sandboxConfigSource).toBe('session_flag');
+        expect(update.params.sandboxConfig).toMatchObject({
+            enabled: true,
+            addCurrentWorkingDirectory: false,
+            allowBypass: false,
+            userPolicy: { filesystem: { readonlyPaths: expect.arrayContaining([join(parent, 'project')]) }, network: { allowOutbound: false, allowLocalNetwork: false } },
+        });
+        expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
+    });
+    it('sdk.sandbox: blocked enforcement or a missing host RPC fails; a supported host without the RPC answer never passes', async () => {
+        const blocked = fakeSdk({ hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] }, enforcement: { required: true, blocked: true, reason: 'policy' } });
+        const b = byId((await runSdkTier(input(blocked.loaded, { scenarios: [] }))).checks)['sdk.sandbox'];
+        expect(b).toMatchObject({ ok: false, detail: expect.stringMatching(/^supported, .*blocked=true \(policy\)/) });
+        const missing = fakeSdk({ hostSupport: null });
+        const m = byId((await runSdkTier(input(missing.loaded, { scenarios: [] }))).checks)['sdk.sandbox'];
+        expect(m).toEqual({ id: 'sdk.sandbox', ok: false, detail: 'host probe failed: the SDK has no sandbox.getHostSupport RPC' });
     });
     it('a throwing loader counts as missing', async () => {
         const result = await runSdkTier(input(null, { loadSdk: async () => { throw new Error('ERR_MODULE_NOT_FOUND'); } }));
@@ -198,9 +236,12 @@ describe('runSdkTier (fake SDK)', () => {
     it('static checks only (scenarios: []): zero prompts sent', async () => {
         const { loaded, rec } = fakeSdk();
         const result = await runSdkTier(input(loaded, { scenarios: [] }));
-        expect(result.checks.map((c) => c.id)).toEqual(['sdk.available', 'sdk.runtime', 'sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded']);
+        expect(result.checks.map((c) => c.id)).toEqual(['sdk.available', 'sdk.runtime', 'sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded', 'sdk.sandbox']);
         expect(result.checks.filter((c) => !c.ok)).toEqual([]);
         expect(byId(result.checks)['sdk.tools_excluded'].detail).toBe('t-host_smoke absent; 2 other t-* tools offered (3 total)');
+        // An unsupported host passes (sessions fail closed) and gets no policy.
+        expect(byId(result.checks)['sdk.sandbox'].detail).toMatch(/^unsupported \(fake host\), capabilities shell \(no\): .*write sessions refuse/);
+        expect(rec.optionUpdates).toBeUndefined();
         expect(rec.ops).toContain('tools.init:s1'); // the tool set was initialized for the listing
         expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
         expect(result.sdk).toEqual({ version: '1.0.16', runtimeVersion: '1.0.91', protocolVersion: 3, model: 'auto' });
@@ -241,7 +282,7 @@ describe('runSdkTier (fake SDK)', () => {
         const { loaded } = fakeSdk();
         const result = await runSdkTier(input(loaded, { scenarios: [name] }));
         expect(result.checks.filter((c) => !c.ok)).toEqual([]);
-        expect(result.checks.map((c) => c.id).slice(7)).toEqual(scenarioCheckIds(name));
+        expect(result.checks.map((c) => c.id).slice(SDK_STATIC_IDS.length)).toEqual(scenarioCheckIds(name));
     });
     it('filetools: loads the probe plugin next to ours and evaluates the probe records and the fixture', async () => {
         const projectDir = join(parent, 'project');
@@ -263,7 +304,7 @@ describe('runSdkTier (fake SDK)', () => {
         const { loaded, rec } = fakeSdk({ events });
         const result = await runSdkTier(input(loaded, { scenarios: ['filetools'] }));
         expect(result.checks.filter((c) => !c.ok)).toEqual([]);
-        expect(result.checks.map((c) => c.id).slice(7)).toEqual(scenarioCheckIds('filetools'));
+        expect(result.checks.map((c) => c.id).slice(SDK_STATIC_IDS.length)).toEqual(scenarioCheckIds('filetools'));
         const session = rec.sessions[1];
         expect(session.pluginDirectories).toEqual([root, join(parent, 'home', 'filetools-probe')]);
         expect(session.excludedTools).toEqual(scenarioExcludedTools('filetools', 't'));
@@ -431,6 +472,20 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
         const c = byId(result.checks);
         for (const id of scenarioCheckIds('smoke'))
             expect(c[id]).toMatchObject({ ok: false, detail: CREDIT_CAP_SKIP_DETAIL });
+        expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
+    });
+    it('factory run scenarios run through runFactory with the run budget, never as an SDK session', async () => {
+        const { loaded, rec } = fakeSdk();
+        const calls = [];
+        await runSdkTier(input(loaded, {
+            scenarios: ['factory-run', 'factory-run-fix'],
+            maxCredits: 30,
+            runFactory: async (f) => {
+                calls.push(`${f.name}:${f.budget}`);
+                return { name: f.name, timeoutMs: 1, model: 'lanes', maxCredits: f.maxCredits, budget: f.budget, capped: false, wedged: false, events: [], idle: true, timedOut: false };
+            },
+        }));
+        expect(calls).toEqual(['factory-run:30', 'factory-run-fix:30']);
         expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
     });
     it('passes the cap to the runtime when above the CLI minimum', async () => {
@@ -669,11 +724,12 @@ describe('runCopilotSmoke tier 2', () => {
         expect(liveRunRefusal(2, undefined, { spawn: (() => null) }, test)).toBe(LIVE_RUN_REFUSED_DETAIL);
         expect(liveRunRefusal(2, ['smoke', 'guardrail'], { loadSdk: async () => null }, test)).toBeNull();
         // An injected SDK does not make the real-process scenarios safe: they need an injected runner too.
-        for (const name of ['events', 'chain', 'team']) {
+        for (const name of ['events', 'chain', 'team', 'sandbox-lane']) {
             expect(liveRunRefusal(2, [name], { loadSdk: async () => null }, test)).toBe(`${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${name}`);
             expect(liveRunRefusal(2, [name], { loadSdk: async () => null }, { ...test, OMC_LIVE_SMOKE: '2' })).toBeNull();
         }
         expect(liveRunRefusal(2, ['events'], { loadSdk: async () => null, runCli: async () => { throw new Error('fake'); } }, test)).toBeNull();
+        expect(liveRunRefusal(2, ['sandbox-lane'], { loadSdk: async () => null, runSandbox: async () => { throw new Error('fake'); } }, test)).toBeNull();
         expect(liveRunRefusal(0, undefined, {}, test)).toBeNull();
         expect(liveRunRefusal(2, undefined, {}, {})).toBeNull(); // not under a test runner
     });

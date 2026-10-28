@@ -1,5 +1,7 @@
 /**
- * Persisted `omg factory run` state: `.omg/state/factory/run-<issue>.json`,
+ * Persisted `omg factory run` state: `.omg/state/factory/run-<key>.json`,
+ * where the key is the issue number, or `heal-<sig8>` for a `ci-heal` run
+ * (self-healing CI design §5: the plan is the validated diagnosis),
  * written with the ship pattern (src/ship/state.ts): read-modify-write under
  * the file lock, atomic write, sha256 `integrity` seal re-checked before every
  * update. A single-runner owner file `run-<issue>.owner` keeps two engines off
@@ -7,10 +9,13 @@
  * only catches accidental edits; the engine's defence against a lane that
  * rewrites the file is its own record of the bytes it wrote (ledger.ts).
  *
- * Phases (design §3, PR 2 scope): intake -> plan -> implement -> publish ->
- * review -> (fix -> publish -> review)* -> prepare. `gate` set means
+ * Phases (design §3): intake -> plan -> implement -> publish -> review ->
+ * (fix -> publish -> review)* -> prepare -> gates -> merge -> merged, with
+ * conflict-fix (prepare's base merge conflicts) and ci-fix (a real check
+ * failure) going back through publish -> review. `gate` set means
  * awaiting-human: the phase is kept, and the next `omg factory run <issue>`
- * clears the gate and re-evaluates that phase. cancelled and failed are terminal.
+ * clears the gate and re-evaluates that phase. merged, cancelled and failed
+ * are terminal.
  */
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
@@ -20,58 +25,81 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
-export const FACTORY_PHASES = ['intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'cancelled', 'failed'];
-export const TERMINAL_FACTORY_PHASES = ['cancelled', 'failed'];
+export const FACTORY_PHASES = [
+    'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
+];
+export const TERMINAL_FACTORY_PHASES = ['merged', 'cancelled', 'failed'];
+export const HEAL_RUN_KEY = /^heal-[0-9a-f]{8}$/;
+/** ci-heal human gates: a valid diagnosis waits for `omg factory heal approve`; an unusable one is human-only. */
+export const HEAL_APPROVE_GATE = 'heal-approve';
+export const HEAL_DIAGNOSIS_GATE = 'heal-diagnosis';
+export function healRunKey(sig8) {
+    const key = `heal-${sig8}`;
+    if (!HEAL_RUN_KEY.test(key))
+        throw new FactoryStateError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+    return key;
+}
 export class FactoryStateError extends Error {
     constructor(message) {
         super(message);
         this.name = 'FactoryStateError';
     }
 }
-export function implementerName(issue) {
-    return `factory-impl-${issue}`;
+/** The run's key: its issue number, or `heal-<sig8>` for a ci-heal run. */
+export function runKeyOf(s) {
+    return s.kind === 'ci-heal' ? `heal-${s.heal?.sig8 ?? ''}` : s.issue;
 }
-export function reviewerName(issue, jobId) {
-    return `factory-review-${issue}-${jobId}`;
+/** `issue-7` or `heal-0123abcd`: the prefix of lane ids and the prepare checkout's worker name. */
+export const runSlug = (key) => (typeof key === 'number' ? `issue-${key}` : key);
+/** `#7` or `heal-0123abcd`, for messages. */
+export const runLabel = (key) => (typeof key === 'number' ? `#${key}` : key);
+export function implementerName(key) {
+    return `factory-impl-${key}`;
 }
-export function factoryBranch(issue) {
-    return `factory/issue-${issue}`;
+export function reviewerName(key, jobId) {
+    return `factory-review-${key}-${jobId}`;
+}
+export function factoryBranch(key) {
+    return typeof key === 'number' ? `factory/issue-${key}` : `factory/${key}`;
 }
 export function factoryStateDir(root) {
     return join(getOmcRoot(root), 'state', 'factory');
 }
-export function factoryStatePath(root, issue) {
-    return join(factoryStateDir(root), `run-${issue}.json`);
+export function factoryStatePath(root, key) {
+    return join(factoryStateDir(root), `run-${key}.json`);
 }
-export function factoryOwnerPath(root, issue) {
-    return join(factoryStateDir(root), `run-${issue}.owner`);
+export function factoryOwnerPath(root, key) {
+    return join(factoryStateDir(root), `run-${key}.owner`);
 }
-/** `omg factory run cancel` drops this file; the engine alone writes the state file. */
-export function factoryCancelPath(root, issue) {
-    return join(factoryStateDir(root), `run-${issue}.cancel`);
+/** `omg factory run cancel` and `omg factory heal cancel` drop this file; the engine alone writes the state file. */
+export function factoryCancelPath(root, key) {
+    return join(factoryStateDir(root), `run-${key}.cancel`);
 }
-export function factoryCancelRequested(root, issue) {
-    return existsSync(factoryCancelPath(root, issue));
+export function factoryCancelRequested(root, key) {
+    return existsSync(factoryCancelPath(root, key));
 }
 /** The hash a review lane record keeps of the ship verdict the engine recorded from it. */
 export function shipVerdictHash(v) {
     return createHash('sha256').update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest('hex');
 }
 export function createFactoryState(input, now) {
+    const key = input.heal ? healRunKey(input.heal.sig8) : input.issue;
     return {
         version: 1,
-        issue: input.issue,
+        kind: input.heal ? 'ci-heal' : 'issue',
+        issue: input.heal ? 0 : input.issue,
+        ...(input.heal ? { heal: input.heal } : {}),
         repoUrl: input.repoUrl,
         base: input.base,
-        branch: factoryBranch(input.issue),
+        branch: factoryBranch(key),
         phase: 'intake',
-        implementer: implementerName(input.issue),
+        implementer: implementerName(key),
         lanes: [],
         retries: {},
         lostStreak: {},
         elapsedMs: 0,
         ciFixRounds: 0,
-        history: [{ at: now, from: null, to: 'intake', note: `issue #${input.issue}` }],
+        history: [{ at: now, from: null, to: 'intake', note: input.heal ? `ci-heal for CI signature ${input.heal.sig8}` : `issue #${input.issue}` }],
         createdAt: now,
         updatedAt: now,
     };
@@ -79,7 +107,7 @@ export function createFactoryState(input, now) {
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export function moveTo(state, to, note, now) {
     if (TERMINAL_FACTORY_PHASES.includes(state.phase)) {
-        throw new FactoryStateError(`factory run for issue #${state.issue} is ${state.phase}; it does not move to ${to}`);
+        throw new FactoryStateError(`factory run ${runLabel(runKeyOf(state))} is ${state.phase}; it does not move to ${to}`);
     }
     const { gate: _gate, ...rest } = state;
     return { ...rest, phase: to, updatedAt: now, history: [...state.history, { at: now, from: state.phase, to, note }] };
@@ -108,9 +136,19 @@ function shapeProblem(s) {
         return 'phase';
     if (!isStr(s.implementer) || !s.implementer)
         return 'implementer';
+    if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal')
+        return 'kind';
+    if (s.kind === 'ci-heal') {
+        const h = s.heal;
+        const d = h?.diagnosis;
+        if (!isStr(h?.sig8) || !Array.isArray(h.failingTests) || !Array.isArray(h.env) || typeof d !== 'object' || d === null || !isStr(d.rootCause))
+            return 'heal';
+    }
     if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
         const x = l;
-        return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number';
+        const sbx = x?.sandbox;
+        return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
+            && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)));
     }))
         return 'lanes';
     if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount))
@@ -126,14 +164,14 @@ function shapeProblem(s) {
     return null;
 }
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
-export function readFactoryState(root, issue) {
-    const path = factoryStatePath(root, issue);
+export function readFactoryState(root, key) {
+    const path = factoryStatePath(root, key);
     if (!existsSync(path))
         return null;
-    return parseFactoryState(path, issue, readFileSync(path, 'utf8'));
+    return parseFactoryState(path, key, readFileSync(path, 'utf8'));
 }
 /** Parse and shape-check the bytes of a state file (read once by the caller). */
-export function parseFactoryState(path, issue, raw) {
+export function parseFactoryState(path, key, raw) {
     let parsed;
     try {
         parsed = JSON.parse(raw);
@@ -142,11 +180,13 @@ export function parseFactoryState(path, issue, raw) {
         throw new FactoryStateError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
     const s = parsed;
-    if (typeof parsed !== 'object' || parsed === null || s.version !== 1 || s.issue !== issue)
-        throw new FactoryStateError(`${path} is not a factory run state for issue #${issue}`);
+    if (typeof parsed !== 'object' || parsed === null || s.version !== 1 || typeof s.issue !== 'number')
+        throw new FactoryStateError(`${path} is not a factory run state for ${runLabel(key)}`);
     const problem = shapeProblem(s);
     if (problem)
         throw new FactoryStateError(`${path} is malformed (field ${problem})`);
+    if (runKeyOf(parsed) !== key)
+        throw new FactoryStateError(`${path} is not a factory run state for ${runLabel(key)}`);
     return parsed;
 }
 /**
@@ -154,15 +194,15 @@ export function parseFactoryState(path, issue, raw) {
  * stored state failing its integrity check is refused (the run is `failed`
  * for the engine; a human replaces the file).
  */
-export function updateFactoryState(root, issue, mutate, options = {}) {
+export function updateFactoryState(root, key, mutate, options = {}) {
     if (!existsSync(join(root, '.git')))
         throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
-    const path = factoryStatePath(root, issue);
+    const path = factoryStatePath(root, key);
     ensureDirSync(factoryStateDir(root));
     return withFileLockSync(lockPathFor(path), () => {
         const bytes = existsSync(path) ? readFileSync(path) : null;
         options.verify?.(bytes);
-        const current = bytes === null ? null : parseFactoryState(path, issue, bytes.toString('utf8'));
+        const current = bytes === null ? null : parseFactoryState(path, key, bytes.toString('utf8'));
         if (current && !verifyFactoryIntegrity(current)) {
             throw new FactoryStateError(`${path} fails its integrity check (edited outside omg factory run); the run is failed until a human replaces the file`);
         }
@@ -183,20 +223,20 @@ function writeSealed(path, next) {
  * engine's park at state-tampered, which must not depend on the current
  * bytes (or a lock file) that an unconfirmed lane may still be rewriting.
  */
-export function overwriteFactoryState(root, issue, state) {
+export function overwriteFactoryState(root, key, state) {
     ensureDirSync(factoryStateDir(root));
-    return writeSealed(factoryStatePath(root, issue), state);
+    return writeSealed(factoryStatePath(root, key), state);
 }
 /**
  * `omg factory run cancel`: drop the cancel request file next to the state.
  * The state file stays engine-only (the engine ledger flags any other
  * writer); the returned state shows the request.
  */
-export function requestFactoryCancel(root, issue, now) {
-    const current = readFactoryState(root, issue);
+export function requestFactoryCancel(root, key, now) {
+    const current = readFactoryState(root, key);
     if (!current)
-        throw new FactoryStateError(`no factory run for issue #${issue}`);
-    writeFileSync(factoryCancelPath(root, issue), `${JSON.stringify({ at: now })}\n`, 'utf8');
+        throw new FactoryStateError(typeof key === 'number' ? `no factory run for issue #${key}` : `no factory run ${key}`);
+    writeFileSync(factoryCancelPath(root, key), `${JSON.stringify({ at: now })}\n`, 'utf8');
     return { ...current, cancelRequested: true };
 }
 export const defaultOwnerDeps = () => ({ pid: process.pid, hostname: hostname(), isAlive: isProcessAlive });
@@ -205,8 +245,8 @@ export const defaultOwnerDeps = () => ({ pid: process.pid, hostname: hostname(),
  * whose pid cannot be checked) refuses; a dead pid on this host is taken
  * over, and `tookOver` names it for the history.
  */
-export function acquireFactoryOwner(root, issue, now, deps = defaultOwnerDeps()) {
-    const path = factoryOwnerPath(root, issue);
+export function acquireFactoryOwner(root, key, now, deps = defaultOwnerDeps()) {
+    const path = factoryOwnerPath(root, key);
     ensureDirSync(factoryStateDir(root));
     const tookOver = withFileLockSync(lockPathFor(path), () => {
         let prior;
@@ -218,7 +258,7 @@ export function acquireFactoryOwner(root, issue, now, deps = defaultOwnerDeps())
                 prior = undefined;
             }
             if (prior && (prior.hostname !== deps.hostname || (prior.pid !== deps.pid && deps.isAlive(prior.pid)))) {
-                throw new FactoryStateError(`omg factory run ${issue} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+                throw new FactoryStateError(`omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
             }
         }
         writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now })}\n`, 'utf8');

@@ -20,9 +20,9 @@ const SEVERITIES = ['blocker', 'major', 'minor', 'nit'];
  * never matches on its own; the lane's own block plus a pasted copy is two
  * blocks, which is invalid.
  */
-const FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
+export const FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
 /** Any line opening a json fence, quoted, indented or longer: counted so a pasted copy cannot hide. */
-const ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
+export const ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
 export function parseReviewOutput(finalText, expectedSha) {
     const invalid = (reason) => ({ kind: 'invalid', reason });
     if (typeof finalText !== 'string' || !finalText.trim())

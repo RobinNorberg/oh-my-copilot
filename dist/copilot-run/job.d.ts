@@ -13,8 +13,16 @@
  * - `start` refuses unless OMG_COPILOT_RUN_ALLOW=1 is set in the server env,
  *   or an in-process caller passes `allowLive` (never reachable from MCP);
  *   the session never inherits the env var;
- * - profile `review` denies the write tool and the git commands that move,
- *   rewrite or reconfigure the tree ({@link REVIEW_SHELL_DENY_PATTERNS});
+ * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
+ *   session without a confirmed sandbox gets no shell tool, a write session
+ *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
+ *   and a shell call the runtime reports as not sandboxed stops the session
+ *   (`sandbox-escaped`); every sandbox bypass request is rejected;
+ * - the runtime env is an allowlist with the profile variables relocated to
+ *   the job's home (allowlistSessionEnv);
+ * - profile `review` denies the write tool, runs only shell commands on the
+ *   read-only allowlist (src/team/shell-allowlist.ts), and keeps the
+ *   {@link REVIEW_SHELL_DENY_PATTERNS} denylist as an extra layer;
  * - the budget governor (src/budget) is asked first, like an `omg team`
  *   launch of one copilot worker, and the spend is recorded in the ledger
  *   (live estimate, then the `session.shutdown` totals);
@@ -32,7 +40,9 @@
  *   node_modules) are unlinked first so their targets survive.
  */
 import { type LoadedSdk } from '../smoke/copilot-sdk-driver.js';
+import { hostGitHardeningArgs } from '../team/git-worktree.js';
 import { type SdkPermissionRequest } from '../team/sdk-policy.js';
+import { type CopilotRunSandboxState, type SandboxScope, type SandboxSettings } from './sandbox.js';
 export declare const DEFAULT_TIMEOUT_MS: number;
 export declare const MAX_TIMEOUT_MS: number;
 export declare const DEFAULT_MAX_CREDITS = 30;
@@ -75,7 +85,36 @@ export interface CopilotRunStartOptions {
     disableStopContinuations?: boolean;
     /** The job's budget ledger record key (default `copilot-run:<jobId>`). */
     ledgerKey?: string;
+    /** Which sandbox config block applies: `factory` lanes read `factory.run.sandbox` over `copilotRun.sandbox` (default `copilot-run`). */
+    sandboxScope?: SandboxScope;
+    /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
+    scrubCredentials?: boolean;
+    /**
+     * The caller commits the session's changes after the job (omg factory run):
+     * a write session's sandbox keeps the whole common git dir read-only, so it
+     * cannot stage or commit, and no git identity is seeded for it.
+     */
+    hostCommits?: boolean;
 }
+/** Env keys a credential-free session never gets (any case on Windows). */
+export declare const LANE_CREDENTIAL_ENV: readonly ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "NPM_TOKEN", "NODE_AUTH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"];
+/**
+ * A credential-free session env, in place. Removed: GitHub tokens
+ * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
+ * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` points at an
+ * empty dir, so `gh` finds no stored login; git reads no global or system
+ * config (no credential helper) and never prompts.
+ *
+ * Copilot's own auth is kept: the stored login (OS credential store, copied
+ * identity) or COPILOT_GITHUB_TOKEN, which reaches the session over RPC
+ * (sandbox.ts sessionGitHubToken), not through this env. The OS credential
+ * store is out of reach of any env policy; only OS confinement closes
+ * that. Without a stored login the generic GitHub tokens were the only
+ * credential, so a scrubbed session then needs COPILOT_GITHUB_TOKEN.
+ */
+export declare function scrubLaneCredentials(env: NodeJS.ProcessEnv, emptyDir: string): void;
+/** Why a job stopped early: a caller's stop, the credit cap, or a shell call outside the sandbox. */
+export type CopilotRunStopReason = 'timeout' | 'cancelled' | 'capped' | 'sandbox-escaped';
 /**
  * Shell commands a `review` session may not run, on top of the worker policy
  * (which already denies push, aliases and GIT_CONFIG_* env overrides):
@@ -90,7 +129,10 @@ export declare const REVIEW_SHELL_DENY_PATTERNS: ReadonlyArray<{
     re: RegExp;
     reason: string;
 }>;
-/** The review profile's extra refusal for a request the worker policy approved, or null. */
+/**
+ * The review profile's denylist refusal for a request the worker policy
+ * approved, or null. Kept as an extra layer under the shell allowlist.
+ */
 export declare function reviewProfileDenial(req: SdkPermissionRequest): string | null;
 /**
  * The commit `ref` names in `repoRoot`, as a full sha. Refuses refs that
@@ -110,6 +152,15 @@ export interface CopilotRunDeps {
     killTree: (pid: number) => void;
     /** The runtime's start identity (pid-reuse guard; default getProcessStartIdentity), null when unknown. */
     processIdentity?: (pid: number) => Promise<string | null>;
+    /** The account's real home for the sandbox's denied paths (default os.userInfo().homedir, never HOME). */
+    realHome?: () => string;
+    /** The sandbox settings for a job in `root` (default loadSandboxSettings: user config, project may only tighten). */
+    sandboxSettings?: (root: string, scope: SandboxScope) => {
+        settings: SandboxSettings;
+        warnings: string[];
+    };
+    /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
+    hostGitAttrSourceProblem?: () => string | null;
 }
 export interface WorktreeSummary {
     path: string;
@@ -120,7 +171,7 @@ export interface WorktreeSummary {
 export type CopilotRunSnapshot = {
     jobId: string;
     status: CopilotRunStatus;
-    stopRequested: 'timeout' | 'cancelled' | 'capped' | null;
+    stopRequested: CopilotRunStopReason | null;
     isolation: CopilotRunIsolation;
     profile: CopilotRunProfile;
     startRef?: string;
@@ -140,9 +191,11 @@ export type CopilotRunSnapshot = {
         source: 'measured' | 'estimated';
         summary: string;
     };
+    /** `headCommit`: the worktree's HEAD when the job ended, read through the recorded git dir (absent while running or when its links changed). */
     worktree?: WorktreeSummary & {
         baseCommit: string | null;
         removed: boolean;
+        headCommit?: string;
     };
     changes?: ChangeSummary;
     deniedPermissions?: Array<{
@@ -160,6 +213,12 @@ export type CopilotRunSnapshot = {
         pid: number;
         identity: string | null;
     };
+    /**
+     * The OS sandbox once the job decided it: `refused` ends the job with a
+     * `sandbox-unavailable:` error, an unsandboxed shell call with
+     * `sandbox-escaped:` (unsandboxedCalls > 0).
+     */
+    sandbox?: CopilotRunSandboxState;
 };
 export interface ChangeSummary {
     /** `git diff --stat <base>` at the repository toplevel (commits and uncommitted tracked changes); all paths are root-relative. */
@@ -168,19 +227,36 @@ export interface ChangeSummary {
     untrackedFiles: string[];
     /** Changed files that hit the ship merge-rule paths (writes there are refused, shell can still reach them). */
     protectedChanges: string[];
+    /**
+     * Gitlinks (mode 160000: a nested repository) in the index or HEAD that the
+     * base does not have. Host git never enters them, so their content is not
+     * inspected: a policy violation (the job fails as sandbox-escaped); they are
+     * also listed in changedFiles and protectedChanges.
+     */
+    newGitlinks?: string[];
 }
 /**
- * `-c` pairs that switch off every filter driver a config level the job's
- * agent can write (local, worktree, global, an include, the command line)
- * defines: empty `clean`, `smudge` and `process`, `required=false`. Git runs
- * a driver only when its command is non-empty, so a diff against the working
- * tree then reads file bytes as they are. A driver set only in the system
- * config (admin rights to write; Git for Windows ships `filter.lfs` there) is
- * kept. Listing the config runs nothing. Null when the drivers cannot be
- * listed or a name cannot be passed as `-c` (it holds `=` or a line break):
- * the caller fails closed.
+ * `-c` pairs on every host-side git command (src/team/git-worktree.ts): no
+ * hook, fsmonitor, pager, external diff or other program a job's agent
+ * planted runs in the caller's process. Diffs also pass --no-ext-diff and
+ * --no-textconv, and runHostGit adds the driver overrides on every command
+ * that touches the work tree.
  */
-export declare function filterDriverOverrides(cwd: string): string[] | null;
+export { hostGitHardeningArgs };
+/**
+ * One git command as an argv array (never a shell), run through runHostGit;
+ * trimmed stdout, or null on failure. These run in the caller's process on a
+ * job worktree the job's agent could configure (omg factory run reads the
+ * change summary before its tamper check). The worktree's repository config
+ * counts as agent-controlled: in a job worktree these commands pass the
+ * recorded `--git-dir` (worktreeGitDirArgs) after worktreeGitLinksIntact,
+ * which pins the git dir, work tree and common dir in the environment, and
+ * they only read (diff, ls-files, rev-parse, config --get) or move the job's
+ * own branch from the repository root.
+ */
+export declare function hostGit(cwd: string, args: string[]): string | null;
+/** hostGitDriverOverrides for the repository at `cwd` (or the recorded git dir `gitDirArgs` names). */
+export declare function filterDriverOverrides(cwd: string, gitDirArgs?: readonly string[]): string[] | null;
 /**
  * What changed in the repository around `cwd` since `base`; null when git
  * cannot tell. Run at the toplevel (cwd may be a subdirectory), so every path
@@ -189,9 +265,10 @@ export declare function filterDriverOverrides(cwd: string): string[] | null;
  * The job's agent may have written the worktree's attributes and config, and
  * omg factory run reads this summary before its tamper check, so the diff
  * runs no external diff driver, no textconv, no fsmonitor and no filter
- * driver (filterDriverOverrides).
+ * driver (runHostGit's driver overrides; a driver it cannot override fails
+ * the diff, so the summary is null).
  */
-export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[]): ChangeSummary | null;
+export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[]): ChangeSummary | null;
 export declare function defaultCopilotRunDeps(env?: NodeJS.ProcessEnv): CopilotRunDeps;
 export declare class CopilotRunManager {
     private readonly deps;
@@ -218,6 +295,15 @@ export declare class CopilotRunManager {
     private recordBudget;
     /** Drive the session to its end and tear it down; returns the final status. */
     private run;
+    /**
+     * Probe the host and set `job.sandbox` (§5). Returns the config to apply
+     * when the host supports the sandbox (the mode stays the unconfirmed one
+     * until confirmSandbox), else null with the final mode: `detect-only` when
+     * the sandbox is switched off, otherwise the fail-closed mode.
+     */
+    private decideSandbox;
+    /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+    private confirmSandbox;
     private snapshot;
 }
 //# sourceMappingURL=job.d.ts.map

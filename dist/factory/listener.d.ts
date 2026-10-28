@@ -46,6 +46,40 @@ export interface CheckRunEvent {
         full_name?: string;
     };
 }
+/** GitHub workflow_run webhook payload subset the heal intake needs. */
+export interface WorkflowRunEvent {
+    action?: string;
+    repository?: {
+        full_name?: string;
+    };
+    workflow_run?: {
+        id?: unknown;
+        conclusion?: string;
+        head_branch?: string;
+        event?: string;
+        path?: string;
+    };
+}
+/** The workflow whose red dev push runs may heal (fixed, like the poller's). */
+export declare const HEAL_WORKFLOW_PATH = ".github/workflows/ci.yml";
+export declare const DEFAULT_HEAL_BRANCH = "dev";
+export type HealIntakeOutcome = {
+    kind: 'enqueue';
+    runId: string;
+} | {
+    kind: 'discarded';
+    reason: string;
+} | {
+    kind: 'rejected';
+    status: number;
+    reason: string;
+};
+/**
+ * Pure heal intake decision for a `workflow_run` webhook (design §2): a
+ * completed, failed push run of ci.yml on the heal branch. Only the run id is
+ * taken from the payload; the scan re-reads everything else through gh.
+ */
+export declare function routeWorkflowRun(event: WorkflowRunEvent, whitelist: ReadonlyArray<string>, healBranch?: string): HealIntakeOutcome;
 export declare function verifySignature(secret: string, rawBody: string, signatureHeader: string | undefined): boolean;
 export type RouteOutcome = {
     kind: 'routed';
@@ -76,9 +110,13 @@ export interface ListenerConfig {
     whitelist: ReadonlyArray<string>;
     cwd: string;
     host?: string;
+    /** The branch whose red push runs enqueue a heal scan (default dev). */
+    healBranch?: string;
 }
 export interface ListenerDeps {
     spawner?: (cmd: string, args: string[], ctx?: SpawnContext) => void;
+    /** Test seam: the heal queue write (default: enqueueWebhookRun under the scan lock). */
+    enqueueHeal?: (cwd: string, runId: string) => boolean;
     audit?: (record: Record<string, unknown>) => void;
     /** Test seam: overrides the one-shot stall check scheduling for spawned links. */
     scheduleStallCheck?: (session: string) => void;
@@ -92,6 +130,12 @@ export interface EventResult {
 export declare function processEvent(event: TrackerEvent, config: ListenerConfig, deps?: ListenerDeps): EventResult;
 /** Orchestrates one CI check-suite event: same guardrail/ledger/AFK flow, no tracker. */
 export declare function processCheckFailureEvent(event: CheckRunEvent, config: ListenerConfig, deps?: ListenerDeps): EventResult;
+/**
+ * One `workflow_run` event: enqueue the run id for the heal scan, nothing
+ * else. It never spawns a session or a lane; the poller stays the source of
+ * truth and decides with what it re-reads through gh.
+ */
+export declare function processWorkflowRunEvent(event: WorkflowRunEvent, config: ListenerConfig, deps?: ListenerDeps): EventResult;
 export declare function startListener(config: ListenerConfig, deps?: ListenerDeps): Promise<Server>;
 export declare function stopListener(server: Server, cwd: string): void;
 export declare const MAX_BODY_BYTES: number;
