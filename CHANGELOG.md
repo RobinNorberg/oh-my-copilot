@@ -34,6 +34,19 @@ command guard refuses `gh pr merge`. See the
   never in `all`): the engine in-process with real implement and review lanes
   against a sandbox repository, a bare `origin` and a scripted `gh`, up to the
   merge gate. They are estimated at about 2 and 4 AI credits.
+- **Sandbox smoke.** A new SDK static check, `sdk.sandbox`, makes no model
+  call. It reports whether the host supports the Copilot OS sandbox, applies
+  `copilot_run`'s review policy and reads its enforcement. The opt-in
+  `sandbox-lane` scenario, never in `all` and estimated at about 3 AI credits,
+  runs a review, a write and a canary lane in the sandbox. It checks that the
+  review lane cannot write, and that the write lane cannot write outside its
+  grant or reach the network. It checks that the engine commits the write
+  lane's change, and it answers open questions Q1, Q2 and Q5 of the design
+  with one result line each. The Linux CI smoke job installs `bubblewrap`,
+  `slirp4netns` and `uidmap`, so the probe there reports `supported`.
+- **A sandboxed lanes reference**: modes, lane rights, config keys,
+  `detect-only`, the git 2.41 floor, host git hardening, open questions and
+  residual risks.
 - **The full `omg factory run` reference**: phases, state and resume rules,
   every human gate, config, the security model and the cost model.
 
@@ -52,7 +65,10 @@ command guard refuses `gh pr merge`. See the
   `factory.run.sandbox.writeUnsandboxed: "detect-only"` in your user
   `omg.jsonc` to run it anyway. The engine then warns, records
   `sandbox.mode: "detect-only"` on the lane, and says so in the PR body. A
-  repository config cannot set it.
+  repository config cannot set it. A review lane without a confirmed sandbox
+  runs with no shell. The same settings apply to `copilot_run` jobs as
+  `copilotRun.sandbox`, and a repository config can only tighten them. See
+  [Sandboxed lanes](docs/REFERENCE.md#sandboxed-lanes).
 - **The engine commits for write lanes.** A write lane's sandbox keeps the git
   directory read-only, so the lane leaves its changes uncommitted. After the
   lane ends and passes the tamper check, the engine commits them with hardened
@@ -66,9 +82,13 @@ command guard refuses `gh pr merge`. See the
 
 ### Security
 
-- Lanes are still not sandboxed. A prompt-injected lane runs shell commands as
-  you. The tamper checks, the engine's own state record and hardened engine
-  git narrow that, and a human merge always comes last.
+- Lanes run in the Copilot OS sandbox, which confines their shell commands
+  and local MCP servers. Built-in file tools, plugin hooks and team workers
+  are not OS-sandboxed, and some sandbox behaviour is still unverified (open
+  questions Q1, Q2 and Q5, which `--scenario sandbox-lane` answers). So the
+  tamper checks, the engine's own state record and hardened engine git stay,
+  and a human merge always comes last. The team merge paths still run
+  unhardened git in worker worktrees: do not use them with sandboxed lanes.
 
 # oh-my-copilot v5.16.0
 
