@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0ecd31e14ca35db4fa45c54f9ca5f9abdcdc6ce5",
-    "sourceSha256": "685bb32dd44583d32a3be02db83562b58a974759330b7cd2875768325b886484",
+    "head": "c5f2b7ff440a05fde62b8d8f27ab6a1f9570e4ab",
+    "sourceSha256": "7274dc36658227db6ae27ab116de7ba2d43b05a7653d3e613f7c9fb2455986fe",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0ecd31e14ca35db4fa45c54f9ca5f9abdcdc6ce5",
-  "sourceSha256": "685bb32dd44583d32a3be02db83562b58a974759330b7cd2875768325b886484",
+  "head": "c5f2b7ff440a05fde62b8d8f27ab6a1f9570e4ab",
+  "sourceSha256": "7274dc36658227db6ae27ab116de7ba2d43b05a7653d3e613f7c9fb2455986fe",
   "counts": {
     "public": {
       "skills": 63,
@@ -69536,6 +69536,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/team/sdk-policy.ts",
         "kind": "imports"
       },
@@ -96021,6 +96026,11 @@
       },
       {
         "from": "src/team/git-worktree.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/git-worktree.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -103557,11 +103567,11 @@
     ],
     "stats": {
       "nodeCount": 8932,
-      "edgeCount": 10167,
-      "importEdgeCount": 8494,
+      "edgeCount": 10169,
+      "importEdgeCount": 8495,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "aaf93fb53a56464b9eb200be799e22a58f5da1cdba1b32ab060789c2e033da55",
-  "manifestSha256": "381ccda9e78c3352d6ceefb10e6685e2fb78f6f2511cc11d019fff30baf3399e"
+  "manifestSha256": "315e410b7d9cf33947831c7e08e0f67406d3c4c5cc2b453bf2a8f56cccf1dfad"
 }
