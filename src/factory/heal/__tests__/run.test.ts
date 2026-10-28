@@ -222,7 +222,7 @@ describe('omg factory heal run', () => {
     const spent: HealSignatureState = { ...readHealState(root, s.sig8)!, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() }, next: 'heal-diagnosis',
       lanes: [1, 2, 3].map((n) => ({ id: `heal-${s.sig8}-debug-${n}`, kind: 'debug' as const, startSha: redSha, status: 'failed' as const, maxCredits: 30, startedAt: NOW.toISOString(), pid: 1, confinement: 'none', usage: { credits: 31, premiumRequests: 0, source: 'measured' as const } })) };
     writeHealState(root, spent);
-    writeHealSeal(ledgerDir, root, spent, healSealSubject(s.class, s.classification));
+    writeHealSeal(ledgerDir, root, spent, healSealSubject(s.class, s.classification, s.source));
     await expect(run(new FakeLanes(answer(GOOD)))).rejects.toThrow(/heal run has 27\.00 of factory\.heal\.maxRunCredits 120/);
   });
 
@@ -247,7 +247,7 @@ describe('omg factory heal run', () => {
     const stale: HealSignatureState = { ...s, healRun: { id: `heal-${s.sig8}`, open: true, startedAt: NOW.toISOString() },
       lanes: [{ id: `heal-${s.sig8}-debug-1`, kind: 'debug', startSha: redSha, status: 'running', maxCredits: 30, startedAt: NOW.toISOString(), pid: 2 ** 22 + 12345, confinement: 'none' }] };
     writeHealState(root, stale);
-    writeHealSeal(ledgerDir, root, stale, healSealSubject(s.class, s.classification));
+    writeHealSeal(ledgerDir, root, stale, healSealSubject(s.class, s.classification, s.source));
     const out = await run(new FakeLanes(answer(GOOD)));
     expect(out.next).toBe('heal-approve');
     const lanes = readHealState(root, s.sig8)!.lanes!;
@@ -370,6 +370,14 @@ describe('omg factory heal run', () => {
     expect((await run(new FakeLanes(answer(GOOD)), {}, {}, 'abcdef12')).next).toBe('heal-approve');
     writeHealState(root, { ...readHealState(root, 'abcdef12')!, next: 'debug-lane' });
     expect(() => closeHeal(root, 'abcdef12', { ledgerDir, now: () => NOW })).toThrow(/only a heal run parked/);
+  });
+
+  it('a scan-time source that differs from the sealed one is refused while the heal run is open', async () => {
+    const s = seed();
+    expect((await run(new FakeLanes(answer(GOOD)))).next).toBe('heal-approve');
+    expect(readHealSealSubject(ledgerDir, root, s.sig8)!.source).toBe('push');
+    writeHealScanRecord(ledgerDir, root, { ...s, source: 'pr' });
+    await expect(run(new FakeLanes(answer(GOOD)))).rejects.toThrow(/differs from the one its open heal run was sealed with/);
   });
 
   const scanRecordFile = (sig8: string) => {

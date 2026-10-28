@@ -123,7 +123,7 @@ describe('omg factory heal scan', () => {
     const exec = fakeExec([redPush, run(40584638028)], [], { count: '2', files: 'src/tools/state-tools.ts\ndocs/x.md\n' });
     scan(exec);
     const [state] = listHealStates(root);
-    expect(readHealScanRecord(ledgerDir, root, state.sig8)).toEqual({ sig8: state.sig8, class: 'regression-or-env', classification: state.classification });
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)).toEqual({ sig8: state.sig8, class: 'regression-or-env', source: 'push', classification: state.classification });
     // An in-repo edit never reaches the record; a lost record is classified again from GitHub, counted once.
     writeHealState(root, { ...state, class: 'regression' });
     expect(readHealScanRecord(ledgerDir, root, state.sig8)!.class).toBe('regression-or-env');
@@ -133,6 +133,21 @@ describe('omg factory heal scan', () => {
     expect(scan(exec).entries).toEqual([expect.objectContaining({ runId: '40700000001', recorded: true, reason: expect.stringMatching(/recorded outside the repository again/) })]);
     expect(readHealScanRecord(ledgerDir, root, state.sig8)!.class).toBe('regression-or-env');
     expect(listHealStates(root)[0].count).toBe(1);
+  });
+
+  it('a PR run never rewrites the out-of-repo record of a push signature, even when the in-repo source is flipped to pr', () => {
+    const ledgerDir = join(root, '.omg', 'test-ledger');
+    const redPush: RunFixture = { ...SECOND_PR, databaseId: 40700000001, event: 'push', headBranch: 'dev', headSha: 'a'.repeat(40), createdAt: '2026-10-27T22:00:00Z' };
+    scan(fakeExec([redPush, run(40584638028)], [], { count: '2', files: 'src/tools/state-tools.ts\ndocs/x.md\n' }));
+    const [state] = listHealStates(root);
+    const before = readHealScanRecord(ledgerDir, root, state.sig8)!;
+    expect(before.source).toBe('push');
+    writeHealState(root, { ...state, source: 'pr' });
+    const prRun: RunFixture = { ...SECOND_PR, databaseId: 40700000002, headBranch: 'feat/third', createdAt: '2026-10-27T23:00:00Z' };
+    const second = scan(fakeExec([run(40584638028)], [prRun, { ...prRun, databaseId: 40700000003, headBranch: 'feat/fourth' }]));
+    expect(second.entries.some((e) => e.sig8 === state.sig8)).toBe(true);
+    expect(readHealScanRecord(ledgerDir, root, state.sig8)).toEqual(before);
+    expect(listHealStates(root)[0]).toMatchObject({ source: 'push', classification: before.classification });
   });
 
   it('policy-only PR failures never starve a real cross-branch failure of a candidate slot', () => {
