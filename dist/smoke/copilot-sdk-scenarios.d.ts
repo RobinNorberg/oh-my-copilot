@@ -28,7 +28,8 @@ export declare const ALL_SCENARIOS: readonly Scenario[];
  * `omg factory run` with a real implement and review lane (two lanes, about
  * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
  * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
- * OS sandbox (three lanes, about 3 AI credits estimated). The
+ * OS sandbox (three lanes, about 3 AI credits estimated). Lane scenarios pin
+ * their lanes to the session's cheap model ({@link chooseModel}). The
  * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
  * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
  * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
@@ -258,8 +259,10 @@ export declare function chainCost(chain: ChainEvidence): ScenarioCost & {
 };
 /**
  * AI credits ceilings: about 1 credit per lane is the estimate (a small write
- * or review with a few tool turns), 3 per lane the ceiling, as for chain. It
- * catches a runaway lane, not a measured figure.
+ * or review with a few tool turns) on the cheap model the driver pins for the
+ * lanes, 3 per lane the ceiling, as for chain. It catches a runaway lane, not
+ * a measured figure. Lanes on runtime auto (no cheap model listed, or none
+ * pinned) measured about 3.6 credits each on Sonnet (CLI 1.0.105) and fail it.
  */
 export declare const FACTORY_RUN_MAX_CREDITS: Readonly<Record<FactoryRunScenario, number>>;
 /** The lanes each variant must run, in order, with the review verdicts. */
@@ -330,7 +333,7 @@ export declare const SANDBOX_CANARY_FILE = "canary-inside.txt";
 /** The probe script committed at the scenario repository's root; it prints one {@link SANDBOX_PROBE_MARKER} line. */
 export declare const SANDBOX_PROBE_SCRIPT = "sandbox-probe.mjs";
 export declare const SANDBOX_PROBE_MARKER = "OMG_SANDBOX_PROBE ";
-/** A ceiling of 3 AI credits per lane over the three lanes, as for factory-run: it catches a runaway lane. */
+/** A ceiling of 3 AI credits per lane over the three lanes on the pinned cheap model, as for factory-run: it catches a runaway lane. */
 export declare const SANDBOX_LANE_MAX_CREDITS = 9;
 export type SandboxLaneRole = 'review' | 'write' | 'canary';
 /** Where a probe write aimed; the host checks after the lane whether a file landed there. */
@@ -366,10 +369,14 @@ export interface SandboxLaneRecord {
     /** Completed shell tool calls in the lane's events, and those without `sandboxed: true`. */
     shellCalls: number;
     unattestedShellCalls: number;
+    /** Shell calls that completed with `success: true`: evidence the lane launched a process at all. */
+    okShellCalls: number;
     /** Files changed or added in the lane worktree (copilot_run `changes`). */
     changedFiles: string[];
     maxCredits: number;
     credits: number | null;
+    /** The model the lane's session ran on (copilot_run snapshot.model; null: not reported). */
+    model: string | null;
 }
 /** What the probe script printed (its {@link SANDBOX_PROBE_MARKER} line): per-write outcome and the two network reaches. */
 export interface SandboxProbeOutput {
@@ -544,14 +551,19 @@ export interface SdkSandboxProbe {
         blocked: boolean;
         reason?: string;
     } | string;
+    /** The spawn canary (a sandboxed `echo` with the lane env, no model turn); absent when it did not get that far. */
+    spawn?: {
+        ok: boolean;
+        detail: string;
+    };
 }
 /**
  * `sdk.sandbox`, no model call: what copilot_run would decide on this host.
  * An unsupported host passes (sessions fail closed: no shell for review,
  * write refuses); a supported host must take the review policy without
- * enforcement reporting blocked. The detail starts with `supported` or
- * `unsupported`. No canary runs here: copilot_run records `skipped`, and the
- * opt-in `sandbox-lane` scenario answers whether the canary RPC is sandboxed.
+ * enforcement reporting blocked, and the spawn canary must launch a
+ * sandboxed process with the lane env. The detail starts with `supported`
+ * or `unsupported`.
  */
 export declare function evaluateSdkSandbox(probe: SdkSandboxProbe): SmokeCheck;
 /**
@@ -629,6 +641,8 @@ export declare function evaluateScenario(run: ScenarioRun): {
     checks: SmokeCheck[];
     cost: ScenarioCost;
 };
+/** `ScenarioRun.model` of a lane scenario: the model pinned for its lanes, then the ones they reported running on. */
+export declare function laneModelLabel(pinned: string | undefined, used: ReadonlyArray<string | null>): string;
 /**
  * An explicit request wins. Otherwise the first listed non-`auto` model whose
  * id looks cheap; when the runtime lists only `auto` (Copilot CLI 1.0.91 for

@@ -37,7 +37,7 @@ import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js
 import { CopilotLaneBackend, isTerminalLaneState } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
 import { prepareFactoryRepo } from './copilot-factory-run-scenario.js';
-import { parseSandboxProbe, RUNTIME_MIN_MAX_CREDITS, SANDBOX_CANARY_FILE, SANDBOX_LANE_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_REVIEW_FILE, } from './copilot-sdk-scenarios.js';
+import { laneModelLabel, parseSandboxProbe, RUNTIME_MIN_MAX_CREDITS, SANDBOX_CANARY_FILE, SANDBOX_LANE_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_REVIEW_FILE, } from './copilot-sdk-scenarios.js';
 import { excerpt, parseJsonl } from './copilot-session-eval.js';
 /** A lane wall time that fits one probe command or a short review with its tool turns. */
 export const SANDBOX_LANE_TIMEOUT_MS = 300_000;
@@ -228,13 +228,14 @@ function laneEvents(result) {
         return [];
     }
 }
-/** Completed shell tool calls, and those whose completion lacks `sandboxed: true`. */
+/** Completed shell tool calls, those that succeeded, and those whose completion lacks `sandboxed: true`. */
 function shellAttestation(events) {
     const names = new Map();
     for (const e of events)
         if (e.type === 'tool.execution_start')
             names.set(String(e.data?.toolCallId ?? ''), String(e.data?.toolName ?? ''));
     let calls = 0;
+    let ok = 0;
     let unattested = 0;
     const sandboxedById = new Map();
     for (const e of events) {
@@ -245,10 +246,12 @@ function shellAttestation(events) {
         if (!SANDBOX_SHELL_TOOLS.has(names.get(id) ?? ''))
             continue;
         calls += 1;
+        if (e.data?.success === true)
+            ok += 1;
         if (e.data?.sandboxed !== true)
             unattested += 1;
     }
-    return { calls, unattested, sandboxedById };
+    return { calls, ok, unattested, sandboxedById };
 }
 /** The probe line in any tool result of the lane. */
 function probeOutput(events) {
@@ -285,9 +288,11 @@ function record(role, result, events) {
         sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...(s.enforcement ? { enforcement: s.enforcement } : {}), canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...(s.reason ? { reason: s.reason } : {}) } : null,
         shellCalls: att.calls,
         unattestedShellCalls: att.unattested,
+        okShellCalls: att.ok,
         changedFiles: [...(result?.changes?.changedFiles ?? []), ...(result?.changes?.untrackedFiles ?? [])],
         maxCredits: RUNTIME_MIN_MAX_CREDITS,
         credits: result ? result.usage.credits : null,
+        model: result?.model ?? null,
     };
 }
 export async function runSandboxLaneScenario(input) {
@@ -297,7 +302,7 @@ export async function runSandboxLaneScenario(input) {
     const base = {
         name: 'sandbox-lane',
         timeoutMs: laneTimeoutMs,
-        model: 'copilot_run lanes (runtime auto)',
+        model: laneModelLabel(input.model, []),
         maxCredits: input.maxCredits,
         budget: input.budget,
         capped: false,
@@ -378,6 +383,7 @@ export async function runSandboxLaneScenario(input) {
                 ...(role === 'write' ? { engineCommits: true } : {}),
                 timeoutMs: laneTimeoutMs,
                 maxCredits: RUNTIME_MIN_MAX_CREDITS,
+                ...(input.model ? { model: input.model } : {}),
             });
             let r = await backend.wait(remoteId, laneTimeoutMs + 60_000);
             if (!isTerminalLaneState(r.state))
@@ -456,6 +462,6 @@ export async function runSandboxLaneScenario(input) {
     }
     catch { /* best effort */ }
     const error = errors.length ? errors.join('; ') : undefined;
-    return { ...base, events: all, idle: !error, timedOut: false, ...(error ? { error } : {}), sandbox: evidence };
+    return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error, timedOut: false, ...(error ? { error } : {}), sandbox: evidence };
 }
 //# sourceMappingURL=copilot-sandbox-lane-scenario.js.map

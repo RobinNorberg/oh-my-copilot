@@ -20,13 +20,22 @@
  */
 
 import { spawnSync as nodeSpawnSync } from 'child_process';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
-import { applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, probeHostSupport, readEnforcement } from '../copilot-run/sandbox.js';
+import {
+  allowlistSessionEnv,
+  applySandboxConfig,
+  buildSandboxConfig,
+  DEFAULT_SANDBOX_SETTINGS,
+  missingSandboxEnv,
+  probeHostSupport,
+  readEnforcement,
+  type SandboxHostRecord,
+} from '../copilot-run/sandbox.js';
 import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import {
   chooseModel,
@@ -609,7 +618,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
     const modelLabel = `${choice.label} (${choice.note})`;
     checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
 
-    checks.push(...await staticChecks(client, input));
+    checks.push(...await staticChecks(client, input, loaded, bin));
 
     let stopReason: string | undefined;
     // chain rewrites the shared sandbox (route table, a project skill): run it
@@ -684,6 +693,8 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
                 budget: input.maxCredits - total.credits,
                 eventsPath: path,
                 spawnSync: input.spawnSync,
+                // The lanes run on the session's cheap pick, not runtime auto (which may route to a far costlier model).
+                ...(choice.model ? { model: choice.model } : {}),
               })
               // sandbox-lane drives copilot_run lanes in-process, each its own runtime.
               : name === SANDBOX_LANE_SCENARIO
@@ -697,6 +708,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
                   maxCredits: input.maxCredits,
                   budget: input.maxCredits - total.credits,
                   eventsPath: path,
+                  ...(choice.model ? { model: choice.model } : {}),
                 })
                 : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
@@ -736,7 +748,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
   return { checks, sdk: sdkInfo, cost: total, events };
 }
 
-async function staticChecks(client: SdkClientLike, input: SdkTierInput): Promise<SmokeCheck[]> {
+async function staticChecks(client: SdkClientLike, input: SdkTierInput, loaded: LoadedSdk, bin: string): Promise<SmokeCheck[]> {
   let session: SdkSessionLike | undefined;
   const failAll = (detail: string): SmokeCheck[] => SDK_STATIC_IDS.slice(2).map((id) => ({ id, ok: false, detail }));
   try {
@@ -776,7 +788,7 @@ async function staticChecks(client: SdkClientLike, input: SdkTierInput): Promise
       evaluateSdkMcp(mcp, tools, input.mcpServer, expected),
       evaluateSdkToolsExcluded(toolMeta, input.mcpServer),
       // Last: applying the policy restarts the session's local MCP servers.
-      evaluateSdkSandbox(await sandboxProbe(client, s, input)),
+      evaluateSdkSandbox(await sandboxProbe(client, s, input, loaded, bin)),
     ];
   } finally {
     if (session) await closeSession(client, session, input.keepHome);
@@ -786,9 +798,10 @@ async function staticChecks(client: SdkClientLike, input: SdkTierInput): Promise
 /**
  * The free sandbox probe (`sdk.sandbox`): host support, then copilot_run's
  * review policy for the sandbox project applied to the static session and
- * the enforcement status it reports. No shell runs and no model is called.
+ * the enforcement status it reports, then the spawn canary on a supported
+ * host. No model is called.
  */
-async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, input: SdkTierInput): Promise<SdkSandboxProbe> {
+async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, input: SdkTierInput, loaded: LoadedSdk, bin: string): Promise<SdkSandboxProbe> {
   if (typeof client.rpc?.sandbox?.getHostSupport !== 'function') {
     return { answered: false, host: { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} } };
   }
@@ -807,7 +820,77 @@ async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, inpu
     settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
   }, host);
   const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
-  return { answered, host, applyError, ...(applyError ? {} : { enforcement: await readEnforcement(session, RPC_TIMEOUT_MS) }) };
+  if (applyError) return { answered, host, applyError };
+  const enforcement = await readEnforcement(session, RPC_TIMEOUT_MS);
+  if (typeof enforcement === 'string' || enforcement.blocked) return { answered, host, applyError, enforcement };
+  return { answered, host, applyError, enforcement, spawn: await sandboxSpawnCanary(loaded, bin, input, host) };
+}
+
+/** The spawn canary's command: a shell builtin in powershell and bash, so the launch itself is what is tested. */
+export const SANDBOX_CANARY_TOKEN = 'omg-sandbox-canary-ok';
+
+/**
+ * The free spawn canary: a second runtime on copilot_run's lane env
+ * (allowlistSessionEnv, profile relocated), a session with the review policy,
+ * and one `shell.executeUserRequested` of `echo` (no model turn). It launches
+ * a real process through the OS sandbox with the env a lane gets, so a
+ * launch the sandbox rejects (Windows MXC: a missing required variable)
+ * fails here instead of in a lane that bills credits.
+ */
+async function sandboxSpawnCanary(loaded: LoadedSdk, bin: string, input: SdkTierInput, host: SandboxHostRecord): Promise<NonNullable<SdkSandboxProbe['spawn']>> {
+  const platform = input.platform ?? process.platform;
+  const jobHome = join(input.home, 'sandbox-canary');
+  const env = allowlistSessionEnv(input.env, jobHome);
+  const missing = missingSandboxEnv(env, platform);
+  if (missing.length) return { ok: false, detail: `the lane env lacks ${missing.join(', ')}, which the Windows sandbox needs to launch any process; not launched` };
+  mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+  const { CopilotClient, RuntimeConnection } = loaded.module;
+  const client = new CopilotClient({
+    connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+    baseDirectory: jobHome,
+    workingDirectory: input.projectDir,
+  });
+  let session: SdkSessionLike | undefined;
+  const sandboxed = new Map<string, unknown>();
+  try {
+    await withTimeout(client.start(), START_TIMEOUT_MS, 'canary client.start()');
+    session = await withTimeout(client.createSession({
+      onPermissionRequest: () => reject('omg smoke: the spawn canary grants nothing'),
+      onEvent: (e) => { if (e.type === 'tool.execution_complete') sandboxed.set(String(e.data?.toolCallId ?? ''), e.data?.sandboxed); },
+      pluginDirectories: [],
+      workingDirectory: input.projectDir,
+      disabledMcpServers: ['github-mcp-server'],
+      excludedTools: [],
+    }), RPC_TIMEOUT_MS, 'canary createSession()');
+    const shell = (session.rpc as { shell?: { executeUserRequested?: (p: { requestId: string; command: string }) => Promise<unknown> } }).shell;
+    if (typeof shell?.executeUserRequested !== 'function') return { ok: true, detail: 'skipped: the SDK has no shell.executeUserRequested RPC' };
+    const config = buildSandboxConfig('review', {
+      worktree: input.projectDir,
+      commonGitDir: join(input.projectDir, '.git'),
+      pluginRoot: input.root,
+      jobHome,
+      jobDir: join(jobHome, 'job'),
+      realHome: userInfo().homedir,
+      platform,
+      settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
+    }, host);
+    const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
+    if (applyError) return { ok: false, detail: `the review policy was not applied to the canary session: ${applyError}` };
+    const r = await withTimeout(shell.executeUserRequested.call(shell, { requestId: randomUUID(), command: `echo ${SANDBOX_CANARY_TOKEN}` }), RPC_TIMEOUT_MS, 'shell.executeUserRequested()') as Record<string, unknown> | null;
+    // The completion event can trail the RPC answer.
+    const id = typeof r?.toolCallId === 'string' ? r.toolCallId : '';
+    for (let i = 0; i < 20 && id && !sandboxed.has(id); i++) await sleep(100);
+    const attested = sandboxed.get(id);
+    const launched = r?.success === true && typeof r.output === 'string' && r.output.includes(SANDBOX_CANARY_TOKEN);
+    if (!launched) return { ok: false, detail: `the sandboxed launch failed: ${excerpt(typeof r?.error === 'string' && r.error ? r.error : `exit ${String(r?.exitCode)}, output ${JSON.stringify(excerpt(String(r?.output ?? ''), 80))}`, 300)}` };
+    if (attested !== true) return { ok: false, detail: `the echo ran, but its completion was ${attested === false ? 'attested sandboxed: false' : 'not attested sandboxed'}: the canary did not test the sandbox` };
+    return { ok: true, detail: 'a sandboxed echo with the lane env launched (sandboxed: true)' };
+  } catch (err) {
+    return { ok: false, detail: `the canary runtime failed: ${excerpt(errText(err), 200)}` };
+  } finally {
+    if (session) { try { await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, 'disconnect()'); } catch { /* runtime gone */ } }
+    try { await withTimeout(client.stop(), STOP_TIMEOUT_MS, 'canary client.stop()'); } catch { try { await client.forceStop?.(); } catch { /* gone */ } }
+  }
 }
 
 /** The session's offered tools (no model call); initializes the tool set first when it is not built yet. */

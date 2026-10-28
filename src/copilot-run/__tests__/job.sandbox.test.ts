@@ -333,4 +333,25 @@ describe('copilot_run sandbox permissions and env', () => {
     expect(gitconfig).toContain('owner@example.invalid');
     await m.cancel(started.jobId);
   });
+
+  it('win32: a host without LOCALAPPDATA refuses at start with the variable named, before any runtime starts', async () => {
+    const m = manager('hang', 'supported', { platform: 'win32' }, { SystemRoot: 'C:\\Windows' });
+    expect(() => m.start({ prompt: 'implement', cwd: repo })).toThrow(/copilot_run_start: the Windows sandbox needs LOCALAPPDATA in the environment .*sandbox\.enabled false/);
+    expect(calls.connections).toHaveLength(0);
+    // Switched off, no sandbox launches anything: no refusal.
+    const off = manager('hang', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, { SystemRoot: 'C:\\Windows' });
+    const started = off.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    await off.cancel(started.jobId);
+  });
+
+  it('win32: the host LOCALAPPDATA and SystemRoot reach the runtime env verbatim', async () => {
+    const m = manager('hang', 'supported', { platform: 'win32' }, { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' });
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    const env = calls.connections[0].env!;
+    expect(env).toMatchObject({ SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' });
+    expect(env.COPILOT_CACHE_HOME).toBe(join(env.COPILOT_HOME!, 'profile', '.cache', 'copilot'));
+    await m.cancel(started.jobId);
+  });
 });

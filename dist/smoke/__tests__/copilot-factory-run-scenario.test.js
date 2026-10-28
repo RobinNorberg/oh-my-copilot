@@ -25,9 +25,10 @@ const requestChanges = (ctx) => ({
     finalText: verdictBlock('request-changes', ctx.baseSha, [{ severity: 'major', file: FACTORY_RUN_FILE, summary: 'add a second line containing exactly: reviewed' }]),
     credits: 0.5,
 });
-async function run(name, scripts) {
+async function run(name, scripts, model) {
     const projectDir = join(dir, 'project');
     const result = await runFactoryRunScenario({
+        ...(model ? { model } : {}),
         name, root: dir, bin: 'copilot', env: {}, projectDir, home: join(dir, 'home'), timeoutMs: 1_000, maxCredits: 30, budget: 30,
         eventsPath: join(dir, `events-${name}.jsonl`), spawnSync: (() => { throw new Error('no spawnSync'); }),
         lanes: (repo) => { lanes = new FakeLanes(repo, scripts); return lanes; },
@@ -58,6 +59,16 @@ describe('factory-run scenario', () => {
         expect(checks['scn.factory-run.parked'].ok).toBe(false);
         expect(checks['scn.factory-run.exit'].ok).toBe(false);
         expect(checks['scn.factory-run.no_merge'].ok).toBe(true);
+    });
+    it('pins every lane to the driver\'s model (the engine sets none) and reports it', async () => {
+        const { result } = await run('factory-run', [commitFile(FACTORY_RUN_FILE, 'hi\n', 1), approve], 'claude-haiku-5.5');
+        expect(lanes.started.map((s) => s.model)).toEqual(['claude-haiku-5.5', 'claude-haiku-5.5']);
+        expect(result.model).toBe('copilot_run lanes pinned to claude-haiku-5.5; ran on unreported');
+    });
+    it('unpinned lanes carry no model and the report says runtime auto', async () => {
+        const { result } = await run('factory-run', [commitFile(FACTORY_RUN_FILE, 'hi\n', 1), approve]);
+        expect(lanes.started.map((s) => s.model)).toEqual([undefined, undefined]);
+        expect(result.model).toBe('copilot_run lanes on runtime auto (no cheap model listed); ran on unreported');
     });
     it('credits above the ceiling fail scn.factory-run.credits', async () => {
         const { checks } = await run('factory-run', [commitFile(FACTORY_RUN_FILE, 'hi\n', FACTORY_RUN_MAX_CREDITS['factory-run']), approve]);

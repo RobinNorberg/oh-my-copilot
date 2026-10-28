@@ -101,6 +101,8 @@ export interface LaneResult {
   process: LaneProcess | null;
   /** The local job's OS sandbox (copilot_run snapshot.sandbox); absent for remote backends and before it was decided. */
   sandbox?: CopilotRunSandboxState;
+  /** The model the local session ran on (copilot_run snapshot.model); absent when unknown or remote. */
+  model?: string;
 }
 
 /** A lane's local child process: the engine checks it is gone before it trusts a lost lane's end. */
@@ -233,6 +235,7 @@ export class CopilotLaneBackend implements LaneBackend {
       notes: snap.notes ?? [],
       process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
       ...(snap.sandbox ? { sandbox: snap.sandbox } : {}),
+      ...(snap.model ? { model: snap.model } : {}),
     };
   }
 }

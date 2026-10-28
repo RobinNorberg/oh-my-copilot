@@ -180,6 +180,18 @@ export declare function unconfirmedMode(profile: SandboxProfile, settings: Sandb
  */
 export declare const SESSION_ENV_ALLOWLIST: readonly string[];
 /**
+ * The variables the Windows sandbox (MXC) needs to launch any process,
+ * hook or shell, with the runtime's env taken verbatim
+ * (`inheritDefaultEnv` false): presence only, the value is not checked.
+ * Copilot CLI 1.0.105 rejects a launch without them ("policy_validation:
+ * ... missing the required variable(s)"); the list is the `&str` table next
+ * to that message in prebuilds/win32-x64/runtime.node. SystemRoot locates
+ * the system DLLs, LOCALAPPDATA the container's profile.
+ */
+export declare const MXC_REQUIRED_ENV: readonly string[];
+/** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
+export declare function missingSandboxEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[];
+/**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
  * runtime's env, unlike the client-level option).

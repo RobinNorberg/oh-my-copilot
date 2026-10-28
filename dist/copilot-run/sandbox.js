@@ -317,7 +317,23 @@ export const SESSION_ENV_ALLOWLIST = [
     // Non-secret OS variables shells and git expect.
     'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
+    // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
+    'LOCALAPPDATA',
 ];
+/**
+ * The variables the Windows sandbox (MXC) needs to launch any process,
+ * hook or shell, with the runtime's env taken verbatim
+ * (`inheritDefaultEnv` false): presence only, the value is not checked.
+ * Copilot CLI 1.0.105 rejects a launch without them ("policy_validation:
+ * ... missing the required variable(s)"); the list is the `&str` table next
+ * to that message in prebuilds/win32-x64/runtime.node. SystemRoot locates
+ * the system DLLs, LOCALAPPDATA the container's profile.
+ */
+export const MXC_REQUIRED_ENV = ['SYSTEMROOT', 'LOCALAPPDATA'];
+/** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
+export function missingSandboxEnv(env, platform) {
+    return platform === 'win32' ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === undefined) : [];
+}
 /** The caller's env value for `name`, looked up case-insensitively (Windows env keys). */
 function envValue(env, name) {
     const key = Object.keys(env).find((k) => k.toUpperCase() === name);
@@ -360,6 +376,8 @@ export function relocatedProfileEnv(jobHome) {
         HOME: profile,
         XDG_CONFIG_HOME: join(profile, '.config'),
         GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
+        // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant anchored on it, in the profile.
+        COPILOT_CACHE_HOME: join(profile, '.cache', 'copilot'),
     };
 }
 /**

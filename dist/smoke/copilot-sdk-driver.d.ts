@@ -259,4 +259,6 @@ export interface SdkTierResult {
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
 export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
+/** The spawn canary's command: a shell builtin in powershell and bash, so the launch itself is what is tested. */
+export declare const SANDBOX_CANARY_TOKEN = "omg-sandbox-canary-ok";
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map

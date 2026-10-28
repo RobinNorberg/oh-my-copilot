@@ -10,6 +10,8 @@ import {
   buildSandboxConfig,
   laneGitWritePaths,
   loadSandboxSettings,
+  missingSandboxEnv,
+  MXC_REQUIRED_ENV,
   probeHostSupport,
   resolveSandboxSettings,
   scrubTokens,
@@ -165,12 +167,31 @@ describe('detection helpers', () => {
   });
 
   it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
-    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a' }, join(root, 'h'));
+    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local' }, join(root, 'h'));
     expect(env).toEqual({
-      Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1',
+      Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
       XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
+      // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.
+      COPILOT_CACHE_HOME: join(root, 'h', 'profile', '.cache', 'copilot'),
     });
+  });
+
+  it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {
+    const hostEnv = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', GH_TOKEN: 'ghp_x' };
+    const env = allowlistSessionEnv(hostEnv, join(root, 'h'));
+    expect(MXC_REQUIRED_ENV).toEqual(['SYSTEMROOT', 'LOCALAPPDATA']);
+    expect(missingSandboxEnv(env, 'win32')).toEqual([]);
+    expect(env).toMatchObject({ SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' });
+    expect(env.GH_TOKEN).toBeUndefined();
+  });
+
+  it('missingSandboxEnv names the absent or blank required variables on win32 only', () => {
+    expect(missingSandboxEnv({ SystemRoot: 'C:\\Windows' }, 'win32')).toEqual(['LOCALAPPDATA']);
+    expect(missingSandboxEnv({ systemroot: 'C:\\Windows', LOCALAPPDATA: ' ' }, 'win32')).toEqual(['LOCALAPPDATA']);
+    expect(missingSandboxEnv({}, 'win32')).toEqual(['SYSTEMROOT', 'LOCALAPPDATA']);
+    expect(missingSandboxEnv({}, 'linux')).toEqual([]);
+    expect(missingSandboxEnv({}, 'darwin')).toEqual([]);
   });
 
   it('keeps every token out of the runtime env; the Copilot token goes to the session option instead', () => {

@@ -102,6 +102,7 @@ import {
   applySandboxConfig,
   buildSandboxConfig,
   loadSandboxSettings,
+  missingSandboxEnv,
   probeHostSupport,
   readEnforcement,
   scrubTokens,
@@ -624,6 +625,11 @@ export class CopilotRunManager {
     if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off') {
       const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
       if (problem) throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
+      // The session env passes these through (SESSION_ENV_ALLOWLIST); without one, MXC rejects every hook and shell launch.
+      const missing = missingSandboxEnv(this.deps.env, this.deps.platform);
+      if (missing.length) {
+        throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(' and ')} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
+      }
     }
 
     const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;

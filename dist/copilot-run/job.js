@@ -60,7 +60,7 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, normaliz
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, loadSandboxSettings, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -399,6 +399,11 @@ export class CopilotRunManager {
             const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
             if (problem)
                 throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
+            // The session env passes these through (SESSION_ENV_ALLOWLIST); without one, MXC rejects every hook and shell launch.
+            const missing = missingSandboxEnv(this.deps.env, this.deps.platform);
+            if (missing.length) {
+                throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(' and ')} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
+            }
         }
         const running = [...this.jobs.values()].filter((j) => !isTerminal(j.status)).length;
         if (running >= MAX_RUNNING_JOBS) {

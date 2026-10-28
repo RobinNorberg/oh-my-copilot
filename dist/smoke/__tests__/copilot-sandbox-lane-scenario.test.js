@@ -36,9 +36,9 @@ const enforced = (unsandboxedCalls = 0) => ({
     cliVersion: '1.0.104',
     sdkVersion: '1.0.16',
 });
-const shellCall = (id, sandboxed, content = '') => [
+const shellCall = (id, sandboxed, content = '', success = true) => [
     { type: 'tool.execution_start', data: { toolCallId: id, toolName: 'powershell', arguments: {} } },
-    { type: 'tool.execution_complete', data: { toolCallId: id, success: true, ...(sandboxed === undefined ? {} : { sandboxed }), result: { content } } },
+    { type: 'tool.execution_complete', data: { toolCallId: id, success, ...(sandboxed === undefined ? {} : { sandboxed }), result: { content } } },
 ];
 /** The nonce the scenario put into the lane prompt (`omg-canary-<nonce>` paths and the probe argv). */
 const nonceOf = (prompt) => /sandbox-probe\.mjs ([0-9a-f]{12}) /.exec(prompt)?.[1] ?? '';
@@ -196,6 +196,43 @@ describe('sandbox-lane scenario', () => {
         expect(checks['scn.sandbox-lane.network_blocked']).toMatchObject({ ok: false, detail: expect.stringMatching(/outbound https:\/\/github\.com REACHED \(HTTP 200\)/) });
         expect(checks['scn.sandbox-lane.q5_canary_rpc']).toMatchObject({ ok: false, detail: expect.stringMatching(/^Q5: shell\.executeUserRequested ran NOT sandboxed .*the canary needs a model turn instead$/) });
         expect(checks['scn.sandbox-lane.q1_profile'].detail).toMatch(/relocated profile write not probed/);
+    });
+    it('a probe that never ran (every tool call denied) fails review_no_write, write_outside_blocked, Q1 and Q2 instead of reading "blocked"', async () => {
+        // What Copilot CLI 1.0.105 on Windows did without LOCALAPPDATA: the preToolUse hook could not launch, so every call was denied.
+        const denied = 'Denied by preToolUse hook from oh-my-copilot (hook errored)';
+        const deadReview = { run: () => ({ finalText: 'every step was refused', credits: 0.4, sandbox: enforced() }), events: () => shellCall('r1', true, denied, false) };
+        const deadWrite = { run: () => ({ finalText: 'refused', credits: 0.6, sandbox: enforced() }), events: () => shellCall('w1', true, denied, false) };
+        const { checks } = await run({ review: deadReview, write: deadWrite, canary: cleanCanary });
+        expect(checks['scn.sandbox-lane.review_no_write']).toMatchObject({ ok: false, detail: expect.stringMatching(/the lane ran no command \(none of its 1 shell call\(s\) succeeded\), so "blocked" is no evidence$/) });
+        expect(checks['scn.sandbox-lane.write_outside_blocked']).toMatchObject({ ok: false, detail: expect.stringMatching(/^the write lane's probe never ran \(no probe output\), so no target was tried; write enforced$/) });
+        expect(checks['scn.sandbox-lane.q1_profile']).toMatchObject({ ok: false, detail: expect.stringMatching(/^Q1 unanswered: the write lane's probe never ran/) });
+        expect(checks['scn.sandbox-lane.q2_git_dir']).toMatchObject({ ok: false, detail: expect.stringMatching(/^Q2 unanswered: the write lane's probe never ran/) });
+        expect(checks['scn.sandbox-lane.network_blocked'].ok).toBe(false);
+        expect(checks['scn.sandbox-lane.write_inside'].ok).toBe(false);
+    });
+    it('pins every lane to the requested model and reports the model each lane ran on', async () => {
+        const backends = [];
+        const lanes = (repo, canary) => {
+            const b = new EventLanes(repo, canary ? [cleanCanary(canary)] : [cleanReview, cleanWrite]);
+            backends.push(b);
+            return b;
+        };
+        const { result, checks } = await run({ review: cleanReview, write: cleanWrite, canary: cleanCanary }, { lanes, model: 'claude-haiku-5.5' });
+        expect(backends.flatMap((b) => [...b.inputs.values()].map((i) => i.model))).toEqual(['claude-haiku-5.5', 'claude-haiku-5.5', 'claude-haiku-5.5']);
+        // FakeLanes reports no session model.
+        expect(result.model).toBe('copilot_run lanes pinned to claude-haiku-5.5; ran on unreported');
+        expect(checks['scn.sandbox-lane.credits'].detail).toMatch(/; lanes ran on review unreported, write unreported, canary unreported$/);
+    });
+    it('without a model the lanes start unpinned and the report says runtime auto', async () => {
+        const backends = [];
+        const lanes = (repo, canary) => {
+            const b = new EventLanes(repo, canary ? [cleanCanary(canary)] : [cleanReview, cleanWrite]);
+            backends.push(b);
+            return b;
+        };
+        const { result } = await run({ review: cleanReview, write: cleanWrite, canary: cleanCanary }, { lanes });
+        expect(backends.flatMap((b) => [...b.inputs.values()].map((i) => i.model))).toEqual([undefined, undefined, undefined]);
+        expect(result.model).toBe('copilot_run lanes on runtime auto (no cheap model listed); ran on unreported');
     });
     it('a host without the sandbox: review read-only, write refused; every question is reported unanswered', async () => {
         const unsupported = (mode) => ({

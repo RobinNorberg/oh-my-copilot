@@ -15,6 +15,7 @@ import {
   runSdkTier,
   runtimeCreditCap,
   satisfiesSdkRange,
+  SANDBOX_CANARY_TOKEN,
   type CopilotSdkModule,
   type LoadedSdk,
   type SdkClientOptions,
@@ -78,6 +79,8 @@ interface FakeOptions {
   hostSupport?: unknown;
   /** `session.rpc.sandbox.getEnforcementStatus()` answer (default: required, not blocked). */
   enforcement?: unknown;
+  /** `session.rpc.shell.executeUserRequested` answer and the completion's `sandboxed` (unset: no such RPC). */
+  shellExec?: (command: string) => { result: Record<string, unknown>; sandboxed?: boolean };
 }
 
 /** Re-stamp a fixture log's ISO timestamps to `iso` (the driver windows lines by time). */
@@ -190,6 +193,16 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
             },
           },
           sandbox: { getEnforcementStatus: async () => (opts.enforcement ?? { required: true, blocked: false }) as { required?: boolean; blocked?: boolean } },
+          ...(opts.shellExec ? {
+            shell: {
+              executeUserRequested: async ({ command }: { command: string }) => {
+                rec.ops.push(`exec:${id}:${command}`);
+                const { result, sandboxed } = opts.shellExec!(command);
+                emit({ type: 'tool.execution_complete', data: { toolCallId: 'canary-1', isUserRequested: true, success: result.success, ...(sandboxed === undefined ? {} : { sandboxed }) } });
+                return { toolCallId: 'canary-1', ...result };
+              },
+            },
+          } : {}),
         },
       };
     }
@@ -244,6 +257,8 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
 }
 
 const byId = (checks: Array<{ id: string; ok: boolean; detail: string }>) => Object.fromEntries(checks.map((c) => [c.id, c]));
+/** The variables the Windows sandbox needs (MXC_REQUIRED_ENV), as a real tier 2 env carries them. */
+const WIN_ENV = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' };
 
 describe('runSdkTier (fake SDK)', () => {
   it('missing module: every sdk.* and scn.* check carries the install hint and the tier is skipped', async () => {
@@ -260,10 +275,10 @@ describe('runSdkTier (fake SDK)', () => {
   it('sdk.sandbox: a supported host gets the review policy on the static session, after the other static RPCs, and no prompt', async () => {
     const caps = ['shell', 'network', 'network_filtering', 'denied_paths'].map((name) => ({ name, supported: name !== 'denied_paths' }));
     const { loaded, rec } = fakeSdk({ hostSupport: { supported: true, capabilities: caps } });
-    const result = await runSdkTier(input(loaded, { scenarios: [] }));
+    const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }));
     const check = byId(result.checks)['sdk.sandbox'];
     expect(check.ok).toBe(true);
-    expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; canary skipped/);
+    expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: skipped: the SDK has no shell\.executeUserRequested RPC$/);
     expect(rec.optionUpdates).toHaveLength(1);
     const update = rec.optionUpdates![0];
     expect(update.params.sandboxConfigSource).toBe('session_flag');
@@ -274,6 +289,40 @@ describe('runSdkTier (fake SDK)', () => {
       userPolicy: { filesystem: { readonlyPaths: expect.arrayContaining([join(parent, 'project')]) }, network: { allowOutbound: false, allowLocalNetwork: false } },
     });
     expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
+  });
+
+  it('sdk.sandbox spawn canary: a sandboxed echo on a second runtime with the allowlisted lane env, no prompt', async () => {
+    const { loaded, rec } = fakeSdk({
+      hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] },
+      shellExec: (command) => ({ result: { success: true, exitCode: 0, output: command.replace(/^echo /, '') }, sandboxed: true }),
+    });
+    const result = await runSdkTier(input(loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV, GH_TOKEN: 'ghp_secret' } }));
+    expect(byId(result.checks)['sdk.sandbox']).toMatchObject({ ok: true, detail: expect.stringMatching(/spawn canary: a sandboxed echo with the lane env launched \(sandboxed: true\)$/) });
+    // The canary session (s2) ran the echo after its own review policy; the static session (s1) ran nothing.
+    expect(rec.ops).toContain(`exec:s2:echo ${SANDBOX_CANARY_TOKEN}`);
+    expect(rec.optionUpdates?.map((u) => u.id)).toEqual(['s1', 's2']);
+    // The last client constructed is the canary's: the lane env, profile relocated, no token.
+    const env = rec.connection!.env!;
+    expect(env).toMatchObject({ LOCALAPPDATA: WIN_ENV.LOCALAPPDATA, SystemRoot: WIN_ENV.SystemRoot, USERPROFILE: join(parent, 'home', 'sandbox-canary', 'profile') });
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
+  });
+
+  it('sdk.sandbox spawn canary: a launch the sandbox rejects, an unattested echo, or a lane env without LOCALAPPDATA fails', async () => {
+    const supported = { supported: true, capabilities: [{ name: 'shell', supported: true }] };
+    const mxc = 'Error executing shell command: GenericFailure, policy_validation: ... missing the required variable(s): LOCALAPPDATA.';
+    const rejected = fakeSdk({ hostSupport: supported, shellExec: () => ({ result: { success: false, output: '', error: mxc }, sandboxed: true }) });
+    const r = byId((await runSdkTier(input(rejected.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
+    expect(r).toMatchObject({ ok: false, detail: expect.stringContaining('spawn canary: the sandboxed launch failed: Error executing shell command: GenericFailure, policy_validation') });
+
+    const unattested = fakeSdk({ hostSupport: supported, shellExec: (c) => ({ result: { success: true, exitCode: 0, output: c.slice(5) } }) });
+    const u = byId((await runSdkTier(input(unattested.loaded, { scenarios: [], env: { ...input(null).env, ...WIN_ENV } }))).checks)['sdk.sandbox'];
+    expect(u).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: the echo ran, but its completion was not attested sandboxed/) });
+
+    const noLocal = fakeSdk({ hostSupport: supported, shellExec: () => { throw new Error('the canary must not launch'); } });
+    const n = byId((await runSdkTier(input(noLocal.loaded, { scenarios: [], platform: 'win32', env: { ...input(null).env, SystemRoot: 'C:\\Windows' } }))).checks)['sdk.sandbox'];
+    expect(n).toMatchObject({ ok: false, detail: expect.stringMatching(/spawn canary: the lane env lacks LOCALAPPDATA, which the Windows sandbox needs to launch any process; not launched$/) });
+    expect(noLocal.rec.ops.filter((o) => o === 'start')).toHaveLength(1);
   });
 
   it('sdk.sandbox: blocked enforcement or a missing host RPC fails; a supported host without the RPC answer never passes', async () => {
@@ -558,6 +607,20 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     }));
     expect(calls).toEqual(['factory-run:30', 'factory-run-fix:30']);
     expect(rec.ops.filter((o) => o.startsWith('send:'))).toEqual([]);
+  });
+
+  it('the lane scenarios get the session\'s cheap model for their lanes; runtime auto passes none', async () => {
+    const seen: Array<string | undefined> = [];
+    const runs = (models?: string[]) => runSdkTier(input(fakeSdk(models ? { models } : {}).loaded, {
+      scenarios: ['factory-run', 'sandbox-lane'],
+      runFactory: async (f) => { seen.push(f.model); return { name: f.name, timeoutMs: 1, model: 'lanes', maxCredits: f.maxCredits, budget: f.budget, capped: false, wedged: false, events: [], idle: true, timedOut: false }; },
+      runSandbox: async (s) => { seen.push(s.model); return { name: 'sandbox-lane', timeoutMs: 1, model: 'lanes', maxCredits: s.maxCredits, budget: s.budget, capped: false, wedged: false, events: [], idle: true, timedOut: false }; },
+    }));
+    await runs(['auto', 'claude-sonnet-5.5', 'claude-haiku-5.5']);
+    expect(seen).toEqual(['claude-haiku-5.5', 'claude-haiku-5.5']);
+    seen.length = 0;
+    await runs(['auto']);
+    expect(seen).toEqual([undefined, undefined]);
   });
 
   it('passes the cap to the runtime when above the CLI minimum', async () => {

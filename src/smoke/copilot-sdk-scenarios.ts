@@ -41,7 +41,8 @@ export const ALL_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail', 'skill'
  * `omg factory run` with a real implement and review lane (two lanes, about
  * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
  * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
- * OS sandbox (three lanes, about 3 AI credits estimated). The
+ * OS sandbox (three lanes, about 3 AI credits estimated). Lane scenarios pin
+ * their lanes to the session's cheap model ({@link chooseModel}). The
  * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
  * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
  * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
@@ -713,8 +714,10 @@ function evaluateChain(run: ScenarioRun): SmokeCheck[] {
 
 /**
  * AI credits ceilings: about 1 credit per lane is the estimate (a small write
- * or review with a few tool turns), 3 per lane the ceiling, as for chain. It
- * catches a runaway lane, not a measured figure.
+ * or review with a few tool turns) on the cheap model the driver pins for the
+ * lanes, 3 per lane the ceiling, as for chain. It catches a runaway lane, not
+ * a measured figure. Lanes on runtime auto (no cheap model listed, or none
+ * pinned) measured about 3.6 credits each on Sonnet (CLI 1.0.105) and fail it.
  */
 export const FACTORY_RUN_MAX_CREDITS: Readonly<Record<FactoryRunScenario, number>> = { 'factory-run': 6, 'factory-run-fix': 12 };
 /** Check ids of both factory run variants (before the common exit, adapter_errors and cost). */
@@ -811,7 +814,7 @@ export const SANDBOX_CANARY_FILE = 'canary-inside.txt';
 /** The probe script committed at the scenario repository's root; it prints one {@link SANDBOX_PROBE_MARKER} line. */
 export const SANDBOX_PROBE_SCRIPT = 'sandbox-probe.mjs';
 export const SANDBOX_PROBE_MARKER = 'OMG_SANDBOX_PROBE ';
-/** A ceiling of 3 AI credits per lane over the three lanes, as for factory-run: it catches a runaway lane. */
+/** A ceiling of 3 AI credits per lane over the three lanes on the pinned cheap model, as for factory-run: it catches a runaway lane. */
 export const SANDBOX_LANE_MAX_CREDITS = 9;
 
 export type SandboxLaneRole = 'review' | 'write' | 'canary';
@@ -839,10 +842,14 @@ export interface SandboxLaneRecord {
   /** Completed shell tool calls in the lane's events, and those without `sandboxed: true`. */
   shellCalls: number;
   unattestedShellCalls: number;
+  /** Shell calls that completed with `success: true`: evidence the lane launched a process at all. */
+  okShellCalls: number;
   /** Files changed or added in the lane worktree (copilot_run `changes`). */
   changedFiles: string[];
   maxCredits: number;
   credits: number | null;
+  /** The model the lane's session ran on (copilot_run snapshot.model; null: not reported). */
+  model: string | null;
 }
 
 /** What the probe script printed (its {@link SANDBOX_PROBE_MARKER} line): per-write outcome and the two network reaches. */
@@ -919,7 +926,10 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   const caps = host ? Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? '' : ' (no)'}`).join(', ') || 'none listed' : 'unknown';
 
   const reviewLanded = e.reviewTargets.filter((t) => t.landed);
-  const reviewOk = !!review && review.state === 'completed' && enforced(review) && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
+  // A lane whose tools never ran (a dead sandbox launch) lands nothing: "blocked" counts only once a shell call of the
+  // lane succeeded (its `git status`; the review allowlist refuses the probe's `node`).
+  const reviewRan = !!review && review.okShellCalls > 0;
+  const reviewOk = !!review && review.state === 'completed' && enforced(review) && reviewRan && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
 
   const inside = target(e.writeTargets, 'worktree');
   const insideOk = !!write && enforced(write) && !!inside?.landed;
@@ -928,7 +938,9 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   // The scenario repository must live somewhere (no dir is surely outside every default grant), so under the temp dir its
   // main-checkout target is informational: a landed write there is the temp grant, not a checkout confinement failure.
   const mainInformational = !!main && isUnder(main.path, e.tempDir, process.platform);
-  const outsideOk = enforced(write) && outside.length === 2 && outside.every((t) => !t.landed || (mainInformational && t === main));
+  // No probe output: the probe never ran, so a target that did not land was never tried.
+  const noProbe = `the write lane's probe never ran (no probe output), so no target was tried; ${modeOf(write)}${write?.error ? `; ${excerpt(write.error, 160)}` : ''}`;
+  const outsideOk = enforced(write) && !!e.probe && outside.length === 2 && outside.every((t) => !t.landed || (mainInformational && t === main));
   const tempNote = mainInformational ? ` (main-checkout is informational: the scenario repository is under the OS temp dir${main?.landed ? ', which the default sandbox grant includes' : ''}; the shared target decides)` : '';
 
   const outbound = e.probe?.net.outbound;
@@ -944,16 +956,16 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
 
   const realHome = target(e.writeTargets, 'real-home');
   const profile = target(e.writeTargets, 'profile');
-  const q1Answered = enforced(write) && !!realHome;
+  const q1Answered = enforced(write) && !!realHome && !!e.probe;
   const q1Ok = q1Answered && !realHome!.landed;
-  const q1Detail = !q1Answered ? `Q1 ${unanswered(write)}`
+  const q1Detail = !q1Answered ? (enforced(write) && !e.probe ? `Q1 unanswered: ${noProbe}` : `Q1 ${unanswered(write)}`)
     : `Q1: real profile write ${realHome!.landed ? `LANDED (${realHome!.path}): the profile grant is read-write and relocation does not move it; add the real home to readonlyPaths` : 'blocked'}; `
       + `relocated profile write ${!profile ? 'not probed (the probe printed no home)' : profile.landed ? `landed (${profile.path}): the profile grant follows USERPROFILE/HOME, and the read-only job home entry does not narrow it` : `blocked (${profile.path})`}`;
 
   const gitDir = target(e.writeTargets, 'git-dir');
-  const q2Answered = enforced(write) && !!gitDir;
+  const q2Answered = enforced(write) && !!gitDir && !!e.probe;
   const q2Ok = q2Answered && !gitDir!.landed;
-  const q2Detail = !q2Answered ? `Q2 ${unanswered(write)}`
+  const q2Detail = !q2Answered ? (enforced(write) && !e.probe ? `Q2 unanswered: ${noProbe}` : `Q2 ${unanswered(write)}`)
     : gitDir!.landed ? `Q2: common git dir write LANDED (${gitDir!.path}): the CLI grants it read-write for a linked worktree over the readonlyPaths entry; write lanes are not confined (upstream feature request)`
       : `Q2: common git dir write blocked (${gitDir!.path}): no linked-worktree auto-grant overrides the readonlyPaths entry`;
 
@@ -978,10 +990,11 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
     {
       id: `${p}.review_no_write`,
       ok: reviewOk,
-      detail: !review ? 'no review lane' : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? 'LANDED' : 'blocked'}`).join(', ') || 'no targets'}; worktree changes ${review.changedFiles.join(', ') || 'none'}`,
+      detail: !review ? 'no review lane' : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? 'LANDED' : 'blocked'}`).join(', ') || 'no targets'}; worktree changes ${review.changedFiles.join(', ') || 'none'}`
+        + (reviewRan ? '' : `; the lane ran no command (none of its ${review.shellCalls} shell call(s) succeeded), so "blocked" is no evidence${review.error ? `: ${excerpt(review.error, 160)}` : ''}`),
     },
     { id: `${p}.write_inside`, ok: insideOk, detail: !write ? 'no write lane' : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside?.landed ? 'created' : 'missing'}` },
-    { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join('; ')}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
+    { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: !e.probe ? noProbe : outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join('; ')}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
     { id: `${p}.network_blocked`, ok: networkOk, detail: !e.probe ? `no probe output from the write lane; ${modeOf(write)}` : `loopback listener ${e.localHits} hit(s), probe local ${reach(local)}; outbound https://github.com ${reach(outbound)}` },
     {
       id: `${p}.attested`,
@@ -997,7 +1010,8 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
       ok: creditsOk,
       detail: `${Number(e.cost.credits.toFixed(3))} AI credits (legacy ${e.cost.premiumRequests} premium request(s)) over ${e.cost.source} (max ${SANDBOX_LANE_MAX_CREDITS} credits)`
         + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${e.lanes.map((l) => l.maxCredits).join(', ') || 'none'} (expected ${RUNTIME_MIN_MAX_CREDITS})`)
-        + (measured ? '' : '; a lane has no recorded usage'),
+        + (measured ? '' : '; a lane has no recorded usage')
+        + `; lanes ran on ${e.lanes.map((l) => `${l.role} ${l.model ?? 'unreported'}`).join(', ') || 'none'}`,
     },
   ];
 }
@@ -1378,15 +1392,17 @@ export interface SdkSandboxProbe {
   applyError?: string | null;
   /** The enforcement status after the apply, or why it could not be read. */
   enforcement?: { required: boolean; blocked: boolean; reason?: string } | string;
+  /** The spawn canary (a sandboxed `echo` with the lane env, no model turn); absent when it did not get that far. */
+  spawn?: { ok: boolean; detail: string };
 }
 
 /**
  * `sdk.sandbox`, no model call: what copilot_run would decide on this host.
  * An unsupported host passes (sessions fail closed: no shell for review,
  * write refuses); a supported host must take the review policy without
- * enforcement reporting blocked. The detail starts with `supported` or
- * `unsupported`. No canary runs here: copilot_run records `skipped`, and the
- * opt-in `sandbox-lane` scenario answers whether the canary RPC is sandboxed.
+ * enforcement reporting blocked, and the spawn canary must launch a
+ * sandboxed process with the lane env. The detail starts with `supported`
+ * or `unsupported`.
  */
 export function evaluateSdkSandbox(probe: SdkSandboxProbe): SmokeCheck {
   const id = 'sdk.sandbox';
@@ -1399,11 +1415,12 @@ export function evaluateSdkSandbox(probe: SdkSandboxProbe): SmokeCheck {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === undefined || typeof enf === 'string') return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? 'not asked'}` };
+  const spawn = probe.spawn ?? { ok: false, detail: 'not run' };
   return {
     id,
-    ok: !enf.blocked,
+    ok: !enf.blocked && spawn.ok,
     detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ''}; `
-      + 'canary skipped (copilot_run runs none; --scenario sandbox-lane answers Q5)',
+      + `spawn canary: ${spawn.detail}`,
   };
 }
 
@@ -1710,6 +1727,12 @@ export function evaluateScenario(run: ScenarioRun): { checks: SmokeCheck[]; cost
 // ---------------------------------------------------------------------------
 
 const CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
+
+/** `ScenarioRun.model` of a lane scenario: the model pinned for its lanes, then the ones they reported running on. */
+export function laneModelLabel(pinned: string | undefined, used: ReadonlyArray<string | null>): string {
+  const ran = [...new Set(used.map((m) => m ?? 'unreported'))];
+  return `copilot_run lanes ${pinned ? `pinned to ${pinned}` : 'on runtime auto (no cheap model listed)'}; ran on ${ran.join(', ') || 'no lane yet'}`;
+}
 
 /**
  * An explicit request wins. Otherwise the first listed non-`auto` model whose
