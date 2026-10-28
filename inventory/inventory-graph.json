@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "febe4ca3ae5d692c3740aa00d597074f23c9372e",
-    "sourceSha256": "3b2d54b855422fbc091e4bcd550ab2b5e930c879567fa46e263ed5f165f20210",
+    "head": "c2a97a7c3b7fb84ecd1067f6b2d067b0bbed3e46",
+    "sourceSha256": "b17a5cadbe5f8a5f66fa6b044131fb7f579334f200e9af1945231f9de30bcb07",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "febe4ca3ae5d692c3740aa00d597074f23c9372e",
-  "sourceSha256": "3b2d54b855422fbc091e4bcd550ab2b5e930c879567fa46e263ed5f165f20210",
+  "head": "c2a97a7c3b7fb84ecd1067f6b2d067b0bbed3e46",
+  "sourceSha256": "b17a5cadbe5f8a5f66fa6b044131fb7f579334f200e9af1945231f9de30bcb07",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1736,
-      "total": 1760
+      "srcFiles": 1742,
+      "total": 1766
     },
     "generated": {
       "distFiles": 6480,
@@ -45978,6 +45978,11 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/port-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/port-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/progress-cli.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/progress-cli.test.ts"
@@ -46071,6 +46076,11 @@
         "id": "src/cli/commands/intake.ts",
         "kind": "src",
         "path": "src/cli/commands/intake.ts"
+      },
+      {
+        "id": "src/cli/commands/port.ts",
+        "kind": "src",
+        "path": "src/cli/commands/port.ts"
       },
       {
         "id": "src/cli/commands/progress.ts",
@@ -50186,6 +50196,26 @@
         "id": "src/platform/process-utils.ts",
         "kind": "src",
         "path": "src/platform/process-utils.ts"
+      },
+      {
+        "id": "src/port/__tests__/engine.test.ts",
+        "kind": "src",
+        "path": "src/port/__tests__/engine.test.ts"
+      },
+      {
+        "id": "src/port/__tests__/guard.test.ts",
+        "kind": "src",
+        "path": "src/port/__tests__/guard.test.ts"
+      },
+      {
+        "id": "src/port/engine.ts",
+        "kind": "src",
+        "path": "src/port/engine.ts"
+      },
+      {
+        "id": "src/port/guard.ts",
+        "kind": "src",
+        "path": "src/port/guard.ts"
       },
       {
         "id": "src/projection/__tests__/fixtures.test.ts",
@@ -67245,6 +67275,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/port-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/port-cli.test.ts",
+        "to": "src/cli/commands/port.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/port-cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/progress-cli.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -68040,6 +68085,71 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/port.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/port/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/port/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/release/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/port.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/progress.ts",
         "to": "external:commander",
         "kind": "imports"
@@ -68797,6 +68907,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/port.ts",
         "kind": "imports"
       },
       {
@@ -89915,6 +90030,171 @@
         "kind": "imports"
       },
       {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "src/port/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "src/port/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "src/port/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/port/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/projection/__tests__/fixtures.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -104841,12 +105121,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8956,
-      "edgeCount": 10400,
-      "importEdgeCount": 8654,
+      "nodeCount": 8962,
+      "edgeCount": 10450,
+      "importEdgeCount": 8692,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a3403891e440f4b8ceba155f8fbc5f09fe17554a39d355b86919a074eae8fdd9",
-  "manifestSha256": "be2e094089061d922803741d62be36015a2934a5580ebb35e2e400950adcb251"
+  "inventorySha256": "ff018147776191b1f7451e32b24cdad5a2a8ea8b75ae797363671b78e8b549a2",
+  "manifestSha256": "114747f0f24ba55f470fb86d2fd0e04f286728bc1aa61c8cb2c28833d4031958"
 }
