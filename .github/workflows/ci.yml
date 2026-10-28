@@ -524,6 +524,17 @@ jobs:
           command -v copilot
           copilot --version
 
+      - name: Install the OS sandbox backend
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          # Copilot's Linux sandbox runs shells under bubblewrap, with
+          # slirp4netns for the network and uidmap's newuidmap/newgidmap. With
+          # them, sdk.sandbox reports `supported` and the sandbox-lane
+          # scenario's lanes run enforced.
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends bubblewrap slirp4netns uidmap
+          bwrap --version
+
       - name: Prepare isolated smoke dirs
         if: steps.gate.outputs.enabled == 'true'
         run: |
@@ -545,6 +556,10 @@ jobs:
           status=$?
           set -e
           jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/static.json" || cat "$SMOKE_ROOT/reports/static.json"
+          # The free sandbox probe: an unsupported host passes (lanes fail closed) but should not happen here.
+          if ! jq -e '.checks[] | select(.id == "sdk.sandbox") | .detail | startswith("supported")' "$SMOKE_ROOT/reports/static.json" > /dev/null; then
+            echo "::warning title=OS sandbox not supported::sdk.sandbox does not report supported on this runner; see the static check output above."
+          fi
           echo "omg smoke copilot --sdk-static exit $status"
           exit "$status"
 
