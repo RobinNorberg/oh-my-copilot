@@ -19,7 +19,8 @@
  *   `config.worktree`, `hooks/`, `info/` and its alternates;
  * - `objects/info/alternates` and `objects/info/http-alternates`;
  * - the global git config the engine's own git reads (GIT_CONFIG_GLOBAL, else
- *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`) and every file an
+ *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`), the user-level ignore
+ *   files (`$XDG_CONFIG_HOME/git/ignore`, `core.excludesFile`) and every file an
  *   `include.path` / `includeIf.*.path` in it or in the repository's config
  *   names, followed {@link MAX_INCLUDE_DEPTH} levels deep: a lane's shell can
  *   reach the home directory and plant `credential.helper=!cmd`,
@@ -111,6 +112,12 @@ function run(exec: Exec, cwd: string, args: string[]): string {
   const res = exec('git', args, { cwd, env: TRUSTED_READ_ENV });
   if (res.status !== 0) throw new SnapshotError(`git ${args.join(' ')} failed in ${cwd}: ${res.stderr.trim().split('\n')[0]}`);
   return res.stdout;
+}
+
+/** `core.excludesFile` as the engine's own git resolves it (guarded env); undefined when unset. */
+function excludesFileOf(exec: Exec, cwd: string): string | undefined {
+  const res = exec('git', ['config', '--get', 'core.excludesFile'], { cwd, env: TRUSTED_READ_ENV });
+  return res.status === 0 && res.stdout.trim() ? res.stdout.trim() : undefined;
 }
 
 const sha = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -260,7 +267,7 @@ function safeFileHash(path: string): string {
  * in `repoConfigs` (hashed elsewhere themselves), names, up to
  * {@link MAX_INCLUDE_DEPTH} levels.
  */
-export function globalConfigHash(repoConfigs: readonly string[], env: NodeJS.ProcessEnv = process.env): string {
+export function globalConfigHash(repoConfigs: readonly string[], env: NodeJS.ProcessEnv = process.env, excludesFile?: string): string {
   const home = env.HOME?.trim() || homedir();
   const seen = new Map<string, string>();
   const follow = (file: string, depth: number) => {
@@ -277,6 +284,10 @@ export function globalConfigHash(repoConfigs: readonly string[], env: NodeJS.Pro
   };
   for (const f of globalConfigFiles(env)) visit(f, 0);
   for (const f of repoConfigs) follow(resolve(f), 1);
+  // The user-level ignore files change what `git status` reports (a lane can hide a file with them).
+  const xdg = env.XDG_CONFIG_HOME?.trim() || join(home, '.config');
+  const excludes = excludesFile ? [excludesFile === '~' || excludesFile.startsWith('~/') ? join(home, excludesFile.slice(2)) : excludesFile] : [];
+  for (const f of [join(xdg, 'git', 'ignore'), ...excludes]) seen.set(resolve(f), safeFileHash(resolve(f)));
   return sha([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([p, h]) => `${p} ${h}`).join('\n'));
 }
 
@@ -341,7 +352,7 @@ export function snapshotRepo(exec: Exec, root: string, stateRootRel: string | nu
     globalConfig: globalConfigHash([
       join(commonDir, 'config'), join(commonDir, 'config.worktree'),
       ...worktreeIds.filter((id) => id !== '.').map((id) => join(wtDir, id, 'config.worktree')),
-    ]),
+    ], process.env, excludesFileOf(exec, root)),
   };
   const statusUnsafe = against !== undefined && (files.config !== against.config || files.configWorktree !== against.configWorktree
     || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules) || files.globalConfig !== against.globalConfig);
