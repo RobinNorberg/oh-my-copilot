@@ -18,6 +18,8 @@ import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardra
 import { AFK_INCLUDE_USER_SETTINGS_ENV, chainLinkHost, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger, type SpawnContext, type SpawnNextTracker } from '../hooks/session-end/spawn-next.js';
 import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall } from './watchdog.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { withFileLockSync } from '../lib/file-lock.js';
+import { enqueueWebhookRun, healStateDir } from './heal/state.js';
 
 export const INTAKE_LABEL = 'intake';
 export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'intent', skill: 'intent' } };
@@ -41,6 +43,43 @@ export interface CheckRunEvent {
   action?: string;
   check_suite?: { conclusion?: string; head_branch?: string };
   repository?: { full_name?: string };
+}
+
+/** GitHub workflow_run webhook payload subset the heal intake needs. */
+export interface WorkflowRunEvent {
+  action?: string;
+  repository?: { full_name?: string };
+  workflow_run?: { id?: unknown; conclusion?: string; head_branch?: string; event?: string; path?: string };
+}
+
+/** The workflow whose red dev push runs may heal (fixed, like the poller's). */
+export const HEAL_WORKFLOW_PATH = '.github/workflows/ci.yml';
+export const DEFAULT_HEAL_BRANCH = 'dev';
+
+export type HealIntakeOutcome =
+  | { kind: 'enqueue'; runId: string }
+  | { kind: 'discarded'; reason: string }
+  | { kind: 'rejected'; status: number; reason: string };
+
+/**
+ * Pure heal intake decision for a `workflow_run` webhook (design §2): a
+ * completed, failed push run of ci.yml on the heal branch. Only the run id is
+ * taken from the payload; the scan re-reads everything else through gh.
+ */
+export function routeWorkflowRun(event: WorkflowRunEvent, whitelist: ReadonlyArray<string>, healBranch = DEFAULT_HEAL_BRANCH): HealIntakeOutcome {
+  const repo = event.repository?.full_name;
+  if (!repo || !whitelist.includes(repo)) {
+    return { kind: 'rejected', status: 403, reason: `repository outside whitelist: ${repo ?? '(missing)'}` };
+  }
+  const run = event.workflow_run ?? {};
+  if (event.action !== 'completed') return { kind: 'discarded', reason: `workflow_run action ${String(event.action ?? '?').slice(0, 40)}` };
+  if (run.conclusion !== 'failure') return { kind: 'discarded', reason: `workflow_run conclusion ${String(run.conclusion ?? '?').slice(0, 40)}` };
+  if (run.event !== 'push') return { kind: 'discarded', reason: 'workflow_run is not a push run' };
+  if (run.head_branch !== healBranch) return { kind: 'discarded', reason: `workflow_run is not on ${healBranch}` };
+  if (run.path !== HEAL_WORKFLOW_PATH) return { kind: 'discarded', reason: `workflow_run is not ${HEAL_WORKFLOW_PATH}` };
+  const runId = typeof run.id === 'number' && Number.isSafeInteger(run.id) && run.id > 0 ? String(run.id) : null;
+  if (!runId) return { kind: 'rejected', status: 422, reason: 'invalid workflow_run id' };
+  return { kind: 'enqueue', runId };
 }
 
 export function verifySignature(secret: string, rawBody: string, signatureHeader: string | undefined): boolean {
@@ -123,10 +162,14 @@ export interface ListenerConfig {
   whitelist: ReadonlyArray<string>;
   cwd: string;
   host?: string; // defaults to 127.0.0.1 for localhost-only binding
+  /** The branch whose red push runs enqueue a heal scan (default dev). */
+  healBranch?: string;
 }
 
 export interface ListenerDeps {
   spawner?: (cmd: string, args: string[], ctx?: SpawnContext) => void;
+  /** Test seam: the heal queue write (default: enqueueWebhookRun under the scan lock). */
+  enqueueHeal?: (cwd: string, runId: string) => boolean;
   audit?: (record: Record<string, unknown>) => void;
   /** Test seam: overrides the one-shot stall check scheduling for spawned links. */
   scheduleStallCheck?: (session: string) => void;
@@ -290,6 +333,34 @@ export function processCheckFailureEvent(event: CheckRunEvent, config: ListenerC
   });
 }
 
+function defaultEnqueueHeal(cwd: string, runId: string): boolean {
+  return withFileLockSync(join(healStateDir(cwd), 'scan.lock'), () => enqueueWebhookRun(cwd, runId, new Date()), { timeoutMs: 5_000 });
+}
+
+/**
+ * One `workflow_run` event: enqueue the run id for the heal scan, nothing
+ * else. It never spawns a session or a lane; the poller stays the source of
+ * truth and decides with what it re-reads through gh.
+ */
+export function processWorkflowRunEvent(event: WorkflowRunEvent, config: ListenerConfig, deps: ListenerDeps = {}): EventResult {
+  const audit = deps.audit ?? defaultAudit(config.cwd);
+  const outcome = routeWorkflowRun(event, config.whitelist, config.healBranch);
+  if (outcome.kind === 'rejected') {
+    audit({ kind: 'rejected', status: outcome.status, reason: outcome.reason });
+    return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
+  }
+  if (outcome.kind === 'discarded') return { status: 204, kind: 'discarded', detail: outcome.reason };
+  let added: boolean;
+  try {
+    added = (deps.enqueueHeal ?? defaultEnqueueHeal)(config.cwd, outcome.runId);
+  } catch (error) {
+    audit({ kind: 'discarded', reason: 'heal enqueue failed', detail: error instanceof Error ? error.message : String(error), runId: outcome.runId });
+    return { status: 503, kind: 'discarded', detail: 'heal queue busy; the next scan polls the run anyway' };
+  }
+  audit({ kind: 'routed', stage: 'heal-queue', runId: outcome.runId, added });
+  return { status: 202, kind: 'accepted', detail: added ? `enqueued run ${outcome.runId} for the next heal scan` : `run ${outcome.runId} already queued` };
+}
+
 function pidFilePath(cwd: string): string {
   return join(getOmcRoot(cwd), 'state', 'factory-listener.json');
 }
@@ -365,24 +436,30 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, config: 
     return;
   }
 
-  let event: TrackerEvent | CheckRunEvent;
+  let event: TrackerEvent | CheckRunEvent | WorkflowRunEvent;
   try {
-    event = JSON.parse(raw) as TrackerEvent | CheckRunEvent;
+    event = JSON.parse(raw) as TrackerEvent | CheckRunEvent | WorkflowRunEvent;
   } catch {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'invalid JSON' }));
     return;
   }
 
-  // A body carrying check_suite is a CI check-run webhook; everything else is
-  // tracker issue intake.
-  const result = hasCheckSuite(event)
-    ? processCheckFailureEvent(event, config, deps)
-    : processEvent(event, config, deps);
+  // A body carrying workflow_run feeds the heal queue; one carrying
+  // check_suite is a CI check-run webhook; everything else is tracker issue intake.
+  const result = hasWorkflowRun(event)
+    ? processWorkflowRunEvent(event, config, deps)
+    : hasCheckSuite(event)
+      ? processCheckFailureEvent(event, config, deps)
+      : processEvent(event as TrackerEvent, config, deps);
   res.writeHead(result.status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(result));
 }
 
-function hasCheckSuite(event: TrackerEvent | CheckRunEvent): event is CheckRunEvent {
+function hasWorkflowRun(event: TrackerEvent | CheckRunEvent | WorkflowRunEvent): event is WorkflowRunEvent {
+  return (event as Partial<WorkflowRunEvent>).workflow_run !== undefined;
+}
+
+function hasCheckSuite(event: TrackerEvent | CheckRunEvent | WorkflowRunEvent): event is CheckRunEvent {
   return (event as Partial<CheckRunEvent>).check_suite !== undefined;
 }

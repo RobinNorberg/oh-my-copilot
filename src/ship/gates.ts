@@ -62,9 +62,10 @@ export interface WorkflowRun {
   status: string;
   conclusion?: string;
   workflowName?: string;
+  headSha?: string;
 }
 
-export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName';
+export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName,headSha';
 
 export type GateVerdict = 'green' | 'pending' | 'failed' | 'flaky';
 
@@ -90,6 +91,9 @@ export class GhChecksError extends Error {
     this.name = 'GhChecksError';
   }
 }
+
+/** A transient GitHub failure (5xx, GraphQL "Something went wrong"): worth a retry, never a verdict. */
+export const TRANSIENT_GH_ERROR = /Something went wrong|HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error/i;
 
 /** Parse `gh pr checks --json` stdout; throws GhChecksError on anything but an array of {name,state}. */
 export function parseChecksJson(stdout: string): GhCheck[] {
@@ -341,34 +345,36 @@ export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string {
   return sha;
 }
 
-/** Run `gh run list --commit <sha> --json ...`: every Actions workflow run for the head sha. */
+/**
+ * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
+ * the head sha. A run whose reported head_sha is another commit is dropped, so
+ * a previous head's failed run never counts against this one.
+ */
 export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] {
   const res = exec('gh', ['run', 'list', '--commit', headSha, '--json', RUN_FIELDS, '--limit', '100'], { cwd });
   if (res.status !== 0) throw new GhChecksError(`gh run list --commit ${headSha.slice(0, 12)} failed (exit ${res.status}): ${res.stderr.trim()}`);
-  return parseRunsJson(res.stdout.trim() || '[]');
+  return parseRunsJson(res.stdout.trim() || '[]').filter((r) => !r.headSha || r.headSha === headSha);
 }
 
 /**
  * One gate evaluation against a single head sha: resolve the head first
  * (unless given), read the checks and the workflow runs for it, then re-read
- * the head; a head that moved in between is pending, never green. Failed
- * Actions jobs' logs are read for known-flaky attribution.
+ * the head; a head that moved in between is pending whatever the verdict
+ * (green, failed or flaky), since the read may mix two heads. Failed Actions
+ * jobs' logs are read for known-flaky attribution.
  */
 export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport {
   const head = headSha ?? fetchHeadSha(exec, pr, cwd);
   const checked = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
-  let report = checked;
-  if (checked.verdict === 'green' || checked.checks.length === 0) {
-    const runs = fetchWorkflowRuns(exec, head, cwd);
-    report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
-    const after = fetchHeadSha(exec, pr, cwd);
-    if (after !== head) {
-      return {
-        ...report,
-        verdict: report.verdict === 'green' ? 'pending' : report.verdict,
-        pending: [...report.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`],
-      };
-    }
+  const runs = fetchWorkflowRuns(exec, head, cwd);
+  const report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
+  const after = fetchHeadSha(exec, pr, cwd);
+  if (after !== head) {
+    return {
+      ...report,
+      verdict: 'pending',
+      pending: [...report.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`],
+    };
   }
   if (report.verdict !== 'failed' || known.length === 0) return report;
   const analyses: FlakyAnalysis[] = [];
@@ -394,6 +400,9 @@ export interface WatchOptions {
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   onReport?: (report: GateReport) => void;
+  /** Drive mode: a transient GitHub error while reading the gates is a pending poll, not a thrown error. */
+  retryTransient?: boolean;
+  onTransient?: (message: string) => void;
 }
 
 export interface WatchResult {
@@ -414,11 +423,23 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
   const deadline = config.watchTimeoutMinutes > 0 ? opts.now() + config.watchTimeoutMinutes * 60_000 : Infinity;
   const rerun: string[] = [];
   for (;;) {
-    const report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
+    let report: GateReport;
+    try {
+      report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!opts.retryTransient || !opts.watch || !(error instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message)) throw error;
+      opts.onTransient?.(message);
+      if (opts.now() >= deadline) throw error;
+      await opts.sleep(Math.min(config.pollIntervalSeconds * 1000, Math.max(0, deadline - opts.now())));
+      continue;
+    }
     opts.onReport?.(report);
     if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed') {
       return { report, rerun, timedOut: false };
     }
+    // A fixed head that moved will never settle: hand the pending report back so the caller re-views the PR.
+    if (opts.headSha && report.pending.some((p) => p.startsWith('head moved from '))) return { report, rerun, timedOut: false };
     if (report.verdict === 'flaky') {
       const budget = opts.reruns;
       const ready = budget && config.autoRerunFlaky ? report.rerunnable.filter((id) => budget.count(id) < 1) : [];

@@ -5,7 +5,7 @@ import { factoryCommand, factoryRunCommand, type FactoryRunDeps } from '../facto
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
 import { factoryCancelRequested, readFactoryState } from '../../../factory/run/state.js';
 import type { Exec } from '../../../ship/exec.js';
-import { commitFile, FakeLanes, harness, ISSUE, review, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
+import { commitFile, FakeLanes, harness, ISSUE, review, testGateConfig, type Harness } from '../../../factory/run/__tests__/fake-lanes.js';
 
 let h: Harness;
 let out: string[];
@@ -35,6 +35,7 @@ function deps(over: Partial<FactoryRunDeps> = {}): FactoryRunDeps {
     limits: () => resolveFactoryRunLimits(undefined, undefined),
     base: () => 'dev',
     ledgerDir: h.ledgerDir,
+    gateConfig: testGateConfig,
     ...over,
   };
 }
@@ -52,20 +53,25 @@ describe('omg factory run CLI', () => {
     expect(factoryCommand().commands.map((c) => c.name())).toContain('run');
   });
 
-  it('run parks at prepare (exit 0, JSON), status reads it back, cancel sets the flag', async () => {
+  it('run parks at the human merge (exit 0, JSON, the merge command), status reads it back, clean refuses it, cancel sets the flag', async () => {
     lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
     const d = deps();
     expect(await cli(d, String(ISSUE), '--json')).toBe(0);
-    const result = JSON.parse(out.join('\n')) as { ok: boolean; gate: { name: string }; state: { pr: number } };
-    expect(result).toMatchObject({ ok: true, gate: { name: 'prepare' }, state: { pr: 42 } });
+    const result = JSON.parse(out.join('\n')) as { ok: boolean; gate: { name: string }; state: { pr: number; head: string }; mergeCommand: string };
+    expect(result).toMatchObject({ ok: true, gate: { name: 'merge' }, state: { pr: 42 } });
+    expect(result.mergeCommand).toBe(`gh pr merge 42 --admin --merge --match-head-commit ${result.state.head}`);
 
     out = [];
     expect(await cli(d, 'status', String(ISSUE), '--json')).toBe(0);
-    expect(JSON.parse(out.join('\n'))).toMatchObject({ phase: 'prepare', integrityOk: true, runCredits: 8 });
+    expect(JSON.parse(out.join('\n'))).toMatchObject({ phase: 'merge', integrityOk: true, runCredits: 8 });
 
     out = [];
     expect(await cli(d, 'status', String(ISSUE))).toBe(0);
-    expect(out.join('\n')).toMatch(/awaiting-human: prepare/);
+    expect(out.join('\n')).toMatch(/awaiting-human: merge/);
+
+    out = [];
+    expect(await cli(d, 'clean', String(ISSUE))).toBe(1);
+    expect(out.join('\n')).toMatch(/merged or cancelled run only/);
 
     out = [];
     expect(await cli(d, 'cancel', String(ISSUE))).toBe(0);
@@ -75,7 +81,7 @@ describe('omg factory run CLI', () => {
     expect(out.join('\n')).toMatch(/cancel requested/);
   });
 
-  it('a gate other than prepare exits 4', async () => {
+  it('a gate other than merge exits 4', async () => {
     h.gh.issue.body = 'no plan';
     lanes = new FakeLanes(h.root, []);
     expect(await cli(deps(), String(ISSUE))).toBe(4);

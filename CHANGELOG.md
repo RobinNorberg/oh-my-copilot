@@ -2,6 +2,168 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.17.0
+
+## [5.17.0] - 2026-10-28
+
+Fork **v5.17.0** (from v5.16.0) is a minor release with four themes. Release
+and ship gates now drive themselves to a terminal state, and `omg port drive`
+automates an upstream port up to a draft PR. The factory engine, still
+**experimental**, now runs `omg factory run <issue>` from the independent
+review through ship's prepare step and the CI gates to
+`awaiting-human: merge`. Factory lanes run in the Copilot OS sandbox, and the
+engine commits for write lanes with hardened git. Self-healing CI classifies
+red `dev` runs, diagnoses one in a read-only debugger lane, and turns an
+approved diagnosis into a `ci-heal` run. Merge stays a human step everywhere:
+there is no auto-merge, and the engine's command guard refuses `gh pr merge`.
+See the [migration note](docs/MIGRATION.md#unreleased-omg-factory-run).
+
+### Added
+
+- **`--drive` and `--detach` for `omg release` and `omg ship gates`.** A drive
+  runs until done, a real failure or a human decision. A CI wait past
+  `--timeout` or a transient GitHub error (5xx, GraphQL "Something went
+  wrong") is resumed after one minute, up to `--drive-max` (default 6 h).
+  `--detach` runs the driver as a detached process behind a single-driver
+  lock; `--status` and `--stop` inspect and end it. Every phase and wait
+  writes progress events. Drive never implies `--yes`, so the tag phase still
+  needs your confirmation, and the merge rule is unchanged.
+- **Smoke reuse in `omg release`.** A green Tier 2 smoke is reused when the
+  hash of the shipped inputs (dist, bridge, hooks, agents, skills, commands,
+  copilot, scripts, templates, manifests and lock file) is unchanged, so a
+  test-only rebuild needs no `--allow-skipped-smoke`. `--force-smoke` always
+  runs it, and a red smoke clears the record.
+- **Flake triage in the release suite.** Each new failing test reruns alone
+  three times. Three passes is load-flaky (ok with a warning), three failures
+  is real (fail), and a mix blocks. Candidates are written to
+  `.omg/release/<v>-flaky-candidates.json` for the owner; nothing writes
+  `.github/known-flaky-tests.json`.
+- **`omg port drive`.** It applies an upstream head, drops junk, classifies the
+  package delta, writes a conflict brief, optionally runs a paid reconcile
+  lane (`--reconcile-lane --max-credits N`), runs the gates, commits with the
+  inventory last, pushes `port/upstream-<sha>` and opens a **draft** PR. A
+  non-version package delta, conflicts without a lane or in release, ship,
+  installer or permission paths, leak hits and leftover conflict markers stop
+  at a human gate (exit 3). The reconcile lane is tamper-checked, and every
+  host git and gh call goes through a hardened allowlist.
+- **`omg factory heal` (experimental).** `heal scan` classifies new red
+  `ci.yml` runs on `dev` by failure signature: infra, known-flaky, history,
+  environment change or regression. It makes no LLM call and no GitHub write.
+  `heal run <sig8>` builds a capped, redacted evidence bundle and diagnoses it
+  in a read-only debugger lane, then parks at `heal-approve`. `heal approve`
+  starts a `ci-heal` run from the sealed diagnosis on `factory/heal-<sig8>`,
+  which goes through review, prepare and gates to the human merge gate.
+  `heal status`, `heal cancel` and `heal close` complete the set. A
+  `workflow_run` webhook (HMAC-verified) can enqueue a scan. Daily run, lane
+  and credit caps are reserved before each lane starts, and known-flaky
+  additions are only ever printed as proposals.
+
+- **Prepare, gates and the human merge gate for `omg factory run`.** After an
+  approve verdict the engine marks the PR ready and runs ship's prepare in an
+  engine-owned checkout, then pushes the housekeeping commits itself. A gates
+  driver loops ship's `watchGates` in-process and accepts a read only for the
+  head the engine pushed. Green gates go to ship's merge rule, which comments
+  the exact merge command on the PR. Rerun the engine after you merge, and it
+  finishes as `merged`.
+- **`conflict-fix` and `ci-fix` lanes.** A base merge that conflicts outside
+  `inventory/` gets up to 2 conflict-fix rounds. A real check failure gets one
+  ci-fix round with the failing check names and test titles. Both go back
+  through publish and a new review.
+- **`omg factory run clean <issue>`** removes the lane worktrees and the
+  prepare checkout of a merged or cancelled run. It keeps anything dirty or
+  holding commits that no verified ref holds, and never deletes the PR branch.
+- **`factory.run.gatesTimeoutMinutes`** (default 90) bounds the gates phase.
+- **Tier 2 smoke scenarios `factory-run` and `factory-run-fix`** (opt-in,
+  never in `all`): the engine in-process with real implement and review lanes
+  against a sandbox repository, a bare `origin` and a scripted `gh`, up to the
+  merge gate. They are estimated at about 2 and 4 AI credits.
+- **Sandbox smoke.** A new SDK static check, `sdk.sandbox`, makes no model
+  call. It reports whether the host supports the Copilot OS sandbox, applies
+  `copilot_run`'s review policy and reads its enforcement. The opt-in
+  `sandbox-lane` scenario, never in `all` and estimated at about 3 AI credits,
+  runs a review, a write and a canary lane in the sandbox. It checks that the
+  review lane cannot write, and that the write lane cannot write outside its
+  grant or reach the network. It checks that the engine commits the write
+  lane's change, and it answers open questions Q1, Q2 and Q5 of the design
+  with one result line each. The Linux CI smoke job installs `bubblewrap`,
+  `slirp4netns` and `uidmap`, so the probe there reports `supported`.
+- **A sandboxed lanes reference**: modes, lane rights, config keys,
+  `detect-only`, the git 2.41 floor, host git hardening, open questions and
+  residual risks.
+- **The full `omg factory run` reference**: phases, state and resume rules,
+  every human gate, config, the security model and the cost model.
+
+### Changed
+
+- **Release and ship gates check the head.** In `pr`, gates wait until the
+  PR head equals the pushed HEAD; in `promote`, until it contains the dev
+  merge. Only runs for the current head count, and the head is re-checked on
+  every verdict. This fixes a false stop on a stale run.
+- **`eslint src` (0 errors) is a release gate**, and the path gate scans
+  tracked and untracked-but-not-ignored files instead of the whole tree.
+- **`gh pr merge` is retried** up to twice on GitHub 5xx or GraphQL "Something
+  went wrong" errors. Policy and conflict errors fail at once.
+- **The `merge` park replaces the `prepare` park.** It exits 0, as the
+  `prepare` park did. Other `awaiting-human` stops still exit 4. A run parked
+  at `prepare` by v5.15.0 goes on when you rerun it.
+- **Prepare runs under the tamper checks.** Prepare's checks run the PR's own
+  code, so the engine snapshots the shared git state around them like a lane.
+  A crash between prepare's push and its record repeats nothing.
+- **Behaviour change: write lanes refuse to run without an OS sandbox.** An
+  `omg factory run` write lane (implement, fix, conflict-fix, ci-fix) whose
+  Copilot sandbox is not confirmed parks at `awaiting-human:
+  sandbox-unavailable` instead of running unsandboxed. Set
+  `factory.run.sandbox.writeUnsandboxed: "detect-only"` in your user
+  `omg.jsonc` to run it anyway. The engine then warns, records
+  `sandbox.mode: "detect-only"` on the lane, and says so in the PR body. A
+  repository config cannot set it. A review lane without a confirmed sandbox
+  runs with no shell. The same settings apply to `copilot_run` jobs as
+  `copilotRun.sandbox`, and a repository config can only tighten them. See
+  [Sandboxed lanes](docs/REFERENCE.md#sandboxed-lanes).
+- **The engine commits for write lanes.** A write lane's sandbox keeps the git
+  directory read-only, so the lane leaves its changes uncommitted. After the
+  lane ends and passes the tamper check, the engine commits them with hardened
+  git: no hooks, no filters, and a fixed `omg factory` identity, with the
+  lane's final message as the commit message. It refuses an empty change, a
+  merge-rule path, a nested repository (`sandbox-escaped`), or a lane that
+  committed itself. A conflict-fix lane starts from the engine's merge of the
+  base with the conflict markers in place, and the engine commits the
+  resolution as the merge of both. Each lane's sandbox state is recorded in
+  the run state. A detect-only lane after the PR exists gets a PR comment.
+- **Write lanes may not change agent instructions, hooks, skills or CI.** The
+  engine also refuses a lane change to `.github/`, `.copilot/`, `.omg/skills/`,
+  `.omc/skills/`, `AGENTS.md` or `CLAUDE.md` (`protected-paths`). `omg ship`
+  keeps its own list.
+
+### Security
+
+- **The engine commits nothing a lane linked in from outside its worktree.**
+  Git for Windows follows a directory junction in `git add -A`, and the
+  engine's git runs with your read rights, so a lane could have had the
+  engine commit and push files such as `~/.ssh`. The engine now refuses a
+  directory link (any link on Windows), a new symlink, or a staged path whose
+  real folder is outside the worktree. The lane parks at `sandbox-escaped`
+  with the path named, and the index is reset. The lane's commit message
+  loses skip-CI markers, its own trailers (`Co-authored-by`, `Signed-off-by`,
+  `skip-checks`) and invisible format characters.
+- Lanes run in the Copilot OS sandbox, which confines their shell commands
+  and local MCP servers. Built-in file tools, plugin hooks and team workers
+  are not OS-sandboxed, and some sandbox behaviour is still unverified (open
+  questions Q1, Q2 and Q5, which `--scenario sandbox-lane` answers). So the
+  tamper checks, the engine's own state record and hardened engine git stay,
+  and a human merge always comes last. The team merge paths still run
+  unhardened git in worker worktrees: do not use them with sandboxed lanes.
+- **CI logs are untrusted input to `omg factory heal`.** Reads are capped,
+  logs are only regex-matched, and the evidence bundle redacts token shapes,
+  AWS keys, Bearer values, URL userinfo and PEM blocks, and fences every file
+  with a per-run delimiter. The debugger lane's environment drops GitHub
+  tokens, secret-named variables, ssh-agent and credential helpers. The heal
+  subject (including its `source`) is sealed out of the repository, and the
+  record hash is documented as an integrity hash, not a tamper proof.
+
+Upgrade notes are in
+[MIGRATION.md](docs/MIGRATION.md#unreleased-omg-factory-run).
+
 # oh-my-copilot v5.16.0
 
 ## [5.16.0] - 2026-10-27

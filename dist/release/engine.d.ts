@@ -17,9 +17,13 @@
  *              docs/CLAUDE.md, inventory drift) read committed state and
  *              always fail on the uncommitted release tree. The level (and
  *              the baseline) is recorded in the state and a later run never
- *              lowers it; a suite that ran below the recorded level runs again
+ *              lowers it; a suite that ran below the recorded level runs again.
+ *              New failing full-suite titles are rerun alone (triage): real
+ *              fails, mixed blocks, load-flaky passes with a warning and
+ *              known-flaky candidates (never applied by the engine)
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
- *              a red suite costs no AI credits
+ *              a red suite costs no AI credits. A green smoke is reused while
+ *              HEAD's smoke inputs hash the same (lastSmoke; --force-smoke runs)
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
@@ -37,6 +41,7 @@
  */
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
+import { type TriageResult } from './checks.js';
 import type { ReleaseProgressInput } from './progress.js';
 export declare const PHASES: readonly ["preflight", "bump", "build", "gates", "commit", "suite", "smoke", "pr", "promote", "tag", "verify"];
 export type PhaseId = (typeof PHASES)[number];
@@ -75,6 +80,21 @@ export interface ReleaseState {
     tagRunId?: number;
     /** Run id -> automatic reruns spent (one per run). */
     reruns: Record<string, number>;
+    /**
+     * The last green live smoke, outside `phases` so voiding the smoke record
+     * keeps it: a later smoke phase whose input hash (SMOKE_INPUTS at HEAD) is
+     * equal reuses it instead of spending requests.
+     */
+    lastSmoke?: {
+        inputHash: string;
+        headSha: string;
+        at: string;
+    };
+    /** Isolated reruns of the full suite's new failing titles on `sha`; a re-run suite on the same HEAD reuses them. */
+    suiteTriage?: {
+        sha: string;
+        results: TriageResult[];
+    };
 }
 export type SuiteLevel = 'none' | 'targeted' | 'full';
 /** `suiteEnv`: the ship scrub without GIT_NO_REPLACE_OBJECTS, as in CI (the vitest suite only). */
@@ -109,11 +129,23 @@ export interface ReleaseOptions {
     /** Full-suite baseline: a vitest JSON report or one `<file> > <title>` per line. */
     baseline?: string;
     liveSmoke?: boolean;
+    /** Run the live smoke even when its inputs hash to the last green smoke's (implies --live-smoke). */
+    forceSmoke?: boolean;
+    /** Isolated reruns of each new failing full-suite title (default 3). */
+    triageRuns?: number;
+    /** Minutes each isolated rerun may take (default 5); a timeout is a failed run. */
+    triageTimeoutMinutes?: number;
     /** Let pr run although the live smoke did not pass (it was skipped). */
     allowSkippedSmoke?: boolean;
     fixOrphans?: boolean;
     /** Total minutes the pr / promote / verify phases wait on CI per invocation. */
     timeoutMinutes?: number;
+    /**
+     * Drive mode (src/release/drive.ts): a CI wait that outlives --timeout, or a
+     * transient GitHub error, ends the run as pending (resumed by the drive loop)
+     * instead of blocked / failed; the tag phase never prompts (blocked without --yes).
+     */
+    drive?: boolean;
 }
 export interface ReleaseDeps {
     exec: ReleaseExec;
@@ -142,8 +174,24 @@ export interface ReleaseResult {
         details?: string[];
         steps?: string[];
     }>;
+    /** Drive mode only: the run stopped on a wait or a transient error, and a resume continues at `phase`. */
+    pending?: {
+        phase: PhaseId;
+        note: string;
+    };
+}
+/**
+ * Not a result yet: a CI wait ran out of the --timeout window, or GitHub
+ * answered with a transient error. `outcome` is what a run without --drive
+ * records (blocked / fail, unchanged); under --drive the run ends pending.
+ */
+export declare class PendingError extends Error {
+    readonly outcome: PhaseOutcome;
+    constructor(outcome: PhaseOutcome);
 }
 export declare function releaseStatePath(stateRoot: string, version: string): string;
+/** Known-flaky candidates of the full-suite triage; the owner approves them into .github/known-flaky-tests.json by hand. */
+export declare function flakyCandidatesPath(stateRoot: string, version: string): string;
 export declare function readReleaseState(stateRoot: string, version: string): ReleaseState | null;
 /** Steps each phase runs, as printed by --dry-run. */
 export declare function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[];

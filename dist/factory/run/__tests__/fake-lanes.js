@@ -4,11 +4,13 @@
  * repository with a local bare remote, and a scripted `gh` behind the exec
  * seam. No Copilot session, no network, no credits.
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { summarizeChanges } from '../../../copilot-run/job.js';
 import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
+import { resolveShipConfig } from '../../../ship/config.js';
+import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { LaneLostError } from '../lane.js';
 export { gitIn };
@@ -47,6 +49,8 @@ export class FakeLanes {
         mkdirSync(join(worktree, '..'), { recursive: true });
         const baseSha = gitIn(this.root, 'rev-parse', '--verify', `${input.baseRef}^{commit}`);
         gitIn(this.root, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
+        // Like copilot_run: the git links are recorded at creation.
+        recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
         this.jobs.set(remoteId, { ctx: { input, worktree, branch, baseSha, root: this.root }, script, runningPolls: this.runningPolls[n] ?? 0 });
         return { remoteId };
     }
@@ -68,6 +72,7 @@ export class FakeLanes {
             error: o.error ?? null,
             notes: [],
             process: fakeProcess(remoteId),
+            ...(o.sandbox ? { sandbox: o.sandbox } : {}),
         };
     }
     async poll(remoteId) {
@@ -127,13 +132,11 @@ export class FakeProcesses {
             this.live.delete(p.pid);
     }
 }
-/** Lane scripts. */
+/** Lane scripts. A write lane leaves its change uncommitted: the engine commits it (lane-commit.ts). */
 export const commitFile = (path, content = 'work\n', credits = 5) => ({ worktree }) => {
     mkdirSync(join(worktree, path, '..'), { recursive: true });
     writeFileSync(join(worktree, path), content);
-    gitIn(worktree, 'add', '--', path);
-    gitIn(worktree, 'commit', '-q', '-m', `lane: ${path}`);
-    return { finalText: 'Committed.', credits };
+    return { finalText: `Changed ${path}.`, credits };
 };
 export const noCommit = () => ({ finalText: 'Nothing to do.' });
 export function verdictBlock(verdict, sha, findings = [], notes = '') {
@@ -147,6 +150,24 @@ export const review = (verdict, findings = [], tamper) => (ctx) => {
 export const ISSUE = 7;
 export const REPO_URL = 'https://github.com/o/r';
 export const PR = 42;
+/** One required check `Test` from Actions run 100 (job 200), and that run. */
+export const greenGates = (runId = 100) => ({
+    checks: [{ name: 'Test', state: 'SUCCESS', link: `${REPO_URL}/actions/runs/${runId}/job/${runId * 2}` }],
+    runs: [{ databaseId: runId, status: 'completed', conclusion: 'success', workflowName: 'CI' }],
+});
+export const pendingGates = (runId = 100) => ({
+    checks: [{ name: 'Test', state: 'IN_PROGRESS', link: `${REPO_URL}/actions/runs/${runId}/job/${runId * 2}` }],
+    runs: [{ databaseId: runId, status: 'in_progress', workflowName: 'CI' }],
+});
+export const failedGates = (runId = 100) => ({
+    checks: [{ name: 'Test', state: 'FAILURE', link: `${REPO_URL}/actions/runs/${runId}/job/${runId * 2}` }],
+    runs: [{ databaseId: runId, status: 'completed', conclusion: 'failure', workflowName: 'CI' }],
+});
+/** Ship's gate config without a fetch: the one required check `Test`, no advisory checks, no known-flaky tests. */
+export const testGateConfig = () => ({
+    config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [] },
+    known: [],
+});
 /** `<dir>/remote.git` (bare) and `<dir>/repo` on `dev` tracking it; `.omg/` ignored. */
 export function harness(prefix = 'omg-factory-run-') {
     const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -165,34 +186,61 @@ export function harness(prefix = 'omg-factory-run-') {
     gitIn(root, 'push', '-q', 'origin', 'dev');
     const h = {
         dir, root, bare, ledgerDir: join(dir, 'ledger'), calls: [], raw: [],
-        gh: { issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', author: { login: 'o' }, comments: [] }, prCreated: false, openPrs: [] },
+        gh: {
+            issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', author: { login: 'o' }, comments: [] },
+            prCreated: false, branch: `factory/issue-${ISSUE}`, openPrs: [], headSequence: [], ready: false, merged: false, gates: [greenGates()], logs: {},
+        },
+        node: () => ok(''),
         exec: () => ({ status: 1, stdout: '', stderr: '' }),
     };
     const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
+    let gatesRead = 0;
+    const currentGates = () => h.gh.gates[Math.min(Math.max(gatesRead - 1, 0), h.gh.gates.length - 1)];
     h.exec = (cmd, rawArgs, opts) => {
         h.raw.push({ cmd, args: rawArgs, ...(opts?.env ? { env: opts.env } : {}) });
         let args = rawArgs;
         while (cmd === 'git' && args[0] === '-c')
             args = args.slice(2);
-        const key = `${cmd} ${args.join(' ')}`;
+        const isNode = cmd === process.execPath || /(^|[\\/])node(\.exe)?$/i.test(cmd);
+        const key = `${isNode ? 'node' : cmd} ${args.join(' ')}`;
         h.calls.push(key);
         h.onCall?.(key);
+        if (isNode)
+            return h.node(args);
         if (cmd === 'git' && args[0] === 'remote' && args[1] === 'get-url')
             return ok(`${REPO_URL}.git\n`);
         if (cmd === 'git')
             return defaultExec(cmd, rawArgs, opts);
+        if (key.startsWith(`gh pr view ${PR} --json `)) {
+            const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
+            const base = bareRef(bare, 'refs/heads/dev');
+            const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
+            return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: base }));
+        }
+        if (key === `gh pr ready ${PR}`) {
+            h.gh.ready = true;
+            return ok('');
+        }
+        if (key.startsWith(`gh pr checks ${PR} --json`)) {
+            gatesRead += 1;
+            return ok(JSON.stringify(currentGates().checks));
+        }
+        if (key.startsWith('gh run list --commit '))
+            return ok(JSON.stringify(currentGates().runs));
+        if (key.startsWith('gh run view --job '))
+            return ok(h.gh.logs[args[3]] ?? '');
+        if (key.startsWith('gh run rerun '))
+            return ok('');
         if (key.startsWith(`gh issue view ${ISSUE} --json`))
             return ok(JSON.stringify({ ...h.gh.issue, labels: [], url: `${REPO_URL}/issues/${ISSUE}` }));
-        if (key.startsWith('gh pr list --head factory/issue-'))
+        if (key === 'gh repo view --json url')
+            return ok(JSON.stringify({ url: REPO_URL }));
+        if (key.startsWith('gh pr list --head factory/'))
             return ok(JSON.stringify(h.gh.openPrs.map((number) => ({ number, state: 'OPEN' }))));
         if (key.startsWith('gh pr create ')) {
             h.gh.prCreated = true;
             h.gh.openPrs = [PR];
             return ok(`${REPO_URL}/pull/${PR}\n`);
-        }
-        if (key.startsWith(`gh pr view ${PR} --json headRefOid`)) {
-            const remote = defaultExec('git', ['ls-remote', bare, `refs/heads/factory/issue-${ISSUE}`]).stdout.split(/\s+/)[0];
-            return ok(JSON.stringify({ headRefOid: h.gh.headOverride ?? remote, state: 'OPEN' }));
         }
         if (key.startsWith('gh pr comment ') || key.startsWith('gh issue comment '))
             return ok('');
@@ -200,7 +248,14 @@ export function harness(prefix = 'omg-factory-run-') {
     };
     return h;
 }
+/** A ref of the bare remote: its loose ref file (pushes write one), else ls-remote. */
+function bareRef(bare, ref) {
+    const loose = join(bare, ...ref.split('/'));
+    if (existsSync(loose))
+        return readFileSync(loose, 'utf8').trim();
+    return defaultExec('git', ['ls-remote', bare, ref]).stdout.split(/\s+/)[0];
+}
 export function remoteHead(h) {
-    return defaultExec('git', ['ls-remote', h.bare, `refs/heads/factory/issue-${ISSUE}`]).stdout.split(/\s+/)[0] || null;
+    return defaultExec('git', ['ls-remote', h.bare, `refs/heads/${h.gh.branch}`]).stdout.split(/\s+/)[0] || null;
 }
 //# sourceMappingURL=fake-lanes.js.map

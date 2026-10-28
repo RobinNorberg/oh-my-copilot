@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readdirSync, statSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -117,7 +118,20 @@ const JS_PATTERNS = [
   "`${$_}\\.omc\\$$$`",
 ];
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'bridge', 'coverage', '.omg']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'bridge', 'coverage', '.omg', '.omc']);
+
+/**
+ * Tracked plus untracked-not-ignored files under `dir` (git ls-files), so
+ * ignored local state (.omc/handoffs scripts, worktrees) is never scanned
+ * while new untracked source still is. Null when `dir` is not in a git repo.
+ */
+function gitFiles(dir) {
+  const r = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+  if (r.status !== 0 || r.error) return null;
+  return r.stdout.split('\0').filter(Boolean)
+    .filter((rel) => !rel.split('/').some((part) => SKIP_DIRS.has(part)))
+    .map((rel) => join(dir, rel));
+}
 
 function* walkFiles(dir) {
   let entries;
@@ -136,7 +150,7 @@ function* walkFiles(dir) {
 let totalHits = 0;
 const hitLines = [];
 
-for (const filePath of walkFiles(searchRoot)) {
+for (const filePath of gitFiles(searchRoot) ?? walkFiles(searchRoot)) {
   const ext = filePath.split('.').pop();
   let lang, patterns;
   if (ext === 'ts' || ext === 'tsx') {

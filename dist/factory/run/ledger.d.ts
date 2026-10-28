@@ -26,7 +26,7 @@
  * copy while it runs.
  */
 import type { RepoSnapshot } from './review-guard.js';
-import type { FactoryLaneKind } from './state.js';
+import type { FactoryLaneKind, FactoryRunKey } from './state.js';
 export declare class LedgerError extends Error {
     constructor(message: string);
 }
@@ -44,7 +44,8 @@ export interface LedgerRecheck {
 export declare const sha256: (data: string | Buffer) => string;
 /** `$OMC_STATE_DIR/factory-ledger` or `~/.omg/factory-ledger`: outside the repository. */
 export declare function defaultLedgerDir(env?: NodeJS.ProcessEnv): string;
-export declare function ledgerFilePath(dir: string, root: string, issue: number): string;
+/** `run-<issue>.json`, or `run-heal-<sig8>.json` for a ci-heal run. */
+export declare function ledgerFilePath(dir: string, root: string, key: FactoryRunKey): string;
 /** The empty directory the engine passes as core.hooksPath (exec.ts hardenedGitExec). */
 export declare function emptyHooksDir(dir: string): string;
 /** The file's bytes, or null when it does not exist. */
@@ -55,7 +56,7 @@ export declare class EngineLedger {
     readonly existed: boolean;
     private constructor();
     /** Load the sidecar for (root, issue), or start an empty one; a malformed sidecar is refused. */
-    static open(dir: string, root: string, issue: number): EngineLedger;
+    static open(dir: string, root: string, issue: FactoryRunKey): EngineLedger;
     tracks(path: string): boolean;
     /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
     recorded(path: string): string | null | undefined;

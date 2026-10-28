@@ -20,6 +20,7 @@ import { type ChainStatus } from '../../factory/status.js';
 import { type RouteTable } from '../../hooks/session-end/routing.js';
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
+import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type FactoryRunState } from '../../factory/run/state.js';
 import { type Exec } from '../../ship/exec.js';
 export declare function renderChainStatus(status: ChainStatus): string;
@@ -33,10 +34,12 @@ export interface FactoryRunDeps {
     base: (root: string) => string;
     /** Engine ledger directory outside the repo (default: `$OMC_STATE_DIR` or `~/.omg`, then `factory-ledger`). */
     ledgerDir?: string;
+    /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
+    gateConfig?: GateConfigLoader;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 export declare function renderFactoryRunState(state: FactoryRunState): string;
-/** `omg factory run <issue>`, `run cancel <issue>`, `run status <issue>` (experimental; manual trigger only). */
+/** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
 export declare function factoryCommand(): Command;
 /**

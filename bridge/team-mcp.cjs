@@ -2986,7 +2986,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve18.call(this, root, ref);
+      let _sch = resolve19.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3013,7 +3013,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve18(root, ref) {
+    function resolve19(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3644,7 +3644,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve18(baseURI, relativeURI, options) {
+    function resolve19(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse7(baseURI, schemelessOptions), parse7(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3902,7 +3902,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize3,
-      resolve: resolve18,
+      resolve: resolve19,
       resolveComponent,
       equal,
       serialize,
@@ -8551,7 +8551,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve18) => setTimeout(resolve18, 25));
+        await new Promise((resolve19) => setTimeout(resolve19, 25));
         continue;
       }
       try {
@@ -8572,7 +8572,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve18) => setTimeout(resolve18, 25));
+        await new Promise((resolve19) => setTimeout(resolve19, 25));
       }
     }
     return await fn();
@@ -12810,7 +12810,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve18) => setTimeout(resolve18, ms));
+  return new Promise((resolve19) => setTimeout(resolve19, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -12914,7 +12914,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve18) => setTimeout(resolve18, ms));
+  return new Promise((resolve19) => setTimeout(resolve19, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -17966,8 +17966,167 @@ function getWorktreePath(repoRoot, teamName, workerName) {
 function getBranchName(teamName, workerName) {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
+function hostHooksDir() {
+  try {
+    if (emptyHooksDir && (0, import_node_fs6.readdirSync)(emptyHooksDir).length === 0) return emptyHooksDir;
+  } catch {
+  }
+  emptyHooksDir = (0, import_node_fs6.mkdtempSync)((0, import_node_path7.join)((0, import_node_os3.tmpdir)(), "omg-host-git-nohooks-"));
+  return emptyHooksDir;
+}
+function hostGitHardeningArgs() {
+  return [
+    "-c",
+    `core.hooksPath=${hostHooksDir()}`,
+    ...EXEC_KEY_OVERRIDES.flatMap((kv) => ["-c", kv])
+  ];
+}
+function hostAttributesFile() {
+  try {
+    if (emptyAttributesFile && (0, import_node_fs6.readFileSync)(emptyAttributesFile, "utf-8") === "") return emptyAttributesFile;
+  } catch {
+  }
+  emptyAttributesFile = (0, import_node_path7.join)((0, import_node_fs6.mkdtempSync)((0, import_node_path7.join)((0, import_node_os3.tmpdir)(), "omg-host-git-noattrs-")), "attributes");
+  (0, import_node_fs6.writeFileSync)(emptyAttributesFile, "");
+  return emptyAttributesFile;
+}
+function gitSubcommandIndex(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (GLOBAL_OPTIONS_WITH_VALUE.has(args[i])) i++;
+    else if (!args[i].startsWith("-")) return i;
+  }
+  return -1;
+}
+function hostGitEnv(args, base = process.env) {
+  const valueOf = (flag) => {
+    const i = args.indexOf(flag);
+    return i >= 0 && i + 1 < args.length ? args[i + 1] : void 0;
+  };
+  const gitDir = valueOf("--git-dir");
+  if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: "1" };
+  const env = { ...base, GIT_DIR: (0, import_node_path7.resolve)(gitDir), GIT_LFS_SKIP_SMUDGE: "1" };
+  const workTree = valueOf("--work-tree");
+  if (workTree) env.GIT_WORK_TREE = (0, import_node_path7.resolve)(workTree);
+  if ((0, import_node_path7.basename)((0, import_node_path7.dirname)((0, import_node_path7.resolve)(gitDir))) === "worktrees") env.GIT_COMMON_DIR = (0, import_node_path7.dirname)((0, import_node_path7.dirname)((0, import_node_path7.resolve)(gitDir)));
+  return env;
+}
+function hostGitDriverOverrides(cwd, env, timeout) {
+  let out;
+  try {
+    out = (0, import_node_child_process2.execFileSync)("git", [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
+  } catch (err) {
+    return err.status === 1 ? [] : null;
+  }
+  const parts = out.split("\0");
+  const filters = /* @__PURE__ */ new Set();
+  const diffs = /* @__PURE__ */ new Set();
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const key = parts[i + 1];
+    const section = key.startsWith("filter.") ? "filter" : key.startsWith("diff.") ? "diff" : null;
+    const dot = key.lastIndexOf(".");
+    if (section === null) return null;
+    if (dot <= section.length) {
+      if (section === "filter") return null;
+      continue;
+    }
+    const name = key.slice(section.length + 1, dot);
+    if (/[=\r\n]/.test(name)) return null;
+    (section === "filter" ? filters : diffs).add(name);
+  }
+  return [
+    ...[...filters].flatMap((n) => ["clean=", "smudge=", "process=", "required=false"].flatMap((kv) => ["-c", `filter.${n}.${kv}`])),
+    ...[...diffs].flatMap((n) => ["textconv=", "command="].flatMap((kv) => ["-c", `diff.${n}.${kv}`]))
+  ];
+}
+function runHostGit(cwd, args, timeout, baseEnv = process.env) {
+  const env = hostGitEnv(args, baseEnv);
+  const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : void 0;
+  if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
+    throw new Error(`sandbox-escaped: the git links or config.worktree of ${recorded.wtPath} changed since they were recorded; no git ran in it`);
+  }
+  const at = gitSubcommandIndex(args);
+  const subcommand = at >= 0 ? args[at] : "";
+  let tree = [];
+  if (WORK_TREE_SUBCOMMANDS.has(subcommand)) {
+    const drivers = hostGitDriverOverrides(cwd, env, timeout);
+    if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to run it in the work tree");
+    tree = ["-c", `core.attributesFile=${hostAttributesFile()}`, ...drivers];
+  }
+  let finalArgs = args;
+  if (recorded) {
+    env.GIT_ATTR_SOURCE = recorded.emptyTree;
+    tree = [...tree, ...LANE_SUBMODULE_OVERRIDES.flatMap((kv) => ["-c", kv])];
+    if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
+  }
+  return (0, import_node_child_process2.execFileSync)("git", [...hostGitHardeningArgs(), ...tree, ...finalArgs], { cwd, env, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout });
+}
 function git(repoRoot, args, cwd = repoRoot) {
-  return (0, import_node_child_process2.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  return runHostGit(cwd, args).trim();
+}
+function readPlainFile(path5) {
+  try {
+    return (0, import_node_fs6.lstatSync)(path5).isFile() ? (0, import_node_fs6.readFileSync)(path5, "utf-8") : null;
+  } catch {
+    return null;
+  }
+}
+function readWorktreeGitLinks(wtPath) {
+  const dotGit = readPlainFile((0, import_node_path7.join)(wtPath, ".git"));
+  const match = dotGit === null ? null : /^gitdir: (.+?)\r?\n?$/.exec(dotGit);
+  if (!dotGit || !match) return null;
+  const adminDir = (0, import_node_path7.resolve)(wtPath, match[1]);
+  try {
+    if (!(0, import_node_fs6.lstatSync)(adminDir).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const gitdir = readPlainFile((0, import_node_path7.join)(adminDir, "gitdir"));
+  const commondir = readPlainFile((0, import_node_path7.join)(adminDir, "commondir"));
+  const configWorktree = configWorktreeState(adminDir);
+  if (gitdir === null || commondir === null || configWorktree === null) return null;
+  return { adminDir, dotGit, gitdir, commondir, configWorktree };
+}
+function configWorktreeState(adminDir) {
+  const path5 = (0, import_node_path7.join)(adminDir, "config.worktree");
+  try {
+    return (0, import_node_fs6.lstatSync)(path5).isFile() ? (0, import_node_crypto6.createHash)("sha256").update((0, import_node_fs6.readFileSync)(path5)).digest("hex") : null;
+  } catch (err) {
+    return err.code === "ENOENT" ? "absent" : null;
+  }
+}
+function sameGitLinks(now, expected) {
+  return now !== null && ["adminDir", "dotGit", "gitdir", "commondir", "configWorktree"].every((k) => now[k] === expected[k]);
+}
+function recordedEntry(wtPath) {
+  return [...recordedGitDirs.values()].find((e) => pathKey(e.wtPath) === pathKey(wtPath));
+}
+function recordWorktreeGitLinks(wtPath, links) {
+  const existing = recordedEntry(wtPath) ?? recordedGitDirs.get((0, import_node_path7.resolve)(links.adminDir));
+  if (existing) {
+    if (pathKey(existing.wtPath) === pathKey(wtPath) && sameGitLinks(existing.links, links)) return;
+    throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
+  }
+  const args = ["--git-dir", links.adminDir, "--work-tree", wtPath];
+  const format = (0, import_node_child_process2.execFileSync)("git", [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
+  recordedGitDirs.set((0, import_node_path7.resolve)(links.adminDir), { wtPath, links, emptyTree });
+}
+function forgetWorktreeGitLinks(wtPath) {
+  const entry = recordedEntry(wtPath);
+  if (entry) recordedGitDirs.delete((0, import_node_path7.resolve)(entry.links.adminDir));
+}
+function isAdminDirOf(commonGitDir, adminDir) {
+  const rel = (0, import_node_path7.relative)((0, import_node_path7.resolve)(commonGitDir, "worktrees"), adminDir);
+  return rel !== "" && !rel.startsWith("..") && !(0, import_node_path7.isAbsolute)(rel) && !rel.includes(import_node_path7.sep);
+}
+function worktreeGitLinksIntact(wtPath, expected, commonGitDir) {
+  return isAdminDirOf(commonGitDir, expected.adminDir) && sameGitLinks(readWorktreeGitLinks(wtPath), expected);
+}
+function worktreeGitDirArgs(wtPath) {
+  const entry = recordedEntry(wtPath);
+  if (!entry) throw new Error(`host git: no git links were recorded for ${wtPath} at its creation`);
+  return ["--git-dir", entry.links.adminDir, "--work-tree", entry.wtPath];
 }
 function canonicalPathForComparison(path5) {
   let existing = (0, import_node_path7.resolve)(path5);
@@ -18035,11 +18194,11 @@ function worktreeRuntimeStatePrefixes(wtPath) {
   if (!omcRel || omcRel.startsWith("..") || (0, import_node_path7.isAbsolute)(omcRel) || omcRel.includes("/")) return [];
   return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${(0, import_node_path7.relative)(root, resolveOmcPath(dir, wtPath)).split(import_node_path7.sep).join("/")}/`, rest]);
 }
-function isWorktreeDirtyExcept(wtPath, ignoredRootPaths = []) {
+function isWorktreeDirtyExcept(wtPath, ignoredRootPaths = [], gitDirArgs = []) {
   try {
     const ignored = new Set(ignoredRootPaths);
     const runtimePrefixes = worktreeRuntimeStatePrefixes(wtPath);
-    const entries = (0, import_node_child_process2.execFileSync)("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe", windowsHide: true }).split("\n").filter((line) => line.trim().length > 0);
+    const entries = runHostGit(wtPath, [...gitDirArgs, "status", "--porcelain", "--untracked-files=all"]).split("\n").filter((line) => line.trim().length > 0);
     const isRuntime = (line) => line.startsWith("?? ") && runtimePrefixes.some(([prefix, rest]) => {
       const path5 = statusEntryPath(line);
       return path5.startsWith(prefix) && rest.test(path5.slice(prefix.length));
@@ -18069,9 +18228,9 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
     }
   }
 }
-function unlinkUntrackedWorktreeLinks(wtPath) {
+function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = true) {
   const tracked = new Set(
-    (gitOrNull(["ls-files", "-z", "--stage"], wtPath) ?? "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => (0, import_node_path7.resolve)(wtPath, entry.slice(entry.indexOf("	") + 1)))
+    (keepTracked ? gitOrNull([...gitDirArgs, "ls-files", "-z", "--stage"], wtPath) ?? "" : "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => (0, import_node_path7.resolve)(wtPath, entry.slice(entry.indexOf("	") + 1)))
   );
   const pending = [wtPath];
   while (pending.length > 0) {
@@ -18084,7 +18243,7 @@ function unlinkUntrackedWorktreeLinks(wtPath) {
     }
     for (const entry of entries) {
       const path5 = (0, import_node_path7.join)(dir, entry.name);
-      if (dir === wtPath && entry.name === ".git") continue;
+      if (keepTracked && dir === wtPath && entry.name === ".git") continue;
       let stat2;
       try {
         stat2 = (0, import_node_fs6.lstatSync)(path5);
@@ -18112,13 +18271,13 @@ function unlinkUntrackedWorktreeLinks(wtPath) {
 }
 function gitOrNull(args, cwd) {
   try {
-    return (0, import_node_child_process2.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+    return runHostGit(cwd, args).trim();
   } catch {
     return null;
   }
 }
-function countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit) {
-  return countUnmergedCommits(repoRoot, gitOrNull(["rev-parse", "HEAD"], wtPath), baseCommit);
+function countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit, gitDirArgs = [], contained = []) {
+  return countUnmergedCommits(repoRoot, gitOrNull([...gitDirArgs, "rev-parse", "HEAD"], wtPath), baseCommit, contained);
 }
 function commitCheckFailedError(message) {
   const error2 = new Error(`worktree_commit_check_failed: ${message}`);
@@ -18139,7 +18298,7 @@ function branchRefStored(repoRoot, branch) {
 }
 function resolveBranchCommit(repoRoot, branch) {
   try {
-    (0, import_node_child_process2.execFileSync)("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+    runHostGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
   } catch (err) {
     if (err?.status === 1 && !branchRefStored(repoRoot, branch)) return null;
     throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read it)`);
@@ -18165,18 +18324,18 @@ function deleteWorkerBranchAt(repoRoot, branch, commit) {
     throw error2;
   }
 }
-function countUnmergedCommits(repoRoot, head, baseCommit) {
+function countUnmergedCommits(repoRoot, head, baseCommit, contained = []) {
   const leader = gitOrNull(["rev-parse", "HEAD"], repoRoot);
   if (!head || !leader) return null;
-  const count = (excludes) => gitOrNull(["rev-list", "--count", head, ...excludes.map((ref) => `^${ref}`)], repoRoot);
+  const count = (excludes) => gitOrNull(["rev-list", "--count", head, ...[...excludes, ...contained].map((ref) => `^${ref}`)], repoRoot);
   const counted = (baseCommit ? count([leader, baseCommit]) : null) ?? count([leader]);
   const n = counted === null ? NaN : Number.parseInt(counted, 10);
   return Number.isFinite(n) ? n : null;
 }
-function hasInitializedSubmodules(wtPath) {
-  const modulesDir = gitOrNull(["rev-parse", "--git-path", "modules"], wtPath);
+function hasInitializedSubmodules(wtPath, gitDirArgs = []) {
+  const modulesDir = gitOrNull([...gitDirArgs, "rev-parse", "--git-path", "modules"], wtPath);
   if (modulesDir && (0, import_node_fs6.existsSync)((0, import_node_path7.resolve)(wtPath, modulesDir))) return true;
-  const staged = gitOrNull(["ls-files", "--stage"], wtPath) ?? "";
+  const staged = gitOrNull([...gitDirArgs, "ls-files", "--stage"], wtPath) ?? "";
   return staged.split("\n").some((line) => {
     if (!line.startsWith("160000 ")) return false;
     const tab = line.indexOf("	");
@@ -18317,7 +18476,7 @@ function forgetMetadataUnlocked(repoRoot, teamName, workerName) {
   const existing = readMetadata(repoRoot, teamName).filter((entry) => entry.workerName !== workerName);
   writeMetadata(repoRoot, teamName, existing);
 }
-function checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, worktreePath) {
+function checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, worktreePath, gitDirArgs = []) {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
   const backup = readRootAgentsBackup(repoRoot, teamName, workerName);
   if (!(0, import_node_fs6.existsSync)(wtPath)) return;
@@ -18339,16 +18498,16 @@ function checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, worktr
     }
     ignoreRootAgents = true;
   }
-  const dirtyCheck = isWorktreeDirtyExcept(wtPath, ignoreRootAgents ? ["AGENTS.md"] : []);
+  const dirtyCheck = isWorktreeDirtyExcept(wtPath, ignoreRootAgents ? ["AGENTS.md"] : [], gitDirArgs);
   if (dirtyCheck.dirty) {
     const error2 = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
     error2.code = "worktree_dirty";
     throw error2;
   }
 }
-function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, worktreePath) {
+function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, worktreePath, gitDirArgs = []) {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
-  checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath);
+  checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath, gitDirArgs);
   const agentsRestore = restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
   if (agentsRestore.reason === "agents_dirty") {
     const error2 = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${(0, import_node_path7.join)(wtPath, "AGENTS.md")}`);
@@ -18356,12 +18515,28 @@ function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, worktre
     throw error2;
   }
 }
-function removeWorkerWorktree(teamName, workerName, repoRoot) {
+function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
+  const contained = options.contained ?? [];
+  if (!contained.every((sha) => /^[0-9a-f]{40}$/.test(sha))) throw new Error("removeWorkerWorktree: contained must be full commit shas");
   const wtPath = getWorktreePath(repoRoot, teamName, workerName);
   const branch = getBranchName(teamName, workerName);
   const metaLockPath = `${getMetadataPath(repoRoot, teamName)}.lock`;
-  withFileLockSync(metaLockPath, () => {
-    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath);
+  return withFileLockSync(metaLockPath, () => {
+    let gitDirArgs = [];
+    let laneCommonDir = null;
+    if (options.gitLinks) {
+      const commonDir = gitOrNull(["rev-parse", "--path-format=absolute", "--git-common-dir"], repoRoot);
+      if (!commonDir) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot locate the git directory)`);
+      if (!worktreeGitLinksIntact(wtPath, options.gitLinks, commonDir)) {
+        const tampered = removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, options.gitLinks, commonDir);
+        forgetWorktreeGitLinks(wtPath);
+        return { tampered };
+      }
+      recordWorktreeGitLinks(wtPath, options.gitLinks);
+      gitDirArgs = worktreeGitDirArgs(wtPath);
+      laneCommonDir = commonDir;
+    }
+    prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath, gitDirArgs);
     const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     let registered;
     try {
@@ -18371,35 +18546,52 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
     }
     const wasRegisteredWorktree = registered !== null;
     if (registered && (0, import_node_fs6.existsSync)(wtPath)) {
-      const toplevel = gitOrNull(["rev-parse", "--show-toplevel"], wtPath);
+      const toplevel = gitOrNull([...gitDirArgs, "rev-parse", "--show-toplevel"], wtPath);
       if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
         throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
       }
-      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit);
+      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit, gitDirArgs, contained);
       if (commits === null) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
     } else if (registered) {
-      const commits = countUnmergedCommits(repoRoot, registered.head, baseCommit);
+      const commits = countUnmergedCommits(repoRoot, registered.head, baseCommit, contained);
       if (commits === null) throw commitCheckFailedError(`keeping the record of worker worktree ${wtPath} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
     }
     const branchHead = resolveBranchCommit(repoRoot, branch);
     if (branchHead) {
-      const commits = countUnmergedCommits(repoRoot, branchHead, baseCommit);
+      const commits = countUnmergedCommits(repoRoot, branchHead, baseCommit, contained);
       if (commits === null) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }
-    const runtimeOnly = (0, import_node_fs6.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
-    const submodules = (0, import_node_fs6.existsSync)(wtPath) && hasInitializedSubmodules(wtPath);
+    const runtimeOnly = (0, import_node_fs6.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"], gitDirArgs).runtimeState;
+    const submodules = (0, import_node_fs6.existsSync)(wtPath) && hasInitializedSubmodules(wtPath, gitDirArgs);
     const force = runtimeOnly && !submodules;
     if (wasRegisteredWorktree && submodules) {
       const error2 = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
       error2.code = "worktree_remove_failed";
       throw error2;
     }
-    if ((0, import_node_fs6.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
+    if ((0, import_node_fs6.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
     try {
-      (0, import_node_child_process2.execFileSync)("git", ["worktree", "remove", ...force ? ["--force"] : [], wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+      if (options.gitLinks && laneCommonDir) {
+        if ((0, import_node_fs6.existsSync)(wtPath)) {
+          validateWorktreeRemovalTarget({
+            candidatePath: wtPath,
+            expectedRoots: [(0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+            mainRepoRoots: [repoRoot]
+          });
+        }
+        try {
+          removeTreeByPath(wtPath);
+        } catch (err) {
+          if (!force) throw err;
+          removeRuntimeLeftover(wtPath);
+        }
+        if (isAdminDirOf(laneCommonDir, options.gitLinks.adminDir)) removeTreeByPath(options.gitLinks.adminDir);
+      } else {
+        runHostGit(repoRoot, ["worktree", "remove", ...force ? ["--force"] : [], wtPath]);
+      }
     } catch (err) {
       if (wasRegisteredWorktree && (!force || isRegisteredWorktreePath(repoRoot, wtPath))) {
         const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
@@ -18409,7 +18601,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       }
     }
     try {
-      (0, import_node_child_process2.execFileSync)("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+      runHostGit(repoRoot, ["worktree", "prune"]);
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
@@ -18423,7 +18615,41 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       else (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
+    forgetWorktreeGitLinks(wtPath);
+    return { tampered: null };
   });
+}
+function removeTreeByPath(dir) {
+  let stat2;
+  try {
+    stat2 = (0, import_node_fs6.lstatSync)(dir);
+  } catch {
+    return;
+  }
+  if (stat2.isSymbolicLink()) {
+    try {
+      (0, import_node_fs6.unlinkSync)(dir);
+    } catch {
+      (0, import_node_fs6.rmdirSync)(dir);
+    }
+    return;
+  }
+  unlinkUntrackedWorktreeLinks(dir, [], false);
+  (0, import_node_fs6.rmSync)(dir, { recursive: true, force: true });
+}
+function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, commonDir) {
+  const removeTree = removeTreeByPath;
+  if ((0, import_node_fs6.existsSync)(wtPath)) {
+    validateWorktreeRemovalTarget({
+      candidatePath: wtPath,
+      expectedRoots: [(0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+      mainRepoRoots: [repoRoot]
+    });
+  }
+  removeTree(wtPath);
+  if (isAdminDirOf(commonDir, links.adminDir)) removeTree(links.adminDir);
+  forgetMetadataUnlocked(repoRoot, teamName, workerName);
+  return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir, commondir or config.worktree) changed or are gone, so no git ran in it; the worktree and its admin dir were removed by path and branch ${getBranchName(teamName, workerName)} was kept for inspection`;
 }
 function inspectTeamWorktreeCleanupSafety(teamName, repoRoot) {
   const metadata = readMetadataResult(repoRoot, teamName);
@@ -18473,18 +18699,66 @@ function cleanupTeamWorktrees(teamName, repoRoot) {
   }
   return { removed, preserved, retained };
 }
-var import_node_fs6, import_node_path7, import_node_child_process2, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var import_node_fs6, import_node_os3, import_node_path7, import_node_child_process2, import_node_crypto6, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
     import_node_fs6 = require("node:fs");
+    import_node_os3 = require("node:os");
     import_node_path7 = require("node:path");
     import_node_child_process2 = require("node:child_process");
+    import_node_crypto6 = require("node:crypto");
     init_fs_utils();
     init_worktree_cleanup_safety();
     init_tmux_session();
     init_file_lock();
     init_worktree_paths();
+    emptyHooksDir = null;
+    EXEC_KEY_OVERRIDES = [
+      "core.fsmonitor=false",
+      "core.pager=cat",
+      "diff.external=",
+      "core.sshCommand=ssh",
+      "credential.helper=",
+      "gpg.program=gpg",
+      "gpg.ssh.program=ssh-keygen",
+      "gpg.x509.program=gpgsm",
+      "core.editor=:",
+      "sequence.editor=:"
+    ];
+    emptyAttributesFile = null;
+    WORK_TREE_SUBCOMMANDS = /* @__PURE__ */ new Set([
+      "status",
+      "diff",
+      "diff-files",
+      "diff-index",
+      "ls-files",
+      "worktree",
+      "checkout",
+      "checkout-index",
+      "restore",
+      "switch",
+      "reset",
+      "add",
+      "stash",
+      "merge",
+      "commit",
+      "update-index",
+      "read-tree",
+      "apply",
+      "rm",
+      "mv",
+      "clean"
+    ]);
+    GLOBAL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
+    LANE_SUBMODULE_OVERRIDES = ["submodule.recurse=false", "diff.ignoreSubmodules=all", "status.submoduleSummary=false"];
+    IGNORE_SUBMODULES_SUBCOMMANDS = /* @__PURE__ */ new Set(["status", "diff", "diff-files", "diff-index", "diff-tree"]);
+    EMPTY_TREE = {
+      sha1: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      sha256: "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+    };
+    recordedGitDirs = /* @__PURE__ */ new Map();
+    pathKey = (path5) => process.platform === "win32" ? (0, import_node_path7.resolve)(path5).toLowerCase() : (0, import_node_path7.resolve)(path5);
     UNTRACKED_OMC_STATE = new RegExp(
       `^\\?\\? ${OmcPaths.ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:/|$)`
     );
@@ -18653,7 +18927,7 @@ function sdkWorkerFiles(stateRoot, workerName) {
 function ringDoorbell(stateRoot, workerName, entry) {
   const files = sdkWorkerFiles(stateRoot, workerName);
   (0, import_node_fs7.mkdirSync)(files.dir, { recursive: true });
-  const id = entry.id ?? (0, import_node_crypto6.randomUUID)();
+  const id = entry.id ?? (0, import_node_crypto7.randomUUID)();
   const line = { ...entry, id, at: (/* @__PURE__ */ new Date()).toISOString() };
   (0, import_node_fs7.appendFileSync)(files.doorbell, `${JSON.stringify(line)}
 `);
@@ -18741,11 +19015,11 @@ function writeTerminationComplete(attempt, pid, startIdentity) {
   } catch {
   }
 }
-var import_node_crypto6, import_node_fs7, import_node_path8, SDK_TARGET_PREFIX, SDK_HOST_STOP_FLOOR_MS;
+var import_node_crypto7, import_node_fs7, import_node_path8, SDK_TARGET_PREFIX, SDK_HOST_STOP_FLOOR_MS;
 var init_sdk_transport = __esm({
   "src/team/sdk-transport.ts"() {
     "use strict";
-    import_node_crypto6 = require("node:crypto");
+    import_node_crypto7 = require("node:crypto");
     import_node_fs7 = require("node:fs");
     import_node_path8 = require("node:path");
     init_process_utils();
@@ -18802,14 +19076,88 @@ var init_worker_activation_gate = __esm({
   }
 });
 
-// src/smoke/copilot-session-eval.ts
-var import_fs30, import_path35, SMOKE_TOKEN;
-var init_copilot_session_eval = __esm({
-  "src/smoke/copilot-session-eval.ts"() {
+// src/ship/exec.ts
+var import_child_process9, TRUSTED_READ_ENV;
+var init_exec = __esm({
+  "src/ship/exec.ts"() {
+    "use strict";
+    import_child_process9 = require("child_process");
+    TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
+  }
+});
+
+// src/ship/config.ts
+var import_fs30, import_os8, import_path35, DEFAULT_SHIP_CONFIG;
+var init_config2 = __esm({
+  "src/ship/config.ts"() {
     "use strict";
     import_fs30 = require("fs");
+    import_os8 = require("os");
     import_path35 = require("path");
-    SMOKE_TOKEN = "SMOKE_OK";
+    init_jsonc();
+    init_loader();
+    init_project_config_path();
+    init_exec();
+    DEFAULT_SHIP_CONFIG = Object.freeze({
+      base: "dev",
+      // No Committed Build Artifacts (ci.yml) and the pull_request_target
+      // authorization job report but never block; the Socket Security GitHub App
+      // checks are external (no workflow file) and advisory too.
+      advisoryChecks: [
+        "No Committed Build Artifacts",
+        "Authorize generated artifacts from base trust root",
+        "Socket Security: Pull Request Alerts",
+        "Socket Security: Project Report"
+      ],
+      // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml,
+      // upgrade-test.yml); Build, npm pack and the smoke job start late (`needs:`).
+      // ci.yml and upgrade-test.yml run only for PRs to main / dev
+      // (`pull_request.branches`): on a PR to another base their checks never
+      // report and stay pending, so such a base needs its own requiredChecks in
+      // the user config.
+      requiredChecks: [
+        "Lint & Type Check",
+        "Test",
+        "Test (Windows path suite)",
+        "better-sqlite3 Node 26 (ubuntu-latest)",
+        "better-sqlite3 Node 26 (windows-2022)",
+        "PreCompact restore (ubuntu-latest)",
+        "PreCompact restore (macos-latest)",
+        "PreCompact restore (windows-2022)",
+        "Multi-repo Path Gate (AST-grep) (ubuntu-latest)",
+        "Multi-repo Path Gate (AST-grep) (windows-2022)",
+        "Version Consistency Check",
+        "Build",
+        "npm pack + install test",
+        "Copilot smoke (tier 2)",
+        "Base Branch Check",
+        "Size Check",
+        "Draft PR Check",
+        "omg update + session-start hook"
+      ],
+      knownFlakyFile: ".github/known-flaky-tests.json",
+      maxFixRounds: 2,
+      allowAdminMerge: false,
+      autoRerunFlaky: true,
+      pollIntervalSeconds: 30,
+      // Below the 10-minute cap of background watchers; the caller loops on exit 8.
+      watchTimeoutMinutes: 9,
+      trustedBases: ["dev", "main", "master"]
+    });
+  }
+});
+
+// src/copilot-run/names.ts
+var init_names = __esm({
+  "src/copilot-run/names.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/env-vars.ts
+var init_env_vars = __esm({
+  "src/lib/env-vars.ts"() {
+    "use strict";
   }
 });
 
@@ -18828,11 +19176,22 @@ var init_ledger = __esm({
   }
 });
 
+// src/smoke/copilot-session-eval.ts
+var import_fs31, import_path36, SMOKE_TOKEN;
+var init_copilot_session_eval = __esm({
+  "src/smoke/copilot-session-eval.ts"() {
+    "use strict";
+    import_fs31 = require("fs");
+    import_path36 = require("path");
+    SMOKE_TOKEN = "SMOKE_OK";
+  }
+});
+
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
-  let out = (0, import_path36.resolve)(p);
+  let out = (0, import_path37.resolve)(p);
   try {
-    out = import_fs31.realpathSync.native(out);
+    out = import_fs32.realpathSync.native(out);
   } catch {
   }
   return canon(out, platform);
@@ -18863,23 +19222,25 @@ function permitScopedRead(req, ctx) {
 function permitProjectFiles(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
-  return typeof target === "string" && !!target && isUnder((0, import_path36.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+  return typeof target === "string" && !!target && isUnder((0, import_path37.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
 }
 function canon(p, platform = process.platform) {
-  const out = (0, import_path36.resolve)(p).split(import_path36.sep).join("/");
+  const out = (0, import_path37.resolve)(p).split(import_path37.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs31, import_path36, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, SCENARIOS;
+var import_fs32, import_path37, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
-    import_fs31 = require("fs");
-    import_path36 = require("path");
+    import_fs32 = require("fs");
+    import_path37 = require("path");
     init_ledger();
     init_copilot_session_eval();
+    FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
+    SANDBOX_LANE_SCENARIO = "sandbox-lane";
     CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...CLI_SCENARIOS];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
     SDK_PACKAGE = "@github/copilot-sdk";
@@ -18905,6 +19266,15 @@ var init_copilot_sdk_scenarios = __esm({
     PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
     EVENTS_MISSING_FILE = "omg-missing-probe.txt";
     EVENTS_SHELL_TOKEN = "omg-events-probe";
+    FACTORY_RUN_FILE = "greet.txt";
+    FACTORY_RUN_ISSUE_BODY = [
+      `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
+      "",
+      "## Acceptance criteria",
+      "",
+      `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
+      "- One commit, no other file changed. There is no test suite in this repository: do not add one."
+    ].join("\n");
     SCENARIOS = {
       smoke: {
         name: "smoke",
@@ -18967,6 +19337,28 @@ var init_copilot_sdk_scenarios = __esm({
         excludedTools: [],
         permit: denyAll
       },
+      // Not an SDK session: the prompt is the scripted issue's body, which the
+      // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
+      "factory-run": {
+        name: "factory-run",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      "factory-run-fix": {
+        name: "factory-run-fix",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: copilot_run lanes with their own policy
+      // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
+      "sandbox-lane": {
+        name: "sandbox-lane",
+        prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
+        excludedTools: [],
+        permit: denyAll
+      },
       // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
       // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
       continuation: {
@@ -19001,6 +19393,72 @@ var init_copilot_sdk_scenarios = __esm({
   }
 });
 
+// src/smoke/copilot-session-env.ts
+var import_fs33, import_path38, import_url5;
+var init_copilot_session_env = __esm({
+  "src/smoke/copilot-session-env.ts"() {
+    "use strict";
+    import_fs33 = require("fs");
+    import_path38 = require("path");
+    import_url5 = require("url");
+    init_names();
+    init_env_vars();
+    init_jsonc();
+    init_copilot_sdk_scenarios();
+  }
+});
+
+// src/team/sdk-policy.ts
+function gitSubcommandDeny(tail, reason) {
+  return [
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail}`, "i"), reason },
+    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail}`, "i"), reason }
+  ];
+}
+var GIT_GLOBAL_OPTIONS, SDK_SHELL_DENY_PATTERNS;
+var init_sdk_policy = __esm({
+  "src/team/sdk-policy.ts"() {
+    "use strict";
+    init_names();
+    GIT_GLOBAL_OPTIONS = String.raw`(?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*`;
+    SDK_SHELL_DENY_PATTERNS = [
+      // `\s+(?!\s|api\b)`: doubled whitespace must not let `team  api` backtrack into a deny.
+      { re: /\b(?:omg|omc|oh-my-copilot|oh-my-claudecode)(?:\.cmd|\.ps1)?\s+team\s+(?!\s|api\b)/i, reason: "team control outside `team api`" },
+      { re: /\bcli\.cjs["']?\s+team\s+(?!\s|api\b)/i, reason: "team control outside `team api`" },
+      { re: /\b(?:omg|omc|oh-my-copilot)(?:\.cmd|\.ps1)?\s+smoke\b/i, reason: "`omg smoke` from a worker" },
+      { re: /(?:^|[\s;&|("'])(?:tmux|psmux)(?:\.exe)?\b/i, reason: "multiplexer control" },
+      ...gitSubcommandDeny(String.raw`(?:push|send-pack|http-push|subtree\s+push)\b`, "`git push` from a worker"),
+      // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
+      ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
+      ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
+      // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
+      { re: /\bGIT_CONFIG/i, reason: "git config through the environment from a worker" }
+    ];
+  }
+});
+
+// src/copilot-run/sandbox.ts
+var DEFAULT_SANDBOX_SETTINGS;
+var init_sandbox = __esm({
+  "src/copilot-run/sandbox.ts"() {
+    "use strict";
+    init_config2();
+    init_project_config_path();
+    init_copilot_session_env();
+    init_sdk_policy();
+    init_jsonc();
+    DEFAULT_SANDBOX_SETTINGS = Object.freeze({
+      enabled: true,
+      reviewUnsandboxed: "no-shell",
+      writeUnsandboxed: "refuse",
+      writeNetwork: "none",
+      allowedHosts: [],
+      extraReadonlyPaths: [],
+      extraReadwritePaths: []
+    });
+  }
+});
+
 // src/smoke/process-utils.ts
 var DEFAULT_MAX_OUTPUT;
 var init_process_utils2 = __esm({
@@ -19011,48 +19469,21 @@ var init_process_utils2 = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
-var import_child_process9, import_crypto10, import_fs32, import_module, import_path37, import_url5;
+var import_child_process10, import_crypto10, import_fs34, import_module, import_os9, import_path39, import_url6;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
-    import_child_process9 = require("child_process");
+    import_child_process10 = require("child_process");
     import_crypto10 = require("crypto");
-    import_fs32 = require("fs");
+    import_fs34 = require("fs");
     import_module = require("module");
-    import_path37 = require("path");
-    import_url5 = require("url");
+    import_os9 = require("os");
+    import_path39 = require("path");
+    import_url6 = require("url");
+    init_sandbox();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
-  }
-});
-
-// src/copilot-run/names.ts
-var init_names = __esm({
-  "src/copilot-run/names.ts"() {
-    "use strict";
-  }
-});
-
-// src/lib/env-vars.ts
-var init_env_vars = __esm({
-  "src/lib/env-vars.ts"() {
-    "use strict";
-  }
-});
-
-// src/smoke/copilot-session-env.ts
-var import_fs33, import_path38, import_url6;
-var init_copilot_session_env = __esm({
-  "src/smoke/copilot-session-env.ts"() {
-    "use strict";
-    import_fs33 = require("fs");
-    import_path38 = require("path");
-    import_url6 = require("url");
-    init_names();
-    init_env_vars();
-    init_jsonc();
-    init_copilot_sdk_scenarios();
   }
 });
 
@@ -19239,7 +19670,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
     }
     const processStartedAt = currentProcessStartIdentity();
     if (!processStartedAt) throw new Error("process_start_identity_unavailable");
-    ownedShutdownNonce = (0, import_node_crypto7.randomUUID)();
+    ownedShutdownNonce = (0, import_node_crypto8.randomUUID)();
     const nextRevision = current.stateRevision + 1;
     const next = {
       ...current.config,
@@ -19347,7 +19778,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config2) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs34.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs35.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write("[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n");
       return { outcome: "preserved", reason: "config_missing_cleanup_evidence", workers: [] };
     }
@@ -19676,12 +20107,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-var import_path39, import_fs34, import_promises15, import_node_crypto7, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path40, import_fs35, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path39 = require("path");
-    import_fs34 = require("fs");
+    import_path40 = require("path");
+    import_fs35 = require("fs");
     import_promises15 = require("fs/promises");
     init_state_paths();
     init_worktree_paths();
@@ -19711,7 +20142,7 @@ var init_runtime_v2 = __esm({
     init_leader_inbox();
     init_runtime_flags();
     init_worker_commit_cadence();
-    import_node_crypto7 = require("node:crypto");
+    import_node_crypto8 = require("node:crypto");
     init_recovery_request_store();
     init_runtime_owner_client();
     init_scaling();
@@ -29616,7 +30047,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve18) => setTimeout(resolve18, pollInterval));
+        await new Promise((resolve19) => setTimeout(resolve19, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -29633,7 +30064,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve18, reject) => {
+    return new Promise((resolve19, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -29711,7 +30142,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve18(parseResult.data);
+            resolve19(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -29972,12 +30403,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve18, reject) => {
+    return new Promise((resolve19, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve18, interval);
+      const timeoutId = setTimeout(resolve19, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -30706,24 +31137,24 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve18) => {
+    return new Promise((resolve19) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve18();
+        resolve19();
       } else {
-        this._stdout.once("drain", resolve18);
+        this._stdout.once("drain", resolve19);
       }
     });
   }
 };
 
 // src/mcp/team-server.ts
-var import_node_crypto8 = require("node:crypto");
-var import_child_process10 = require("child_process");
-var import_path41 = require("path");
+var import_node_crypto9 = require("node:crypto");
+var import_child_process11 = require("child_process");
+var import_path42 = require("path");
 var import_url7 = require("url");
 init_omc_cli_rendering();
-var import_fs36 = require("fs");
+var import_fs37 = require("fs");
 var import_promises16 = require("fs/promises");
 init_team_name();
 init_runtime_v2();
@@ -30839,16 +31270,16 @@ var NudgeTracker = class {
 };
 
 // src/mcp/team-job-convergence.ts
-var import_fs35 = require("fs");
-var import_path40 = require("path");
+var import_fs36 = require("fs");
+var import_path41 = require("path");
 init_types2();
 init_team_name();
 function readResultArtifact(omcJobsDir, jobId) {
-  const artifactPath = (0, import_path40.join)(omcJobsDir, `${jobId}-result.json`);
-  if (!(0, import_fs35.existsSync)(artifactPath)) return { kind: "none" };
+  const artifactPath = (0, import_path41.join)(omcJobsDir, `${jobId}-result.json`);
+  if (!(0, import_fs36.existsSync)(artifactPath)) return { kind: "none" };
   let raw;
   try {
-    raw = (0, import_fs35.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs36.readFileSync)(artifactPath, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return { kind: "none" };
     const message = `Failed to read result artifact at ${artifactPath}: ${error2 instanceof Error ? error2.message : String(error2)}`;
@@ -30950,10 +31381,10 @@ function convergeJobWithResultArtifact(job, jobId, omcJobsDir) {
   };
 }
 function resultArtifactIdentityError(job, jobId, omcJobsDir) {
-  const artifactPath = (0, import_path40.join)(omcJobsDir, `${jobId}-result.json`);
+  const artifactPath = (0, import_path41.join)(omcJobsDir, `${jobId}-result.json`);
   let raw;
   try {
-    raw = (0, import_fs35.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs36.readFileSync)(artifactPath, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return null;
     return `cleanup_result_evidence_unreadable:${error2 instanceof Error ? error2.message : String(error2)}`;
@@ -30968,7 +31399,7 @@ function resultArtifactIdentityError(job, jobId, omcJobsDir) {
 }
 function readMatchingTerminalArtifact(job, jobId, omcJobsDir) {
   try {
-    const raw = (0, import_fs35.readFileSync)((0, import_path40.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
+    const raw = (0, import_fs36.readFileSync)((0, import_path41.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.status !== "completed" && parsed.status !== "failed" || parsed.instanceId !== job.instanceId || !isValidTeamInstanceId(parsed.instanceId)) return null;
     return { status: parsed.status, raw };
@@ -31114,10 +31545,10 @@ function persistJob(jobId, job) {
   }
 }
 function loadJobFromDisk(jobId) {
-  const path5 = (0, import_path41.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  const path5 = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}.json`);
   let content;
   try {
-    content = (0, import_fs36.readFileSync)(path5, "utf-8");
+    content = (0, import_fs37.readFileSync)(path5, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return void 0;
     throw new Error(`Unreadable job file: ${jobId} (${error2 instanceof Error ? error2.message : String(error2)})`);
@@ -31137,7 +31568,7 @@ function getJob(jobId) {
   return loadJobFromDisk(jobId);
 }
 async function loadPaneIds(jobId, instanceId) {
-  const p = (0, import_path41.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
+  const p = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try {
     const parsed = JSON.parse(await (0, import_promises16.readFile)(p, "utf-8"));
     if (!isValidTeamPaneArtifact(parsed, instanceId)) return null;
@@ -31301,18 +31732,18 @@ function validateJobId(job_id) {
   }
 }
 function jobLockPath(jobId) {
-  return (0, import_path41.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
+  return (0, import_path42.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
 }
 function persistJobUnlocked(jobId, job) {
-  if (!(0, import_fs36.existsSync)(OMC_JOBS_DIR)) (0, import_fs36.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
-  const targetPath = (0, import_path41.join)(OMC_JOBS_DIR, `${jobId}.json`);
-  const tempPath = `${targetPath}.tmp.${process.pid}.${(0, import_node_crypto8.randomUUID)()}`;
+  if (!(0, import_fs37.existsSync)(OMC_JOBS_DIR)) (0, import_fs37.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+  const targetPath = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  const tempPath = `${targetPath}.tmp.${process.pid}.${(0, import_node_crypto9.randomUUID)()}`;
   try {
-    (0, import_fs36.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
-    (0, import_fs36.renameSync)(tempPath, targetPath);
+    (0, import_fs37.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    (0, import_fs37.renameSync)(tempPath, targetPath);
   } finally {
     try {
-      (0, import_fs36.unlinkSync)(tempPath);
+      (0, import_fs37.unlinkSync)(tempPath);
     } catch {
     }
   }
@@ -31442,10 +31873,10 @@ async function handleStart(args) {
       "team_start_unsafe_runtime_v1: instance-bound provider cleanup requires runtime v2; set OMC_RUNTIME_V2=1"
     );
   }
-  const cwd = (0, import_path41.resolve)(input.cwd);
-  const jobId = `omc-${Date.now().toString(36)}${(0, import_node_crypto8.randomUUID)().slice(0, 8)}`;
-  const instanceId = (0, import_node_crypto8.randomUUID)();
-  const runtimeCliPath = (0, import_path41.join)(__ownDir, "runtime-cli.cjs");
+  const cwd = (0, import_path42.resolve)(input.cwd);
+  const jobId = `omc-${Date.now().toString(36)}${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
+  const instanceId = (0, import_node_crypto9.randomUUID)();
+  const runtimeCliPath = (0, import_path42.join)(__ownDir, "runtime-cli.cjs");
   const job = {
     status: "running",
     startedAt: Date.now(),
@@ -31456,7 +31887,7 @@ async function handleStart(args) {
   persistJob(jobId, job);
   let child;
   try {
-    child = (0, import_child_process10.spawn)(process.execPath, [runtimeCliPath], {
+    child = (0, import_child_process11.spawn)(process.execPath, [runtimeCliPath], {
       env: { ...process.env, OMC_JOB_ID: jobId, OMC_JOBS_DIR },
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -31722,7 +32153,7 @@ async function handleCleanup(args) {
   if (resultEvidenceError) return blockCleanup(resultEvidenceError);
   const panes = await loadPaneIds(job_id, job.instanceId);
   if (!panes) {
-    const reason = (0, import_fs36.existsSync)((0, import_path41.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
+    const reason = (0, import_fs37.existsSync)((0, import_path42.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
     return blockCleanup(reason);
   }
   try {

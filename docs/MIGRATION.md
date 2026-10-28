@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
 - [Unreleased: HUD Host Detection and Copilot Defaults](#unreleased-hud-host-detection-and-copilot-defaults)
 - [Unreleased: Host Load Gate Threshold Values](#unreleased-host-load-gate-threshold-values)
@@ -36,6 +37,28 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## Unreleased: omg factory run
+
+Applies when upgrading from v5.16.0. `omg factory run <issue>` is still experimental. Nothing breaks on a host that can run the Copilot OS sandbox; see "Who must act" for one that cannot. v5.15.0 parked every run at `awaiting-human: prepare`. The engine now runs prepare, watches the CI gates, and parks at `awaiting-human: merge`.
+
+**What changed.**
+
+- A run goes on from review to `prepare`, `gates` and `merge`, with `conflict-fix` and `ci-fix` lanes when the base conflicts or a check fails. Merge stays a human step: you run the merge command the PR comment names, then rerun the engine to finish as `merged`.
+- `omg factory run clean <issue>` removes the worktrees and local branches of a merged or cancelled run, only when nothing would be lost.
+- One new key, `factory.run.gatesTimeoutMinutes` (default 90), bounds the gates phase. Like the other `factory.run` keys, it comes from the user config, and the working-tree project config can only lower it.
+- The gates read `requiredChecks`, `advisoryChecks` and the known-flaky list in strict mode, from the user config or the base branch at GitHub's base sha.
+- Three opt-in smoke scenarios: `omg smoke copilot --tier 2 --scenario factory-run`, `factory-run-fix` and `sandbox-lane`. The free `--sdk-static` run adds `sdk.sandbox`, which reports whether this host can run the Copilot OS sandbox.
+- Lanes run in the Copilot OS sandbox. Write lanes leave their changes uncommitted, and the engine commits them.
+
+**Who must act.**
+
+- **A run parked at `prepare` from v5.15.0.** Rerun `omg factory run <issue>`. The engine re-evaluates the phase and goes on to prepare.
+- **Scripts that read the exit code.** The `merge` park exits 0. A v5.15.0 `prepare` park exited 0; any other `awaiting-human` stop still exits 4.
+- **A PR to a base other than `dev`.** List that base's checks in `ship.requiredChecks` in the user config, or the gates stay pending until `gates-timeout`.
+- **A host without the OS sandbox.** Write lanes now park at `awaiting-human: sandbox-unavailable`. Check the host with `omg smoke copilot --sdk-static`: `sdk.sandbox` reports `supported` or `unsupported` with the reason. On Linux, install `bubblewrap`, `slirp4netns` and `uidmap`. To run write lanes unsandboxed anyway, set `factory.run.sandbox.writeUnsandboxed: "detect-only"` in the user config. Host git must be 2.41 or newer while the sandbox is on.
+
+See [Sandboxed lanes](./REFERENCE.md#sandboxed-lanes) for what the sandbox does and does not cover, before you run the engine on a repository you do not trust.
 
 ## Unreleased: Budget Unit Is AI Credits
 

@@ -20,6 +20,21 @@ Port commits from the upstream `yeachan-heo/oh-my-claudecode` dev branch into a 
 
 ## Workflow
 
+### Primary path: `omg port drive`
+
+After `git fetch upstream dev`, in a clean checkout of `origin/dev`:
+`omg port drive --head <upstream sha>`. It runs the range diff below
+(`upstream-drift.mjs --apply --head`), unstages upstream junk (`.gjc/`), classifies
+the package.json delta (`--package-delta`: `version` ignored, anything else is a
+human gate), writes the reconcile brief on conflicts, runs the port gates (tsc,
+full `eslint src`, path gate, generator `--verify`, touched tests), commits with the
+inventory last, pushes `port/upstream-<short>` and opens a draft PR. It stops
+`blocked` (exit 3) with the next command when a human is needed; resolve, stage,
+then `--continue`. `--reconcile-lane --max-credits <n>` runs the brief as one paid
+write lane that follows this file's rules. A human merges. Reference:
+docs/REFERENCE.md, "`omg port drive`". The steps below are the manual fallback and
+the contract the brief points at.
+
 ### Step 1: Setup
 
 1. Fetch latest upstream dev (in the upstream repo directory):
@@ -214,7 +229,10 @@ When replacing files wholesale, check for these fork-specific additions:
   rename map, keeping only genuinely fork-only hunks (state-lock SQLite probe caching, release budget,
   abandoned-nonce recovery). Upstream text is canonical; future ports then apply cleanly.
 - **`package.json` is excluded from the range diff** — port `files`/`scripts`/peer-dep deltas by hand
-  (`git diff <from>..upstream/dev -- package.json`).
+  (`node scripts/port/upstream-drift.mjs --package-delta --head <sha>` lists them per key; a
+  version-only delta needs nothing).
+- **Lint is a port gate**: a port shipped an unused import; run full `eslint src` (0 errors)
+  before the commit (`omg port drive` does).
 - **Upstream tests may write `.claude/omc.jsonc`** → `.copilot/omg.jsonc`; on Windows the real assertion
   failure is masked by the temp-dir `rmSync` EPERM in `finally`, so check the Linux CI run, not the
   local log, before classifying a loader/config test as "baseline EPERM".

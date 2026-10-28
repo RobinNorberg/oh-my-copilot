@@ -19,6 +19,11 @@ delegate implementation to subagents; no force-pushes anywhere; recycle agents
 when their report is processed. Every lane brief carries the progress snippet
 from `agent-progress-events.md`, and the lead arms one Monitor on
 `omg progress watch --dir <dir> --stall 10m` instead of polling lanes.
+CI waits are driven, not polled: the release runs as
+`omg release X --drive --detach --yes` and a port PR's gates as
+`omg ship gates <pr> --drive --detach`; each prints the
+`omg progress watch --file <log> --until settled` command for one Monitor
+that wakes only on done / fail / blocked. No cron heartbeat for releases.
 
 ## Inputs
 - Last ported upstream sha (memory `omc-upstream-porting`), `origin/dev`, a
@@ -28,12 +33,20 @@ from `agent-progress-events.md`, and the lead arms one Monitor on
   feature or new command/tool/peer-dep landed on `dev` since the last tag.
 
 ## Steps (what runs in parallel, what must be serial)
-1. **Fetch + apply (lead, 1 call):** `git fetch upstream dev` + tags into
-   `refs/upstream-tags/*`; `git checkout -B port/upstream-<sha> origin/dev`;
-   range-diff with the runbook's exclusions → `git apply -3`; list `UU/AA`
-   files; show the `package.json` delta separately (it is excluded from the
-   diff and must be ported by hand).
-2. **Two lanes at once (both opus executors):**
+1. **Fetch + drive (lead, 1 call):** `git fetch upstream dev` + tags into
+   `refs/upstream-tags/*`; from a clean `origin/dev` checkout run
+   `omg port drive --head <sha>` (docs/REFERENCE.md "`omg port drive`"). It
+   applies with `upstream-drift.mjs --apply --head`, drops `.gjc/`, classifies
+   the package.json delta (version-only is ignored), runs tsc, full
+   `eslint src`, the path gate, generator `--verify` and the touched tests,
+   commits with the inventory last, pushes `port/upstream-<short>` and opens a
+   draft PR. Arm one Monitor on the `agent=port` progress log. On `blocked`
+   (exit 3) the note names the brief or the delta: resolve, stage,
+   `omg port drive --head <sha> --continue`. Remember `*.log` fixtures are
+   gitignored: `git add -f` them before `--continue`.
+2. **Two lanes at once (both opus executors):** only when the drive blocked
+   on conflicts. Either `--reconcile-lane --max-credits <n>` (one paid lane
+   with the brief), or hand `.omg/port/<short>/brief.md` to:
    - *Reconciliation lane* on the main tree: resolves conflicts per the
      runbook; takes THEIRS for our own fixes returning from upstream
      (re-apply the rename map); keeps fork version stamps; keeps fork-only
@@ -50,7 +63,9 @@ from `agent-progress-events.md`, and the lead arms one Monitor on
    `tests/fixtures/prompt-projection/claude-managed-block.golden` →
    `npm run generate:prompt-projections` (reads `package.json`).
    Steps 3 to 5 after the port commit are `omg release X` (resumable phases;
-   `omg-release-runbook.md` "Primary path"); the chain below is the fallback.
+   `omg-release-runbook.md` "Primary path"), with `--drive --detach` from
+   `pr` on so the CI waits of steps 4 and 5 need no polling; the chain below
+   is the fallback.
 4. **One gated chain (lead, background, every step `&&`):** port commit →
    tsc → `npm run build` → `verify:prompt-projections` → generators
    `--verify` → path gate → `git add -f dist bridge && git add -A` →

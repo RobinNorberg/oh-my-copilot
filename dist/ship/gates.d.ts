@@ -54,8 +54,9 @@ export interface WorkflowRun {
     status: string;
     conclusion?: string;
     workflowName?: string;
+    headSha?: string;
 }
-export declare const RUN_FIELDS = "databaseId,status,conclusion,workflowName";
+export declare const RUN_FIELDS = "databaseId,status,conclusion,workflowName,headSha";
 export type GateVerdict = 'green' | 'pending' | 'failed' | 'flaky';
 export interface GateReport {
     pr: number;
@@ -72,6 +73,8 @@ export interface GateReport {
 export declare class GhChecksError extends Error {
     constructor(message: string);
 }
+/** A transient GitHub failure (5xx, GraphQL "Something went wrong"): worth a retry, never a verdict. */
+export declare const TRANSIENT_GH_ERROR: RegExp;
 /** Parse `gh pr checks --json` stdout; throws GhChecksError on anything but an array of {name,state}. */
 export declare function parseChecksJson(stdout: string): GhCheck[];
 export declare function classifyCheck(check: GhCheck, advisory: readonly string[]): ClassifiedCheck;
@@ -120,13 +123,18 @@ export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAn
 export declare function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[];
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
 export declare function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string;
-/** Run `gh run list --commit <sha> --json ...`: every Actions workflow run for the head sha. */
+/**
+ * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
+ * the head sha. A run whose reported head_sha is another commit is dropped, so
+ * a previous head's failed run never counts against this one.
+ */
 export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[];
 /**
  * One gate evaluation against a single head sha: resolve the head first
  * (unless given), read the checks and the workflow runs for it, then re-read
- * the head; a head that moved in between is pending, never green. Failed
- * Actions jobs' logs are read for known-flaky attribution.
+ * the head; a head that moved in between is pending whatever the verdict
+ * (green, failed or flaky), since the read may mix two heads. Failed Actions
+ * jobs' logs are read for known-flaky attribution.
  */
 export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport;
 export interface WatchOptions {
@@ -146,6 +154,9 @@ export interface WatchOptions {
     sleep: (ms: number) => Promise<void>;
     now: () => number;
     onReport?: (report: GateReport) => void;
+    /** Drive mode: a transient GitHub error while reading the gates is a pending poll, not a thrown error. */
+    retryTransient?: boolean;
+    onTransient?: (message: string) => void;
 }
 export interface WatchResult {
     report: GateReport;

@@ -39,8 +39,10 @@ import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, ty
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
+import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
+import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
-import { CLI_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 
 export {
@@ -117,6 +119,8 @@ export interface SmokeDeps extends BinaryResolverDeps {
   runChain?: typeof runChainScenario;
   runTeam?: typeof runTeamScenario;
   runCli?: typeof runCliScenario;
+  runFactory?: typeof runFactoryRunScenario;
+  runSandbox?: typeof runSandboxLaneScenario;
 }
 
 export interface SmokeReport {
@@ -609,7 +613,7 @@ export function evaluateTier1(input: Tier1Inputs): SmokeCheck[] {
 // ---------------------------------------------------------------------------
 
 export const LIVE_RUN_REFUSED_DETAIL = 'live run refused under vitest — set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)';
-export const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = 'live run refused under vitest — an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli or set OMC_LIVE_SMOKE=2';
+export const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = 'live run refused under vitest — an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli/runFactory/runSandbox or set OMC_LIVE_SMOKE=2';
 
 /**
  * Hard no-billing guard: under a test runner (`VITEST` or `NODE_ENV=test` in
@@ -627,9 +631,10 @@ export function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | undefine
   if (env.OMC_LIVE_SMOKE === String(tier)) return null;
   if (tier === 1 && deps.spawn) return null;
   if (tier === 2 && deps.loadSdk) {
-    // A fake SDK does not stop the chain, team and CLI scenarios from starting real copilot processes.
+    // A fake SDK does not stop the chain, team, factory run, sandbox lane and CLI scenarios from starting real copilot processes.
     const real = (scenarios ?? DEFAULT_SCENARIOS).filter((s) =>
-      (s === 'chain' && !deps.runChain) || (s === 'team' && !deps.runTeam) || ((CLI_SCENARIOS as readonly Scenario[]).includes(s) && !deps.runCli));
+      (s === 'chain' && !deps.runChain) || (s === 'team' && !deps.runTeam) || ((CLI_SCENARIOS as readonly Scenario[]).includes(s) && !deps.runCli)
+      || ((FACTORY_RUN_SCENARIOS as readonly Scenario[]).includes(s) && !deps.runFactory) || (s === SANDBOX_LANE_SCENARIO && !deps.runSandbox));
     return real.length > 0 ? `${LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL}: ${real.join(', ')}` : null;
   }
   return LIVE_RUN_REFUSED_DETAIL;
@@ -827,6 +832,8 @@ async function runTier2(
     runChain: ctx.deps.runChain ?? runChainScenario,
     runTeam: ctx.deps.runTeam ?? runTeamScenario,
     runCli: ctx.deps.runCli ?? runCliScenario,
+    runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+    runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));

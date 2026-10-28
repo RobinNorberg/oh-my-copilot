@@ -5,9 +5,12 @@
  * - Pushes: only `git push origin <sha40>:refs/heads/factory/<name>`, plain
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
- * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list` in
- *   fixed shapes, plus ship's `gh pr view|checks`. Never `gh api`, `gh -R`,
- *   or a merge (merge is always human).
+ * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
+ *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
+ *   `gh pr view|checks` and `gh run list|view|rerun`.
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - The engine-owned prepare checkout: `git worktree add -B <its branch>
+ *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
  *   prompt's diff (no external diff driver, no textconv).
  * - Every engine git command runs hardened (hardenedGitExec): no hooks and no
@@ -16,6 +19,7 @@
  */
 
 import { existsSync, readdirSync } from 'fs';
+import { isAbsolute } from 'path';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -33,6 +37,8 @@ const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
 const BRANCH = /^[\w.][\w./-]*$/;
 const REPO_PATH = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
 export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
+/** The local branch of the engine-owned prepare checkout (getBranchName(FACTORY_CHECKOUT_TEAM, `issue-<n>` or `heal-<sig8>`)). */
+const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
 
 const isBranch = (s: string | undefined): s is string => typeof s === 'string' && BRANCH.test(s) && !s.includes('..') && !s.endsWith('/') && !s.endsWith('.lock');
 const isFile = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
@@ -63,12 +69,24 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
         if (m) return REPO_PATH.test(m[2]) && !m[2].split('/').includes('..');
       }
       return null;
+    case 'config':
+      // The tamper check hashes the file core.excludesFile names; ship decides the rest.
+      return same(r, ['--get', 'core.excludesFile']) ? true : null;
     case 'for-each-ref':
       return same(r, [FOR_EACH_REF_FORMAT]);
     case 'status':
       return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
     case 'diff':
       return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
+    case 'rev-list':
+      // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
+      return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
+    case 'worktree':
+      // The engine-owned prepare checkout only (prepare.ts): its own branch, at an exact commit. Removal goes through removeWorkerWorktree.
+      return r.length === 5 && r[0] === 'add' && r[1] === '-B' && CHECKOUT_BRANCH.test(r[2]) && isAbsolute(r[3]) && isFile(r[3]) && /^[0-9a-f]{40}$/.test(r[4]);
+    case 'merge':
+      // Abort prepare's conflicted base merge in the engine checkout before it is discarded; ship decides every other merge shape.
+      return same(r, ['--abort']) ? true : null;
     default:
       return null;
   }
@@ -88,10 +106,13 @@ function factoryGh(a: string[]): boolean | null {
     }
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
     if (sub === 'list') return r.length === 4 && r[0] === '--head' && isFactoryBranch(r[1], []) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+    if (sub === 'ready') return r.length === 1 && NUMBER.test(r[0]);
     // Merge is always a human step: ship's `gh pr merge` shape is refused here.
     if (sub === 'merge') return false;
     return null;
   }
+  // A ci-heal run has no issue url: GitHub's url of the checkout's repository (the remote check compares origin with it).
+  if (group === 'repo') return sub === 'view' && same(r, ['--json', 'url']);
   return null;
 }
 
@@ -131,7 +152,7 @@ export function factoryGuardExec(exec: Exec, extraProtected: () => readonly stri
 
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export function gitHardeningArgs(hooksDir: string): string[] {
-  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false'];
+  return ['-c', `core.hooksPath=${hooksDir}`, '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external='];
 }
 
 /**

@@ -75,7 +75,15 @@ export interface MergeInput {
 }
 /** Files and prefixes that steer the merge rule itself; a PR touching them needs the owner. */
 export declare const PROTECTED_PATHS: readonly string[];
-/** The changed files that hit PROTECTED_PATHS (exact file, or under a `/`-terminated prefix; case-insensitive). */
+/**
+ * The changed files that hit PROTECTED_PATHS: the exact file, or the directory
+ * of a `/`-terminated prefix and anything under it. Compared case-insensitively
+ * after Win32 path normalization (`\` as `/`, trailing dots and spaces of each
+ * segment dropped, `.` segments dropped), so `.github/workflows./ci.yml` and
+ * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a segment
+ * with `:` or `~`, an alternate stream or 8.3 short name, or a `..` segment)
+ * always counts as protected.
+ */
 export declare function protectedChanges(changed: readonly string[], extra?: readonly string[]): string[];
 export interface MergeDecision {
     ok: boolean;

@@ -5,9 +5,12 @@
  * - Pushes: only `git push origin <sha40>:refs/heads/factory/<name>`, plain
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
- * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list` in
- *   fixed shapes, plus ship's `gh pr view|checks`. Never `gh api`, `gh -R`,
- *   or a merge (merge is always human).
+ * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
+ *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
+ *   `gh pr view|checks` and `gh run list|view|rerun`.
+ *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - The engine-owned prepare checkout: `git worktree add -B <its branch>
+ *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
  *   prompt's diff (no external diff driver, no textconv).
  * - Every engine git command runs hardened (hardenedGitExec): no hooks and no

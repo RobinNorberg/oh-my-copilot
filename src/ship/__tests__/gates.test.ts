@@ -168,7 +168,7 @@ describe('merge rule on recorded gh pr checks JSON', () => {
     const { exec, calls } = fakeGh([PR233], {}, [[{ databaseId: 9, status: 'in_progress', workflowName: 'CI' }]]);
     expect(evaluateGates(exec, 233, CONFIG, KNOWN).verdict).toBe('pending');
     expect(calls).toContainEqual(['gh', 'pr', 'view', '233', '--json', 'headRefOid']);
-    expect(calls).toContainEqual(['gh', 'run', 'list', '--commit', HEAD_SHA, '--json', 'databaseId,status,conclusion,workflowName', '--limit', '100']);
+    expect(calls).toContainEqual(['gh', 'run', 'list', '--commit', HEAD_SHA, '--json', 'databaseId,status,conclusion,workflowName,headSha', '--limit', '100']);
     const given = fakeGh([PR233], {}, [COMPLETED_RUNS], ['e'.repeat(40)]);
     expect(evaluateGates(given.exec, 233, CONFIG, KNOWN, undefined, 'e'.repeat(40)).verdict).toBe('green');
     // An explicit head is not looked up first, only re-read after the checks and runs.
@@ -373,6 +373,32 @@ describe('known-flaky attribution from job logs', () => {
     expect(evaluateGates(exec, 233, CONFIG, KNOWN).verdict).toBe('flaky');
     expect(calls).toContainEqual(['gh', 'run', 'view', '--job', '114080000001', '--log']);
   });
+
+  it('re-reads the head on a failed or flaky verdict too: a moved head is pending, never failed', () => {
+    const NEW = 'd'.repeat(40);
+    const failing = withCheck('Test', { state: 'FAILURE', link: TEST_LINK });
+    const failed = fakeGh([failing], {}, [COMPLETED_RUNS], [HEAD_SHA, NEW]);
+    const report = evaluateGates(failed.exec, 233, CONFIG, KNOWN);
+    expect(report.verdict).toBe('pending');
+    expect(report.pending).toContain(`head moved from ${HEAD_SHA.slice(0, 12)} to ${NEW.slice(0, 12)} during the gate read`);
+    expect(failed.calls.map((c) => c.slice(1, 3).join(' '))).toEqual(['pr view', 'pr checks', 'run list', 'pr view']);
+    const flaky = fakeGh([failing], { [TEST_JOB]: fixture('job-log-flaky.txt') }, [COMPLETED_RUNS], [HEAD_SHA, NEW]);
+    expect(evaluateGates(flaky.exec, 233, CONFIG, KNOWN).verdict).toBe('pending');
+    // Steady head: still failed.
+    expect(evaluateGates(fakeGh([failing]).exec, 233, CONFIG, KNOWN).verdict).toBe('failed');
+  });
+
+  it('counts only workflow runs whose head_sha is the current head', () => {
+    const OLD = 'a'.repeat(40);
+    const runs: WorkflowRun[] = [
+      ...COMPLETED_RUNS.map((r) => ({ ...r, headSha: HEAD_SHA })),
+      { databaseId: 5, status: 'completed', conclusion: 'failure', workflowName: 'Old CI', headSha: OLD },
+    ];
+    const { exec } = fakeGh([PR233], {}, [runs]);
+    const report = evaluateGates(exec, 233, CONFIG, KNOWN);
+    expect(report.verdict).toBe('green');
+    expect(report.failed).toEqual([]);
+  });
 });
 
 describe('watchGates', () => {
@@ -411,6 +437,18 @@ describe('watchGates', () => {
     expect(r.timedOut).toBe(true);
     expect(r.report.verdict).toBe('pending');
     expect(c.now()).toBe(9 * 60_000);
+  });
+
+  it('returns early when a given headSha has been left by the PR, instead of polling it until the timeout', async () => {
+    const NEW = 'd'.repeat(40);
+    const { exec, calls } = fakeGh([pending], {}, [COMPLETED_RUNS], [NEW]);
+    const c = clock();
+    const r = await watchGates({ exec, pr: 233, config: CONFIG, known: KNOWN, watch: true, headSha: HEAD_SHA, ...c });
+    expect(r.timedOut).toBe(false);
+    expect(r.report.verdict).toBe('pending');
+    expect(r.report.pending).toContain(`head moved from ${HEAD_SHA.slice(0, 12)} to ${NEW.slice(0, 12)} during the gate read`);
+    expect(calls.filter((x) => x[2] === 'checks')).toHaveLength(1);
+    expect(c.now()).toBe(0);
   });
 
   it('returns immediately on a real failure', async () => {

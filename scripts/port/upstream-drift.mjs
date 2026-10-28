@@ -7,6 +7,12 @@
  *   node scripts/port/upstream-drift.mjs --check  [--base <sha>] [--head <ref>] [--json]
  *   node scripts/port/upstream-drift.mjs --apply  [--base <sha>] [--head <ref>] [--date YYYY-MM-DD]
  *   node scripts/port/upstream-drift.mjs --report [--base <sha>] [--head <ref>] [--markdown]
+ *   node scripts/port/upstream-drift.mjs --package-delta [--base <sha>] [--head <ref>] [--json]
+ *
+ * --package-delta classifies upstream's package.json changes per key:
+ * `version` is fork-owned and ignored; every other change (scripts, files,
+ * dependencies, bin, exports, ...) needs a human. Exit 0 = nothing for a
+ * human, 1 = a delta needs a human.
  *
  * --base defaults to `upstream_sha` in .github/upstream-port.json; --head
  * defaults to `upstream/<upstream_branch>`. Exit codes: --check 0 = up to
@@ -26,8 +32,12 @@ export const EXCLUDED_PATHS = [
   'dist', 'bridge', 'inventory', 'package-lock.json', 'package.json', 'CHANGELOG.md', 'README.md',
   '.github/release-body.md', '.github/generated-artifact-authorizations.json',
 ];
-/** Upstream release markers: dropped, nothing in the fork reads them. */
-export const DROPPED_PATHS = ['.github/RELEASE_SIGNOFF'];
+/**
+ * Dropped, nothing in the fork reads them: upstream release markers, and
+ * upstream junk such as a committed `.gjc/` session directory (a port carried
+ * one on 2026-10-27).
+ */
+export const DROPPED_PATHS = ['.github/RELEASE_SIGNOFF', '.gjc'];
 /**
  * Upstream CI is not ported by policy, and a GITHUB_TOKEN push cannot touch
  * workflow files; the composite actions they use go with them.
@@ -387,9 +397,52 @@ export function buildReport(cwd, opts = {}) {
     clean: conflictList.length === 0,
     leaks,
     package_json_delta: pkg,
+    package_delta: pkg ? packageDelta(cwd, { base: range.base, head: range.head }).changes : [],
   };
   report.titles = { pr: prTitle(report), issue: issueTitle(report) };
   return report;
+}
+
+/** package.json keys whose upstream value never applies to the fork. */
+export const PACKAGE_IGNORED_KEYS = ['version'];
+/** Keys compared entry by entry, so the delta names the script or package. */
+const PACKAGE_MAP_KEYS = new Set(['scripts', 'dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'bin', 'exports']);
+
+/**
+ * Upstream's package.json change between two parsed manifests, one row per
+ * changed key (or map entry): `{ key, before, after, action }`, where action
+ * is `ignored` (fork-owned) or `human` (port by hand, with judgement).
+ */
+export function classifyPackageDelta(before, after) {
+  const rows = [];
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort();
+  for (const key of keys) {
+    const a = before?.[key];
+    const b = after?.[key];
+    if (same(a, b)) continue;
+    const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (PACKAGE_MAP_KEYS.has(key) && isMap(a ?? {}) && isMap(b ?? {})) {
+      const entries = [...new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])].sort();
+      for (const name of entries) {
+        if (!same(a?.[name], b?.[name])) rows.push({ key: `${key}.${name}`, before: a?.[name] ?? null, after: b?.[name] ?? null, action: 'human' });
+      }
+      continue;
+    }
+    rows.push({ key, before: a ?? null, after: b ?? null, action: PACKAGE_IGNORED_KEYS.includes(key) ? 'ignored' : 'human' });
+  }
+  return rows;
+}
+
+export function packageDelta(cwd, opts = {}) {
+  const git = createGit(cwd);
+  const range = resolveRange(git, opts);
+  const manifest = (rev) => {
+    const res = git.run(['show', `${rev}:package.json`], { allowFail: true });
+    return res.status === 0 ? JSON.parse(String(res.stdout)) : null;
+  };
+  const changes = classifyPackageDelta(manifest(range.base), manifest(range.head));
+  return { base: range.base, head: range.head, changes, needsHuman: changes.some((c) => c.action === 'human') };
 }
 
 const short = (sha) => sha.slice(0, 9);
@@ -424,6 +477,7 @@ export function renderMarkdown(report) {
     report.clean
       ? 'The range applied cleanly with the rename map. Still to do by hand (`.omc/skills/port-and-release-cycle.md`): package.json delta, generators, build, inventory, tests, smoke.'
       : `The range does not apply cleanly: ${report.conflicts.length} files need reconciliation per \`.omc/skills/port-upstream.md\`.`,
+    `Local follow-up: \`omg port drive --head ${report.head}\` applies this range on \`port/upstream-${short(report.head)}\`, runs the port gates and opens a draft PR; on conflicts it writes the reconcile brief to \`.omg/port/${short(report.head)}/brief.md\`.`,
     '',
   ];
   if (!report.clean) {
@@ -435,6 +489,10 @@ export function renderMarkdown(report) {
     out.push('### Not applied', '', capped(other, (f) => `- \`${f.status}\` ${f.path} (${f.action})`), '');
   }
   out.push('### package.json delta', '');
+  const delta = report.package_delta ?? [];
+  if (delta.length) {
+    out.push(capped(delta, (d) => `- ${d.action === 'human' ? '**human**' : 'ignored'} ${codeSpan(d.key)}: ${codeSpan(JSON.stringify(d.before))} -> ${codeSpan(JSON.stringify(d.after))}`), '');
+  }
   out.push(report.package_json_delta ? ['```diff', report.package_json_delta.slice(0, 10000), '```'].join('\n') : 'none');
   out.push('', '### Leak scan (`oh-my-claudecode`, `Yeachan-Heo/oh-my-copilot` in src/ agents/ skills/ hooks/)', '');
   out.push(report.leaks.length ? capped(report.leaks, (l) => `- ${l.path}:${l.line} ${codeSpan(l.text.slice(0, 160))}`) : 'clean');
@@ -457,8 +515,8 @@ function parseArgs(argv) {
       if (!v || v.startsWith('--')) throw usage(`${a} needs a value`);
       return v;
     };
-    if (a === '--check' || a === '--apply' || a === '--report') {
-      if (opts.mode) throw usage('pick one of --check, --apply, --report');
+    if (a === '--check' || a === '--apply' || a === '--report' || a === '--package-delta') {
+      if (opts.mode) throw usage('pick one of --check, --apply, --report, --package-delta');
       opts.mode = a.slice(2);
     } else if (a === '--base') opts.base = value();
     else if (a === '--head') opts.head = value();
@@ -468,7 +526,7 @@ function parseArgs(argv) {
     else if (a === '--markdown') opts.markdown = true;
     else throw usage(`unknown argument: ${a}`);
   }
-  if (!opts.mode) throw usage('pick one of --check, --apply, --report');
+  if (!opts.mode) throw usage('pick one of --check, --apply, --report, --package-delta');
   return opts;
 }
 
@@ -497,6 +555,13 @@ export function main(argv, cwd = process.cwd()) {
     for (const c of report.conflicts) console.log(`  ${c.status} ${c.path}`);
     if (report.package_json_delta) console.log('package.json delta (port by hand):\n' + report.package_json_delta);
     return report.clean ? 0 : 1;
+  }
+  if (opts.mode === 'package-delta') {
+    const delta = packageDelta(repo, opts);
+    if (opts.json) console.log(JSON.stringify(delta, null, 2));
+    else if (delta.changes.length === 0) console.log('package.json: no upstream delta');
+    else for (const c of delta.changes) console.log(`${c.action.padEnd(7)} ${c.key}: ${JSON.stringify(c.before)} -> ${JSON.stringify(c.after)}`);
+    return delta.needsHuman ? 1 : 0;
   }
   const report = buildReport(repo, opts);
   process.stdout.write(opts.markdown ? renderMarkdown(report) : `${JSON.stringify(report, null, 2)}\n`);

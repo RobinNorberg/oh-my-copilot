@@ -15,8 +15,6 @@
  * `poll` throws {@link LaneLostError}, which the engine records as `lost`.
  */
 
-import { execFileSync } from 'node:child_process';
-
 import {
   CopilotRunError,
   type ChangeSummary,
@@ -25,6 +23,7 @@ import {
   type CopilotRunSnapshot,
   type CopilotRunStatus,
 } from '../../copilot-run/job.js';
+import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 
 export type LaneBackendKind = 'local-sdk' | 'cloud-task' | 'cloud-issue' | 'cloud-sdk';
 export type LaneState = 'queued' | 'running' | 'needs-input' | 'completed' | 'failed' | 'timeout' | 'cancelled';
@@ -45,12 +44,23 @@ export interface LaneStartInput {
   baseRef: string;
   prompt: string;
   /**
-   * `write` (default) may commit in its worktree. `review` denies the write
-   * tool and the git commands listed in REVIEW_SHELL_DENY_PATTERNS; that is a
-   * denylist, not a sandbox, so the engine must verify the worktree after the
-   * lane (refs, config and HEAD unchanged; PR 2 adds those checks).
+   * `write` (default) edits its worktree. `review` denies the write
+   * tool and runs only the read-only shell allowlist, and only inside a
+   * confirmed OS sandbox (otherwise without a shell); the engine still
+   * verifies the worktree after the lane (refs, config and HEAD unchanged).
    */
   profile?: LaneProfile;
+  /**
+   * Local backend: start the session with a credential-free env
+   * (scrubLaneCredentials in copilot-run/job.ts). The heal debugger lane sets it.
+   */
+  scrubCredentials?: boolean;
+  /**
+   * A write lane whose changes the engine commits after it (lane-commit.ts):
+   * the local backend's sandbox keeps the whole common git dir read-only
+   * (copilot_run `hostCommits`), so the lane leaves its changes uncommitted.
+   */
+  engineCommits?: boolean;
   model?: string;
   /** Cloud backends only. */
   customAgent?: string;
@@ -89,6 +99,8 @@ export interface LaneResult {
   notes: string[];
   /** The local Copilot child once it started (pid and start identity), null when unknown or remote. */
   process: LaneProcess | null;
+  /** The local job's OS sandbox (copilot_run snapshot.sandbox); absent for remote backends and before it was decided. */
+  sandbox?: CopilotRunSandboxState;
 }
 
 /** A lane's local child process: the engine checks it is gone before it trusts a lost lane's end. */
@@ -142,14 +154,6 @@ const STATE_OF: Record<CopilotRunStatus, LaneState> = {
   cancelled: 'cancelled',
 };
 
-function headOf(worktree: string): string | null {
-  try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: 30_000 }).trim() || null;
-  } catch {
-    return null;
-  }
-}
-
 export class CopilotLaneBackend implements LaneBackend {
   readonly kind = 'local-sdk' as const;
 
@@ -167,7 +171,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}` },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) },
     );
     return { remoteId: snap.jobId };
   }
@@ -211,7 +215,8 @@ export class CopilotLaneBackend implements LaneBackend {
       state,
       branch: snap.worktree?.branch ?? null,
       pr: null,
-      headSha: worktree && isTerminalLaneState(state) ? headOf(worktree) : null,
+      // Read by the job when it ended, through the recorded git dir, hardened: never via the lane-writable `.git` file.
+      headSha: worktree && isTerminalLaneState(state) ? snap.worktree?.headCommit ?? null : null,
       baseSha: snap.worktree?.baseCommit ?? null,
       worktree,
       changes: snap.changes ?? null,
@@ -227,6 +232,7 @@ export class CopilotLaneBackend implements LaneBackend {
       error: snap.error,
       notes: snap.notes ?? [],
       process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
+      ...(snap.sandbox ? { sandbox: snap.sandbox } : {}),
     };
   }
 }

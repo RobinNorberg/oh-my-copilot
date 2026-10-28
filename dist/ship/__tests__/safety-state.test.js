@@ -171,6 +171,7 @@ describe('assertSafeCommand', () => {
         ['git', 'diff', '--name-only', '--diff-filter=U'],
         ['git', 'diff', '--name-only', `${SHA_A}...HEAD`],
         ['git', 'remote', 'get-url', 'origin'],
+        ['git', 'remote', 'get-url', '--push', '--all', 'origin'],
         ['git', 'diff', '--cached', '--quiet'],
         ['git', 'checkout', '--theirs', '--', 'inventory'],
         ['git', 'add', '--', 'inventory'],
