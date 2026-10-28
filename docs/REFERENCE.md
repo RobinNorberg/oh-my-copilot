@@ -992,7 +992,7 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `protected-paths` | A lane, or the prepared head, changed paths that ship's merge rule protects | Nothing was pushed; review the change by hand |
 | `lane-tampered`, `review-tampered` | A lane, or prepare's checks, changed shared git state outside its own branch and worktree | Nothing was pushed and the verdict is dropped; inspect the repository by hand (see [Security model](#security-model)) |
 | `sandbox-unavailable` | A lane refused to run because its OS sandbox was not confirmed (see [Sandboxed lanes](#sandboxed-lanes)) | Install the sandbox backend, or set `factory.run.sandbox.writeUnsandboxed: "detect-only"` in the user config to run write lanes unsandboxed |
-| `sandbox-escaped` | A lane's shell call ran without the runtime's `sandboxed: true`, its worktree's git links changed, or it added a nested repository | Nothing was committed or pushed; inspect the lane worktree by hand |
+| `sandbox-escaped` | A lane's shell call ran without the runtime's `sandboxed: true`, its worktree's git links changed, or it added a nested repository, a directory link or a path that resolves outside its worktree | Nothing was committed or pushed; inspect the lane worktree by hand |
 | `lane-unconfirmed` | The engine cannot confirm that a lane's Copilot process stopped | Stop the process yourself; your rerun counts as your word that it stopped |
 | `lane-lost` | Two lanes of the same kind in a row were lost | Find out why the engine died |
 | `state-tampered` | The run state, its owner or lock files, or the PR's ship state changed outside the engine | The changed file is kept as `<file>.tampered-<time>` and the engine's copy is restored; inspect it |
@@ -1094,6 +1094,8 @@ The sandbox is confirmed only when all three succeed and enforcement is not `blo
 - The links are recorded when the worktree is created, and every host git call pins `GIT_DIR`, `GIT_WORK_TREE` and `GIT_COMMON_DIR` to them. A changed link stops the job as `sandbox-escaped`, and no host git runs in that worktree.
 - Every call runs with an empty `core.hooksPath`, `core.fsmonitor=false`, and a fixed pager, editor, ssh command, gpg program and credential helper. Every filter and diff driver a non-system config level names is blanked.
 - The engine commits with `write-tree` and `commit-tree` under a fixed `omg factory` identity. No hook or signing program runs, and nothing the lane wrote picks the author.
+- Before staging, the engine walks the lane worktree without following links. It refuses a directory link, any link on Windows, a new symlink entry, a staged path whose real folder is outside the worktree, and a nested repository. The lane then parks at `sandbox-escaped` and the index is reset, because host git runs with your read rights and Git for Windows follows a junction in `add -A`.
+- A write lane may not change `.github/`, `.copilot/`, `.omg/skills/`, `.omc/skills/`, `AGENTS.md` or `CLAUDE.md`, on top of ship's merge-rule paths. Such a change parks at `protected-paths`.
 
 [Git state in the worktree](#mcp-tools-copilot_run_-delegate-a-task-to-copilot) has the details.
 
