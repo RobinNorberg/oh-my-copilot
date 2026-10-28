@@ -18,7 +18,10 @@ import {
   type SmokeCheck,
 } from './copilot-session-eval.js';
 
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | CliScenario;
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'filetools' | 'chain' | 'team' | FactoryRunScenario | CliScenario;
+/** `omg factory run` end to end, in-process, with real lanes (copilot-factory-run-scenario.ts). */
+export type FactoryRunScenario = 'factory-run' | 'factory-run-fix';
+export const FACTORY_RUN_SCENARIOS: readonly FactoryRunScenario[] = ['factory-run', 'factory-run-fix'];
 /**
  * Headless `copilot` CLI sessions (copilot-cli-scenarios.ts), not SDK
  * sessions: a stub plugin next to ours, a resumed session, or a seeded state.
@@ -32,14 +35,17 @@ export const ALL_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail', 'skill'
  * prompt) lets the model write files and loads a second, probe plugin;
  * `chain` spawns two real headless `copilot -p` factory links (one prompt
  * each) outside the SDK runtime's credit cap; `team` starts a real 2-worker
- * `omg team` with sdk workers (one prompt per worker). The
+ * `omg team` with sdk workers (one prompt per worker); `factory-run` runs
+ * `omg factory run` with a real implement and review lane (two lanes, about
+ * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
+ * about 4). The
  * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
  * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
  * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
  * `events` 0.76 [1] (the `/compact` of the resumed session bills credits),
  * `ultragoal` 0.65 [2] (the prompt plus one reinforcement continuation).
  */
-export const OPT_IN_SCENARIOS: readonly Scenario[] = ['filetools', 'chain', 'team', ...CLI_SCENARIOS];
+export const OPT_IN_SCENARIOS: readonly Scenario[] = ['filetools', 'chain', 'team', ...FACTORY_RUN_SCENARIOS, ...CLI_SCENARIOS];
 /**
  * Scenarios written to the behaviour another lane delivers: their failing
  * checks carry this note, so a red run reads as expected until it lands.
@@ -162,6 +168,21 @@ export const PROMPT_CONTEXT_PREFIX = 'OMG-PROMPT-CONTEXT:';
 export const EVENTS_MISSING_FILE = 'omg-missing-probe.txt';
 export const EVENTS_SHELL_TOKEN = 'omg-events-probe';
 
+/** factory-run fixture: the scripted GitHub repository, issue, PR and base, and the one file the issue asks for. */
+export const FACTORY_RUN_REPO_URL = 'https://github.com/omg-smoke/factory-run';
+export const FACTORY_RUN_ISSUE = 1;
+export const FACTORY_RUN_PR = 2;
+export const FACTORY_RUN_BASE = 'dev';
+export const FACTORY_RUN_FILE = 'greet.txt';
+export const FACTORY_RUN_ISSUE_BODY = [
+  `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
+  '',
+  '## Acceptance criteria',
+  '',
+  `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
+  '- One commit, no other file changed. There is no test suite in this repository: do not add one.',
+].join('\n');
+
 export const SCENARIOS: Record<Scenario, ScenarioSpec> = {
   smoke: {
     name: 'smoke',
@@ -220,6 +241,20 @@ export const SCENARIOS: Record<Scenario, ScenarioSpec> = {
       '1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.',
       '2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else.',
     ].join('\n'),
+    excludedTools: [],
+    permit: denyAll,
+  },
+  // Not an SDK session: the prompt is the scripted issue's body, which the
+  // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
+  'factory-run': {
+    name: 'factory-run',
+    prompt: FACTORY_RUN_ISSUE_BODY,
+    excludedTools: [],
+    permit: denyAll,
+  },
+  'factory-run-fix': {
+    name: 'factory-run-fix',
+    prompt: FACTORY_RUN_ISSUE_BODY,
     excludedTools: [],
     permit: denyAll,
   },
@@ -662,6 +697,97 @@ function evaluateChain(run: ScenarioRun): SmokeCheck[] {
 }
 
 // ---------------------------------------------------------------------------
+// Factory run scenarios (`omg factory run` with real lanes, scripted gh)
+// ---------------------------------------------------------------------------
+
+/**
+ * AI credits ceilings: about 1 credit per lane is the estimate (a small write
+ * or review with a few tool turns), 3 per lane the ceiling, as for chain. It
+ * catches a runaway lane, not a measured figure.
+ */
+export const FACTORY_RUN_MAX_CREDITS: Readonly<Record<FactoryRunScenario, number>> = { 'factory-run': 6, 'factory-run-fix': 12 };
+/** Check ids of both factory run variants (before the common exit, adapter_errors and cost). */
+const FACTORY_RUN_CHECKS = ['lanes', 'implemented', 'reviewed_on_head', 'verdict_recorded', 'tamper', 'draft_pr', 'parked', 'no_merge', 'no_lane_push', 'state_resumable', 'credits'];
+/** The lanes each variant must run, in order, with the review verdicts. */
+export const FACTORY_RUN_EXPECTED_LANES: Readonly<Record<FactoryRunScenario, ReadonlyArray<{ kind: string; verdict?: string }>>> = {
+  'factory-run': [{ kind: 'implement' }, { kind: 'review', verdict: 'approve' }],
+  'factory-run-fix': [{ kind: 'implement' }, { kind: 'review', verdict: 'changes-requested' }, { kind: 'fix' }, { kind: 'review', verdict: 'approve' }],
+};
+
+/** What the factory run left behind: the engine outcome, its state, the bare remote and the scripted gh. */
+export interface FactoryRunEvidence {
+  outcome: { exitCode: number; phase: string | null; gate: string | null; message: string; mergeCommand: string | null } | null;
+  lanes: Array<{
+    id: string; kind: string; status: string; verdict: string | null; jobId: string | null; startSha: string; endSha: string | null;
+    maxCredits: number; credits: number | null; source: string | null;
+  }>;
+  /** Every lane start the backend saw (the engine's caps and profiles). */
+  laneStarts: Array<{ laneId: string; profile: string; maxCredits: number }>;
+  /** The last head the engine pushed, and the bare remote's factory branch. */
+  head: string | null;
+  remoteHead: string | null;
+  /** The bare remote's base branch before and after the run (a merge would move it). */
+  baseBefore: string;
+  baseAfter: string;
+  remoteRefs: string[];
+  shipVerdict: { verdict: string; sha: string; reviewer: string } | null;
+  /** The factory state passes its integrity seal (a rerun resumes from it). */
+  integrityOk: boolean;
+  /** History notes that mention tampering (lane-tampered, state-tampered). */
+  tamperNotes: string[];
+  gh: { prCreates: string[]; ready: boolean; mergeCalls: string[] };
+  warnings: string[];
+  durationMs: number;
+  cost: ScenarioCost & { source: string };
+}
+
+function evaluateFactoryRun(run: ScenarioRun): SmokeCheck[] {
+  const name = run.name as FactoryRunScenario;
+  const f = run.factory;
+  if (!f) return scenarioCheckIds(name).slice(0, 11).map((id) => ({ id, ok: false, detail: run.error ? `no factory evidence: ${excerpt(run.error, 200)}` : 'no factory evidence collected' }));
+  const p = `scn.${name}`;
+  const expected = FACTORY_RUN_EXPECTED_LANES[name];
+  const shape = f.lanes.map((l) => `${l.kind}${l.verdict ? `:${l.verdict}` : ''}@${l.status}`).join(', ') || 'none';
+  const lanesOk = f.lanes.length === expected.length
+    && expected.every((e, i) => f.lanes[i].kind === e.kind && f.lanes[i].status === 'completed' && (e.verdict === undefined || f.lanes[i].verdict === e.verdict) && !!f.lanes[i].jobId)
+    && f.laneStarts.length === expected.length;
+  const writes = f.lanes.filter((l) => l.kind !== 'review');
+  const implementedOk = writes.length > 0 && writes.every((l) => !!l.endSha && l.endSha !== l.startSha) && !!f.head && f.head === f.remoteHead && f.head === writes.at(-1)!.endSha;
+  const lastReview = f.lanes.filter((l) => l.kind === 'review').at(-1);
+  const reviewedOk = !!lastReview && !!f.head && lastReview.startSha === f.head && lastReview.verdict === 'approve';
+  const verdictOk = f.shipVerdict?.verdict === 'approve' && f.shipVerdict.sha === f.head;
+  const tamperOk = f.tamperNotes.length === 0 && f.outcome?.gate !== 'lane-tampered' && f.outcome?.gate !== 'state-tampered';
+  const draftOk = f.gh.prCreates.length === 1 && /\s--draft(\s|$)/.test(f.gh.prCreates[0]);
+  const parkedOk = !!f.outcome && f.outcome.exitCode === 0 && f.outcome.gate === 'merge' && /^gh pr merge \d+ /.test(f.outcome.mergeCommand ?? '');
+  const noMergeOk = f.gh.mergeCalls.length === 0 && !!f.baseBefore && f.baseAfter === f.baseBefore;
+  const allowedRefs = [`refs/heads/${FACTORY_RUN_BASE}`, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`];
+  const strayRefs = f.remoteRefs.filter((r) => !allowedRefs.includes(r));
+  const capsOk = f.laneStarts.length > 0 && f.laneStarts.every((s) => s.maxCredits === RUNTIME_MIN_MAX_CREDITS);
+  const measured = f.lanes.length > 0 && f.lanes.every((l) => typeof l.credits === 'number');
+  const ceiling = FACTORY_RUN_MAX_CREDITS[name];
+  const creditsOk = capsOk && measured && f.cost.credits > 0 && f.cost.credits <= ceiling;
+  return [
+    { id: `${p}.lanes`, ok: lanesOk, detail: lanesOk ? `lanes ${shape}, each a copilot_run job` : `lanes ${shape} (expected ${expected.map((e) => `${e.kind}${e.verdict ? `:${e.verdict}` : ''}`).join(', ')})` },
+    { id: `${p}.implemented`, ok: implementedOk, detail: implementedOk ? `write lane(s) committed; engine pushed ${f.head!.slice(0, 12)} to factory/issue-${FACTORY_RUN_ISSUE}` : `head ${f.head ?? 'none'}, remote ${f.remoteHead ?? 'none'}, write lanes ${writes.map((l) => `${l.startSha.slice(0, 8)}..${(l.endSha ?? 'none').slice(0, 8)}`).join(', ') || 'none'}` },
+    { id: `${p}.reviewed_on_head`, ok: reviewedOk, detail: reviewedOk ? `the last review ran at the pushed head and approved` : `last review ${lastReview ? `at ${lastReview.startSha.slice(0, 12)} verdict ${lastReview.verdict ?? 'none'}` : 'missing'}, head ${f.head ?? 'none'}` },
+    { id: `${p}.verdict_recorded`, ok: verdictOk, detail: f.shipVerdict ? `ship verdict ${f.shipVerdict.verdict} by ${f.shipVerdict.reviewer} at ${f.shipVerdict.sha.slice(0, 12)}` : 'no ship verdict recorded' },
+    { id: `${p}.tamper`, ok: tamperOk, detail: tamperOk ? 'every lane passed the shared git state and state file checks' : `tamper: ${f.tamperNotes.map((n) => excerpt(n, 200)).join(' | ') || f.outcome?.gate}` },
+    { id: `${p}.draft_pr`, ok: draftOk, detail: draftOk ? `one draft PR created through the scripted gh` : `${f.gh.prCreates.length} gh pr create call(s)${f.gh.prCreates[0] ? `: ${excerpt(f.gh.prCreates[0], 200)}` : ''}` },
+    { id: `${p}.parked`, ok: parkedOk, detail: parkedOk ? `awaiting-human: merge; printed ${f.outcome!.mergeCommand}` : `outcome ${f.outcome ? `exit ${f.outcome.exitCode}, phase ${f.outcome.phase ?? 'none'}, gate ${f.outcome.gate ?? 'none'}: ${f.outcome.message}` : 'none'}` },
+    { id: `${p}.no_merge`, ok: noMergeOk, detail: noMergeOk ? `no merge call reached gh; ${FACTORY_RUN_BASE} on the remote unchanged` : `merge calls ${f.gh.mergeCalls.length}; ${FACTORY_RUN_BASE} ${f.baseBefore.slice(0, 12)} -> ${f.baseAfter.slice(0, 12)}` },
+    { id: `${p}.no_lane_push`, ok: strayRefs.length === 0, detail: strayRefs.length === 0 ? `the remote holds only ${allowedRefs.join(' and ')}` : `stray remote refs: ${strayRefs.join(', ')}` },
+    { id: `${p}.state_resumable`, ok: f.integrityOk, detail: f.integrityOk ? 'factory state passes its integrity seal' : 'factory state missing or fails its integrity seal' },
+    {
+      id: `${p}.credits`,
+      ok: creditsOk,
+      detail: `${Number(f.cost.credits.toFixed(3))} AI credits (legacy ${f.cost.premiumRequests} premium request(s)) over ${f.cost.source} (max ${ceiling} credits)`
+        + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${f.laneStarts.map((s) => s.maxCredits).join(', ') || 'none'} (expected ${RUNTIME_MIN_MAX_CREDITS})`)
+        + (measured ? '' : '; a lane has no recorded usage'),
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Filetools scenario (pre/postToolUse hooks on Copilot's file tools)
 // ---------------------------------------------------------------------------
 
@@ -863,6 +989,8 @@ export function scenarioCheckIds(name: Scenario): string[] {
     filetools: ['tools', 'hooks', 'pre', 'post', 'matcher', 'payload', 'injected', 'injected_write'],
     chain: ['link1', 'spawned', 'inherited', 'closed', 'credits'],
     team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'credits'],
+    'factory-run': FACTORY_RUN_CHECKS,
+    'factory-run-fix': FACTORY_RUN_CHECKS,
     continuation: ['blocked', 'reason_injected', 'stop_hook_active', 'echo'],
     'prompt-context': ['accepted', 'reached_model'],
     events: ['post_tool_use_failure', 'permission_request', 'pre_compact'],
@@ -1075,6 +1203,8 @@ export interface ScenarioRun {
   chain?: ChainEvidence;
   /** team: start, status, tasks, commits and shutdown evidence of the 2-worker sdk team. */
   team?: TeamEvidence;
+  /** factory-run, factory-run-fix: the engine outcome and state, the bare remote and the scripted gh. */
+  factory?: FactoryRunEvidence;
   /** filetools: the probe plugin's hook records and the fixture's state after the turn. */
   filetools?: FiletoolsEvidence;
   /** CLI scenarios: the session id, stub nonce, per-process results, stub records and seed. */
@@ -1082,9 +1212,10 @@ export interface ScenarioRun {
 }
 
 /** What one scenario run cost: chain and team span several sessions with their own totals. */
-export function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): ScenarioCost & { source: string } {
+export function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team' | 'factory'>): ScenarioCost & { source: string } {
   if (run.chain) return chainCost(run.chain);
   if (run.team) return run.team.cost;
+  if (run.factory) return run.factory.cost;
   return scenarioCost(run.events);
 }
 
@@ -1300,6 +1431,8 @@ export function evaluateScenario(run: ScenarioRun): { checks: SmokeCheck[]; cost
     filetools: evaluateFiletools,
     chain: evaluateChain,
     team: evaluateTeam,
+    'factory-run': evaluateFactoryRun,
+    'factory-run-fix': evaluateFactoryRun,
     continuation: evaluateContinuation,
     'prompt-context': evaluatePromptContext,
     events: evaluateEvents,
