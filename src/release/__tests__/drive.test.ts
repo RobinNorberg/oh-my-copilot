@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { hostname, tmpdir } from 'os';
 import { join } from 'path';
 import { isProcessAlive } from '../../platform/process-utils.js';
@@ -63,6 +63,34 @@ describe('release drive helpers', () => {
         expect(r).toMatchObject({ ok: false, holder: { pid: 424242 }, liveness: state });
         expect(readDriveLock(lockPath)?.pid).toBe(424242);
       }
+    });
+
+    it('refuses to start when its own start identity cannot be read (after one retry)', async () => {
+      let probes = 0;
+      const blind: DriveProcess = { ...proc, identity: async () => { probes++; return null; } };
+      await expect(acquireDriveLock(lockPath, [], blind, (l) => logs.push(l))).rejects.toThrow(/cannot read the start identity/);
+      expect(probes).toBe(2);
+      expect(existsSync(lockPath)).toBe(false);
+      let first = true;
+      const flaky: DriveProcess = { ...proc, identity: async () => (first ? ((first = false), null) : 'ticks:1') };
+      expect((await acquireDriveLock(lockPath, [], flaky, (l) => logs.push(l))).ok).toBe(true);
+    });
+
+    it('stale takeover race: a driver that wins between the stale read and the rename keeps its lock', async () => {
+      liveness = 'dead';
+      writeFileSync(lockPath, JSON.stringify(holder()));
+      const winner: DriveLock = { ...holder(777001), startedAt: '2026-10-28T00:30:00.000Z' };
+      let raced = false;
+      const fsx = {
+        rename: (from: string, to: string) => {
+          // The other driver finished its own takeover just before our rename.
+          if (!raced) { raced = true; writeFileSync(lockPath, JSON.stringify(winner)); }
+          renameSync(from, to);
+        },
+      };
+      const r = await acquireDriveLock(lockPath, [], proc, (l) => logs.push(l), Date.now, fsx);
+      expect(r).toMatchObject({ ok: false, holder: { pid: 777001 } });
+      expect(readDriveLock(lockPath)).toEqual(winner);
     });
 
     it('takes over a dead or pid-reused holder, and an unreadable lock, after logging it', async () => {
@@ -155,6 +183,14 @@ describe('release drive helpers', () => {
     expect(spawned).toHaveLength(1);
   });
 
+  it('stop refuses a lock without a start identity and keeps it', async () => {
+    writeFileSync(lockPath, JSON.stringify({ ...holder(), identity: null }));
+    liveness = 'live';
+    expect(await stopDriver(lockPath, proc)).toMatchObject({ stopped: false, refused: true, reason: expect.stringMatching(/no start identity/) });
+    expect(killed).toEqual([]);
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
   it('real detached child: writes its lock and log, keeps running, and --stop ends it (Windows: taskkill /F /T)', async () => {
     const script = join(dir, 'fake-driver.mjs');
     writeFileSync(script, [
@@ -173,6 +209,9 @@ describe('release drive helpers', () => {
       expect(isProcessAlive(pid!)).toBe(true);
       for (let i = 0; i < 50 && !readFileSync(logPath, 'utf8').includes('driver up'); i++) await new Promise((r) => setTimeout(r, 100));
       expect(readFileSync(logPath, 'utf8')).toContain('driver up');
+      // The fake driver records no identity; fill it in as the real driver does.
+      const lock = readDriveLock(lockPath)!;
+      writeFileSync(lockPath, JSON.stringify({ ...lock, identity: await defaultDriveProcess.identity(pid!) }));
       expect(await defaultDriveProcess.liveness(readDriveLock(lockPath)!)).toBe('live');
       expect(await stopDriver(lockPath, defaultDriveProcess)).toEqual({ stopped: true, pid });
       for (let i = 0; i < 50 && isProcessAlive(pid!); i++) await new Promise((r) => setTimeout(r, 100));

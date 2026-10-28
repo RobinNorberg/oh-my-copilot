@@ -22,7 +22,7 @@
  */
 
 import { spawn } from 'child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
 import { dirname, join } from 'path';
 import { getProcessStartIdentity, isProcessAlive, isProcessIdentityLive, killProcessTree } from '../platform/process-utils.js';
@@ -86,13 +86,25 @@ export function readDriveLock(path: string): DriveLock | null {
 
 export type AcquireResult = { ok: true; lock: DriveLock } | { ok: false; holder: DriveLock | null; liveness: DriverLiveness };
 
+/** File operations of the stale takeover, injectable so a race can be staged in tests. */
+export interface DriveLockFs {
+  rename: (from: string, to: string) => void;
+}
+
 /**
  * Take the single-driver lock for this process. A live (or unprobeable)
  * holder refuses; a dead or pid-reused holder, or an unreadable lock file,
- * is logged and taken over.
+ * is logged and taken over. The takeover renames the stale lock to a unique
+ * name, re-reads it, and only deletes it when it is still the stale holder
+ * (else it goes back and the lock is refused), so two drivers cannot both
+ * remove each other's fresh lock. Throws when this process's start identity
+ * cannot be read: without it `--stop` could never tell the driver from a
+ * reused pid.
  */
-export async function acquireDriveLock(path: string, argv: string[], proc: DriveProcess, log: (line: string) => void, now: () => number = Date.now): Promise<AcquireResult> {
-  const lock: DriveLock = { pid: process.pid, startedAt: new Date(now()).toISOString(), argv, host: hostname(), identity: await proc.identity(process.pid) };
+export async function acquireDriveLock(path: string, argv: string[], proc: DriveProcess, log: (line: string) => void, now: () => number = Date.now, fsx: DriveLockFs = { rename: renameSync }): Promise<AcquireResult> {
+  const identity = (await proc.identity(process.pid)) ?? (await proc.identity(process.pid));
+  if (!identity) throw new Error(`cannot read the start identity of pid ${process.pid}; refusing to drive (${path} could not be told apart from a reused pid by --stop)`);
+  const lock: DriveLock = { pid: process.pid, startedAt: new Date(now()).toISOString(), argv, host: hostname(), identity };
   mkdirSync(dirname(path), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -109,7 +121,25 @@ export async function acquireDriveLock(path: string, argv: string[], proc: Drive
     } else {
       log(`taking over the unreadable drive lock ${path}`);
     }
-    rmSync(path, { force: true });
+    const tomb = `${path}.stale-${process.pid}-${now()}`;
+    try {
+      fsx.rename(path, tomb);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    const moved = readDriveLock(tomb);
+    if (moved?.pid === holder?.pid && moved?.startedAt === holder?.startedAt) {
+      rmSync(tomb, { force: true });
+      continue;
+    }
+    // Not the lock we judged stale: another driver won the race. Put it back.
+    try {
+      fsx.rename(tomb, path);
+    } catch {
+      rmSync(tomb, { force: true });
+    }
+    return { ok: false, holder: readDriveLock(path), liveness: 'live' };
   }
   return { ok: false, holder: readDriveLock(path), liveness: 'unknown' };
 }
@@ -241,6 +271,8 @@ export async function stopDriver(path: string, proc: DriveProcess): Promise<Stop
     if (existsSync(path)) rmSync(path, { force: true });
     return { stopped: false, refused: false, reason: 'no driver is running (no drive lock)' };
   }
+  // Without a recorded start identity a bare pid cannot be told from a reused one: never signalled.
+  if (!lock.identity) return { stopped: false, refused: true, reason: `the lock of pid ${lock.pid} has no start identity, so the pid cannot be verified; not signalled, lock kept (stop it by hand, then delete ${path})` };
   const liveness = await proc.liveness(lock);
   if (liveness === 'unknown') return { stopped: false, refused: true, reason: `cannot verify pid ${lock.pid} on ${lock.host}; not signalled, lock kept (stop it there, or delete ${path} once it is gone)` };
   if (liveness !== 'live') {
