@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fdc6144574a8e674fb1897029813477eb3534399",
-    "sourceSha256": "c9415c008927dca55bc6c974c44fd42957bd013c73751313ab751911764992b3",
+    "head": "049cc387ab01f5aa6d45f3cbbde0eb519b9753b4",
+    "sourceSha256": "66f74e25b936014a4a8fbfd0287c2f9900f8707e59cea511d94540d984a15ea3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fdc6144574a8e674fb1897029813477eb3534399",
-  "sourceSha256": "c9415c008927dca55bc6c974c44fd42957bd013c73751313ab751911764992b3",
+  "head": "049cc387ab01f5aa6d45f3cbbde0eb519b9753b4",
+  "sourceSha256": "66f74e25b936014a4a8fbfd0287c2f9900f8707e59cea511d94540d984a15ea3",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1751,
-      "total": 1775
+      "srcFiles": 1753,
+      "total": 1777
     },
     "generated": {
       "distFiles": 6480,
@@ -50503,6 +50503,11 @@
         "path": "src/smoke/__tests__/copilot-factory-run-scenario.test.ts"
       },
       {
+        "id": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts"
+      },
+      {
         "id": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "kind": "src",
         "path": "src/smoke/__tests__/copilot-sdk-driver.test.ts"
@@ -50651,6 +50656,11 @@
         "id": "src/smoke/copilot-hook-manifest.ts",
         "kind": "src",
         "path": "src/smoke/copilot-hook-manifest.ts"
+      },
+      {
+        "id": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-sandbox-lane-scenario.ts"
       },
       {
         "id": "src/smoke/copilot-sdk-driver.ts",
@@ -71971,6 +71981,16 @@
       },
       {
         "from": "src/factory/run/lane-commit.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -91795,6 +91815,81 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sandbox-lane-scenario.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -92325,6 +92420,96 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "external:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-factory-run-scenario.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sandbox-lane-scenario.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -92346,12 +92531,22 @@
       },
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:path",
         "kind": "imports"
       },
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
       {
@@ -92367,6 +92562,11 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "src/smoke/copilot-factory-run-scenario.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-sandbox-lane-scenario.ts",
         "kind": "type-imports"
       },
       {
@@ -92532,6 +92732,11 @@
       {
         "from": "src/smoke/copilot-smoke.ts",
         "to": "src/smoke/copilot-factory-run-scenario.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sandbox-lane-scenario.ts",
         "kind": "imports"
       },
       {
@@ -105651,12 +105856,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8972,
-      "edgeCount": 10546,
-      "importEdgeCount": 8763,
+      "nodeCount": 8974,
+      "edgeCount": 10585,
+      "importEdgeCount": 8789,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c3053d8fc7b46a54e50a1a82ceaac49545f13fa612051191024ebcf8f0262f67",
-  "manifestSha256": "2db119514e7a83eaf455ef793d82eb4a4ef981f6db8465162295ed214258eae2"
+  "inventorySha256": "6b27165287d470112497f6c3115435574774c58430f2345d37a0e2bf14fb281b",
+  "manifestSha256": "05bb44a2144c91efe702c6f39e7c1f07fe7404c7609d1f260b862c4bdc8ede1b"
 }
