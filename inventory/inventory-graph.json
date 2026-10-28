@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "593bb6993f8401627b348ad82c11dc8e23d1cacf",
-    "sourceSha256": "d68ccde656c083c41f589a25656b103d4fe61401fcf71482d9a8ec51040c835c",
+    "head": "0d109cf49a96ef0bb01d4de105cac02ee3f37e65",
+    "sourceSha256": "9ff7b8f6494dcd79aa69f3dae91ca21a16f1887a63cff88053ef8fb7c28a38ab",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "593bb6993f8401627b348ad82c11dc8e23d1cacf",
-  "sourceSha256": "d68ccde656c083c41f589a25656b103d4fe61401fcf71482d9a8ec51040c835c",
+  "head": "0d109cf49a96ef0bb01d4de105cac02ee3f37e65",
+  "sourceSha256": "9ff7b8f6494dcd79aa69f3dae91ca21a16f1887a63cff88053ef8fb7c28a38ab",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1738,
-      "total": 1762
+      "srcFiles": 1740,
+      "total": 1764
     },
     "generated": {
       "distFiles": 6480,
@@ -46413,6 +46413,11 @@
         "path": "src/factory/heal/history.ts"
       },
       {
+        "id": "src/factory/heal/implement.ts",
+        "kind": "src",
+        "path": "src/factory/heal/implement.ts"
+      },
+      {
         "id": "src/factory/heal/logs.ts",
         "kind": "src",
         "path": "src/factory/heal/logs.ts"
@@ -46456,6 +46461,11 @@
         "id": "src/factory/map-run.ts",
         "kind": "src",
         "path": "src/factory/map-run.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/ci-heal.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/ci-heal.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.test.ts",
@@ -70046,6 +70056,11 @@
       },
       {
         "from": "src/factory/heal/__tests__/cli.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/cli.test.ts",
         "to": "src/lib/file-lock.ts",
         "kind": "imports"
       },
@@ -70236,6 +70251,11 @@
       },
       {
         "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
       },
@@ -70366,6 +70386,16 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/heal/implement.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/heal/implement.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/logs.ts",
         "kind": "imports"
       },
@@ -70401,8 +70431,28 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/heal/cli.ts",
@@ -70586,6 +70636,86 @@
       },
       {
         "from": "src/factory/heal/history.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/implement.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -70902,6 +71032,126 @@
       {
         "from": "src/factory/map-run.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/implement.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/ci-heal.test.ts",
+        "to": "src/ship/state.ts",
         "kind": "imports"
       },
       {
@@ -71391,6 +71641,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/heal/diagnosis-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
@@ -71631,6 +71886,16 @@
       },
       {
         "from": "src/factory/run/merge-policy.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -71681,6 +71946,16 @@
       },
       {
         "from": "src/factory/run/prepare.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -71703,6 +71978,11 @@
         "from": "src/factory/run/progress.ts",
         "to": "external:path",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/progress.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/progress.ts",
@@ -105011,12 +105291,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8958,
-      "edgeCount": 10432,
-      "importEdgeCount": 8675,
+      "nodeCount": 8960,
+      "edgeCount": 10486,
+      "importEdgeCount": 8705,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "a9da11c96974eb89c854b09cd406bf41b581933384e43db0d3ff0ea8f215edb1",
-  "manifestSha256": "b1598683ea9279ae85a9276115690e7a4bfa0c434c915f3ed4d84f6990df816d"
+  "inventorySha256": "dc15943edffe69f9d39ab0bf2decd0dce44c99832eb3b17863feb5fc03b31728",
+  "manifestSha256": "57c5d1a3b4bce2469f78e174e8d72759b13540206b0ca57a8a30ff1302bf877a"
 }
