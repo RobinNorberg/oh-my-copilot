@@ -351,6 +351,7 @@ export class AzureDevOpsProvider {
                 encoding: 'utf-8',
                 timeout: 60000,
                 maxBuffer: 64 * 1024 * 1024,
+                windowsHide: true,
                 stdio: ['pipe', 'pipe', 'pipe'],
             });
             git(['fetch', '--no-tags', 'origin', sourceRef, targetRef]);
