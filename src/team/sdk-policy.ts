@@ -172,6 +172,14 @@ function rawRequestPath(req: SdkPermissionRequest): string | null {
   return null;
 }
 
+/** True when any string path field of the request has a `..` segment, not only the first one. */
+function anyDotDotPath(req: SdkPermissionRequest): boolean {
+  return (['resolvedPath', 'path', 'fileName'] as const).some((key) => {
+    const value = req[key];
+    return typeof value === 'string' && hasDotDotSegment(value);
+  });
+}
+
 function requestPath(req: SdkPermissionRequest, cwd: string): string | null {
   const value = rawRequestPath(req);
   return value === null ? null : isAbsolute(value) ? value : resolve(cwd, value);
@@ -205,7 +213,7 @@ export function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyCon
     case 'read': {
       const path = requestPath(req, ctx.cwd);
       if (!path) return { approve: true, reason: 'read without a path' };
-      if (hasDotDotSegment(rawRequestPath(req)!)) return { approve: false, reason: `read path with a .. segment: ${path}` };
+      if (anyDotDotPath(req)) return { approve: false, reason: `read path with a .. segment: ${path}` };
       const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
       try {
         return roots.some((root) => isUnderRoot(path, root, platform))
@@ -218,7 +226,7 @@ export function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyCon
     case 'write': {
       const path = requestPath(req, ctx.cwd);
       if (!path) return { approve: false, reason: 'write without a path' };
-      if (hasDotDotSegment(rawRequestPath(req)!)) return { approve: false, reason: `write path with a .. segment: ${path}` };
+      if (anyDotDotPath(req)) return { approve: false, reason: `write path with a .. segment: ${path}` };
       try {
         if (!isUnderRoot(path, ctx.cwd, platform) && !isUnderRoot(path, ctx.stateRoot, platform)) {
           return { approve: false, reason: `write outside worktree and team state: ${path}` };
