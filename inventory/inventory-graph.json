@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "80001d421fc79792b3019117861e1b4f9ec3518a",
-    "sourceSha256": "75e4e3cfa6a9607b672c2426c5b84a60aab4f7f6bb921f2a5f02be65a712578c",
+    "head": "8863491acf146f0bc6ef2dd57b3d6f6e167f538d",
+    "sourceSha256": "30e6b69089501d36645f556308464aa6cb8e683ea3fb3324f804566b8517a32c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "80001d421fc79792b3019117861e1b4f9ec3518a",
-  "sourceSha256": "75e4e3cfa6a9607b672c2426c5b84a60aab4f7f6bb921f2a5f02be65a712578c",
+  "head": "8863491acf146f0bc6ef2dd57b3d6f6e167f538d",
+  "sourceSha256": "30e6b69089501d36645f556308464aa6cb8e683ea3fb3324f804566b8517a32c",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1718,
-      "total": 1742
+      "srcFiles": 1729,
+      "total": 1753
     },
     "generated": {
       "distFiles": 6480,
@@ -46328,6 +46328,11 @@
         "path": "src/factory/__tests__/status.test.ts"
       },
       {
+        "id": "src/factory/__tests__/workflow-run.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/workflow-run.test.ts"
+      },
+      {
         "id": "src/factory/heal/__tests__/classify.test.ts",
         "kind": "src",
         "path": "src/factory/heal/__tests__/classify.test.ts"
@@ -46338,9 +46343,34 @@
         "path": "src/factory/heal/__tests__/cli.test.ts"
       },
       {
+        "id": "src/factory/heal/__tests__/debug.test.ts",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/debug.test.ts"
+      },
+      {
+        "id": "src/factory/heal/__tests__/fixtures/git256-green.log",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/fixtures/git256-green.log"
+      },
+      {
+        "id": "src/factory/heal/__tests__/fixtures/git256-red.log",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/fixtures/git256-red.log"
+      },
+      {
+        "id": "src/factory/heal/__tests__/fixtures/policy-only.log",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/fixtures/policy-only.log"
+      },
+      {
         "id": "src/factory/heal/__tests__/fixtures/runs.json",
         "kind": "src",
         "path": "src/factory/heal/__tests__/fixtures/runs.json"
+      },
+      {
+        "id": "src/factory/heal/__tests__/run.test.ts",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/run.test.ts"
       },
       {
         "id": "src/factory/heal/__tests__/state.test.ts",
@@ -46363,6 +46393,21 @@
         "path": "src/factory/heal/config.ts"
       },
       {
+        "id": "src/factory/heal/debug-lane.ts",
+        "kind": "src",
+        "path": "src/factory/heal/debug-lane.ts"
+      },
+      {
+        "id": "src/factory/heal/diagnosis-output.ts",
+        "kind": "src",
+        "path": "src/factory/heal/diagnosis-output.ts"
+      },
+      {
+        "id": "src/factory/heal/evidence.ts",
+        "kind": "src",
+        "path": "src/factory/heal/evidence.ts"
+      },
+      {
         "id": "src/factory/heal/history.ts",
         "kind": "src",
         "path": "src/factory/heal/history.ts"
@@ -46371,6 +46416,16 @@
         "id": "src/factory/heal/logs.ts",
         "kind": "src",
         "path": "src/factory/heal/logs.ts"
+      },
+      {
+        "id": "src/factory/heal/run.ts",
+        "kind": "src",
+        "path": "src/factory/heal/run.ts"
+      },
+      {
+        "id": "src/factory/heal/sanitize.ts",
+        "kind": "src",
+        "path": "src/factory/heal/sanitize.ts"
       },
       {
         "id": "src/factory/heal/signature.ts",
@@ -67746,6 +67801,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
@@ -69705,6 +69765,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/workflow-run.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/heal/__tests__/classify.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -69830,6 +69930,201 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/debug-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/diagnosis-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/factory/heal/signature.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/debug.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/debug-lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/signature.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/run.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/heal/__tests__/state.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -69951,6 +70246,16 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/signature.ts",
         "kind": "imports"
       },
@@ -69962,6 +70267,11 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
       },
       {
@@ -69982,6 +70292,151 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/config.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/heal/diagnosis-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/debug-lane.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/diagnosis-output.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/diagnosis-output.ts",
+        "to": "src/factory/run/review-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/evidence.ts",
+        "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
       {
@@ -70013,6 +70468,126 @@
         "from": "src/factory/heal/logs.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/debug-lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/debug-lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/diagnosis-output.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/evidence.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/sanitize.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/sanitize.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/heal/signature.ts",
@@ -70042,6 +70617,11 @@
       {
         "from": "src/factory/heal/state.ts",
         "to": "src/factory/heal/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/state.ts",
+        "to": "src/factory/heal/diagnosis-output.ts",
         "kind": "type-imports"
       },
       {
@@ -70081,6 +70661,11 @@
       },
       {
         "from": "src/factory/listener.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
         "to": "src/factory/watchdog.ts",
         "kind": "imports"
       },
@@ -70108,6 +70693,11 @@
         "from": "src/factory/listener.ts",
         "to": "src/hooks/session-end/spawn-next.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/listener.ts",
@@ -103706,12 +104296,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8937,
-      "edgeCount": 10192,
-      "importEdgeCount": 8506,
+      "nodeCount": 8948,
+      "edgeCount": 10299,
+      "importEdgeCount": 8582,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "b6153e05b6fb29d73af0aa73d749977f0284837149d30c4fb4ebd6722813cd2b",
-  "manifestSha256": "7c0134372cb17ebe791900fc57e3a2577f9d81fd682fb875df1ee703afbff1bf"
+  "inventorySha256": "ca982a7064d0396fc8c9edcb11e28d3f0a1b692b8b82e9478f3ac78b3256c493",
+  "manifestSha256": "6a8660c6013228a732ee0640347c4574eb6a5f24f2eacb52a18db338fc877f41"
 }
