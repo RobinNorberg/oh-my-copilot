@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "557c6b5d2de0de0cf5d7134be3b3b4ea04238863",
-    "sourceSha256": "a1284573a65c635fe8a000147d672892b4279cc0b914b3bf2cdf7fe29cf5ec82",
+    "head": "18f4ad7eddf622d8f630990855abda6074fc3e00",
+    "sourceSha256": "ea11cfc89efa8f5e76e78b74796bf29d9c406ec35bd8ea121617904efab50dba",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "557c6b5d2de0de0cf5d7134be3b3b4ea04238863",
-  "sourceSha256": "a1284573a65c635fe8a000147d672892b4279cc0b914b3bf2cdf7fe29cf5ec82",
+  "head": "18f4ad7eddf622d8f630990855abda6074fc3e00",
+  "sourceSha256": "ea11cfc89efa8f5e76e78b74796bf29d9c406ec35bd8ea121617904efab50dba",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1753,
-      "total": 1777
+      "srcFiles": 1751,
+      "total": 1775
     },
     "generated": {
       "distFiles": 6480,
@@ -46498,11 +46498,6 @@
         "path": "src/factory/run/__tests__/ci-heal.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.sandbox.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/engine.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.test.ts"
@@ -46556,11 +46551,6 @@
         "id": "src/factory/run/gates-driver.ts",
         "kind": "src",
         "path": "src/factory/run/gates-driver.ts"
-      },
-      {
-        "id": "src/factory/run/lane-commit.ts",
-        "kind": "src",
-        "path": "src/factory/run/lane-commit.ts"
       },
       {
         "id": "src/factory/run/lane.ts",
@@ -71490,66 +71480,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/lane-commit.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/__tests__/engine.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -72076,11 +72006,6 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/lane-commit.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -72248,31 +72173,6 @@
         "from": "src/factory/run/gates-driver.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/lane-commit.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/lane-commit.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/lane-commit.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/lane-commit.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/lane-commit.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
       },
       {
         "from": "src/factory/run/lane.ts",
@@ -72503,11 +72403,6 @@
         "from": "src/factory/run/state.ts",
         "to": "external:path",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/state.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/state.ts",
@@ -105966,12 +105861,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8974,
-      "edgeCount": 10607,
-      "importEdgeCount": 8798,
+      "nodeCount": 8972,
+      "edgeCount": 10588,
+      "importEdgeCount": 8783,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "2176a1d3701163f74762c4526c010d5d72a7b98d440161134bf67ee5d397108e",
-  "manifestSha256": "cfd6b94bac89cc7109f2cb234e4ac5e63f3714b4e1ab7bc89ed81bb4d0aff4cd"
+  "inventorySha256": "0533d337b4a5ea6224f317e788ef49c124fc1a65cb482fdf73385b59301754c4",
+  "manifestSha256": "fb064330259a0131dad3dbb1f62211e2ff0d6ca192d896fe5a91acb837cc2c05"
 }

@@ -127,6 +127,8 @@ const sealOf = (s: Pick<HealSignatureState, 'healRun' | 'lanes' | 'diagnosis'>) 
  */
 export interface HealSealSubject {
   class: HealClass;
+  /** Whether the signature was seen on a dev push run or only on pull request runs. */
+  source: 'push' | 'pr';
   firstRed: { runId: string; sha: string };
   lastGreen?: { runId: string; sha: string };
   /** `file > title` of the failing tests the classifier parsed. */
@@ -142,9 +144,10 @@ const MAX_SUBJECT_TEXT = 1000;
 
 export const healTestId = (t: { file: string; title?: string }) => (t.title ? `${t.file} > ${t.title}` : t.file);
 
-export function healSealSubject(cls: HealClass, c: HealClassification): HealSealSubject {
+export function healSealSubject(cls: HealClass, c: HealClassification, source: 'push' | 'pr'): HealSealSubject {
   return {
     class: cls,
+    source,
     firstRed: { runId: c.firstRed.runId, sha: c.firstRed.sha },
     ...(c.lastGreen ? { lastGreen: { runId: c.lastGreen.runId, sha: c.lastGreen.sha } } : {}),
     failingTests: [...new Set(c.jobs.flatMap((j) => j.failingTests.map(healTestId)))],
@@ -162,6 +165,7 @@ const isRun = (v: unknown): v is { runId: string; sha: string } => {
 function parseSealSubject(v: unknown): HealSealSubject | null {
   const s = v as Partial<Record<keyof HealSealSubject, unknown>> | null;
   if (typeof s !== 'object' || s === null || typeof s.class !== 'string' || !HEAL_CLASSES.includes(s.class)) return null;
+  if (s.source !== 'push' && s.source !== 'pr') return null;
   if (!isRun(s.firstRed) || (s.lastGreen !== undefined && !isRun(s.lastGreen))) return null;
   if (!Array.isArray(s.failingTests) || s.failingTests.length > MAX_SUBJECT_ITEMS || !s.failingTests.every(isText)) return null;
   if (!Array.isArray(s.env) || s.env.length > MAX_SUBJECT_ITEMS) return null;
@@ -172,6 +176,7 @@ function parseSealSubject(v: unknown): HealSealSubject | null {
   }
   return {
     class: s.class as HealClass,
+    source: s.source,
     firstRed: { runId: s.firstRed.runId, sha: s.firstRed.sha },
     ...(s.lastGreen ? { lastGreen: { runId: s.lastGreen.runId, sha: s.lastGreen.sha } } : {}),
     failingTests: [...(s.failingTests as string[])],
@@ -200,7 +205,7 @@ export function writeHealSeal(ledgerDir: string, root: string, state: HealSignat
 }
 
 const scanRecordPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.subject.json`);
-const scanRecordHash = (r: HealScanRecord) => sha256(JSON.stringify({ sig8: r.sig8, class: r.class, classification: r.classification }));
+const scanRecordHash = (r: HealScanRecord) => sha256(JSON.stringify({ sig8: r.sig8, class: r.class, source: r.source, classification: r.classification }));
 
 /**
  * The class and classification `heal scan` derived from GitHub data, kept
@@ -210,11 +215,12 @@ const scanRecordHash = (r: HealScanRecord) => sha256(JSON.stringify({ sig8: r.si
 export interface HealScanRecord {
   sig8: string;
   class: HealClass;
+  source: 'push' | 'pr';
   classification: HealClassification;
 }
 
 export function writeHealScanRecord(ledgerDir: string, root: string, r: HealScanRecord): void {
-  const record: HealScanRecord = { sig8: r.sig8, class: r.class, classification: r.classification };
+  const record: HealScanRecord = { sig8: r.sig8, class: r.class, source: r.source, classification: r.classification };
   ensureDirSync(healLedgerDir(ledgerDir, root));
   atomicWriteFileSync(scanRecordPath(ledgerDir, root, r.sig8), `${JSON.stringify({ ...record, hash: scanRecordHash(record) }, null, 2)}\n`);
 }
@@ -223,9 +229,9 @@ export function writeHealScanRecord(ledgerDir: string, root: string, r: HealScan
 export function readHealScanRecord(ledgerDir: string, root: string, sig8: string): HealScanRecord | null {
   try {
     const v = JSON.parse(readFileSync(scanRecordPath(ledgerDir, root, sig8), 'utf8')) as Partial<HealScanRecord> & { hash?: unknown };
-    if (v.sig8 !== sig8 || typeof v.class !== 'string' || !HEAL_CLASSES.includes(v.class) || v.classification?.sig8 !== sig8 || v.classification.class !== v.class) return null;
-    const record: HealScanRecord = { sig8, class: v.class, classification: v.classification };
-    if (v.hash !== scanRecordHash(record) || !parseSealSubject(healSealSubject(record.class, record.classification))) return null;
+    if (v.sig8 !== sig8 || typeof v.class !== 'string' || !HEAL_CLASSES.includes(v.class) || (v.source !== 'push' && v.source !== 'pr') || v.classification?.sig8 !== sig8 || v.classification.class !== v.class) return null;
+    const record: HealScanRecord = { sig8, class: v.class, source: v.source, classification: v.classification };
+    if (v.hash !== scanRecordHash(record) || !parseSealSubject(healSealSubject(record.class, record.classification, record.source))) return null;
     return record;
   } catch {
     return null;
@@ -344,11 +350,11 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
   // The class and classification come only from the scan-time record outside the repository.
   const scanned = readHealScanRecord(deps.ledgerDir, o.root, o.sig8);
   if (!scanned) throw new HealRunRefused(`heal ${o.sig8}: the scan-time classification outside the repository is missing or corrupt; re-run omg factory heal scan`);
-  const trusted = (s: HealSignatureState): HealSignatureState => ({ ...s, class: scanned.class, classification: scanned.classification });
-  if (initial.class !== scanned.class || JSON.stringify(initial.classification) !== JSON.stringify(scanned.classification)) {
+  const trusted = (s: HealSignatureState): HealSignatureState => ({ ...s, class: scanned.class, source: scanned.source, classification: scanned.classification });
+  if (initial.class !== scanned.class || initial.source !== scanned.source || JSON.stringify(initial.classification) !== JSON.stringify(scanned.classification)) {
     (deps.warn ?? console.error)(`WARNING: the class or classification in the heal record of ${o.sig8} differs from the scan-time record outside the repository; it is ignored`);
   }
-  const scannedSubject = healSealSubject(scanned.class, scanned.classification);
+  const scannedSubject = healSealSubject(scanned.class, scanned.classification, scanned.source);
   // An open heal run keeps the subject it was sealed with; only a fresh run takes the scan-time one.
   const subjectFor = (s: HealSignatureState): HealSealSubject => {
     const seal = verifyHealSeal(deps.ledgerDir, o.root, s);

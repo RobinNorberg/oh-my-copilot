@@ -144,7 +144,7 @@ export async function runHealEngine(o: HealEngineOptions, deps: HealEngineDeps):
     const sealed = readHealSealSubject(deps.ledgerDir, o.root, o.sig8);
     if (!sealed) throw new HealRunRefused(`the heal seal of ${o.sig8} holds no valid classification snapshot; rerun omg factory heal run ${o.sig8}`);
     let same = false;
-    try { same = JSON.stringify(healSealSubject(s.class, s.classification)) === JSON.stringify(sealed); } catch { /* malformed: differs */ }
+    try { same = JSON.stringify(healSealSubject(s.class, s.classification, s.source)) === JSON.stringify(sealed); } catch { /* malformed: differs */ }
     if (!same) deps.warn?.(`the class or classification in the heal record of ${o.sig8} differs from the sealed one outside the repository; it is ignored`);
     record = healRecord(s, sealed);
   }
