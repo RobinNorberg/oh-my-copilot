@@ -2,6 +2,56 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot Unreleased
+
+## [Unreleased]
+
+The factory engine, still **experimental**, now runs the whole way to the
+merge gate. `omg factory run <issue>` goes on from the independent review to
+ship's prepare step and the CI gates, then parks at `awaiting-human: merge`.
+Merge stays a human step: there is no auto-merge anywhere, and the engine's
+command guard refuses `gh pr merge`. See the
+[migration note](docs/MIGRATION.md#unreleased-omg-factory-run).
+
+### Added
+
+- **Prepare, gates and the human merge gate for `omg factory run`.** After an
+  approve verdict the engine marks the PR ready and runs ship's prepare in an
+  engine-owned checkout, then pushes the housekeeping commits itself. A gates
+  driver loops ship's `watchGates` in-process and accepts a read only for the
+  head the engine pushed. Green gates go to ship's merge rule, which comments
+  the exact merge command on the PR. Rerun the engine after you merge, and it
+  finishes as `merged`.
+- **`conflict-fix` and `ci-fix` lanes.** A base merge that conflicts outside
+  `inventory/` gets up to 2 conflict-fix rounds. A real check failure gets one
+  ci-fix round with the failing check names and test titles. Both go back
+  through publish and a new review.
+- **`omg factory run clean <issue>`** removes the lane worktrees and the
+  prepare checkout of a merged or cancelled run. It keeps anything dirty or
+  holding commits that no verified ref holds, and never deletes the PR branch.
+- **`factory.run.gatesTimeoutMinutes`** (default 90) bounds the gates phase.
+- **Tier 2 smoke scenarios `factory-run` and `factory-run-fix`** (opt-in,
+  never in `all`): the engine in-process with real implement and review lanes
+  against a sandbox repository, a bare `origin` and a scripted `gh`, up to the
+  merge gate. They are estimated at about 2 and 4 AI credits.
+- **The full `omg factory run` reference**: phases, state and resume rules,
+  every human gate, config, the security model and the cost model.
+
+### Changed
+
+- **The `merge` park replaces the `prepare` park.** It exits 0, as the
+  `prepare` park did. Other `awaiting-human` stops still exit 4. A run parked
+  at `prepare` by v5.15.0 goes on when you rerun it.
+- **Prepare runs under the tamper checks.** Prepare's checks run the PR's own
+  code, so the engine snapshots the shared git state around them like a lane.
+  A crash between prepare's push and its record repeats nothing.
+
+### Security
+
+- Lanes are still not sandboxed. A prompt-injected lane runs shell commands as
+  you. The tamper checks, the engine's own state record and hardened engine
+  git narrow that, and a human merge always comes last.
+
 # oh-my-copilot v5.16.0
 
 ## [5.16.0] - 2026-10-27
