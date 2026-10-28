@@ -332,6 +332,10 @@ describe('decideMerge', () => {
     }
     expect(protectedChanges(['.github/workflowsX.yml', '.copilot/omg.jsonc.bak', 'docs/.github/workflows/x.yml'])).toEqual([]);
     expect(protectedChanges(['ci/flaky.json'], ['ci/flaky.json'])).toEqual(['ci/flaky.json']);
+    // Win32 resolves trailing dots and spaces away; a bare directory, 8.3 short names, streams and `..` fail closed.
+    const bypasses = ['.github/workflows./ci.yml', '.copilot/omg.jsonc.', '.copilot/omg.jsonc ', '.github./known-flaky-tests.json', '.github/workflows', '.GITHUB/Workflows',
+      './.github/workflows/ci.yml', '.github\\workflows\\ci.yml', '.github/WORKFL~1/ci.yml', '.copilot/omg.jsonc::$DATA', 'src/../.github/workflows/ci.yml'];
+    expect(protectedChanges(bypasses)).toEqual(bypasses);
     // An unreadable diff fails closed.
     expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.join()).toMatch(/could not list the PR's changed files/);
   });

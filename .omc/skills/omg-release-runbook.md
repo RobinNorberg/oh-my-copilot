@@ -41,6 +41,26 @@ reference for what each phase asserts.
    Before any `--yes`, check `phases.smoke.status` is `ok` in
    `.omg/release/X.Y.Z.json` (`--yes` only logs the skipped-smoke warning).
 
+   **Waiting on CI: drive, do not poll.** From `pr` on, run the rest as one
+   detached driver and arm one Monitor; retire cron heartbeats for releases:
+
+   ```bash
+   omg release X.Y.Z --drive --detach --yes   # pr..verify to done / fail / blocked; outlives the session
+   # then arm ONE Monitor on the command it prints:
+   omg progress watch --file .omg/progress/release.log --until settled --stall 30m
+   ```
+
+   Why: a CI wait past `--timeout` and a transient GitHub error (5xx,
+   GraphQL "Something went wrong") no longer stop the run; the driver resumes
+   them itself (up to `--drive-max`, default 6 h), so the Monitor wakes only
+   on `done`, `fail` or `blocked`, and every terminal note names the next
+   command. Drive never implies `--yes` and never prompts: without `--yes`
+   the tag phase stops `blocked` ("needs confirmation"), which is the
+   intended human gate when the owner has not pre-approved the tag. The
+   merge rule is unchanged. After a session restart, run
+   `omg release X.Y.Z --status`: driver alive → re-arm the Monitor; dead →
+   `--drive --detach` again (it resumes from the state). `--stop` ends it.
+
    Phases: preflight, bump, build, gates, commit, suite, smoke, pr, promote,
    tag, verify. The vitest suite (`--suite`) runs in `suite`, AFTER the
    commit: some tests read committed state (npm pack of the committed tree,
@@ -57,8 +77,40 @@ reference for what each phase asserts.
    the suite does not run in that invocation. If the suite fails, fix, commit
    and re-run `omg release X.Y.Z --from build --to suite`: every build input
    (src, scripts, templates, package.json, build config) feeds dist/bridge.
-   Never a bare `--from build`: it continues into smoke and pr, and `pr`
-   refuses a skipped smoke unless `--allow-skipped-smoke` is given. The suite and the live
+   Never a bare `--from build` after a smoke that was never green: it
+   continues into smoke and pr, and `pr` refuses a skipped smoke unless
+   `--allow-skipped-smoke` is given.
+   **Smoke reuse.** A green live smoke is recorded as `lastSmoke` (input
+   hash, HEAD sha, time) at the top level of the state, so voiding the smoke
+   record keeps it. The input hash is sha256 over HEAD's object ids of
+   `dist`, `bridge`, `hooks`, `agents`, `skills`, `commands`, `copilot`,
+   `scripts`, `templates`, `.claude-plugin`, `.mcp.json`, `plugin.json`,
+   `package.json` and `package-lock.json` (the shipped paths the smoke loads). When a later smoke phase (after
+   `--from build` or `--from suite`) sees the same hash, it reuses the green
+   smoke without a run and without `--live-smoke`: the note says
+   `reused the green Tier 2 smoke of <sha> run at <time>` (with the hash and
+   the installed Copilot CLI version) and the details
+   carry the full hash. Why: a test-only fix rebuilds byte-identical dist and
+   bridge, so it costs no AI credits and needs no `--allow-skipped-smoke`.
+   Any change that reaches those paths changes the hash, and the smoke runs
+   again (with `--live-smoke`). `--force-smoke` always runs it. A red smoke
+   drops `lastSmoke`.
+   **Flake triage.** With `--suite full`, each failing title not in the
+   baseline (at most 20; more fail at once) is rerun alone
+   `--triage-runs` times (default 3) with
+   `vitest run <file> --testNamePattern=<title> --reporter=json`, sequentially,
+   each with a timeout (`--triage-timeout`, default 5 min; a timeout is a
+   failed rerun). A rerun passes only if vitest exits 0 and the report says so. Passing
+   every rerun = load-flaky: the suite passes with a warning. Failing every
+   rerun (or a file-level collection error) = real: the suite fails. Failing
+   only some reruns = mixed: blocked, since it may be a real race. Progress
+   heartbeats name each title's class. The triage is recorded as
+   `suiteTriage` and reused by a re-run on the same HEAD. Load-flaky and
+   mixed titles are written to `.omg/release/X.Y.Z-flaky-candidates.json` in
+   the known-flaky entry shape plus `evidence`; the engine never edits or
+   commits `.github/known-flaky-tests.json`. `omg release X.Y.Z
+   --flaky-candidates` prints them ready to paste, and adding one needs the
+   owner's OK (see Known flaky tests). The suite and the live
    smoke fail if they leave files in the working tree (remove them, re-run),
    and skipping past `commit` needs a clean tree, so nothing uncommitted is
    swept into a later release commit or left out of what `pr` pushes. Every
@@ -172,7 +224,10 @@ reference for what each phase asserts.
 A lane running this sequence emits one progress event per step
 (`omg progress emit <step> start|ok|fail|blocked`, see
 `agent-progress-events.md`), so the lead's Monitor sees a stuck CI watch as
-`status=stalled` instead of silence.
+`status=stalled` instead of silence. For a PR's CI wait use
+`omg ship gates <pr> --drive --detach` (events under `agent=ship-<pr>`,
+exit 0 green / 1 failed, never 8) plus one Monitor on the progress file it
+prints, not a re-run `--watch` loop or a cron heartbeat.
 
 1. Push the working branch → PR → `dev` → `gh pr merge --admin` (rulesets
    require PRs; direct pushes to dev/main are rejected). **Merge only when
@@ -218,6 +273,17 @@ The former `runtime-done-recovery` entry (briefly-malformed `done.json`
 window) is retired: the header of
 `src/team/__tests__/runtime-done-recovery.test.ts` says the done.json polling
 protocol is intentionally retired, and no test in that file has the window.
+
+Local release suite (`omg release --suite full`): a new failing title that
+passes every isolated rerun is load-flaky and does not block; one that fails
+some isolated reruns blocks. Load-flaky titles become candidates in
+`.omg/release/X.Y.Z-flaky-candidates.json` (`--flaky-candidates` prints
+them). Never add one to `.github/known-flaky-tests.json` without the owner's
+OK: that file is part of the merge rule, so the engine and agent lanes do not
+edit or commit it. Load-flaky titles seen in a release suite:
+"session-start-script-context > treats malformed failure-state lock metadata
+as terminal" (a timing ceiling) and "worker-launch-ack > reloads the accepted
+current recovery launch with its durable context".
 
 ## Verification (a green run is necessary, not sufficient — check the outputs)
 

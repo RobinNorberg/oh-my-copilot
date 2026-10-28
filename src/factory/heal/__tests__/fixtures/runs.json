@@ -1,0 +1,30 @@
+{
+  "$comment": "Captured 2026-10-27 with gh run view <id> --json databaseId,conclusion,status,headSha,headBranch,event,createdAt,jobs; jobs trimmed to the failing ones plus Test and one success. Logs: git256-red.log = job 122329975951, git256-green.log = job 122472747061, policy-only.log = job 122472797949.",
+  "runs": [
+    {
+      "databaseId": 40542274776, "conclusion": "failure", "status": "completed", "event": "pull_request", "headBranch": "release/v5.14.0",
+      "headSha": "15e3c590ca6eaadf0a0d1efe38f89092b3ae6269", "createdAt": "2026-10-27T16:34:41Z",
+      "jobs": [
+        { "databaseId": 122329975951, "name": "Test", "conclusion": "failure", "steps": [{ "name": "Run functional tests", "conclusion": "failure" }] },
+        { "databaseId": 122329976558, "name": "No Committed Build Artifacts", "conclusion": "failure", "steps": [{ "name": "Hold candidate generated changes", "conclusion": "failure" }] },
+        { "databaseId": 122329978707, "name": "Lint & Type Check", "conclusion": "success", "steps": [] }
+      ]
+    },
+    {
+      "databaseId": 40584638028, "conclusion": "success", "status": "completed", "event": "push", "headBranch": "dev",
+      "headSha": "c375fe0788c0d458da14b9fd440856085ab6543e", "createdAt": "2026-10-27T21:11:18Z",
+      "jobs": [
+        { "databaseId": 122472747061, "name": "Test", "conclusion": "success", "steps": [] },
+        { "databaseId": 122472748540, "name": "No Committed Build Artifacts", "conclusion": "skipped", "steps": [] }
+      ]
+    },
+    {
+      "databaseId": 40584652986, "conclusion": "failure", "status": "completed", "event": "pull_request", "headBranch": "dev",
+      "headSha": "c375fe0788c0d458da14b9fd440856085ab6543e", "createdAt": "2026-10-27T21:11:24Z",
+      "jobs": [
+        { "databaseId": 122472797949, "name": "No Committed Build Artifacts", "conclusion": "failure", "steps": [{ "name": "Hold candidate generated changes", "conclusion": "failure" }] },
+        { "databaseId": 122472798022, "name": "Test", "conclusion": "success", "steps": [] }
+      ]
+    }
+  ]
+}
