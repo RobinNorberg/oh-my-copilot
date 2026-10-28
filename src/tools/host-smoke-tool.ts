@@ -27,7 +27,9 @@ export const SMOKE_ALLOW_ANY_ROOT_ENV = 'OMC_SMOKE_ALLOW_ANY_ROOT';
 
 /** Tier 2 scenario names (mirrors the CLI's `--scenario`); `all` expands to the four. */
 const SCENARIO_NAMES = ['smoke', 'guardrail', 'skill', 'delegate'] as const;
-type ScenarioName = (typeof SCENARIO_NAMES)[number];
+/** Opt-in scenarios callable by name, never in `all`. */
+const OPT_IN_SCENARIO_NAMES = ['filetools', 'chain', 'team', 'factory-run', 'factory-run-fix', 'sandbox-lane', 'continuation', 'prompt-context', 'events', 'ultragoal'] as const;
+type ScenarioName = (typeof SCENARIO_NAMES)[number] | (typeof OPT_IN_SCENARIO_NAMES)[number];
 
 const hostSmokeSchema = {
   tier: z
@@ -42,11 +44,14 @@ const hostSmokeSchema = {
       + 'Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env.',
     ),
   scenarios: z
-    .array(z.enum([...SCENARIO_NAMES, 'all']))
+    .array(z.enum([...SCENARIO_NAMES, ...OPT_IN_SCENARIO_NAMES, 'all']))
     .optional()
     .describe(
       'Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail '
-      + '(one prompt per scenario, billed in AI credits). [] = SDK static checks only, no model call, no opt-in needed.',
+      + '(one prompt per scenario, billed in AI credits). The opt-in scenarios (filetools, chain, team, factory-run, factory-run-fix, '
+      + 'continuation, prompt-context, events, ultragoal, sandbox-lane) are never in all. sandbox-lane runs a review, a write and a canary '
+      + 'copilot_run lane in the OS sandbox (three lanes, each capped at 30 AI credits, about 3 estimated). '
+      + '[] = SDK static checks only, no model call, no opt-in needed.',
     ),
   pluginRoot: z
     .string()

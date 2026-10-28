@@ -9,6 +9,7 @@ vi.mock('../../smoke/copilot-smoke.js', () => ({ runCopilotSmoke, resolvePackage
 
 import { hostSmokeTool } from '../../tools/host-smoke-tool.js';
 import { allTools, buildListToolsResponse } from '../tool-registry.js';
+import { OPT_IN_SCENARIOS } from '../../smoke/copilot-sdk-scenarios.js';
 
 function fakeReport(ok: boolean) {
   return {
@@ -102,8 +103,15 @@ describe('host_smoke MCP tool', () => {
     const props = entry!.inputSchema.properties as Record<string, Record<string, unknown>>;
     expect(props.scenarios).toMatchObject({
       type: 'array',
-      items: { enum: ['smoke', 'guardrail', 'skill', 'delegate', 'all'] },
+      items: { enum: ['smoke', 'guardrail', 'skill', 'delegate', ...OPT_IN_SCENARIOS, 'all'] },
     });
+  });
+
+  it('passes the opt-in sandbox-lane scenario by name and never through "all"', async () => {
+    vi.stubEnv('OMC_SMOKE_ALLOW_LIVE', '1');
+    runCopilotSmoke.mockResolvedValue(fakeReport(true));
+    await hostSmokeTool.handler({ tier: 2, scenarios: ['sandbox-lane', 'all'] });
+    expect(runCopilotSmoke).toHaveBeenCalledWith({ tier: 2, scenarios: ['sandbox-lane', 'smoke', 'guardrail', 'skill', 'delegate'] });
   });
 
   it('runs tier 2 static checks (scenarios: []) without OMC_SMOKE_ALLOW_LIVE', async () => {
@@ -114,7 +122,7 @@ describe('host_smoke MCP tool', () => {
   });
 
   it('refuses tier 2 with scenarios (explicit or default) without OMC_SMOKE_ALLOW_LIVE=1', async () => {
-    for (const args of [{ tier: 2 }, { tier: 2, scenarios: ['smoke' as const] }]) {
+    for (const args of [{ tier: 2 }, { tier: 2, scenarios: ['smoke' as const] }, { tier: 2, scenarios: ['sandbox-lane' as const] }]) {
       const result = await hostSmokeTool.handler(args);
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toMatch(/OMC_SMOKE_ALLOW_LIVE=1/);

@@ -23,8 +23,10 @@ import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
+import { userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
+import { applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, probeHostSupport, readEnforcement } from '../copilot-run/sandbox.js';
 import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import {
   chooseModel,
@@ -36,6 +38,7 @@ import {
   evaluateSdkMcp,
   evaluateSdkPlugins,
   evaluateSdkRuntime,
+  evaluateSdkSandbox,
   evaluateSdkSkills,
   evaluateSdkToolsExcluded,
   failedTier2Checks,
@@ -47,8 +50,10 @@ import {
   RUNTIME_MIN_MAX_CREDITS,
   SCENARIOS,
   scenarioExcludedTools,
+  SANDBOX_LANE_SCENARIO,
   SDK_MISSING_DETAIL,
   SDK_PACKAGE,
+  SDK_STATIC_IDS,
   skippedScenarioChecks,
   sliceLogByTime,
   usageCredits,
@@ -61,6 +66,7 @@ import {
   type Scenario,
   type ScenarioCost,
   type ScenarioRun,
+  type SdkSandboxProbe,
 } from './copilot-sdk-scenarios.js';
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
 // Type-only: the team bundle reaches this driver (runtime-v2, sdk-host), and the
@@ -69,6 +75,7 @@ import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runCliScenario } from './copilot-cli-scenarios.js';
 import type { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
+import type { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import type { runTeamScenario } from './copilot-team-scenario.js';
 
 // ---------------------------------------------------------------------------
@@ -501,6 +508,8 @@ export interface SdkTierInput {
   runCli: typeof runCliScenario;
   /** The `factory-run` scenarios' runner ({@link runFactoryRunScenario}, the engine with real lanes), injected by the smoke entry. */
   runFactory: typeof runFactoryRunScenario;
+  /** The `sandbox-lane` scenario's runner ({@link runSandboxLaneScenario}, copilot_run lanes in the OS sandbox), injected by the smoke entry. */
+  runSandbox: typeof runSandboxLaneScenario;
 }
 
 export interface SdkTierResult {
@@ -676,7 +685,20 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
                 eventsPath: path,
                 spawnSync: input.spawnSync,
               })
-              : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+              // sandbox-lane drives copilot_run lanes in-process, each its own runtime.
+              : name === SANDBOX_LANE_SCENARIO
+                ? await input.runSandbox({
+                  bin,
+                  root: input.root,
+                  env: input.env,
+                  projectDir: input.projectDir,
+                  home: input.home,
+                  timeoutMs: input.timeoutMs,
+                  maxCredits: input.maxCredits,
+                  budget: input.maxCredits - total.credits,
+                  eventsPath: path,
+                })
+                : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
       const cost = runCost(run);
       total.premiumRequests += cost.premiumRequests;
@@ -716,7 +738,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
 
 async function staticChecks(client: SdkClientLike, input: SdkTierInput): Promise<SmokeCheck[]> {
   let session: SdkSessionLike | undefined;
-  const failAll = (detail: string): SmokeCheck[] => ['sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded'].map((id) => ({ id, ok: false, detail }));
+  const failAll = (detail: string): SmokeCheck[] => SDK_STATIC_IDS.slice(2).map((id) => ({ id, ok: false, detail }));
   try {
     try {
       session = await withTimeout(client.createSession({
@@ -753,10 +775,39 @@ async function staticChecks(client: SdkClientLike, input: SdkTierInput): Promise
       evaluateSdkAgents(agents, input.agentFiles),
       evaluateSdkMcp(mcp, tools, input.mcpServer, expected),
       evaluateSdkToolsExcluded(toolMeta, input.mcpServer),
+      // Last: applying the policy restarts the session's local MCP servers.
+      evaluateSdkSandbox(await sandboxProbe(client, s, input)),
     ];
   } finally {
     if (session) await closeSession(client, session, input.keepHome);
   }
+}
+
+/**
+ * The free sandbox probe (`sdk.sandbox`): host support, then copilot_run's
+ * review policy for the sandbox project applied to the static session and
+ * the enforcement status it reports. No shell runs and no model is called.
+ */
+async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, input: SdkTierInput): Promise<SdkSandboxProbe> {
+  if (typeof client.rpc?.sandbox?.getHostSupport !== 'function') {
+    return { answered: false, host: { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} } };
+  }
+  const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+  // probeHostSupport reports a thrown RPC as an unsupported host with this reason.
+  const answered = !host.reason?.startsWith('sandbox.getHostSupport failed');
+  if (!host.supported) return { answered, host };
+  const config = buildSandboxConfig('review', {
+    worktree: input.projectDir,
+    commonGitDir: join(input.projectDir, '.git'),
+    pluginRoot: input.root,
+    jobHome: input.home,
+    jobDir: join(input.home, 'sandbox-static'),
+    realHome: userInfo().homedir,
+    platform: input.platform ?? process.platform,
+    settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] },
+  }, host);
+  const applyError = await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
+  return { answered, host, applyError, ...(applyError ? {} : { enforcement: await readEnforcement(session, RPC_TIMEOUT_MS) }) };
 }
 
 /** The session's offered tools (no model call); initializes the tool set first when it is not built yet. */
