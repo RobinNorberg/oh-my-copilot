@@ -161,6 +161,8 @@ export interface CopilotRunDeps {
     };
     /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
     hostGitAttrSourceProblem?: () => string | null;
+    /** Why a trial sandbox launch failed on Linux, or null (default cachedBwrapTrialLaunchError). */
+    sandboxTrialLaunch?: () => string | null;
 }
 export interface WorktreeSummary {
     path: string;

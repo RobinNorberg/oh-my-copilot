@@ -542,6 +542,7 @@ export interface SdkSandboxProbe {
         supported: boolean;
         reason?: string;
         capabilities: Record<string, boolean>;
+        launchFailed?: true;
     };
     /** Why the review policy was not applied (null: applied); absent when the host is unsupported. */
     applyError?: string | null;

@@ -294,6 +294,8 @@ export interface CopilotRunDeps {
   sandboxSettings?: (root: string, scope: SandboxScope) => { settings: SandboxSettings; warnings: string[] };
   /** Why the host git cannot read a sandboxed lane, or null (default hostGitAttrSourceProblem: git 2.41+). */
   hostGitAttrSourceProblem?: () => string | null;
+  /** Why a trial sandbox launch failed on Linux, or null (default cachedBwrapTrialLaunchError). */
+  sandboxTrialLaunch?: () => string | null;
 }
 
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
@@ -1123,7 +1125,7 @@ export class CopilotRunManager {
       const status = await withTimeout(client.getStatus(), RPC_TIMEOUT_MS, 'getStatus()');
       if (typeof status.version === 'string') cliVersion = status.version;
     } catch { /* recorded as unknown */ }
-    const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+    const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: deps.platform, ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}) });
     const base = { host, applied: 'none' as const, canary: 'skipped' as const, unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
     const settings = job.sandboxSettings;
     const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;

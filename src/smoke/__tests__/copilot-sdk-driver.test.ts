@@ -247,6 +247,7 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
     skillDirs: ['alpha', 'plan'],
     agentFiles: ['architect.md'],
     mcpServer: 't',
+    sandboxTrialLaunch: () => null,
     runChain: async () => { throw new Error('chain runner not stubbed'); },
     runTeam: async () => { throw new Error('team runner not stubbed'); },
     runCli: async () => { throw new Error('cli runner not stubbed'); },
@@ -290,6 +291,21 @@ describe('runSdkTier (fake SDK)', () => {
       userPolicy: { filesystem: { readonlyPaths: expect.arrayContaining([join(parent, 'project')]) }, network: { allowOutbound: false, allowLocalNetwork: false } },
     });
     expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
+  });
+
+  it('sdk.sandbox: a Linux host the runtime calls supported but where the trial launch fails is not a pass, and runs no canary', async () => {
+    const { loaded, rec } = fakeSdk({
+      hostSupport: { supported: true, capabilities: [{ name: 'shell', supported: true }] },
+      shellExec: () => { throw new Error('the canary must not run'); },
+    });
+    const result = await runSdkTier(input(loaded, { scenarios: [], platform: 'linux', sandboxTrialLaunch: () => 'unprivileged user namespaces are restricted (AppArmor)' }));
+    const check = byId(result.checks)['sdk.sandbox'];
+    expect(check).toEqual({
+      id: 'sdk.sandbox',
+      ok: false,
+      detail: 'launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: unprivileged user namespaces are restricted (AppArmor); copilot_run sessions here run fail-closed; spawn canary not run (not a pass)',
+    });
+    expect(rec.optionUpdates ?? []).toHaveLength(0);
   });
 
   it('sdk.sandbox spawn canary: a sandboxed echo on a second runtime with the allowlisted lane env, no prompt', async () => {

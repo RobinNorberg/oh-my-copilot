@@ -231,6 +231,8 @@ export interface SdkTierInput {
     platform?: NodeJS.Platform;
     isAlive?: (pid: number) => boolean;
     killTree?: (pid: number) => void;
+    /** Test seam: the Linux trial sandbox launch behind sdk.sandbox's host support (default cachedBwrapTrialLaunchError). */
+    sandboxTrialLaunch?: () => string | null;
     /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
     runChain: typeof runChainScenario;
     /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */

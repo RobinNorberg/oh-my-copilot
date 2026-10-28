@@ -86,6 +86,15 @@ describe('copilot_run sandbox fail-closed', () => {
     expect(calls.prompts).toHaveLength(0);
   });
 
+  it('a Linux host the runtime calls supported but where the trial launch fails refuses a write with that reason', async () => {
+    const m = manager('idle', 'supported', { platform: 'linux', sandboxTrialLaunch: () => 'unprivileged user namespaces are restricted' });
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^sandbox-unavailable: .*unprivileged user namespaces are restricted/);
+    expect(done.sandbox).toMatchObject({ mode: 'refused', applied: 'none', host: { supported: false, launchFailed: true } });
+    expect(calls.sessions).toHaveLength(0);
+  });
+
   it('writeUnsandboxed "detect-only" runs a write session unsandboxed, with a note', async () => {
     const m = manager('idle', 'unsupported', { sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) });
     const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);

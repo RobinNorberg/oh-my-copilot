@@ -1054,11 +1054,33 @@ Every `copilot_run` session asks the Copilot CLI's OS sandbox to confine its she
 
 **Confirmation.** Before the first turn the job does three things:
 
-1. It probes the host with `sandbox.getHostSupport`, which must report the `shell` capability.
+1. It probes the host with `sandbox.getHostSupport`, which must report the `shell` capability. On Linux it then runs one trial launch, `bwrap --ro-bind / / --dev /dev --unshare-all --die-with-parent -- true`, once per process. When that fails, the host counts as unsupported with the reason, and `host.launchFailed` is `true`. See [Linux: restricted user namespaces](#linux-restricted-user-namespaces).
 2. It applies the policy below, with `options.update` on SDK 1.0.16, or at create on an SDK whose `createSession` takes it.
 3. It reads `sandbox.getEnforcementStatus`.
 
 The sandbox is confirmed only when all three succeed and enforcement is not `blocked`. After that, every shell call must carry the runtime's `sandboxed: true` attestation. The first call without it stops the session as `sandbox-escaped`. Sandbox bypass requests are always rejected, and `allowBypass` is never set.
+
+###### Linux: restricted user namespaces
+
+Ubuntu 23.10 and later, including 24.04, ship with `kernel.apparmor_restrict_unprivileged_userns=1`. An unprivileged process can still create a user namespace, but that namespace gets no capabilities. bwrap then fails when it sets up the sandbox's network namespace, with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`. `sandbox.getHostSupport` still reports the host as supported. Without the trial launch, every sandboxed shell would fail at launch. With it, the host reads `unsupported (unprivileged user namespaces are restricted ...)`, and the fail-closed modes above apply: reviews run without a shell, and writes refuse with `sandbox-unavailable`.
+
+To let bwrap run, pick one of two fixes:
+
+- **An AppArmor profile for bwrap (preferred).** This grants user namespaces to bwrap only. Write `/etc/apparmor.d/bwrap` and load it with `sudo apparmor_parser -r /etc/apparmor.d/bwrap`. If bwrap lives somewhere other than `/usr/bin/bwrap`, use that path.
+
+  ```
+  abi <abi/4.0>,
+  include <tunables/global>
+
+  profile bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+    include if exists <local/bwrap>
+  }
+  ```
+
+- **The sysctl.** `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` lifts the restriction for every program until reboot. Add it to a file in `/etc/sysctl.d/` to keep it.
+
+**Security note.** The restriction exists because unprivileged user namespaces expose kernel code paths to every local process, and many kernel privilege escalations need one. The sysctl reopens that for all programs. The profile reopens it only for bwrap, which drops the namespace's capabilities before it runs the sandboxed command. Use the profile on machines you care about. Keep the sysctl for throwaway machines such as CI runners.
 
 | Mode | When | Review lane | Write lane |
 |---|---|---|---|
@@ -1199,7 +1221,7 @@ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events   # opt
 
 - **Tier 0** checks: `plugin.manifest`, `plugin.hooks`, `copilot.binary`, `copilot.plugin_list`, `copilot.skill_list`, `copilot.agents`, `mcp.list_tools`. `mcp.list_tools` spawns `dist/mcp/standalone-server.js`, so run `npm run build` first.
 - **Tier 1** adds `session.exit`, `session.events`, `hooks.*` (including `hooks.adapter_errors`), `plugins.loaded`, `mcp.server_loaded`, `state.written`, and with `--delegate` `subagent.selected`. Hooks run with `OMC_HOOK_FAIL_CLOSED=1`; a `hook.end` without `success: true` fails its check, and `hooks.adapter_errors` fails on any `[omg-hook]` error line.
-- **Tier 2** drives the installed `copilot` binary through the optional peer `@github/copilot-sdk` (install it with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`; a nested `@github/copilot-sdk-<platform>` runtime package is unused and can be deleted, see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios)). It runs the tier 0 checks, then the SDK static checks `sdk.available`, `sdk.runtime`, `sdk.plugins`, `sdk.skills`, `sdk.agents`, `sdk.mcp`, `sdk.tools_excluded` (our `<server>-host_smoke` tool is absent from the session's tool list) and `sdk.sandbox`, then the chosen scenarios. `sdk.sandbox` reports `sandbox.getHostSupport` and its capabilities. On a supported host it applies `copilot_run`'s review policy to the static session and reads the enforcement status. Then it runs a free spawn canary: a second runtime with the env a `copilot_run` lane gets, the review policy on its session, and one `echo` through `shell.executeUserRequested`, with no model turn. It fails when the probe gets no answer, when a supported host reports enforcement `blocked`, or when the canary's sandboxed launch fails or is not attested `sandboxed: true`. An unsupported host passes, because its lanes fail closed, and the detail starts with `unsupported`. It does not run the tier 1 `-p` session. `--sdk-static` runs no scenario and makes no model call.
+- **Tier 2** drives the installed `copilot` binary through the optional peer `@github/copilot-sdk` (install it with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`; a nested `@github/copilot-sdk-<platform>` runtime package is unused and can be deleted, see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios)). It runs the tier 0 checks, then the SDK static checks `sdk.available`, `sdk.runtime`, `sdk.plugins`, `sdk.skills`, `sdk.agents`, `sdk.mcp`, `sdk.tools_excluded` (our `<server>-host_smoke` tool is absent from the session's tool list) and `sdk.sandbox`, then the chosen scenarios. `sdk.sandbox` reports `sandbox.getHostSupport` and its capabilities. On a supported host it applies `copilot_run`'s review policy to the static session and reads the enforcement status. Then it runs a free spawn canary: a second runtime with the env a `copilot_run` lane gets, the review policy on its session, and one `echo` through `shell.executeUserRequested`, with no model turn. It fails when the probe gets no answer, when a supported host reports enforcement `blocked`, or when the canary's sandboxed launch fails or is not attested `sandboxed: true`. An unsupported host passes, because its lanes fail closed, and the detail starts with `unsupported`. The exception is a Linux host that the runtime reports as supported but where the trial bwrap launch fails, for example under [restricted user namespaces](#linux-restricted-user-namespaces). That check fails with a detail that starts with `launch-blocked` and names the reason, and the canary does not run. It does not run the tier 1 `-p` session. `--sdk-static` runs no scenario and makes no model call.
 - **Tier 2 scenarios** yield checks prefixed `scn.<name>.`. Each one also gets `scn.<name>.exit`, `scn.<name>.adapter_errors` (fails on any `[omg-hook]` or `[run.cjs]` hook stderr line, such as a hook timeout), and `scn.<name>.cost`. Each scenario sends one prompt, measured at 0.29 to 0.91 AI credits on small models, so the default run costs about 0.6 AI credits.
 
 | Scenario | Prompt exercises | Key checks |

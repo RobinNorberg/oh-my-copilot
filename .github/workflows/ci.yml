@@ -534,6 +534,16 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends bubblewrap slirp4netns uidmap
           bwrap --version
+          # This job exists to prove the sandbox really launches. Ubuntu 24.04
+          # restricts unprivileged user namespaces through AppArmor, so bwrap
+          # fails with `loopback: Failed RTM_NEWADDR` and the host probe
+          # reports `launch-blocked`. Lift the restriction on this throwaway
+          # runner (docs/REFERENCE.md, "Linux: restricted user namespaces").
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --ro-bind / / --dev /dev --unshare-all --die-with-parent -- true
+          echo "bwrap trial launch ok"
 
       - name: Prepare isolated smoke dirs
         if: steps.gate.outputs.enabled == 'true'

@@ -20,6 +20,8 @@ export interface SandboxHostRecord {
     supported: boolean;
     reason?: string;
     capabilities: Record<string, boolean>;
+    /** The runtime reported support but the trial launch failed (Linux); `reason` says why. */
+    launchFailed?: true;
 }
 /** `CopilotRunSnapshot.sandbox` (§5). */
 export interface CopilotRunSandboxState {
@@ -159,8 +161,38 @@ export declare function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commo
  * read-write path outside the worktree throws.
  */
 export declare function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig;
-/** `client.rpc.sandbox.getHostSupport()`; supported only with the `shell` capability. */
-export declare function probeHostSupport(client: unknown, timeoutMs: number): Promise<SandboxHostRecord>;
+/** Runs `cmd args` to completion, shaped like spawnSync's result. */
+export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => {
+    error?: Error;
+    status: number | null;
+    stderr: string;
+};
+/**
+ * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
+ * creates, network included (`--unshare-all`; policies without outbound
+ * access get an empty net namespace), around `true`.
+ */
+export declare const BWRAP_TRIAL_ARGS: readonly string[];
+/**
+ * Whether bwrap can launch a process here: null when it can, else why not.
+ * `sandbox.getHostSupport` reports a host with bwrap installed as supported
+ * even where unprivileged user namespaces lack capabilities (Ubuntu 24.04's
+ * AppArmor default), and there every sandboxed launch fails.
+ */
+export declare function bwrapTrialLaunchError(spawn?: SandboxTrialSpawner, timeoutMs?: number): string | null;
+/** bwrapTrialLaunchError with the real bwrap, run once per process. */
+export declare function cachedBwrapTrialLaunchError(): string | null;
+export interface HostLaunchCheck {
+    /** Default process.platform; the trial launch runs on linux only. */
+    platform?: NodeJS.Platform;
+    /** Test seam: the trial launch (default cachedBwrapTrialLaunchError). */
+    trialLaunch?: () => string | null;
+}
+/**
+ * `client.rpc.sandbox.getHostSupport()`; supported only with the `shell`
+ * capability and, on Linux, a trial bwrap launch that succeeds.
+ */
+export declare function probeHostSupport(client: unknown, timeoutMs: number, launch?: HostLaunchCheck): Promise<SandboxHostRecord>;
 /** `session.rpc.options.update({ sandboxConfig })`; null when applied, else why not. */
 export declare function applySandboxConfig(session: unknown, config: SandboxConfig, timeoutMs: number): Promise<string | null>;
 /** `session.rpc.sandbox.getEnforcementStatus()`, or why it could not be read. */

@@ -673,7 +673,7 @@ async function sandboxProbe(client, session, input, loaded, bin) {
     if (typeof client.rpc?.sandbox?.getHostSupport !== 'function') {
         return { answered: false, host: { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} } };
     }
-    const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+    const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: input.platform ?? process.platform, ...(input.sandboxTrialLaunch ? { trialLaunch: input.sandboxTrialLaunch } : {}) });
     // probeHostSupport reports a thrown RPC as an unsupported host with this reason.
     const answered = !host.reason?.startsWith('sandbox.getHostSupport failed');
     if (!host.supported)

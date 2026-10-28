@@ -118,6 +118,7 @@ export function fakeDeps(root: string, behavior: FakeBehavior, calls: FakeCalls,
     userConfigDir: () => join(root, 'user-copilot'),
     isAlive: () => false,
     killTree: () => {},
+    sandboxTrialLaunch: () => null,
   };
 }
 

@@ -965,7 +965,7 @@ export class CopilotRunManager {
                 cliVersion = status.version;
         }
         catch { /* recorded as unknown */ }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+        const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: deps.platform, ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}) });
         const base = { host, applied: 'none', canary: 'skipped', unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
         const settings = job.sandboxSettings;
         const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;

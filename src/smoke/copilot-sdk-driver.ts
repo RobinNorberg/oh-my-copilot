@@ -509,6 +509,8 @@ export interface SdkTierInput {
   platform?: NodeJS.Platform;
   isAlive?: (pid: number) => boolean;
   killTree?: (pid: number) => void;
+  /** Test seam: the Linux trial sandbox launch behind sdk.sandbox's host support (default cachedBwrapTrialLaunchError). */
+  sandboxTrialLaunch?: () => string | null;
   /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
   runChain: typeof runChainScenario;
   /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
@@ -805,7 +807,7 @@ async function sandboxProbe(client: SdkClientLike, session: SdkSessionLike, inpu
   if (typeof client.rpc?.sandbox?.getHostSupport !== 'function') {
     return { answered: false, host: { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} } };
   }
-  const host = await probeHostSupport(client, RPC_TIMEOUT_MS);
+  const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: input.platform ?? process.platform, ...(input.sandboxTrialLaunch ? { trialLaunch: input.sandboxTrialLaunch } : {}) });
   // probeHostSupport reports a thrown RPC as an unsupported host with this reason.
   const answered = !host.reason?.startsWith('sandbox.getHostSupport failed');
   if (!host.supported) return { answered, host };

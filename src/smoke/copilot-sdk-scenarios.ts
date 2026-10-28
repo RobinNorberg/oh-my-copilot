@@ -1387,7 +1387,7 @@ export function evaluateSdkToolsExcluded(meta: Rpc, server: string): SmokeCheck 
 export interface SdkSandboxProbe {
   /** The host-support RPC answered (false: missing or it threw). */
   answered: boolean;
-  host: { supported: boolean; reason?: string; capabilities: Record<string, boolean> };
+  host: { supported: boolean; reason?: string; capabilities: Record<string, boolean>; launchFailed?: true };
   /** Why the review policy was not applied (null: applied); absent when the host is unsupported. */
   applyError?: string | null;
   /** The enforcement status after the apply, or why it could not be read. */
@@ -1409,6 +1409,10 @@ export function evaluateSdkSandbox(probe: SdkSandboxProbe): SmokeCheck {
   const { host } = probe;
   const caps = Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? '' : ' (no)'}`).join(', ') || 'none listed';
   if (!probe.answered) return { id, ok: false, detail: `host probe failed: ${host.reason ?? 'no answer'}` };
+  // The runtime claims support but cannot launch: lanes fail closed, yet nothing proved a sandboxed launch.
+  if (!host.supported && host.launchFailed) {
+    return { id, ok: false, detail: `launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: ${host.reason ?? 'no reason'}; copilot_run sessions here run fail-closed; spawn canary not run (not a pass)` };
+  }
   if (!host.supported) {
     return { id, ok: true, detail: `unsupported (${host.reason ?? 'no reason'}), capabilities ${caps}: copilot_run review sessions run read-only without a shell, write sessions refuse (sandbox-unavailable); canary skipped` };
   }

@@ -1137,6 +1137,10 @@ export function evaluateSdkSandbox(probe) {
     const caps = Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? '' : ' (no)'}`).join(', ') || 'none listed';
     if (!probe.answered)
         return { id, ok: false, detail: `host probe failed: ${host.reason ?? 'no answer'}` };
+    // The runtime claims support but cannot launch: lanes fail closed, yet nothing proved a sandboxed launch.
+    if (!host.supported && host.launchFailed) {
+        return { id, ok: false, detail: `launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: ${host.reason ?? 'no reason'}; copilot_run sessions here run fail-closed; spawn canary not run (not a pass)` };
+    }
     if (!host.supported) {
         return { id, ok: true, detail: `unsupported (${host.reason ?? 'no reason'}), capabilities ${caps}: copilot_run review sessions run read-only without a shell, write sessions refuse (sandbox-unavailable); canary skipped` };
     }
