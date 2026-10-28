@@ -97,12 +97,13 @@ export interface CopilotRunStartOptions {
     hostCommits?: boolean;
 }
 /** Env keys a credential-free session never gets (any case on Windows). */
-export declare const LANE_CREDENTIAL_ENV: readonly ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "NPM_TOKEN", "NODE_AUTH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"];
+export declare const LANE_CREDENTIAL_ENV: readonly ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "NPM_TOKEN", "NODE_AUTH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "AZURE_DEVOPS_EXT_PAT", "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY", "AZURE_DEVOPS_EXT_GITHUB_PAT", "SYSTEM_ACCESSTOKEN", "AZURE_CLIENT_SECRET", "AZURE_CLIENT_CERTIFICATE_PATH", "AZURE_CLIENT_CERTIFICATE_PASSWORD", "AZURE_PASSWORD", "AZURE_FEDERATED_TOKEN_FILE", "IDENTITY_ENDPOINT", "IDENTITY_HEADER", "MSI_ENDPOINT", "MSI_SECRET", "AZURE_STORAGE_KEY", "AZURE_STORAGE_CONNECTION_STRING", "AZURE_STORAGE_SAS_TOKEN", "ARM_CLIENT_SECRET", "ARM_CLIENT_CERTIFICATE_PATH", "ARM_CLIENT_CERTIFICATE_PASSWORD", "ARM_OIDC_TOKEN", "ARM_OIDC_TOKEN_FILE_PATH", "ARM_OIDC_REQUEST_TOKEN", "ARM_ACCESS_KEY", "ARM_SAS_TOKEN"];
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
  * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
- * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` points at an
- * empty dir, so `gh` finds no stored login; git reads no global or system
+ * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` and
+ * `AZURE_CONFIG_DIR` point at an empty dir, so `gh` and `az` (the azure-devops
+ * extension included) find no stored login; git reads no global or system
  * config (no credential helper) and never prompts.
  *
  * Copilot's own auth is kept: the stored login (OS credential store, copied

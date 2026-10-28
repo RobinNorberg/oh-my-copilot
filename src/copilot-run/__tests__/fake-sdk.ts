@@ -1,6 +1,6 @@
 /** A fake @github/copilot-sdk and a scratch git repository for copilot_run job tests (no live session). */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -23,9 +23,11 @@ export interface FakeCalls {
   prompts: string[];
   /** Every session.rpc.options.update payload. */
   optionsUpdates: Array<Record<string, unknown>>;
+  /** Each connection's GIT_CONFIG_GLOBAL content when it started (the job home is gone afterwards), or null. */
+  globalGitConfigs: Array<string | null>;
 }
 
-export const newCalls = (): FakeCalls => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [] });
+export const newCalls = (): FakeCalls => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
 
 /** The server `rpc` of a fake client with sandbox support `sandbox`. */
 export function fakeClientRpc(sandbox: FakeSandbox): unknown {
@@ -101,7 +103,14 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeS
   return {
     module: {
       CopilotClient: Client as never,
-      RuntimeConnection: { forStdio: (opts) => { calls.connections.push(opts); return opts; } },
+      RuntimeConnection: {
+        forStdio: (opts) => {
+          calls.connections.push(opts);
+          const globalConfig = opts.env?.GIT_CONFIG_GLOBAL;
+          calls.globalGitConfigs.push(globalConfig && existsSync(globalConfig) ? readFileSync(globalConfig, 'utf8') : null);
+          return opts;
+        },
+      },
     },
     version: '1.0.16',
     from: 'test',

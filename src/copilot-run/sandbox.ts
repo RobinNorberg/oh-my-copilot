@@ -322,7 +322,9 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
-    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
+    // Git's plaintext credential stores (~/.git-credentials, XDG) and the credential-cache daemon's socket dir.
+    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
+      .map((p) => join(ctx.realHome, p));
   }
   const network: SandboxConfig['userPolicy']['network'] = settings.writeNetwork === 'registry'
     ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
