@@ -194,6 +194,8 @@ export interface SandboxPolicyContext {
   realHome: string;
   platform: NodeJS.Platform;
   settings: SandboxSettings;
+  /** The host commits for a write session (omg factory run): the common git dir is read-only as a whole (§4.3). */
+  hostCommits?: boolean;
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -235,11 +237,13 @@ export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir'
 }
 
 /**
- * The sandboxConfig for a session. `review` is §4.2 exactly. `write` is the
- * PR 1 policy: §4.3 except that a write session still commits in its worktree
- * until the engine commits for it (PR 2), so the common git dir is read-only
- * except what a commit on its detached HEAD writes (laneGitWritePaths). Config,
- * hooks, info, packed-refs and every ref stay read-only: the session
+ * The sandboxConfig for a session. `review` is §4.2 exactly. `write` with
+ * `hostCommits` (omg factory run, whose engine commits after the lane) is
+ * §4.3: the common git dir is read-only as a whole, so the session cannot
+ * stage, commit or write any git file. `write` without it (a copilot_run job
+ * that commits in its worktree) keeps the common git dir read-only except
+ * what a commit on its detached HEAD writes (laneGitWritePaths). Either way
+ * config, hooks, info, packed-refs and every ref stay read-only: the session
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
  * read-write path outside the worktree throws.
@@ -272,7 +276,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   }
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
-    readwritePaths: [ctx.worktree, ctx.jobDir, ...laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
+    readwritePaths: [ctx.worktree, ctx.jobDir, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {

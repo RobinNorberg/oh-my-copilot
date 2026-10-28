@@ -19,7 +19,7 @@ import { factoryProgressFile } from '../progress.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import type { Exec, ExecResult } from '../../../ship/exec.js';
 import {
-  commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, PR, pendingGates, remoteHead, review, testGateConfig,
+  commitFile, failedGates, FakeLanes, FakeProcesses, gitIn, greenGates, harness, ISSUE, noCommit, PR, pendingGates, remoteHead, review, testGateConfig,
   type GatesRead, type Harness, type LaneScript,
 } from './fake-lanes.js';
 
@@ -119,11 +119,11 @@ describe('conflict-fix lane', () => {
   it('a base conflict outside inventory/ discards the checkout and starts a fresh write lane at the PR head, then a new review', async () => {
     let baseSha = '';
     before(PREPARE_VIEW, () => { baseSha = moveBase('README.md', 'base side\n'); });
+    let markers = '';
+    // The lane starts at the engine's merge with the conflict markers in place; it resolves them and does not commit.
     const resolve: LaneScript = ({ worktree }) => {
-      try { gitIn(worktree, 'merge', '--no-ff', '--no-edit', baseSha); } catch { /* conflicts, resolved below */ }
+      markers = readFileSync(join(worktree, 'README.md'), 'utf8');
       writeFileSync(join(worktree, 'README.md'), 'both sides\n');
-      gitIn(worktree, 'add', '--', 'README.md');
-      gitIn(worktree, 'commit', '-q', '--no-edit');
       return { finalText: 'Merged.' };
     };
     const { lanes, done } = run([commitFile('README.md', 'lane side\n'), review('approve'), resolve, review('approve')]);
@@ -135,10 +135,18 @@ describe('conflict-fix lane', () => {
       [`issue-${ISSUE}-conflict-fix-1`, 'write'], [`issue-${ISSUE}-review-2`, 'review'],
     ]);
     const firstHead = state.lanes[0].endSha!;
-    expect(lanes.started[2].baseRef).toBe(firstHead);
+    // The lane starts at the engine's merge-tree commit of the PR head and the base, conflict markers included.
+    const start = lanes.started[2].baseRef;
+    expect(gitIn(h.root, 'rev-parse', `${start}^1`, `${start}^2`).split(/\s+/)).toEqual([firstHead, baseSha]);
+    expect(markers).toMatch(/^<<<<<<< /m);
+    expect(lanes.started[2].engineCommits).toBe(true);
     expect(lanes.started[2].prompt).toContain('README.md');
-    expect(lanes.started[2].prompt).toContain(`git merge --no-ff ${baseSha}`);
+    expect(lanes.started[2].prompt).toContain('conflict markers');
     expect(lanes.started[3].baseRef).toBe(state.head);
+    // The engine's commit is the merge of the PR head and the base (never of the unresolved start), by the engine identity.
+    expect(gitIn(h.root, 'rev-parse', `${state.head}^1`, `${state.head}^2`).split(/\s+/)).toEqual([firstHead, baseSha]);
+    expect(gitIn(h.root, 'show', `${state.head}:README.md`)).toBe('both sides');
+    expect(gitIn(h.root, 'log', '-1', '--format=%an <%ae>', state.head!)).toBe('omg factory <omg-factory@oh-my-copilot.invalid>');
     expect(h.calls).toContain('git merge --abort');
     expect(state.history.some((e) => e.to === 'conflict-fix' && /README\.md/.test(e.note))).toBe(true);
     // The lane's merge is not housekeeping: ship holds a second approve on the new head.
@@ -451,23 +459,19 @@ describe('prepare: crash window, PR code and failing checks', () => {
 });
 
 describe('conflict-fix checks', () => {
-  /** A conflict-fix lane that merges the fetched base, resolves README.md, then (optionally) moves the base again. */
+  /** A conflict-fix lane that resolves README.md in the engine's merge, then (optionally) moves the base again. */
   const resolveAndMoveBase = (again?: string): LaneScript => ({ worktree }) => {
-    const base = gitIn(worktree, 'rev-parse', 'refs/remotes/origin/dev');
-    try { gitIn(worktree, 'merge', '--no-ff', '--no-edit', base); } catch { /* conflicts, resolved below */ }
     writeFileSync(join(worktree, 'README.md'), `both sides ${again ?? ''}\n`);
-    gitIn(worktree, 'add', '--', 'README.md');
-    gitIn(worktree, 'commit', '-q', '--no-edit');
     if (again) moveBase('README.md', `${again}\n`);
     return { finalText: 'Merged.' };
   };
 
-  it('a conflict-fix lane whose head does not contain the base parks at conflict-fix-failed and nothing is pushed', async () => {
+  it('a conflict-fix lane that leaves the engine merge unresolved parks at conflict-fix-failed and nothing is pushed', async () => {
     before(PREPARE_VIEW, () => { moveBase('README.md', 'base side\n'); });
-    const { done } = run([commitFile('README.md', 'lane side\n'), review('approve'), commitFile('README.md', 'only the lane side\n')]);
+    const { done } = run([commitFile('README.md', 'lane side\n'), review('approve'), noCommit, noCommit]);
     const out = await done;
     expect(out.gate?.name, out.message).toBe('conflict-fix-failed');
-    expect(out.message).toMatch(/does not contain the base/);
+    expect(out.message).toMatch(/left no changes/);
     expect(pushes()).toHaveLength(1);
   });
 

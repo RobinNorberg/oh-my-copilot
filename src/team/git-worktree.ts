@@ -281,10 +281,12 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
  * eol (and no core.autocrlf) a stat-dirty file may show as modified, so the
  * worktree is kept, never lost. Raw stdout; throws
  * what execFileSync throws, when the drivers cannot be listed, or
- * `sandbox-escaped:` when the recorded links changed.
+ * `sandbox-escaped:` when the recorded links changed. `baseEnv` (default
+ * process.env) is the environment the pins are set over (the factory
+ * engine's commit identity).
  */
-export function runHostGit(cwd: string, args: readonly string[], timeout?: number): string {
-  const env = hostGitEnv(args);
+export function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env): string {
+  const env = hostGitEnv(args, baseEnv);
   const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : undefined;
   if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
     throw new Error(`sandbox-escaped: the git links or config.worktree of ${recorded.wtPath} changed since they were recorded; no git ran in it`);
@@ -315,7 +317,7 @@ const LANE_SUBMODULE_OVERRIDES = ['submodule.recurse=false', 'diff.ignoreSubmodu
 const IGNORE_SUBMODULES_SUBCOMMANDS = new Set(['status', 'diff', 'diff-files', 'diff-index', 'diff-tree']);
 
 /** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
-const EMPTY_TREE: Record<string, string> = {
+export const EMPTY_TREE: Readonly<Record<string, string>> = {
   sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
   sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
 };

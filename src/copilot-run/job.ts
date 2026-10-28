@@ -175,6 +175,12 @@ export interface CopilotRunStartOptions {
   sandboxScope?: SandboxScope;
   /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
   scrubCredentials?: boolean;
+  /**
+   * The caller commits the session's changes after the job (omg factory run):
+   * a write session's sandbox keeps the whole common git dir read-only, so it
+   * cannot stage or commit, and no git identity is seeded for it.
+   */
+  hostCommits?: boolean;
 }
 
 /** Env keys a credential-free session never gets (any case on Windows). */
@@ -365,6 +371,7 @@ interface Job {
   startRef: string | null;
   disableStopContinuations: boolean;
   scrubCredentials: boolean;
+  hostCommits: boolean;
   /** Budget ledger record key. */
   ledgerKey: string;
   model: string | null;
@@ -696,6 +703,7 @@ export class CopilotRunManager {
       startRef,
       disableStopContinuations: options.disableStopContinuations === true,
       scrubCredentials: options.scrubCredentials === true,
+      hostCommits: options.hostCommits === true,
       ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
       model: input.model ?? null,
       timeoutMs,
@@ -873,7 +881,8 @@ export class CopilotRunManager {
     const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home);
     const gitHubToken = sessionGitHubToken(deps.env);
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
-    seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
+    // A session the host commits for never commits, so it gets no identity.
+    if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
     Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
     delete env[COPILOT_RUN_ALLOW_ENV];
@@ -1148,6 +1157,7 @@ export class CopilotRunManager {
         realHome: (deps.realHome ?? (() => userInfo().homedir))(),
         platform: deps.platform,
         settings,
+        hostCommits: job.hostCommits,
       }, host);
       job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
       return config;

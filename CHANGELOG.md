@@ -45,8 +45,40 @@ command guard refuses `gh pr merge`. See the
 - **Prepare runs under the tamper checks.** Prepare's checks run the PR's own
   code, so the engine snapshots the shared git state around them like a lane.
   A crash between prepare's push and its record repeats nothing.
+- **Behaviour change: write lanes refuse to run without an OS sandbox.** An
+  `omg factory run` write lane (implement, fix, conflict-fix, ci-fix) whose
+  Copilot sandbox is not confirmed parks at `awaiting-human:
+  sandbox-unavailable` instead of running unsandboxed. Set
+  `factory.run.sandbox.writeUnsandboxed: "detect-only"` in your user
+  `omg.jsonc` to run it anyway. The engine then warns, records
+  `sandbox.mode: "detect-only"` on the lane, and says so in the PR body. A
+  repository config cannot set it.
+- **The engine commits for write lanes.** A write lane's sandbox keeps the git
+  directory read-only, so the lane leaves its changes uncommitted. After the
+  lane ends and passes the tamper check, the engine commits them with hardened
+  git: no hooks, no filters, and a fixed `omg factory` identity, with the
+  lane's final message as the commit message. It refuses an empty change, a
+  merge-rule path, a nested repository (`sandbox-escaped`), or a lane that
+  committed itself. A conflict-fix lane starts from the engine's merge of the
+  base with the conflict markers in place, and the engine commits the
+  resolution as the merge of both. Each lane's sandbox state is recorded in
+  the run state. A detect-only lane after the PR exists gets a PR comment.
+- **Write lanes may not change agent instructions, hooks, skills or CI.** The
+  engine also refuses a lane change to `.github/`, `.copilot/`, `.omg/skills/`,
+  `.omc/skills/`, `AGENTS.md` or `CLAUDE.md` (`protected-paths`). `omg ship`
+  keeps its own list.
 
 ### Security
+
+- **The engine commits nothing a lane linked in from outside its worktree.**
+  Git for Windows follows a directory junction in `git add -A`, and the
+  engine's git runs with your read rights, so a lane could have had the
+  engine commit and push files such as `~/.ssh`. The engine now refuses a
+  directory link (any link on Windows), a new symlink, or a staged path whose
+  real folder is outside the worktree. The lane parks at `sandbox-escaped`
+  with the path named, and the index is reset. The lane's commit message
+  loses skip-CI markers, its own trailers (`Co-authored-by`, `Signed-off-by`,
+  `skip-checks`) and invisible format characters.
 
 - Lanes are still not sandboxed. A prompt-injected lane runs shell commands as
   you. The tamper checks, the engine's own state record and hardened engine

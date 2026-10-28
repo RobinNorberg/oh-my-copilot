@@ -83,6 +83,16 @@ describe('buildSandboxConfig', () => {
     expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p)));
   });
 
+  it('write with hostCommits (the factory engine commits) keeps the whole common git dir read-only (§4.3)', () => {
+    const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
+    const cfg = buildSandboxConfig('write', { ...ctx, gitDir, hostCommits: true }, host());
+    expect(cfg.userPolicy.filesystem).toEqual({
+      readwritePaths: [ctx.worktree, ctx.jobDir],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+    });
+    expect(cfg.addCurrentWorkingDirectory).toBe(true);
+  });
+
   it('registry network: npm hosts plus extras, allowLocalNetwork only on Windows', () => {
     const settings = { ...ctx.settings, writeNetwork: 'registry' as const, allowedHosts: ['npm.example.com'] };
     expect(buildSandboxConfig('write', { ...ctx, settings }, host()).userPolicy.network).toEqual({
