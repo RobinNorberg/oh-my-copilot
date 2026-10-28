@@ -37,6 +37,7 @@ import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
+import { defaultLedgerDir } from '../../factory/run/ledger.js';
 
 export function renderChainStatus(status: ChainStatus): string {
   const lines: string[] = [];
@@ -232,6 +233,9 @@ export function factoryCommand(): Command {
     base: defaultFactoryRunDeps.base,
     config: (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)),
     now: () => new Date(),
+    // `omg factory heal run` without --dry-run is itself the opt-in to one billed, capped debugger lane.
+    lanes: defaultFactoryRunDeps.lanes,
+    ledgerDir: defaultLedgerDir(),
   }));
 
   cmd

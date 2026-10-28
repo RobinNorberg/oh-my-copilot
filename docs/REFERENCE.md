@@ -929,11 +929,13 @@ omg factory run cancel <issue>                 # stop the running engine and its
 
 #### `omg factory heal` (experimental)
 
-`omg factory heal scan` reads recent `ci.yml` runs and classifies new red runs. It makes no LLM call and no GitHub write. It starts no lane, and a rerun is recorded as an intent but never issued.
+`omg factory heal scan` reads recent `ci.yml` runs and classifies new red runs. It makes no LLM call and no GitHub write. It starts no lane, and a rerun is recorded as an intent but never issued. `omg factory heal run` diagnoses one signature in a read-only debugger lane and then stops for a human.
 
 ```bash
-omg factory heal scan [--dry-run] [--json]    # classify new red runs; --dry-run writes no state
-omg factory heal status [<sig8>] [--json]     # list recorded signatures, or one classification
+omg factory heal scan [--dry-run] [--json]       # classify new red runs; --dry-run writes no state
+omg factory heal status [<sig8>] [--json]        # list recorded signatures, or one classification and diagnosis
+omg factory heal run <sig8> [--dry-run] [--json] # debugger lane; --dry-run writes the evidence bundle and prints the prompt
+omg factory heal close <sig8> [--json]           # close a heal run parked at heal-approve or heal-diagnosis
 ```
 
 - **Candidates:** a red push run on the integration branch, or one failure signature on PR runs of two or more head branches in 72 hours. Cancelled, skipped and in-progress runs never count. Jobs in `factory.heal.ignoreJobs` never count. The defaults are "No Committed Build Artifacts" and "Version Consistency Check".
@@ -941,6 +943,12 @@ omg factory heal status [<sig8>] [--json]     # list recorded signatures, or one
 - **Classes:** the classifier checks, in order, infra patterns, the known-flaky list at `origin/<base>`, the dev history and an environment diff. The diff covers image, image version, runner, git, node and npm. When the environment changed and the red sha adds no code the green sha lacks, the class is `env-change`. A sha that is green on one image version and red on another is also `env-change`. The other classes are `infra`, `known-flaky`, `intermittent`, `regression`, `regression-or-env` and `unknown`.
 - **State and limits:** each signature is stored in `.omg/state/factory/heal/<sig8>.json`. A run is counted once per signature. The fixed limits are one open heal run and one recorded rerun per signature. The user config sets `factory.heal.dailyRuns` (default 3) and `factory.heal.dailyDebugLanes` (default 4). The project config can only lower them. Over a limit, a signature is queued as `blocked: rate-limit`.
 - **Untrusted logs:** CI logs are only matched against fixed patterns, never run or put into a command. A log is capped at 8 MiB and each line at 4000 characters. All `gh` and `git` calls go through a read-only allowlist.
+- **Evidence bundle:** `heal run` writes `.omg/state/factory/heal/<sig8>/evidence/`. It holds the classification, the environment diff, the setup lines, the commits, the failing test paths, a window per failing test and a tail per failed step. Every line is cleaned of ANSI and control characters and capped at 400 characters, JSON files included. GitHub tokens, AWS key ids, bearer tokens, private key blocks and URL credentials are replaced by `[redacted]`. Each file is capped at 64 KiB and the bundle at 160 KiB. In the prompt every file sits between lines that carry a random per-run delimiter, and a log line that looks like a delimiter is dropped.
+- **Who starts a lane:** only a signature seen on a red push run of the integration branch, at a first red sha on `origin/<base>`. A PR run only adds weight to such a signature and never replaces its classification, because a lane checks out that sha and may run its tests on this host.
+- **Confinement:** the lane has no OS confinement yet, so a non-dry-run `heal run` refuses unless `OMG_HEAL_UNCONFINED=1` is set. The opt-in prints a warning and the lane record keeps it. Every lane starts without `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, other secret-named variables, ssh-agent or git credential helpers, and with `GH_CONFIG_DIR` at an empty directory. Copilot keeps its stored login or `COPILOT_GITHUB_TOKEN`, which the lane's shell can still read.
+- **Debugger lane:** the lane uses the `review` profile at the first red sha, with an AI-credit cap of `factory.heal.debugLaneMaxCredits` (default and minimum 30). The engine's tamper check runs around it, the same one `omg factory run` uses. The lane answers with one fenced JSON block holding a class, a root cause, evidence citations, a reproduced flag and a fix proposal. A citation must name a bundle file and a line in it, or a key of a JSON file. A valid diagnosis parks the heal run at `awaiting-human: heal-approve`. An invalid, rejected or tampered one parks at `awaiting-human: heal-diagnosis`, and `heal run` may retry it. `heal close` ends a parked heal run and frees the one open-run slot. Class `flaky` and fixes that touch `.github/workflows/`, `.github/known-flaky-tests.json` or `.copilot/omg.jsonc` are always rejected. Exit codes are 4 for a park, 3 for a limit refusal, 1 for a failure and 2 for a usage error.
+- **Credit limits:** `factory.heal.maxRunCredits` (default 120) caps one heal run and `factory.heal.dailyCredits` (default 150) caps all heal lanes per UTC day. The counters and a seal of each heal record are mirrored outside the repository, under the factory ledger directory. `heal status` reports a seal mismatch.
+- **Webhook:** `omg factory listen` accepts HMAC-signed `workflow_run` events. A completed, failed `push` run of `.github/workflows/ci.yml` on `dev` only adds its run id to `.omg/state/factory/heal/webhook-queue.json`. The next scan puts queued runs first, re-reads them through `gh` and clears them. The webhook never starts a lane.
 
 ### `omg smoke copilot`
 

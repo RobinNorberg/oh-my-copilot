@@ -7,17 +7,24 @@
  * count. Lane-eligible signatures over a limit are queued with
  * `blocked: rate-limit` and re-evaluated by the next scan.
  *
- * PR 1 starts no heal run and no lane: `next` records what the next stage
+ * The scan starts no heal run and no lane: `next` records what the next stage
  * would do, and a rerun is recorded as an intent (at most one per signature),
- * never issued.
+ * never issued. `omg factory heal run` (run.ts) starts the heal run and its
+ * debugger lane and records them here.
+ *
+ * `webhook-queue.json` holds the run ids the listener's `workflow_run`
+ * handler enqueued. It is a hint only: the scan (the poller) stays the
+ * source of truth, re-reads every queued run through `gh`, and clears the
+ * entries it has seen.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import type { HealClass, HealClassification, RerunIntent } from './classify.js';
 import type { HealConfig } from './config.js';
+import type { Diagnosis } from './diagnosis-output.js';
 
 export const SIG8 = /^[0-9a-f]{8}$/;
 export const WONT_FIX_DAYS = 14;
@@ -27,7 +34,42 @@ export const MAX_OPEN_HEAL_RUNS = 1;
 export const MAX_RERUNS_PER_SIGNATURE = 1;
 const MAX_SEEN_RUNS = 50;
 
-export type HealNext = 'debug-lane' | 'rerun-probe' | 'report';
+/**
+ * `heal-approve`: a valid diagnosis is recorded and the heal run waits for a
+ * human (implementing the fix is PR 3). `heal-diagnosis`: the debugger lane
+ * produced no usable diagnosis; a human reads the record, and
+ * `omg factory heal run` may try again within the limits.
+ */
+export type HealNext = 'debug-lane' | 'rerun-probe' | 'report' | 'heal-approve' | 'heal-diagnosis';
+
+export interface HealLaneRecord {
+  id: string;
+  kind: 'debug';
+  jobId?: string;
+  startSha: string;
+  status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled' | 'lost' | 'start-failed' | 'unconfirmed';
+  maxCredits: number;
+  startedAt: string;
+  endedAt?: string;
+  /** The process that started the lane (a stale `running` record of a dead process is settled as lost). */
+  pid: number;
+  confinement: string;
+  /** The lane ran with confinement `none` under OMG_HEAL_UNCONFINED=1. */
+  unconfinedOptIn?: true;
+  usage?: { credits: number; premiumRequests: number; source: 'measured' | 'estimated' };
+  note?: string;
+}
+
+export interface HealDiagnosisRecord {
+  at: string;
+  laneId: string;
+  outcome: 'valid' | 'rejected' | 'invalid' | 'tampered' | 'lane-failed';
+  reason?: string;
+  /** The validated lane output (valid or rejected outcomes only). */
+  diagnosis?: Diagnosis;
+  /** Bundle file -> sha256 at the time the lane read it. */
+  evidence: Record<string, string>;
+}
 
 export interface HealSignatureState {
   version: 1;
@@ -42,7 +84,10 @@ export interface HealSignatureState {
   count: number;
   seenRuns: string[];
   prBranches?: string[];
-  healRun?: { id: string; open: boolean; startedAt: string };
+  healRun?: { id: string; open: boolean; startedAt: string; closedAt?: string };
+  /** Debugger lanes of the heal run, oldest first. */
+  lanes?: HealLaneRecord[];
+  diagnosis?: HealDiagnosisRecord;
   wontFixAt?: string;
   next: HealNext;
   blocked?: 'rate-limit';
@@ -54,6 +99,8 @@ export interface HealDailyCounters {
   day: string;
   healRuns: number;
   debugLanes: number;
+  /** AI credits of heal lanes today: a lane's cap is reserved at its start, then replaced by its measured spend. */
+  credits: number;
 }
 
 export function healStateDir(root: string): string {
@@ -97,14 +144,25 @@ export function listHealStates(root: string): HealSignatureState[] {
 
 const utcDay = (now: Date) => now.toISOString().slice(0, 10);
 
-/** Today's counters; a file from an earlier UTC day reads as zero. */
-export function readDailyCounters(root: string, now: Date): HealDailyCounters {
-  const path = join(healStateDir(root), 'limits.json');
-  const zero = { day: utcDay(now), healRuns: 0, debugLanes: 0 };
+/** Today's counters in one counters file; a file from an earlier UTC day reads as zero. */
+export function readDailyCountersAt(path: string, now: Date): HealDailyCounters {
+  const zero = { day: utcDay(now), healRuns: 0, debugLanes: 0, credits: 0 };
   if (!existsSync(path)) return zero;
   const c = JSON.parse(readFileSync(path, 'utf8')) as Partial<HealDailyCounters>;
   if (c.day !== zero.day) return zero;
-  return { day: zero.day, healRuns: Number(c.healRuns) || 0, debugLanes: Number(c.debugLanes) || 0 };
+  return { day: zero.day, healRuns: Number(c.healRuns) || 0, debugLanes: Number(c.debugLanes) || 0, credits: Number(c.credits) || 0 };
+}
+
+export const dailyCountersPath = (root: string): string => join(healStateDir(root), 'limits.json');
+
+/** Today's counters; a file from an earlier UTC day reads as zero. */
+export function readDailyCounters(root: string, now: Date): HealDailyCounters {
+  return readDailyCountersAt(dailyCountersPath(root), now);
+}
+
+export function writeDailyCountersAt(path: string, counters: HealDailyCounters): void {
+  ensureDirSync(dirname(path));
+  atomicWriteFileSync(path, `${JSON.stringify(counters, null, 2)}\n`);
 }
 
 /** Why a lane-eligible signature may not start a heal run now, or null. */
@@ -137,7 +195,8 @@ export interface RecordResult {
  */
 export function foldSignature(prev: HealSignatureState | null, input: RecordInput, others: readonly HealSignatureState[], counters: HealDailyCounters, config: HealConfig, now: Date): RecordResult {
   const at = now.toISOString();
-  const c = input.classification;
+  // A PR run only adds weight to a dev push signature: its classification (first red sha = PR code) never replaces the push one.
+  const c = prev?.source === 'push' && input.source === 'pr' ? prev.classification : input.classification;
   if (prev?.seenRuns.includes(input.runId)) return { state: prev, changed: false, suppressed: false };
   const wontFix = prev?.wontFixAt !== undefined && now.getTime() - Date.parse(prev.wontFixAt) < WONT_FIX_DAYS * 86_400_000;
   if (prev && (prev.healRun?.open || wontFix)) {
@@ -162,6 +221,8 @@ export function foldSignature(prev: HealSignatureState | null, input: RecordInpu
     seenRuns: [...(prev?.seenRuns ?? []), input.runId].slice(-MAX_SEEN_RUNS),
     ...(input.prBranches ? { prBranches: input.prBranches } : prev?.prBranches ? { prBranches: prev.prBranches } : {}),
     ...(prev?.healRun ? { healRun: prev.healRun } : {}),
+    ...(prev?.lanes ? { lanes: prev.lanes } : {}),
+    ...(prev?.diagnosis ? { diagnosis: prev.diagnosis } : {}),
     ...(prev?.wontFixAt ? { wontFixAt: prev.wontFixAt } : {}),
     next,
     ...(blocked ? { blocked: 'rate-limit' as const } : {}),
@@ -169,6 +230,53 @@ export function foldSignature(prev: HealSignatureState | null, input: RecordInpu
     updatedAt: at,
   };
   return { state, changed: true, suppressed: false };
+}
+
+export interface QueuedRun {
+  runId: string;
+  receivedAt: string;
+}
+
+/** Entries kept in the webhook queue (oldest dropped first). */
+export const MAX_QUEUED_RUNS = 50;
+/** A queued run the scan has not seen after this long is dropped. */
+export const QUEUE_TTL_MS = 7 * 86_400_000;
+
+export const webhookQueuePath = (root: string): string => join(healStateDir(root), 'webhook-queue.json');
+
+export function readWebhookQueue(root: string): QueuedRun[] {
+  const path = webhookQueuePath(root);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { runs?: unknown };
+    return Array.isArray(raw.runs)
+      ? raw.runs.filter((r): r is QueuedRun => typeof r?.runId === 'string' && /^\d{1,20}$/.test(r.runId) && typeof r.receivedAt === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeWebhookQueue(root: string, runs: readonly QueuedRun[]): void {
+  ensureDirSync(healStateDir(root));
+  atomicWriteFileSync(webhookQueuePath(root), `${JSON.stringify({ runs }, null, 2)}\n`);
+}
+
+/** Add one run id (idempotent); false when it was already queued. The caller holds the scan lock. */
+export function enqueueWebhookRun(root: string, runId: string, now: Date): boolean {
+  if (!/^\d{1,20}$/.test(runId)) throw new Error(`run id must be numeric, got ${JSON.stringify(runId)}`);
+  const runs = readWebhookQueue(root);
+  if (runs.some((r) => r.runId === runId)) return false;
+  writeWebhookQueue(root, [...runs, { runId, receivedAt: now.toISOString() }].slice(-MAX_QUEUED_RUNS));
+  return true;
+}
+
+/** Drop queued runs the scan saw and expired ones; returns what is left. The caller holds the scan lock. */
+export function pruneWebhookQueue(root: string, seen: ReadonlySet<string>, now: Date): QueuedRun[] {
+  const runs = readWebhookQueue(root);
+  const left = runs.filter((r) => !seen.has(r.runId) && now.getTime() - Date.parse(r.receivedAt) < QUEUE_TTL_MS);
+  if (left.length !== runs.length) writeWebhookQueue(root, left);
+  return left;
 }
 
 export function writeHealState(root: string, state: HealSignatureState): void {

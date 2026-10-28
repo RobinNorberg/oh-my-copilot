@@ -8,7 +8,7 @@ import { DEFAULT_HEAL_CONFIG, resolveHealConfig } from '../config.js';
 import { foldSignature, healLimitReason, healStateDir, healStatePath, listHealStates, readDailyCounters, readHealState, writeHealState, type HealDailyCounters, type HealSignatureState } from '../state.js';
 
 const NOW = new Date('2026-10-27T12:00:00Z');
-const ZERO: HealDailyCounters = { day: '2026-10-27', healRuns: 0, debugLanes: 0 };
+const ZERO: HealDailyCounters = { day: '2026-10-27', healRuns: 0, debugLanes: 0, credits: 0 };
 const SHA = '15e3c590ca6eaadf0a0d1efe38f89092b3ae6269';
 
 function cls(over: Partial<HealClassification> = {}): HealClassification {
@@ -84,8 +84,8 @@ describe('heal signature state', () => {
     it('daily counters reset on a new UTC day (fake clock)', () => {
       writeHealState(root, foldSignature(null, { classification: cls(), runId: '1', source: 'push' }, [], ZERO, DEFAULT_HEAL_CONFIG, NOW).state);
       writeFileSync(join(healStateDir(root), 'limits.json'), JSON.stringify({ day: '2026-10-27', healRuns: 3, debugLanes: 1 }));
-      expect(readDailyCounters(root, NOW)).toEqual({ day: '2026-10-27', healRuns: 3, debugLanes: 1 });
-      expect(readDailyCounters(root, new Date('2026-10-28T00:00:01Z'))).toEqual({ day: '2026-10-28', healRuns: 0, debugLanes: 0 });
+      expect(readDailyCounters(root, NOW)).toEqual({ day: '2026-10-27', healRuns: 3, debugLanes: 1, credits: 0 });
+      expect(readDailyCounters(root, new Date('2026-10-28T00:00:01Z'))).toEqual({ day: '2026-10-28', healRuns: 0, debugLanes: 0, credits: 0 });
     });
   });
 });
@@ -95,8 +95,17 @@ describe('factory.heal config', () => {
     const user = { factory: { heal: { dailyRuns: 5, ignoreJobs: ['Policy'] } } };
     const project = { factory: { heal: { dailyRuns: 9, dailyDebugLanes: 1, ignoreJobs: ['Test'] } } };
     const { config, warnings } = resolveHealConfig(user, project);
-    expect(config).toEqual({ ignoreJobs: ['Policy'], dailyRuns: 5, dailyDebugLanes: 1 });
+    expect(config).toEqual({ ignoreJobs: ['Policy'], dailyRuns: 5, dailyDebugLanes: 1, debugLaneMaxCredits: 30, maxRunCredits: 120, dailyCredits: 150 });
     expect(warnings).toHaveLength(2);
     expect(() => resolveHealConfig({ factory: { heal: { dailyRuns: -1 } } }, undefined)).toThrow(/non-negative integer/);
+  });
+
+  it('credit caps: the lane cap never goes under the CLI floor, the project only lowers', () => {
+    expect(() => resolveHealConfig({ factory: { heal: { debugLaneMaxCredits: 10 } } }, undefined)).toThrow(/below the Copilot CLI minimum of 30/);
+    expect(() => resolveHealConfig(undefined, { factory: { heal: { debugLaneMaxCredits: 29 } } })).toThrow(/below the Copilot CLI minimum/);
+    const { config, warnings } = resolveHealConfig({ factory: { heal: { debugLaneMaxCredits: 40, dailyCredits: 200 } } }, { factory: { heal: { debugLaneMaxCredits: 35, dailyCredits: 500 } } });
+    expect(config).toMatchObject({ debugLaneMaxCredits: 35, dailyCredits: 200, maxRunCredits: 120 });
+    expect(warnings.join('\n')).toMatch(/dailyCredits 500 .* only lower/);
+    expect(() => resolveHealConfig({ factory: { heal: { debugLaneMaxCredits: 60, maxRunCredits: 50 } } }, undefined)).toThrow(/maxRunCredits 50 is below one debugger lane's cap/);
   });
 });
