@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "870d6de77e224f77e5e1d72c2fdcab8bfa93a571",
-    "sourceSha256": "67f9d7f5b83de31ba195cf6f6283b259df03567e8894948c6f34fcc83f11324c",
+    "head": "c3aa466f6ae7157e2b564ba88f4dae4cb7f736b6",
+    "sourceSha256": "1e2f5f06c9fe697191832effd8d02f4860114dea33daae52abbeb47dc39612b2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "870d6de77e224f77e5e1d72c2fdcab8bfa93a571",
-  "sourceSha256": "67f9d7f5b83de31ba195cf6f6283b259df03567e8894948c6f34fcc83f11324c",
+  "head": "c3aa466f6ae7157e2b564ba88f4dae4cb7f736b6",
+  "sourceSha256": "1e2f5f06c9fe697191832effd8d02f4860114dea33daae52abbeb47dc39612b2",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1711,
-      "total": 1735
+      "srcFiles": 1713,
+      "total": 1737
     },
     "generated": {
       "distFiles": 6480,
@@ -50068,9 +50068,19 @@
         "path": "src/port/__tests__/engine.test.ts"
       },
       {
+        "id": "src/port/__tests__/guard.test.ts",
+        "kind": "src",
+        "path": "src/port/__tests__/guard.test.ts"
+      },
+      {
         "id": "src/port/engine.ts",
         "kind": "src",
         "path": "src/port/engine.ts"
+      },
+      {
+        "id": "src/port/guard.ts",
+        "kind": "src",
+        "path": "src/port/guard.ts"
       },
       {
         "id": "src/projection/__tests__/fixtures.test.ts",
@@ -88641,6 +88651,11 @@
       },
       {
         "from": "src/port/__tests__/engine.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/engine.test.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
       },
@@ -88656,6 +88671,41 @@
       },
       {
         "from": "src/port/__tests__/engine.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
+        "to": "src/port/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/__tests__/guard.test.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -88672,6 +88722,26 @@
       {
         "from": "src/port/engine.ts",
         "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
+        "to": "src/factory/run/review-guard.ts",
         "kind": "type-imports"
       },
       {
@@ -88681,13 +88751,38 @@
       },
       {
         "from": "src/port/engine.ts",
+        "to": "src/port/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
       {
         "from": "src/port/engine.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/engine.ts",
         "to": "src/ship/prepare.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/port/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/projection/__tests__/fixtures.test.ts",
@@ -103511,12 +103606,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8931,
-      "edgeCount": 10159,
-      "importEdgeCount": 8486,
+      "nodeCount": 8933,
+      "edgeCount": 10176,
+      "importEdgeCount": 8500,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ad59c52a844d05f5865b2136b7924df0996c7f1befbecaa08006d73c9c7fc01e",
-  "manifestSha256": "3cd78a0ce295ae31089c48bfc7744f64ff8017e21cda7853b25d8379c5c2a71c"
+  "inventorySha256": "d6a02eb9af9a44a73743efa68672153c31dabe5884e3777ade333e25cffcf84a",
+  "manifestSha256": "c79067d04ba3a8f5046f42473d123790dff23395fc786b83f184c957703a13ae"
 }
