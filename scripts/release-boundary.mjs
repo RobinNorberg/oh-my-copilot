@@ -1169,7 +1169,8 @@ function isMainModule() {
   try {
     return !!process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
   } catch {
-    return false;
+    // realpath failed (a path the process cannot stat): the lexical compare still recognises a direct run.
+    return !!process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
   }
 }
 

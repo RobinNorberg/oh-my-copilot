@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, summarizeChanges, } from '../job.js';
 import { forgetWorktreeGitLinks, hostGitAttrSourceProblem, hostGitEnv, readWorktreeGitLinks, recordWorktreeGitLinks, recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../../team/git-worktree.js';
@@ -69,6 +69,43 @@ describe('copilot_run startRef', () => {
         expect(() => manager().start({ prompt: 'x', cwd: repo, isolation: 'none', startRef: 'main' })).toThrow('needs isolation "worktree"');
     });
 });
+describe('copilot_run events.jsonl', () => {
+    it('fails the job, writing nothing, when the name already exists (a planted link where the host allows one)', async () => {
+        const victim = join(root, 'victim');
+        writeFileSync(victim, 'keep\n');
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        // The log is opened after the first await in the job: plant the name before it.
+        const eventsPath = started.eventsPath;
+        let planted = 'symlink';
+        try {
+            symlinkSync(victim, eventsPath, 'file');
+        }
+        catch {
+            writeFileSync(eventsPath, '');
+            planted = 'file';
+        }
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status, planted).toBe('failed');
+        expect(done.error).toContain('events log');
+        // The runtime never started: no session exists.
+        expect(calls.sessions).toHaveLength(0);
+        expect(readFileSync(victim, 'utf8')).toBe('keep\n');
+    });
+    it('keeps writing the opened file after its name is renamed and replaced', async () => {
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const eventsPath = started.eventsPath;
+        const moved = `${eventsPath}.moved`;
+        renameSync(eventsPath, moved);
+        writeFileSync(eventsPath, '');
+        calls.sessions[0].onEvent({ type: 'assistant.message', data: { content: 'after the swap' } });
+        await m.cancel(started.jobId);
+        expect(readFileSync(moved, 'utf8')).toContain('after the swap');
+        expect(readFileSync(eventsPath, 'utf8')).toBe('');
+    });
+});
 describe('copilot_run review profile', () => {
     it('denies every write and the tree-changing git commands, allows reads and read-only git', async () => {
         const m = manager('hang');
@@ -110,6 +147,11 @@ describe('copilot_run review profile', () => {
         const wt = started.worktree.path;
         expect(await decide({ kind: 'shell', fullCommandText: 'git commit -am x' }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
         expect(await decide({ kind: 'write', path: join(wt, 'README.md') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        // The file tools reach the job's home, never the engine's events.jsonl beside it.
+        const eventsPath = started.eventsPath;
+        expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', 'tmp', 'x') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        expect(await decide({ kind: 'write', path: eventsPath }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+        expect(await decide({ kind: 'write', fileName: join(dirname(eventsPath), 'home', '..', 'events.jsonl') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
         await m.cancel(started.jobId);
     });
     it('reviewProfileDenial leaves other request kinds to the worker policy', () => {

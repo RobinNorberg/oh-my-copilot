@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
@@ -31,6 +31,8 @@ import {
 let root: string;
 let ctx: SandboxPolicyContext;
 const host = (caps: Record<string, boolean> = { shell: true }): SandboxHostRecord => ({ supported: true, capabilities: caps });
+/** The job home's lane-writable dirs: the relocated temp and profile, nothing else of it. */
+const laneHome = () => [join(ctx.jobHome, 'tmp'), join(ctx.jobHome, 'profile')];
 
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'omg-sbx-cfg-'));
@@ -61,7 +63,7 @@ describe('buildSandboxConfig', () => {
       sandboxLspServers: true,
       auth: { git: false, gh: false },
       userPolicy: {
-        filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome], readwritePaths: [ctx.jobDir] },
+        filesystem: { readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot], readwritePaths: [...laneHome()] },
         network: { allowOutbound: false, allowLocalNetwork: false },
       },
     });
@@ -72,12 +74,12 @@ describe('buildSandboxConfig', () => {
     expect(plain).toMatchObject({ enabled: true, addCurrentWorkingDirectory: true, allowBypass: false, allowDevToolAccess: false, auth: { git: false, gh: false } });
     // Without a linked worktree only objects/ is granted: config and hooks stay read-only.
     expect(plain.userPolicy.filesystem).toEqual({
-      readwritePaths: [ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects')],
-      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+      readwritePaths: [ctx.worktree, ...laneHome(), join(ctx.commonGitDir, 'objects')],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot],
     });
     const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
     const linked = buildSandboxConfig('write', { ...ctx, gitDir }, host());
-    expect(linked.userPolicy.filesystem.readwritePaths).toEqual([ctx.worktree, ctx.jobDir, join(ctx.commonGitDir, 'objects'), gitDir]);
+    expect(linked.userPolicy.filesystem.readwritePaths).toEqual([ctx.worktree, ...laneHome(), join(ctx.commonGitDir, 'objects'), gitDir]);
     // No ref dir or reflog is writable: another job's branch omc-team/copilot-run/cr-2 stays read-only.
     const otherJob = ['refs', 'logs/refs'].map((d) => join(ctx.commonGitDir, ...d.split('/'), 'heads', 'omc-team', 'copilot-run', 'cr-2'));
     for (const p of ['config', 'hooks', 'info', 'packed-refs', 'refs', 'logs', ...otherJob]) {
@@ -95,10 +97,50 @@ describe('buildSandboxConfig', () => {
     const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
     const cfg = buildSandboxConfig('write', { ...ctx, gitDir, hostCommits: true }, host());
     expect(cfg.userPolicy.filesystem).toEqual({
-      readwritePaths: [ctx.worktree, ctx.jobDir],
-      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome],
+      readwritePaths: [ctx.worktree, ...laneHome()],
+      readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot],
     });
     expect(cfg.addCurrentWorkingDirectory).toBe(true);
+  });
+
+  it('grants only the job home\'s temp and profile dirs, never what the engine or the runtime reads back', () => {
+    const env = allowlistSessionEnv({}, ctx.jobHome);
+    // The engine's event log, the runtime's config, session state, policies and logs, and its package cache.
+    const readBack = [
+      join(ctx.jobDir, 'events.jsonl'),
+      join(ctx.jobHome, 'config.json'),
+      join(ctx.jobHome, 'session-state'),
+      join(ctx.jobHome, 'policies'),
+      join(ctx.jobHome, 'logs'),
+      join(env.COPILOT_CACHE_HOME!, 'pkg'),
+    ];
+    for (const cfg of [buildSandboxConfig('review', ctx, host()), buildSandboxConfig('write', ctx, host()), buildSandboxConfig('write', { ...ctx, hostCommits: true }, host())]) {
+      const { readwritePaths, readonlyPaths } = cfg.userPolicy.filesystem;
+      expect(readwritePaths).toEqual(expect.arrayContaining(laneHome()));
+      expect(readwritePaths).not.toContain(ctx.jobHome);
+      expect(readwritePaths).not.toContain(ctx.jobDir);
+      expect(readonlyPaths).not.toContain(ctx.jobDir);
+      for (const p of readwritePaths) {
+        for (const target of readBack) expect(target === p || target.startsWith(`${p}${sep}`), `${target} under ${p}`).toBe(false);
+      }
+    }
+    // The lane env's temp and profile are exactly the granted dirs.
+    expect([env.TEMP, env.USERPROFILE]).toEqual(laneHome());
+  });
+
+  it('drops a tool dir that is a link to a filesystem root', () => {
+    const link = join(root, 'rootlink');
+    symlinkSync(resolve('/'), link, process.platform === 'win32' ? 'junction' : 'dir');
+    try {
+      for (const profile of ['review', 'write'] as const) {
+        const ro = buildSandboxConfig(profile, { ...ctx, platform: process.platform, toolPaths: [link, join(root, 'nodejs')] }, host()).userPolicy.filesystem.readonlyPaths;
+        expect(ro).not.toContain(link);
+        expect(ro).toContain(join(root, 'nodejs'));
+      }
+    } finally {
+      // Removes the link itself, before afterAll's recursive rmSync could meet it.
+      unlinkSync(link);
+    }
   });
 
   it('registry network: npm hosts plus extras, allowLocalNetwork only on Windows', () => {
@@ -313,8 +355,8 @@ describe('detection helpers', () => {
       TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),
       XDG_CONFIG_HOME: join(root, 'h', 'profile', '.config'), GIT_CONFIG_GLOBAL: join(root, 'h', 'profile', '.gitconfig'),
-      // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the relocated profile all the same.
-      COPILOT_CACHE_HOME: join(root, 'h', 'profile', '.cache', 'copilot'),
+      // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
+      COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
     });
   });
 

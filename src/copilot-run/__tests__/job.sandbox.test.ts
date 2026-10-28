@@ -367,7 +367,7 @@ describe('copilot_run sandbox permissions and env', () => {
     await settle();
     const env = calls.connections[0].env!;
     expect(env).toMatchObject({ SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' });
-    expect(env.COPILOT_CACHE_HOME).toBe(join(env.COPILOT_HOME!, 'profile', '.cache', 'copilot'));
+    expect(env.COPILOT_CACHE_HOME).toBe(join(env.COPILOT_HOME!, '.cache', 'copilot'));
     await m.cancel(started.jobId);
   });
 });

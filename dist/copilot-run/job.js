@@ -41,11 +41,12 @@
  */
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
+import { openAppendExclusive } from '../lib/append-no-follow.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
@@ -707,7 +708,8 @@ export class CopilotRunManager {
         }
         const policy = {
             cwd: job.workCwd,
-            stateRoot: job.jobDir,
+            // The job's home, never the job dir: the runtime's file tools must not reach events.jsonl.
+            stateRoot: job.home,
             pluginRoot,
             readRoots: [job.home],
             mcpServer: MCP_SERVER,
@@ -749,11 +751,14 @@ export class CopilotRunManager {
         let idle = new Promise((r) => { onIdle = r; });
         const shutdown = new Promise((r) => { onShutdown = r; });
         const toolNames = new Map();
+        let eventsFd = null;
         const onEvent = (event) => {
-            try {
-                appendFileSync(job.eventsPath, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`);
+            if (eventsFd !== null) {
+                try {
+                    writeSync(eventsFd, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`);
+                }
+                catch { /* evidence only */ }
             }
-            catch { /* evidence only */ }
             const data = (event.data ?? {});
             switch (event.type) {
                 case 'tool.execution_start':
@@ -823,6 +828,19 @@ export class CopilotRunManager {
             baseDirectory: job.home,
             workingDirectory: job.workCwd,
         });
+        // events.jsonl is opened once, before the runtime starts (client.start()),
+        // and written only through this fd: O_EXCL refuses a name that already
+        // exists (a planted link included), and a later rename or replace of the
+        // name cannot redirect the writes. Job ids are fresh, so an existing file fails the job.
+        try {
+            eventsFd = openAppendExclusive(job.eventsPath);
+        }
+        catch (err) {
+            if (scrubDir)
+                rmSync(scrubDir, { recursive: true, force: true });
+            job.error = `events log ${job.eventsPath}: ${errText(err)}`;
+            return 'failed';
+        }
         let session = null;
         let pid;
         let outcome = 'failed';
@@ -936,6 +954,11 @@ export class CopilotRunManager {
             }
             if (pid && deps.isAlive(pid))
                 deps.killTree(pid);
+            // The runtime is gone: no event follows, and a late one must not reach a reused fd number.
+            const fd = eventsFd;
+            eventsFd = null;
+            if (fd !== null)
+                closeSync(fd);
             if (scrubDir)
                 rmSync(scrubDir, { recursive: true, force: true });
             // The final totals: a few retries if a hook holds the ledger lock.

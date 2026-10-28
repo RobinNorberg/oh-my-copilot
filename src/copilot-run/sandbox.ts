@@ -262,7 +262,12 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     if (!isUnderRoot(p, ctx.worktree, ctx.platform)) throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
   }
   const P = ctx.platform === 'win32' ? win32 : posix;
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const real = (p: string): string => { try { return realpathSync.native(p); } catch { return p; } };
+  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
+  // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
+  const relocated = relocatedProfileEnv(ctx.jobHome);
+  const laneHome = [relocated.TEMP!, relocated.USERPROFILE!];
   const common = {
     allowBypass: false as const,
     allowDevToolAccess: false as const,
@@ -277,8 +282,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...common,
       userPolicy: {
         filesystem: {
-          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...tools, ...settings.extraReadonlyPaths],
-          readwritePaths: [ctx.jobDir, ...settings.extraReadwritePaths],
+          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ...tools, ...settings.extraReadonlyPaths],
+          readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
         },
         network: { allowOutbound: false, allowLocalNetwork: false },
       },
@@ -286,8 +291,8 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   }
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
-    readwritePaths: [ctx.worktree, ctx.jobDir, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
+    readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
     filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
@@ -639,8 +644,9 @@ export function relocatedProfileEnv(jobHome: string): Record<string, string> {
     HOME: profile,
     XDG_CONFIG_HOME: join(profile, '.config'),
     GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
-    // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant anchored on it, in the profile.
-    COPILOT_CACHE_HOME: join(profile, '.cache', 'copilot'),
+    // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant
+    // anchored on it, in the job home but outside the lane-writable profile: the runtime loads code from its pkg dir.
+    COPILOT_CACHE_HOME: join(jobHome, '.cache', 'copilot'),
   };
 }
 
