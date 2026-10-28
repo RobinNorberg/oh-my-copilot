@@ -31,7 +31,7 @@ export class PortSafetyError extends ShipSafetyError {
 
 /** Subcommands the engine runs, and the snapshot's read-only ones. */
 const GIT_ALLOWED = new Set([
-  'add', 'cat-file', 'checkout', 'commit', 'diff', 'for-each-ref', 'grep', 'ls-files', 'ls-tree',
+  'add', 'cat-file', 'checkout', 'commit', 'config', 'diff', 'for-each-ref', 'grep', 'ls-files', 'ls-tree',
   'merge-base', 'push', 'rev-parse', 'rm', 'show', 'status', 'switch', 'write-tree',
 ]);
 const NO_DIFF_DRIVERS = new Set(['diff', 'show', 'log']);
@@ -50,6 +50,9 @@ function gitShapeOk(args: string[]): boolean {
       return r.includes('--') && !r.slice(0, r.indexOf('--')).some((a) => a.startsWith('-'));
     case 'rm':
       return r.includes('--');
+    // The one config read: the tamper check hashes the file core.excludesFile names.
+    case 'config':
+      return r.length === 2 && r[0] === '--get' && r[1] === 'core.excludesFile';
     default:
       return true;
   }
