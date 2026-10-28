@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "1c1256621a177e21b35c7ef53be1a85df03dc474",
-    "sourceSha256": "b6e249c618cf5656fb661c9ebf7de58c16229e99d3f26ff0a31a23cfc60ff40e",
+    "head": "2b4cccf7ac4ace327ff30dec3f067a5514c0e975",
+    "sourceSha256": "2a7316563c4b5cde9e9a8dd6818f9974825a3582891cf1d62ee93457392cbf93",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "1c1256621a177e21b35c7ef53be1a85df03dc474",
-  "sourceSha256": "b6e249c618cf5656fb661c9ebf7de58c16229e99d3f26ff0a31a23cfc60ff40e",
+  "head": "2b4cccf7ac4ace327ff30dec3f067a5514c0e975",
+  "sourceSha256": "2a7316563c4b5cde9e9a8dd6818f9974825a3582891cf1d62ee93457392cbf93",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1779
     },
     "generated": {
-      "distFiles": 6480,
+      "distFiles": 6656,
       "bridgeFiles": 9,
-      "total": 6489
+      "total": 6665
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2677,6 +2677,10 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/port-cli.test.d.ts",
+      "dist/cli/commands/__tests__/port-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/port-cli.test.js",
+      "dist/cli/commands/__tests__/port-cli.test.js.map",
       "dist/cli/commands/__tests__/progress-cli.test.d.ts",
       "dist/cli/commands/__tests__/progress-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/progress-cli.test.js",
@@ -2753,6 +2757,10 @@
       "dist/cli/commands/intake.d.ts.map",
       "dist/cli/commands/intake.js",
       "dist/cli/commands/intake.js.map",
+      "dist/cli/commands/port.d.ts",
+      "dist/cli/commands/port.d.ts.map",
+      "dist/cli/commands/port.js",
+      "dist/cli/commands/port.js.map",
       "dist/cli/commands/progress.d.ts",
       "dist/cli/commands/progress.d.ts.map",
       "dist/cli/commands/progress.js",
@@ -2915,10 +2923,18 @@
       "dist/copilot-run/__tests__/fake-sdk.d.ts.map",
       "dist/copilot-run/__tests__/fake-sdk.js",
       "dist/copilot-run/__tests__/fake-sdk.js.map",
+      "dist/copilot-run/__tests__/job.sandbox.test.d.ts",
+      "dist/copilot-run/__tests__/job.sandbox.test.d.ts.map",
+      "dist/copilot-run/__tests__/job.sandbox.test.js",
+      "dist/copilot-run/__tests__/job.sandbox.test.js.map",
       "dist/copilot-run/__tests__/job.test.d.ts",
       "dist/copilot-run/__tests__/job.test.d.ts.map",
       "dist/copilot-run/__tests__/job.test.js",
       "dist/copilot-run/__tests__/job.test.js.map",
+      "dist/copilot-run/__tests__/sandbox.test.d.ts",
+      "dist/copilot-run/__tests__/sandbox.test.d.ts.map",
+      "dist/copilot-run/__tests__/sandbox.test.js",
+      "dist/copilot-run/__tests__/sandbox.test.js.map",
       "dist/copilot-run/job.d.ts",
       "dist/copilot-run/job.d.ts.map",
       "dist/copilot-run/job.js",
@@ -2927,6 +2943,10 @@
       "dist/copilot-run/names.d.ts.map",
       "dist/copilot-run/names.js",
       "dist/copilot-run/names.js.map",
+      "dist/copilot-run/sandbox.d.ts",
+      "dist/copilot-run/sandbox.d.ts.map",
+      "dist/copilot-run/sandbox.js",
+      "dist/copilot-run/sandbox.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -2951,6 +2971,82 @@
       "dist/factory/__tests__/status.test.d.ts.map",
       "dist/factory/__tests__/status.test.js",
       "dist/factory/__tests__/status.test.js.map",
+      "dist/factory/__tests__/workflow-run.test.d.ts",
+      "dist/factory/__tests__/workflow-run.test.d.ts.map",
+      "dist/factory/__tests__/workflow-run.test.js",
+      "dist/factory/__tests__/workflow-run.test.js.map",
+      "dist/factory/heal/__tests__/classify.test.d.ts",
+      "dist/factory/heal/__tests__/classify.test.d.ts.map",
+      "dist/factory/heal/__tests__/classify.test.js",
+      "dist/factory/heal/__tests__/classify.test.js.map",
+      "dist/factory/heal/__tests__/cli.test.d.ts",
+      "dist/factory/heal/__tests__/cli.test.d.ts.map",
+      "dist/factory/heal/__tests__/cli.test.js",
+      "dist/factory/heal/__tests__/cli.test.js.map",
+      "dist/factory/heal/__tests__/debug.test.d.ts",
+      "dist/factory/heal/__tests__/debug.test.d.ts.map",
+      "dist/factory/heal/__tests__/debug.test.js",
+      "dist/factory/heal/__tests__/debug.test.js.map",
+      "dist/factory/heal/__tests__/run.test.d.ts",
+      "dist/factory/heal/__tests__/run.test.d.ts.map",
+      "dist/factory/heal/__tests__/run.test.js",
+      "dist/factory/heal/__tests__/run.test.js.map",
+      "dist/factory/heal/__tests__/state.test.d.ts",
+      "dist/factory/heal/__tests__/state.test.d.ts.map",
+      "dist/factory/heal/__tests__/state.test.js",
+      "dist/factory/heal/__tests__/state.test.js.map",
+      "dist/factory/heal/classify.d.ts",
+      "dist/factory/heal/classify.d.ts.map",
+      "dist/factory/heal/classify.js",
+      "dist/factory/heal/classify.js.map",
+      "dist/factory/heal/cli.d.ts",
+      "dist/factory/heal/cli.d.ts.map",
+      "dist/factory/heal/cli.js",
+      "dist/factory/heal/cli.js.map",
+      "dist/factory/heal/config.d.ts",
+      "dist/factory/heal/config.d.ts.map",
+      "dist/factory/heal/config.js",
+      "dist/factory/heal/config.js.map",
+      "dist/factory/heal/debug-lane.d.ts",
+      "dist/factory/heal/debug-lane.d.ts.map",
+      "dist/factory/heal/debug-lane.js",
+      "dist/factory/heal/debug-lane.js.map",
+      "dist/factory/heal/diagnosis-output.d.ts",
+      "dist/factory/heal/diagnosis-output.d.ts.map",
+      "dist/factory/heal/diagnosis-output.js",
+      "dist/factory/heal/diagnosis-output.js.map",
+      "dist/factory/heal/evidence.d.ts",
+      "dist/factory/heal/evidence.d.ts.map",
+      "dist/factory/heal/evidence.js",
+      "dist/factory/heal/evidence.js.map",
+      "dist/factory/heal/history.d.ts",
+      "dist/factory/heal/history.d.ts.map",
+      "dist/factory/heal/history.js",
+      "dist/factory/heal/history.js.map",
+      "dist/factory/heal/implement.d.ts",
+      "dist/factory/heal/implement.d.ts.map",
+      "dist/factory/heal/implement.js",
+      "dist/factory/heal/implement.js.map",
+      "dist/factory/heal/logs.d.ts",
+      "dist/factory/heal/logs.d.ts.map",
+      "dist/factory/heal/logs.js",
+      "dist/factory/heal/logs.js.map",
+      "dist/factory/heal/run.d.ts",
+      "dist/factory/heal/run.d.ts.map",
+      "dist/factory/heal/run.js",
+      "dist/factory/heal/run.js.map",
+      "dist/factory/heal/sanitize.d.ts",
+      "dist/factory/heal/sanitize.d.ts.map",
+      "dist/factory/heal/sanitize.js",
+      "dist/factory/heal/sanitize.js.map",
+      "dist/factory/heal/signature.d.ts",
+      "dist/factory/heal/signature.d.ts.map",
+      "dist/factory/heal/signature.js",
+      "dist/factory/heal/signature.js.map",
+      "dist/factory/heal/state.d.ts",
+      "dist/factory/heal/state.d.ts.map",
+      "dist/factory/heal/state.js",
+      "dist/factory/heal/state.js.map",
       "dist/factory/listener.d.ts",
       "dist/factory/listener.d.ts.map",
       "dist/factory/listener.js",
@@ -2967,6 +3063,14 @@
       "dist/factory/map-run.d.ts.map",
       "dist/factory/map-run.js",
       "dist/factory/map-run.js.map",
+      "dist/factory/run/__tests__/ci-heal.test.d.ts",
+      "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
+      "dist/factory/run/__tests__/ci-heal.test.js",
+      "dist/factory/run/__tests__/ci-heal.test.js.map",
+      "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
+      "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.sandbox.test.js",
+      "dist/factory/run/__tests__/engine.sandbox.test.js.map",
       "dist/factory/run/__tests__/engine.test.d.ts",
       "dist/factory/run/__tests__/engine.test.d.ts.map",
       "dist/factory/run/__tests__/engine.test.js",
@@ -2979,6 +3083,10 @@
       "dist/factory/run/__tests__/lane.test.d.ts.map",
       "dist/factory/run/__tests__/lane.test.js",
       "dist/factory/run/__tests__/lane.test.js.map",
+      "dist/factory/run/__tests__/prepare-gates.test.d.ts",
+      "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
+      "dist/factory/run/__tests__/prepare-gates.test.js",
+      "dist/factory/run/__tests__/prepare-gates.test.js.map",
       "dist/factory/run/__tests__/review-guard.test.d.ts",
       "dist/factory/run/__tests__/review-guard.test.d.ts.map",
       "dist/factory/run/__tests__/review-guard.test.js",
@@ -2991,6 +3099,10 @@
       "dist/factory/run/budget.d.ts.map",
       "dist/factory/run/budget.js",
       "dist/factory/run/budget.js.map",
+      "dist/factory/run/clean.d.ts",
+      "dist/factory/run/clean.d.ts.map",
+      "dist/factory/run/clean.js",
+      "dist/factory/run/clean.js.map",
       "dist/factory/run/engine.d.ts",
       "dist/factory/run/engine.d.ts.map",
       "dist/factory/run/engine.js",
@@ -2999,6 +3111,14 @@
       "dist/factory/run/exec.d.ts.map",
       "dist/factory/run/exec.js",
       "dist/factory/run/exec.js.map",
+      "dist/factory/run/gates-driver.d.ts",
+      "dist/factory/run/gates-driver.d.ts.map",
+      "dist/factory/run/gates-driver.js",
+      "dist/factory/run/gates-driver.js.map",
+      "dist/factory/run/lane-commit.d.ts",
+      "dist/factory/run/lane-commit.d.ts.map",
+      "dist/factory/run/lane-commit.js",
+      "dist/factory/run/lane-commit.js.map",
       "dist/factory/run/lane.d.ts",
       "dist/factory/run/lane.d.ts.map",
       "dist/factory/run/lane.js",
@@ -3007,6 +3127,14 @@
       "dist/factory/run/ledger.d.ts.map",
       "dist/factory/run/ledger.js",
       "dist/factory/run/ledger.js.map",
+      "dist/factory/run/merge-policy.d.ts",
+      "dist/factory/run/merge-policy.d.ts.map",
+      "dist/factory/run/merge-policy.js",
+      "dist/factory/run/merge-policy.js.map",
+      "dist/factory/run/prepare.d.ts",
+      "dist/factory/run/prepare.d.ts.map",
+      "dist/factory/run/prepare.js",
+      "dist/factory/run/prepare.js.map",
       "dist/factory/run/progress.d.ts",
       "dist/factory/run/progress.d.ts.map",
       "dist/factory/run/progress.js",
@@ -5849,6 +5977,22 @@
       "dist/platform/process-utils.d.ts.map",
       "dist/platform/process-utils.js",
       "dist/platform/process-utils.js.map",
+      "dist/port/__tests__/engine.test.d.ts",
+      "dist/port/__tests__/engine.test.d.ts.map",
+      "dist/port/__tests__/engine.test.js",
+      "dist/port/__tests__/engine.test.js.map",
+      "dist/port/__tests__/guard.test.d.ts",
+      "dist/port/__tests__/guard.test.d.ts.map",
+      "dist/port/__tests__/guard.test.js",
+      "dist/port/__tests__/guard.test.js.map",
+      "dist/port/engine.d.ts",
+      "dist/port/engine.d.ts.map",
+      "dist/port/engine.js",
+      "dist/port/engine.js.map",
+      "dist/port/guard.d.ts",
+      "dist/port/guard.d.ts.map",
+      "dist/port/guard.js",
+      "dist/port/guard.js.map",
       "dist/projection/__tests__/fixtures.test.d.ts",
       "dist/projection/__tests__/fixtures.test.d.ts.map",
       "dist/projection/__tests__/fixtures.test.js",
@@ -5929,6 +6073,10 @@
       "dist/release/__tests__/checks.test.d.ts.map",
       "dist/release/__tests__/checks.test.js",
       "dist/release/__tests__/checks.test.js.map",
+      "dist/release/__tests__/drive.test.d.ts",
+      "dist/release/__tests__/drive.test.d.ts.map",
+      "dist/release/__tests__/drive.test.js",
+      "dist/release/__tests__/drive.test.js.map",
       "dist/release/__tests__/engine.test.d.ts",
       "dist/release/__tests__/engine.test.d.ts.map",
       "dist/release/__tests__/engine.test.js",
@@ -5937,6 +6085,10 @@
       "dist/release/checks.d.ts.map",
       "dist/release/checks.js",
       "dist/release/checks.js.map",
+      "dist/release/drive.d.ts",
+      "dist/release/drive.d.ts.map",
+      "dist/release/drive.js",
+      "dist/release/drive.js.map",
       "dist/release/engine.d.ts",
       "dist/release/engine.d.ts.map",
       "dist/release/engine.js",
@@ -6025,6 +6177,14 @@
       "dist/smoke/__tests__/copilot-cli-scenarios.test.d.ts.map",
       "dist/smoke/__tests__/copilot-cli-scenarios.test.js",
       "dist/smoke/__tests__/copilot-cli-scenarios.test.js.map",
+      "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts",
+      "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-factory-run-scenario.test.js",
+      "dist/smoke/__tests__/copilot-factory-run-scenario.test.js.map",
+      "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts",
+      "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js",
+      "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.js",
@@ -6057,10 +6217,18 @@
       "dist/smoke/copilot-cli-scenarios.d.ts.map",
       "dist/smoke/copilot-cli-scenarios.js",
       "dist/smoke/copilot-cli-scenarios.js.map",
+      "dist/smoke/copilot-factory-run-scenario.d.ts",
+      "dist/smoke/copilot-factory-run-scenario.d.ts.map",
+      "dist/smoke/copilot-factory-run-scenario.js",
+      "dist/smoke/copilot-factory-run-scenario.js.map",
       "dist/smoke/copilot-hook-manifest.d.ts",
       "dist/smoke/copilot-hook-manifest.d.ts.map",
       "dist/smoke/copilot-hook-manifest.js",
       "dist/smoke/copilot-hook-manifest.js.map",
+      "dist/smoke/copilot-sandbox-lane-scenario.d.ts",
+      "dist/smoke/copilot-sandbox-lane-scenario.d.ts.map",
+      "dist/smoke/copilot-sandbox-lane-scenario.js",
+      "dist/smoke/copilot-sandbox-lane-scenario.js.map",
       "dist/smoke/copilot-sdk-driver.d.ts",
       "dist/smoke/copilot-sdk-driver.d.ts.map",
       "dist/smoke/copilot-sdk-driver.js",
@@ -6477,6 +6645,10 @@
       "dist/team/__tests__/shell-affinity.test.d.ts.map",
       "dist/team/__tests__/shell-affinity.test.js",
       "dist/team/__tests__/shell-affinity.test.js.map",
+      "dist/team/__tests__/shell-allowlist.test.d.ts",
+      "dist/team/__tests__/shell-allowlist.test.d.ts.map",
+      "dist/team/__tests__/shell-allowlist.test.js",
+      "dist/team/__tests__/shell-allowlist.test.js.map",
       "dist/team/__tests__/shell-ready-timeout-env.test.d.ts",
       "dist/team/__tests__/shell-ready-timeout-env.test.d.ts.map",
       "dist/team/__tests__/shell-ready-timeout-env.test.js",
@@ -6905,6 +7077,10 @@
       "dist/team/sentinel-gate.d.ts.map",
       "dist/team/sentinel-gate.js",
       "dist/team/sentinel-gate.js.map",
+      "dist/team/shell-allowlist.d.ts",
+      "dist/team/shell-allowlist.d.ts.map",
+      "dist/team/shell-allowlist.js",
+      "dist/team/shell-allowlist.js.map",
       "dist/team/stage-router.d.ts",
       "dist/team/stage-router.d.ts.map",
       "dist/team/stage-router.js",
@@ -17648,6 +17824,26 @@
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/port-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/port-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/port-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/port-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/port-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/port-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/port-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/port-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/progress-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/progress-cli.test.d.ts"
@@ -18026,6 +18222,26 @@
         "id": "dist/cli/commands/intake.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/intake.js.map"
+      },
+      {
+        "id": "dist/cli/commands/port.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/port.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/port.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/port.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/port.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/port.js"
+      },
+      {
+        "id": "dist/cli/commands/port.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/port.js.map"
       },
       {
         "id": "dist/cli/commands/progress.d.ts",
@@ -18838,6 +19054,26 @@
         "path": "dist/copilot-run/__tests__/fake-sdk.js.map"
       },
       {
+        "id": "dist/copilot-run/__tests__/job.sandbox.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.sandbox.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.sandbox.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.sandbox.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.sandbox.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.sandbox.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.sandbox.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.sandbox.test.js.map"
+      },
+      {
         "id": "dist/copilot-run/__tests__/job.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/job.test.d.ts"
@@ -18856,6 +19092,26 @@
         "id": "dist/copilot-run/__tests__/job.test.js.map",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/job.test.js.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox.test.js.map"
       },
       {
         "id": "dist/copilot-run/job.d.ts",
@@ -18896,6 +19152,26 @@
         "id": "dist/copilot-run/names.js.map",
         "kind": "generated-dist",
         "path": "dist/copilot-run/names.js.map"
+      },
+      {
+        "id": "dist/copilot-run/sandbox.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/sandbox.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/sandbox.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox.js"
+      },
+      {
+        "id": "dist/copilot-run/sandbox.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -19018,6 +19294,386 @@
         "path": "dist/factory/__tests__/status.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/workflow-run.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/workflow-run.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/workflow-run.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/workflow-run.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/workflow-run.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/workflow-run.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/workflow-run.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/workflow-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/classify.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/classify.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/classify.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/classify.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/classify.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/classify.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/classify.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/classify.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/cli.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/cli.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/cli.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/debug.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/debug.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/debug.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/debug.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/debug.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/debug.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/debug.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/debug.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/run.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/run.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/run.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/run.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/run.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/run.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/run.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/run.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/state.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/state.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/state.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/state.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/state.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/state.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/state.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/state.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/classify.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/classify.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/classify.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/classify.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/classify.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/classify.js"
+      },
+      {
+        "id": "dist/factory/heal/classify.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/classify.js.map"
+      },
+      {
+        "id": "dist/factory/heal/cli.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/cli.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/cli.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/cli.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/cli.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/cli.js"
+      },
+      {
+        "id": "dist/factory/heal/cli.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/cli.js.map"
+      },
+      {
+        "id": "dist/factory/heal/config.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/config.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/config.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/config.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/config.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/config.js"
+      },
+      {
+        "id": "dist/factory/heal/config.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/config.js.map"
+      },
+      {
+        "id": "dist/factory/heal/debug-lane.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/debug-lane.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/debug-lane.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/debug-lane.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/debug-lane.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/debug-lane.js"
+      },
+      {
+        "id": "dist/factory/heal/debug-lane.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/debug-lane.js.map"
+      },
+      {
+        "id": "dist/factory/heal/diagnosis-output.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/diagnosis-output.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/diagnosis-output.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/diagnosis-output.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/diagnosis-output.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/diagnosis-output.js"
+      },
+      {
+        "id": "dist/factory/heal/diagnosis-output.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/diagnosis-output.js.map"
+      },
+      {
+        "id": "dist/factory/heal/evidence.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/evidence.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/evidence.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/evidence.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/evidence.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/evidence.js"
+      },
+      {
+        "id": "dist/factory/heal/evidence.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/evidence.js.map"
+      },
+      {
+        "id": "dist/factory/heal/history.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/history.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/history.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/history.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/history.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/history.js"
+      },
+      {
+        "id": "dist/factory/heal/history.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/history.js.map"
+      },
+      {
+        "id": "dist/factory/heal/implement.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/implement.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/implement.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/implement.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/implement.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/implement.js"
+      },
+      {
+        "id": "dist/factory/heal/implement.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/implement.js.map"
+      },
+      {
+        "id": "dist/factory/heal/logs.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/logs.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/logs.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/logs.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/logs.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/logs.js"
+      },
+      {
+        "id": "dist/factory/heal/logs.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/logs.js.map"
+      },
+      {
+        "id": "dist/factory/heal/run.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/run.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/run.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/run.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/run.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/run.js"
+      },
+      {
+        "id": "dist/factory/heal/run.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/run.js.map"
+      },
+      {
+        "id": "dist/factory/heal/sanitize.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/sanitize.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/sanitize.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/sanitize.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/sanitize.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/sanitize.js"
+      },
+      {
+        "id": "dist/factory/heal/sanitize.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/sanitize.js.map"
+      },
+      {
+        "id": "dist/factory/heal/signature.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/signature.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/signature.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/signature.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/signature.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/signature.js"
+      },
+      {
+        "id": "dist/factory/heal/signature.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/signature.js.map"
+      },
+      {
+        "id": "dist/factory/heal/state.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/state.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/state.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/state.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/state.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/state.js"
+      },
+      {
+        "id": "dist/factory/heal/state.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/state.js.map"
+      },
+      {
         "id": "dist/factory/listener.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/listener.d.ts"
@@ -19098,6 +19754,46 @@
         "path": "dist/factory/map-run.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/ci-heal.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/ci-heal.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/ci-heal.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/ci-heal.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/ci-heal.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/ci-heal.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/ci-heal.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.sandbox.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.sandbox.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.test.d.ts"
@@ -19156,6 +19852,26 @@
         "id": "dist/factory/run/__tests__/lane.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/lane.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/prepare-gates.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/prepare-gates.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/review-guard.test.d.ts",
@@ -19218,6 +19934,26 @@
         "path": "dist/factory/run/budget.js.map"
       },
       {
+        "id": "dist/factory/run/clean.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/clean.d.ts"
+      },
+      {
+        "id": "dist/factory/run/clean.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/clean.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/clean.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/clean.js"
+      },
+      {
+        "id": "dist/factory/run/clean.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/clean.js.map"
+      },
+      {
         "id": "dist/factory/run/engine.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/engine.d.ts"
@@ -19258,6 +19994,46 @@
         "path": "dist/factory/run/exec.js.map"
       },
       {
+        "id": "dist/factory/run/gates-driver.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/gates-driver.d.ts"
+      },
+      {
+        "id": "dist/factory/run/gates-driver.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/gates-driver.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/gates-driver.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/gates-driver.js"
+      },
+      {
+        "id": "dist/factory/run/gates-driver.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/gates-driver.js.map"
+      },
+      {
+        "id": "dist/factory/run/lane-commit.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-commit.d.ts"
+      },
+      {
+        "id": "dist/factory/run/lane-commit.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-commit.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/lane-commit.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-commit.js"
+      },
+      {
+        "id": "dist/factory/run/lane-commit.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/lane-commit.js.map"
+      },
+      {
         "id": "dist/factory/run/lane.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/lane.d.ts"
@@ -19296,6 +20072,46 @@
         "id": "dist/factory/run/ledger.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/ledger.js.map"
+      },
+      {
+        "id": "dist/factory/run/merge-policy.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/merge-policy.d.ts"
+      },
+      {
+        "id": "dist/factory/run/merge-policy.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/merge-policy.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/merge-policy.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/merge-policy.js"
+      },
+      {
+        "id": "dist/factory/run/merge-policy.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/merge-policy.js.map"
+      },
+      {
+        "id": "dist/factory/run/prepare.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/prepare.d.ts"
+      },
+      {
+        "id": "dist/factory/run/prepare.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/prepare.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/prepare.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/prepare.js"
+      },
+      {
+        "id": "dist/factory/run/prepare.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/prepare.js.map"
       },
       {
         "id": "dist/factory/run/progress.d.ts",
@@ -33508,6 +34324,86 @@
         "path": "dist/platform/process-utils.js.map"
       },
       {
+        "id": "dist/port/__tests__/engine.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/engine.test.d.ts"
+      },
+      {
+        "id": "dist/port/__tests__/engine.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/engine.test.d.ts.map"
+      },
+      {
+        "id": "dist/port/__tests__/engine.test.js",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/engine.test.js"
+      },
+      {
+        "id": "dist/port/__tests__/engine.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/engine.test.js.map"
+      },
+      {
+        "id": "dist/port/__tests__/guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/guard.test.d.ts"
+      },
+      {
+        "id": "dist/port/__tests__/guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/port/__tests__/guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/guard.test.js"
+      },
+      {
+        "id": "dist/port/__tests__/guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/port/__tests__/guard.test.js.map"
+      },
+      {
+        "id": "dist/port/engine.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/port/engine.d.ts"
+      },
+      {
+        "id": "dist/port/engine.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/port/engine.d.ts.map"
+      },
+      {
+        "id": "dist/port/engine.js",
+        "kind": "generated-dist",
+        "path": "dist/port/engine.js"
+      },
+      {
+        "id": "dist/port/engine.js.map",
+        "kind": "generated-dist",
+        "path": "dist/port/engine.js.map"
+      },
+      {
+        "id": "dist/port/guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/port/guard.d.ts"
+      },
+      {
+        "id": "dist/port/guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/port/guard.d.ts.map"
+      },
+      {
+        "id": "dist/port/guard.js",
+        "kind": "generated-dist",
+        "path": "dist/port/guard.js"
+      },
+      {
+        "id": "dist/port/guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/port/guard.js.map"
+      },
+      {
         "id": "dist/projection/__tests__/fixtures.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/projection/__tests__/fixtures.test.d.ts"
@@ -33908,6 +34804,26 @@
         "path": "dist/release/__tests__/checks.test.js.map"
       },
       {
+        "id": "dist/release/__tests__/drive.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/drive.test.d.ts"
+      },
+      {
+        "id": "dist/release/__tests__/drive.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/drive.test.d.ts.map"
+      },
+      {
+        "id": "dist/release/__tests__/drive.test.js",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/drive.test.js"
+      },
+      {
+        "id": "dist/release/__tests__/drive.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/drive.test.js.map"
+      },
+      {
         "id": "dist/release/__tests__/engine.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/release/__tests__/engine.test.d.ts"
@@ -33946,6 +34862,26 @@
         "id": "dist/release/checks.js.map",
         "kind": "generated-dist",
         "path": "dist/release/checks.js.map"
+      },
+      {
+        "id": "dist/release/drive.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/drive.d.ts"
+      },
+      {
+        "id": "dist/release/drive.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/drive.d.ts.map"
+      },
+      {
+        "id": "dist/release/drive.js",
+        "kind": "generated-dist",
+        "path": "dist/release/drive.js"
+      },
+      {
+        "id": "dist/release/drive.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/drive.js.map"
       },
       {
         "id": "dist/release/engine.d.ts",
@@ -34388,6 +35324,46 @@
         "path": "dist/smoke/__tests__/copilot-cli-scenarios.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-factory-run-scenario.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-factory-run-scenario.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-factory-run-scenario.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-factory-run-scenario.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-factory-run-scenario.test.js.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sandbox-lane-scenario.test.js.map"
+      },
+      {
         "id": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts"
@@ -34548,6 +35524,26 @@
         "path": "dist/smoke/copilot-cli-scenarios.js.map"
       },
       {
+        "id": "dist/smoke/copilot-factory-run-scenario.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-factory-run-scenario.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-factory-run-scenario.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-factory-run-scenario.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-factory-run-scenario.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-factory-run-scenario.js"
+      },
+      {
+        "id": "dist/smoke/copilot-factory-run-scenario.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-factory-run-scenario.js.map"
+      },
+      {
         "id": "dist/smoke/copilot-hook-manifest.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-hook-manifest.d.ts"
@@ -34566,6 +35562,26 @@
         "id": "dist/smoke/copilot-hook-manifest.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-hook-manifest.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sandbox-lane-scenario.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sandbox-lane-scenario.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-sandbox-lane-scenario.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sandbox-lane-scenario.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sandbox-lane-scenario.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sandbox-lane-scenario.js"
+      },
+      {
+        "id": "dist/smoke/copilot-sandbox-lane-scenario.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sandbox-lane-scenario.js.map"
       },
       {
         "id": "dist/smoke/copilot-sdk-driver.d.ts",
@@ -36646,6 +37662,26 @@
         "id": "dist/team/__tests__/shell-affinity.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/shell-affinity.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/shell-allowlist.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/shell-allowlist.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/shell-allowlist.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/shell-allowlist.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/shell-allowlist.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/shell-allowlist.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/shell-allowlist.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/shell-allowlist.test.js.map"
       },
       {
         "id": "dist/team/__tests__/shell-ready-timeout-env.test.d.ts",
@@ -38786,6 +39822,26 @@
         "id": "dist/team/sentinel-gate.js.map",
         "kind": "generated-dist",
         "path": "dist/team/sentinel-gate.js.map"
+      },
+      {
+        "id": "dist/team/shell-allowlist.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/shell-allowlist.d.ts"
+      },
+      {
+        "id": "dist/team/shell-allowlist.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/shell-allowlist.d.ts.map"
+      },
+      {
+        "id": "dist/team/shell-allowlist.js",
+        "kind": "generated-dist",
+        "path": "dist/team/shell-allowlist.js"
+      },
+      {
+        "id": "dist/team/shell-allowlist.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/shell-allowlist.js.map"
       },
       {
         "id": "dist/team/stage-router.d.ts",
@@ -106171,12 +107227,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8976,
+      "nodeCount": 9152,
       "edgeCount": 10646,
       "importEdgeCount": 8823,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "e485e92a07cbf552774440d31bd9da8986d95d5a0c068c712d7ac9f7ed0ab431",
-  "manifestSha256": "86ee78728f511fed56a43c0d39482e63bc52a47e883d68b37ea379606aac734c"
+  "manifestSha256": "fb74db976f3c9aafd7982da9fec01422a05d7f3d95af72d14cae2021a295777a"
 }
