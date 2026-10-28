@@ -16,6 +16,8 @@ import { type SpawnFn, type SpawnSyncFn } from './process-utils.js';
 import { type LoadSdkFn } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
+import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
+import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
 import { type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, type SessionEnvOptions, } from './copilot-session-env.js';
@@ -76,6 +78,8 @@ export interface SmokeDeps extends BinaryResolverDeps {
     runChain?: typeof runChainScenario;
     runTeam?: typeof runTeamScenario;
     runCli?: typeof runCliScenario;
+    runFactory?: typeof runFactoryRunScenario;
+    runSandbox?: typeof runSandboxLaneScenario;
 }
 export interface SmokeReport {
     ok: boolean;
@@ -160,7 +164,7 @@ export interface Tier1Inputs {
 /** Evaluate captured Tier 1 artifacts (exported for fixture-driven tests). */
 export declare function evaluateTier1(input: Tier1Inputs): SmokeCheck[];
 export declare const LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
-export declare const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli or set OMC_LIVE_SMOKE=2";
+export declare const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli/runFactory/runSandbox or set OMC_LIVE_SMOKE=2";
 /**
  * Hard no-billing guard: under a test runner (`VITEST` or `NODE_ENV=test` in
  * the real process env) a run that would call a model (tier 1; tier 2 with

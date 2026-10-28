@@ -42,7 +42,7 @@ function fakeRepo(overrides = {}) {
             return res(0, `.git/${args[2]}\n`);
         if (key === 'git rev-parse HEAD')
             return res(0, `${head()}\n`);
-        if (key === 'git remote get-url origin')
+        if (key === 'git remote get-url origin' || key === 'git remote get-url --push --all origin')
             return res(0, 'git@github.com:o/r.git\n');
         if (key === 'git rev-parse --verify refs/remotes/origin/dev')
             return res(0, `${BASE_SHA}\n`);
@@ -195,6 +195,7 @@ describe('runPrepare', () => {
     it.each([
         ['a remote pointing at another repository', { 'git remote get-url origin': res(0, 'https://github.com/evil/r.git\n') }, /remote: remote origin points at https:\/\/github.com\/evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
         ['a local-path remote', { 'git remote get-url origin': res(0, 'C:\\tmp\\o\\r\n') }, /remote: remote origin points at/],
+        ['a pushurl naming another repository', { 'git remote get-url --push --all origin': res(0, 'git@github.com:o/r.git\nhttps://github.com/evil/r.git\n') }, /remote: remote origin pushes to https:\/\/github.com\/evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
         ['no repository url from GitHub', {}, /remote: GitHub reported no repository url/, { repoUrl: undefined }],
         ['a fetched base that is not GitHub\'s base sha', { 'git rev-parse --verify refs/remotes/origin/dev': res(0, `${'e'.repeat(40)}\n`) }, /fetch: refs\/remotes\/origin\/dev is e{40}, but GitHub reports dev at d{40}/],
         ['a missing remote-tracking ref', { 'git rev-parse --verify refs/remotes/origin/dev': res(128, '', 'fatal: Needed a single revision') }, /fetch: refs\/remotes\/origin\/dev is missing/],
@@ -308,6 +309,10 @@ describe('decideMerge', () => {
         }
         expect(protectedChanges(['.github/workflowsX.yml', '.copilot/omg.jsonc.bak', 'docs/.github/workflows/x.yml'])).toEqual([]);
         expect(protectedChanges(['ci/flaky.json'], ['ci/flaky.json'])).toEqual(['ci/flaky.json']);
+        // Win32 resolves trailing dots and spaces away; a bare directory, 8.3 short names, streams and `..` fail closed.
+        const bypasses = ['.github/workflows./ci.yml', '.copilot/omg.jsonc.', '.copilot/omg.jsonc ', '.github./known-flaky-tests.json', '.github/workflows', '.GITHUB/Workflows',
+            './.github/workflows/ci.yml', '.github\\workflows\\ci.yml', '.github/WORKFL~1/ci.yml', '.copilot/omg.jsonc::$DATA', 'src/../.github/workflows/ci.yml'];
+        expect(protectedChanges(bypasses)).toEqual(bypasses);
         // An unreadable diff fails closed.
         expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.join()).toMatch(/could not list the PR's changed files/);
     });

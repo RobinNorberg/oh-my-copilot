@@ -14,7 +14,6 @@
  * live in the creating process; after a restart a handle is unknown and
  * `poll` throws {@link LaneLostError}, which the engine records as `lost`.
  */
-import { execFileSync } from 'node:child_process';
 import { CopilotRunError, } from '../../copilot-run/job.js';
 /** The backend no longer knows the handle (a local job whose process ended). */
 export class LaneLostError extends Error {
@@ -35,14 +34,6 @@ const STATE_OF = {
     timeout: 'timeout',
     cancelled: 'cancelled',
 };
-function headOf(worktree) {
-    try {
-        return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: 30_000 }).trim() || null;
-    }
-    catch {
-        return null;
-    }
-}
 export class CopilotLaneBackend {
     manager;
     options;
@@ -61,7 +52,7 @@ export class CopilotLaneBackend {
             timeoutMs: input.timeoutMs,
             maxCredits: input.maxCredits,
             ...(input.model ? { model: input.model } : {}),
-        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}` });
+        }, { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}) });
         return { remoteId: snap.jobId };
     }
     async poll(remoteId) {
@@ -99,7 +90,8 @@ export class CopilotLaneBackend {
             state,
             branch: snap.worktree?.branch ?? null,
             pr: null,
-            headSha: worktree && isTerminalLaneState(state) ? headOf(worktree) : null,
+            // Read by the job when it ended, through the recorded git dir, hardened: never via the lane-writable `.git` file.
+            headSha: worktree && isTerminalLaneState(state) ? snap.worktree?.headCommit ?? null : null,
             baseSha: snap.worktree?.baseCommit ?? null,
             worktree,
             changes: snap.changes ?? null,
@@ -115,6 +107,7 @@ export class CopilotLaneBackend {
             error: snap.error,
             notes: snap.notes ?? [],
             process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
+            ...(snap.sandbox ? { sandbox: snap.sandbox } : {}),
         };
     }
 }

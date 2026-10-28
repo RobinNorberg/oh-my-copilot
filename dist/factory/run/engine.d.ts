@@ -1,8 +1,10 @@
 /**
- * `omg factory run <issue>` engine, PR 2 scope (design §14 row 2): intake ->
- * plan -> implement -> publish -> review -> fix rounds, then a park at
- * `prepare` with a human gate (prepare, the gates driver and the human merge
- * follow in PR 3).
+ * `omg factory run <issue>` engine (design §3): intake -> plan -> implement ->
+ * publish -> review -> fix rounds -> prepare (ship's runPrepare in an
+ * engine-owned checkout, prepare.ts) -> gates (gates-driver.ts) -> merge
+ * (merge-policy.ts: a human gate, always) -> merged. A base merge that
+ * conflicts outside inventory/ starts a conflict-fix lane and a real check
+ * failure one ci-fix lane; both go back through publish and a new review.
  *
  * The engine owns every transition; LLM work happens only inside lanes, and a
  * lane's output is data the engine validates (design §1). Lanes never push,
@@ -22,28 +24,72 @@
  * - it compares the shared git state before and after EVERY lane, after a
  *   lost lane and at resume (review-guard.ts), and again before its next git
  *   command (a detached child's late edit);
- * - its own git runs without hooks or fsmonitor (exec.ts hardenedGitExec).
+ * - its own git runs without hooks or fsmonitor (exec.ts hardenedGitExec);
+ * - write lanes run with a read-only git dir and never commit: the engine
+ *   commits their worktree changes after the tamper check (lane-commit.ts).
  *
  * Owner overrides of the design: merge is always human (nothing here merges);
  * no budget governor, per-run limits instead (budget.ts) with a mandatory
  * per-lane AI-credit cap; manual trigger only.
+ *
+ * The `ci-heal` kind (self-healing CI design §5-§6), keyed `heal-<sig8>` on
+ * branch `factory/heal-<sig8>`, replaces intake and plan: intake reads only
+ * the repository url, and the plan is an engine-rendered template of the
+ * validated diagnosis fields, fenced as untrusted lane output. It parks at
+ * `awaiting-human: heal-approve` until a human runs `omg factory heal
+ * approve` (factory.heal.autoImplement aside, never for regression-or-env),
+ * and at `heal-diagnosis` when the sealed diagnosis fails the contract.
+ * From implement on it is the issue pipeline; every lane also passes the
+ * heal caps (FactoryHealStart.laneCap). Nothing here writes the known-flaky
+ * list: a write lane touching it parks at protected-paths.
  */
 import { type Exec } from '../../ship/exec.js';
+import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
-import { type FactoryGate, type FactoryPhase, type FactoryRunState, type OwnerDeps } from './state.js';
-/** Exit code of a run parked at a human gate other than the expected `prepare` park. */
+import { type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps } from './state.js';
+/** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
-/** Lane waits are sliced so the cancel flag is seen within this long. */
+/** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
+export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
+/** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
+export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
 export declare const DEFAULT_POLL_MS = 5000;
 /** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
 export declare const MAX_REVIEW_DIFF_CHARS = 60000;
 /** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
 export declare const TRUSTED_PLAN_AUTHORS: readonly string[];
+/** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
+export interface FactoryHealStart {
+    sig8: string;
+    /** What a new run is created from (same sig8); an existing run keeps its own sealed copy. */
+    record?: FactoryHealRecord;
+    /** factory.heal.autoImplement (user config only): implement without a human approval, never for regression-or-env. */
+    autoImplement: boolean;
+    /** This invocation is `omg factory heal approve`: a human approved the diagnosis. */
+    approved?: boolean;
+    /** Mandatory: the heal caps (factory.heal.dailyCredits) checked before every lane start, after the run's own. */
+    laneCap: (cap: number) => HealLaneCapDecision;
+}
+/**
+ * A heal lane cap; `settle` replaces the reservation with the lane's measured
+ * credits after its confirmed end, or with 0 when it never started.
+ */
+export type HealLaneCapDecision = {
+    ok: true;
+    cap: number;
+    settle?: (credits: number) => void;
+} | {
+    ok: false;
+    reason: string;
+};
 export interface FactoryEngineOptions {
     /** Repository root (main checkout): state, lanes' repository, pushes. */
     root: string;
-    issue: number;
+    /** The issue of an `issue` run; omitted for a ci-heal run (`heal`). */
+    issue?: number;
+    /** A ci-heal run, keyed `heal-<sig8>`. */
+    heal?: FactoryHealStart;
     /** Raw command runner; the engine hardens its git and wraps it in the factory guard. */
     exec: Exec;
     lanes: LaneBackend;
@@ -62,6 +108,10 @@ export interface FactoryEngineOptions {
     warn?: (message: string) => void;
     /** Liveness and kill of a lost lane's Copilot child (default: defaultLaneProcessOps). */
     processes?: LaneProcessOps;
+    /** Wait between gate polls (default: a timer). */
+    sleep?: (ms: number) => Promise<void>;
+    /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
+    gateConfig?: GateConfigLoader;
 }
 /** How the engine checks and stops a lost lane's recorded child process. */
 export interface LaneProcessOps {
@@ -83,6 +133,8 @@ export interface FactoryRunOutcome {
     gate?: FactoryGate;
     state: FactoryRunState | null;
     message: string;
+    /** Parked at awaiting-human: merge: the exact command a human runs (the engine never merges). */
+    mergeCommand?: string;
     /** --dry-run: what the run would do next. */
     plan?: {
         next: FactoryPhase | 'awaiting-human';
@@ -129,8 +181,30 @@ export declare function hasAcceptanceCriteria(body: string): boolean;
 export declare function oneLine(text: string | undefined, max?: number): string;
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
 export declare function fenceFor(content: string): string;
+/** The run's key: `heal-<sig8>` for a ci-heal run, else the issue number. */
+export declare function engineRunKey(o: Pick<FactoryEngineOptions, 'issue' | 'heal'>): FactoryRunKey;
+/** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
+export declare const resumeCommand: (key: FactoryRunKey) => string;
+/** The fixed acceptance line of every ci-heal plan (design §5). */
+export declare const HEAL_ACCEPTANCE = "the failing test(s) listed in classification.json pass, and `npm test` passes";
+/**
+ * Why the engine's sealed copy of a ci-heal diagnosis may not become a plan,
+ * or null: the same contract the lane output passed (class flaky, no fix and
+ * protected paths are refused), without the bundle's citation check.
+ */
+export declare function healRecordProblem(h: FactoryHealRecord): string | null;
+/**
+ * The ci-heal plan (design §5): an engine-rendered template of the validated
+ * diagnosis fields, with every lane-derived text fenced and labelled.
+ */
+export declare function healPlanText(h: FactoryHealRecord, base: string): string;
+/** The draft PR body of a ci-heal run: the failing runs, the env diff, the signature and the diagnosis. */
+export declare function healPrBody(s: FactoryRunState): string;
 export declare function implementPrompt(s: FactoryRunState): string;
 export declare function fixPrompt(s: FactoryRunState, round: number): string;
+/** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
+export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
+export declare function ciFixPrompt(s: FactoryRunState): string;
 export declare function reviewPrompt(s: FactoryRunState, head: string, diff: string): string;
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved

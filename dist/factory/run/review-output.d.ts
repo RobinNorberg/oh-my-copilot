@@ -24,6 +24,16 @@ export type ParsedReview = {
     kind: 'invalid';
     reason: string;
 };
+/**
+ * A verdict block: an opening line of exactly ```json and a closing line of
+ * exactly ```, both at the start of a line. A block quoted from the diff
+ * (`> ```json`, an indented or `+` diff line) or wrapped in a longer fence
+ * never matches on its own; the lane's own block plus a pasted copy is two
+ * blocks, which is invalid.
+ */
+export declare const FENCE: RegExp;
+/** Any line opening a json fence, quoted, indented or longer: counted so a pasted copy cannot hide. */
+export declare const ANY_JSON_FENCE: RegExp;
 export declare function parseReviewOutput(finalText: string | null | undefined, expectedSha: string): ParsedReview;
 /** One-line ship verdict notes: the top findings by severity. */
 export declare function verdictNotes(review: Extract<ParsedReview, {

@@ -42,8 +42,9 @@ export function defaultLedgerDir(env = process.env) {
     const base = env.OMC_STATE_DIR?.trim() ? resolve(env.OMC_STATE_DIR) : join(homedir(), '.omg');
     return join(base, 'factory-ledger');
 }
-export function ledgerFilePath(dir, root, issue) {
-    return join(dir, sha256(resolve(root).toLowerCase()).slice(0, 16), `run-${issue}.json`);
+/** `run-<issue>.json`, or `run-heal-<sig8>.json` for a ci-heal run. */
+export function ledgerFilePath(dir, root, key) {
+    return join(dir, sha256(resolve(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
 }
 /** The empty directory the engine passes as core.hooksPath (exec.ts hardenedGitExec). */
 export function emptyHooksDir(dir) {

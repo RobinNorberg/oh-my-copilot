@@ -32,12 +32,14 @@
  * briefs or slip, not against one that rewrites its own environment.
  *
  * Exit codes: 0 ok / green / ready, 1 refused or failed, 2 usage error,
- * 8 gates still pending (re-run to keep watching).
+ * 8 gates still pending (re-run to keep watching; `gates --drive` never
+ * exits 8: it watches up to --drive-max hours, see src/release/drive.ts).
  */
 import { Command } from 'commander';
 import { type LoadedShipConfig } from '../../ship/config.js';
 import { type Exec } from '../../ship/exec.js';
 import { type GateReport } from '../../ship/gates.js';
+import { type DriveProcess, type DriveSpawn } from '../../release/drive.js';
 export declare const EXIT_PENDING = 8;
 export interface ShipConfigContext {
     exec: Exec;
@@ -54,5 +56,14 @@ export interface ShipConfigContext {
 export type ShipConfigLoader = (ctx: ShipConfigContext) => LoadedShipConfig;
 /** A watch that ran out of time while a flaky run's rerun / sibling jobs were still going is pending, not failed. */
 export declare function gateExit(report: GateReport, timedOut?: boolean): number;
-export declare function shipCommand(execImpl?: Exec, loadShipConfig?: ShipConfigLoader): Command;
+/** `gates --drive`: the clock, process probes and the detached spawn (tests). */
+export interface ShipDriveDeps {
+    sleep: (ms: number) => Promise<void>;
+    now: () => number;
+    proc: DriveProcess;
+    spawnDriver?: DriveSpawn;
+    /** CLI script the detached driver runs (default: the one running now). */
+    entry?: string;
+}
+export declare function shipCommand(execImpl?: Exec, loadShipConfig?: ShipConfigLoader, drive?: ShipDriveDeps): Command;
 //# sourceMappingURL=ship.d.ts.map

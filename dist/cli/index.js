@@ -46,6 +46,7 @@ import { intakeCommand } from './commands/intake.js';
 import { factoryCommand } from './commands/factory.js';
 import { shipCommand } from './commands/ship.js';
 import { releaseCommand } from './commands/release.js';
+import { portCommand } from './commands/port.js';
 import { progressCommand } from './commands/progress.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
@@ -1222,7 +1223,7 @@ smokeCmd
     .option('--timeout <ms>', 'Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
     .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
     .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
-    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain and team (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain and a real 2-worker sdk team; continuation, prompt-context, events and ultragoal (opt-in, headless copilot sessions) check Stop-hook continuations, UserPromptSubmit context, postToolUseFailure/permissionRequest/preCompact and the ultragoal tool gate')
+    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain, team, factory-run, factory-run-fix and sandbox-lane (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain, a real 2-worker sdk team and omg factory run with real lanes up to the human merge gate (factory-run-fix adds one fix round), and run review, write and canary lanes in the OS sandbox; continuation, prompt-context, events and ultragoal (opt-in, headless copilot sessions) check Stop-hook continuations, UserPromptSubmit context, postToolUseFailure/permissionRequest/preCompact and the ultragoal tool gate')
     .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
     .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
     .addHelpText('after', `
@@ -1513,6 +1514,7 @@ program.addCommand(intakeCommand());
 program.addCommand(factoryCommand());
 program.addCommand(shipCommand());
 program.addCommand(releaseCommand());
+program.addCommand(portCommand());
 program.addCommand(progressCommand());
 /**
  * Returns the fully-configured commander program.

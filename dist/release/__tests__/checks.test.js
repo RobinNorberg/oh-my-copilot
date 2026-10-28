@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { compareVersions, failingTitlesFromVitestJson, findDistOrphans, newFailures, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
+import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, findDistOrphans, flakyCandidates, newFailures, SMOKE_INPUTS, smokeInputHash, splitFailingTitle, testPassedInReport, parseBaselineTitles, parseReleaseVersion, releaseProseProblems, remoteTagTarget, smokeProblems, stampVersion, tagTargetProblem, VERSION_STAMPS, } from '../checks.js';
 import { formatReleaseProgress } from '../progress.js';
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SHA = 'a'.repeat(40);
@@ -108,6 +108,61 @@ describe('suite baseline diff', () => {
         expect(newFailures(failing, parseBaselineTitles(report('/other/tree')))).toEqual(['src/new.test.ts > new > breaks']);
         expect(newFailures(failing, parseBaselineTitles('# known\nC:\\x\\src\\a.test.ts > a > breaks\n'))).toEqual(['src/new.test.ts > new > breaks']);
         expect(newFailures(failing, [])).toEqual(failing);
+    });
+});
+describe('flake triage', () => {
+    it('classifies: every isolated rerun passed = load-flaky, some = mixed, none or a collection error = real', () => {
+        expect(classifyTriage(3, 3)).toBe('load-flaky');
+        expect(classifyTriage(3, 2)).toBe('mixed');
+        expect(classifyTriage(3, 1)).toBe('mixed');
+        expect(classifyTriage(3, 0)).toBe('real');
+        expect(classifyTriage(0, 0, true)).toBe('real');
+        expect(classifyTriage(3, 3, true)).toBe('real');
+    });
+    it('splits a failing-title line at the first " > "; a file alone is a collection error', () => {
+        expect(splitFailingTitle('src/a.test.ts > session-start-script-context > treats x')).toEqual({ file: 'src/a.test.ts', name: 'session-start-script-context > treats x' });
+        expect(splitFailingTitle('src/a.test.ts')).toEqual({ file: 'src/a.test.ts', name: null });
+    });
+    it('escapes a title for vitest -t so it matches literally', () => {
+        const name = 'reloads (the) [current] launch? $1 + a.b';
+        expect(new RegExp(escapeRe(name)).test(`suite ${name}`)).toBe(true);
+        expect(new RegExp(escapeRe('a.b')).test('axb')).toBe(false);
+    });
+    it('reads one test of a vitest JSON report: passed only when present and every match passed', () => {
+        const report = (status) => JSON.stringify({ testResults: [{ name: 'C:\\x\\src\\a.test.ts', status: 'passed', assertionResults: [{ fullName: 'w > t', status }, { fullName: 'other', status: 'failed' }] }] });
+        expect(testPassedInReport(report('passed'), 'src/a.test.ts', 'w > t')).toBe(true);
+        expect(testPassedInReport(report('failed'), 'src/a.test.ts', 'w > t')).toBe(false);
+        expect(testPassedInReport(report('passed'), 'src/a.test.ts', 'missing')).toBe(false);
+        expect(testPassedInReport(report('passed'), 'src/b.test.ts', 'w > t')).toBe(false);
+        expect(testPassedInReport('not json', 'src/a.test.ts', 'w > t')).toBe(false);
+    });
+    it('writes non-real titles as known-flaky entries (file, title, note) with evidence', () => {
+        const candidates = flakyCandidates('5.12.2', [
+            { title: 'src/a.test.ts > s > t', file: 'src/a.test.ts', runs: 3, passes: 3, class: 'load-flaky' },
+            { title: 'src/b.test.ts > u', file: 'src/b.test.ts', runs: 3, passes: 0, class: 'real' },
+            { title: 'src/c.test.ts > v', file: 'src/c.test.ts', runs: 3, passes: 1, class: 'mixed' },
+        ]);
+        expect(candidates).toEqual([
+            { file: 'src/a.test.ts', title: 's > t', note: expect.stringMatching(/^load-sensitive: .* passed 3\/3 isolated reruns \(v5\.12\.2/), evidence: { class: 'load-flaky', runs: 3, passes: 3, release: '5.12.2' } },
+            { file: 'src/c.test.ts', title: 'v', note: expect.stringMatching(/^mixed: .* passed 1\/3/), evidence: { class: 'mixed', runs: 3, passes: 1, release: '5.12.2' } },
+        ]);
+    });
+});
+describe('smoke input hash', () => {
+    const ids = (over = {}) => SMOKE_INPUTS.map((p) => [p, p in over ? over[p] : `${p}-id`]);
+    it('covers what the Tier 2 smoke loads', () => {
+        expect([...SMOKE_INPUTS]).toEqual([
+            'dist', 'bridge', 'hooks', 'agents', 'skills', 'commands', 'copilot', 'scripts', 'templates',
+            '.claude-plugin', '.mcp.json', 'plugin.json', 'package.json', 'package-lock.json',
+        ]);
+    });
+    it('is a stable sha256 that changes with any input id, absence included', () => {
+        const base = smokeInputHash(ids());
+        expect(base).toMatch(/^[0-9a-f]{64}$/);
+        expect(smokeInputHash(ids())).toBe(base);
+        for (const p of SMOKE_INPUTS)
+            expect(smokeInputHash(ids({ [p]: 'changed' }))).not.toBe(base);
+        expect(smokeInputHash(ids({ 'plugin.json': null }))).not.toBe(base);
     });
 });
 describe('smoke report', () => {

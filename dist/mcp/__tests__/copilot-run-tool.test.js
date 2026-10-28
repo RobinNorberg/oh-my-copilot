@@ -5,6 +5,7 @@ import { join, resolve } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CopilotRunManager, summarizeChanges } from '../../copilot-run/job.js';
 import { COPILOT_RUN_TOOL_NAMES } from '../../copilot-run/names.js';
+import { fakeClientRpc, fakeSessionRpc } from '../../copilot-run/__tests__/fake-sdk.js';
 import { copilotRunCleanupTool, copilotRunStartTool, copilotRunWaitTool, setCopilotRunManagerForTests, } from '../../tools/copilot-run-tools.js';
 import { allTools, buildListToolsResponse } from '../tool-registry.js';
 function newCalls() {
@@ -18,7 +19,7 @@ function fakeSdk(behavior, calls) {
     class Session {
         cfg;
         sessionId = `sess-${calls.sessions.length}`;
-        rpc = {};
+        rpc = fakeSessionRpc('supported', { optionsUpdates: [] });
         constructor(cfg) {
             this.cfg = cfg;
         }
@@ -48,6 +49,7 @@ function fakeSdk(behavior, calls) {
     const never = () => new Promise(() => { });
     class Client {
         cliProcess = behavior === 'stuck' ? { pid: 4242 } : null;
+        rpc = fakeClientRpc('supported');
         constructor(_opts) { }
         async start() { if (behavior === 'slow-start' || behavior === 'stuck')
             await never(); }

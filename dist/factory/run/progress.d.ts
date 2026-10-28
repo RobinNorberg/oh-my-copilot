@@ -6,6 +6,7 @@
  * Emitting never throws (emitProgress is best effort by contract).
  */
 import { type ProgressStatus } from '../../lib/agent-progress.js';
+import type { FactoryRunKey } from './state.js';
 export declare const HEARTBEAT_MIN_MS = 60000;
 export interface FactoryProgressFields {
     pr?: number;
@@ -22,10 +23,10 @@ export interface FactoryProgress {
     /** A heartbeat, dropped when the last one is younger than HEARTBEAT_MIN_MS. */
     heartbeat(phase: string, note?: string, fields?: FactoryProgressFields): void;
 }
-export declare function factoryProgressFile(root: string, issue: number): string;
+export declare function factoryProgressFile(root: string, issue: FactoryRunKey): string;
 export declare function createFactoryProgress(input: {
     root: string;
-    issue: number;
+    issue: FactoryRunKey;
     file?: string;
     now?: () => number;
 }): FactoryProgress;

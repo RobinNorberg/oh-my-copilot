@@ -19,7 +19,8 @@
  *   `config.worktree`, `hooks/`, `info/` and its alternates;
  * - `objects/info/alternates` and `objects/info/http-alternates`;
  * - the global git config the engine's own git reads (GIT_CONFIG_GLOBAL, else
- *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`) and every file an
+ *   `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`), the user-level ignore
+ *   files (`$XDG_CONFIG_HOME/git/ignore`, `core.excludesFile`) and every file an
  *   `include.path` / `includeIf.*.path` in it or in the repository's config
  *   names, followed {@link MAX_INCLUDE_DEPTH} levels deep: a lane's shell can
  *   reach the home directory and plant `credential.helper=!cmd`,
@@ -56,8 +57,9 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, isAbsolute, join, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
 import { FOR_EACH_REF_FORMAT } from './exec.js';
 export class SnapshotError extends Error {
 }
@@ -69,6 +71,11 @@ function run(exec, cwd, args) {
     if (res.status !== 0)
         throw new SnapshotError(`git ${args.join(' ')} failed in ${cwd}: ${res.stderr.trim().split('\n')[0]}`);
     return res.stdout;
+}
+/** `core.excludesFile` as the engine's own git resolves it (guarded env); undefined when unset. */
+function excludesFileOf(exec, cwd) {
+    const res = exec('git', ['config', '--get', 'core.excludesFile'], { cwd, env: TRUSTED_READ_ENV });
+    return res.status === 0 && res.stdout.trim() ? res.stdout.trim() : undefined;
 }
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 function fileHash(path) {
@@ -237,7 +244,7 @@ function safeFileHash(path) {
  * in `repoConfigs` (hashed elsewhere themselves), names, up to
  * {@link MAX_INCLUDE_DEPTH} levels.
  */
-export function globalConfigHash(repoConfigs, env = process.env) {
+export function globalConfigHash(repoConfigs, env = process.env, excludesFile) {
     const home = env.HOME?.trim() || homedir();
     const seen = new Map();
     const follow = (file, depth) => {
@@ -264,6 +271,11 @@ export function globalConfigHash(repoConfigs, env = process.env) {
         visit(f, 0);
     for (const f of repoConfigs)
         follow(resolve(f), 1);
+    // The user-level ignore files change what `git status` reports (a lane can hide a file with them).
+    const xdg = env.XDG_CONFIG_HOME?.trim() || join(home, '.config');
+    const excludes = excludesFile ? [excludesFile === '~' || excludesFile.startsWith('~/') ? join(home, excludesFile.slice(2)) : excludesFile] : [];
+    for (const f of [join(xdg, 'git', 'ignore'), ...excludes])
+        seen.set(resolve(f), safeFileHash(resolve(f)));
     return sha([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([p, h]) => `${p} ${h}`).join('\n'));
 }
 function ignoredHash(root) {
@@ -334,7 +346,7 @@ export function snapshotRepo(exec, root, stateRootRel = '.omg', against) {
         globalConfig: globalConfigHash([
             join(commonDir, 'config'), join(commonDir, 'config.worktree'),
             ...worktreeIds.filter((id) => id !== '.').map((id) => join(wtDir, id, 'config.worktree')),
-        ]),
+        ], process.env, excludesFileOf(exec, root)),
     };
     const statusUnsafe = against !== undefined && (files.config !== against.config || files.configWorktree !== against.configWorktree
         || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules) || files.globalConfig !== against.globalConfig);
@@ -468,24 +480,39 @@ export function compareSnapshots(before, after, allowedNewRefs = {}, allow = {})
  * The review lane's own worktree after it ended: its git dir is the repo's,
  * it is at the reviewed sha, nothing changed. Run only after the shared-state
  * comparison passed (git here reads that shared config).
+ *
+ * The lane could write its `.git` file, its admin dir (`commondir`,
+ * `config.worktree`) and its attributes, so git here never discovers the git
+ * dir: it uses the links copilot_run recorded at the lane's creation
+ * (recordWorktreeGitLinks), whose admin dir must be a direct child of the
+ * repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE and
+ * GIT_COMMON_DIR to those paths, hardened, after comparing them (and
+ * `config.worktree`) with the disk. No attribute applies there
+ * (GIT_ATTR_SOURCE is the empty tree), so no filter, diff driver or git-lfs
+ * runs whatever a config level defines, and no submodule is entered; the
+ * shared-state comparison before this call and the driver blanking stay as
+ * further layers.
  */
-export function verifyReviewWorktree(exec, result, head, commonDir) {
+export function verifyReviewWorktree(result, head, commonDir) {
     const problems = [];
     if (result.baseSha !== head)
         problems.push(`the lane started at ${result.baseSha?.slice(0, 12) ?? 'unknown'}, not the head ${head.slice(0, 12)}`);
     if (!result.worktree)
         return [...problems, 'the lane reported no worktree to verify'];
+    // The links recorded when copilot_run created the lane, never ones read now (runHostGit compares them with the disk).
+    const links = recordedWorktreeGitLinks(result.worktree);
+    if (!links)
+        return [...problems, 'the lane worktree cannot be read: no git links were recorded for it at its creation'];
+    const laneCommon = dirname(dirname(links.adminDir));
+    if (basename(dirname(links.adminDir)) !== 'worktrees' || (commonDir !== undefined && !samePath(laneCommon, commonDir))) {
+        return [...problems, `the lane worktree's git dir is ${links.adminDir}, not the repository's ${join(commonDir ?? laneCommon, 'worktrees')}/<name>`];
+    }
     let laneHead = '';
     let status = '';
     try {
-        if (commonDir !== undefined) {
-            const raw = run(exec, result.worktree, ['rev-parse', '--git-common-dir']).trim();
-            const laneCommon = isAbsolute(raw) ? raw : resolve(result.worktree, raw);
-            if (!samePath(laneCommon, commonDir))
-                return [...problems, `the lane worktree's git dir is ${laneCommon}, not the repository's ${commonDir}`];
-        }
-        laneHead = run(exec, result.worktree, ['rev-parse', 'HEAD']).trim();
-        status = run(exec, result.worktree, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+        const gitDirArgs = worktreeGitDirArgs(result.worktree);
+        laneHead = runHostGit(result.worktree, [...gitDirArgs, 'rev-parse', 'HEAD']).trim();
+        status = runHostGit(result.worktree, [...gitDirArgs, 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
     }
     catch (error) {
         return [...problems, `the lane worktree cannot be read: ${error instanceof Error ? error.message : String(error)}`];
