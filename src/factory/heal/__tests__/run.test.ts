@@ -14,7 +14,7 @@ import { classifyRun, type HealClassification } from '../classify.js';
 import { healCommand, renderHealState, type HealDeps } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG, type HealConfig } from '../config.js';
 import type { LaneConfinement } from '../debug-lane.js';
-import { evidenceDir } from '../evidence.js';
+import { evidenceDir } from '../heal-evidence.js';
 import { runHealEngine } from '../implement.js';
 import { parseJob } from '../logs.js';
 import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, healSealSubject, readHealCounters, readHealSealSubject, runHeal, verifyHealSeal, writeHealScanRecord, writeHealSeal, type HealRunDeps } from '../run.js';

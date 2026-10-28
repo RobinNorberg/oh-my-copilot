@@ -23,7 +23,7 @@ import type { Exec } from '../../ship/exec.js';
 import { type LaneBackend, type LaneResult, type LaneStartInput } from '../run/lane.js';
 import { type RepoSnapshot } from '../run/review-guard.js';
 import type { HealClassification } from './classify.js';
-import type { EvidenceBundle } from './evidence.js';
+import type { EvidenceBundle } from './heal-evidence.js';
 /** Grace after the lane's own timeout before the runner cancels it. */
 export declare const DEBUG_LANE_GRACE_MS: number;
 export declare const DEFAULT_DEBUG_POLL_MS = 5000;

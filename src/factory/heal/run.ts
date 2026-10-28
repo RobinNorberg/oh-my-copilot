@@ -37,7 +37,7 @@ import { LANE_CLASSES, type HealClass, type HealClassification } from './classif
 import type { HealConfig } from './config.js';
 import { debugPrompt, NO_CONFINEMENT, runDebugLane, type DebugLaneOutcome, type LaneConfinement } from './debug-lane.js';
 import { parseDiagnosisOutput } from './diagnosis-output.js';
-import { buildEvidence, changedEvidence, collectEvidence, writeEvidence, type EvidenceBundle } from './evidence.js';
+import { buildEvidence, changedEvidence, collectEvidence, writeEvidence, type EvidenceBundle } from './heal-evidence.js';
 import { healGuardExec } from './history.js';
 import { newDelimiter } from './sanitize.js';
 import {

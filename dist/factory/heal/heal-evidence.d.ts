@@ -93,4 +93,4 @@ export declare function changedEvidence(root: string, sig8: string, hashes: Read
  * jobs) through the heal exec guard, plus the commit subjects of the range.
  */
 export declare function collectEvidence(exec: Exec, root: string, classification: HealClassification, ignoreJobs: readonly string[]): EvidenceInput;
-//# sourceMappingURL=evidence.d.ts.map
+//# sourceMappingURL=heal-evidence.d.ts.map

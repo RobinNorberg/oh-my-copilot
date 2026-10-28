@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2b4cccf7ac4ace327ff30dec3f067a5514c0e975",
-    "sourceSha256": "2a7316563c4b5cde9e9a8dd6818f9974825a3582891cf1d62ee93457392cbf93",
+    "head": "eb150b0b9158fcf919c125a65559149789c510c6",
+    "sourceSha256": "423d706e56b5f9f210b008c361f701bb0b0c6067b91aa277ea00773fcaf0cacb",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2b4cccf7ac4ace327ff30dec3f067a5514c0e975",
-  "sourceSha256": "2a7316563c4b5cde9e9a8dd6818f9974825a3582891cf1d62ee93457392cbf93",
+  "head": "eb150b0b9158fcf919c125a65559149789c510c6",
+  "sourceSha256": "423d706e56b5f9f210b008c361f701bb0b0c6067b91aa277ea00773fcaf0cacb",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1755,
-      "total": 1779
+      "srcFiles": 1756,
+      "total": 1780
     },
     "generated": {
-      "distFiles": 6656,
+      "distFiles": 6660,
       "bridgeFiles": 9,
-      "total": 6665
+      "total": 6669
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -1953,6 +1953,10 @@
       "dist/__tests__/read-budget-preflight.test.d.ts.map",
       "dist/__tests__/read-budget-preflight.test.js",
       "dist/__tests__/read-budget-preflight.test.js.map",
+      "dist/__tests__/release-archive-paths.test.d.ts",
+      "dist/__tests__/release-archive-paths.test.d.ts.map",
+      "dist/__tests__/release-archive-paths.test.js",
+      "dist/__tests__/release-archive-paths.test.js.map",
       "dist/__tests__/release-boundary.test.d.ts",
       "dist/__tests__/release-boundary.test.d.ts.map",
       "dist/__tests__/release-boundary.test.js",
@@ -3015,10 +3019,10 @@
       "dist/factory/heal/diagnosis-output.d.ts.map",
       "dist/factory/heal/diagnosis-output.js",
       "dist/factory/heal/diagnosis-output.js.map",
-      "dist/factory/heal/evidence.d.ts",
-      "dist/factory/heal/evidence.d.ts.map",
-      "dist/factory/heal/evidence.js",
-      "dist/factory/heal/evidence.js.map",
+      "dist/factory/heal/heal-evidence.d.ts",
+      "dist/factory/heal/heal-evidence.d.ts.map",
+      "dist/factory/heal/heal-evidence.js",
+      "dist/factory/heal/heal-evidence.js.map",
       "dist/factory/heal/history.d.ts",
       "dist/factory/heal/history.d.ts.map",
       "dist/factory/heal/history.js",
@@ -14204,6 +14208,26 @@
         "path": "dist/__tests__/read-budget-preflight.test.js.map"
       },
       {
+        "id": "dist/__tests__/release-archive-paths.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/release-archive-paths.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/release-archive-paths.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/release-archive-paths.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/release-archive-paths.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/release-archive-paths.test.js"
+      },
+      {
+        "id": "dist/__tests__/release-archive-paths.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/release-archive-paths.test.js.map"
+      },
+      {
         "id": "dist/__tests__/release-boundary.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/release-boundary.test.d.ts"
@@ -19514,24 +19538,24 @@
         "path": "dist/factory/heal/diagnosis-output.js.map"
       },
       {
-        "id": "dist/factory/heal/evidence.d.ts",
+        "id": "dist/factory/heal/heal-evidence.d.ts",
         "kind": "generated-dist",
-        "path": "dist/factory/heal/evidence.d.ts"
+        "path": "dist/factory/heal/heal-evidence.d.ts"
       },
       {
-        "id": "dist/factory/heal/evidence.d.ts.map",
+        "id": "dist/factory/heal/heal-evidence.d.ts.map",
         "kind": "generated-dist",
-        "path": "dist/factory/heal/evidence.d.ts.map"
+        "path": "dist/factory/heal/heal-evidence.d.ts.map"
       },
       {
-        "id": "dist/factory/heal/evidence.js",
+        "id": "dist/factory/heal/heal-evidence.js",
         "kind": "generated-dist",
-        "path": "dist/factory/heal/evidence.js"
+        "path": "dist/factory/heal/heal-evidence.js"
       },
       {
-        "id": "dist/factory/heal/evidence.js.map",
+        "id": "dist/factory/heal/heal-evidence.js.map",
         "kind": "generated-dist",
-        "path": "dist/factory/heal/evidence.js.map"
+        "path": "dist/factory/heal/heal-evidence.js.map"
       },
       {
         "id": "dist/factory/heal/history.d.ts",
@@ -46109,6 +46133,11 @@
         "path": "src/__tests__/read-budget-preflight.test.ts"
       },
       {
+        "id": "src/__tests__/release-archive-paths.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/release-archive-paths.test.ts"
+      },
+      {
         "id": "src/__tests__/release-boundary.test.ts",
         "kind": "src",
         "path": "src/__tests__/release-boundary.test.ts"
@@ -47489,9 +47518,9 @@
         "path": "src/factory/heal/diagnosis-output.ts"
       },
       {
-        "id": "src/factory/heal/evidence.ts",
+        "id": "src/factory/heal/heal-evidence.ts",
         "kind": "src",
-        "path": "src/factory/heal/evidence.ts"
+        "path": "src/factory/heal/heal-evidence.ts"
       },
       {
         "id": "src/factory/heal/history.ts",
@@ -63716,6 +63745,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/release-archive-paths.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-archive-paths.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-archive-paths.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-archive-paths.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-archive-paths.test.ts",
+        "to": "scripts/release-boundary.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/release-boundary.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -71492,12 +71546,12 @@
       },
       {
         "from": "src/factory/heal/__tests__/debug.test.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/heal/__tests__/debug.test.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "type-imports"
       },
       {
@@ -71587,7 +71641,7 @@
       },
       {
         "from": "src/factory/heal/__tests__/run.test.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "imports"
       },
       {
@@ -71887,7 +71941,7 @@
       },
       {
         "from": "src/factory/heal/debug-lane.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "type-imports"
       },
       {
@@ -71932,7 +71986,7 @@
       },
       {
         "from": "src/factory/heal/diagnosis-output.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "type-imports"
       },
       {
@@ -71946,72 +72000,72 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "external:crypto",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "external:fs",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "external:path",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/classify.ts",
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/logs.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/logs.ts",
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/sanitize.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/ship/gates.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/heal/evidence.ts",
+        "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
@@ -72182,12 +72236,12 @@
       },
       {
         "from": "src/factory/heal/run.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/heal/run.ts",
-        "to": "src/factory/heal/evidence.ts",
+        "to": "src/factory/heal/heal-evidence.ts",
         "kind": "type-imports"
       },
       {
@@ -107227,12 +107281,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9152,
-      "edgeCount": 10646,
-      "importEdgeCount": 8823,
+      "nodeCount": 9157,
+      "edgeCount": 10651,
+      "importEdgeCount": 8828,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "e485e92a07cbf552774440d31bd9da8986d95d5a0c068c712d7ac9f7ed0ab431",
-  "manifestSha256": "fb74db976f3c9aafd7982da9fec01422a05d7f3d95af72d14cae2021a295777a"
+  "inventorySha256": "cbeb963d799dc3415a23a945572aeab49aa0b638b151e6bbe9a98ca6f29b46c2",
+  "manifestSha256": "9c9945bfc02a4049adbb8965925be5bcf5951cd584d30439657bc5d4cf88c9bd"
 }

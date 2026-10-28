@@ -15,7 +15,7 @@
  * class is `flaky` (known-flaky additions are human-only) or its fix names a
  * protected path.
  */
-import type { EvidenceBundle } from './evidence.js';
+import type { EvidenceBundle } from './heal-evidence.js';
 export declare const DIAGNOSIS_CLASSES: readonly ["regression", "env-change", "test-bug", "flaky", "unknown"];
 export type DiagnosisClass = (typeof DIAGNOSIS_CLASSES)[number];
 export declare const DIAGNOSIS_LIMITS: Readonly<{

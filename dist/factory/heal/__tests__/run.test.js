@@ -12,7 +12,7 @@ import { HEAL_APPROVE_GATE } from '../../run/state.js';
 import { classifyRun } from '../classify.js';
 import { healCommand, renderHealState } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../config.js';
-import { evidenceDir } from '../evidence.js';
+import { evidenceDir } from '../heal-evidence.js';
 import { runHealEngine } from '../implement.js';
 import { parseJob } from '../logs.js';
 import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, healSealSubject, readHealCounters, readHealSealSubject, runHeal, verifyHealSeal, writeHealScanRecord, writeHealSeal } from '../run.js';
