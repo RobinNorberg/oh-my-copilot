@@ -178,30 +178,54 @@ describe('AzureDevOpsProvider - extended', () => {
         });
     });
     describe('getPRDiff', () => {
-        it('passes --id flag with PR number', () => {
-            mockExecFileSync.mockReturnValue('diff --git a/file.ts b/file.ts\n');
+        const SRC = 'a'.repeat(40);
+        const TGT = 'b'.repeat(40);
+        const prJson = JSON.stringify({
+            sourceRefName: 'refs/heads/feature/x',
+            targetRefName: 'refs/heads/main',
+            lastMergeSourceCommit: { commitId: SRC },
+            lastMergeTargetCommit: { commitId: TGT },
+        });
+        function fakeExec(diff) {
+            mockExecFileSync.mockImplementation(((cmd, args) => {
+                if (cmd === 'az')
+                    return prJson;
+                if (args[0] === 'fetch')
+                    return '';
+                return diff;
+            }));
+        }
+        it('reads the PR with az repos pr show, fetches both refs, then runs git diff', () => {
+            fakeExec('diff --git a/file.ts b/file.ts\n');
+            const result = provider.getPRDiff(42, 'https://dev.azure.com/myorg');
+            expect(result).toBe('diff --git a/file.ts b/file.ts\n');
+            const calls = mockExecFileSync.mock.calls.map((c) => [c[0], c[1]]);
+            expect(calls[0][0]).toBe('az');
+            expect(calls[0][1]).toEqual(['repos', 'pr', 'show', '--id', '42', '--output', 'json', '--org', 'https://dev.azure.com/myorg']);
+            expect(calls[1]).toEqual(['git', ['fetch', '--no-tags', 'origin', 'refs/heads/feature/x', 'refs/heads/main']]);
+            expect(calls[2]).toEqual(['git', ['diff', `${TGT}...${SRC}`]]);
+        });
+        it('never calls an az diff subcommand', () => {
+            fakeExec('');
             provider.getPRDiff(42);
-            const args = mockExecFileSync.mock.calls[0][1];
-            expect(args).toContain('--id');
-            expect(args).toContain('42');
-        });
-        it('returns diff string', () => {
-            const diffContent = 'diff --git a/src/auth.ts b/src/auth.ts\n--- a/src/auth.ts\n+++ b/src/auth.ts\n@@ -1,3 +1,4 @@\n+import { validate } from "./utils";\n';
-            mockExecFileSync.mockReturnValue(diffContent);
-            const result = provider.getPRDiff(42);
-            expect(result).toBe(diffContent);
-        });
-        it('passes org flag when provided', () => {
-            mockExecFileSync.mockReturnValue('');
-            provider.getPRDiff(42, 'https://dev.azure.com/myorg');
-            const args = mockExecFileSync.mock.calls[0][1];
-            expect(args).toContain('--org');
-            expect(args).toContain('https://dev.azure.com/myorg');
+            for (const [cmd, args] of mockExecFileSync.mock.calls) {
+                expect(cmd === 'az' && args.includes('diff')).toBe(false);
+            }
         });
         it('returns empty string for invalid PR ID', () => {
             const result = provider.getPRDiff(-1);
             expect(result).toBe('');
             expect(mockExecFileSync).not.toHaveBeenCalled();
+        });
+        it('rejects a PR whose merge commits are missing or malformed', () => {
+            mockExecFileSync.mockReturnValue(JSON.stringify({
+                sourceRefName: 'refs/heads/f',
+                targetRefName: 'refs/heads/main',
+                lastMergeSourceCommit: { commitId: '--upload-pack=x' },
+                lastMergeTargetCommit: { commitId: TGT },
+            }));
+            expect(() => provider.getPRDiff(42)).toThrow('missing source/target refs');
+            expect(mockExecFileSync).toHaveBeenCalledTimes(1);
         });
         it('throws AdoError when execFileSync throws', () => {
             mockExecFileSync.mockImplementation(() => {

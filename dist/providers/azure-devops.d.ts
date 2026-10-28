@@ -60,6 +60,12 @@ export declare class AzureDevOpsProvider implements GitProvider {
         project?: string;
         repository?: string;
     }): PRInfo[];
+    /**
+     * The az CLI has no PR diff subcommand. Read the PR's refs and merge commits with
+     * `az repos pr show`, fetch both refs, then diff the two commits locally.
+     * https://learn.microsoft.com/en-us/cli/azure/repos/pr#az-repos-pr-show
+     * https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1
+     */
     getPRDiff(prId: number, org?: string): string;
     private fetchWorkItemTags;
     private normalizeWorkItem;

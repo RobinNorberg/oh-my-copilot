@@ -124,9 +124,11 @@ For each PR to be reviewed (all discovered, or the single specified PR):
 
 az CLI:
 ```bash
-az repos pr diff \
-  --id {prId} \
-  --org "{org}" 2>&1
+# PR refs and merge commits (the az CLI has no PR diff subcommand)
+az repos pr show --id {prId} --org "{org}" -o json 2>&1
+# Then fetch sourceRefName and targetRefName from the output and diff the merge commits
+git fetch --no-tags origin {sourceRefName} {targetRefName}
+git diff {lastMergeTargetCommit}...{lastMergeSourceCommit}
 ```
 
 **4b. Retrieve PR details and linked work items for spec compliance context:**
@@ -231,11 +233,10 @@ mcp__azure-devops__repo_create_pull_request_thread
 
 az CLI fallback:
 ```bash
-az repos pr comment create \
-  --id {prId} \
-  --content '{formatted}' \
-  --org "{org}" \
-  -o json 2>&1
+# {"comments":[{"parentCommentId":0,"content":"{formatted}","commentType":1}],"status":1}
+az devops invoke --area git --resource pullRequestThreads --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --in-file "{threadBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 ```
 
 On `429 Too Many Requests` or rate-limit error: wait 2 seconds and retry once. If still failing, skip that finding and continue.
@@ -273,11 +274,10 @@ mcp__azure-devops__repo_create_pull_request_thread
 
 az CLI fallback:
 ```bash
-az repos pr comment create \
-  --id {prId} \
-  --content '{summary}' \
-  --org "{org}" \
-  -o json 2>&1
+# {"comments":[{"parentCommentId":0,"content":"{summary}","commentType":1}],"status":1}
+az devops invoke --area git --resource pullRequestThreads --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --in-file "{threadBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 ```
 
 Report progress to the user:
@@ -365,11 +365,17 @@ az repos pr list \
 az repos pr show --id {prId} --org "{org}" -o json
 
 # Get PR unified diff
-az repos pr diff --id {prId} --org "{org}"
+# PR refs and merge commits (the az CLI has no PR diff subcommand)
+az repos pr show --id {prId} --org "{org}" -o json 2>&1
+# Then fetch sourceRefName and targetRefName from the output and diff the merge commits
+git fetch --no-tags origin {sourceRefName} {targetRefName}
+git diff {lastMergeTargetCommit}...{lastMergeSourceCommit}
 
 # Post a general comment
-az repos pr comment create \
-  --id {prId} --content '{comment}' --org "{org}" -o json
+# {"comments":[{"parentCommentId":0,"content":"{comment}","commentType":1}],"status":1}
+az devops invoke --area git --resource pullRequestThreads --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --in-file "{threadBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 
 # Vote on a PR
 az repos pr set-vote \
@@ -418,3 +424,5 @@ az repos pr set-vote \
 ```
 
 All `autoReview` fields are optional. Defaults are applied when the key is absent.
+
+> The `az` CLI has no PR comment or PR diff subcommand. Comments use the Pull Request Threads REST API through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke). The diff comes from `git fetch` of the PR source and target refs plus `git diff` of `lastMergeTargetCommit...lastMergeSourceCommit` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1).
