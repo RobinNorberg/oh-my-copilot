@@ -88,6 +88,11 @@ export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string
   // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
   ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
   ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
+  // A credential helper re-enabled on the command line (the lane's global config clears it), or one run directly:
+  // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
+  ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, 'git credential helper from a worker'),
+  ...gitSubcommandDeny(String.raw`credential-[\w-]`, 'git credential helper from a worker'),
+  { re: /(?:^|[\s;&|("'/\\])git-credential-[\w-]/i, reason: 'git credential helper from a worker' },
   // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
   { re: /\bGIT_CONFIG/i, reason: 'git config through the environment from a worker' },
 ];

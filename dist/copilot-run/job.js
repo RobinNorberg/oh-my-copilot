@@ -110,7 +110,7 @@ export const LANE_CREDENTIAL_ENV = [
     'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
 ];
 /** Names that look like a secret; COPILOT_GITHUB_TOKEN is the session's own credential and stays. */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT\b|PRINCIPAL_KEY/i;
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
  * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
@@ -725,7 +725,10 @@ export class CopilotRunManager {
         mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
         mkdirSync(env.TEMP, { recursive: true });
         // No session needs git credentials (the host pushes). An empty helper in the read-only global config clears the
-        // system one (Git for Windows: manager), so the session's git fetch or `git credential fill` never asks GCM.
+        // system one (Git for Windows: manager) for the session's plain git fetch or `git credential fill`. Residual: the
+        // session controls its argv, so `git -c credential.helper=...`, `--config-env` or a direct `git credential-manager
+        // get` still reach a helper; the worker deny patterns catch the direct spellings, and the Windows sandbox denies
+        // GCM the credential store (docs/REFERENCE.md). Unprobed on Linux/macOS; unsandboxed sessions are fully exposed.
         writeFileSync(env.GIT_CONFIG_GLOBAL, '[credential]\n\thelper =\n');
         // A session the host commits for never commits, so it gets no identity.
         if (!job.hostCommits)

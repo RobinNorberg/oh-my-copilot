@@ -278,7 +278,8 @@ describe('copilot_run allowLive and session env', () => {
             'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH',
             'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN', 'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
             // Caught by the name pattern alone (_PAT, PRINCIPAL_KEY).
-            'OMC_ADO_PAT', 'MY_SERVICE_PRINCIPAL_KEY',
+            'OMC_ADO_PAT', 'MY_SERVICE_PRINCIPAL_KEY', 'ADO_PAT_VALUE', 'AZURE_DEVOPS_EXT_SERVICEPRINCIPALKEY',
+            'VSS_NUGET_EXTERNAL_FEED_ENDPOINTS', 'ARM_CLIENT_CERTIFICATE',
         ];
         // Windows env keys are case-insensitive: a lower- or mixed-case key is the same variable.
         const mixed = (n) => [...n].map((c, i) => (i % 2 ? c.toLowerCase() : c)).join('');
