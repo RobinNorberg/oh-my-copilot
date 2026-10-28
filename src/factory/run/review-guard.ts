@@ -459,8 +459,12 @@ export function compareSnapshots(before: RepoSnapshot, after: RepoSnapshot, allo
  * `config.worktree`) and its attributes, so git here never discovers the git
  * dir: the `.git` file is read once, its admin dir must be a direct child of
  * the repository's `worktrees/`, and runHostGit pins GIT_DIR, GIT_WORK_TREE
- * and GIT_COMMON_DIR to those paths, hardened, with every filter and diff
- * driver blanked (no lane-planted program runs in the engine).
+ * and GIT_COMMON_DIR to those paths, hardened. Its `config.worktree` is not
+ * blanked by any `-c` (git merges it into every command); what keeps a
+ * planted key from running here is the shared-state comparison before this
+ * call, which hashes every `worktrees/<id>/config.worktree`, and on `status`
+ * runHostGit's blanking of every filter and diff driver, system-scope
+ * `filter.lfs` included (git-lfs would run `lfs.extension.*` programs).
  */
 export function verifyReviewWorktree(result: LaneResult, head: string, commonDir?: string): string[] {
   const problems: string[] = [];

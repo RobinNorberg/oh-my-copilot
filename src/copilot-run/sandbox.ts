@@ -216,10 +216,12 @@ function nodeModulesLinkTarget(worktree: string): string | null {
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir` and `gitdir` files
- * (and the worktree's `.git` file) cannot be kept read-only inside it. The
- * host records them at creation and runs no git in the worktree once they
- * differ (git-worktree.ts worktreeGitLinksIntact), with every host git call
+ * in the directory itself, so the admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files (and the worktree's `.git` file) cannot be kept
+ * read-only inside it: a lane can create or rename over any of them. The
+ * host records them at creation (config.worktree as a hash, absent counts)
+ * and runs no git in the worktree once they differ (git-worktree.ts
+ * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
  * `objects/info/alternates` is writable for the same reason: it only adds
  * places to look objects up, runs no code, and cannot forge an object,

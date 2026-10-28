@@ -665,8 +665,8 @@ export class CopilotRunManager {
         clearTimeout(timer);
         const gitDirArgs = jobGitDirArgs(job);
         if (gitDirArgs === null) {
-          // A redirected .git, gitdir or commondir points host git at a git dir the session controls.
-          const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir or commondir) changed during the session; no host git ran in it';
+          // A redirected .git, gitdir or commondir points host git at a git dir the session controls; a changed config.worktree plants config in it.
+          const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it';
           job.error = job.error ? `${why}; ${job.error}` : why;
           job.stopReason ??= 'sandbox-escaped';
           outcome = 'failed';

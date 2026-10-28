@@ -17,6 +17,7 @@ import { existsSync, lstatSync, mkdtempSync, realpathSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
 import { sanitizeName } from './tmux-session.js';
@@ -129,8 +130,10 @@ function hostHooksDir(): string {
  * the leader's process. Command-line config wins over every file, and git
  * passes it on to the git children it spawns (`worktree remove` runs
  * `status`). The system config stays: only an administrator writes it, and
- * Git for Windows keeps `core.autocrlf` and `filter.lfs` there, so dropping
- * it (GIT_CONFIG_NOSYSTEM) would make clean worktrees look dirty.
+ * Git for Windows keeps `core.autocrlf` there, so dropping it
+ * (GIT_CONFIG_NOSYSTEM) would make clean worktrees look dirty. Its drivers
+ * (`filter.lfs`) are blanked on work-tree commands all the same
+ * (hostGitDriverOverrides).
  *
  * Every command here only reads, or changes refs and worktree records:
  * `update-ref` would run a reference-transaction hook, which no team flow
@@ -194,17 +197,19 @@ function gitSubcommand(args: readonly string[]): string | undefined {
  * worktreeGitDirArgs): GIT_DIR, GIT_WORK_TREE and GIT_COMMON_DIR pinned to the
  * recorded paths, so git reads no link file (the admin dir's `commondir`, the
  * worktree's `.git`) after worktreeGitLinksIntact checked them; a lane child
- * that survived the session cannot flip them in between. Undefined (inherit)
- * for a command that names no git dir.
+ * that survived the session cannot flip them in between. Every host command
+ * also gets GIT_LFS_SKIP_SMUDGE=1: host git only inspects and never checks
+ * files out (`worktree add` does not come here), so a git-lfs that still runs
+ * (hostGitDriverOverrides blanks filter.lfs) downloads and writes nothing.
  */
-export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv | undefined {
+export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const valueOf = (flag: string) => {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
   };
   const gitDir = valueOf('--git-dir');
-  if (!gitDir) return undefined;
-  const env: NodeJS.ProcessEnv = { ...base, GIT_DIR: resolve(gitDir) };
+  if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: '1' };
+  const env: NodeJS.ProcessEnv = { ...base, GIT_DIR: resolve(gitDir), GIT_LFS_SKIP_SMUDGE: '1' };
   const workTree = valueOf('--work-tree');
   if (workTree) env.GIT_WORK_TREE = resolve(workTree);
   // worktreeGitLinksIntact proved the admin dir is a direct child of <common>/worktrees.
@@ -217,8 +222,12 @@ export function hostGitEnv(args: readonly string[], base: NodeJS.ProcessEnv = pr
  * agent can write (local, worktree, global, an include) defines: empty
  * `clean`, `smudge` and `process` with `required=false`, empty `textconv` and
  * `command`. Git runs a driver only when its command is non-empty, so status
- * and diff read file bytes as they are. A driver set only in the system config
- * (admin rights to write; Git for Windows ships `filter.lfs` there) is kept.
+ * and diff read file bytes as they are. A system-config driver is blanked
+ * too: Git for Windows ships `filter.lfs` there, and git-lfs runs the
+ * `lfs.extension.<name>.clean/smudge` programs of the merged config, which
+ * includes a lane-written config.worktree; host inspection of a lane wants
+ * raw bytes, not LFS. An LFS file whose stat changed then shows as modified:
+ * a false dirty keeps a worktree, it never loses one.
  * Listing the config runs nothing. Null when the drivers cannot be listed or a
  * filter name cannot be passed as `-c` (it holds `=` or a line break): the
  * caller fails closed.
@@ -236,7 +245,7 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
   const diffs = new Set<string>();
   // `--show-scope --null`: scope NUL key NUL, per entry.
   for (let i = 0; i + 1 < parts.length; i += 2) {
-    const [scope, key] = [parts[i], parts[i + 1]];
+    const key = parts[i + 1];
     const section = key.startsWith('filter.') ? 'filter' : key.startsWith('diff.') ? 'diff' : null;
     const dot = key.lastIndexOf('.');
     if (section === null) return null;
@@ -247,7 +256,7 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
     }
     const name = key.slice(section.length + 1, dot);
     if (/[=\r\n]/.test(name)) return null;
-    if (scope !== 'system') (section === 'filter' ? filters : diffs).add(name);
+    (section === 'filter' ? filters : diffs).add(name);
   }
   return [
     ...[...filters].flatMap((n) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((kv) => ['-c', `filter.${n}.${kv}`])),
@@ -260,11 +269,18 @@ export function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, tim
  * on a command that touches work-tree files (WORK_TREE_SUBCOMMANDS) also an
  * empty core.attributesFile and hostGitDriverOverrides; and the git dir,
  * work tree and common dir pinned in the environment (hostGitEnv) when the
- * args name a recorded git dir. Raw stdout; throws what execFileSync throws,
- * or when the drivers cannot be listed.
+ * args name a recorded git dir. A git dir worktreeGitDirArgs named is checked
+ * against its recorded links (config.worktree included) before every command,
+ * so a change after the caller's check still runs no git. Raw stdout; throws
+ * what execFileSync throws, when the drivers cannot be listed, or
+ * `sandbox-escaped:` when the recorded links changed.
  */
 export function runHostGit(cwd: string, args: readonly string[], timeout?: number): string {
   const env = hostGitEnv(args);
+  const recorded = env.GIT_DIR ? recordedGitDirs.get(env.GIT_DIR) : undefined;
+  if (recorded && !sameGitLinks(readWorktreeGitLinks(recorded.wtPath), recorded.links)) {
+    throw new Error(`sandbox-escaped: the git links or config.worktree of ${recorded.wtPath} changed since they were recorded; no git ran in it`);
+  }
   let tree: string[] = [];
   if (WORK_TREE_SUBCOMMANDS.has(gitSubcommand(args) ?? '')) {
     const drivers = hostGitDriverOverrides(cwd, env, timeout);
@@ -283,6 +299,12 @@ function git(repoRoot: string, args: string[], cwd = repoRoot): string {
  * `gitdir` and `commondir` files of its admin dir (`<common>/worktrees/<name>`).
  * An agent that can write its worktree and admin dir can redirect them to a
  * git dir it controls; record them at creation and compare before host git.
+ * The admin dir's `config.worktree` is recorded with them (as a hash): once
+ * the repository sets `extensions.worktreeConfig` git merges it into the
+ * config of every command, and no `-c` turns that off, so every key a lane
+ * plants there (a driver, an `lfs.extension.<name>.clean` program git-lfs
+ * runs, the next one) would reach host git. The sandbox cannot keep that
+ * file read-only (sandbox.ts laneGitWritePaths), so a change is a tamper.
  */
 export interface WorktreeGitLinks {
   /** The admin dir, resolved from the `.git` file at creation. */
@@ -290,6 +312,8 @@ export interface WorktreeGitLinks {
   dotGit: string;
   gitdir: string;
   commondir: string;
+  /** sha256 of the admin dir's `config.worktree`, or `absent`. */
+  configWorktree: string;
 }
 
 /** A regular file's bytes (never through a link), or null. */
@@ -314,9 +338,27 @@ export function readWorktreeGitLinks(wtPath: string): WorktreeGitLinks | null {
   }
   const gitdir = readPlainFile(join(adminDir, 'gitdir'));
   const commondir = readPlainFile(join(adminDir, 'commondir'));
-  if (gitdir === null || commondir === null) return null;
-  return { adminDir, dotGit, gitdir, commondir };
+  const configWorktree = configWorktreeState(adminDir);
+  if (gitdir === null || commondir === null || configWorktree === null) return null;
+  return { adminDir, dotGit, gitdir, commondir, configWorktree };
 }
+
+/** The hash of the admin dir's regular-file `config.worktree`, `absent`, or null when it is anything else (a link, a directory). */
+function configWorktreeState(adminDir: string): string | null {
+  const path = join(adminDir, 'config.worktree');
+  try {
+    return lstatSync(path).isFile() ? createHash('sha256').update(readFileSync(path)).digest('hex') : null;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'absent' : null;
+  }
+}
+
+function sameGitLinks(now: WorktreeGitLinks | null, expected: WorktreeGitLinks): boolean {
+  return now !== null && (['adminDir', 'dotGit', 'gitdir', 'commondir', 'configWorktree'] as const).every((k) => now[k] === expected[k]);
+}
+
+/** The worktree and links behind each git dir worktreeGitDirArgs named, re-checked by runHostGit before every command. */
+const recordedGitDirs = new Map<string, { wtPath: string; links: WorktreeGitLinks }>();
 
 /** Whether `adminDir` is a direct child of `<commonGitDir>/worktrees`. */
 function isAdminDirOf(commonGitDir: string, adminDir: string): boolean {
@@ -329,12 +371,16 @@ function isAdminDirOf(commonGitDir: string, adminDir: string): boolean {
  * the recorded admin dir lies in the repository's own `worktrees/` dir.
  */
 export function worktreeGitLinksIntact(wtPath: string, expected: WorktreeGitLinks, commonGitDir: string): boolean {
-  const now = readWorktreeGitLinks(wtPath);
-  return isAdminDirOf(commonGitDir, expected.adminDir) && now !== null && (['adminDir', 'dotGit', 'gitdir', 'commondir'] as const).every((k) => now[k] === expected[k]);
+  return isAdminDirOf(commonGitDir, expected.adminDir) && sameGitLinks(readWorktreeGitLinks(wtPath), expected);
 }
 
-/** Host git arguments that name the worktree's recorded git dir and work tree instead of discovering them. */
+/**
+ * Host git arguments that name the worktree's recorded git dir and work tree
+ * instead of discovering them; runHostGit checks `links` again before every
+ * command that passes them.
+ */
 export function worktreeGitDirArgs(wtPath: string, links: WorktreeGitLinks): string[] {
+  recordedGitDirs.set(resolve(links.adminDir), { wtPath, links });
   return ['--git-dir', links.adminDir, '--work-tree', wtPath];
 }
 
@@ -1340,7 +1386,7 @@ function removeTamperedWorktree(repoRoot: string, teamName: string, workerName: 
   removeTree(wtPath);
   if (isAdminDirOf(commonDir, links.adminDir)) removeTree(links.adminDir);
   forgetMetadataUnlocked(repoRoot, teamName, workerName);
-  return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir or commondir) changed or are gone, so no git ran in it; `
+  return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir, commondir or config.worktree) changed or are gone, so no git ran in it; `
     + `the worktree and its admin dir were removed by path and branch ${getBranchName(teamName, workerName)} was kept for inspection`;
 }
 
