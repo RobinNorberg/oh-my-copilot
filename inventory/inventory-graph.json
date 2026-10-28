@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cb41ac762235e4410eb9596172056a08b6901ecf",
-    "sourceSha256": "cb77eb87e7180d7531f7f6529c78a28068f358ed0b32fd05a0f7ec29394ef212",
+    "head": "7f263ba54640793a7c95e354545637c88037ff42",
+    "sourceSha256": "f0f103171ca4a9a26ddff81f2c468fdebbf21581bd8afc1fd982e11e2fc5b866",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cb41ac762235e4410eb9596172056a08b6901ecf",
-  "sourceSha256": "cb77eb87e7180d7531f7f6529c78a28068f358ed0b32fd05a0f7ec29394ef212",
+  "head": "7f263ba54640793a7c95e354545637c88037ff42",
+  "sourceSha256": "f0f103171ca4a9a26ddff81f2c468fdebbf21581bd8afc1fd982e11e2fc5b866",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1758,
-      "total": 1782
+      "srcFiles": 1759,
+      "total": 1783
     },
     "generated": {
-      "distFiles": 6668,
+      "distFiles": 6672,
       "bridgeFiles": 9,
-      "total": 6677
+      "total": 6681
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -975,6 +975,10 @@
   },
   "generated": {
     "distFiles": [
+      "dist/__tests__/ado-nonexistent-az-commands.test.d.ts",
+      "dist/__tests__/ado-nonexistent-az-commands.test.d.ts.map",
+      "dist/__tests__/ado-nonexistent-az-commands.test.js",
+      "dist/__tests__/ado-nonexistent-az-commands.test.js.map",
       "dist/__tests__/advisory-agent-final-output-contract.test.d.ts",
       "dist/__tests__/advisory-agent-final-output-contract.test.d.ts.map",
       "dist/__tests__/advisory-agent-final-output-contract.test.js",
@@ -9316,6 +9320,26 @@
         "id": "design-system/tokens/README.md",
         "kind": "other",
         "path": "design-system/tokens/README.md"
+      },
+      {
+        "id": "dist/__tests__/ado-nonexistent-az-commands.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ado-nonexistent-az-commands.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/ado-nonexistent-az-commands.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ado-nonexistent-az-commands.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/ado-nonexistent-az-commands.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ado-nonexistent-az-commands.test.js"
+      },
+      {
+        "id": "dist/__tests__/ado-nonexistent-az-commands.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/ado-nonexistent-az-commands.test.js.map"
       },
       {
         "id": "dist/__tests__/advisory-agent-final-output-contract.test.d.ts",
@@ -44808,6 +44832,11 @@
         "path": "src/AGENTS.md"
       },
       {
+        "id": "src/__tests__/ado-nonexistent-az-commands.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/ado-nonexistent-az-commands.test.ts"
+      },
+      {
         "id": "src/__tests__/advisory-agent-final-output-contract.test.ts",
         "kind": "src",
         "path": "src/__tests__/advisory-agent-final-output-contract.test.ts"
@@ -57533,6 +57562,26 @@
         "from": "skills/wiki/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
+      },
+      {
+        "from": "src/__tests__/ado-nonexistent-az-commands.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ado-nonexistent-az-commands.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ado-nonexistent-az-commands.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/ado-nonexistent-az-commands.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/advisory-agent-final-output-contract.test.ts",
@@ -107421,12 +107470,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9167,
-      "edgeCount": 10667,
-      "importEdgeCount": 8843,
+      "nodeCount": 9172,
+      "edgeCount": 10671,
+      "importEdgeCount": 8847,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4d6a48423c5a67217f7715d66a505e02bcd4c48b9f3d2a73f4dd7f0753223c13",
-  "manifestSha256": "ef15e216efddb3d06c19a702050ab52b4d76e3527276c2afed34775b8e9bd535"
+  "inventorySha256": "e925946b04b915ab2eef2da845f051d44592afe0602c53781d134a7416d306c7",
+  "manifestSha256": "b53c8bc6c81b4ef6956f6d0c61ca3bca64a6b2acfc91b30a89999cd361ca1a79"
 }
