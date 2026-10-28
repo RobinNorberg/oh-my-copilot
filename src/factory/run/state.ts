@@ -7,10 +7,13 @@
  * only catches accidental edits; the engine's defence against a lane that
  * rewrites the file is its own record of the bytes it wrote (ledger.ts).
  *
- * Phases (design §3, PR 2 scope): intake -> plan -> implement -> publish ->
- * review -> (fix -> publish -> review)* -> prepare. `gate` set means
+ * Phases (design §3): intake -> plan -> implement -> publish -> review ->
+ * (fix -> publish -> review)* -> prepare -> gates -> merge -> merged, with
+ * conflict-fix (prepare's base merge conflicts) and ci-fix (a real check
+ * failure) going back through publish -> review. `gate` set means
  * awaiting-human: the phase is kept, and the next `omg factory run <issue>`
- * clears the gate and re-evaluates that phase. cancelled and failed are terminal.
+ * clears the gate and re-evaluates that phase. merged, cancelled and failed
+ * are terminal.
  */
 
 import { createHash } from 'crypto';
@@ -23,11 +26,14 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import type { ShipVerdict } from '../../ship/state.js';
 
-export const FACTORY_PHASES = ['intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'cancelled', 'failed'] as const;
+export const FACTORY_PHASES = [
+  'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
+] as const;
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
-export const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[] = ['cancelled', 'failed'];
+export const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[] = ['merged', 'cancelled', 'failed'];
 
-export type FactoryLaneKind = 'implement' | 'review' | 'fix';
+/** Every lane kind except review is a write lane, and each is also the phase that runs it. */
+export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix';
 export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
 
@@ -70,6 +76,18 @@ export interface FactoryFinding {
   summary: string;
 }
 
+export interface FactoryCiFailure {
+  source: 'prepare' | 'ci';
+  /** The commit the ci-fix lane starts at (prepare's checkout HEAD, or the PR head). */
+  startSha: string;
+  /** Failed prepare step or failed check names. */
+  checks: string[];
+  /** Failing test titles (`file > title`) read from the failed jobs' logs. */
+  tests: string[];
+  /** The failed prepare step's output tail. */
+  detail?: string;
+}
+
 export interface FactoryHistoryEntry {
   at: string;
   from: FactoryPhase | null;
@@ -101,6 +119,18 @@ export interface FactoryRunState {
   pendingHead?: string;
   /** The last review's findings, fed to the next fix lane. */
   findings?: FactoryFinding[];
+  /** Prepare's base merge conflicted outside inventory/: the files, fed to the conflict-fix lane. */
+  conflicts?: string[];
+  /** What the next ci-fix lane fixes: a prepare check or CI checks on the head. */
+  ciFailure?: FactoryCiFailure;
+  /** A prepare pushed `head` with these housekeeping commits; ship records them before gates. */
+  prepared?: { head: string; housekeeping: string[] };
+  /** merge -> gates returns so far; the cap holds across reruns. */
+  mergeBounces?: number;
+  /** The engine-owned prepare checkout's HEAD when the engine last left it. */
+  checkoutHead?: string;
+  /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
+  gateComments?: string[];
   lanes: FactoryLaneRecord[];
   /** Lane failures retried per phase key (`implement`, `review@<sha12>`, `fix@<round>`). */
   retries: Record<string, number>;
