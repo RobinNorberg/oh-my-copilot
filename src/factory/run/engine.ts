@@ -951,13 +951,17 @@ class FactoryEngine {
     });
     if (!commit.ok) {
       if (commit.refusal === 'protected') return this.gate('protected-paths', `lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
-      if (commit.refusal === 'gitlink') return this.gate('sandbox-escaped', `${lane.kind} lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
+      if (commit.refusal === 'gitlink' || commit.refusal === 'escaped') return this.gate('sandbox-escaped', `${lane.kind} lane ${lane.id}: ${commit.reason}; nothing was committed or pushed`);
       return this.laneFailed(key, lane.kind, `lane ${lane.id}: ${commit.reason}`);
     }
     // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
     this.rebaseRecheck();
     const head = commit.sha;
     this.updateLane(lane.id, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+    // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
+    if (result.sandbox?.mode === 'detect-only' && this.state.pr) {
+      this.commentOnce('pr', `detect-only@${lane.id}`, 'sandbox', `**Sandbox: detect-only.** ${lane.kind} lane ${lane.id} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
+    }
     this.save((s) => moveTo({ ...s, pendingHead: head }, 'publish', `the engine committed lane ${lane.id}'s changes as ${head.slice(0, 12)}`, this.iso()));
   }
 

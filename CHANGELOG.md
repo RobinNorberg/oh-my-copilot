@@ -78,10 +78,23 @@ command guard refuses `gh pr merge`. See the
   committed itself. A conflict-fix lane starts from the engine's merge of the
   base with the conflict markers in place, and the engine commits the
   resolution as the merge of both. Each lane's sandbox state is recorded in
-  the run state.
+  the run state. A detect-only lane after the PR exists gets a PR comment.
+- **Write lanes may not change agent instructions, hooks, skills or CI.** The
+  engine also refuses a lane change to `.github/`, `.copilot/`, `.omg/skills/`,
+  `.omc/skills/`, `AGENTS.md` or `CLAUDE.md` (`protected-paths`). `omg ship`
+  keeps its own list.
 
 ### Security
 
+- **The engine commits nothing a lane linked in from outside its worktree.**
+  Git for Windows follows a directory junction in `git add -A`, and the
+  engine's git runs with your read rights, so a lane could have had the
+  engine commit and push files such as `~/.ssh`. The engine now refuses a
+  directory link (any link on Windows), a new symlink, or a staged path whose
+  real folder is outside the worktree. The lane parks at `sandbox-escaped`
+  with the path named, and the index is reset. The lane's commit message
+  loses skip-CI markers, its own trailers (`Co-authored-by`, `Signed-off-by`,
+  `skip-checks`) and invisible format characters.
 - Lanes run in the Copilot OS sandbox, which confines their shell commands
   and local MCP servers. Built-in file tools, plugin hooks and team workers
   are not OS-sandboxed, and some sandbox behaviour is still unverified (open

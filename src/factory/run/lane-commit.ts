@@ -17,8 +17,21 @@
  *
  * Refused before any commit: a lane that moved its HEAD, a new or changed
  * gitlink (host git never enters a nested repository, so its content is
- * unreviewed), a merge-rule (protected) path, and an empty change.
+ * unreviewed), a link host git could follow out of the worktree, a
+ * merge-rule or lane-protected path, and an empty change.
+ *
+ * Links: Git for Windows follows a directory junction in `add -A`, and the
+ * engine's git runs outside the sandbox with the user's read rights, so a
+ * junction to `~/.ssh` would be committed and pushed by the engine. Before
+ * staging, the worktree (minus what git ignores) is walked with lstat: a
+ * directory link, or on win32 any link, refuses. After staging, a new or
+ * changed symlink entry (120000) refuses, and so does a staged path whose
+ * real directory is outside the worktree's; those refusals reset the index
+ * to the start tree.
  */
+
+import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 import { OmcPaths } from '../../lib/worktree-paths.js';
 import { protectedChanges } from '../../ship/merge.js';
@@ -32,9 +45,19 @@ const GIT_TIMEOUT_MS = 60_000;
 const MAX_MESSAGE_CHARS = 4_000;
 const HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Untracked runtime state a lane's plugin hooks write in its worktree; never committed. */
-const RUNTIME_STATE_EXCLUDES = ['state', 'sessions'].map((d) => `:(top,exclude)${OmcPaths.ROOT}/${d}`);
+const RUNTIME_STATE_DIRS = ['state', 'sessions'].map((d) => `${OmcPaths.ROOT}/${d}`);
+/** The link walk gives up (and the lane parks) past this many entries or this depth. */
+const MAX_WALK_ENTRIES = 200_000;
+const MAX_WALK_DEPTH = 64;
 
-export type LaneCommitRefusal = 'moved' | 'gitlink' | 'protected' | 'empty' | 'error';
+/**
+ * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
+ * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ */
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md'];
+
+export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
 
 export type LaneCommitResult =
   | { ok: true; sha: string; files: string[]; notes: string[] }
@@ -74,18 +97,104 @@ function engineGitEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   };
 }
 
-/** A commit message from untrusted lane text: no control characters except newlines, bounded. */
+/** GitHub's skip-CI markers (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`). */
+const CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
+/** A trailer-shaped line (`Key: value`), dropped from the body's last paragraph. */
+const TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
+/** Trailers dropped from any line of the body: they credit an author, sign off or skip checks. */
+const ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
+
+/** `body` without trailer-shaped lines (and their continuation lines) in its last paragraph, repeated while one goes. */
+function dropTrailers(body: string): string {
+  let lines = body.split('\n').filter((l) => !ANY_LINE_TRAILER.test(l));
+  for (;;) {
+    while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+    let start = lines.length;
+    while (start > 0 && lines[start - 1].trim()) start--;
+    const kept: string[] = [];
+    let dropping = false;
+    for (const l of lines.slice(start)) {
+      dropping = TRAILER.test(l) || (dropping && /^\s/.test(l));
+      if (!dropping) kept.push(l);
+    }
+    if (kept.length === lines.length - start) return lines.join('\n');
+    lines = [...lines.slice(0, start), ...kept];
+  }
+}
+
+/**
+ * A commit message from untrusted lane text: no control, format or bidi
+ * characters except newlines, no skip-CI marker, no trailer the lane wrote,
+ * bounded.
+ */
 export function laneCommitMessage(title: string, body: string | null): string {
-  const clean = (t: string) => t.replace(/\r\n?/g, '\n').replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => (c === '\n' ? c : ' '));
-  const text = `${clean(title).replace(/\n/g, ' ').trim()}\n\n${clean(body ?? '').trim()}`.trim();
+  const unskip = (t: string) => {
+    let prev: string;
+    do {
+      prev = t;
+      t = t.replace(CI_SKIP, '');
+    } while (t !== prev);
+    return t;
+  };
+  const clean = (t: string) => unskip(t.replace(/\r\n?/g, '\n').replace(/\p{Cf}/gu, '').replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => (c === '\n' ? c : ' ')));
+  const text = `${clean(title).replace(/\n/g, ' ').trim()}\n\n${dropTrailers(clean(body ?? '')).trim()}`.trim();
   return text.length > MAX_MESSAGE_CHARS ? `${text.slice(0, MAX_MESSAGE_CHARS)}\n...` : text;
 }
 
-/** `<sha>\t<path>` of every gitlink (mode 160000) in `ls-files -z --stage` (index) or `ls-tree -r -z` (tree) output. */
-function gitlinks(out: string, from: 'index' | 'tree'): Set<string> {
+/**
+ * The first link host git could follow out of `worktree`, or a walk past its
+ * limits (fail closed); null when there is none. lstat only, so no link is
+ * followed; `.git` entries and the paths in `ignored` (git skips both) are
+ * not entered. On win32 every link counts (Git for Windows follows a
+ * junction); elsewhere a link to a directory does, and a file symlink is
+ * left to the 120000 check after staging.
+ */
+function linkEscape(worktree: string, ignored: ReadonlySet<string>): string | null {
+  let entries = 0;
+  const walk = (dir: string, rel: string, depth: number): string | null => {
+    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
+      const path = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isFile() || d.name === '.git' || ignored.has(path)) continue;
+      const abs = join(dir, d.name);
+      const st = lstatSync(abs);
+      if (st.isSymbolicLink()) {
+        let toDir = false;
+        try { toDir = statSync(abs).isDirectory(); } catch { /* a dangling link: a file symlink to git */ }
+        if (process.platform === 'win32' || toDir) return `the lane left a link at ${path} (a symlink or junction); host git could read through it outside the worktree`;
+      } else if (st.isDirectory()) {
+        const hit = walk(abs, path, depth + 1);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+  return walk(worktree, '', 0);
+}
+
+/** The staged paths whose real directory is outside the worktree's (a link git followed). */
+export function outsideWorktree(worktree: string, files: readonly string[]): string[] {
+  const root = realpathSync.native(worktree);
+  return files.filter((f) => {
+    let dir: string;
+    try {
+      dir = realpathSync.native(dirname(join(worktree, f)));
+    } catch (err) {
+      // A deleted path's directory may be gone: nothing is read there. Any other failure counts as outside.
+      const code = (err as NodeJS.ErrnoException).code;
+      return code !== 'ENOENT' && code !== 'ENOTDIR';
+    }
+    const r = relative(root, dir);
+    return r === '..' || r.startsWith(`..${sep}`) || isAbsolute(r);
+  });
+}
+
+/** `<sha>\t<path>` of every `mode` entry (160000 gitlink, 120000 symlink) in `ls-files -z --stage` (index) or `ls-tree -r -z` (tree) output. */
+function entriesOfMode(out: string, from: 'index' | 'tree', mode: '160000' | '120000'): Set<string> {
   const set = new Set<string>();
   for (const entry of out.split('\0')) {
-    if (!entry.startsWith('160000 ')) continue;
+    if (!entry.startsWith(`${mode} `)) continue;
     const tab = entry.indexOf('\t');
     const fields = entry.slice(0, tab).split(' ');
     set.add(`${from === 'index' ? fields[1] : fields[2]}\t${entry.slice(tab + 1)}`);
@@ -110,16 +219,40 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     if (head !== input.start) {
       return { ok: false, refusal: 'moved', reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || '(none)'} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
     }
-    git(['add', '-A', '--', '.', ...RUNTIME_STATE_EXCLUDES], engineGitEnv());
-    const added = [...gitlinks(git(['ls-files', '-z', '--stage']), 'index')];
-    const known = gitlinks(git(['ls-tree', '-r', '-z', '--full-tree', input.start]), 'tree');
-    const nested = added.filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf('\t') + 1));
+    // What git ignores it never enters in `add -A`, so the link walk skips it (directories come as `dir/`).
+    const ignored = new Set(git(['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']).split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
+    const link = linkEscape(input.worktree, ignored);
+    if (link) return { ok: false, refusal: 'escaped', reason: link };
+    // An exclude pathspec naming an ignored path fails `add` ("paths are ignored"), and git skips that path anyway.
+    const isIgnored = (p: string) => p.split('/').some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join('/')));
+    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
+    git(['add', '-A', '--', '.', ...excludes], engineGitEnv());
+    // Every refusal from here resets the index to the start tree, so nothing the lane staged stays staged.
+    const refuse = (refusal: LaneCommitRefusal, reason: string): LaneCommitResult => {
+      try {
+        git(['read-tree', input.start]);
+      } catch (err) {
+        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText(err)}` };
+      }
+      return { ok: false, refusal, reason };
+    };
+    const index = git(['ls-files', '-z', '--stage']);
+    const startTree = git(['ls-tree', '-r', '-z', '--full-tree', input.start]);
+    const changedOfMode = (mode: '160000' | '120000') => {
+      const known = entriesOfMode(startTree, 'tree', mode);
+      return [...entriesOfMode(index, 'index', mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf('\t') + 1));
+    };
+    const nested = changedOfMode('160000');
     if (nested.length > 0) {
-      return { ok: false, refusal: 'gitlink', reason: `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed` };
+      return refuse('gitlink', `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(', ')}; host git does not enter them, so their content is not reviewed`);
     }
+    const symlinks = changedOfMode('120000');
+    if (symlinks.length > 0) return refuse('escaped', `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(', ')}`);
     const files = git(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', input.start, '--']).split('\0').filter(Boolean);
-    const hit = protectedChanges(files, input.extraProtected ?? []);
-    if (hit.length > 0) return { ok: false, refusal: 'protected', reason: `the lane changed merge-rule paths: ${hit.join(', ')}` };
+    const outside = outsideWorktree(input.worktree, files);
+    if (outside.length > 0) return refuse('escaped', `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(', ')}`);
+    const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
+    if (hit.length > 0) return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
     const tree = git(['write-tree']);
     if (!HEX.test(tree)) return { ok: false, refusal: 'error', reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
     if (tree === git(['rev-parse', '--verify', '--quiet', `${input.start}^{tree}`])) {
