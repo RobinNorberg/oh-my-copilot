@@ -162,12 +162,22 @@ export const PROTECTED_PATHS: readonly string[] = [
   '.github/workflows/',
 ];
 
-/** The changed files that hit PROTECTED_PATHS (exact file, or under a `/`-terminated prefix; case-insensitive). */
+/**
+ * The changed files that hit PROTECTED_PATHS: the exact file, or the directory
+ * of a `/`-terminated prefix and anything under it. Compared case-insensitively
+ * after Win32 path normalization (`\` as `/`, trailing dots and spaces of each
+ * segment dropped, `.` segments dropped), so `.github/workflows./ci.yml` and
+ * `.copilot/omg.jsonc.` hit. A path Windows could resolve elsewhere (a segment
+ * with `:` or `~`, an alternate stream or 8.3 short name, or a `..` segment)
+ * always counts as protected.
+ */
 export function protectedChanges(changed: readonly string[], extra: readonly string[] = []): string[] {
   const rules = [...PROTECTED_PATHS, ...extra].map((p) => p.toLowerCase());
   return changed.filter((raw) => {
-    const f = raw.replace(/\\/g, '/').trim().toLowerCase();
-    return rules.some((p) => (p.endsWith('/') ? f.startsWith(p) : f === p));
+    const segments = raw.replace(/\\/g, '/').trim().toLowerCase().split('/');
+    if (segments.some((s) => /[:~]/.test(s) || s === '..')) return true;
+    const f = segments.map((s) => s.replace(/[. ]+$/, '')).filter(Boolean).join('/');
+    return rules.some((p) => (p.endsWith('/') ? f === p.slice(0, -1) || f.startsWith(p) : f === p));
   });
 }
 

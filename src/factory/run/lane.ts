@@ -50,6 +50,11 @@ export interface LaneStartInput {
    * verifies the worktree after the lane (refs, config and HEAD unchanged).
    */
   profile?: LaneProfile;
+  /**
+   * Local backend: start the session with a credential-free env
+   * (scrubLaneCredentials in copilot-run/job.ts). The heal debugger lane sets it.
+   */
+  scrubCredentials?: boolean;
   model?: string;
   /** Cloud backends only. */
   customAgent?: string;
@@ -160,7 +165,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory' },
+      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}) },
     );
     return { remoteId: snap.jobId };
   }

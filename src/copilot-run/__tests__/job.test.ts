@@ -216,6 +216,39 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.OMC_SKIP_HOOKS).toBeUndefined();
     expect(plain.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
   });
+
+  it('scrubCredentials: no GitHub tokens or other secrets, an empty gh config, no git credential helper; COPILOT_GITHUB_TOKEN still reaches the session', async () => {
+    const secrets = {
+      GH_TOKEN: 'ghp_x', GITHUB_TOKEN: 'ghs_x', GH_ENTERPRISE_TOKEN: 'e', GITHUB_ENTERPRISE_TOKEN: 'e', NPM_TOKEN: 'n', AWS_SECRET_ACCESS_KEY: 'a',
+      SSH_AUTH_SOCK: '/tmp/agent', GIT_ASKPASS: 'askpass', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: 'store', MY_API_KEY: 'k',
+    };
+    const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', COPILOT_GITHUB_TOKEN: 'copilot-only', GH_CONFIG_DIR: '/home/me/.config/gh', ...secrets });
+    await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
+    await m.wait(m.start({ prompt: 'b', cwd: repo }, { allowLive: true }).jobId, 10_000);
+    const [lane, plain] = calls.connections.map((c) => c.env!);
+    for (const key of Object.keys(secrets)) expect(lane[key], key).toBeUndefined();
+    // The Copilot credential goes over the session RPC, never into the env the shell inherits.
+    expect(lane.COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(calls.sessions[0].gitHubToken).toBe('copilot-only');
+    expect(lane.GH_CONFIG_DIR).not.toBe('/home/me/.config/gh');
+    expect(lane).toMatchObject({ GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
+    // The empty gh config dir is removed with the session.
+    expect(existsSync(lane.GH_CONFIG_DIR!)).toBe(false);
+    // Every session's env is allowlisted (sandbox.ts allowlistSessionEnv): no secret reaches an unscrubbed one either.
+    expect(plain.NPM_TOKEN).toBeUndefined();
+    expect(plain.GH_CONFIG_DIR).toBeUndefined();
+    // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
+    expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]\.gitconfig$/);
+  });
+
+  it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {
+    rmSync(join(root, 'user-copilot', 'config.json'));
+    const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', GH_TOKEN: 'ghp_x' });
+    const done = await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(String(done.error)).toMatch(/needs a stored Copilot login .* or COPILOT_GITHUB_TOKEN/);
+    expect(calls.connections).toHaveLength(0);
+  });
 });
 
 describe('copilot_run lane skip token in the Stop hook scripts', () => {

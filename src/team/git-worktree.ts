@@ -669,8 +669,8 @@ function gitOrNull(args: string[], cwd: string): string | null {
  * when recorded, that are newer than the worktree's base commit): worker work
  * a removal would destroy. Null when git cannot tell.
  */
-function countUnmergedWorkerCommits(repoRoot: string, wtPath: string, baseCommit?: string, gitDirArgs: readonly string[] = []): number | null {
-  return countUnmergedCommits(repoRoot, gitOrNull([...gitDirArgs, 'rev-parse', 'HEAD'], wtPath), baseCommit);
+function countUnmergedWorkerCommits(repoRoot: string, wtPath: string, baseCommit?: string, gitDirArgs: readonly string[] = [], contained: readonly string[] = []): number | null {
+  return countUnmergedCommits(repoRoot, gitOrNull([...gitDirArgs, 'rev-parse', 'HEAD'], wtPath), baseCommit, contained);
 }
 
 function commitCheckFailedError(message: string): Error {
@@ -741,11 +741,15 @@ export function deleteWorkerBranchAt(repoRoot: string, branch: string, commit: s
   }
 }
 
-/** As countUnmergedWorkerCommits, for a commit resolved by the caller (null: unknown). */
-function countUnmergedCommits(repoRoot: string, head: string | null, baseCommit?: string): number | null {
+/**
+ * As countUnmergedWorkerCommits, for a commit resolved by the caller (null:
+ * unknown). `contained`: further commits whose history counts as kept (a
+ * caller-verified remote ref); one that does not resolve makes the count fail.
+ */
+function countUnmergedCommits(repoRoot: string, head: string | null, baseCommit?: string, contained: readonly string[] = []): number | null {
   const leader = gitOrNull(['rev-parse', 'HEAD'], repoRoot);
   if (!head || !leader) return null;
-  const count = (excludes: string[]) => gitOrNull(['rev-list', '--count', head, ...excludes.map((ref) => `^${ref}`)], repoRoot);
+  const count = (excludes: string[]) => gitOrNull(['rev-list', '--count', head, ...[...excludes, ...contained].map((ref) => `^${ref}`)], repoRoot);
   // A base commit that no longer resolves only narrows the count; drop it.
   const counted = (baseCommit ? count([leader, baseCommit]) : null) ?? count([leader]);
   const n = counted === null ? NaN : Number.parseInt(counted, 10);
@@ -1218,14 +1222,18 @@ export function prepareWorkerWorktreeForRemoval(
  * worktrees holding commits the leader HEAD does not contain (thrown as
  * `worktree_unmerged_commits`, carrying `preservedWorktree`; the branch is kept).
  * With the worktree directory already gone, the named branch is checked the
- * same way and kept when it holds unmerged worker commits.
+ * same way and kept when it holds unmerged worker commits. `contained`: commits
+ * (full shas the caller verified, e.g. a fetched remote branch) whose history
+ * also counts as merged.
  */
 export function removeWorkerWorktree(
   teamName: string,
   workerName: string,
   repoRoot: string,
-  options: { gitLinks?: WorktreeGitLinks } = {},
+  options: { gitLinks?: WorktreeGitLinks; contained?: readonly string[] } = {},
 ): { tampered: string | null } {
+  const contained = options.contained ?? [];
+  if (!contained.every((sha) => /^[0-9a-f]{40}$/.test(sha))) throw new Error('removeWorkerWorktree: contained must be full commit shas');
   const wtPath = getWorktreePath(repoRoot, teamName, workerName);
   const branch = getBranchName(teamName, workerName);
   const metaLockPath = `${getMetadataPath(repoRoot, teamName)}.lock`;
@@ -1261,13 +1269,13 @@ export function removeWorkerWorktree(
       if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
         throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
       }
-      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit, gitDirArgs);
+      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit, gitDirArgs, contained);
       if (commits === null) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
     } else if (registered) {
       // The directory is gone but git still records the worktree's HEAD,
       // which can be the only reference to detached worker commits.
-      const commits = countUnmergedCommits(repoRoot, registered.head, baseCommit);
+      const commits = countUnmergedCommits(repoRoot, registered.head, baseCommit, contained);
       if (commits === null) throw commitCheckFailedError(`keeping the record of worker worktree ${wtPath} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
     }
@@ -1276,7 +1284,7 @@ export function removeWorkerWorktree(
     // only the branch holds. A missing branch (detached mode) is fine.
     const branchHead = resolveBranchCommit(repoRoot, branch);
     if (branchHead) {
-      const commits = countUnmergedCommits(repoRoot, branchHead, baseCommit);
+      const commits = countUnmergedCommits(repoRoot, branchHead, baseCommit, contained);
       if (commits === null) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }

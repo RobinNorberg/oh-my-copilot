@@ -28,15 +28,18 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { resolveFactoryRunLimits, runCredits, type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
-import { runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
+import { cleanFactoryRun } from '../../factory/run/clean.js';
+import { EXIT_AWAITING_HUMAN, runFactoryEngine, type FactoryRunOutcome } from '../../factory/run/engine.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
+import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity, type FactoryRunState } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
+import { defaultLedgerDir } from '../../factory/run/ledger.js';
 
 export function renderChainStatus(status: ChainStatus): string {
   const lines: string[] = [];
@@ -74,6 +77,8 @@ export interface FactoryRunDeps {
   base: (root: string) => string;
   /** Engine ledger directory outside the repo (default: `$OMC_STATE_DIR` or `~/.omg`, then `factory-ledger`). */
   ledgerDir?: string;
+  /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
+  gateConfig?: GateConfigLoader;
 }
 
 function projectConfig(root: string): unknown {
@@ -150,12 +155,12 @@ function printOutcome(json: boolean, outcome: FactoryRunOutcome): void {
   console.log(color(outcome.message));
 }
 
-/** `omg factory run <issue>`, `run cancel <issue>`, `run status <issue>` (experimental; manual trigger only). */
+/** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps): Command {
   const exec = factoryGuardExec(deps.exec);
   const run = new Command('run');
   run
-    .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds, then park for the human prepare and merge')
+    .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge')
     .argument('[issue]', 'GitHub issue number')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
     .option('--json', 'JSON output')
@@ -177,6 +182,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
             root, issue, exec: deps.exec, limits, base: deps.base(root), dryRun: Boolean(o.dryRun),
             lanes: o.dryRun ? NO_LANES : deps.lanes(root),
             ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
+            ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
             interrupted: () => signals > 0,
             warn: (m) => console.error(chalk.yellow(m)),
           });
@@ -199,6 +205,23 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: true, cancelRequested: true, phase: state.phase }, null, 2));
         else console.log(chalk.green(`cancel requested for factory run #${issue} (phase ${state.phase}); a running engine stops within seconds, otherwise the next run finishes the cancel`));
         return 0;
+      }));
+
+  run
+    .command('clean <issue>')
+    .description('Remove the worktrees and local branches of a merged or cancelled run, only when nothing would be lost (the PR branch on GitHub is kept)')
+    .option('--json', 'JSON output')
+    .action((issueRaw: string, _o: unknown, c: Command) =>
+      factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
+        const issue = parseIssue(issueRaw);
+        const result = cleanFactoryRun({ root: factoryRoot(exec), issue, exec: deps.exec, ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}) });
+        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ok: result.kept.length === 0, ...result }, null, 2));
+        else {
+          for (const path of result.removed) console.log(chalk.green(`removed ${path}`));
+          for (const k of result.kept) console.log(chalk.yellow(`kept ${k.worktree}: ${k.reason}`));
+          if (result.removed.length === 0 && result.kept.length === 0) console.log(`nothing to clean for factory run #${issue}`);
+        }
+        return result.kept.length === 0 ? 0 : EXIT_AWAITING_HUMAN;
       }));
 
   run
@@ -232,6 +255,9 @@ export function factoryCommand(): Command {
     base: defaultFactoryRunDeps.base,
     config: (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)),
     now: () => new Date(),
+    // `omg factory heal run` without --dry-run is itself the opt-in to one billed, capped debugger lane.
+    lanes: defaultFactoryRunDeps.lanes,
+    ledgerDir: defaultLedgerDir(),
   }));
 
   cmd

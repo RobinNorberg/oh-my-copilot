@@ -11,7 +11,7 @@ import { DEFAULT_HEAL_CONFIG } from '../config.js';
 import { acquireFileLockSync, releaseFileLockSync } from '../../../lib/file-lock.js';
 import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
 import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
-import { healStateDir, listHealStates } from '../state.js';
+import { enqueueWebhookRun, healStateDir, listHealStates, readWebhookQueue } from '../state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
@@ -165,7 +165,8 @@ describe('heal command guard', () => {
 });
 
 describe('omg factory heal CLI', () => {
-  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW });
+  const noLanes = () => { throw new Error('no lane in these tests'); };
+  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: noLanes, ledgerDir: join(root, '.omg', 'test-ledger') });
   async function cli(d: HealDeps, ...argv: string[]): Promise<number> {
     process.exitCode = undefined;
     await healCommand(d).parseAsync(argv, { from: 'user' });
@@ -173,6 +174,16 @@ describe('omg factory heal CLI', () => {
     process.exitCode = undefined;
     return code;
   }
+
+  it('scan clears webhook-queued runs it listed and keeps the others; a dry run writes nothing', () => {
+    enqueueWebhookRun(root, '40584638028', NOW);
+    enqueueWebhookRun(root, '99999999999', NOW);
+    const exec = fakeExec([run(40584638028)], [run(40542274776)]);
+    expect(scan(exec, true).queued).toBe(1);
+    expect(readWebhookQueue(root)).toHaveLength(2);
+    expect(scan(exec).queued).toBe(1);
+    expect(readWebhookQueue(root).map((q) => q.runId)).toEqual(['99999999999']);
+  });
 
   it('is registered under omg factory', () => {
     expect(factoryCommand().commands.map((c) => c.name())).toContain('heal');

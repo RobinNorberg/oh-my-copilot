@@ -225,14 +225,23 @@ function repoIdentity(url: string): string {
  * URL fetch really uses) names the PR's repository (`repoUrl`, from
  * `gh pr view --json url` without `/pull/<n>`); otherwise why not. Checked
  * before every fetch of the base, so a lane that points the remote at another
- * repository is refused instead of fetched from.
+ * repository is refused instead of fetched from. Every push URL
+ * (`git remote get-url --push --all`: each `pushurl`, else the URL, with
+ * pushInsteadOf applied) must name it too, so a planted `pushurl` cannot
+ * redirect a push.
  */
 export function remoteRepoMismatch(exec: Exec, cwd: string, remote: string, repoUrl: string | undefined): string | null {
   if (!repoUrl) return 'GitHub reported no repository url for the PR';
   const got = exec('git', ['remote', 'get-url', remote], { cwd, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${remote} failed: ${got.stderr.trim().split('\n')[0]}`;
   const url = got.stdout.trim();
-  return repoIdentity(url) === repoIdentity(repoUrl) ? null : `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
+  if (repoIdentity(url) !== repoIdentity(repoUrl)) return `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
+  const push = exec('git', ['remote', 'get-url', '--push', '--all', remote], { cwd, env: TRUSTED_READ_ENV });
+  if (push.status !== 0) return `git remote get-url --push --all ${remote} failed: ${push.stderr.trim().split('\n')[0]}`;
+  const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+  if (pushUrls.length === 0) return `git remote get-url --push --all ${remote} printed no push URL`;
+  const foreign = pushUrls.find((u) => repoIdentity(u) !== repoIdentity(repoUrl));
+  return foreign ? `remote ${remote} pushes to ${foreign}, but the PR is in ${repoUrl}` : null;
 }
 
 /** The repository URL of a PR URL (`https://github.com/o/r/pull/12` -> `https://github.com/o/r`); undefined when it is not one. */

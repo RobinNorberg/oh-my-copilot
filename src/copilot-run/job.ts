@@ -42,8 +42,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
@@ -171,6 +171,49 @@ export interface CopilotRunStartOptions {
   ledgerKey?: string;
   /** Which sandbox config block applies: `factory` lanes read `factory.run.sandbox` over `copilotRun.sandbox` (default `copilot-run`). */
   sandboxScope?: SandboxScope;
+  /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
+  scrubCredentials?: boolean;
+}
+
+/** Env keys a credential-free session never gets (any case on Windows). */
+export const LANE_CREDENTIAL_ENV = [
+  'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN',
+  'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH', 'GIT_SSH_COMMAND',
+  'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL',
+] as const;
+/** Names that look like a secret; COPILOT_GITHUB_TOKEN is the session's own credential and stays. */
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY/i;
+
+/**
+ * A credential-free session env, in place. Removed: GitHub tokens
+ * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
+ * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` points at an
+ * empty dir, so `gh` finds no stored login; git reads no global or system
+ * config (no credential helper) and never prompts.
+ *
+ * Copilot's own auth is kept: the stored login (OS credential store, copied
+ * identity) or COPILOT_GITHUB_TOKEN, which reaches the session over RPC
+ * (sandbox.ts sessionGitHubToken), not through this env. The OS credential
+ * store is out of reach of any env policy; only OS confinement closes
+ * that. Without a stored login the generic GitHub tokens were the only
+ * credential, so a scrubbed session then needs COPILOT_GITHUB_TOKEN.
+ */
+export function scrubLaneCredentials(env: NodeJS.ProcessEnv, emptyDir: string): void {
+  const exact = new Set<string>(LANE_CREDENTIAL_ENV);
+  for (const key of Object.keys(env)) {
+    const upper = key.toUpperCase();
+    if (upper === 'COPILOT_GITHUB_TOKEN') continue;
+    if (exact.has(upper) || SECRET_NAME.test(upper) || upper.startsWith('GIT_CONFIG') || upper.startsWith('GCM_')) delete env[key];
+  }
+  const emptyConfig = join(emptyDir, 'gitconfig');
+  writeFileSync(emptyConfig, '');
+  Object.assign(env, {
+    GH_CONFIG_DIR: emptyDir,
+    GIT_CONFIG_GLOBAL: emptyConfig,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+  });
 }
 
 /** Why a job stopped early: a caller's stop, the credit cap, or a shell call outside the sandbox. */
@@ -310,6 +353,7 @@ interface Job {
   /** The caller's startRef (null: HEAD). */
   startRef: string | null;
   disableStopContinuations: boolean;
+  scrubCredentials: boolean;
   /** Budget ledger record key. */
   ledgerKey: string;
   model: string | null;
@@ -621,6 +665,7 @@ export class CopilotRunManager {
       profile,
       startRef,
       disableStopContinuations: options.disableStopContinuations === true,
+      scrubCredentials: options.scrubCredentials === true,
       ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
       model: input.model ?? null,
       timeoutMs,
@@ -797,6 +842,19 @@ export class CopilotRunManager {
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
+    let scrubDir: string | null = null;
+    if (job.scrubCredentials) {
+      // COPILOT_GITHUB_TOKEN reaches the session over RPC (gitHubToken), never through the allowlisted env.
+      if (ident.loggedInUsers === undefined && !gitHubToken) {
+        job.error = 'a credential-free session needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are removed from it';
+        return 'failed';
+      }
+      scrubDir = mkdtempSync(join(tmpdir(), 'omg-lane-nocreds-'));
+      // The relocated global config holds only the seeded identity (no credential helper): keep it so the lane still commits.
+      const identityConfig = env.GIT_CONFIG_GLOBAL;
+      scrubLaneCredentials(env, scrubDir);
+      env.GIT_CONFIG_GLOBAL = identityConfig;
+    }
 
     const policy = {
       cwd: job.workCwd,
@@ -989,6 +1047,7 @@ export class CopilotRunManager {
         try { await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS, 'client.forceStop()'); } catch { /* gone */ }
       }
       if (pid && deps.isAlive(pid)) deps.killTree(pid);
+      if (scrubDir) rmSync(scrubDir, { recursive: true, force: true });
       // The final totals: a few retries if a hook holds the ledger lock.
       for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep(50);
       // The per-job COPILOT_HOME holds the session state and logs; kept when the job did not complete.
