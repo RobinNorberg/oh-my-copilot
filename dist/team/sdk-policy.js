@@ -5,7 +5,7 @@
  * host answers every `onPermissionRequest` with {@link decideSdkPermission},
  * and removes tools up front with {@link buildSdkExcludedTools}.
  */
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 /**
@@ -105,14 +105,46 @@ export function isUnderRoot(p, root, platform = process.platform) {
     const parent = canon(root, platform);
     return child === parent || child.startsWith(`${parent}/`);
 }
-function requestPath(req, cwd) {
+/**
+ * True when `p` has a `..` segment. `resolve` collapses `l/../x` lexically to
+ * `x`, but the kernel follows the link `l` first and climbs from its target.
+ */
+export function hasDotDotSegment(p) {
+    return p.split(/[\\/]+/).includes('..');
+}
+/**
+ * Why an existing write target is refused, or null (also for a new file).
+ * realpath cannot see a hard link: `<root>/h` linked to `~/.bashrc` resolves
+ * inside, and an in-place write lands in the outside file. A FIFO, device or
+ * directory is no file to edit either. `stat` follows a link, which
+ * {@link canon} has already judged.
+ */
+function existingWriteTargetDenial(p) {
+    let st;
+    try {
+        st = statSync(p);
+    }
+    catch (err) {
+        if (err.code === 'ENOENT')
+            return null;
+        throw err;
+    }
+    if (!st.isFile())
+        return 'write target is not a regular file';
+    return st.nlink > 1 ? 'write target has more than one hard link' : null;
+}
+/** The request's path, unresolved as given. */
+function rawRequestPath(req) {
     for (const key of ['resolvedPath', 'path', 'fileName']) {
         const value = req[key];
-        if (typeof value === 'string' && value.trim()) {
-            return isAbsolute(value) ? value : resolve(cwd, value);
-        }
+        if (typeof value === 'string' && value.trim())
+            return value;
     }
     return null;
+}
+function requestPath(req, cwd) {
+    const value = rawRequestPath(req);
+    return value === null ? null : isAbsolute(value) ? value : resolve(cwd, value);
 }
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export function shellDenyPrefixes(denyTools = []) {
@@ -147,6 +179,8 @@ export function decideSdkPermission(req, ctx) {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: true, reason: 'read without a path' };
+            if (hasDotDotSegment(rawRequestPath(req)))
+                return { approve: false, reason: `read path with a .. segment: ${path}` };
             const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
             try {
                 return roots.some((root) => isUnderRoot(path, root, platform))
@@ -161,10 +195,16 @@ export function decideSdkPermission(req, ctx) {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: false, reason: 'write without a path' };
+            if (hasDotDotSegment(rawRequestPath(req)))
+                return { approve: false, reason: `write path with a .. segment: ${path}` };
             try {
-                return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
-                    ? { approve: true, reason: 'write inside worktree or team state' }
-                    : { approve: false, reason: `write outside worktree and team state: ${path}` };
+                if (!isUnderRoot(path, ctx.cwd, platform) && !isUnderRoot(path, ctx.stateRoot, platform)) {
+                    return { approve: false, reason: `write outside worktree and team state: ${path}` };
+                }
+                const target = existingWriteTargetDenial(path);
+                return target
+                    ? { approve: false, reason: `${target}: ${path}` }
+                    : { approve: true, reason: 'write inside worktree or team state' };
             }
             catch (err) {
                 return { approve: false, reason: `write path not resolvable: ${path}: ${err.message}` };
