@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2fab835054d604b047fac74381818cd8d6749c3f",
-    "sourceSha256": "251965b9ddfb52cf087d0a967158a0915a4d1920233a08bd5248310873cb93bc",
+    "head": "febe4ca3ae5d692c3740aa00d597074f23c9372e",
+    "sourceSha256": "3b2d54b855422fbc091e4bcd550ab2b5e930c879567fa46e263ed5f165f20210",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2fab835054d604b047fac74381818cd8d6749c3f",
-  "sourceSha256": "251965b9ddfb52cf087d0a967158a0915a4d1920233a08bd5248310873cb93bc",
+  "head": "febe4ca3ae5d692c3740aa00d597074f23c9372e",
+  "sourceSha256": "3b2d54b855422fbc091e4bcd550ab2b5e930c879567fa46e263ed5f165f20210",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 52,
       "templateHooks": 24,
-      "srcFiles": 1731,
-      "total": 1755
+      "srcFiles": 1736,
+      "total": 1760
     },
     "generated": {
       "distFiles": 6480,
@@ -46473,6 +46473,11 @@
         "path": "src/factory/run/__tests__/lane.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/prepare-gates.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/review-guard.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/review-guard.test.ts"
@@ -46488,6 +46493,11 @@
         "path": "src/factory/run/budget.ts"
       },
       {
+        "id": "src/factory/run/clean.ts",
+        "kind": "src",
+        "path": "src/factory/run/clean.ts"
+      },
+      {
         "id": "src/factory/run/engine.ts",
         "kind": "src",
         "path": "src/factory/run/engine.ts"
@@ -46498,6 +46508,11 @@
         "path": "src/factory/run/exec.ts"
       },
       {
+        "id": "src/factory/run/gates-driver.ts",
+        "kind": "src",
+        "path": "src/factory/run/gates-driver.ts"
+      },
+      {
         "id": "src/factory/run/lane.ts",
         "kind": "src",
         "path": "src/factory/run/lane.ts"
@@ -46506,6 +46521,16 @@
         "id": "src/factory/run/ledger.ts",
         "kind": "src",
         "path": "src/factory/run/ledger.ts"
+      },
+      {
+        "id": "src/factory/run/merge-policy.ts",
+        "kind": "src",
+        "path": "src/factory/run/merge-policy.ts"
+      },
+      {
+        "id": "src/factory/run/prepare.ts",
+        "kind": "src",
+        "path": "src/factory/run/prepare.ts"
       },
       {
         "id": "src/factory/run/progress.ts",
@@ -67816,6 +67841,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/engine.ts",
         "kind": "imports"
       },
@@ -67843,6 +67873,11 @@
         "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -70996,6 +71031,16 @@
       },
       {
         "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/fake-lanes.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
@@ -71043,6 +71088,91 @@
         "from": "src/factory/run/__tests__/lane.test.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/prepare-gates.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/review-guard.test.ts",
@@ -71185,6 +71315,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/clean.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/engine.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -71211,6 +71396,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/gates-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -71223,6 +71413,26 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -71296,6 +71506,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
       },
@@ -71305,18 +71520,53 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/exec.ts",
         "to": "external:fs",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
       {
@@ -71367,6 +71617,76 @@
       {
         "from": "src/factory/run/ledger.ts",
         "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
+        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -104521,12 +104841,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8951,
-      "edgeCount": 10341,
-      "importEdgeCount": 8614,
+      "nodeCount": 8956,
+      "edgeCount": 10400,
+      "importEdgeCount": 8654,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "d8b39bb5eecad3101e0fcc9817f59a167a7475e1f130fe53a61e8d5318385261",
-  "manifestSha256": "00a459818acff673b46db688cde7a30f9eae7a100f20b0ad483f7130d27b4dc9"
+  "inventorySha256": "a3403891e440f4b8ceba155f8fbc5f09fe17554a39d355b86919a074eae8fdd9",
+  "manifestSha256": "be2e094089061d922803741d62be36015a2934a5580ebb35e2e400950adcb251"
 }
