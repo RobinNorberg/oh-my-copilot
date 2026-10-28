@@ -8,6 +8,7 @@ import { factoryCommand } from '../../../cli/commands/factory.js';
 import type { Exec } from '../../../ship/exec.js';
 import { healCommand, runHealScan, type HealDeps, type ScanResult } from '../cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../config.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { acquireFileLockSync, releaseFileLockSync } from '../../../lib/file-lock.js';
 import { TRUSTED_READ_ENV } from '../../../ship/exec.js';
 import { assertHealCommand, healGuardExec, HealSafetyError } from '../history.js';
@@ -166,7 +167,7 @@ describe('heal command guard', () => {
 
 describe('omg factory heal CLI', () => {
   const noLanes = () => { throw new Error('no lane in these tests'); };
-  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: noLanes, ledgerDir: join(root, '.omg', 'test-ledger') });
+  const deps = (exec: Exec): HealDeps => ({ exec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: noLanes, ledgerDir: join(root, '.omg', 'test-ledger'), runLimits: () => ({ limits: DEFAULT_FACTORY_RUN_LIMITS, warnings: [] }) });
   async function cli(d: HealDeps, ...argv: string[]): Promise<number> {
     process.exitCode = undefined;
     await healCommand(d).parseAsync(argv, { from: 'user' });

@@ -142,7 +142,7 @@ export function readHealCounters(root: string, ledgerDir: string, now: Date): He
   return { day: a.day, healRuns: Math.max(a.healRuns, b.healRuns), debugLanes: Math.max(a.debugLanes, b.debugLanes), credits: Math.max(a.credits, b.credits) };
 }
 
-function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void {
+export function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void {
   writeDailyCountersAt(dailyCountersPath(root), counters);
   writeDailyCountersAt(mirrorCountersPath(ledgerDir, root), counters);
 }

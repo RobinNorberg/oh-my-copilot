@@ -8,6 +8,7 @@
 
 import { join } from 'path';
 import { defaultProgressDir, emitProgress, type ProgressStatus } from '../../lib/agent-progress.js';
+import type { FactoryRunKey } from './state.js';
 
 export const HEARTBEAT_MIN_MS = 60_000;
 
@@ -28,11 +29,11 @@ export interface FactoryProgress {
   heartbeat(phase: string, note?: string, fields?: FactoryProgressFields): void;
 }
 
-export function factoryProgressFile(root: string, issue: number): string {
+export function factoryProgressFile(root: string, issue: FactoryRunKey): string {
   return join(defaultProgressDir(root), `factory-${issue}.log`);
 }
 
-export function createFactoryProgress(input: { root: string; issue: number; file?: string; now?: () => number }): FactoryProgress {
+export function createFactoryProgress(input: { root: string; issue: FactoryRunKey; file?: string; now?: () => number }): FactoryProgress {
   const file = input.file ?? factoryProgressFile(input.root, input.issue);
   const agent = `factory-${input.issue}`;
   const clock = input.now ?? Date.now;

@@ -17,16 +17,18 @@ import { join } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
+import { runSlug, type FactoryRunKey } from './state.js';
 
 export const FACTORY_CHECKOUT_TEAM = 'factory-run';
 
-export const checkoutWorker = (issue: number): string => `issue-${issue}`;
+/** `issue-<n>`, or `heal-<sig8>` for a ci-heal run. */
+export const checkoutWorker = (issue: FactoryRunKey): string => runSlug(issue);
 
-export function checkoutPath(root: string, issue: number): string {
+export function checkoutPath(root: string, issue: FactoryRunKey): string {
   return getWorktreePath(root, FACTORY_CHECKOUT_TEAM, checkoutWorker(issue));
 }
 
-export function checkoutBranch(issue: number): string {
+export function checkoutBranch(issue: FactoryRunKey): string {
   return getBranchName(FACTORY_CHECKOUT_TEAM, checkoutWorker(issue));
 }
 

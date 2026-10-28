@@ -202,6 +202,8 @@ export interface Harness {
     /** `author` defaults to the repository owner (`o`, a trusted body author). */
     issue: { title: string; body: string; state: string; author?: { login: string }; comments: Array<{ body: string; authorAssociation?: string; author?: { login: string } }> };
     prCreated: boolean;
+    /** The run's branch on the bare remote that `gh pr view` reports (default `factory/issue-<ISSUE>`). */
+    branch: string;
     /** Override what `gh pr view` reports as the head (default: the bare remote's factory branch). */
     headOverride?: string;
     /** Heads `gh pr view` reports first, one per call (GitHub still showing an older push). */
@@ -267,7 +269,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
     dir, root, bare, ledgerDir: join(dir, 'ledger'), calls: [], raw: [],
     gh: {
       issue: { title: 'Add greet()', body: '## Acceptance criteria\n\n- greet() returns hi\n', state: 'OPEN', author: { login: 'o' }, comments: [] },
-      prCreated: false, openPrs: [], headSequence: [], ready: false, merged: false, gates: [greenGates()], logs: {},
+      prCreated: false, branch: `factory/issue-${ISSUE}`, openPrs: [], headSequence: [], ready: false, merged: false, gates: [greenGates()], logs: {},
     },
     node: () => ok(''),
     exec: () => ({ status: 1, stdout: '', stderr: '' }),
@@ -287,7 +289,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
     if (cmd === 'git' && args[0] === 'remote' && args[1] === 'get-url') return ok(`${REPO_URL}.git\n`);
     if (cmd === 'git') return defaultExec(cmd, rawArgs, opts);
     if (key.startsWith(`gh pr view ${PR} --json `)) {
-      const remote = bareRef(bare, `refs/heads/factory/issue-${ISSUE}`);
+      const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
       const base = bareRef(bare, 'refs/heads/dev');
       const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
       return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: base }));
@@ -304,7 +306,8 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
     if (key.startsWith('gh run view --job ')) return ok(h.gh.logs[args[3]] ?? '');
     if (key.startsWith('gh run rerun ')) return ok('');
     if (key.startsWith(`gh issue view ${ISSUE} --json`)) return ok(JSON.stringify({ ...h.gh.issue, labels: [], url: `${REPO_URL}/issues/${ISSUE}` }));
-    if (key.startsWith('gh pr list --head factory/issue-')) return ok(JSON.stringify(h.gh.openPrs.map((number) => ({ number, state: 'OPEN' }))));
+    if (key === 'gh repo view --json url') return ok(JSON.stringify({ url: REPO_URL }));
+    if (key.startsWith('gh pr list --head factory/')) return ok(JSON.stringify(h.gh.openPrs.map((number) => ({ number, state: 'OPEN' }))));
     if (key.startsWith('gh pr create ')) {
       h.gh.prCreated = true;
       h.gh.openPrs = [PR];
@@ -324,5 +327,5 @@ function bareRef(bare: string, ref: string): string {
 }
 
 export function remoteHead(h: Harness): string | null {
-  return defaultExec('git', ['ls-remote', h.bare, `refs/heads/factory/issue-${ISSUE}`]).stdout.split(/\s+/)[0] || null;
+  return defaultExec('git', ['ls-remote', h.bare, `refs/heads/${h.gh.branch}`]).stdout.split(/\s+/)[0] || null;
 }

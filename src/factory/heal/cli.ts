@@ -1,11 +1,14 @@
 /**
- * `omg factory heal scan|status|run` (experimental, design §10 PR 1-2). The
- * scan polls CI runs on the integration branch, computes failure signatures,
- * classifies new red runs deterministically and records them in heal state.
- * It makes no LLM call and no GitHub write: every command goes through
- * healGuardExec, and a rerun probe is recorded as an intent only. `run`
- * starts the read-only debugger lane for one signature (run.ts); `close`
- * lets a human close a parked heal run.
+ * `omg factory heal scan|status|run|approve|cancel|close` (experimental,
+ * design §10 PR 1-3). The scan polls CI runs on the integration branch,
+ * computes failure signatures, classifies new red runs deterministically and
+ * records them in heal state. It makes no LLM call and no GitHub write: every
+ * command goes through healGuardExec, and a rerun probe is recorded as an
+ * intent only. `run` starts the read-only debugger lane for one signature
+ * (run.ts); `approve` runs the ci-heal run of a valid diagnosis in the
+ * factory engine (implement.ts), which parks at the human merge; `cancel`
+ * stops it; `close` lets a human close a parked heal run. A `flaky`
+ * diagnosis only prints a known-flaky proposal.
  */
 
 import { join } from 'path';
@@ -21,6 +24,11 @@ import { parseJob, type ParsedJob } from './logs.js';
 import { runSignature } from './signature.js';
 import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState, type HealSignatureState } from './state.js';
 import type { LaneBackend } from '../run/lane.js';
+import type { LoadedFactoryRunLimits } from '../run/budget.js';
+import type { FactoryRunOutcome } from '../run/engine.js';
+import type { GateConfigLoader } from '../run/prepare.js';
+import { factoryCancelRequested, healRunKey, readFactoryState, requestFactoryCancel } from '../run/state.js';
+import { knownFlakyProposal, renderKnownFlakyProposal, runHealEngine, type HealEngineDeps } from './implement.js';
 import { closeHeal, HealRunRefused, EXIT_HEAL_REFUSED, runHeal, verifyHealSeal, type HealRunDeps } from './run.js';
 
 /** Bounds on one scan's GitHub reads (CI logs run to megabytes each). */
@@ -45,6 +53,11 @@ export interface HealDeps {
   ledgerDir: string;
   /** Test seams for `heal run`. */
   run?: Pick<HealRunDeps, 'clock' | 'pollMs' | 'confinement' | 'delimiter' | 'env' | 'warn'>;
+  /** `factory.run` limits of the ci-heal run (`heal approve`, `heal cancel`). */
+  runLimits: (root: string) => LoadedFactoryRunLimits;
+  gateConfig?: GateConfigLoader;
+  /** Test seams of the factory engine. */
+  engine?: HealEngineDeps['engine'];
 }
 
 export interface ScanEntry {
@@ -277,7 +290,22 @@ export function renderHealState(s: HealSignatureState): string {
       if (d.diagnosis.fix) lines.push(`  fix: ${d.diagnosis.fix.summary.replace(/\s+/g, ' ').slice(0, 300)} [${d.diagnosis.fix.files.join(', ')}]`);
     }
   }
+  const proposal = knownFlakyProposal(s);
+  if (proposal) lines.push(...renderKnownFlakyProposal(proposal).split('\n'));
   return [head, ...lines.map(t)].join('\n');
+}
+
+/** A ci-heal run's engine outcome; the merge command is printed for the human, never run. */
+function printEngineOutcome(json: boolean, sig8: string, outcome: FactoryRunOutcome): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: outcome.exitCode === 0, sig8, ...outcome }, null, 2));
+    return;
+  }
+  const s = outcome.state;
+  if (s) console.log(`${chalk.bold(`ci-heal heal-${sig8}`)}  phase=${chalk.cyan(s.phase)}  branch=${s.branch}${s.pr ? `  PR #${s.pr}` : ''}  lanes ${s.lanes.length}`);
+  const color = outcome.exitCode === 0 ? chalk.green : outcome.exitCode === 1 ? chalk.red : chalk.yellow;
+  console.log(color(termSafe(outcome.message)));
+  if (outcome.mergeCommand) console.log(`merge (a human step): ${outcome.mergeCommand}`);
 }
 
 async function guarded(json: boolean, fn: () => number | Promise<number>): Promise<void> {
@@ -291,6 +319,15 @@ async function guarded(json: boolean, fn: () => number | Promise<number>): Promi
   }
 }
 
+function engineDeps(deps: HealDeps): HealEngineDeps {
+  return {
+    exec: deps.exec, lanes: deps.lanes, limits: deps.runLimits, ledgerDir: deps.ledgerDir, now: deps.now,
+    warn: (m) => console.error(chalk.yellow(termSafe(m))),
+    ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
+    ...(deps.engine ? { engine: deps.engine } : {}),
+  };
+}
+
 function healRoot(exec: Exec): string {
   const r = healGuardExec(exec)('git', ['rev-parse', '--show-toplevel']);
   if (r.status !== 0) throw new HealUsageError('omg factory heal must run inside a git repository');
@@ -300,7 +337,7 @@ function healRoot(exec: Exec): string {
 /** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
 export function healCommand(deps: HealDeps): Command {
   const heal = new Command('heal');
-  heal.description('Experimental: classify red CI runs on the integration branch and diagnose them in a read-only lane (no GitHub writes)');
+  heal.description('Experimental: classify red CI runs on the integration branch, diagnose them in a read-only lane, and, after a human approves, open a draft fix PR that parks at the human merge');
 
   heal
     .command('scan')
@@ -366,14 +403,63 @@ export function healCommand(deps: HealDeps): Command {
           { root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) },
           { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.run },
         );
-        if (o.json) console.log(JSON.stringify({ ok: true, ...outcome }, null, 2));
+        const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root, sig8)!) : null;
+        // factory.heal.autoImplement (user config only): a valid diagnosis goes on into the ci-heal run (billed write lanes).
+        const ciHeal = !o.dryRun && outcome.next === 'heal-approve' && config.autoImplement
+          ? await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false }, engineDeps(deps))
+          : undefined;
+        if (o.json) console.log(JSON.stringify({ ok: true, ...outcome, ...(proposal ? { knownFlakyProposal: proposal } : {}), ...(ciHeal ? { ciHeal } : {}) }, null, 2));
         else {
           if (outcome.prompt) console.log(outcome.prompt);
           console.log(`${chalk.bold(`factory heal run ${sig8}`)}  ${termSafe(outcome.message)}`);
           console.log(`  evidence: ${outcome.bundleDir}`);
           if (outcome.lane) console.log(`  lane ${outcome.lane.id} ${outcome.lane.status}, ${outcome.lane.usage?.credits.toFixed(2) ?? '?'} of ${outcome.lane.maxCredits} AI credits`);
+          if (proposal) console.log(renderKnownFlakyProposal(proposal).split('\n').map(termSafe).join('\n'));
+          if (ciHeal) printEngineOutcome(false, sig8, ciHeal);
         }
+        return ciHeal ? ciHeal.exitCode : outcome.exitCode;
+      }));
+
+  heal
+    .command('approve <sig8>')
+    .description('A human approves a valid diagnosis: run the ci-heal run (implement, draft PR, review, prepare, CI gates) and park at the human merge; also resumes a parked ci-heal run')
+    .option('--dry-run', 'Print what the ci-heal run would do next; no state, lanes or pushes')
+    .option('--json', 'JSON output')
+    .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
+      guarded(Boolean(o.json), async () => {
+        if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+        const root = healRoot(deps.exec);
+        const { config, warnings } = deps.config(root);
+        for (const w of warnings) console.error(chalk.yellow(w));
+        const outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: true, dryRun: Boolean(o.dryRun) }, engineDeps(deps));
+        printEngineOutcome(Boolean(o.json), sig8, outcome);
         return outcome.exitCode;
+      }));
+
+  heal
+    .command('cancel <sig8>')
+    .description('Cancel the ci-heal run of a signature: a running engine stops its lane; a parked run is cancelled now (the PR, branch and worktrees are kept)')
+    .option('--json', 'JSON output')
+    .action((sig8: string, o: { json?: boolean }) =>
+      guarded(Boolean(o.json), async () => {
+        if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+        const root = healRoot(deps.exec);
+        const key = healRunKey(sig8);
+        if (!readFactoryState(root, key)) throw new HealRunRefused(`heal ${sig8} has no ci-heal run (omg factory heal close ${sig8} closes a parked heal run)`);
+        requestFactoryCancel(root, key, deps.now().toISOString());
+        const { config } = deps.config(root);
+        let outcome: FactoryRunOutcome;
+        try {
+          // The engine sees the cancel request file first and only cancels.
+          outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: false }, engineDeps(deps));
+        } catch (error) {
+          if (!/already running/.test(error instanceof Error ? error.message : '') || !factoryCancelRequested(root, key)) throw error;
+          if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true }, null, 2));
+          else console.log(chalk.green(`cancel requested for ci-heal heal-${sig8}; the running engine stops within seconds`));
+          return 0;
+        }
+        printEngineOutcome(Boolean(o.json), sig8, outcome);
+        return outcome.phase === 'cancelled' ? 0 : outcome.exitCode;
       }));
 
   heal

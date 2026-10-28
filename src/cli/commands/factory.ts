@@ -255,9 +255,11 @@ export function factoryCommand(): Command {
     base: defaultFactoryRunDeps.base,
     config: (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)),
     now: () => new Date(),
-    // `omg factory heal run` without --dry-run is itself the opt-in to one billed, capped debugger lane.
+    // `omg factory heal run` without --dry-run is itself the opt-in to one billed, capped debugger lane;
+    // `omg factory heal approve` is the human's opt-in to the ci-heal run's billed, capped lanes.
     lanes: defaultFactoryRunDeps.lanes,
     ledgerDir: defaultLedgerDir(),
+    runLimits: defaultFactoryRunDeps.limits,
   }));
 
   cmd

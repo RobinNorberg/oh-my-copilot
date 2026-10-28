@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseKnownFlaky } from '../../../ship/config.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
+import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import type { LaneBackend, LaneResult, LaneStartInput } from '../../run/lane.js';
 import { classifyRun, type HealClassification } from '../classify.js';
 import { healCommand, renderHealState, type HealDeps } from '../cli.js';
@@ -256,7 +257,7 @@ describe('omg factory heal run', () => {
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { out.push(a.join(' ')); });
     const cliExec: Exec = (cmd, args, opts) => (cmd === 'git' && args[0] === 'rev-parse' && args[1] === '--show-toplevel' ? { status: 0, stdout: `${root}\n`, stderr: '' } : exec(cmd, args, opts));
-    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, run: { delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {} } };
+    const d: HealDeps = { exec: cliExec, base: () => 'dev', config: () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), now: () => NOW, lanes: () => new FakeLanes(answer(GOOD)), ledgerDir, runLimits: () => ({ limits: DEFAULT_FACTORY_RUN_LIMITS, warnings: [] }), run: { delimiter: () => DELIM, pollMs: 1, env: { [HEAL_UNCONFINED_ENV]: '1' }, warn: () => {} } };
     const cli = async (...argv: string[]) => { process.exitCode = undefined; await healCommand(d).parseAsync(argv, { from: 'user' }); return Number(process.exitCode ?? 0); };
     const sig8 = classification().sig8;
     expect(await cli('run', sig8)).toBe(4);
