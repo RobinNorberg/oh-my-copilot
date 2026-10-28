@@ -878,6 +878,8 @@ export interface SandboxLaneEvidence {
   canary: SandboxCanaryRecord | null;
   /** The OS temp dir: the default sandbox grant includes it, and the scenario repository lives there. */
   tempDir: string;
+  /** Set when the host probe said unsupported: no lane ran and no credit was spent. */
+  hostUnsupported?: { supported: boolean; reason?: string; capabilities: Record<string, boolean> };
   durationMs: number;
   cost: ScenarioCost & { source: string };
 }
@@ -901,6 +903,7 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   const p = 'scn.sandbox-lane';
   const e = run.sandbox;
   if (!e) return scenarioCheckIds('sandbox-lane').slice(0, SANDBOX_LANE_CHECKS.length).map((id) => ({ id, ok: false, detail: run.error ? `no sandbox evidence: ${excerpt(run.error, 200)}` : 'no sandbox evidence collected' }));
+  if (e.hostUnsupported) return [{ id: `${p}.host`, ok: false, detail: `host unsupported (${excerpt(e.hostUnsupported.reason ?? 'no reason', 160)}); no lane ran, no credits spent` }];
   const lane = (role: SandboxLaneRole) => e.lanes.find((l) => l.role === role);
   const review = lane('review');
   const write = lane('write');
@@ -921,9 +924,12 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   const inside = target(e.writeTargets, 'worktree');
   const insideOk = !!write && enforced(write) && !!inside?.landed;
   const outside = e.writeTargets.filter((t) => t.kind === 'main-checkout' || t.kind === 'shared');
-  const outsideOk = enforced(write) && outside.length === 2 && outside.every((t) => !t.landed);
   const main = target(e.writeTargets, 'main-checkout');
-  const tempNote = main?.landed && isUnder(main.path, e.tempDir, process.platform) ? ' (the scenario repository is under the OS temp dir, which the default sandbox grant includes)' : '';
+  // The scenario repository must live somewhere (no dir is surely outside every default grant), so under the temp dir its
+  // main-checkout target is informational: a landed write there is the temp grant, not a checkout confinement failure.
+  const mainInformational = !!main && isUnder(main.path, e.tempDir, process.platform);
+  const outsideOk = enforced(write) && outside.length === 2 && outside.every((t) => !t.landed || (mainInformational && t === main));
+  const tempNote = mainInformational ? ` (main-checkout is informational: the scenario repository is under the OS temp dir${main?.landed ? ', which the default sandbox grant includes' : ''}; the shared target decides)` : '';
 
   const outbound = e.probe?.net.outbound;
   const local = e.probe?.net.local;

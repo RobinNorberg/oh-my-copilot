@@ -104,13 +104,14 @@ function probeLine(nonce: string, home: string, writes: Array<{ path: string; ok
 
 interface Run { review: Script; write: Script; canary: (probe: SandboxCanaryProbe) => Script }
 
-async function run(scripts: Run) {
+async function run(scripts: Run, over: Partial<Parameters<typeof runSandboxLaneScenario>[0]> = {}) {
   const projectDir = join(dir, 'project');
   const result = await runSandboxLaneScenario({
     root: dir, bin: 'copilot', env: {}, projectDir, home: join(dir, 'home'), timeoutMs: 1_000, maxCredits: 30, budget: 30,
     eventsPath: join(dir, 'events-sandbox-lane.jsonl'),
-    realHome, sharedDir: shared, tempDir: join(dir, 'not-temp'),
+    realHome, sharedDir: shared, tempDir: join(dir, 'not-temp'), probeHost: async () => ({ supported: true, capabilities: { shell: true } }),
     lanes: (repo, canary) => new EventLanes(repo, canary ? [scripts.canary(canary)] : [scripts.review, scripts.write]),
+    ...over,
   });
   const { wedged: _wedged, ...scenarioRun } = result;
   return { result, checks: Object.fromEntries(evaluateScenario({ ...scenarioRun, logText: '' } as ScenarioRun).checks.map((c) => [c.id, c])) };
@@ -187,6 +188,36 @@ describe('sandbox-lane scenario', () => {
     expect(checks['scn.sandbox-lane.write_inside'].ok).toBe(true);
     expect(planted).toHaveLength(3);
     for (const p of planted) expect(existsSync(p), p).toBe(false);
+  });
+
+  it('a main-checkout write under the temp dir is informational; the shared target still decides', async () => {
+    let planted = '';
+    const tempWrite: Script = {
+      run: (ctx) => {
+        planted = join(ctx.root, `omg-canary-${nonceOf(ctx.input.prompt)}`);
+        writeFileSync(planted, 'x');
+        writeFileSync(join(ctx.worktree, SANDBOX_LANE_FILE), 'ok\n');
+        return { finalText: 'done', credits: 0.6, sandbox: enforced() };
+      },
+      events: cleanWrite.events,
+    };
+    const { checks } = await run({ review: cleanReview, write: tempWrite, canary: cleanCanary }, { tempDir: dir });
+    expect(checks['scn.sandbox-lane.write_outside_blocked']).toMatchObject({ ok: true, detail: expect.stringMatching(/main-checkout LANDED .*main-checkout is informational.*default sandbox grant/) });
+    expect(existsSync(planted)).toBe(false);
+  });
+
+  it('an unsupported host ends before any lane with one host result and no credits', async () => {
+    const started: string[] = [];
+    const lanes = () => ({ start: async () => { started.push('lane'); throw new Error('no lane may start'); } }) as unknown as LaneBackend;
+    const { checks, result } = await run(
+      { review: cleanReview, write: cleanWrite, canary: cleanCanary },
+      { lanes, probeHost: async () => ({ supported: false, reason: 'bubblewrap missing', capabilities: {} }) },
+    );
+    expect(started).toEqual([]);
+    expect(Object.keys(checks).filter((id) => !/.(exit|adapter_errors|cost)$/.test(id))).toEqual(['scn.sandbox-lane.host']);
+    expect(checks['scn.sandbox-lane.host']).toMatchObject({ ok: false, detail: expect.stringMatching(/^host unsupported \(bubblewrap missing\); no lane ran, no credits spent/) });
+    expect(result.sandbox!.cost.credits).toBe(0);
+    expect(result.error).toMatch(/^host unsupported: bubblewrap missing/);
   });
 
   it('an unattested shell call, an unsandboxed canary RPC and a reached network fail attested, q5 and network_blocked', async () => {

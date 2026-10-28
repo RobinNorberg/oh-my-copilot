@@ -33,7 +33,7 @@ import { createServer } from 'http';
 import { tmpdir, userInfo } from 'os';
 import { basename, dirname, join } from 'path';
 import { CopilotRunManager, defaultCopilotRunDeps, type CopilotRunDeps } from '../copilot-run/job.js';
-import { DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS } from '../copilot-run/sandbox.js';
+import { DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, probeHostSupport, type SandboxHostRecord } from '../copilot-run/sandbox.js';
 import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js';
 import { CopilotLaneBackend, isTerminalLaneState, type LaneBackend, type LaneResult } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
@@ -125,6 +125,8 @@ export interface SandboxLaneScenarioInput {
   realHome?: string;
   sharedDir?: string;
   tempDir?: string;
+  /** Test seam: the host support probe that gates the lanes (default: a credit-free SDK client on `bin`). */
+  probeHost?: () => Promise<SandboxHostRecord>;
 }
 
 /** A world-writable directory outside the temp dir and the profile: `%PUBLIC%` on Windows, else /var/tmp. */
@@ -200,6 +202,30 @@ async function runCanary(session: SdkSessionLike, probe: SandboxCanaryProbe): Pr
     if (typeof r?.error === 'string' && r.error) probe.error = r.error;
   } catch (err) {
     probe.error = errText(err);
+  }
+}
+
+/** Whether the host can run the OS sandbox, asked of a started SDK client before any lane spends a credit. */
+async function probeSandboxHost(input: Pick<SandboxLaneScenarioInput, 'env' | 'bin' | 'home'>, cwd: string): Promise<SandboxHostRecord> {
+  const unsupported = (reason: string): SandboxHostRecord => ({ supported: false, reason, capabilities: {} });
+  const env = { ...input.env };
+  delete env[SANDBOX_KILL_ENV];
+  let loaded: LoadedSdk | null;
+  try { loaded = await defaultCopilotRunDeps(env).loadSdk(); } catch (err) { return unsupported(`loading the SDK failed: ${errText(err)}`); }
+  if (!loaded) return unsupported('the @github/copilot-sdk package is not installed');
+  const { CopilotClient, RuntimeConnection } = loaded.module;
+  const client = new CopilotClient({
+    connection: RuntimeConnection.forStdio({ path: input.bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+    baseDirectory: input.home,
+    workingDirectory: cwd,
+  });
+  try {
+    await withTimeout(client.start(), CANARY_RPC_TIMEOUT_MS, 'client.start()');
+    return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
+  } catch (err) {
+    return unsupported(`the host probe could not start the runtime: ${errText(err)}`);
+  } finally {
+    try { await withTimeout(client.stop(), CANARY_RPC_TIMEOUT_MS, 'client.stop()'); } catch { try { await client.forceStop?.(); } catch { /* gone */ } }
   }
 }
 
@@ -313,6 +339,17 @@ export async function runSandboxLaneScenario(input: SandboxLaneScenarioInput): P
   if ('error' in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
 
   const nonce = randomBytes(6).toString('hex');
+  const tempDir = input.tempDir ?? tmpdir();
+  // No lane (and no credit) on a host without the sandbox: one host result says so.
+  const hostRecord = await (input.probeHost ?? (() => probeSandboxHost(input, repo)))();
+  if (!hostRecord.supported) {
+    const evidence: SandboxLaneEvidence = {
+      nonce, lanes: [], reviewTargets: [], writeTargets: [], probe: null, localHits: 0, commit: null, canary: null, tempDir,
+      hostUnsupported: hostRecord, durationMs: now() - started,
+      cost: { credits: 0, premiumRequests: 0, source: 'no lane started (host unsupported)' },
+    };
+    return { ...base, events: [], idle: false, timedOut: false, error: `host unsupported: ${excerpt(hostRecord.reason ?? 'no reason', 200)}`, sandbox: evidence };
+  }
   const realHome = input.realHome ?? userInfo().homedir;
   const shared = input.sharedDir ?? defaultSharedDir(input.env);
   const canaryName = `omg-canary-${nonce}`;
@@ -431,7 +468,7 @@ export async function runSandboxLaneScenario(input: SandboxLaneScenarioInput): P
       localHits,
       commit,
       canary: { called: canary.called, ...(canary.error ? { error: canary.error } : {}), result: canary.result, sandboxed, permissionRequests: canary.permissionRequests, targets: canaryTargets },
-      tempDir: input.tempDir ?? tmpdir(),
+      tempDir,
       durationMs: now() - started,
       cost: {
         credits: lanesOut.reduce((n, l) => n + (l.credits ?? 0), 0),

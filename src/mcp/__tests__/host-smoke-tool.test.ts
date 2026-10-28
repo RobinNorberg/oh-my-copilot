@@ -9,6 +9,7 @@ vi.mock('../../smoke/copilot-smoke.js', () => ({ runCopilotSmoke, resolvePackage
 
 import { hostSmokeTool } from '../../tools/host-smoke-tool.js';
 import { allTools, buildListToolsResponse } from '../tool-registry.js';
+import { OPT_IN_SCENARIOS } from '../../smoke/copilot-sdk-scenarios.js';
 
 function fakeReport(ok: boolean) {
   return {
@@ -102,7 +103,7 @@ describe('host_smoke MCP tool', () => {
     const props = entry!.inputSchema.properties as Record<string, Record<string, unknown>>;
     expect(props.scenarios).toMatchObject({
       type: 'array',
-      items: { enum: ['smoke', 'guardrail', 'skill', 'delegate', 'sandbox-lane', 'all'] },
+      items: { enum: ['smoke', 'guardrail', 'skill', 'delegate', ...OPT_IN_SCENARIOS, 'all'] },
     });
   });
 
