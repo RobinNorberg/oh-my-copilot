@@ -37,6 +37,8 @@ import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFact
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
+import { healCommand } from '../../factory/heal/cli.js';
+import { resolveHealConfig } from '../../factory/heal/config.js';
 
 export function renderChainStatus(status: ChainStatus): string {
   const lines: string[] = [];
@@ -247,6 +249,12 @@ export function factoryCommand(): Command {
   const cmd = new Command('factory');
   cmd.description('Software factory automation (chain trigger + intake listener)');
   cmd.addCommand(factoryRunCommand());
+  cmd.addCommand(healCommand({
+    exec: defaultExec,
+    base: defaultFactoryRunDeps.base,
+    config: (root) => resolveHealConfig(userConfigLayers().trustedUser, projectConfig(root)),
+    now: () => new Date(),
+  }));
 
   cmd
     .command('listen')
