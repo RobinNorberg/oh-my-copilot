@@ -74,6 +74,7 @@ import { intakeCommand } from './commands/intake.js';
 import { factoryCommand } from './commands/factory.js';
 import { shipCommand } from './commands/ship.js';
 import { releaseCommand } from './commands/release.js';
+import { portCommand } from './commands/port.js';
 import { progressCommand } from './commands/progress.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
@@ -1654,6 +1655,7 @@ program.addCommand(intakeCommand());
 program.addCommand(factoryCommand());
 program.addCommand(shipCommand());
 program.addCommand(releaseCommand());
+program.addCommand(portCommand());
 program.addCommand(progressCommand());
 
 /**

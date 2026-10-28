@@ -842,6 +842,22 @@ omg release 5.13.0 --from verify --json
 - **Progress:** one line per phase start / end and per CI poll, `<ISO-UTC> phase=<id> status=<start|ok|fail|blocked|heartbeat|done> note=<..>`, to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
 - Exit codes: `0` ok, `1` a phase failed or is blocked, `2` usage error. `--json` prints the phase results (or the plan with `--dry-run`).
 
+### `omg port drive`
+
+Maintainer-only automated upstream port. Run it in a clean checkout of `dev` after `git fetch upstream dev`; it works on `port/upstream-<short sha>`.
+
+```bash
+omg port drive --head <upstream sha>                         # apply, gates, commit, push, draft PR
+omg port drive --head <sha> --reconcile-lane --max-credits 40  # conflicts: run the brief as a paid write lane
+omg port drive --head <sha> --continue                       # after a human resolved what blocked the run
+```
+
+- **Phases:** `preflight` (clean tracked tree; creates `port/upstream-<short>`, refuses an existing one without `--continue`) → `apply` (`scripts/port/upstream-drift.mjs --apply --head <sha>`, then `--report`) → `junk` (unstages known upstream junk such as a committed `.gjc/` session dir; the drift script already drops it from the range) → `delta` (`--package-delta`: a `version`-only change is ignored; any `scripts`, `files`, dependency, `bin`, `exports` or other key change is listed in `.omg/port/<short>/package-delta.json` for a human) → `reconcile` (conflicts: writes `.omg/port/<short>/brief.md` with the conflict list, the THEIRS-for-our-returning-fixes rule and the runbook's "Fork Features to Preserve"; only with `--reconcile-lane` it starts one write lane through the factory LaneBackend at the pre-port commit, capped by the mandatory `--max-credits`, `--lane-timeout` minutes (default 60), and adopts the lane's committed tree path by path, proven by `git write-tree`; a lane that left conflict markers or no commit blocks) → `gates` (`tsc --noEmit`, `eslint src` (0 errors), `scripts/ci/check-multirepo-paths.mjs`, prompt projections and copilot hook/agent generators `--verify`, vitest on the tests selected from the staged files) → `commit` (the port commit, then the inventory regenerated as the last commit) → `pr` (plain push to `port/upstream-<short>`, `gh pr create --draft --base dev`; `--no-push` stops after the commits).
+- **Human gates** (stop `blocked` with the next command): a package.json delta beyond `version`; conflicts without `--reconcile-lane`; any conflict under `src/release/`, `src/ship/`, `src/installer/` or `src/hooks/permission-handler/` (no lane is started); new `oh-my-claudecode` lines in `src agents skills hooks` (leak sweep). The merge of the draft PR is always human. The lane is started only when nothing else would block the run, so no credits are spent on a run that stops anyway.
+- **Resume:** fix, stage, then `--continue` on the port branch: apply and the delta check are skipped, conflicts, leaks and unstaged files are re-checked.
+- **Progress:** `agent=port` lines to `--progress-file`, `$OMG_PROGRESS_FILE` or `.omg/progress/port.log`; the run ends with `phase=report status=<done|blocked|fail>`.
+- Exit codes: `0` done, `1` a phase failed, `2` usage error, `3` blocked on a human. `--json` prints the result.
+
 ### `omg progress`
 
 Agent progress events: lanes push one line per phase boundary, and a lead watches them (Claude Code's Monitor tool) instead of polling agents. Lead recipe and brief snippet: `.omc/skills/agent-progress-events.md`. Library: `src/lib/agent-progress.ts` (`emitProgress({ phase, status, note, agent, file })`, never throws).
