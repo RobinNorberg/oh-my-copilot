@@ -190,6 +190,14 @@ describe('buildSandboxConfig', () => {
     const inside = { ...ctx.settings, extraReadwritePaths: [join(ctx.worktree, 'out')] };
     expect(buildSandboxConfig('write', { ...ctx, settings: inside }, host()).userPolicy.filesystem.readwritePaths).toContain(join(ctx.worktree, 'out'));
   });
+
+  it('refuses a write policy whose job dir lies inside the worktree (isolation "none"); a review keeps it', () => {
+    const jobDir = join(ctx.worktree, '.omg', 'state', 'copilot-run', 'cr-1');
+    const none = { ...ctx, jobDir, jobHome: join(jobDir, 'home') };
+    expect(() => buildSandboxConfig('write', none, host())).toThrow(/lies inside the lane-writable worktree/);
+    expect(() => buildSandboxConfig('write', { ...none, hostCommits: true }, host())).toThrow(/lies inside the lane-writable worktree/);
+    expect(buildSandboxConfig('review', none, host()).userPolicy.filesystem.readonlyPaths[0]).toBe(ctx.worktree);
+  });
 });
 
 describe('laneToolPaths', () => {

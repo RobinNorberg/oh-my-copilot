@@ -18,6 +18,12 @@ function trySymlink(target: string, link: string): boolean {
   }
 }
 
+/** Whether this host can plant a file symlink at all: the symlink-only cases run only then (the junction cases cover Windows). */
+const canSymlink = (() => {
+  const probe = mkdtempSync(join(tmpdir(), 'omg-nofollow-probe-'));
+  try { return trySymlink(join(probe, 'target'), join(probe, 'link')); } finally { rmSync(probe, { recursive: true, force: true }); }
+})();
+
 // The POSIX branch needs O_NOFOLLOW, which Windows lacks; the lstat branch runs everywhere.
 const branches: NodeJS.Platform[] = process.platform === 'win32' ? ['win32'] : [process.platform, 'win32'];
 
@@ -86,20 +92,19 @@ describe('openAppendExclusive', () => {
     expect(readFileSync(file, 'utf8')).toBe('old\n');
   });
 
-  it('refuses a planted symlink, live or dangling, and never writes or creates its target', () => {
+  // Windows without the symlink privilege: the junction test below covers the link a lane can always make.
+  it.runIf(canSymlink)('refuses a planted symlink, live or dangling, and never writes or creates its target', () => {
     const victim = join(dir, 'bashrc');
     writeFileSync(victim, 'keep\n');
     const live = join(dir, 'events.jsonl');
     const dangling = join(dir, 'events2.jsonl');
     const missing = join(dir, 'created-through-link');
-    // Windows without the symlink privilege: the junction test below covers the link a lane can always make.
-    if (trySymlink(victim, live)) {
-      trySymlink(missing, dangling);
-      expect(() => openAppendExclusive(live)).toThrow(expect.objectContaining({ code: 'EEXIST' }));
-      expect(() => openAppendExclusive(dangling)).toThrow(expect.objectContaining({ code: 'EEXIST' }));
-      expect(readFileSync(victim, 'utf8')).toBe('keep\n');
-      expect(existsSync(missing)).toBe(false);
-    }
+    symlinkSync(victim, live, 'file');
+    symlinkSync(missing, dangling, 'file');
+    expect(() => openAppendExclusive(live)).toThrow(expect.objectContaining({ code: 'EEXIST' }));
+    expect(() => openAppendExclusive(dangling)).toThrow(expect.objectContaining({ code: 'EEXIST' }));
+    expect(readFileSync(victim, 'utf8')).toBe('keep\n');
+    expect(existsSync(missing)).toBe(false);
   });
 
   it('refuses a planted junction or directory', () => {
@@ -141,6 +146,6 @@ describe('hook debug logs', () => {
     const src = readFileSync(resolve(fileURLToPath(new URL('../../..', import.meta.url)), rel), 'utf8');
     expect(src).toContain("from '../../lib/append-no-follow.js'");
     expect(src).toMatch(/appendFileNoFollow\(DEBUG_FILE,/);
-    expect(src).not.toMatch(/\bappendFile(Sync)?\b|\bcreateWriteStream\b/);
+    expect(src).not.toMatch(/\bappendFile(Sync)?\b|\bcreateWriteStream\b|\b(?:writeFileSync|openSync)\(\s*DEBUG_FILE\b/);
   });
 });

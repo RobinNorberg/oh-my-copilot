@@ -291,6 +291,11 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       },
     };
   }
+  // The worktree is read-write: a job dir inside it (isolation "none" with the OMC state root in the repository)
+  // would hand the lane the job home and events.jsonl, which the unsandboxed engine and runtime read back.
+  if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
+    throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
+  }
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
