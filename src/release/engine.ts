@@ -17,9 +17,13 @@
  *              docs/CLAUDE.md, inventory drift) read committed state and
  *              always fail on the uncommitted release tree. The level (and
  *              the baseline) is recorded in the state and a later run never
- *              lowers it; a suite that ran below the recorded level runs again
+ *              lowers it; a suite that ran below the recorded level runs again.
+ *              New failing full-suite titles are rerun alone (triage): real
+ *              fails, mixed blocks, load-flaky passes with a warning and
+ *              known-flaky candidates (never applied by the engine)
  *   smoke      live Tier 2 smoke, only with --live-smoke; after the suite so
- *              a red suite costs no AI credits
+ *              a red suite costs no AI credits. A green smoke is reused while
+ *              HEAD's smoke inputs hash the same (lastSmoke; --force-smoke runs)
  *   pr         push, PR to dev, CI gate (ship merge rule), admin merge
  *   promote    PR dev -> main, same gate, merge
  *   tag        annotated v<v> on main's merge commit, verified, pushed (--yes)
@@ -45,17 +49,26 @@ import { loadBaseKnownFlaky, prRepoUrl, type LoadedShipConfig } from '../ship/co
 import { scrubShipEnv, type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
 import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates, type GateReport } from '../ship/gates.js';
 import {
+  classifyTriage,
   compareVersions,
+  escapeRe,
   failingTitlesFromVitestJson,
   findDistOrphans,
+  flakyCandidates,
   newFailures,
   parseBaselineTitles,
   releaseProseProblems,
   remoteTagTarget,
+  SMOKE_INPUTS,
+  smokeInputHash,
   smokeProblems,
+  splitFailingTitle,
   stampVersion,
   tagTargetProblem,
+  testPassedInReport,
+  TRIAGE_CAP,
   VERSION_STAMPS,
+  type TriageResult,
 } from './checks.js';
 import type { ReleaseProgressInput } from './progress.js';
 
@@ -103,6 +116,14 @@ export interface ReleaseState {
   tagRunId?: number;
   /** Run id -> automatic reruns spent (one per run). */
   reruns: Record<string, number>;
+  /**
+   * The last green live smoke, outside `phases` so voiding the smoke record
+   * keeps it: a later smoke phase whose input hash (SMOKE_INPUTS at HEAD) is
+   * equal reuses it instead of spending requests.
+   */
+  lastSmoke?: { inputHash: string; headSha: string; at: string };
+  /** Isolated reruns of the full suite's new failing titles on `sha`; a re-run suite on the same HEAD reuses them. */
+  suiteTriage?: { sha: string; results: TriageResult[] };
 }
 
 export type SuiteLevel = 'none' | 'targeted' | 'full';
@@ -164,6 +185,10 @@ export interface ReleaseOptions {
   /** Full-suite baseline: a vitest JSON report or one `<file> > <title>` per line. */
   baseline?: string;
   liveSmoke?: boolean;
+  /** Run the live smoke even when its inputs hash to the last green smoke's (implies --live-smoke). */
+  forceSmoke?: boolean;
+  /** Isolated reruns of each new failing full-suite title (default 3). */
+  triageRuns?: number;
   /** Let pr run although the live smoke did not pass (it was skipped). */
   allowSkippedSmoke?: boolean;
   fixOrphans?: boolean;
@@ -233,6 +258,11 @@ const pendingWait = (note: string): never => {
 
 export function releaseStatePath(stateRoot: string, version: string): string {
   return join(stateRoot, 'release', `${version}.json`);
+}
+
+/** Known-flaky candidates of the full-suite triage; the owner approves them into .github/known-flaky-tests.json by hand. */
+export function flakyCandidatesPath(stateRoot: string, version: string): string {
+  return join(stateRoot, 'release', `${version}-flaky-candidates.json`);
 }
 
 export function readReleaseState(stateRoot: string, version: string): ReleaseState | null {
@@ -308,10 +338,12 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
         'generate-prompt-projections.mjs --verify; copilot build-hooks.mjs / build-agents.mjs --verify',
         'node scripts/ci/check-multirepo-paths.mjs',
       ];
-    case 'smoke':
-      return opts.liveSmoke
-        ? ['OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (two prompts, about 0.6 AI credits); every check must pass']
-        : ['SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; two prompts, about 0.6 AI credits)'];
+    case 'smoke': {
+      const run = 'OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (two prompts, about 0.6 AI credits); every check must pass';
+      const reuse = `except: the last green smoke is reused (no run) while sha256 of HEAD's ${SMOKE_INPUTS.join(', ')} ids is unchanged (--force-smoke always runs)`;
+      if (opts.forceSmoke) return [`${run} (--force-smoke: never reused)`];
+      return opts.liveSmoke ? [run, reuse] : ['SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; two prompts, about 0.6 AI credits)', reuse];
+    }
     case 'commit':
       return [
         `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
@@ -321,7 +353,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
     case 'suite':
       return [
         opts.suite === 'full'
-          ? `vitest run --reporter=json (on the committed tree); fail only on titles not in ${opts.baseline ?? '(no baseline: any failure fails)'}`
+          ? `vitest run --reporter=json (on the committed tree); titles not in ${opts.baseline ?? '(no baseline: any failure fails)'} (at most ${TRIAGE_CAP}) rerun alone ${opts.triageRuns ?? 3}x: fail every rerun = real (fail), pass some = mixed (blocked), pass every rerun = load-flaky (warning; known-flaky candidates written, never committed)`
           : opts.suite === 'targeted' ? 'vitest related --run <src files changed since the last v* tag> (on the committed tree)' : 'suite: none (pass --suite targeted|full)',
       ];
     case 'pr':
@@ -477,7 +509,7 @@ class Release {
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail(`${problems.length} preflight problem(s)`, problems);
     // A fresh start never reuses the PRs, merges or tag run of an earlier attempt.
-    this.save({ branch, headSha: undefined, suiteSha: undefined, suiteRan: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
+    this.save({ branch, headSha: undefined, suiteSha: undefined, suiteRan: undefined, suiteTriage: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
     return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}` };
   }
 
@@ -558,7 +590,8 @@ class Release {
   /** After the commit phase: tests of committed state (pack, committed docs, inventory drift) need the release commits. */
   private suite(): PhaseOutcome {
     const suite = this.opts.suite ?? 'none';
-    this.save({ suiteSha: this.git('rev-parse', 'HEAD'), suiteRan: suite });
+    const head = this.git('rev-parse', 'HEAD');
+    this.save({ suiteSha: head, suiteRan: suite });
     if (suite === 'targeted') {
       const tag = this.run('git', ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']);
       if (tag.status !== 0) fail('no v* tag reachable from HEAD for --suite targeted', tail(tag.stderr, 2));
@@ -574,34 +607,114 @@ class Release {
     if (suite === 'full') {
       const out = join(this.deps.stateRoot, 'release', `${this.v}-vitest.json`);
       mkdirSync(join(this.deps.stateRoot, 'release'), { recursive: true });
-      // A report left by an earlier run must not pass for this one.
+      // A report (or candidate list) left by an earlier run must not pass for this one.
       rmSync(out, { force: true });
+      rmSync(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
       const r = this.run(this.deps.node, ['node_modules/vitest/vitest.mjs', 'run', '--exclude', 'tests/perf/**', '--reporter=json', `--outputFile=${out}`], { suiteEnv: true });
       if (!existsSync(out)) fail(`vitest wrote no JSON report (exit ${r.status})`, tail(r.stderr));
       const failing = failingTitlesFromVitestJson(readFileSync(out, 'utf8'));
       const baseline = this.opts.baseline ? parseBaselineTitles(readFileSync(this.opts.baseline, 'utf8')) : [];
       const fresh = newFailures(failing, baseline);
-      if (fresh.length > 0) fail(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
+      if (fresh.length > TRIAGE_CAP) fail(`${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, fresh);
+      if (fresh.length === 0) {
+        this.requireClean('full suite');
+        return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
+      }
+      const triage = this.triage(fresh, head);
+      const lines = triage.map((t) => `${t.class}: ${t.title} (passed ${t.passes}/${t.runs} isolated reruns)`);
+      const real = triage.filter((t) => t.class === 'real').length;
+      const mixed = triage.filter((t) => t.class === 'mixed').length;
+      const candidates = flakyCandidates(this.v, triage);
+      const candidatesPath = flakyCandidatesPath(this.deps.stateRoot, this.v);
+      if (candidates.length > 0) {
+        atomicWriteJsonSync(candidatesPath, {
+          $comment: `Known-flaky candidates of the v${this.v} release suite (omg release triage). Never applied automatically: the owner copies approved entries (file, title, note) into .github/known-flaky-tests.json.`,
+          release: this.v,
+          sha: head,
+          tests: candidates,
+        });
+      }
+      if (real > 0) fail(`${real} failing test(s) not in the baseline also fail every isolated rerun (report: ${out})`, lines);
+      if (mixed > 0) {
+        blocked(`${mixed} failing test(s) not in the baseline failed some isolated reruns (mixed, may be a real race: blocks); fix them, then --from suite (evidence: ${candidatesPath})`, lines);
+      }
       this.requireClean('full suite');
-      return { status: 'ok', note: `full suite: ${failing.length} failing, all in the baseline` };
+      const note = `full suite: ${failing.length} failing; ${fresh.length} not in the baseline are load-flaky (passed every isolated rerun); ${candidates.length} known-flaky candidate(s) await owner approval: ${candidatesPath}`;
+      this.deps.log(`  !! WARNING ${note}`);
+      return { status: 'ok', note, details: lines };
     }
     this.deps.log('  !! SKIPPED the vitest suite (--suite none). The runbook requires --suite full before the PR: re-run with --from suite --suite full --baseline <report>.');
     return { status: 'skipped', note: 'vitest suite not run (--suite none)' };
   }
 
+  /**
+   * Each new failing full-suite title alone, `triageRuns` times, sequentially
+   * with the suite env: passing every isolated run means it failed only under
+   * the suite's load. Saved after each title, so a re-run on the same HEAD
+   * does not repeat finished titles.
+   */
+  private triage(titles: string[], head: string): TriageResult[] {
+    const runs = this.opts.triageRuns ?? 3;
+    const prior = this.state.suiteTriage?.sha === head ? this.state.suiteTriage.results : [];
+    const out = join(this.deps.stateRoot, 'release', `${this.v}-triage.json`);
+    const results: TriageResult[] = [];
+    for (const [i, title] of titles.entries()) {
+      const { file, name } = splitFailingTitle(title);
+      let result = prior.find((r) => r.title === title && r.runs === (name === null ? 0 : runs));
+      if (!result) {
+        let passes = 0;
+        for (let n = 0; name !== null && n < runs; n++) {
+          rmSync(out, { force: true });
+          const args = ['node_modules/vitest/vitest.mjs', 'run', file, '-t', escapeRe(name), '--reporter=json', `--outputFile=${out}`];
+          this.deps.log(`  node ${args.slice(0, 3).join(' ')} -t ${JSON.stringify(args[4])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
+          this.run(this.deps.node, args, { suiteEnv: true });
+          if (existsSync(out) && testPassedInReport(readFileSync(out, 'utf8'), file, name)) passes++;
+        }
+        result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
+      }
+      results.push(result);
+      this.save({ suiteTriage: { sha: head, results: [...results, ...prior.filter((p) => !results.some((r) => r.title === p.title))] } });
+      this.deps.progress({ phase: 'suite', status: 'heartbeat', note: `triage ${i + 1}/${titles.length}: ${result.class}, passed ${result.passes}/${result.runs} isolated reruns: ${title}` });
+    }
+    rmSync(out, { force: true });
+    return results;
+  }
+
+  /** sha256 of HEAD's object ids for SMOKE_INPUTS: the committed tree, since smoke runs after commit. */
+  private smokeInputs(): string {
+    return smokeInputHash(SMOKE_INPUTS.map((p) => {
+      const r = this.run('git', ['rev-parse', '-q', '--verify', `HEAD:${p}`]);
+      return [p, r.status === 0 ? r.stdout.trim() : null] as const;
+    }));
+  }
+
   private smoke(): PhaseOutcome {
-    if (!this.opts.liveSmoke) {
-      this.deps.log('  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (two prompts, about 0.6 AI credits).');
-      return { status: 'skipped', note: 'live Tier 2 smoke not run (pass --live-smoke)' };
+    const head = this.git('rev-parse', 'HEAD');
+    const inputHash = this.smokeInputs();
+    const last = this.state.lastSmoke;
+    if (!this.opts.forceSmoke && last?.inputHash === inputHash) {
+      const note = `reused the green Tier 2 smoke of ${last.headSha.slice(0, 12)} run at ${last.at} (inputs identical, hash ${inputHash.slice(0, 12)}; --force-smoke re-runs it)`;
+      this.deps.log(`  ${note}`);
+      return { status: 'ok', note, details: [`input hash ${inputHash}`, `original smoke: ${last.at} on ${last.headSha}`] };
+    }
+    if (!this.opts.liveSmoke && !this.opts.forceSmoke) {
+      const why = last ? ` (the smoke inputs changed since the green smoke of ${last.headSha.slice(0, 12)})` : '';
+      this.deps.log(`  !! SKIPPED the live Tier 2 smoke${why}. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (two prompts, about 0.6 AI credits).`);
+      return { status: 'skipped', note: `live Tier 2 smoke not run (pass --live-smoke)${why}` };
     }
     this.deps.log('  OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json');
     const r = this.run(this.deps.node, ['bridge/cli.cjs', 'smoke', 'copilot', '--tier', '2', '--json'], { env: { OMC_LIVE_SMOKE: '2' } });
     const problems = smokeProblems(r.stdout);
     if (r.status !== 0 && problems.length === 0) problems.push(`smoke exited ${r.status}${r.status === 2 ? ' (copilot binary or SDK missing: not a pass)' : ''}`);
-    if (problems.length > 0) fail('Tier 2 smoke is not green', problems);
+    if (problems.length > 0) {
+      // A red smoke on these inputs: an earlier green one must not be reused for them.
+      if (last) this.save({ lastSmoke: undefined });
+      fail('Tier 2 smoke is not green', problems);
+    }
     this.requireClean('live smoke');
-    return { status: 'ok', note: 'Tier 2 smoke green' };
+    this.save({ lastSmoke: { inputHash, headSha: head, at: new Date(this.deps.now()).toISOString() } });
+    return { status: 'ok', note: `Tier 2 smoke green (input hash ${inputHash.slice(0, 12)})` };
   }
 
   /** Files a suite or smoke run leaves behind would be swept into the release commit by a later --from build / gates. */
@@ -1211,6 +1324,9 @@ export async function runRelease(deps: ReleaseDeps, requested: ReleaseOptions): 
       return { ok: false, version: v, dryRun: false, statePath, phases: results };
     }
   }
-  deps.progress({ phase: 'release', status: 'done', note: `${v}: ${selected[0]}..${selected[selected.length - 1]} ok` });
+  const triage = release.current.suiteTriage;
+  const flaky = triage && triage.sha === release.current.suiteSha ? triage.results.filter((t) => t.class === 'load-flaky').length : 0;
+  const awaiting = flaky > 0 ? `; ${flaky} known-flaky candidate(s) await owner approval (omg release ${v} --flaky-candidates)` : '';
+  deps.progress({ phase: 'release', status: 'done', note: `${v}: ${selected[0]}..${selected[selected.length - 1]} ok${awaiting}` });
   return { ok: true, version: v, dryRun: false, statePath, phases: results };
 }

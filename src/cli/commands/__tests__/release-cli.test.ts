@@ -66,6 +66,9 @@ describe('omg release CLI', () => {
     [['5.12.2', '--suite', 'all'], /--suite must be none, targeted or full/],
     [['5.12.2', '--suite', 'targeted', '--baseline', 'x.json'], /--baseline needs --suite full/],
     [['5.12.2', '--timeout', '0'], /--timeout must be a positive number/],
+    [['5.12.2', '--triage-runs', '0'], /--triage-runs must be a positive whole number/],
+    [['5.12.2', '--triage-runs', '2.5'], /--triage-runs must be a positive whole number/],
+    [['5.12.2', '--flaky-candidates', '--status'], /pass one of --status \/ --stop \/ --flaky-candidates/],
   ])('usage error %j exits 2', async (argv, message) => {
     expect(await run(...argv, '--dry-run')).toBe(2);
     expect(err.join('\n')).toMatch(message);
@@ -83,6 +86,21 @@ describe('omg release CLI', () => {
     err = [];
     expect(await run('5.12.2', '--to', 'suite', '--suite', 'full', '--dry-run')).toBe(0);
     expect(err.join('\n')).not.toMatch(/stops before the suite phase/);
+  });
+
+  it('--flaky-candidates prints the triage candidates as a paste-ready block and runs nothing', async () => {
+    expect(await run('5.12.2', '--flaky-candidates')).toBe(0);
+    expect(out.join('\n')).toMatch(/no known-flaky candidates for 5\.12\.2/);
+    out = [];
+    const tests = [{ file: 'src/a.test.ts', title: 'x > y', note: 'load-sensitive', evidence: { class: 'load-flaky', runs: 3, passes: 3, release: '5.12.2' } }];
+    mkdirSync(join(root, '.omg', 'release'), { recursive: true });
+    writeFileSync(join(root, '.omg', 'release', '5.12.2-flaky-candidates.json'), JSON.stringify({ release: '5.12.2', tests }));
+    expect(await run('5.12.2', '--flaky-candidates')).toBe(0);
+    const text = out.join('\n');
+    expect(text).toMatch(/1 known-flaky candidate\(s\) of the 5\.12\.2 full-suite triage/);
+    expect(text).toMatch(/Owner approval needed/);
+    expect(JSON.parse(text.slice(text.indexOf('[')))).toEqual(tests);
+    expect(calls).toEqual([]);
   });
 
   describe('drive mode: --detach, --status, --stop', () => {
@@ -117,11 +135,12 @@ describe('omg release CLI', () => {
     });
 
     it('--detach re-spawns the same release with --drive (no --detach, absolute --baseline) and prints the Monitor command', async () => {
-      expect(await drive('5.12.2', '--detach', '--yes', '--suite', 'full', '--baseline', 'base.json', '--from', 'pr', '--drive-max', '3')).toBe(0);
+      expect(await drive('5.12.2', '--detach', '--yes', '--suite', 'full', '--baseline', 'base.json', '--from', 'pr', '--drive-max', '3', '--force-smoke', '--triage-runs', '5')).toBe(0);
       expect(spawned).toHaveLength(1);
       const args = spawned[0].args;
       expect(args.slice(0, 7)).toEqual(['/x/cli.cjs', 'release', '5.12.2', '--drive', '--drive-max', '3', '--timeout']);
-      expect(args).toEqual(expect.arrayContaining(['--yes', '--from', 'pr', '--suite', 'full', '--baseline', resolve('base.json')]));
+      expect(args).toEqual(expect.arrayContaining(['--yes', '--from', 'pr', '--suite', 'full', '--baseline', resolve('base.json'), '--force-smoke']));
+      expect(args.slice(args.indexOf('--triage-runs'), args.indexOf('--triage-runs') + 2)).toEqual(['--triage-runs', '5']);
       expect(args).not.toContain('--detach');
       expect(spawned[0].options).toMatchObject({ cwd: root, detached: true, windowsHide: true });
       expect(out.join('\n')).toMatch(/driving detached as pid 777/);
