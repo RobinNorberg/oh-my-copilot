@@ -233,6 +233,8 @@ export interface SdkTierInput {
     killTree?: (pid: number) => void;
     /** Test seam: the Linux trial sandbox launch behind sdk.sandbox's host support (default cachedBwrapTrialLaunchError). */
     sandboxTrialLaunch?: () => string | null;
+    /** Test seam: git's sh.exe the win32 spawn canary launches (default gitForWindowsShell). */
+    canaryGitShell?: (env: NodeJS.ProcessEnv) => string | null;
     /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
     runChain: typeof runChainScenario;
     /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
@@ -262,14 +264,19 @@ export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
 export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
 /**
- * The spawn canary's command: two external programs every lane starts, the
- * engine's node and the PATH git. A shell builtin (`echo`) would pass while
- * the sandbox denies every child .exe.
+ * The spawn canary's command: the external programs every lane starts, the
+ * engine's node, the `node` on the lane's PATH (the plugin hooks and the `t`
+ * MCP server run that one), the PATH git and, when `gitShell` is given
+ * (win32), git's `usr\bin\sh.exe`, which runs git hooks. A shell builtin
+ * (`echo`) would pass while the sandbox denies every child .exe, so each
+ * node line is labelled and sh prints its marker itself.
  */
-export declare function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string): string;
-/** Which canary programs printed their version (node `v<major>.<minor>`, `git version <n>`). */
+export declare function sandboxCanaryCommand(platform: NodeJS.Platform, nodePath: string, gitShell?: string | null): string;
+/** Which canary programs printed their line (`engine-node v<n>.<n>`, `path-node v<n>.<n>`, `git version <n>`, `git-sh-ok`). */
 export declare function sandboxCanaryLaunched(output: string): {
-    node: boolean;
+    engineNode: boolean;
+    pathNode: boolean;
     git: boolean;
+    gitShell: boolean;
 };
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map

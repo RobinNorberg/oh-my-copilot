@@ -1398,21 +1398,29 @@ function evaluateCommon(run, cost) {
  * (`quota_exceeded`), or a `session.error` of errorType `quota`.
  */
 export function accountQuotaError(events) {
-    for (const e of events) {
-        const d = (e.data ?? {});
-        const code = typeof d.errorCode === 'string' ? d.errorCode : '';
-        if (e.type === 'model.call_failure' && (d.statusCode === 402 || /quota/i.test(code))) {
-            let message = typeof d.errorMessage === 'string' ? d.errorMessage : '';
-            try {
-                message = String(JSON.parse(message).message ?? message);
-            }
-            catch { /* plain text */ }
-            return [String(d.statusCode ?? '?'), code, message && `"${excerpt(message, 120)}"`].filter(Boolean).join(' ');
-        }
-        if (e.type === 'session.error' && d.errorType === 'quota')
-            return `session.error quota${typeof d.message === 'string' ? ` "${excerpt(d.message, 120)}"` : ''}`;
+    const e = events.find(isQuotaEvent);
+    if (!e)
+        return null;
+    const d = (e.data ?? {});
+    if (e.type === 'session.error')
+        return `session.error quota${typeof d.message === 'string' ? ` "${excerpt(d.message, 120)}"` : ''}`;
+    let message = typeof d.errorMessage === 'string' ? d.errorMessage : '';
+    try {
+        message = String(JSON.parse(message).message ?? message);
     }
-    return null;
+    catch { /* plain text */ }
+    return [String(d.statusCode ?? '?'), typeof d.errorCode === 'string' ? d.errorCode : '', message && `"${excerpt(message, 120)}"`].filter(Boolean).join(' ');
+}
+function isQuotaEvent(e) {
+    const d = (e.data ?? {});
+    if (e.type === 'model.call_failure')
+        return d.statusCode === 402 || (typeof d.errorCode === 'string' && /quota/i.test(d.errorCode));
+    return e.type === 'session.error' && d.errorType === 'quota';
+}
+/** Whether a model call succeeded (an `assistant.usage` event) before the first quota event. */
+export function modelCallBeforeQuota(events) {
+    const first = events.findIndex(isQuotaEvent);
+    return events.slice(0, first < 0 ? events.length : first).some((e) => e.type === 'assistant.usage');
 }
 export function evaluateScenario(run) {
     const own = {
@@ -1439,7 +1447,11 @@ export function evaluateScenario(run) {
     const quota = accountQuotaError(run.events);
     if (quota) {
         checks = [
-            { id: `scn.${run.name}.quota`, ok: false, detail: `account quota exhausted (${quota}), not a product failure; the checks below failed because no model call ran` },
+            {
+                id: `scn.${run.name}.quota`,
+                ok: false,
+                detail: `account quota exhausted (${quota}), not a product failure; the checks below ${modelCallBeforeQuota(run.events) ? 'may have failed because of the quota' : 'failed because no model call ran'}`,
+            },
             ...checks.map((c) => (c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })),
         ];
     }

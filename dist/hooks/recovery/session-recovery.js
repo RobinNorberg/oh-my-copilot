@@ -4,7 +4,7 @@
  * Helps recover session state when Claude Code restarts or crashes.
  * Detects and fixes various error conditions that can cause session failures.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import { findEmptyMessages, findEmptyMessageByIndex, findMessageByIndexNeedingThinking, findMessagesWithEmptyTextParts, findMessagesWithOrphanThinking, findMessagesWithThinkingBlocks, findMessagesWithThinkingOnly, injectTextPart, prependThinkingPart, readParts, replaceEmptyTextParts, stripThinkingParts, } from './storage.js';
 import { DEBUG, DEBUG_FILE, PLACEHOLDER_TEXT, RECOVERY_MESSAGES, } from './constants.js';
 /**
@@ -15,7 +15,7 @@ function debugLog(...args) {
         const msg = `[${new Date().toISOString()}] [session-recovery] ${args
             .map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)))
             .join(' ')}\n`;
-        appendFileSync(DEBUG_FILE, msg);
+        appendFileNoFollow(DEBUG_FILE, msg);
     }
 }
 /**

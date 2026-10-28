@@ -175,8 +175,9 @@ export function laneGitWritePaths(ctx) {
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
  * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
- * are read-only in both profiles; one that holds the real home or is a
- * filesystem root is dropped.
+ * are read-only in both profiles; one that holds the real home, the worktree,
+ * the common git dir or the job dir (a `D:\dev\node.exe` with every repo
+ * beside it), or is a filesystem root, is dropped.
  */
 export function buildSandboxConfig(profile, ctx, host) {
     const { settings } = ctx;
@@ -185,7 +186,7 @@ export function buildSandboxConfig(profile, ctx, host) {
             throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
     }
     const P = ctx.platform === 'win32' ? win32 : posix;
-    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && !isUnderRoot(ctx.realHome, p, ctx.platform));
+    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(p)) !== P.resolve(p) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
     const common = {
         allowBypass: false,
         allowDevToolAccess: false,
@@ -226,13 +227,19 @@ const isFile = (p) => { try {
 catch {
     return false;
 } };
-/** `name` on `env`'s PATH (PATHEXT on win32), or null; empty and relative entries are skipped. */
+/**
+ * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
+ * entries are skipped, and so is any entry under a `node_modules` dir (npx
+ * and npm scripts put `node_modules/.bin` first, so a package's shim would
+ * stand in for the host git that `git --exec-path` runs).
+ */
 export function findOnPath(name, env, platform, exists = isFile) {
     const P = platform === 'win32' ? win32 : posix;
     const exts = platform === 'win32' ? (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+    const inNodeModules = platform === 'win32' ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
     for (const raw of (envValue(env, 'PATH') ?? '').split(P.delimiter)) {
         const dir = raw.trim().replace(/^"(.*)"$/, '$1');
-        if (!dir || !P.isAbsolute(dir))
+        if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir))
             continue;
         for (const ext of exts)
             if (exists(P.join(dir, name + ext)))
@@ -284,7 +291,7 @@ export function laneToolPaths(env, platform, probe = defaultToolPathProbe(env, p
     const git = probe.which('git');
     if (git) {
         const execDir = probe.gitExecPath(git);
-        const root = platform === 'win32' && execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? P.resolve(execDir, '..', '..', '..') : null;
+        const root = platform === 'win32' ? gitForWindowsRoot(execDir) : null;
         const under = (p, dir) => { const rel = P.relative(dir, p); return !!rel && !rel.startsWith('..') && !P.isAbsolute(rel); };
         if (root && under(real(git), root))
             out.push(root);
@@ -299,6 +306,16 @@ export function laneToolPaths(env, platform, probe = defaultToolPathProbe(env, p
         seen.add(key);
         return true;
     });
+}
+/** Git for Windows's install root from its `--exec-path` (`<root>\mingw64\libexec\git-core`), or null. */
+function gitForWindowsRoot(execDir) {
+    return execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? win32.resolve(execDir, '..', '..', '..') : null;
+}
+/** `<root>\usr\bin\sh.exe`, the shell Git for Windows runs hooks with, for the git on `env`'s PATH; or null. */
+export function gitForWindowsShell(env, probe = defaultToolPathProbe(env, 'win32')) {
+    const git = probe.which('git');
+    const root = git ? gitForWindowsRoot(probe.gitExecPath(git)) : null;
+    return root ? win32.join(root, 'usr', 'bin', 'sh.exe') : null;
 }
 // ---------------------------------------------------------------------------
 // Detection (§5)

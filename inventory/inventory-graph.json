@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a0f2325ae7083528f268e954a0fd6349b69ae6ce",
-    "sourceSha256": "5bd98b390755be81739ee2f11d53ab1e66b7495c5e3855ff0a34d7968fba11fb",
+    "head": "cd67e6eac90b0036237d91ffe56b977915a41942",
+    "sourceSha256": "3f73bd21a0d3d08e8543b01926c41eaee34c39ed4ca999ee691dfe52e0d99457",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a0f2325ae7083528f268e954a0fd6349b69ae6ce",
-  "sourceSha256": "5bd98b390755be81739ee2f11d53ab1e66b7495c5e3855ff0a34d7968fba11fb",
+  "head": "cd67e6eac90b0036237d91ffe56b977915a41942",
+  "sourceSha256": "3f73bd21a0d3d08e8543b01926c41eaee34c39ed4ca999ee691dfe52e0d99457",
   "counts": {
     "public": {
       "skills": 63,
@@ -26,15 +26,15 @@
       "hookFiles": 346,
       "featureFiles": 89,
       "toolFiles": 68,
-      "libFiles": 52,
+      "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1756,
-      "total": 1780
+      "srcFiles": 1758,
+      "total": 1782
     },
     "generated": {
-      "distFiles": 6660,
+      "distFiles": 6668,
       "bridgeFiles": 9,
-      "total": 6669
+      "total": 6677
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -682,6 +682,7 @@
     "libFiles": [
       "src/lib/__tests__/agent-progress-rotation.test.ts",
       "src/lib/__tests__/agent-progress.test.ts",
+      "src/lib/__tests__/append-no-follow.test.ts",
       "src/lib/__tests__/atomic-write.test.ts",
       "src/lib/__tests__/host-load-gate.test.ts",
       "src/lib/__tests__/mode-state-io.test.ts",
@@ -708,6 +709,7 @@
       "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/agent-progress.ts",
+      "src/lib/append-no-follow.ts",
       "src/lib/atomic-write.ts",
       "src/lib/env-vars.ts",
       "src/lib/featured-contributors.ts",
@@ -5441,6 +5443,10 @@
       "dist/lib/__tests__/agent-progress.test.d.ts.map",
       "dist/lib/__tests__/agent-progress.test.js",
       "dist/lib/__tests__/agent-progress.test.js.map",
+      "dist/lib/__tests__/append-no-follow.test.d.ts",
+      "dist/lib/__tests__/append-no-follow.test.d.ts.map",
+      "dist/lib/__tests__/append-no-follow.test.js",
+      "dist/lib/__tests__/append-no-follow.test.js.map",
       "dist/lib/__tests__/atomic-write.test.d.ts",
       "dist/lib/__tests__/atomic-write.test.d.ts.map",
       "dist/lib/__tests__/atomic-write.test.js",
@@ -5545,6 +5551,10 @@
       "dist/lib/agent-progress.d.ts.map",
       "dist/lib/agent-progress.js",
       "dist/lib/agent-progress.js.map",
+      "dist/lib/append-no-follow.d.ts",
+      "dist/lib/append-no-follow.d.ts.map",
+      "dist/lib/append-no-follow.js",
+      "dist/lib/append-no-follow.js.map",
       "dist/lib/atomic-write.d.ts",
       "dist/lib/atomic-write.d.ts.map",
       "dist/lib/atomic-write.js",
@@ -31648,6 +31658,26 @@
         "path": "dist/lib/__tests__/agent-progress.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/append-no-follow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/append-no-follow.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/append-no-follow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/append-no-follow.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/append-no-follow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/append-no-follow.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/append-no-follow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/append-no-follow.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/atomic-write.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/atomic-write.test.d.ts"
@@ -32166,6 +32196,26 @@
         "id": "dist/lib/agent-progress.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/agent-progress.js.map"
+      },
+      {
+        "id": "dist/lib/append-no-follow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/append-no-follow.d.ts"
+      },
+      {
+        "id": "dist/lib/append-no-follow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/append-no-follow.d.ts.map"
+      },
+      {
+        "id": "dist/lib/append-no-follow.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/append-no-follow.js"
+      },
+      {
+        "id": "dist/lib/append-no-follow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/append-no-follow.js.map"
       },
       {
         "id": "dist/lib/atomic-write.d.ts",
@@ -50648,6 +50698,11 @@
         "path": "src/lib/__tests__/agent-progress.test.ts"
       },
       {
+        "id": "src/lib/__tests__/append-no-follow.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/append-no-follow.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/atomic-write.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/atomic-write.test.ts"
@@ -50776,6 +50831,11 @@
         "id": "src/lib/agent-progress.ts",
         "kind": "lib",
         "path": "src/lib/agent-progress.ts"
+      },
+      {
+        "id": "src/lib/append-no-follow.ts",
+        "kind": "lib",
+        "path": "src/lib/append-no-follow.ts"
       },
       {
         "id": "src/lib/atomic-write.ts",
@@ -56337,6 +56397,11 @@
       {
         "from": "scripts/release-boundary.mjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/release-boundary.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -63797,6 +63862,11 @@
       {
         "from": "src/__tests__/release-boundary.test.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-boundary.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -78706,11 +78776,6 @@
       },
       {
         "from": "src/hooks/comment-checker/index.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/comment-checker/index.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -78748,6 +78813,11 @@
         "from": "src/hooks/comment-checker/index.ts",
         "to": "src/hooks/comment-checker/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/comment-checker/index.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/complexity-classifier/index.ts",
@@ -78871,11 +78941,6 @@
       },
       {
         "from": "src/hooks/empty-message-sanitizer/index.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/empty-message-sanitizer/index.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -78903,6 +78968,11 @@
         "from": "src/hooks/empty-message-sanitizer/index.ts",
         "to": "src/hooks/empty-message-sanitizer/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/empty-message-sanitizer/index.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/factcheck/__tests__/config-tokens.test.ts",
@@ -81521,11 +81591,6 @@
       },
       {
         "from": "src/hooks/preemptive-compaction/index.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/preemptive-compaction/index.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -81563,6 +81628,11 @@
         "from": "src/hooks/preemptive-compaction/index.ts",
         "to": "src/hooks/preemptive-compaction/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/index.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/preemptive-compaction/jev-shadow.ts",
@@ -82471,11 +82541,6 @@
       },
       {
         "from": "src/hooks/recovery/context-window.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/recovery/context-window.ts",
         "to": "src/hooks/recovery/constants.ts",
         "kind": "imports"
       },
@@ -82488,6 +82553,11 @@
         "from": "src/hooks/recovery/context-window.ts",
         "to": "src/hooks/recovery/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/recovery/context-window.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/recovery/edit-error.ts",
@@ -82571,11 +82641,6 @@
       },
       {
         "from": "src/hooks/recovery/session-recovery.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/recovery/session-recovery.ts",
         "to": "src/hooks/recovery/constants.ts",
         "kind": "imports"
       },
@@ -82588,6 +82653,11 @@
         "from": "src/hooks/recovery/session-recovery.ts",
         "to": "src/hooks/recovery/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/recovery/session-recovery.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/recovery/storage.ts",
@@ -88455,6 +88525,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/append-no-follow.test.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -89202,6 +89297,11 @@
       {
         "from": "src/lib/agent-progress.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/append-no-follow.ts",
+        "to": "external:fs",
         "kind": "imports"
       },
       {
@@ -107291,12 +107391,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9157,
-      "edgeCount": 10653,
-      "importEdgeCount": 8829,
+      "nodeCount": 9167,
+      "edgeCount": 10661,
+      "importEdgeCount": 8837,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "cbeb963d799dc3415a23a945572aeab49aa0b638b151e6bbe9a98ca6f29b46c2",
-  "manifestSha256": "088a6b86036063ce97d72036bc29ad4767a412d2fc81fd7df2816129f9714480"
+  "inventorySha256": "4d6a48423c5a67217f7715d66a505e02bcd4c48b9f3d2a73f4dd7f0753223c13",
+  "manifestSha256": "2ef716f3615b45cf86e8cd8ef1271706cbcfba5c66db32863d67baf472fa92d4"
 }

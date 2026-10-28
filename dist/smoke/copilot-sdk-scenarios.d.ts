@@ -644,6 +644,8 @@ export declare function hookScriptNames(lines: string[]): string[];
  * (`quota_exceeded`), or a `session.error` of errorType `quota`.
  */
 export declare function accountQuotaError(events: CopilotEvent[]): string | null;
+/** Whether a model call succeeded (an `assistant.usage` event) before the first quota event. */
+export declare function modelCallBeforeQuota(events: CopilotEvent[]): boolean;
 export declare function evaluateScenario(run: ScenarioRun): {
     checks: SmokeCheck[];
     cost: ScenarioCost;

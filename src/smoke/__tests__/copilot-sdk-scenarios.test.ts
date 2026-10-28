@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJsonl, type CopilotEvent } from '../copilot-session-eval.js';
 import {
   accountQuotaError,
+  modelCallBeforeQuota,
   adapterErrorLines,
   ALL_SCENARIOS,
   chainCost,
@@ -86,6 +87,16 @@ describe('account quota', () => {
     for (const c of failed) expect(c.detail).toMatch(/^\[quota exhausted\] /);
     // Without a quota error the ids stay exactly the documented set.
     expect(evaluateScenario(run('smoke')).checks.map((c) => c.id)).toEqual(scenarioCheckIds('smoke'));
+  });
+
+  it('says "no model call ran" only when no model call succeeded before the first quota event', () => {
+    const usage: CopilotEvent = { type: 'assistant.usage', data: { copilotUsage: { totalNanoAiu: 1 } } };
+    const label = (evs: CopilotEvent[]) => evaluateScenario(run('smoke', { events: evs, idle: false })).checks[0].detail;
+    expect(label([usage, ...quotaEvents])).toMatch(/; the checks below may have failed because of the quota$/);
+    // A usage event after the quota hit does not count.
+    expect(label([...quotaEvents, usage])).toMatch(/; the checks below failed because no model call ran$/);
+    expect(modelCallBeforeQuota([usage, ...quotaEvents])).toBe(true);
+    expect(modelCallBeforeQuota([quotaEvents[1], usage])).toBe(false);
   });
 });
 

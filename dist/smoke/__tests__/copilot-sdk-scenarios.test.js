@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
-import { accountQuotaError, adapterErrorLines, ALL_SCENARIOS, chainCost, chooseModel, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, FILE_TOOL_MATCHER, hookScriptNames, hostSmokeToolName, OPT_IN_SCENARIOS, permitGuardrailPush, permitProjectFiles, permitScopedRead, probeHooksJson, probeTool, SCENARIOS, scenarioCheckIds, scenarioCost, scenarioExcludedTools, skippedScenarioChecks, sliceLogByTime, usageCredits, } from '../copilot-sdk-scenarios.js';
+import { accountQuotaError, modelCallBeforeQuota, adapterErrorLines, ALL_SCENARIOS, chainCost, chooseModel, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, FILE_TOOL_MATCHER, hookScriptNames, hostSmokeToolName, OPT_IN_SCENARIOS, permitGuardrailPush, permitProjectFiles, permitScopedRead, probeHooksJson, probeTool, SCENARIOS, scenarioCheckIds, scenarioCost, scenarioExcludedTools, skippedScenarioChecks, sliceLogByTime, usageCredits, } from '../copilot-sdk-scenarios.js';
 const FIXTURES = join(__dirname, 'fixtures');
 const events = (name) => parseJsonl(readFileSync(join(FIXTURES, `tier2-${name}-events.jsonl`), 'utf-8')).events;
 const LOG = readFileSync(join(FIXTURES, 'tier2-hooks-debug-excerpt.log'), 'utf-8');
@@ -44,6 +44,15 @@ describe('account quota', () => {
             expect(c.detail).toMatch(/^\[quota exhausted\] /);
         // Without a quota error the ids stay exactly the documented set.
         expect(evaluateScenario(run('smoke')).checks.map((c) => c.id)).toEqual(scenarioCheckIds('smoke'));
+    });
+    it('says "no model call ran" only when no model call succeeded before the first quota event', () => {
+        const usage = { type: 'assistant.usage', data: { copilotUsage: { totalNanoAiu: 1 } } };
+        const label = (evs) => evaluateScenario(run('smoke', { events: evs, idle: false })).checks[0].detail;
+        expect(label([usage, ...quotaEvents])).toMatch(/; the checks below may have failed because of the quota$/);
+        // A usage event after the quota hit does not count.
+        expect(label([...quotaEvents, usage])).toMatch(/; the checks below failed because no model call ran$/);
+        expect(modelCallBeforeQuota([usage, ...quotaEvents])).toBe(true);
+        expect(modelCallBeforeQuota([quotaEvents[1], usage])).toBe(false);
     });
 });
 describe('scenario specs', () => {
