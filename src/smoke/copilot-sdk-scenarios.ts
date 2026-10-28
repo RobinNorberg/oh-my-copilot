@@ -972,10 +972,13 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
   const c = e.canary;
   const cOutside = c ? target(c.targets, 'shared') : undefined;
   const cInside = c ? target(c.targets, 'worktree') : undefined;
-  const q5Answered = enforced(canaryLane) && !!c?.called && !!c.result;
+  // No probe line in the output: the probe never launched (node denied, say), so an outside write that did not land was never tried.
+  const cProbeRan = !!c?.result && parseSandboxProbe(c.result.output) !== null;
+  const q5Answered = enforced(canaryLane) && !!c?.called && cProbeRan;
   const q5Ok = q5Answered && c!.sandboxed === true && !!cOutside && !cOutside.landed && !!cInside?.landed;
   const q5Detail = !c?.called ? `Q5 ${unanswered(canaryLane)}`
     : !c.result ? `Q5: shell.executeUserRequested failed: ${excerpt(c.error ?? 'no result', 200)}`
+      : !cProbeRan ? `Q5 unanswered: probe did not run (exit ${String(c.result.exitCode)}, no ${SANDBOX_PROBE_MARKER.trim()} line; output ${JSON.stringify(excerpt(c.result.output || c.error || '', 200))})`
       : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? 'sandboxed' : c.sandboxed === false ? 'NOT sandboxed' : 'with no sandboxed attestation'}`
         + ` (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? 'landed' : 'missing'}; `
         + `onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : 'bypassed'}`
@@ -1392,7 +1395,7 @@ export interface SdkSandboxProbe {
   applyError?: string | null;
   /** The enforcement status after the apply, or why it could not be read. */
   enforcement?: { required: boolean; blocked: boolean; reason?: string } | string;
-  /** The spawn canary (a sandboxed `echo` with the lane env, no model turn); absent when it did not get that far. */
+  /** The spawn canary (sandboxed `node --version` and `git --version` with the lane env and grants, no model turn); absent when it did not get that far. */
   spawn?: { ok: boolean; detail: string };
 }
 
@@ -1700,6 +1703,25 @@ function evaluateCommon(run: ScenarioRun, cost: ScenarioCost & { source: string 
   ];
 }
 
+/**
+ * The account quota error in a scenario's events, or null: a
+ * `model.call_failure` with HTTP 402 or a quota errorCode
+ * (`quota_exceeded`), or a `session.error` of errorType `quota`.
+ */
+export function accountQuotaError(events: CopilotEvent[]): string | null {
+  for (const e of events) {
+    const d = (e.data ?? {}) as Record<string, unknown>;
+    const code = typeof d.errorCode === 'string' ? d.errorCode : '';
+    if (e.type === 'model.call_failure' && (d.statusCode === 402 || /quota/i.test(code))) {
+      let message = typeof d.errorMessage === 'string' ? d.errorMessage : '';
+      try { message = String((JSON.parse(message) as { message?: unknown }).message ?? message); } catch { /* plain text */ }
+      return [String(d.statusCode ?? '?'), code, message && `"${excerpt(message, 120)}"`].filter(Boolean).join(' ');
+    }
+    if (e.type === 'session.error' && d.errorType === 'quota') return `session.error quota${typeof d.message === 'string' ? ` "${excerpt(d.message, 120)}"` : ''}`;
+  }
+  return null;
+}
+
 export function evaluateScenario(run: ScenarioRun): { checks: SmokeCheck[]; cost: ScenarioCost } {
   const own = {
     smoke: evaluateSmoke,
@@ -1718,10 +1740,18 @@ export function evaluateScenario(run: ScenarioRun): { checks: SmokeCheck[]; cost
     ultragoal: evaluateUltragoal,
   }[run.name](run);
   const cost = runCost(run);
-  const checks = [...own, ...evaluateCommon(run, cost)];
+  let checks = [...own, ...evaluateCommon(run, cost)];
   const pending = PENDING_SCENARIOS[run.name];
+  if (pending) checks = checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` }));
+  const quota = accountQuotaError(run.events);
+  if (quota) {
+    checks = [
+      { id: `scn.${run.name}.quota`, ok: false, detail: `account quota exhausted (${quota}), not a product failure; the checks below failed because no model call ran` },
+      ...checks.map((c) => (c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })),
+    ];
+  }
   return {
-    checks: pending ? checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` })) : checks,
+    checks,
     cost: { premiumRequests: cost.premiumRequests, credits: cost.credits },
   };
 }

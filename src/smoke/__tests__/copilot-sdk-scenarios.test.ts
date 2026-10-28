@@ -3,6 +3,7 @@ import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseJsonl, type CopilotEvent } from '../copilot-session-eval.js';
 import {
+  accountQuotaError,
   adapterErrorLines,
   ALL_SCENARIOS,
   chainCost,
@@ -62,6 +63,31 @@ function run(name: Scenario, over: Partial<ScenarioRun> = {}): ScenarioRun {
 }
 
 const byId = (checks: Array<{ id: string; ok: boolean; detail: string }>) => Object.fromEntries(checks.map((c) => [c.id, c]));
+
+describe('account quota', () => {
+  // The shapes Copilot CLI 1.0.105 emitted on 2026-10-28 with the monthly quota spent.
+  const quotaEvents: CopilotEvent[] = [
+    { type: 'model.call_failure', data: { statusCode: 402, errorCode: 'quota_exceeded', errorMessage: '{"message":"You have exceeded your monthly quota","code":"quota_exceeded"}' } },
+    { type: 'session.error', data: { errorType: 'quota', message: 'You have exceeded your monthly quota' } },
+  ];
+
+  it('accountQuotaError reads the 402 call failure, then a quota session.error, and nothing else', () => {
+    expect(accountQuotaError(quotaEvents)).toBe('402 quota_exceeded "You have exceeded your monthly quota"');
+    expect(accountQuotaError(quotaEvents.slice(1))).toBe('session.error quota "You have exceeded your monthly quota"');
+    expect(accountQuotaError([{ type: 'model.call_failure', data: { statusCode: 500, errorCode: 'server_error' } }, { type: 'session.error', data: { errorType: 'hook' } }])).toBeNull();
+    expect(accountQuotaError(events('smoke'))).toBeNull();
+  });
+
+  it('a scenario that hit the quota leads with one clear quota check and marks the failures it caused', () => {
+    const { checks } = evaluateScenario(run('smoke', { events: quotaEvents, idle: false }));
+    expect(checks[0]).toEqual({ id: 'scn.smoke.quota', ok: false, detail: 'account quota exhausted (402 quota_exceeded "You have exceeded your monthly quota"), not a product failure; the checks below failed because no model call ran' });
+    const failed = checks.slice(1).filter((c) => !c.ok);
+    expect(failed.length).toBeGreaterThan(0);
+    for (const c of failed) expect(c.detail).toMatch(/^\[quota exhausted\] /);
+    // Without a quota error the ids stay exactly the documented set.
+    expect(evaluateScenario(run('smoke')).checks.map((c) => c.id)).toEqual(scenarioCheckIds('smoke'));
+  });
+});
 
 describe('scenario specs', () => {
   it('exclude <server>-host_smoke, with the server taken from .mcp.json', () => {
