@@ -45,7 +45,9 @@ export interface SetupIo {
 export const LABEL_COLOR = '7c7c7c';
 /** A GitHub label (the forge config's TRACKER_NAME rule). */
 export const LABEL_NAME = /^[^\s,;\-\p{Cc}][^,;\p{Cc}]{0,49}$/u;
-const PARAM_VALUE = /^[^\-\p{Cc}][^\p{Cc}]{0,255}$/u;
+// A route or query parameter value: no option shape, no leading `@` (az reads `@file`), and no `/`, `?`,
+// `#` or `..`, so a value can never reshape the request URL.
+const PARAM_VALUE = /^(?!.*\.\.)[^\-@/?#\p{Cc}][^/?#\p{Cc}]{0,255}$/u;
 const INVOKE_SINGLE = ['--area', '--resource', '--http-method', '--api-version', '--org', '--detect', '--output'];
 const INVOKE_PAIRS = ['--route-parameters', '--query-parameters'];
 

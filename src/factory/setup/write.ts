@@ -1,17 +1,23 @@
 /**
  * Step 6 of `omg factory setup` (factory forges design §4, §8.6): edits to
- * the `factory` subtree of `.copilot/omg.jsonc` (project scope) or the user
- * config at its default location (user scope), made with jsonc-parser
- * `modify` + `applyEdits` so comments and every other key stay as they are.
- * `forge.azureDevOps.trustedAuthors` always goes to the user config, the only
- * layer resolveForgeConfig reads it from. assertFactoryOnly re-parses each
- * result and refuses a write that changed anything outside `factory`, so
- * `ship.*` safety keys can never move.
+ * the `factory` subtree of `.copilot/omg.jsonc` and the user config at its
+ * default location, made with jsonc-parser `modify` + `applyEdits` so
+ * comments and every other key stay as they are.
+ *
+ * The forge identity, intake and progress are per repository, so they always
+ * go to the project file, whatever `--scope` says: the user config is one
+ * file for every repository and its `forge.*` has the highest trust, so a
+ * repository's identity there would break (forge-mismatch) or redirect every
+ * other repository. The user config gets only the user-only keys, today
+ * `forge.azureDevOps.trustedAuthors` (the only layer resolveForgeConfig
+ * reads it from). assertFactoryOnly re-parses each result and refuses a
+ * write that changed anything but the keys its scope owns, so `ship.*`
+ * safety keys can never move.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
-import { applyEdits, modify, parse, type JSONPath, type ParseError } from 'jsonc-parser';
+import { applyEdits, modify, parse, parseTree, type JSONPath, type Node, type ParseError } from 'jsonc-parser';
 import type { ForgeIntakeConfig, ForgeProgressConfig, ForgeRepo, IntakeSource } from '../../forge/types.js';
 import { SetupError } from './guard.js';
 
@@ -55,30 +61,65 @@ export function sectionEdits(section: SetupSection): Array<[JSONPath, unknown]> 
   return edits;
 }
 
+const TRUSTED_AUTHORS: JSONPath = ['factory', 'forge', 'azureDevOps', 'trustedAuthors'];
+
 export function trustedAuthorsEdit(authors: readonly string[]): [JSONPath, unknown] {
-  return [['factory', 'forge', 'azureDevOps', 'trustedAuthors'], [...authors]];
+  return [TRUSTED_AUTHORS, [...authors]];
 }
 
-function parseStrict(text: string, path: string): unknown {
-  if (text.trim() === '') return {};
+/** The subtrees each scope may change; everything else must parse the same before and after. */
+const OWNED: Record<SetupScope, readonly JSONPath[]> = {
+  project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress']],
+  user: [TRUSTED_AUTHORS],
+};
+
+const BOM = '﻿';
+
+/** Duplicate keys in an object node; a duplicate makes `modify` edit one copy while the engine reads the other. */
+function duplicateKey(node: Node | undefined): string | undefined {
+  const seen = new Set<string>();
+  for (const prop of node?.type === 'object' ? node.children ?? [] : []) {
+    const key = prop.children?.[0]?.value as string;
+    if (seen.has(key)) return key;
+    seen.add(key);
+  }
+  return undefined;
+}
+
+function parseStrict(text: string, path: string): Record<string, unknown> {
+  const body = text.startsWith(BOM) ? text.slice(1) : text;
+  if (body.trim() === '') return {};
   const errors: ParseError[] = [];
-  const value = parse(text, errors, { allowTrailingComma: true, disallowComments: false });
+  const options = { allowTrailingComma: true, disallowComments: false };
+  const value = parse(body, errors, options);
   if (errors.length > 0) throw new SetupError(5, `cannot edit ${path}: it is not valid JSONC (offset ${errors[0].offset}); fix it by hand first`);
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new SetupError(5, `cannot edit ${path}: the top level is not an object`);
-  return value;
+  const tree = parseTree(body, [], options);
+  const factory = tree?.children?.find((p) => p.children?.[0]?.value === 'factory')?.children?.[1];
+  const dup = duplicateKey(tree) ?? duplicateKey(factory);
+  if (dup !== undefined) throw new SetupError(5, `cannot edit ${path}: the key ${JSON.stringify(dup)} appears twice; fix it by hand first`);
+  const f = (value as Record<string, unknown>).factory;
+  if (f !== undefined && (f === null || typeof f !== 'object' || Array.isArray(f))) throw new SetupError(5, `cannot edit ${path}: factory is not an object; fix it by hand first`);
+  return value as Record<string, unknown>;
 }
 
-/** Apply edits to JSONC text, keeping comments and formatting. */
+/** Apply edits to JSONC text, keeping comments, formatting and a leading BOM. */
 export function applyFactoryEdits(text: string, edits: ReadonlyArray<[JSONPath, unknown]>, path = 'config'): string {
   parseStrict(text, path);
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  let out = text.trim() === '' ? '{}' : text;
+  const bom = text.startsWith(BOM) ? BOM : '';
+  const body = text.slice(bom.length);
+  const eol = body.includes('\r\n') ? '\r\n' : '\n';
+  let out = body.trim() === '' ? '{}' : body;
   for (const [jsonPath, value] of edits) {
     if (jsonPath[0] !== 'factory') throw new SetupError(1, `omg factory setup writes only factory.*, not ${jsonPath.join('.')}`);
-    out = applyEdits(out, modify(out, jsonPath, value, { formattingOptions: { insertSpaces: true, tabSize: 2, eol } }));
+    try {
+      out = applyEdits(out, modify(out, jsonPath, value, { formattingOptions: { insertSpaces: true, tabSize: 2, eol } }));
+    } catch (error) {
+      throw new SetupError(5, `cannot edit ${path} at ${jsonPath.join('.')}: ${(error as Error).message}; fix it by hand first`);
+    }
   }
-  if (text.trim() === '' && !out.endsWith(eol)) out += eol;
-  return out;
+  if (body.trim() === '' && !out.endsWith(eol)) out += eol;
+  return bom + out;
 }
 
 const canonical = (v: unknown): unknown =>
@@ -88,13 +129,26 @@ const canonical = (v: unknown): unknown =>
       ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]))
       : v;
 
-/** Throws unless `before` and `after` differ only under the top-level `factory` key. */
-export function assertFactoryOnly(before: string, after: string, path = 'config'): void {
+/** Delete `path` from `root`, then the objects on the way that it left empty. */
+function without(root: Record<string, unknown>, path: JSONPath): void {
+  const chain: Array<Record<string, unknown>> = [root];
+  for (const key of path.slice(0, -1)) {
+    const next = chain[chain.length - 1][key as string];
+    if (next === null || typeof next !== 'object' || Array.isArray(next)) return;
+    chain.push(next as Record<string, unknown>);
+  }
+  delete chain[chain.length - 1][path[path.length - 1] as string];
+  for (let i = chain.length - 1; i > 0 && Object.keys(chain[i]).length === 0; i--) delete chain[i - 1][path[i - 1] as string];
+}
+
+/** Throws unless `before` and `after` differ only in the subtrees `scope` owns. */
+export function assertFactoryOnly(before: string, after: string, scope: SetupScope, path = 'config'): void {
   const strip = (text: string) => {
-    const { factory: _factory, ...rest } = parseStrict(text, path) as Record<string, unknown>;
-    return JSON.stringify(canonical(rest));
+    const value = structuredClone(parseStrict(text, path));
+    for (const owned of OWNED[scope]) without(value, owned);
+    return JSON.stringify(canonical(value));
   };
-  if (strip(before) !== strip(after)) throw new SetupError(1, `refusing to write ${path}: the edit changed keys outside factory.*`);
+  if (strip(before) !== strip(after)) throw new SetupError(1, `refusing to write ${path}: the edit changed keys outside ${OWNED[scope].map((p) => p.join('.')).join(', ')}`);
 }
 
 /** A line diff (`-`/`+`, unchanged lines with two spaces), small files only. */
@@ -122,27 +176,39 @@ export interface PlannedWrite {
 }
 
 export interface WritePlanInput {
-  scope: SetupScope;
   projectPath: string;
   userPath: string;
   section: SetupSection;
-  /** ADO only; always written to the user config. */
+  /** ADO only; the one thing written to the user config. */
   trustedAuthors?: readonly string[];
 }
 
 const readText = (path: string): string => (existsSync(path) ? readFileSync(path, 'utf8') : '');
 
+/** Refuses a project config, or its `.copilot` directory, that is a symlink or junction: the write would land elsewhere. */
+function assertNotLinked(path: string): void {
+  for (const p of [dirname(path), path]) {
+    let linked = false;
+    try {
+      linked = lstatSync(p).isSymbolicLink();
+    } catch {
+      continue;
+    }
+    if (linked) throw new SetupError(5, `refusing to write ${path}: ${p} is a symlink or junction`);
+  }
+}
+
 /** The writes for one setup, with diffs; nothing is written here. Unchanged files are left out. */
 export function planWrites(input: WritePlanInput): PlannedWrite[] {
-  const targets = new Map<SetupScope, Array<[JSONPath, unknown]>>();
-  targets.set(input.scope, sectionEdits(input.section));
-  if (input.trustedAuthors && input.trustedAuthors.length > 0) targets.set('user', [...(targets.get('user') ?? []), trustedAuthorsEdit(input.trustedAuthors)]);
+  const targets = new Map<SetupScope, Array<[JSONPath, unknown]>>([['project', sectionEdits(input.section)]]);
+  if (input.trustedAuthors && input.trustedAuthors.length > 0) targets.set('user', [trustedAuthorsEdit(input.trustedAuthors)]);
   const out: PlannedWrite[] = [];
   for (const [scope, edits] of targets) {
     const path = scope === 'project' ? input.projectPath : input.userPath;
+    if (scope === 'project') assertNotLinked(path);
     const before = readText(path);
     const after = applyFactoryEdits(before, edits, path);
-    assertFactoryOnly(before, after, path);
+    assertFactoryOnly(before, after, scope, path);
     if (after !== before) out.push({ path, scope, before, after, diff: lineDiff(before, after) });
   }
   return out;
@@ -151,6 +217,7 @@ export function planWrites(input: WritePlanInput): PlannedWrite[] {
 export function applyWrites(planned: readonly PlannedWrite[]): string[] {
   for (const w of planned) {
     // Re-check right before the write: the file must still be what the diff was made from.
+    if (w.scope === 'project') assertNotLinked(w.path);
     if (readText(w.path) !== w.before) throw new SetupError(1, `${w.path} changed while the wizard ran; run omg factory setup again`);
     mkdirSync(dirname(w.path), { recursive: true });
     writeFileSync(w.path, w.after, 'utf8');
@@ -162,5 +229,5 @@ export function applyWrites(planned: readonly PlannedWrite[]): string[] {
 export function parsedAfter(planned: readonly PlannedWrite[], path: string): unknown {
   const w = planned.find((p) => p.path === path);
   const text = w ? w.after : readText(path);
-  return text.trim() === '' ? undefined : parseStrict(text, path);
+  return (text.startsWith(BOM) ? text.slice(1) : text).trim() === '' ? undefined : parseStrict(text, path);
 }

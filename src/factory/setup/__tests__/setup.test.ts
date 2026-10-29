@@ -5,7 +5,8 @@ import { parse } from 'jsonc-parser';
 import { factorySetupCommand, runFactorySetup, type FactorySetupOptions } from '../../../cli/commands/factory-setup.js';
 import { listenForgeRefusal } from '../detect.js';
 import { READINESS_PLACEHOLDER } from '../intake-pick.js';
-import { adoWorld, fakeExec, fakeForge, githubWorld, QUERY_ID, scriptedPrompter, setupDeps, type FakeWorld } from './harness.js';
+import { resolveForgeConfig } from '../../../forge/config.js';
+import { adoWorld, fakeExec, fakeForge, githubWorld, QUERY_ID, scriptedPrompter, setupDeps, tempRoot, type FakeWorld } from './harness.js';
 
 type Cfg = { ship?: unknown; factory?: { forge?: Record<string, unknown>; intake?: Record<string, unknown>; progress?: Record<string, unknown>; run?: unknown } };
 
@@ -64,13 +65,70 @@ describe('omg factory setup: GitHub', () => {
     expect(r.preview).toHaveLength(1);
   });
 
-  it('--scope user writes the user config only', async () => {
+  it('--scope user keeps the forge identity, intake and progress out of the shared user config', async () => {
     const w = githubWorld();
     const r = await run(w, { intake: 'label:factory', progress: 'none', scope: 'user', yes: true });
     expect(r.exitCode).toBe(0);
-    expect(r.written).toEqual([userFile(w)]);
-    expect(read(userFile(w)).factory!.progress).toEqual({ enabled: false, stages: {} });
-    expect(existsSync(projectFile(w))).toBe(false);
+    expect(r.written).toEqual([projectFile(w)]);
+    expect(read(projectFile(w)).factory!.progress).toEqual({ enabled: false, stages: {} });
+    expect(existsSync(userFile(w))).toBe(false);
+    expect(r.notes.some((n) => n.startsWith('--scope user:'))).toBe(true);
+  });
+
+  it('after --scope user setup in one repository, another repository sharing the user config still resolves', async () => {
+    const userPath = join(tempRoot(), 'config.jsonc');
+    const one = adoWorld();
+    const first = await run(one, { intake: `wiql-query:${QUERY_ID}`, trustedAuthor: 'owner@example.com', scope: 'user', yes: true }, { userConfigPath: () => userPath });
+    expect(first.error).toBeUndefined();
+    expect(read(userPath).factory).toEqual({ forge: { azureDevOps: { trustedAuthors: ['owner@example.com'] } } });
+    // Neither another ADO repository nor a GitHub one sees a forge-mismatch, an intake or a progress mapping from repository one.
+    const otherAdo = resolveForgeConfig(read(userPath), undefined, undefined, 'https://dev.azure.com/fabrikam/Api/_git/api');
+    expect(otherAdo.config.kind).toBe('azure-devops');
+    expect(resolveForgeConfig(read(userPath), undefined, undefined, 'https://github.com/acme/other.git').config.kind).toBe('github');
+    const two = { ...githubWorld(), origin: 'https://github.com/acme/other.git' };
+    two.answers['gh api --hostname github.com --method GET repos/acme/other/milestones?state=open&per_page=100'] = { status: 0, stdout: '[]' };
+    const second = await run(two, { intake: 'label:factory', scope: 'user', yes: true }, { userConfigPath: () => userPath });
+    expect(second.error).toBeUndefined();
+    expect(second.exitCode).toBe(0);
+    expect(read(projectFile(two)).factory!.forge).toEqual({ kind: 'github', github: { repo: 'acme/other', host: 'github.com' } });
+  });
+
+  it('writes the config before it creates labels, and creates none when the write is refused', async () => {
+    const w = githubWorld();
+    mkdirSync(join(w.root, '.copilot'), { recursive: true });
+    writeFileSync(projectFile(w), '{ "factory": 5 }\n');
+    const r = await run(w, { intake: 'label:factory', yes: true });
+    expect(r.exitCode).toBe(5);
+    expect(r.error).toMatch(/factory is not an object/);
+    expect(writes(w)).toEqual([]);
+
+    // A label failure after the write leaves the config written and says how to finish.
+    const v = githubWorld();
+    const exec = fakeExec(v);
+    const failLabels: typeof exec = (cmd, args, opts) => {
+      if (cmd === 'gh' && args[0] === 'label' && args[1] === 'create') {
+        expect(existsSync(projectFile(v))).toBe(true);
+        return { status: 1, stdout: '', stderr: 'HTTP 403' };
+      }
+      return exec(cmd, args, opts);
+    };
+    const failed = await run(v, { intake: 'label:factory', yes: true }, { exec: failLabels });
+    expect(failed.exitCode).toBe(5);
+    expect(failed.error).toMatch(/^config written, but cannot create missing label factory[\s\S]*run omg factory setup again/);
+    expect(read(projectFile(v)).factory!.intake).toEqual({ source: { type: 'label', label: 'factory' } });
+  });
+
+  it('strips terminal sequences and control characters from preview titles and redacts the preview error', async () => {
+    const w = githubWorld();
+    const evil = 'Fix \u001b]8;;https://evil.test\u0007link\u001b]8;;\u0007 \u001b[31mred\u001b[0m\u0007\u0000‮';
+    const r = await run(w, { intake: 'label:factory', dryRun: true, json: true }, { createForge: fakeForge([{ id: 9, title: evil, url: 'u' }]) });
+    expect(r.preview[0].title).toBe('Fix link red   ');
+    const out: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+    await factorySetupCommand(setupDeps(w, { createForge: fakeForge([{ id: 9, title: evil, url: 'u' }]) })).parseAsync(['--intake', 'label:factory', '--dry-run', '--json'], { from: 'user' });
+    expect(out.join('\n')).not.toMatch(/\\u001b|\u001b|\\u0007|\\u202e/);
+    const failed = await run(w, { intake: 'label:factory', dryRun: true }, { createForge: () => { throw new Error('az failed: Authorization: Bearer abcdefghijklmnop0123 \u001b[2J'); } });
+    expect(failed.previewError).not.toMatch(/abcdefghijklmnop0123|\u001b/);
   });
 
   it('never echoes what gh auth status prints', async () => {
