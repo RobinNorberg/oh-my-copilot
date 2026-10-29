@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "428efdee05179e414a9b12fddee0490b3c1dc1c4",
-    "sourceSha256": "059e4897dac587004f248e90a0f5d17e36ee2d0c90e46876a5840e49fe74cd35",
+    "head": "6f6f6a1768f6bd1e71933c65c0c16b47da91fa61",
+    "sourceSha256": "1ea0d7002678189c93a6235f1255186344175d478e5dfb70cbe098e077e26744",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "428efdee05179e414a9b12fddee0490b3c1dc1c4",
-  "sourceSha256": "059e4897dac587004f248e90a0f5d17e36ee2d0c90e46876a5840e49fe74cd35",
+  "head": "6f6f6a1768f6bd1e71933c65c0c16b47da91fa61",
+  "sourceSha256": "1ea0d7002678189c93a6235f1255186344175d478e5dfb70cbe098e077e26744",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1785,
-      "total": 1809
+      "srcFiles": 1806,
+      "total": 1830
     },
     "generated": {
-      "distFiles": 6768,
+      "distFiles": 6812,
       "bridgeFiles": 9,
-      "total": 6777
+      "total": 6821
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2755,6 +2755,10 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory-setup.d.ts",
+      "dist/cli/commands/factory-setup.d.ts.map",
+      "dist/cli/commands/factory-setup.js",
+      "dist/cli/commands/factory-setup.js.map",
       "dist/cli/commands/factory.d.ts",
       "dist/cli/commands/factory.d.ts.map",
       "dist/cli/commands/factory.js",
@@ -3173,6 +3177,46 @@
       "dist/factory/run/state.d.ts.map",
       "dist/factory/run/state.js",
       "dist/factory/run/state.js.map",
+      "dist/factory/setup/__tests__/guard.test.d.ts",
+      "dist/factory/setup/__tests__/guard.test.d.ts.map",
+      "dist/factory/setup/__tests__/guard.test.js",
+      "dist/factory/setup/__tests__/guard.test.js.map",
+      "dist/factory/setup/__tests__/harness.d.ts",
+      "dist/factory/setup/__tests__/harness.d.ts.map",
+      "dist/factory/setup/__tests__/harness.js",
+      "dist/factory/setup/__tests__/harness.js.map",
+      "dist/factory/setup/__tests__/setup.test.d.ts",
+      "dist/factory/setup/__tests__/setup.test.d.ts.map",
+      "dist/factory/setup/__tests__/setup.test.js",
+      "dist/factory/setup/__tests__/setup.test.js.map",
+      "dist/factory/setup/__tests__/write.test.d.ts",
+      "dist/factory/setup/__tests__/write.test.d.ts.map",
+      "dist/factory/setup/__tests__/write.test.js",
+      "dist/factory/setup/__tests__/write.test.js.map",
+      "dist/factory/setup/auth.d.ts",
+      "dist/factory/setup/auth.d.ts.map",
+      "dist/factory/setup/auth.js",
+      "dist/factory/setup/auth.js.map",
+      "dist/factory/setup/detect.d.ts",
+      "dist/factory/setup/detect.d.ts.map",
+      "dist/factory/setup/detect.js",
+      "dist/factory/setup/detect.js.map",
+      "dist/factory/setup/guard.d.ts",
+      "dist/factory/setup/guard.d.ts.map",
+      "dist/factory/setup/guard.js",
+      "dist/factory/setup/guard.js.map",
+      "dist/factory/setup/intake-pick.d.ts",
+      "dist/factory/setup/intake-pick.d.ts.map",
+      "dist/factory/setup/intake-pick.js",
+      "dist/factory/setup/intake-pick.js.map",
+      "dist/factory/setup/progress-pick.d.ts",
+      "dist/factory/setup/progress-pick.d.ts.map",
+      "dist/factory/setup/progress-pick.js",
+      "dist/factory/setup/progress-pick.js.map",
+      "dist/factory/setup/write.d.ts",
+      "dist/factory/setup/write.d.ts.map",
+      "dist/factory/setup/write.js",
+      "dist/factory/setup/write.js.map",
       "dist/factory/status.d.ts",
       "dist/factory/status.d.ts.map",
       "dist/factory/status.js",
@@ -18318,6 +18362,26 @@
         "path": "dist/cli/commands/doctor-team-routing.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-setup.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-setup.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-setup.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-setup.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-setup.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-setup.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-setup.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-setup.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory.d.ts"
@@ -20406,6 +20470,206 @@
         "id": "dist/factory/run/state.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/state.js.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/guard.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/guard.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/guard.test.js.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/harness.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/harness.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/harness.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/harness.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/harness.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/harness.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/harness.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/harness.js.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/setup.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/setup.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/setup.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/setup.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/setup.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/setup.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/setup.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/setup.test.js.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/write.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/write.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/write.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/write.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/write.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/write.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/write.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/write.test.js.map"
+      },
+      {
+        "id": "dist/factory/setup/auth.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/auth.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/auth.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/auth.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/auth.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/auth.js"
+      },
+      {
+        "id": "dist/factory/setup/auth.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/auth.js.map"
+      },
+      {
+        "id": "dist/factory/setup/detect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/detect.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/detect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/detect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/detect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/detect.js"
+      },
+      {
+        "id": "dist/factory/setup/detect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/detect.js.map"
+      },
+      {
+        "id": "dist/factory/setup/guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/guard.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/guard.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/guard.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/guard.js"
+      },
+      {
+        "id": "dist/factory/setup/guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/guard.js.map"
+      },
+      {
+        "id": "dist/factory/setup/intake-pick.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/intake-pick.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/intake-pick.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/intake-pick.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/intake-pick.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/intake-pick.js"
+      },
+      {
+        "id": "dist/factory/setup/intake-pick.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/intake-pick.js.map"
+      },
+      {
+        "id": "dist/factory/setup/progress-pick.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/progress-pick.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/progress-pick.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/progress-pick.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/progress-pick.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/progress-pick.js"
+      },
+      {
+        "id": "dist/factory/setup/progress-pick.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/progress-pick.js.map"
+      },
+      {
+        "id": "dist/factory/setup/write.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/write.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/write.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/write.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/write.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/write.js"
+      },
+      {
+        "id": "dist/factory/setup/write.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/write.js.map"
       },
       {
         "id": "dist/factory/status.d.ts",
@@ -43708,6 +43972,11 @@
         "path": "https"
       },
       {
+        "id": "external:jsonc-parser",
+        "kind": "external",
+        "path": "jsonc-parser"
+      },
+      {
         "id": "external:module",
         "kind": "external",
         "path": "module"
@@ -47808,6 +48077,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory-setup.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-setup.ts"
+      },
+      {
         "id": "src/cli/commands/factory.ts",
         "kind": "src",
         "path": "src/cli/commands/factory.ts"
@@ -48356,6 +48630,106 @@
         "id": "src/factory/run/state.ts",
         "kind": "src",
         "path": "src/factory/run/state.ts"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/core.projects.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/core.projects.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/core.teams.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/core.teams.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/git.repositories.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/git.repositories.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/wit.classificationNodes.areas.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/wit.classificationNodes.areas.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/wit.queries.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/wit.queries.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypeStates.bug.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypeStates.bug.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypeStates.user-story.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypeStates.user-story.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypes.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/wit.workItemTypes.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/work.boards.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/work.boards.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/fixtures/ado/work.columns.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/work.columns.json"
+      },
+      {
+        "id": "src/factory/setup/__tests__/guard.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/guard.test.ts"
+      },
+      {
+        "id": "src/factory/setup/__tests__/harness.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/harness.ts"
+      },
+      {
+        "id": "src/factory/setup/__tests__/setup.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/setup.test.ts"
+      },
+      {
+        "id": "src/factory/setup/__tests__/write.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/write.test.ts"
+      },
+      {
+        "id": "src/factory/setup/auth.ts",
+        "kind": "src",
+        "path": "src/factory/setup/auth.ts"
+      },
+      {
+        "id": "src/factory/setup/detect.ts",
+        "kind": "src",
+        "path": "src/factory/setup/detect.ts"
+      },
+      {
+        "id": "src/factory/setup/guard.ts",
+        "kind": "src",
+        "path": "src/factory/setup/guard.ts"
+      },
+      {
+        "id": "src/factory/setup/intake-pick.ts",
+        "kind": "src",
+        "path": "src/factory/setup/intake-pick.ts"
+      },
+      {
+        "id": "src/factory/setup/progress-pick.ts",
+        "kind": "src",
+        "path": "src/factory/setup/progress-pick.ts"
+      },
+      {
+        "id": "src/factory/setup/write.ts",
+        "kind": "src",
+        "path": "src/factory/setup/write.ts"
       },
       {
         "id": "src/factory/status.ts",
@@ -69830,6 +70204,146 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "external:readline/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/auth.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/auth.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/detect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/progress-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/notifications/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -69847,6 +70361,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-setup.ts",
         "kind": "imports"
       },
       {
@@ -69938,6 +70457,11 @@
         "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/setup/detect.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -74557,6 +75081,326 @@
       {
         "from": "src/factory/run/state.ts",
         "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/guard.test.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/guard.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/harness.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "external:jsonc-parser",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/factory/setup/detect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/setup.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "external:jsonc-parser",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "src/factory/setup/write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/write.test.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/auth.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/auth.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/detect.ts",
+        "to": "src/config/ado-config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/detect.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/detect.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/detect.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/detect.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/intake-pick.ts",
+        "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/intake-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/intake-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/intake-pick.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/factory/setup/intake-pick.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/progress-pick.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "external:jsonc-parser",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "external:jsonc-parser",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/write.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -108731,12 +109575,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9294,
-      "edgeCount": 10782,
-      "importEdgeCount": 8924,
+      "nodeCount": 9360,
+      "edgeCount": 10876,
+      "importEdgeCount": 8992,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "83acd2acbb3ff4a2c6828588661263fa13bd85f4eb833d6f0fcd26fc064917cf",
-  "manifestSha256": "8019684c9badd7767af83954512348132ec7e8094fbe290ac2aeb6918d323e88"
+  "inventorySha256": "af1895a991f36ed55a9c8e8c0d3c2446ced8b755d27cfd8bfa3fd01d62eeb9f4",
+  "manifestSha256": "2e62ee68c66dc9946d3e12ee8234e2874468f1e74127f5daed82b4a2174f1309"
 }

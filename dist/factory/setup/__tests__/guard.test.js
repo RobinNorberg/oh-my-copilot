@@ -40,6 +40,8 @@ describe('setup guard', () => {
         ['an unlisted query parameter', [...adoInvokeArgs(ado, 'wit.queries.GET', { project: 'Web' }, { $depth: '2' })].map((a) => (a === '$depth=2' ? 'evil=1' : a))],
         ['another api version', adoInvokeArgs(ado, 'core.projects.GET', { projectId: 'Web' }).map((a) => (a === '7.1' ? '6.0' : a))],
         ['detect true', adoInvokeArgs(ado, 'core.projects.GET', { projectId: 'Web' }).map((a) => (a === 'false' ? 'true' : a))],
+        ...['Web/../Other', 'Web?x=1', 'Web#x', '..', '@team.txt', 'a/b'].map((v) => [`route value ${v}`, adoInvokeArgs(ado, 'work.boards.GET', { project: 'Web', team: v })]),
+        ['an @file query value', adoInvokeArgs(ado, 'wit.queries.GET', { project: 'Web' }, { $depth: '@depth.txt' })],
         ['az repos pr update', ['repos', 'pr', 'update', '--id', '1', '--status', 'completed']],
     ])('refuses az %s', (_name, args) => {
         expect(ok('az', args, ado, az)).toThrow(SetupSafetyError);

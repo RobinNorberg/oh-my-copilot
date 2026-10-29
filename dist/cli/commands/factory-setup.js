@@ -9,6 +9,10 @@
  * 5 incompatible (unsupported forge, mismatch, unknown query, state
  * validation failed). `--dry-run` writes nothing and creates no label.
  *
+ * `--scope user` writes no forge identity, intake or progress to the user
+ * config (one file for every repository): those always go to the project
+ * file, and the user config gets only trustedAuthors (see write.ts).
+ *
  * Reuse (§A.7): label creation calls `checkOrCreateHarborLabels` (intake.ts)
  * with the factory labels, and the `omg factory init` prerequisites come from
  * `validateFactoryPrerequisites` (factory.ts); both are called, not copied.
@@ -28,6 +32,7 @@ import { SetupError, setupGuardExec } from '../../factory/setup/guard.js';
 import { adoWorkItemTypes, formatIntakeSpec, githubLabels, listOnlyPreview, parseIntakeSpec, pickIntake, previewIntake, validateIntake, } from '../../factory/setup/intake-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planWrites } from '../../factory/setup/write.js';
+import { redactTokens } from '../../notifications/redact.js';
 import { trustedUserConfigPath } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -82,6 +87,10 @@ function ttyPrompter() {
         },
     };
 }
+// CSI and other ESC sequences, OSC strings (to BEL or ST, or the end), and the 8-bit CSI.
+const TERMINAL_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u009b[0-?]*[ -/]*[@-~]|\u001b[ -~]?/g;
+/** Untrusted text without terminal sequences and control or format characters. */
+export const plainText = (s) => String(s).replace(TERMINAL_SEQUENCE, '').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
 const list = (raw) => (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const readConfig = (path) => {
     try {
@@ -194,7 +203,7 @@ async function setup(o, deps, cwd, out) {
     // Step 6: write.
     const team = source.type === 'board-column' ? source.team : board?.team ?? detected.prefill.team;
     out.config = buildSection(repo, { source, itemTypes }, progress, team);
-    const planned = planWrites({ scope, projectPath, userPath, section: out.config, ...(trustedAuthors.length > 0 ? { trustedAuthors } : {}) });
+    const planned = planWrites({ projectPath, userPath, section: out.config, ...(trustedAuthors.length > 0 ? { trustedAuthors } : {}) });
     out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
     const afterUser = parsedAfter(planned, userPath);
     const afterProject = parsedAfter(planned, projectPath);
@@ -209,8 +218,9 @@ async function setup(o, deps, cwd, out) {
             throw new SetupError(error.code === 'invalid' ? 2 : 5, error.message);
         throw error;
     }
-    if (scope === 'project')
-        out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
+    if (scope === 'user')
+        out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
+    out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
     if (trustedAuthors.length > 0)
         out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
     if (!o.json) {
@@ -228,23 +238,26 @@ async function setup(o, deps, cwd, out) {
         const ok = o.yes || (planned.length === 0 && out.labels.missing.length === 0) || (await prompter.confirm(planned.length > 0 ? 'Write these changes?' : 'Create the missing labels?', false));
         if (!ok)
             throw new SetupError(2, 'cancelled: nothing written');
+        // The config first: applyWrites re-checks each file, so a refused write creates no label. Label creation is
+        // idempotent, so a failure after the write is fixed by running setup again.
+        out.written = planned.length > 0 ? applyWrites(planned) : null;
         if (out.labels.missing.length > 0) {
             const created = checkOrCreateHarborLabels(root, (cmd, args, opts) => io.exec(cmd, args, { cwd: opts.cwd }), out.labels.missing);
             if (!created.ok)
-                throw new SetupError(5, created.reason ?? 'cannot create labels');
+                throw new SetupError(5, `${out.written ? 'config written, but ' : ''}${created.reason ?? 'cannot create labels'}; run omg factory setup again to create the labels`);
             out.labels.created = [...out.labels.missing];
         }
-        out.written = planned.length > 0 ? applyWrites(planned) : null;
     }
     // `omg factory init` prerequisites (informational: the chain route table needs them, the engine does not).
     out.prerequisites = validateFactoryPrerequisites(root);
     // Step 7: preview the source's first items through the engine's guard.
     try {
         const forge = deps.createForge(factoryGuardExec(deps.exec), root, resolved);
-        out.preview = previewIntake(forge, source, deps.previewCheck);
+        // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
+        out.preview = previewIntake(forge, source, deps.previewCheck).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));
     }
     catch (error) {
-        out.previewError = error instanceof Error ? error.message : String(error);
+        out.previewError = plainText(redactTokens(error instanceof Error ? error.message : String(error)));
     }
     out.notes.push(`intake ${formatIntakeSpec(source)}`);
 }
@@ -292,7 +305,7 @@ export function factorySetupCommand(deps = defaultFactorySetupDeps) {
         .option('--progress <mode>', 'default | none | <file.json>')
         .option('--board <team/board>', 'Azure DevOps board the progress columns live on (default: the board-column intake board)')
         .option('--trusted-author <list>', 'Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated')
-        .option('--scope <scope>', 'project (.copilot/omg.jsonc) | user (user config)', 'project')
+        .option('--scope <scope>', 'project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors', 'project')
         .option('--dry-run', 'Show the diff and the preview; write nothing')
         .option('--yes', 'Non-interactive: take every answer from flags and confirm the write')
         .option('--json', 'JSON output (non-interactive)')

@@ -1,12 +1,18 @@
 /**
  * Step 6 of `omg factory setup` (factory forges design §4, §8.6): edits to
- * the `factory` subtree of `.copilot/omg.jsonc` (project scope) or the user
- * config at its default location (user scope), made with jsonc-parser
- * `modify` + `applyEdits` so comments and every other key stay as they are.
- * `forge.azureDevOps.trustedAuthors` always goes to the user config, the only
- * layer resolveForgeConfig reads it from. assertFactoryOnly re-parses each
- * result and refuses a write that changed anything outside `factory`, so
- * `ship.*` safety keys can never move.
+ * the `factory` subtree of `.copilot/omg.jsonc` and the user config at its
+ * default location, made with jsonc-parser `modify` + `applyEdits` so
+ * comments and every other key stay as they are.
+ *
+ * The forge identity, intake and progress are per repository, so they always
+ * go to the project file, whatever `--scope` says: the user config is one
+ * file for every repository and its `forge.*` has the highest trust, so a
+ * repository's identity there would break (forge-mismatch) or redirect every
+ * other repository. The user config gets only the user-only keys, today
+ * `forge.azureDevOps.trustedAuthors` (the only layer resolveForgeConfig
+ * reads it from). assertFactoryOnly re-parses each result and refuses a
+ * write that changed anything but the keys its scope owns, so `ship.*`
+ * safety keys can never move.
  */
 import { type JSONPath } from 'jsonc-parser';
 import type { ForgeIntakeConfig, ForgeProgressConfig, ForgeRepo, IntakeSource } from '../../forge/types.js';
@@ -31,10 +37,10 @@ export declare function buildSection(repo: ForgeRepo, intake: Pick<ForgeIntakeCo
  */
 export declare function sectionEdits(section: SetupSection): Array<[JSONPath, unknown]>;
 export declare function trustedAuthorsEdit(authors: readonly string[]): [JSONPath, unknown];
-/** Apply edits to JSONC text, keeping comments and formatting. */
+/** Apply edits to JSONC text, keeping comments, formatting and a leading BOM. */
 export declare function applyFactoryEdits(text: string, edits: ReadonlyArray<[JSONPath, unknown]>, path?: string): string;
-/** Throws unless `before` and `after` differ only under the top-level `factory` key. */
-export declare function assertFactoryOnly(before: string, after: string, path?: string): void;
+/** Throws unless `before` and `after` differ only in the subtrees `scope` owns. */
+export declare function assertFactoryOnly(before: string, after: string, scope: SetupScope, path?: string): void;
 /** A line diff (`-`/`+`, unchanged lines with two spaces), small files only. */
 export declare function lineDiff(before: string, after: string): string;
 export interface PlannedWrite {
@@ -45,11 +51,10 @@ export interface PlannedWrite {
     diff: string;
 }
 export interface WritePlanInput {
-    scope: SetupScope;
     projectPath: string;
     userPath: string;
     section: SetupSection;
-    /** ADO only; always written to the user config. */
+    /** ADO only; the one thing written to the user config. */
     trustedAuthors?: readonly string[];
 }
 /** The writes for one setup, with diffs; nothing is written here. Unchanged files are left out. */

@@ -9,6 +9,10 @@
  * 5 incompatible (unsupported forge, mismatch, unknown query, state
  * validation failed). `--dry-run` writes nothing and creates no label.
  *
+ * `--scope user` writes no forge identity, intake or progress to the user
+ * config (one file for every repository): those always go to the project
+ * file, and the user config gets only trustedAuthors (see write.ts).
+ *
  * Reuse (§A.7): label creation calls `checkOrCreateHarborLabels` (intake.ts)
  * with the factory labels, and the `omg factory init` prerequisites come from
  * `validateFactoryPrerequisites` (factory.ts); both are called, not copied.
@@ -82,6 +86,8 @@ export interface FactorySetupOutcome {
     notes: string[];
     error?: string;
 }
+/** Untrusted text without terminal sequences and control or format characters. */
+export declare const plainText: (s: unknown) => string;
 /** The wizard; never throws (a SetupError becomes its exit code). */
 export declare function runFactorySetup(o: FactorySetupOptions, deps?: FactorySetupDeps, cwd?: string): Promise<FactorySetupOutcome>;
 export declare function factorySetupCommand(deps?: FactorySetupDeps): Command;
