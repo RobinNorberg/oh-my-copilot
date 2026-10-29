@@ -106,6 +106,21 @@ describe('sdk permission policy', () => {
             expect(decideSdkPermission({ kind: 'read', path: p }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
         }
     });
+    it('refuses a .. segment in any path field, not only the first', () => {
+        const clean = join(worktree, 'x.txt');
+        expect(decideSdkPermission({ kind: 'write', resolvedPath: clean, path: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+        expect(decideSdkPermission({ kind: 'read', resolvedPath: clean, fileName: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+    });
+    it('checks containment on every path field and refuses fields that disagree', () => {
+        const outside = join(tmpdir(), 'sdk-team-elsewhere', 'x.txt');
+        const clean = join(worktree, 'x.txt');
+        for (const kind of ['read', 'write']) {
+            expect(decideSdkPermission({ kind, resolvedPath: clean, path: outside }, ctx())).toMatchObject({ approve: false });
+            expect(decideSdkPermission({ kind, resolvedPath: clean, fileName: outside }, ctx())).toMatchObject({ approve: false });
+            expect(decideSdkPermission({ kind, resolvedPath: clean, path: join(worktree, 'y.txt') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/different targets/) });
+            expect(decideSdkPermission({ kind, resolvedPath: clean, path: 'x.txt' }, ctx()).approve).toBe(true);
+        }
+    });
     // A hard link needs no privilege on Windows (NTFS); realpath cannot see it.
     it('refuses a write to a hard-linked or non-regular existing target', () => {
         const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));

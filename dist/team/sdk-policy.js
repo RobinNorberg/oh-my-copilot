@@ -150,9 +150,31 @@ function rawRequestPath(req) {
     }
     return null;
 }
+/** True when any string path field of the request has a `..` segment, not only the first one. */
+function anyDotDotPath(req) {
+    return ['resolvedPath', 'path', 'fileName'].some((key) => {
+        const value = req[key];
+        return typeof value === 'string' && hasDotDotSegment(value);
+    });
+}
 function requestPath(req, cwd) {
     const value = rawRequestPath(req);
     return value === null ? null : isAbsolute(value) ? value : resolve(cwd, value);
+}
+/** Every string path field present, resolved: the runtime may act on any of them. */
+function requestPaths(req, cwd) {
+    const out = [];
+    for (const key of ['resolvedPath', 'path', 'fileName']) {
+        const value = req[key];
+        if (typeof value === 'string' && value.trim())
+            out.push(isAbsolute(value) ? value : resolve(cwd, value));
+    }
+    return out;
+}
+/** Why the fields of one request disagree on the target, or null. */
+function pathFieldsDisagree(paths, platform) {
+    const first = canon(paths[0], platform);
+    return paths.some((q) => canon(q, platform) !== first) ? 'path fields name different targets' : null;
 }
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export function shellDenyPrefixes(denyTools = []) {
@@ -187,11 +209,14 @@ export function decideSdkPermission(req, ctx) {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: true, reason: 'read without a path' };
-            if (hasDotDotSegment(rawRequestPath(req)))
+            if (anyDotDotPath(req))
                 return { approve: false, reason: `read path with a .. segment: ${path}` };
             const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
             try {
-                return roots.some((root) => isUnderRoot(path, root, platform))
+                const disagree = pathFieldsDisagree(requestPaths(req, ctx.cwd), platform);
+                if (disagree)
+                    return { approve: false, reason: `read ${disagree}: ${path}` };
+                return requestPaths(req, ctx.cwd).every((q) => roots.some((root) => isUnderRoot(q, root, platform)))
                     ? { approve: true, reason: 'read inside worker roots' }
                     : { approve: false, reason: `read outside worker roots: ${path}` };
             }
@@ -203,16 +228,22 @@ export function decideSdkPermission(req, ctx) {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: false, reason: 'write without a path' };
-            if (hasDotDotSegment(rawRequestPath(req)))
+            if (anyDotDotPath(req))
                 return { approve: false, reason: `write path with a .. segment: ${path}` };
             try {
-                if (!isUnderRoot(path, ctx.cwd, platform) && !isUnderRoot(path, ctx.stateRoot, platform)) {
-                    return { approve: false, reason: `write outside worktree and team state: ${path}` };
+                const paths = requestPaths(req, ctx.cwd);
+                const disagree = pathFieldsDisagree(paths, platform);
+                if (disagree)
+                    return { approve: false, reason: `write ${disagree}: ${path}` };
+                for (const q of paths) {
+                    if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
+                        return { approve: false, reason: `write outside worktree and team state: ${q}` };
+                    }
+                    const target = existingWriteTargetDenial(q);
+                    if (target)
+                        return { approve: false, reason: `${target}: ${q}` };
                 }
-                const target = existingWriteTargetDenial(path);
-                return target
-                    ? { approve: false, reason: `${target}: ${path}` }
-                    : { approve: true, reason: 'write inside worktree or team state' };
+                return { approve: true, reason: 'write inside worktree or team state' };
             }
             catch (err) {
                 return { approve: false, reason: `write path not resolvable: ${path}: ${err.message}` };
