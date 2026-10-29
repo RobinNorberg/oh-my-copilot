@@ -21,6 +21,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { link, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 
 import { atomicWriteJson } from '../lib/atomic-write.js';
@@ -34,9 +35,10 @@ import {
   type SdkClientLike,
   type SdkSessionLike,
 } from '../smoke/copilot-sdk-driver.js';
+import { hostGitHardeningArgs } from './git-worktree.js';
 import { loadWorkerLaunchAttempt, type WorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPermissionRequest, type SdkPolicyContext } from './sdk-policy.js';
-import { sdkWorkerFiles, type SdkDoorbellEntry, type SdkHostSpec, type SdkSessionFile } from './sdk-transport.js';
+import { HOST_CREDENTIAL_ENV, sdkWorkerFiles, type SdkDoorbellEntry, type SdkHostSpec, type SdkSessionFile } from './sdk-transport.js';
 // Type-only: the builder is injected (SdkHostDeps.loadInProcessTools).
 import type { buildSdkInProcessTools, SdkInProcessToolSet } from './sdk-inprocess-tools.js';
 
@@ -48,6 +50,7 @@ const SHUTDOWN_GRACE_MS = 2_000;
 const STOP_TIMEOUT_MS = 15_000;
 const TOOL_CLEANUP_TIMEOUT_MS = 5_000;
 const PERMISSION_LOG_MAX = 200;
+const CREDENTIAL_READ_TIMEOUT_MS = 5_000;
 const STOP_SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
 
 export interface SdkHostDeps {
@@ -61,6 +64,8 @@ export interface SdkHostDeps {
   pollMs: number;
   /** Source env for the runtime (the host's own env). */
   env: NodeJS.ProcessEnv;
+  /** The Copilot credentials the leader handed over on stdin (readHostCredentials); they win over `env`. */
+  credentials?: Record<string, string>;
   log?: (line: string) => void;
   /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
   writeSessionJson?: (path: string, value: unknown) => Promise<void>;
@@ -190,30 +195,99 @@ export function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJ
 const WORKER_CREDENTIAL_RESET = ['GH_CONFIG_DIR', 'AZURE_CONFIG_DIR', 'GIT_TERMINAL_PROMPT', 'GCM_INTERACTIVE'] as const;
 
 /**
+ * Git config every worker command gets through GIT_CONFIG_COUNT/KEY_n/VALUE_n.
+ * An empty value clears a multi-valued list: `credential.helper` (the system
+ * `manager` included) and `http.extraHeader` (a CI checkout's
+ * `AUTHORIZATION: basic ...`). A URL-scoped `http.<url>.extraheader` wins over
+ * the plain key, so each one the repository config holds is reset by name
+ * (probed with git 2.51: the plain reset leaves it in place).
+ */
+export const WORKER_GIT_CONFIG: ReadonlyArray<readonly [string, string]> = [
+  ['credential.helper', ''],
+  ['http.extraHeader', ''],
+  // No ssh-agent (it needs no env on Windows), no prompt for a key passphrase.
+  ['core.sshCommand', 'ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o BatchMode=yes'],
+];
+
+/**
+ * The `http.<url>.extraheader` keys git sees in `cwd` (every config level).
+ * Listing the config runs nothing; any failure lists none.
+ */
+export function urlScopedExtraHeaderKeys(cwd: string, env: NodeJS.ProcessEnv): string[] {
+  try {
+    const out = execFileSync('git', [...hostGitHardeningArgs(), 'config', '--null', '--name-only', '--get-regexp', String.raw`^http\..+\.extraheader$`], {
+      cwd, env, encoding: 'utf8', stdio: 'pipe', windowsHide: true, timeout: 10_000,
+    });
+    return [...new Set(out.split('\0').filter(Boolean))];
+  } catch {
+    // Exit 1: no key matches.
+    return [];
+  }
+}
+
+/**
  * A credential-free worker env, in place. Workers run arbitrary toolchains
  * unsandboxed, so this is a denylist (isCredentialEnvKey): every token,
  * secret-named var, ssh-agent and askpass hook, `GIT_CONFIG*` and `GCM_*` goes,
  * COPILOT_GITHUB_TOKEN included (the session gets it over RPC instead). `gh`
- * and `az` see an empty config dir; git never prompts and runs no credential
- * helper (`credential.helper` reset through GIT_CONFIG_COUNT, so identity,
- * safe.directory and core.longpaths from the user's config still apply).
- * PATH, the home dirs, toolchain, proxy and CA vars stay.
+ * and `az` see an empty config dir; git never prompts, runs no credential
+ * helper, sends no configured extra header and uses no ssh-agent
+ * ({@link WORKER_GIT_CONFIG}, so identity, safe.directory and core.longpaths
+ * from the user's config still apply). PATH, the home dirs, toolchain, proxy
+ * and CA vars stay. This is hygiene against accidental use, not a boundary.
  */
-export function scrubWorkerCredentials(env: NodeJS.ProcessEnv, emptyDir: string): void {
+export function scrubWorkerCredentials(env: NodeJS.ProcessEnv, emptyDir: string, cwd: string): void {
   const reset = new Set<string>(WORKER_CREDENTIAL_RESET);
   for (const key of Object.keys(env)) {
     if (isCredentialEnvKey(key) || reset.has(key.toUpperCase())) delete env[key];
   }
   mkdirSync(emptyDir, { recursive: true });
+  const gitConfig = [...WORKER_GIT_CONFIG, ...urlScopedExtraHeaderKeys(cwd, env).map((key) => [key, ''] as const)];
   Object.assign(env, {
     GH_CONFIG_DIR: emptyDir,
     AZURE_CONFIG_DIR: emptyDir,
     GIT_TERMINAL_PROMPT: '0',
     GCM_INTERACTIVE: 'never',
-    // An empty value clears the helper list (system `manager` included).
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'credential.helper',
-    GIT_CONFIG_VALUE_0: '',
+    GIT_CONFIG_COUNT: String(gitConfig.length),
+  });
+  gitConfig.forEach(([key, value], i) => {
+    env[`GIT_CONFIG_KEY_${i}`] = key;
+    env[`GIT_CONFIG_VALUE_${i}`] = value;
+  });
+}
+
+/**
+ * The credentials the leader wrote to the host's stdin (sdk-transport.ts
+ * hostCredentialHandoff): one JSON object of {@link HOST_CREDENTIAL_ENV}
+ * strings, then EOF. Anything else (a TTY, no data, bad JSON, a timeout)
+ * reads as none, and a host without a login then fails its start.
+ */
+export function readHostCredentials(stream: NodeJS.ReadableStream & { isTTY?: boolean; destroy?: () => void }, timeoutMs: number): Promise<Record<string, string>> {
+  if (stream.isTTY) return Promise.resolve({});
+  return new Promise((resolve) => {
+    let data = '';
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      stream.removeListener('data', onData);
+      stream.destroy?.();
+      const out: Record<string, string> = {};
+      try {
+        const parsed = JSON.parse(data) as Record<string, unknown>;
+        for (const name of HOST_CREDENTIAL_ENV) if (typeof parsed?.[name] === 'string' && parsed[name]) out[name] = parsed[name] as string;
+      } catch { /* none */ }
+      resolve(out);
+    };
+    const onData = (chunk: Buffer | string) => {
+      data += chunk.toString();
+      if (data.length > 64 * 1024) { data = ''; finish(); }
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    stream.on('data', onData);
+    stream.once('end', finish);
+    stream.once('error', finish);
   });
 }
 
@@ -465,7 +539,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     writeFileSync(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}\n`);
   }
   const hasLogin = ident.loggedInUsers !== undefined;
-  const gitHubToken = workerGitHubToken(deps.env, hasLogin);
+  const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin);
   if (!hasLogin && !gitHubToken) {
     return fail('start_failed', 'an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login');
   }
@@ -477,7 +551,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   // or the explicit --model; the scrub runs after the merge, so worker_env cannot bring a credential back.
   env.COPILOT_HOME = files.home;
   delete env.COPILOT_MODEL;
-  scrubWorkerCredentials(env, join(files.home, 'no-credentials'));
+  scrubWorkerCredentials(env, join(files.home, 'no-credentials'), spec.worker_cwd);
   prependPath(env, files.bin, deps.platform);
 
   const policy: SdkPolicyContext = {
@@ -790,6 +864,8 @@ export async function runSdkHostMain(specPath: string, loadInProcessTools?: SdkH
   const log = (line: string) => { process.stdout.write(`${new Date().toISOString()} [sdk-host ${process.pid}] ${line}\n`); };
   let code = 1;
   try {
+    // First, before anything else reads stdin: the leader's credential handoff.
+    const credentials = await readHostCredentials(process.stdin, CREDENTIAL_READ_TIMEOUT_MS);
     const spec = JSON.parse(readFileSync(specPath, 'utf8')) as SdkHostSpec;
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error('invalid sdk host spec');
     log(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
@@ -802,6 +878,7 @@ export async function runSdkHostMain(specPath: string, loadInProcessTools?: SdkH
       platform: process.platform,
       pollMs: 250,
       env: process.env,
+      credentials,
       log,
       ...(loadInProcessTools ? { loadInProcessTools, processEvents: process } : {}),
     });

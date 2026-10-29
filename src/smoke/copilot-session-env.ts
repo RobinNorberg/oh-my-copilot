@@ -77,8 +77,13 @@ export const CREDENTIAL_ENV = [
   'ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN',
   'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
 ] as const;
-/** Names that look like a secret (COPILOT_GITHUB_TOKEN included: callers that keep it skip it themselves). */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
+/**
+ * Names that look like a secret (COPILOT_GITHUB_TOKEN included: callers that
+ * keep it skip it themselves), or a URL / connection string that carries one
+ * (`npm_config__auth`, a webhook, a DSN, a database URL). `AUTH` only as a
+ * whole segment, so GIT_AUTHOR_NAME stays; proxy vars stay.
+ */
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG/i;
 
 /**
  * Whether a credential-free env drops `key`: a known credential

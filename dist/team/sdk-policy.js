@@ -58,6 +58,12 @@ export const SDK_SHELL_DENY_PATTERNS = [
     // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
     // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
     { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: 'git credential helper from a worker' },
+    // A CI checkout's `http.<url>.extraheader` holds the job token; the worker env clears it, this stops reading it.
+    ...gitSubcommandDeny(String.raw `config\b[^;&|\n]*?extraheader`, 'git extra header from a worker'),
+    // The plain credential reads: `gh auth token`, `gh auth status --show-token`, `az account get-access-token`.
+    // No opening quote before the name: `rg "gh auth token" docs` stays allowed (a quoted lone `"gh"` is unquoted first).
+    { re: /(?:^|[\s;&|(/\\])gh(?:\.exe)?["']?\s+auth\s+(?:token\b|status\b[^;&|\n]*\s(?:-t|--show-token)\b)/i, reason: 'credential read from a worker' },
+    { re: /(?:^|[\s;&|(/\\])az(?:\.cmd|\.exe)?["']?\s+account\s+get-access-token\b/i, reason: 'credential read from a worker' },
     // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
     { re: /\bGIT_CONFIG/i, reason: 'git config through the environment from a worker' },
 ];

@@ -6,18 +6,30 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Security
 
-- **SDK team workers start credential-free.** The worker runtime and its
-  shells no longer inherit the leader's tokens and cloud credentials
-  (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, AWS keys, Azure, npm, `ANTHROPIC_API_KEY`,
-  ssh-agent, askpass and every other secret-named variable, `GIT_CONFIG*`,
-  `GCM_*`), also when they come through the worker env. `gh` and `az` see an
-  empty config dir, git runs no credential helper and never prompts, and the
-  Copilot credential goes over the session RPC. A worker with neither a stored
-  Copilot login nor a token now fails to start.
+- **SDK team workers start credential-free.** This is hygiene against
+  accidental use, not a sandbox.
+  - The detached host, the worker runtime and its shells no longer inherit the
+    leader's tokens and cloud credentials. Gone are `COPILOT_GITHUB_TOKEN`,
+    `GH_TOKEN`, AWS keys, Azure, npm, `ANTHROPIC_API_KEY`, ssh-agent, askpass,
+    webhook and database URLs, every other secret-named variable, `GIT_CONFIG*`
+    and `GCM_*`. This holds also when they come through the worker env.
+  - `gh` and `az` see an empty config dir.
+  - git runs no credential helper and never prompts. It sends no configured
+    extra header, which clears a CI checkout's URL-scoped job token, and it
+    uses no ssh-agent.
+  - The leader hands the Copilot token to the host on stdin, and the host
+    passes it to the session over RPC.
+  - A worker with neither a stored Copilot login nor a token now fails to start.
+- **Wider secret-name match for credential-free factory lanes too.** Names with
+  `WEBHOOK`, a whole-segment `AUTH`, `_DSN`, `_PWD`, connection strings,
+  `DATABASE_URL`, `REDIS_URL`, `MONGODB_URI` and `DOCKER_AUTH_CONFIG` are now
+  dropped.
 - **SDK workers keep their own Copilot home.** The leader's `COPILOT_HOME` and
   `COPILOT_MODEL` no longer override the per-worker home and model.
-- **`git credential fill` denied in team workers.** The shell policy also
-  refuses `git credential fill`, `approve` and `reject`.
+- **More credential reads denied in team workers.** The shell policy also
+  refuses `git credential fill`/`approve`/`reject`, `git config … extraheader`,
+  `gh auth token`, `gh auth status --show-token` and
+  `az account get-access-token`.
 
 # oh-my-copilot v5.18.0
 

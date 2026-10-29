@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from 'child_process';
+import { execFileSync, spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { PassThrough } from 'stream';
 import { randomUUID } from 'crypto';
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -15,15 +16,17 @@ import type {
   SdkSessionLike,
 } from '../../smoke/copilot-sdk-driver.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } from '../sdk-policy.js';
-import { prependPath, readDoorbell, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
+import { prependPath, readDoorbell, readHostCredentials, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import {
+  hostSpawnEnv,
   isSdkTarget,
   launchSdkHost,
   readSdkSession,
   ringDoorbell,
   sdkPaneId,
   sdkWorkerFiles,
+  spawnDetachedHost,
   stopSdkHost,
   type SdkHostSpec,
   type SdkLaunchInput,
@@ -240,6 +243,23 @@ describe('sdk permission policy', () => {
     ['$g="git"; & $g credential fill', false],
     ["git cred''ential fill", false],
     ['git credential', true],
+    // The plain credential reads and the CI checkout's extra header.
+    ['gh auth token', false],
+    ['"gh" auth token --hostname github.com', false],
+    ['& "C:\\Program Files\\GitHub CLI\\gh.exe" auth token', false],
+    ['gh.exe auth status -t', false],
+    ['gh auth status --hostname github.com --show-token', false],
+    ['npm test && gh auth token', false],
+    ['az account get-access-token', false],
+    ['az.cmd account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798', false],
+    ['"az" account get-access-token', false],
+    ['git config --get http.https://github.com/.extraheader', false],
+    ['git config --get-regexp extraheader', false],
+    ['git config --list --show-origin | findstr extraheader', true],
+    ['gh auth status', true],
+    ['gh pr view 12', true],
+    ['az account show', true],
+    ['rg "gh auth token" docs', true],
     ['git commit -m "credential fill docs"', true],
     ['rg git-credential-manager src', true],
     ['cat docs/git-credential-notes.md', true],
@@ -781,7 +801,13 @@ describe('sdk host', () => {
       for (const key of [...Object.keys(secrets), 'COPILOT_GITHUB_TOKEN']) expect(env[key], key).toBeUndefined();
       expect(env).toMatchObject(kept);
       const gitConfig = Object.fromEntries(Object.entries(env).filter(([k]) => k.toUpperCase().startsWith('GIT_CONFIG')));
-      expect(gitConfig).toEqual({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '' });
+      // The temp worktree is no repository: no URL-scoped extra header to reset.
+      expect(gitConfig).toEqual({
+        GIT_CONFIG_COUNT: '3',
+        GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
+        GIT_CONFIG_KEY_1: 'http.extraHeader', GIT_CONFIG_VALUE_1: '',
+        GIT_CONFIG_KEY_2: 'core.sshCommand', GIT_CONFIG_VALUE_2: 'ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o BatchMode=yes',
+      });
       const emptyDir = join(sdkWorkerFiles(stateRoot, WORKER).home, 'no-credentials');
       expect(env).toMatchObject({ GH_CONFIG_DIR: emptyDir, AZURE_CONFIG_DIR: emptyDir, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
       expect(existsSync(emptyDir)).toBe(true);
@@ -814,6 +840,42 @@ describe('sdk host', () => {
       writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'robin' }], lastLoggedInUser: { login: 'robin' } }));
       const { cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig });
       expect(cfg.gitHubToken).toBeUndefined();
+    });
+
+    // A CI checkout (actions/checkout persist-credentials, Azure Pipelines) writes the job token as a URL-scoped
+    // extra header into .git/config; the plain `http.extraHeader=` reset does not clear a URL-scoped one.
+    it('resets every URL-scoped http extra header the worktree config holds, so git sends none', async () => {
+      const git = (args: string[], env: NodeJS.ProcessEnv = process.env) => execFileSync('git', args, { cwd: worktree, env, encoding: 'utf8' });
+      git(['init', '-q']);
+      git(['config', 'http.https://github.com/.extraheader', 'AUTHORIZATION: basic c2VjcmV0']);
+      git(['config', 'http.https://dev.azure.com/org/.extraHeader', 'AUTHORIZATION: bearer secret']);
+      git(['config', 'http.extraheader', 'AUTHORIZATION: basic plain']);
+      const { env } = await runEnv({ [pathKey]: process.env[pathKey] ?? process.env.PATH, COPILOT_GITHUB_TOKEN: TEST_TOKEN, SystemRoot: process.env.SystemRoot });
+      const keys = Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]]);
+      expect(keys).toEqual(expect.arrayContaining([
+        ['http.https://github.com/.extraheader', ''],
+        ['http.https://dev.azure.com/org/.extraheader', ''],
+        ['http.extraHeader', ''],
+      ]));
+      expect(keys).toHaveLength(5);
+      const runEnvGit = { ...process.env, ...env };
+      for (const url of ['https://github.com/o/r', 'https://dev.azure.com/org/p/_git/r', 'https://example.com/x']) {
+        let headers = '';
+        try { headers = git(['config', '--get-urlmatch', 'http.extraheader', url], runEnvGit).trim(); } catch { /* exit 1: none */ }
+        expect(headers, url).toBe('');
+      }
+    });
+
+    it('takes the Copilot credential from the stdin handoff when the host env has none', async () => {
+      const attempt = await newAttempt();
+      const { loaded, rec } = fakeSdk();
+      const host = await hostWithLeader(attempt, deps(loaded, { env: { [pathKey]: '/usr/bin' }, credentials: { COPILOT_GITHUB_TOKEN: 'from-stdin' } }), async () => {
+        await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+        ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+      });
+      expect(await host).toBe('stopped');
+      expect(rec.sessions[0]?.gitHubToken).toBe('from-stdin');
+      expect(Object.values(rec.connection!.env!)).not.toContain('from-stdin');
     });
 
     it('no stored login and no token fails the start before the runtime is spawned', async () => {
@@ -1112,3 +1174,55 @@ describe('stopSdkHost', () => {
   }, 20_000);
 });
 
+
+describe('host credential handoff', () => {
+  it('spawns the detached host with a credential-free env and hands the Copilot tokens over stdin', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sdk-host-handoff-'));
+    try {
+      // Stands in for cli.cjs: records its env and stdin at the --spec path.
+      const fakeCli = join(dir, 'fake-cli.cjs');
+      writeFileSync(fakeCli, [
+        "const fs = require('fs');",
+        "let input = '';",
+        "process.stdin.on('data', (c) => { input += c; });",
+        "process.stdin.on('end', () => { fs.writeFileSync(process.argv[5], JSON.stringify({ env: process.env, input })); });",
+      ].join('\n'));
+      const out = join(dir, 'out.json');
+      const leaderEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        COPILOT_GITHUB_TOKEN: 'cgt', GH_TOKEN: 'gh', AWS_SECRET_ACCESS_KEY: 'aws', GIT_CONFIG_COUNT: '1',
+        OMC_STATE_DIR: omcStateDir, OMG_TEST_FLAG: '1',
+      };
+      const pid = spawnDetachedHost(fakeCli, out, join(dir, 'host.log'), dir, leaderEnv);
+      expect(pid).toBeGreaterThan(0);
+      await until(() => existsSync(out), 15_000);
+      const seen = JSON.parse(readFileSync(out, 'utf8')) as { env: Record<string, string>; input: string };
+      const upperKeys = Object.keys(seen.env).map((k) => k.toUpperCase());
+      for (const key of ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'GIT_CONFIG_COUNT']) expect(upperKeys, key).not.toContain(key);
+      expect(seen.env.OMC_STATE_DIR).toBe(omcStateDir);
+      expect(seen.env.OMG_TEST_FLAG).toBe('1');
+      expect(JSON.parse(seen.input)).toEqual({ COPILOT_GITHUB_TOKEN: 'cgt', GH_TOKEN: 'gh' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it('hostSpawnEnv drops credentials and keeps the rest', () => {
+    expect(hostSpawnEnv({ PATH: '/bin', OMC_X: '1', github_token: 't', NPM_TOKEN: 'n', JAVA_HOME: '/jdk' })).toEqual({ PATH: '/bin', OMC_X: '1', JAVA_HOME: '/jdk' });
+  });
+
+  it('reads the handoff once: only the known token names, nothing on bad input, a TTY or a timeout', async () => {
+    const feed = async (text: string | null, timeoutMs = 1_000) => {
+      const stream = new PassThrough();
+      const read = readHostCredentials(stream, timeoutMs);
+      if (text !== null) stream.end(text);
+      return read;
+    };
+    expect(await feed('{"COPILOT_GITHUB_TOKEN":"c","GITHUB_TOKEN":"g","AWS_SECRET_ACCESS_KEY":"x","GH_TOKEN":7}\n')).toEqual({ COPILOT_GITHUB_TOKEN: 'c', GITHUB_TOKEN: 'g' });
+    expect(await feed('')).toEqual({});
+    expect(await feed('not json')).toEqual({});
+    expect(await feed(null, 50)).toEqual({});
+    const tty = Object.assign(new PassThrough(), { isTTY: true });
+    expect(await readHostCredentials(tty, 1_000)).toEqual({});
+  });
+});

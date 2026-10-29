@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { killProcessTree, isProcessAlive, isProcessIdentityLive } from '../platform/process-utils.js';
+import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, } from './worker-launch-ack.js';
 export const SDK_TARGET_PREFIX = 'sdk:';
@@ -65,7 +66,28 @@ export function readSdkSession(stateRoot, workerName) {
         return null;
     }
 }
-function spawnDetachedHost(cliPath, specPath, logPath, cwd) {
+/** The Copilot credentials the host gets on stdin (sdk-host.ts readHostCredentials), never in its env. */
+export const HOST_CREDENTIAL_ENV = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
+/**
+ * The detached host's env: the leader's minus every credential
+ * (isCredentialEnvKey). A worker can read its host's env (`ps eww`,
+ * /proc/<pid>/environ), so the Copilot token goes over stdin instead
+ * ({@link hostCredentialHandoff}).
+ */
+export function hostSpawnEnv(env) {
+    return Object.fromEntries(Object.entries(env).filter(([key]) => !isCredentialEnvKey(key)));
+}
+/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+export function hostCredentialHandoff(env) {
+    const out = {};
+    for (const [key, value] of Object.entries(env)) {
+        const upper = key.toUpperCase();
+        if (HOST_CREDENTIAL_ENV.includes(upper) && value && !(upper in out))
+            out[upper] = value;
+    }
+    return `${JSON.stringify(out)}\n`;
+}
+export function spawnDetachedHost(cliPath, specPath, logPath, cwd, env = process.env) {
     mkdirSync(dirname(logPath), { recursive: true });
     const fd = openSync(logPath, 'a');
     try {
@@ -73,9 +95,12 @@ function spawnDetachedHost(cliPath, specPath, logPath, cwd) {
             cwd,
             detached: true,
             windowsHide: true,
-            stdio: ['ignore', fd, fd],
-            env: process.env,
+            stdio: ['pipe', fd, fd],
+            env: hostSpawnEnv(env),
         });
+        // A host that died before reading must not crash the leader with EPIPE; it fails its own start.
+        child.stdin?.on('error', () => undefined);
+        child.stdin?.end(hostCredentialHandoff(env));
         child.unref();
         return child.pid;
     }

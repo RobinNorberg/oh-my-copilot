@@ -157,6 +157,18 @@ export type SdkLaunchResult = {
     reason: string;
     hostPid?: number;
 };
+/** The Copilot credentials the host gets on stdin (sdk-host.ts readHostCredentials), never in its env. */
+export declare const HOST_CREDENTIAL_ENV: readonly ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+/**
+ * The detached host's env: the leader's minus every credential
+ * (isCredentialEnvKey). A worker can read its host's env (`ps eww`,
+ * /proc/<pid>/environ), so the Copilot token goes over stdin instead
+ * ({@link hostCredentialHandoff}).
+ */
+export declare function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
+/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+export declare function hostCredentialHandoff(env: NodeJS.ProcessEnv): string;
+export declare function spawnDetachedHost(cliPath: string, specPath: string, logPath: string, cwd: string, env?: NodeJS.ProcessEnv): number | undefined;
 /**
  * Create the launch attempt, write the host spec and spawn the detached host,
  * then run the same ack -> accepted -> provider_started handshake a pane
