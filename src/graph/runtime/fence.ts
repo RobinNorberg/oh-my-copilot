@@ -173,8 +173,11 @@ export class FileOwnershipFence implements OwnershipFence {
       }
       // A holder killed mid owner.epoch publication leaves a rollback link
       // that gives the sidecar nlink 2, which the read below refuses forever.
-      // The link only serves its writer's in-process rollback, so dropping it
-      // is safe even before we own the run (temporaries wait until we do).
+      // Dropping it is safe before we own the run: the epoch write passes no
+      // hooks, so a live holder rolls back only when its published identity
+      // is known and still matches; with the backup gone that rename fails
+      // ENOENT and only warns, and the sidecar keeps the higher epoch, so no
+      // epoch is ever reissued. Temporaries wait until we hold the lock.
       removeCrashedAtomicWriteResidue(operations, epochFilePath, {
         temporaries: false,
       });
@@ -196,8 +199,11 @@ export class FileOwnershipFence implements OwnershipFence {
           removeCrashedAtomicWriteResidue(operations, epochFilePath, {
             temporaries: true,
           });
-        } catch {
+        } catch (error) {
           // Leave the residue for the next owner.
+          if (process.env.OMC_DEBUG && (error as NodeJS.ErrnoException).code !== "ENOENT") {
+            console.error("[graph] owner.epoch residue cleanup failed:", error);
+          }
         }
         this.fd = fd;
         this.heldEpoch = candidate;

@@ -6,6 +6,7 @@
  */
 import {
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync, realpathSync,
   readdirSync,
@@ -210,6 +211,22 @@ describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"
       store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
     ).resolves.toBeUndefined();
     expect(statSync(join(runDir, planted)).isDirectory()).toBe(true);
+  });
+
+  it("leaves a symlink named like write residue alone and still saves", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const outside = join(runsRoot, "outside.json");
+    writeFileSync(outside, "keep");
+    const planted = "projection.json.rollback.00000000-0000-4000-8000-000000000000";
+    symlinkSync(outside, join(runDir, planted));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
+    ).resolves.toBeUndefined();
+    expect(lstatSync(join(runDir, planted)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(outside, "utf8")).toBe("keep");
   });
 
   it("still refuses a projection hardlinked from outside the run directory", async () => {
