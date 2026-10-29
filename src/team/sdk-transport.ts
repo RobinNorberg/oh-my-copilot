@@ -31,6 +31,8 @@ import {
 } from './worker-launch-ack.js';
 
 export const SDK_TARGET_PREFIX = 'sdk:';
+const SDK_LAUNCH_POLL_MS = 25;
+const SDK_LAUNCH_FAILURE_GRACE_MS = 500;
 
 /** True for the sdk team target (`sdk:<team>`) and sdk worker ids (`sdk:<worker>`). */
 export function isSdkTarget(value: string | null | undefined): boolean {
@@ -276,16 +278,27 @@ export async function launchSdkHost(input: SdkLaunchInput): Promise<SdkLaunchRes
   for (;;) {
     const sliceMs = Math.max(1, Math.min(1_000, startDeadline - Date.now()));
     if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs })) break;
-    // A host that failed before provider_started says so in its session file: stop waiting.
-    if (failedBeforeProviderStarted(attempt, input.stateRoot)) {
+    // A host that failed says so in its session file; a terminal record or a
+    // retired decision means the attempt already ended. Either way it never hands off.
+    const exited = existsSync(`${attempt.startedPath}.terminal`) || existsSync(`${attempt.decisionPath}.retired`);
+    if (exited || failedThisAttempt(attempt, input.stateRoot)) {
+      // The host writes .terminal before its `failed` session file: give that a moment to land.
+      const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;
+      while (!failedThisAttempt(attempt, input.stateRoot) && Date.now() < graceUntil) {
+        await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
+      }
       await kill();
-      const error = readSdkSession(input.stateRoot, input.workerName)?.last_error ?? 'unknown';
-      return { ok: false, attempt, reason: `sdk_host_failed_before_start:${error}`, ...(hostPid ? { hostPid } : {}) };
+      const error = (failedThisAttempt(attempt, input.stateRoot)
+        ? readSdkSession(input.stateRoot, input.workerName)?.last_error : null) ?? 'unknown';
+      const phase = existsSync(attempt.startedPath) ? 'at_start' : 'before_start';
+      return { ok: false, attempt, reason: `sdk_host_failed_${phase}:${error}`, ...(hostPid ? { hostPid } : {}) };
     }
     if (Date.now() >= startDeadline) {
       await kill();
       return { ok: false, attempt, reason: 'sdk_host_provider_not_started', ...(hostPid ? { hostPid } : {}) };
     }
+    // An early false (dead or reused pid) returns at once: do not spin on it.
+    await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
   }
   return { ok: true, attempt, hostPid, paneId };
 }
@@ -309,7 +322,11 @@ async function isTargetGone(target: ProcessTarget): Promise<boolean> {
  * reads such an attempt as `unknown` and would make a stop wait out its budget.
  */
 function failedBeforeProviderStarted(attempt: WorkerLaunchAttempt, stateRoot: string): boolean {
-  if (existsSync(attempt.startedPath)) return false;
+  return !existsSync(attempt.startedPath) && failedThisAttempt(attempt, stateRoot);
+}
+
+/** True when this attempt's host wrote its `failed` session file. */
+function failedThisAttempt(attempt: WorkerLaunchAttempt, stateRoot: string): boolean {
   const session = readSdkSession(stateRoot, attempt.worker_name);
   return session?.attempt_id === attempt.attempt_id && session.state === 'failed';
 }

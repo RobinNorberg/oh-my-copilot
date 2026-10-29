@@ -24,6 +24,15 @@ All notable changes to oh-my-copilot will be documented in this file.
   - The factory guard allows `gh issue edit` only with
     `--add-label`/`--remove-label` of `factory:*` labels.
 
+### Fixed
+
+- **Team worker starts fail fast when the provider already exited.** The
+  provider-start wait now returns as soon as the attempt has a terminal
+  record, a supervisor completion marker, or a started pid that is dead or
+  reused, instead of waiting out the full ack timeout (8 s for a pane,
+  30 s for an SDK host). An SDK host that fails after `provider_started`
+  is reported at once as `sdk_host_failed_at_start:<last_error>`.
+
 # oh-my-copilot v5.17.1
 
 ## [5.17.1] - 2026-10-28

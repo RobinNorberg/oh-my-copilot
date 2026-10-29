@@ -939,6 +939,25 @@ describe('launchSdkHost', () => {
     expect(rec.ops).toEqual([]);
     await until(() => !isProcessAlive(host.pid));
   });
+
+  it('stops waiting as soon as a host fails after provider_started', async () => {
+    const host = await dummyProcess();
+    let run: Promise<unknown> | undefined;
+    const t0 = Date.now();
+    const result = await launchSdkHost(launchInput({
+      ackTimeoutMs: 20_000,
+      spawnHost: (_cli, specPath) => {
+        // A real host without the SDK publishes provider_started, then its terminal record and `failed` session.
+        run = runSdkHost(specAt(specPath), deps(null));
+        return host.pid;
+      },
+    }));
+    expect(await run).toBe('sdk_missing');
+    expect(existsSync(result.attempt!.startedPath)).toBe(true);
+    expect(result).toMatchObject({ ok: false, reason: expect.stringMatching(/^sdk_host_failed_at_start:@github\/copilot-sdk is not installed/) });
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    await until(() => !isProcessAlive(host.pid));
+  });
 });
 
 describe('stopSdkHost', () => {

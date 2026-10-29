@@ -573,6 +573,64 @@ describe('worker launch acknowledgement', () => {
     await expect(observeWorkerLaunchProvider(launchAttempt)).resolves.toBe('unknown');
   });
 
+  describe('stops waiting for provider start once the provider has exited', () => {
+    const START_WAIT_MS = 10_000;
+
+    async function writeStarted(
+      launchAttempt: Awaited<ReturnType<typeof attempt>>,
+      pid: number,
+      processStartIdentity: string,
+    ): Promise<void> {
+      const expected = await acceptFixtureAttempt(launchAttempt);
+      await writeFile(launchAttempt.startedPath, JSON.stringify({
+        ...expected,
+        kind: 'worker_launch_provider_started',
+        pid,
+        process_start_identity: processStartIdentity,
+        written_at: new Date().toISOString(),
+      }), 'utf8');
+    }
+
+    async function timedStartWait(launchAttempt: Awaited<ReturnType<typeof attempt>>) {
+      const t0 = Date.now();
+      const started = await awaitWorkerLaunchProviderStarted(launchAttempt, { timeoutMs: START_WAIT_MS, pollIntervalMs: 5 });
+      return { started, elapsedMs: Date.now() - t0 };
+    }
+
+    it('returns false at once when a terminal record follows valid start evidence', async () => {
+      const launchAttempt = await attempt();
+      const identity = await getProcessStartIdentity(process.pid);
+      await writeStarted(launchAttempt, process.pid, identity!);
+      await writeFile(`${launchAttempt.startedPath}.terminal`, '{}', 'utf8');
+
+      const { started, elapsedMs } = await timedStartWait(launchAttempt);
+      expect(started).toBe(false);
+      expect(elapsedMs).toBeLessThan(2_000);
+    });
+
+    it('returns false at once when the supervisor completion marker exists', async () => {
+      const launchAttempt = await attempt();
+      await acceptFixtureAttempt(launchAttempt);
+      await writeBoundCompletionEvidence(launchAttempt, join(cwd, 'provider-exit.json'));
+
+      const { started, elapsedMs } = await timedStartWait(launchAttempt);
+      expect(started).toBe(false);
+      expect(elapsedMs).toBeLessThan(2_000);
+    });
+
+    it('returns false at once when the started pid is dead', async () => {
+      const launchAttempt = await attempt();
+      const provider = await spawnDisposableProvider();
+      await writeStarted(launchAttempt, provider.pid, provider.processStartIdentity);
+      await stopDisposableProvider(provider.child);
+      await vi.waitFor(() => expect(isProcessAlive(provider.pid)).toBe(false), { timeout: 5_000, interval: 10 });
+
+      const { started, elapsedMs } = await timedStartWait(launchAttempt);
+      expect(started).toBe(false);
+      expect(elapsedMs).toBeLessThan(2_000);
+    });
+  });
+
   it('rejects a completion marker from another launch even when the path is substituted', async () => {
     const launchAttempt = await attempt();
     await acceptFixtureAttempt(launchAttempt);

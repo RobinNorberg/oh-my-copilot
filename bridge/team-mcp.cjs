@@ -4317,7 +4317,7 @@ var require_core = __commonJS({
       errorsText(errors = this.errors, { separator = ", ", dataVar = "data" } = {}) {
         if (!errors || errors.length === 0)
           return "No errors";
-        return errors.map((e) => `${dataVar}${e.instancePath} ${e.message}`).reduce((text, msg) => text + separator + msg);
+        return errors.map((e) => `${dataVar}${e.instancePath} ${e.message}`).reduce((text2, msg) => text2 + separator + msg);
       }
       $dataMetaSchema(metaSchema, keywordsJsonPointers) {
         const rules = this.RULES.all;
@@ -7889,8 +7889,8 @@ function canonicalRootAliases(root) {
   }
   return [...aliases].sort((a, b) => b.length - a.length);
 }
-function redactCanonicalRoots(text, providedRoot, trustedRoot) {
-  let redacted = text;
+function redactCanonicalRoots(text2, providedRoot, trustedRoot) {
+  let redacted = text2;
   const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)].sort((a, b) => b.length - a.length);
   for (const root of roots) {
     redacted = redacted.split(root).join("<redacted>");
@@ -11909,8 +11909,8 @@ function decodeTmuxCommandString(command) {
 }
 function isPsmuxServerNotFoundError(error2) {
   const value = error2;
-  const text = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
-  return /no server running|failed to connect|can't connect|connection refused|server exited/.test(text);
+  const text2 = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
+  return /no server running|failed to connect|can't connect|connection refused|server exited/.test(text2);
 }
 async function runPsmuxVerifiedCommand(identity, nativeCommand, deps) {
   const argv = decodeTmuxCommandString(nativeCommand);
@@ -13873,20 +13873,23 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
   while (Date.now() < deadline) {
     const published = await readValidProviderStarted(attempt);
     if (published) try {
-      const handedOff = await withFileLock(lockPathFor(attempt.currentPath), async () => {
-        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return false;
+      const liveness = await withFileLock(lockPathFor(attempt.currentPath), async () => {
+        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return "pending";
         const started = await readValidProviderStarted(attempt);
-        if (!started) return false;
+        if (!started) return "pending";
         return await isProcessIdentityLive(
           started.pid,
           started.process_start_identity,
           deadline
-        ) === "live";
+        );
       });
-      if (handedOff) return true;
+      if (liveness === "live") return true;
+      if (liveness === "dead" || liveness === "mismatch") return false;
     } catch {
     }
-    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent") return false;
+    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
+    const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
+    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs4.existsSync)(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
@@ -14426,8 +14429,8 @@ async function runGuardedNativeTmuxCreationCommand(identity, nativeCommand, reso
 }
 function isTmuxServerNotFoundError(error2) {
   const value = error2;
-  const text = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
-  return /no server running|failed to connect|can't connect|no such file|connection refused|server exited/.test(text);
+  const text2 = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
+  return /no server running|failed to connect|can't connect|no such file|connection refused|server exited/.test(text2);
 }
 function detectTeamMultiplexerContext(env = process.env) {
   if (env.TMUX) return "tmux";
@@ -14518,8 +14521,8 @@ ${stderr}`.trim();
   return String(error2);
 }
 function isCmuxDialectFailure(error2) {
-  const text = getCmuxErrorText(error2);
-  return /(?:unknown|unrecognized|invalid|unsupported) (?:command|subcommand|option)|no such (?:command|subcommand)|Found argument .*--surface.*wasn't expected|unexpected argument|unexpected option/i.test(text);
+  const text2 = getCmuxErrorText(error2);
+  return /(?:unknown|unrecognized|invalid|unsupported) (?:command|subcommand|option)|no such (?:command|subcommand)|Found argument .*--surface.*wasn't expected|unexpected argument|unexpected option/i.test(text2);
 }
 function redactCmuxFailureMessage(error2, argLists) {
   let message = getCmuxErrorText(error2);
@@ -14577,10 +14580,10 @@ async function cmuxSplitSurface(targetSurfaceId, direction, _cwd) {
   }
   return { ...result, paneId };
 }
-async function cmuxSendSurface(surfaceId, text) {
+async function cmuxSendSurface(surfaceId, text2) {
   await cmuxExecPrimaryWithLegacyFallback(
-    ["send-surface", "--surface", surfaceId, text],
-    ["send", "--surface", surfaceId, text]
+    ["send-surface", "--surface", surfaceId, text2],
+    ["send", "--surface", surfaceId, text2]
   );
 }
 function normalizeCmuxKey(key) {
@@ -14815,11 +14818,11 @@ async function invokeDirectMailboxEffect(target, message, dependencies = default
       dependencies.serverIdentityDependencies
     );
     if (inputBlockReason) return { kind: "not_attempted", reason: inputBlockReason };
-    const text = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message}`.slice(0, 200) : message;
+    const text2 = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message}`.slice(0, 200) : message;
     try {
       const literal2 = await runGuardedNativeTmuxCommand(
         tmuxServerIdentity,
-        tmuxCommandString(["send-keys", "-t", target.paneId, "-l", "--", text])
+        tmuxCommandString(["send-keys", "-t", target.paneId, "-l", "--", text2])
       );
       if (literal2.outcome !== "executed") {
         return literal2.outcome === "not_executed" ? { kind: "not_attempted", reason: "mailbox_membership_unresolvable" } : {
@@ -16427,11 +16430,11 @@ async function sendTeamPaneKey(paneId, key, tmuxServerIdentity) {
   );
   if (result.outcome !== "executed") throw new Error("tmux_server_guard_failed");
 }
-async function guardedSendLiteralAndEnter(paneId, text, tmuxServerIdentity) {
+async function guardedSendLiteralAndEnter(paneId, text2, tmuxServerIdentity) {
   if (await paneInputBlockReason(paneId, tmuxServerIdentity)) return false;
   const literal2 = await runGuardedNativeTmuxCommand(
     tmuxServerIdentity,
-    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text])
+    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text2])
   );
   if (literal2.outcome !== "executed") return false;
   if (await paneInputBlockReason(paneId, tmuxServerIdentity)) return false;
@@ -16606,8 +16609,8 @@ async function waitForPaneReady(paneId, opts = {}) {
   );
   return false;
 }
-function paneTailContainsLiteralLine(captured, text) {
-  return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text));
+function paneTailContainsLiteralLine(captured, text2) {
+  return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text2));
 }
 async function paneCopyModeObservation(paneId, tmuxServerIdentity) {
   if (isCmuxSurfaceTarget(paneId)) return false;
@@ -16632,9 +16635,9 @@ async function paneCopyModeObservation(paneId, tmuxServerIdentity) {
 async function paneInCopyMode(paneId) {
   return await paneCopyModeObservation(paneId) ?? false;
 }
-async function sendLiteralPaneText(paneId, text, tmuxServerIdentity) {
+async function sendLiteralPaneText(paneId, text2, tmuxServerIdentity) {
   if (isCmuxSurfaceTarget(paneId)) {
-    await cmuxSendSurface(paneId, text);
+    await cmuxSendSurface(paneId, text2);
     return;
   }
   if (!tmuxServerIdentity) throw new Error("tmux_server_identity_missing");
@@ -16643,7 +16646,7 @@ async function sendLiteralPaneText(paneId, text, tmuxServerIdentity) {
   }
   const result = await runGuardedNativeTmuxCommand(
     tmuxServerIdentity,
-    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text])
+    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text2])
   );
   if (result.outcome !== "executed") throw new Error("tmux_server_guard_failed");
 }
@@ -16976,8 +16979,8 @@ async function injectToLeaderPane(sessionName2, leaderPaneId, message, tmuxServe
 }
 function isTmuxPaneNotFoundError(error2) {
   const err = error2;
-  const text = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
-  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text);
+  const text2 = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
+  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text2);
 }
 async function getWorkerLiveness(paneId) {
   if (isCmuxSurfaceTarget(paneId)) {
@@ -18947,7 +18950,9 @@ async function isTargetGone(target) {
   return liveness === "dead" || liveness === "mismatch";
 }
 function failedBeforeProviderStarted(attempt, stateRoot) {
-  if ((0, import_node_fs7.existsSync)(attempt.startedPath)) return false;
+  return !(0, import_node_fs7.existsSync)(attempt.startedPath) && failedThisAttempt(attempt, stateRoot);
+}
+function failedThisAttempt(attempt, stateRoot) {
   const session = readSdkSession(stateRoot, attempt.worker_name);
   return session?.attempt_id === attempt.attempt_id && session.state === "failed";
 }
@@ -19076,27 +19081,224 @@ var init_worker_activation_gate = __esm({
   }
 });
 
+// src/utils/url.ts
+var init_url = __esm({
+  "src/utils/url.ts"() {
+    "use strict";
+  }
+});
+
+// src/providers/remote-url.ts
+var init_remote_url = __esm({
+  "src/providers/remote-url.ts"() {
+    "use strict";
+    init_url();
+  }
+});
+
+// src/forge/ado/routes.ts
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST;
+var init_routes = __esm({
+  "src/forge/ado/routes.ts"() {
+    "use strict";
+    STABLE = "7.1";
+    TEXT_CHARS = /^(?:[^\p{Cc}]|[\t\r\n])+$/u;
+    TEXT = { type: "string", pattern: TEXT_CHARS };
+    text = (maxLength) => ({ type: "string", pattern: TEXT_CHARS, maxLength });
+    BRANCH_REF = { type: "string", pattern: /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]+$/u, maxLength: 400 };
+    route = (r) => Object.freeze(r);
+    ADO_ROUTES = Object.freeze([
+      // Setup probes.
+      route({ id: "core.projects.GET", area: "core", resource: "projects", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: [] }),
+      route({ id: "core.teams.GET", area: "core", resource: "teams", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: ["$top", "$skip"] }),
+      route({ id: "git.repositories.GET", area: "git", resource: "repositories", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId"], queryParams: [] }),
+      // Work items (intake, check, progress).
+      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand"] }),
+      route({
+        id: "wit.workItems.PATCH",
+        area: "wit",
+        resource: "workItems",
+        method: "PATCH",
+        apiVersion: STABLE,
+        routeParams: ["project", "id"],
+        queryParams: [],
+        mediaType: "application/json-patch+json",
+        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only writes.
+        body: {
+          kind: "json-patch",
+          ops: ["test", "add"],
+          paths: [
+            { path: /^\/rev$/, value: { type: "integer", min: 1 } },
+            { path: /^\/fields\/System\.Tags$/, value: TEXT },
+            // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
+            { path: /^\/fields\/System\.State$/, value: TEXT, configured: "states" },
+            // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
+            { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: "columns" }
+          ]
+        }
+      }),
+      route({ id: "wit.comments.GET", area: "wit", resource: "comments", method: "GET", apiVersion: "7.1-preview.4", routeParams: ["project", "workItemId"], queryParams: ["$top", "continuationToken", "order"] }),
+      route({
+        id: "wit.comments.POST",
+        area: "wit",
+        resource: "comments",
+        method: "POST",
+        apiVersion: "7.1-preview.4",
+        routeParams: ["project", "workItemId"],
+        queryParams: ["format"],
+        body: { kind: "object", keys: ["text"], required: ["text"], values: { text: TEXT } }
+      }),
+      route({ id: "wit.workItemTypes.GET", area: "wit", resource: "workItemTypes", method: "GET", apiVersion: STABLE, routeParams: ["project"], queryParams: [] }),
+      route({ id: "wit.workItemTypeStates.GET", area: "wit", resource: "workItemTypeStates", method: "GET", apiVersion: STABLE, routeParams: ["project", "type"], queryParams: [] }),
+      route({ id: "wit.wiql.GET", area: "wit", resource: "wiql", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$top"] }),
+      route({
+        id: "wit.wiql.POST",
+        area: "wit",
+        resource: "wiql",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project"],
+        queryParams: ["$top"],
+        body: { kind: "object", keys: ["query"], required: ["query"], values: { query: TEXT } }
+      }),
+      route({ id: "wit.queries.GET", area: "wit", resource: "queries", method: "GET", apiVersion: STABLE, routeParams: ["project"], queryParams: ["$depth", "$expand"] }),
+      route({ id: "wit.classificationNodes.GET", area: "wit", resource: "classificationNodes", method: "GET", apiVersion: STABLE, routeParams: ["project", "structureGroup"], queryParams: ["$depth"] }),
+      // Boards (board-column intake, progress columns).
+      route({ id: "work.boards.GET", area: "work", resource: "boards", method: "GET", apiVersion: STABLE, routeParams: ["project", "team", "id"], queryParams: [] }),
+      route({ id: "work.columns.GET", area: "work", resource: "columns", method: "GET", apiVersion: STABLE, routeParams: ["project", "team", "board"], queryParams: [] }),
+      // Pull requests.
+      route({
+        id: "git.pullRequests.GET",
+        area: "git",
+        resource: "pullRequests",
+        method: "GET",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+      }),
+      route({
+        id: "git.pullRequests.POST",
+        area: "git",
+        resource: "pullRequests",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId"],
+        queryParams: [],
+        // The factory only ever opens drafts.
+        body: {
+          kind: "object",
+          keys: ["sourceRefName", "targetRefName", "title", "description", "isDraft", "workItemRefs"],
+          required: ["sourceRefName", "targetRefName", "title", "isDraft"],
+          values: {
+            sourceRefName: BRANCH_REF,
+            targetRefName: BRANCH_REF,
+            title: text(400),
+            description: text(4e3),
+            isDraft: { const: true },
+            workItemRefs: { type: "array", minItems: 0, maxItems: 1, items: { kind: "object", keys: ["id"], required: ["id"], values: { id: { type: "string", pattern: /^[1-9]\d{0,9}$/ } } } }
+          }
+        }
+      }),
+      // Mark ready only: a body with status, autoCompleteSetBy or completionOptions (a merge) is refused (design §8.4).
+      route({
+        id: "git.pullRequests.PATCH",
+        area: "git",
+        resource: "pullRequests",
+        method: "PATCH",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: [],
+        body: { kind: "object", keys: ["isDraft"], required: ["isDraft"], values: { isDraft: { const: false } } }
+      }),
+      // One new top-level text comment per thread (no replies, no code-review comment types).
+      route({
+        id: "git.pullRequestThreads.POST",
+        area: "git",
+        resource: "pullRequestThreads",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: [],
+        body: {
+          kind: "object",
+          keys: ["comments", "status"],
+          required: ["comments"],
+          values: {
+            comments: {
+              type: "array",
+              minItems: 1,
+              maxItems: 1,
+              items: {
+                kind: "object",
+                keys: ["content", "commentType", "parentCommentId"],
+                required: ["content"],
+                values: { content: { type: "string", maxLength: 15e4 }, commentType: { enum: [1, "text"] }, parentCommentId: { const: 0 } }
+              }
+            },
+            status: { enum: [1, "active", 4, "closed"] }
+          }
+        }
+      }),
+      route({ id: "git.pullRequestIterations.GET", area: "git", resource: "pullRequestIterations", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
+      route({ id: "git.pullRequestStatuses.GET", area: "git", resource: "pullRequestStatuses", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
+      // Policy (gates) and builds.
+      route({ id: "policy.evaluations.GET", area: "policy", resource: "evaluations", method: "GET", apiVersion: "7.1-preview.1", routeParams: ["project"], queryParams: ["artifactId", "includeNotApplicable", "$top", "$skip"] }),
+      // Requeue one evaluation (rerun a flaky or expired build); the REST call has no body.
+      route({ id: "policy.evaluations.PATCH", area: "policy", resource: "evaluations", method: "PATCH", apiVersion: "7.1-preview.1", routeParams: ["project", "evaluationId"], queryParams: [], body: { kind: "none" } }),
+      // By id, or the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2).
+      route({ id: "build.builds.GET", area: "build", resource: "builds", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: ["branchName", "reasonFilter", "queryOrder", "$top"] }),
+      route({ id: "build.timeline.GET", area: "build", resource: "timeline", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: [] }),
+      // Read as JSON ({ count, value: [lines] }): az devops invoke refuses a non-JSON response without --out-file, which the guard never allows.
+      route({ id: "build.logs.GET", area: "build", resource: "logs", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId", "logId"], queryParams: [] })
+    ]);
+    ADO_WRITE_ALLOWLIST = Object.freeze([
+      ["wit", "workItems", "PATCH"],
+      ["wit", "comments", "POST"],
+      ["wit", "wiql", "POST"],
+      ["git", "pullRequests", "POST"],
+      ["git", "pullRequests", "PATCH"],
+      ["git", "pullRequestThreads", "POST"],
+      ["policy", "evaluations", "PATCH"]
+    ]);
+  }
+});
+
+// src/forge/ado/guard.ts
+var import_fs30, import_os8, import_path35, MAX_BODY_BYTES;
+var init_guard = __esm({
+  "src/forge/ado/guard.ts"() {
+    "use strict";
+    import_fs30 = require("fs");
+    import_os8 = require("os");
+    import_path35 = require("path");
+    init_routes();
+    MAX_BODY_BYTES = 1024 * 1024;
+  }
+});
+
 // src/ship/exec.ts
 var import_child_process9, TRUSTED_READ_ENV;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
     import_child_process9 = require("child_process");
+    init_guard();
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
   }
 });
 
 // src/ship/config.ts
-var import_fs30, import_os8, import_path35, DEFAULT_SHIP_CONFIG;
+var import_fs31, import_os9, import_path36, DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
-    import_fs30 = require("fs");
-    import_os8 = require("os");
-    import_path35 = require("path");
+    import_fs31 = require("fs");
+    import_os9 = require("os");
+    import_path36 = require("path");
     init_jsonc();
     init_loader();
     init_project_config_path();
+    init_remote_url();
     init_exec();
     DEFAULT_SHIP_CONFIG = Object.freeze({
       base: "dev",
@@ -19177,21 +19379,21 @@ var init_ledger = __esm({
 });
 
 // src/smoke/copilot-session-eval.ts
-var import_fs31, import_path36, SMOKE_TOKEN;
+var import_fs32, import_path37, SMOKE_TOKEN;
 var init_copilot_session_eval = __esm({
   "src/smoke/copilot-session-eval.ts"() {
     "use strict";
-    import_fs31 = require("fs");
-    import_path36 = require("path");
+    import_fs32 = require("fs");
+    import_path37 = require("path");
     SMOKE_TOKEN = "SMOKE_OK";
   }
 });
 
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
-  let out = (0, import_path37.resolve)(p);
+  let out = (0, import_path38.resolve)(p);
   try {
-    out = import_fs32.realpathSync.native(out);
+    out = import_fs33.realpathSync.native(out);
   } catch {
   }
   return canon(out, platform);
@@ -19222,18 +19424,18 @@ function permitScopedRead(req, ctx) {
 function permitProjectFiles(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
-  return typeof target === "string" && !!target && isUnder((0, import_path37.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+  return typeof target === "string" && !!target && isUnder((0, import_path38.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
 }
 function canon(p, platform = process.platform) {
-  const out = (0, import_path37.resolve)(p).split(import_path37.sep).join("/");
+  const out = (0, import_path38.resolve)(p).split(import_path38.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs32, import_path37, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
+var import_fs33, import_path38, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
-    import_fs32 = require("fs");
-    import_path37 = require("path");
+    import_fs33 = require("fs");
+    import_path38 = require("path");
     init_ledger();
     init_copilot_session_eval();
     FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
@@ -19394,13 +19596,13 @@ var init_copilot_sdk_scenarios = __esm({
 });
 
 // src/smoke/copilot-session-env.ts
-var import_fs33, import_path38, import_url5;
+var import_fs34, import_path39, import_url6;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs33 = require("fs");
-    import_path38 = require("path");
-    import_url5 = require("url");
+    import_fs34 = require("fs");
+    import_path39 = require("path");
+    import_url6 = require("url");
     init_names();
     init_env_vars();
     init_jsonc();
@@ -19431,6 +19633,14 @@ var init_sdk_policy = __esm({
       // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
       ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
       ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
+      ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?credential\.`, "git credential helper from a worker"),
+      // A credential helper re-enabled on the command line (the lane's global config clears it), or one run directly:
+      // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
+      ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, "git credential helper from a worker"),
+      ...gitSubcommandDeny(String.raw`credential-[\w-]`, "git credential helper from a worker"),
+      // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
+      // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
+      { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: "git credential helper from a worker" },
       // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
       { re: /\bGIT_CONFIG/i, reason: "git config through the environment from a worker" }
     ];
@@ -19469,17 +19679,17 @@ var init_process_utils2 = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
-var import_child_process10, import_crypto10, import_fs34, import_module, import_os9, import_path39, import_url6;
+var import_child_process10, import_crypto10, import_fs35, import_module, import_os10, import_path40, import_url7;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
     import_child_process10 = require("child_process");
     import_crypto10 = require("crypto");
-    import_fs34 = require("fs");
+    import_fs35 = require("fs");
     import_module = require("module");
-    import_os9 = require("os");
-    import_path39 = require("path");
-    import_url6 = require("url");
+    import_os10 = require("os");
+    import_path40 = require("path");
+    import_url7 = require("url");
     init_sandbox();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
@@ -19778,7 +19988,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config2) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs35.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs36.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write("[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n");
       return { outcome: "preserved", reason: "config_missing_cleanup_evidence", workers: [] };
     }
@@ -20107,12 +20317,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-var import_path40, import_fs35, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path41, import_fs36, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path40 = require("path");
-    import_fs35 = require("fs");
+    import_path41 = require("path");
+    import_fs36 = require("fs");
     import_promises15 = require("fs/promises");
     init_state_paths();
     init_worktree_paths();
@@ -31151,10 +31361,10 @@ var StdioServerTransport = class {
 // src/mcp/team-server.ts
 var import_node_crypto9 = require("node:crypto");
 var import_child_process11 = require("child_process");
-var import_path42 = require("path");
-var import_url7 = require("url");
+var import_path43 = require("path");
+var import_url8 = require("url");
 init_omc_cli_rendering();
-var import_fs37 = require("fs");
+var import_fs38 = require("fs");
 var import_promises16 = require("fs/promises");
 init_team_name();
 init_runtime_v2();
@@ -31270,16 +31480,16 @@ var NudgeTracker = class {
 };
 
 // src/mcp/team-job-convergence.ts
-var import_fs36 = require("fs");
-var import_path41 = require("path");
+var import_fs37 = require("fs");
+var import_path42 = require("path");
 init_types2();
 init_team_name();
 function readResultArtifact(omcJobsDir, jobId) {
-  const artifactPath = (0, import_path41.join)(omcJobsDir, `${jobId}-result.json`);
-  if (!(0, import_fs36.existsSync)(artifactPath)) return { kind: "none" };
+  const artifactPath = (0, import_path42.join)(omcJobsDir, `${jobId}-result.json`);
+  if (!(0, import_fs37.existsSync)(artifactPath)) return { kind: "none" };
   let raw;
   try {
-    raw = (0, import_fs36.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs37.readFileSync)(artifactPath, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return { kind: "none" };
     const message = `Failed to read result artifact at ${artifactPath}: ${error2 instanceof Error ? error2.message : String(error2)}`;
@@ -31381,10 +31591,10 @@ function convergeJobWithResultArtifact(job, jobId, omcJobsDir) {
   };
 }
 function resultArtifactIdentityError(job, jobId, omcJobsDir) {
-  const artifactPath = (0, import_path41.join)(omcJobsDir, `${jobId}-result.json`);
+  const artifactPath = (0, import_path42.join)(omcJobsDir, `${jobId}-result.json`);
   let raw;
   try {
-    raw = (0, import_fs36.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs37.readFileSync)(artifactPath, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return null;
     return `cleanup_result_evidence_unreadable:${error2 instanceof Error ? error2.message : String(error2)}`;
@@ -31399,7 +31609,7 @@ function resultArtifactIdentityError(job, jobId, omcJobsDir) {
 }
 function readMatchingTerminalArtifact(job, jobId, omcJobsDir) {
   try {
-    const raw = (0, import_fs36.readFileSync)((0, import_path41.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
+    const raw = (0, import_fs37.readFileSync)((0, import_path42.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.status !== "completed" && parsed.status !== "failed" || parsed.instanceId !== job.instanceId || !isValidTeamInstanceId(parsed.instanceId)) return null;
     return { status: parsed.status, raw };
@@ -31449,7 +31659,7 @@ init_paths();
 var __ownDir = (() => {
   if (typeof __dirname !== "undefined" && __dirname) return __dirname;
   try {
-    return (0, import_url7.fileURLToPath)(new URL(".", importMetaUrl));
+    return (0, import_url8.fileURLToPath)(new URL(".", importMetaUrl));
   } catch {
     return process.cwd();
   }
@@ -31545,10 +31755,10 @@ function persistJob(jobId, job) {
   }
 }
 function loadJobFromDisk(jobId) {
-  const path5 = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  const path5 = (0, import_path43.join)(OMC_JOBS_DIR, `${jobId}.json`);
   let content;
   try {
-    content = (0, import_fs37.readFileSync)(path5, "utf-8");
+    content = (0, import_fs38.readFileSync)(path5, "utf-8");
   } catch (error2) {
     if (error2.code === "ENOENT") return void 0;
     throw new Error(`Unreadable job file: ${jobId} (${error2 instanceof Error ? error2.message : String(error2)})`);
@@ -31568,7 +31778,7 @@ function getJob(jobId) {
   return loadJobFromDisk(jobId);
 }
 async function loadPaneIds(jobId, instanceId) {
-  const p = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
+  const p = (0, import_path43.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try {
     const parsed = JSON.parse(await (0, import_promises16.readFile)(p, "utf-8"));
     if (!isValidTeamPaneArtifact(parsed, instanceId)) return null;
@@ -31732,18 +31942,18 @@ function validateJobId(job_id) {
   }
 }
 function jobLockPath(jobId) {
-  return (0, import_path42.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
+  return (0, import_path43.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
 }
 function persistJobUnlocked(jobId, job) {
-  if (!(0, import_fs37.existsSync)(OMC_JOBS_DIR)) (0, import_fs37.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
-  const targetPath = (0, import_path42.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  if (!(0, import_fs38.existsSync)(OMC_JOBS_DIR)) (0, import_fs38.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+  const targetPath = (0, import_path43.join)(OMC_JOBS_DIR, `${jobId}.json`);
   const tempPath = `${targetPath}.tmp.${process.pid}.${(0, import_node_crypto9.randomUUID)()}`;
   try {
-    (0, import_fs37.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
-    (0, import_fs37.renameSync)(tempPath, targetPath);
+    (0, import_fs38.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    (0, import_fs38.renameSync)(tempPath, targetPath);
   } finally {
     try {
-      (0, import_fs37.unlinkSync)(tempPath);
+      (0, import_fs38.unlinkSync)(tempPath);
     } catch {
     }
   }
@@ -31873,10 +32083,10 @@ async function handleStart(args) {
       "team_start_unsafe_runtime_v1: instance-bound provider cleanup requires runtime v2; set OMC_RUNTIME_V2=1"
     );
   }
-  const cwd = (0, import_path42.resolve)(input.cwd);
+  const cwd = (0, import_path43.resolve)(input.cwd);
   const jobId = `omc-${Date.now().toString(36)}${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
   const instanceId = (0, import_node_crypto9.randomUUID)();
-  const runtimeCliPath = (0, import_path42.join)(__ownDir, "runtime-cli.cjs");
+  const runtimeCliPath = (0, import_path43.join)(__ownDir, "runtime-cli.cjs");
   const job = {
     status: "running",
     startedAt: Date.now(),
@@ -32153,7 +32363,7 @@ async function handleCleanup(args) {
   if (resultEvidenceError) return blockCleanup(resultEvidenceError);
   const panes = await loadPaneIds(job_id, job.instanceId);
   if (!panes) {
-    const reason = (0, import_fs37.existsSync)((0, import_path42.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
+    const reason = (0, import_fs38.existsSync)((0, import_path43.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
     return blockCleanup(reason);
   }
   try {
