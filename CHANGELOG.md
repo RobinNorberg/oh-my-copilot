@@ -4,6 +4,16 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Team worker starts fail fast when the provider already exited.** The
+  provider-start wait now returns as soon as the attempt has a terminal
+  record, a supervisor completion marker, or a started pid that is dead,
+  instead of waiting out the full ack timeout (8 s for a pane, 30 s for an
+  SDK host). An SDK host that fails, dies or is retired during start is
+  reported within about 1.5 s; one that fails after `provider_started` as
+  `sdk_host_failed_at_start:<last_error>`.
+
 ### Security
 
 - **SDK team workers start credential-free.** This is hygiene against

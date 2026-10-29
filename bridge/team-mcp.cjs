@@ -13873,20 +13873,23 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
   while (Date.now() < deadline) {
     const published = await readValidProviderStarted(attempt);
     if (published) try {
-      const handedOff = await withFileLock(lockPathFor(attempt.currentPath), async () => {
-        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return false;
+      const liveness = await withFileLock(lockPathFor(attempt.currentPath), async () => {
+        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return "pending";
         const started = await readValidProviderStarted(attempt);
-        if (!started) return false;
+        if (!started) return "pending";
         return await isProcessIdentityLive(
           started.pid,
           started.process_start_identity,
           deadline
-        ) === "live";
+        );
       });
-      if (handedOff) return true;
+      if (liveness === "live") return true;
+      if (liveness === "dead") return false;
     } catch {
     }
-    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent") return false;
+    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
+    const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
+    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs4.existsSync)(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
@@ -19208,7 +19211,9 @@ async function isTargetGone(target) {
   return liveness === "dead" || liveness === "mismatch";
 }
 function failedBeforeProviderStarted(attempt, stateRoot) {
-  if ((0, import_node_fs7.existsSync)(attempt.startedPath)) return false;
+  return !(0, import_node_fs7.existsSync)(attempt.startedPath) && failedThisAttempt(attempt, stateRoot);
+}
+function failedThisAttempt(attempt, stateRoot) {
   const session = readSdkSession(stateRoot, attempt.worker_name);
   return session?.attempt_id === attempt.attempt_id && session.state === "failed";
 }
