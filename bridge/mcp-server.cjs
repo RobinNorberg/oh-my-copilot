@@ -45280,6 +45280,8 @@ var init_cli2 = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
     init_config3();
+    init_az_binary();
+    init_ado();
     init_forge_roots();
     init_config2();
     init_exec();

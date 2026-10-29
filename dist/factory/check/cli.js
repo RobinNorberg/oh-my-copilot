@@ -19,6 +19,8 @@
  */
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
+import { resolveAzEntry } from '../../forge/ado/az-binary.js';
+import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { factoryForgeOptions } from '../run/forge-roots.js';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
@@ -228,12 +230,26 @@ export function renderCheckTable(items) {
     lines.push(counts);
     return lines.join('\n');
 }
+/** Production az entry: resolved outside every root a lane writes (factoryForgeOptions). */
+export const defaultResolveAz = (root) => resolveAzEntry(defaultAzBinaryDeps([root, ...factoryForgeOptions(root).untrustedRoots]));
+/**
+ * The read-only check guard for a resolved forge, and the options to build
+ * the forge on it. On Azure DevOps the az entry is resolved once: the guard
+ * gets the forge repo and that entry (adoGuardContext), and the adapter
+ * spawns the same entry. GitHub needs neither. `omg factory board` reuses it.
+ */
+export function forgeReadExec(exec, config, root, resolveAz = defaultResolveAz, marker) {
+    const entry = config.kind === 'azure-devops' ? resolveAz(root) : undefined;
+    const guard = entry ? adoGuardContext(config, entry) : undefined;
+    return { exec: checkGuardExec(exec, marker, () => guard), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
+}
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export async function runFactoryCheck(o, deps) {
     const ids = o.ids.map(parseItemId);
     const warnings = [];
     let marker;
-    const exec = checkGuardExec(deps.exec, () => marker);
+    // The git reads before the forge config is known; az runs only through forgeReadExec below.
+    let exec = checkGuardExec(deps.exec, () => marker);
     const top = git(exec, process.cwd(), ['rev-parse', '--show-toplevel']);
     if (!top.ok)
         throw new CheckUsageError('omg factory check must run inside a git repository');
@@ -259,7 +275,9 @@ export async function runFactoryCheck(o, deps) {
     }
     let forge;
     try {
-        forge = deps.createForge(exec, root, config, factoryForgeOptions(root));
+        const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, () => marker);
+        exec = read.exec;
+        forge = deps.createForge(exec, root, config, read.options);
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));

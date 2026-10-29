@@ -124247,11 +124247,16 @@ function renderCheckTable(items) {
   lines4.push(counts);
   return lines4.join("\n");
 }
+function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker) {
+  const entry2 = config2.kind === "azure-devops" ? resolveAz(root2) : void 0;
+  const guard = entry2 ? adoGuardContext(config2, entry2) : void 0;
+  return { exec: checkGuardExec(exec3, marker, () => guard), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
+}
 async function runFactoryCheck(o, deps) {
   const ids2 = o.ids.map(parseItemId);
   const warnings = [];
   let marker;
-  const exec3 = checkGuardExec(deps.exec, () => marker);
+  let exec3 = checkGuardExec(deps.exec, () => marker);
   const top = git3(exec3, process.cwd(), ["rev-parse", "--show-toplevel"]);
   if (!top.ok) throw new CheckUsageError("omg factory check must run inside a git repository");
   const root2 = top.out;
@@ -124272,7 +124277,9 @@ async function runFactoryCheck(o, deps) {
   }
   let forge;
   try {
-    forge = deps.createForge(exec3, root2, config2, factoryForgeOptions(root2));
+    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, () => marker);
+    exec3 = read.exec;
+    forge = deps.createForge(exec3, root2, config2, read.options);
   } catch (error2) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
   }
@@ -124330,12 +124337,14 @@ async function runFactoryCheck(o, deps) {
   }
   return ok2 ? 0 : EXIT_CHECK_FAILED;
 }
-var EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER5, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same5, CHECK_GIT;
+var EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER5, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same5, CHECK_GIT, defaultResolveAz;
 var init_cli2 = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
     init_source();
     init_config5();
+    init_az_binary();
+    init_ado();
     init_forge_roots();
     init_config4();
     init_exec();
@@ -124358,6 +124367,7 @@ var init_cli2 = __esm({
     VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
     same5 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     CHECK_GIT = /* @__PURE__ */ new Set(["rev-parse", "remote", "fetch", "cat-file", "show", "ls-remote"]);
+    defaultResolveAz = (root2) => resolveAzEntry(defaultAzBinaryDeps([root2, ...factoryForgeOptions(root2).untrustedRoots]));
   }
 });
 

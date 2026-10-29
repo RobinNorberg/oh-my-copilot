@@ -2,6 +2,16 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **`omg factory check` works on Azure DevOps.** The command built its az
+  guard without the forge repo and the az entry, so every az call on a real
+  ADO repository was refused ("no Azure DevOps forge is configured for this
+  run"). The az entry is now resolved once; the guard and the adapter both
+  get it.
+
 # oh-my-copilot v5.18.1
 
 ## [5.18.1] - 2026-10-29
