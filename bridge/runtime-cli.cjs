@@ -9460,20 +9460,23 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
   while (Date.now() < deadline) {
     const published = await readValidProviderStarted(attempt);
     if (published) try {
-      const handedOff = await withFileLock(lockPathFor(attempt.currentPath), async () => {
-        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return false;
+      const liveness = await withFileLock(lockPathFor(attempt.currentPath), async () => {
+        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return "pending";
         const started = await readValidProviderStarted(attempt);
-        if (!started) return false;
+        if (!started) return "pending";
         return await isProcessIdentityLive(
           started.pid,
           started.process_start_identity,
           deadline
-        ) === "live";
+        );
       });
-      if (handedOff) return true;
+      if (liveness === "live") return true;
+      if (liveness === "dead") return false;
     } catch {
     }
-    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent") return false;
+    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
+    const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
+    if (completed?.supervisor_completion_path !== void 0 && (0, import_node_fs4.existsSync)(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
@@ -18527,15 +18530,22 @@ async function launchSdkHost(input) {
   for (; ; ) {
     const sliceMs = Math.max(1, Math.min(1e3, startDeadline - Date.now()));
     if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs })) break;
-    if (failedBeforeProviderStarted(attempt, input.stateRoot)) {
+    const exited = (0, import_node_fs11.existsSync)(`${attempt.startedPath}.terminal`) || (0, import_node_fs11.existsSync)(`${attempt.decisionPath}.retired`) || hostPid !== void 0 && !isProcessAlive(hostPid);
+    if (exited || failedThisAttempt(attempt, input.stateRoot)) {
+      const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;
+      while (!failedThisAttempt(attempt, input.stateRoot) && Date.now() < graceUntil) {
+        await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
+      }
       await kill();
-      const error = readSdkSession(input.stateRoot, input.workerName)?.last_error ?? "unknown";
-      return { ok: false, attempt, reason: `sdk_host_failed_before_start:${error}`, ...hostPid ? { hostPid } : {} };
+      const error = (failedThisAttempt(attempt, input.stateRoot) ? readSdkSession(input.stateRoot, input.workerName)?.last_error : null) ?? "unknown";
+      const phase = (0, import_node_fs11.existsSync)(attempt.startedPath) ? "at_start" : "before_start";
+      return { ok: false, attempt, reason: `sdk_host_failed_${phase}:${error}`, ...hostPid ? { hostPid } : {} };
     }
     if (Date.now() >= startDeadline) {
       await kill();
       return { ok: false, attempt, reason: "sdk_host_provider_not_started", ...hostPid ? { hostPid } : {} };
     }
+    await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
   }
   return { ok: true, attempt, hostPid, paneId };
 }
@@ -18545,7 +18555,9 @@ async function isTargetGone(target) {
   return liveness === "dead" || liveness === "mismatch";
 }
 function failedBeforeProviderStarted(attempt, stateRoot) {
-  if ((0, import_node_fs11.existsSync)(attempt.startedPath)) return false;
+  return !(0, import_node_fs11.existsSync)(attempt.startedPath) && failedThisAttempt(attempt, stateRoot);
+}
+function failedThisAttempt(attempt, stateRoot) {
   const session = readSdkSession(stateRoot, attempt.worker_name);
   return session?.attempt_id === attempt.attempt_id && session.state === "failed";
 }
@@ -18613,7 +18625,7 @@ function writeTerminationComplete(attempt, pid, startIdentity) {
   } catch {
   }
 }
-var import_node_child_process6, import_node_crypto9, import_node_fs11, import_node_path12, SDK_TARGET_PREFIX, SDK_HOST_STOP_FLOOR_MS;
+var import_node_child_process6, import_node_crypto9, import_node_fs11, import_node_path12, SDK_TARGET_PREFIX, SDK_LAUNCH_POLL_MS, SDK_LAUNCH_FAILURE_GRACE_MS, SDK_HOST_STOP_FLOOR_MS;
 var init_sdk_transport = __esm({
   "src/team/sdk-transport.ts"() {
     "use strict";
@@ -18625,6 +18637,8 @@ var init_sdk_transport = __esm({
     init_runtime_owner_client();
     init_worker_launch_ack();
     SDK_TARGET_PREFIX = "sdk:";
+    SDK_LAUNCH_POLL_MS = 25;
+    SDK_LAUNCH_FAILURE_GRACE_MS = 1500;
     SDK_HOST_STOP_FLOOR_MS = 5e3;
   }
 });
