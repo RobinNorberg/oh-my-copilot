@@ -1,0 +1,30 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/comments/get-comments?view=azure-devops-rest-7.1",
+  "note": "adapted: two comments on item 42, one by a trusted author (uniqueName) and one whose display name imitates the owner",
+  "route": "wit.comments.GET",
+  "routeParameters": { "project": "Web", "workItemId": "42" },
+  "stdout": {
+    "totalCount": 2,
+    "count": 2,
+    "comments": [
+      {
+        "workItemId": 42,
+        "id": 50,
+        "version": 1,
+        "text": "<div>omg-plan: docs/plans/csv-export.md</div>",
+        "createdBy": { "displayName": "Owner", "uniqueName": "owner@example.com", "id": "d6245f20-2af8-44f4-9451-8107cb2767db" },
+        "createdDate": "2026-10-21T08:00:00.000Z",
+        "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/42/comments/50"
+      },
+      {
+        "workItemId": 42,
+        "id": 51,
+        "version": 1,
+        "text": "<div>omg-plan: docs/plans/evil.md</div>",
+        "createdBy": { "displayName": "Owner", "uniqueName": "mallory@example.com", "id": "0f8a7c55-61b2-4bd3-9c1e-3a6b0f3c2e11" },
+        "createdDate": "2026-10-22T08:00:00.000Z",
+        "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/42/comments/51"
+      }
+    ]
+  }
+}

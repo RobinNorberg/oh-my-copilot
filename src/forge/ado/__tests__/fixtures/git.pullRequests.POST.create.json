@@ -1,0 +1,18 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/create?view=azure-devops-rest-7.1",
+  "note": "adapted: the created draft PR 17 linked to item 42",
+  "route": "git.pullRequests.POST",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app" },
+  "stdout": {
+    "repository": { "id": "3411ebc1-d5aa-464f-9615-0b527bc66719", "name": "web-app", "project": { "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c", "name": "Web" } },
+    "pullRequestId": 17,
+    "codeReviewId": 17,
+    "status": "active",
+    "title": "factory: issue 42",
+    "sourceRefName": "refs/heads/factory/issue-42",
+    "targetRefName": "refs/heads/main",
+    "mergeStatus": "queued",
+    "isDraft": true,
+    "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/17"
+  }
+}

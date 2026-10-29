@@ -266,6 +266,17 @@ export interface ResolvedForgeConfig {
     check: ForgeCheckConfig;
     progress: ForgeProgressConfig;
 }
+/** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */
+export interface ForgeOptions {
+    /**
+     * Every root a lane or job can write: the repository, its worktrees, lane
+     * and job roots. Nothing is resolved from, or written for a human under,
+     * one of them (critic amendments §A.13).
+     */
+    untrustedRoots: readonly string[];
+    /** Engine-owned directory outside every untrusted root (the ADO human merge body); default the user's ~/.omg/forge. */
+    stateDir?: string;
+}
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */
-export type ForgeFactory = (exec: Exec, cwd: string, config: ResolvedForgeConfig) => Forge;
+export type ForgeFactory = (exec: Exec, cwd: string, config: ResolvedForgeConfig, options: ForgeOptions) => Forge;
 //# sourceMappingURL=types.d.ts.map

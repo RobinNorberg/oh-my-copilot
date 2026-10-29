@@ -1,0 +1,23 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.1",
+  "note": "adapted: a new active thread with one text comment on PR 17",
+  "route": "git.pullRequestThreads.POST",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "id": 148,
+    "publishedDate": "2026-10-28T10:10:00.000Z",
+    "lastUpdatedDate": "2026-10-28T10:10:00.000Z",
+    "comments": [
+      {
+        "id": 1,
+        "parentCommentId": 0,
+        "author": { "displayName": "Factory", "uniqueName": "factory@example.com" },
+        "content": "factory: review passed",
+        "publishedDate": "2026-10-28T10:10:00.000Z",
+        "commentType": "text"
+      }
+    ],
+    "status": "active",
+    "isDeleted": false
+  }
+}

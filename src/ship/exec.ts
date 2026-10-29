@@ -6,6 +6,7 @@
  */
 
 import { spawnSync } from 'child_process';
+import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../forge/ado/guard.js';
 
 export interface ExecResult {
   status: number;
@@ -66,6 +67,16 @@ const KEPT_GIT_VARS = new Set([
 const DROPPED_GH_VARS = new Set(['GH_REPO', 'GH_HOST']);
 
 /**
+ * Azure DevOps CLI defaults dropped, the analogue of GH_REPO / GH_HOST
+ * (factory forges design §6 "Env"): AZURE_DEVOPS_EXT_DEFAULTS* and
+ * AZURE_DEVOPS_DEFAULTS_ORGANIZATION / _PROJECT would point az at another
+ * organization or project. AZURE_DEVOPS_EXT_PAT and AZURE_CONFIG_DIR pass
+ * through: az needs them to authenticate, like GH_TOKEN.
+ */
+const isDroppedAdoVar = (upper: string): boolean =>
+  upper.startsWith('AZURE_DEVOPS_EXT_DEFAULTS') || upper === 'AZURE_DEVOPS_DEFAULTS_ORGANIZATION' || upper === 'AZURE_DEVOPS_DEFAULTS_PROJECT';
+
+/**
  * The environment every engine child runs with: the parent's, minus the
  * variables above, plus GIT_NO_REPLACE_OBJECTS=1 (no command the engine runs,
  * a merge included, may see replaced objects). `omg release`
@@ -80,7 +91,7 @@ export function scrubShipEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   for (const [key, value] of Object.entries(env)) {
     const upper = key.toUpperCase();
     if (upper.startsWith('GIT_') && !KEPT_GIT_VARS.has(upper)) continue;
-    if (DROPPED_GH_VARS.has(upper)) continue;
+    if (DROPPED_GH_VARS.has(upper) || isDroppedAdoVar(upper)) continue;
     out[key] = value;
   }
   return { ...out, ...TRUSTED_READ_ENV };
@@ -270,9 +281,16 @@ export function assertSafeCommand(cmd: string, args: string[], extraProtected: r
 /**
  * Wrap an Exec so every call is checked by assertSafeCommand first.
  * `extraProtected` is read per call (the CLI sets it to the run's base once known).
+ * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts) with
+ * the ship policy: reads and the build-evaluation requeue, for `ado`'s forge
+ * only; without `ado` they are refused.
  */
-export function guardExec(exec: Exec, extraProtected: () => readonly string[] = () => []): Exec {
+export function guardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
+    if (isAdoCommand(cmd)) {
+      const fail = (reason: string) => new ShipSafetyError(`omg ship refuses \`${cmd.replace(/\\/g, '/').split('/').pop()} ${args.join(' ')}\`: ${reason}`);
+      return runGuardedAdo(exec, cmd, args, opts, ado(), 'ship', fail);
+    }
     assertSafeCommand(cmd, args, extraProtected(), opts?.env);
     return exec(cmd, args, opts);
   };
