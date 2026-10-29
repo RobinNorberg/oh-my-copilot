@@ -11,28 +11,13 @@
 import { DEFAULT_SHIP_CONFIG, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
 import { evaluateGates } from '../../ship/gates.js';
-import { decideMerge, listChangedFiles, readCommitsSinceReview, type MergeDecision, type PrView } from '../../ship/merge.js';
+import { decideMerge, listChangedFiles, readCommitsSinceReview, type MergeDecision } from '../../ship/merge.js';
 import { latestVerdict, type ShipState } from '../../ship/state.js';
+import type { MergeView } from '../../forge/github/reviews.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
-/** `gh pr view --json` fields the merge step reads. */
-export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
-
-export interface MergeView extends PrView {
-  baseRefOid: string;
-}
-
-const HEX40 = /^[0-9a-f]{40}$/;
-
-/** Parse `gh pr view --json MERGE_VIEW_FIELDS`; null when a field is missing or malformed. */
-export function parseMergeView(stdout: string): MergeView | null {
-  let v: Record<string, unknown>;
-  try { v = JSON.parse(stdout) as Record<string, unknown>; } catch { return null; }
-  if (typeof v !== 'object' || v === null) return null;
-  const ok = typeof v.number === 'number' && typeof v.state === 'string' && typeof v.isDraft === 'boolean' && typeof v.baseRefName === 'string'
-    && typeof v.baseRefOid === 'string' && HEX40.test(v.baseRefOid) && typeof v.headRefOid === 'string' && HEX40.test(v.headRefOid);
-  return ok ? (v as unknown as MergeView) : null;
-}
+// The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
+export { MERGE_VIEW_FIELDS, parseMergeView, type MergeView } from '../../forge/github/reviews.js';
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,

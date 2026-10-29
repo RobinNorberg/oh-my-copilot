@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "428efdee05179e414a9b12fddee0490b3c1dc1c4",
-    "sourceSha256": "059e4897dac587004f248e90a0f5d17e36ee2d0c90e46876a5840e49fe74cd35",
+    "head": "ffdc652fd96750355e556151a3a30e5cb1d25084",
+    "sourceSha256": "efd543bb57c78dd912ee962282b67b7ba1f19f8a6789313a4cbd8eb8d6a9cb7d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "428efdee05179e414a9b12fddee0490b3c1dc1c4",
-  "sourceSha256": "059e4897dac587004f248e90a0f5d17e36ee2d0c90e46876a5840e49fe74cd35",
+  "head": "ffdc652fd96750355e556151a3a30e5cb1d25084",
+  "sourceSha256": "efd543bb57c78dd912ee962282b67b7ba1f19f8a6789313a4cbd8eb8d6a9cb7d",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1785,
-      "total": 1809
+      "srcFiles": 1793,
+      "total": 1817
     },
     "generated": {
-      "distFiles": 6768,
+      "distFiles": 6800,
       "bridgeFiles": 9,
-      "total": 6777
+      "total": 6809
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3593,10 +3593,42 @@
       "dist/forge/config.d.ts.map",
       "dist/forge/config.js",
       "dist/forge/config.js.map",
+      "dist/forge/github/__tests__/argv-parity.test.d.ts",
+      "dist/forge/github/__tests__/argv-parity.test.d.ts.map",
+      "dist/forge/github/__tests__/argv-parity.test.js",
+      "dist/forge/github/__tests__/argv-parity.test.js.map",
       "dist/forge/github/chain-tracker.d.ts",
       "dist/forge/github/chain-tracker.d.ts.map",
       "dist/forge/github/chain-tracker.js",
       "dist/forge/github/chain-tracker.js.map",
+      "dist/forge/github/checks.d.ts",
+      "dist/forge/github/checks.d.ts.map",
+      "dist/forge/github/checks.js",
+      "dist/forge/github/checks.js.map",
+      "dist/forge/github/ci.d.ts",
+      "dist/forge/github/ci.d.ts.map",
+      "dist/forge/github/ci.js",
+      "dist/forge/github/ci.js.map",
+      "dist/forge/github/gh.d.ts",
+      "dist/forge/github/gh.d.ts.map",
+      "dist/forge/github/gh.js",
+      "dist/forge/github/gh.js.map",
+      "dist/forge/github/index.d.ts",
+      "dist/forge/github/index.d.ts.map",
+      "dist/forge/github/index.js",
+      "dist/forge/github/index.js.map",
+      "dist/forge/github/merge.d.ts",
+      "dist/forge/github/merge.d.ts.map",
+      "dist/forge/github/merge.js",
+      "dist/forge/github/merge.js.map",
+      "dist/forge/github/reviews.d.ts",
+      "dist/forge/github/reviews.d.ts.map",
+      "dist/forge/github/reviews.js",
+      "dist/forge/github/reviews.js.map",
+      "dist/forge/github/tracker.d.ts",
+      "dist/forge/github/tracker.d.ts.map",
+      "dist/forge/github/tracker.js",
+      "dist/forge/github/tracker.js.map",
       "dist/forge/index.d.ts",
       "dist/forge/index.d.ts.map",
       "dist/forge/index.js",
@@ -22508,6 +22540,26 @@
         "path": "dist/forge/config.js.map"
       },
       {
+        "id": "dist/forge/github/__tests__/argv-parity.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/argv-parity.test.d.ts"
+      },
+      {
+        "id": "dist/forge/github/__tests__/argv-parity.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/argv-parity.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/__tests__/argv-parity.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/argv-parity.test.js"
+      },
+      {
+        "id": "dist/forge/github/__tests__/argv-parity.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/__tests__/argv-parity.test.js.map"
+      },
+      {
         "id": "dist/forge/github/chain-tracker.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/github/chain-tracker.d.ts"
@@ -22526,6 +22578,146 @@
         "id": "dist/forge/github/chain-tracker.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/github/chain-tracker.js.map"
+      },
+      {
+        "id": "dist/forge/github/checks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/checks.d.ts"
+      },
+      {
+        "id": "dist/forge/github/checks.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/checks.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/checks.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/checks.js"
+      },
+      {
+        "id": "dist/forge/github/checks.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/checks.js.map"
+      },
+      {
+        "id": "dist/forge/github/ci.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/ci.d.ts"
+      },
+      {
+        "id": "dist/forge/github/ci.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/ci.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/ci.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/ci.js"
+      },
+      {
+        "id": "dist/forge/github/ci.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/ci.js.map"
+      },
+      {
+        "id": "dist/forge/github/gh.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/gh.d.ts"
+      },
+      {
+        "id": "dist/forge/github/gh.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/gh.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/gh.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/gh.js"
+      },
+      {
+        "id": "dist/forge/github/gh.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/gh.js.map"
+      },
+      {
+        "id": "dist/forge/github/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/index.d.ts"
+      },
+      {
+        "id": "dist/forge/github/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/index.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/index.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/index.js"
+      },
+      {
+        "id": "dist/forge/github/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/index.js.map"
+      },
+      {
+        "id": "dist/forge/github/merge.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/merge.d.ts"
+      },
+      {
+        "id": "dist/forge/github/merge.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/merge.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/merge.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/merge.js"
+      },
+      {
+        "id": "dist/forge/github/merge.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/merge.js.map"
+      },
+      {
+        "id": "dist/forge/github/reviews.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/reviews.d.ts"
+      },
+      {
+        "id": "dist/forge/github/reviews.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/reviews.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/reviews.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/reviews.js"
+      },
+      {
+        "id": "dist/forge/github/reviews.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/reviews.js.map"
+      },
+      {
+        "id": "dist/forge/github/tracker.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/tracker.d.ts"
+      },
+      {
+        "id": "dist/forge/github/tracker.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/tracker.d.ts.map"
+      },
+      {
+        "id": "dist/forge/github/tracker.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/tracker.js"
+      },
+      {
+        "id": "dist/forge/github/tracker.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/github/tracker.js.map"
       },
       {
         "id": "dist/forge/index.d.ts",
@@ -48913,9 +49105,49 @@
         "path": "src/forge/config.ts"
       },
       {
+        "id": "src/forge/github/__tests__/argv-parity.test.ts",
+        "kind": "src",
+        "path": "src/forge/github/__tests__/argv-parity.test.ts"
+      },
+      {
         "id": "src/forge/github/chain-tracker.ts",
         "kind": "src",
         "path": "src/forge/github/chain-tracker.ts"
+      },
+      {
+        "id": "src/forge/github/checks.ts",
+        "kind": "src",
+        "path": "src/forge/github/checks.ts"
+      },
+      {
+        "id": "src/forge/github/ci.ts",
+        "kind": "src",
+        "path": "src/forge/github/ci.ts"
+      },
+      {
+        "id": "src/forge/github/gh.ts",
+        "kind": "src",
+        "path": "src/forge/github/gh.ts"
+      },
+      {
+        "id": "src/forge/github/index.ts",
+        "kind": "src",
+        "path": "src/forge/github/index.ts"
+      },
+      {
+        "id": "src/forge/github/merge.ts",
+        "kind": "src",
+        "path": "src/forge/github/merge.ts"
+      },
+      {
+        "id": "src/forge/github/reviews.ts",
+        "kind": "src",
+        "path": "src/forge/github/reviews.ts"
+      },
+      {
+        "id": "src/forge/github/tracker.ts",
+        "kind": "src",
+        "path": "src/forge/github/tracker.ts"
       },
       {
         "id": "src/forge/index.ts",
@@ -70406,6 +70638,11 @@
       },
       {
         "from": "src/cli/commands/ship.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
         "to": "src/lib/agent-progress.ts",
         "kind": "imports"
       },
@@ -72916,7 +73153,12 @@
       },
       {
         "from": "src/factory/heal/history.ts",
-        "to": "src/factory/heal/logs.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/factory/heal/history.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -74171,6 +74413,21 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/lib/file-lock.ts",
         "kind": "imports"
       },
@@ -74243,6 +74500,16 @@
         "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/gates-driver.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/gates-driver.ts",
@@ -74352,6 +74619,21 @@
       {
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/forge/github/reviews.ts",
         "kind": "type-imports"
       },
       {
@@ -76675,6 +76957,186 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/github/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/__tests__/argv-parity.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/checks.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/checks.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/checks.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/checks.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/ci.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/ci.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/ci.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/ci.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/gh.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/github/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/github/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/github/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/index.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/merge.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/reviews.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/factory/run/plan-rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/factory/run/plan-rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/index.ts",
         "to": "src/forge/config.ts",
         "kind": "exports"
@@ -76683,6 +77145,11 @@
         "from": "src/forge/index.ts",
         "to": "src/forge/config.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/forge/index.ts",
+        "to": "src/forge/github/index.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/index.ts",
@@ -94331,6 +94798,11 @@
       },
       {
         "from": "src/ship/gates.ts",
+        "to": "src/forge/github/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
         "to": "src/ship/config.ts",
         "kind": "type-imports"
       },
@@ -94338,6 +94810,11 @@
         "from": "src/ship/gates.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/forge/github/merge.ts",
+        "kind": "imports"
       },
       {
         "from": "src/ship/merge.ts",
@@ -108731,12 +109208,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9294,
-      "edgeCount": 10782,
-      "importEdgeCount": 8924,
+      "nodeCount": 9334,
+      "edgeCount": 10831,
+      "importEdgeCount": 8951,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "83acd2acbb3ff4a2c6828588661263fa13bd85f4eb833d6f0fcd26fc064917cf",
-  "manifestSha256": "8019684c9badd7767af83954512348132ec7e8094fbe290ac2aeb6918d323e88"
+  "inventorySha256": "31110715b5b0ab9586854c43c6d509bd87c3414428ba0e5fd0ecd66ac1d66339",
+  "manifestSha256": "7ab72efa17b394bb5ebbdda72606216f9c2dc6040c6616fa167ceb5cb176dbf5"
 }

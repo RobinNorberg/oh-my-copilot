@@ -12,24 +12,8 @@ import { evaluateGates } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
 import { runLabel } from './state.js';
-/** `gh pr view --json` fields the merge step reads. */
-export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,headRefOid';
-const HEX40 = /^[0-9a-f]{40}$/;
-/** Parse `gh pr view --json MERGE_VIEW_FIELDS`; null when a field is missing or malformed. */
-export function parseMergeView(stdout) {
-    let v;
-    try {
-        v = JSON.parse(stdout);
-    }
-    catch {
-        return null;
-    }
-    if (typeof v !== 'object' || v === null)
-        return null;
-    const ok = typeof v.number === 'number' && typeof v.state === 'string' && typeof v.isDraft === 'boolean' && typeof v.baseRefName === 'string'
-        && typeof v.baseRefOid === 'string' && HEX40.test(v.baseRefOid) && typeof v.headRefOid === 'string' && HEX40.test(v.headRefOid);
-    return ok ? v : null;
-}
+// The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
+export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
