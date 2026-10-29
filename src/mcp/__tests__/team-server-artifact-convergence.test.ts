@@ -154,6 +154,21 @@ function paneArtifact(
 function jobRecord(teamName: string, cwd: string, instanceId = INSTANCE_ID): Record<string, unknown> {
   return { status: 'running', startedAt: Date.now(), cwd, teamName, instanceId };
 }
+
+// handleWait scans for idle panes once per 5s and only after its first 500ms
+// poll, and its deadline also covers the initial locked job read. A short wait
+// can end before that single scan on a loaded runner, so the nudge tests wait
+// generously and end the wait by publishing a terminal result artifact.
+const NUDGE_WAIT_TIMEOUT_MS = 15_000;
+
+function publishTerminalJobResult(jobsDir: string, jobId: string, teamName: string, instanceId = INSTANCE_ID): void {
+  writeFileSync(join(jobsDir, `${jobId}-result.json`), JSON.stringify({
+    status: 'completed',
+    instanceId,
+    teamName,
+    taskResults: [],
+  }), 'utf-8');
+}
 function parseResponseText(text: string): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>;
 }
@@ -651,7 +666,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
 
     const waitPromise = handleWait({
       job_id: jobId,
-      timeout_ms: 700,
+      timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
       nudge_delay_ms: 0,
       nudge_max_count: 1,
     });
@@ -674,6 +689,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         '> ',
       ].join('\n'));
     }
+    publishTerminalJobResult(jobsDir, jobId, teamName);
 
     const response = await waitPromise;
     expect(captureObserved).toBe(true);
@@ -748,7 +764,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
 
     const waitPromise = handleWait({
       job_id: jobId,
-      timeout_ms: 700,
+      timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
       nudge_delay_ms: 0,
       nudge_max_count: 1,
     });
@@ -771,6 +787,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
       competingSetupError = error;
     } finally {
       releaseSend?.(true);
+      publishTerminalJobResult(jobsDir, jobId, teamName);
     }
 
     await waitPromise;
@@ -836,7 +853,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
 
     const response = await handleWait({
       job_id: jobId,
-      timeout_ms: 700,
+      timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
       nudge_delay_ms: 0,
       nudge_max_count: 1,
     });
@@ -867,17 +884,21 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         '> ',
       ].join('\n'),
     );
-    tmuxMocks.sendToWorker.mockResolvedValue(true);
+    tmuxMocks.sendToWorker.mockImplementation(async () => {
+      publishTerminalJobResult(jobsDir, jobId, teamName);
+      return true;
+    });
 
     const response = await handleWait({
       job_id: jobId,
-      timeout_ms: 700,
+      timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
       nudge_delay_ms: 0,
       nudge_max_count: 1,
     });
     const payload = parseResponseText(response.content[0].text);
 
     expect(payload.instanceId).toBe(INSTANCE_ID);
+    expect(payload.status).toBe('completed');
     expect(payload.nudges).toBeDefined();
     expect(tmuxMocks.captureOwnedTeamPane).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'cmux',

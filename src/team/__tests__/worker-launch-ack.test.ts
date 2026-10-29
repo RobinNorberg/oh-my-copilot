@@ -1551,31 +1551,55 @@ describe('worker launch acknowledgement', () => {
   });
 
   it('terminates a started provider process tree when durable start publication fails', async () => {
+    vi.resetModules();
+    const actualFs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
     const launchAttempt = await attempt();
     await mkdir(launchAttempt.startedPath);
     const pidMarker = join(cwd, 'provider-tree-pids.json');
-    const providerScript = [
-      "const fs=require('node:fs')",
-      "const cp=require('node:child_process')",
-      "const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})",
-      `fs.writeFileSync(${JSON.stringify(pidMarker)},JSON.stringify({parent:process.pid,child:child.pid}))`,
-      'setInterval(()=>{},1000)',
-    ].join(';');
-    const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
-      launchAttempt,
-      [process.execPath, '-e', providerScript],
-      cwd,
-    ));
-    await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, {
-      timeoutMs: LAUNCH_WAIT_TIMEOUT_MS,
-      pollIntervalMs: 5,
-    })).resolves.toEqual({ ok: true });
-    await expect(bootstrap).resolves.toEqual({ outcome: 'provider_spawn_failed' });
-    const pids = JSON.parse(await readFile(pidMarker, 'utf8')) as { parent: number; child: number };
-    await vi.waitFor(() => {
-      expect(isProcessAlive(pids.parent)).toBe(false);
-      expect(isProcessAlive(pids.child)).toBe(false);
-    }, { timeout: 2_000, interval: 20 });
+    // Publication fails 75ms after release, so a provider still starting up
+    // on a loaded runner would be killed before writing its marker. Hold the
+    // failing start publication until the tree exists.
+    const linkMock = vi.fn(async (existingPath: Parameters<typeof actualFs.link>[0], newPath: Parameters<typeof actualFs.link>[1]) => {
+      if (newPath === launchAttempt.startedPath) {
+        await vi.waitFor(() => expect(existsSync(pidMarker)).toBe(true), {
+          timeout: LAUNCH_WAIT_TIMEOUT_MS,
+          interval: 10,
+        }).catch(() => undefined);
+      }
+      return actualFs.link(existingPath, newPath);
+    });
+    vi.doMock('node:fs/promises', () => ({ ...actualFs, link: linkMock }));
+    let bootstrap: ReturnType<typeof runWorkerLaunchBootstrap> | undefined;
+    try {
+      const workerLaunch = await import('../worker-launch-ack.js');
+      const providerScript = [
+        "const fs=require('node:fs')",
+        "const cp=require('node:child_process')",
+        "const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})",
+        `fs.writeFileSync(${JSON.stringify(pidMarker)},JSON.stringify({parent:process.pid,child:child.pid}))`,
+        'setInterval(()=>{},1000)',
+      ].join(';');
+      bootstrap = workerLaunch.runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
+        launchAttempt,
+        [process.execPath, '-e', providerScript],
+        cwd,
+      ));
+      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, {
+        timeoutMs: LAUNCH_WAIT_TIMEOUT_MS,
+        pollIntervalMs: 5,
+      })).resolves.toEqual({ ok: true });
+      await expect(bootstrap).resolves.toEqual({ outcome: 'provider_spawn_failed' });
+      expect(linkMock).toHaveBeenCalledWith(expect.any(String), launchAttempt.startedPath);
+      const pids = JSON.parse(await readFile(pidMarker, 'utf8')) as { parent: number; child: number };
+      await vi.waitFor(() => {
+        expect(isProcessAlive(pids.parent)).toBe(false);
+        expect(isProcessAlive(pids.child)).toBe(false);
+      }, { timeout: 2_000, interval: 20 });
+    } finally {
+      await bootstrap?.catch(() => undefined);
+      vi.doUnmock('node:fs/promises');
+      vi.resetModules();
+    }
   });
 
   it.runIf(process.platform !== 'win32').each(['identity', 'group'] as const)(
@@ -1963,9 +1987,13 @@ describe('worker launch acknowledgement', () => {
     let bootstrap: ReturnType<typeof runWorkerLaunchBootstrap> | undefined;
     const launchAttempt = await attempt();
     const descendantPidPath = join(cwd, 'timer-transition-descendant.pid');
+    const providerExitPath = join(cwd, 'timer-transition-provider.exit');
     let providerGroupId: number | undefined;
     try {
       const workerLaunch = await import('../worker-launch-ack.js');
+      // The provider exits only once the test has observed it started: an
+      // immediate exit lets the timer terminal land first, and a published
+      // terminal makes awaitWorkerLaunchProviderStarted wait out its bound.
       bootstrap = workerLaunch.runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
         launchAttempt,
         [process.execPath, '-e', [
@@ -1973,7 +2001,7 @@ describe('worker launch acknowledgement', () => {
           "const descendant=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})",
           'descendant.unref()',
           `fs.writeFileSync(${JSON.stringify(descendantPidPath)},String(descendant.pid))`,
-          'process.exit(0)',
+          `setInterval(()=>{if(fs.existsSync(${JSON.stringify(providerExitPath)}))process.exit(0)},10)`,
         ].join(';')],
         cwd,
         { releaseAfterSpawn: true },
@@ -1990,6 +2018,7 @@ describe('worker launch acknowledgement', () => {
         process_group_id: number;
       };
       providerGroupId = started.process_group_id;
+      await writeFile(providerExitPath, '', 'utf8');
       await vi.waitFor(async () => {
         const terminal = JSON.parse(await readFile(`${launchAttempt.startedPath}.terminal`, 'utf8'));
         expect(terminal).toMatchObject({
@@ -1998,7 +2027,7 @@ describe('worker launch acknowledgement', () => {
           child_reaped: false,
           process_group_id: providerGroupId,
         });
-      }, { timeout: 5_000, interval: 20 });
+      }, { timeout: LAUNCH_WAIT_TIMEOUT_MS, interval: 20 });
       expect(supervisor).toBeDefined();
       supervisor!.kill('SIGKILL');
       await expect(bootstrap).resolves.toEqual({ outcome: 'provider_cleanup_unverified' });
@@ -2011,7 +2040,7 @@ describe('worker launch acknowledgement', () => {
           child_reaped: true,
           process_group_id: providerGroupId,
         });
-      }, { timeout: 5_000, interval: 20 });
+      }, { timeout: LAUNCH_WAIT_TIMEOUT_MS, interval: 20 });
     } finally {
       try {
         if (providerGroupId) process.kill(-providerGroupId, 'SIGKILL');
