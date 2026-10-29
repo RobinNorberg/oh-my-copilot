@@ -1,0 +1,16 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-item-type-states/list?view=azure-devops-rest-7.1",
+  "note": "adapted: the Agile User Story states",
+  "route": "wit.workItemTypeStates.GET",
+  "routeParameters": { "project": "Web", "type": "User Story" },
+  "stdout": {
+    "count": 5,
+    "value": [
+      { "name": "New", "color": "b2b2b2", "category": "Proposed" },
+      { "name": "Active", "color": "007acc", "category": "InProgress" },
+      { "name": "Resolved", "color": "ff9d00", "category": "Resolved" },
+      { "name": "Closed", "color": "339933", "category": "Completed" },
+      { "name": "Removed", "color": "ffffff", "category": "Removed" }
+    ]
+  }
+}

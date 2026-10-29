@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5241fc26ddfc97aebce4375a014ed3c84528838a",
-    "sourceSha256": "e83495d4cfa6b22de18fc095a5e88c1d03f1778c345385a1c0ea6dd6d4280aba",
+    "head": "943d0be201300a6f6caf7c0855e896f82c192fbc",
+    "sourceSha256": "238ac419df951ff4dc9784b67017440786b1167f61d1d0469dd00cc9891d2bed",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5241fc26ddfc97aebce4375a014ed3c84528838a",
-  "sourceSha256": "e83495d4cfa6b22de18fc095a5e88c1d03f1778c345385a1c0ea6dd6d4280aba",
+  "head": "943d0be201300a6f6caf7c0855e896f82c192fbc",
+  "sourceSha256": "238ac419df951ff4dc9784b67017440786b1167f61d1d0469dd00cc9891d2bed",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1814,
-      "total": 1838
+      "srcFiles": 1874,
+      "total": 1898
     },
     "generated": {
-      "distFiles": 6844,
+      "distFiles": 6956,
       "bridgeFiles": 9,
-      "total": 6853
+      "total": 6965
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -829,6 +829,7 @@
       "tests/fixtures/prompt-projection/transaction-backup-rollback.json"
     ],
     "scriptFiles": [
+      "scripts/ado-fixture-diff.mjs",
       "scripts/audit-multirepo-e2e.mjs",
       "scripts/budget-guard.mjs",
       "scripts/build-bridge-entry.mjs",
@@ -2755,6 +2756,10 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory-check.d.ts",
+      "dist/cli/commands/factory-check.d.ts.map",
+      "dist/cli/commands/factory-check.js",
+      "dist/cli/commands/factory-check.js.map",
       "dist/cli/commands/factory-setup.d.ts",
       "dist/cli/commands/factory-setup.d.ts.map",
       "dist/cli/commands/factory-setup.js",
@@ -2989,6 +2994,30 @@
       "dist/factory/__tests__/workflow-run.test.d.ts.map",
       "dist/factory/__tests__/workflow-run.test.js",
       "dist/factory/__tests__/workflow-run.test.js.map",
+      "dist/factory/check/__tests__/ado.test.d.ts",
+      "dist/factory/check/__tests__/ado.test.d.ts.map",
+      "dist/factory/check/__tests__/ado.test.js",
+      "dist/factory/check/__tests__/ado.test.js.map",
+      "dist/factory/check/__tests__/cli.test.d.ts",
+      "dist/factory/check/__tests__/cli.test.d.ts.map",
+      "dist/factory/check/__tests__/cli.test.js",
+      "dist/factory/check/__tests__/cli.test.js.map",
+      "dist/factory/check/__tests__/rules.test.d.ts",
+      "dist/factory/check/__tests__/rules.test.d.ts.map",
+      "dist/factory/check/__tests__/rules.test.js",
+      "dist/factory/check/__tests__/rules.test.js.map",
+      "dist/factory/check/cli.d.ts",
+      "dist/factory/check/cli.d.ts.map",
+      "dist/factory/check/cli.js",
+      "dist/factory/check/cli.js.map",
+      "dist/factory/check/rules.d.ts",
+      "dist/factory/check/rules.d.ts.map",
+      "dist/factory/check/rules.js",
+      "dist/factory/check/rules.js.map",
+      "dist/factory/check/score.d.ts",
+      "dist/factory/check/score.d.ts.map",
+      "dist/factory/check/score.js",
+      "dist/factory/check/score.js.map",
       "dist/factory/heal/__tests__/classify.test.d.ts",
       "dist/factory/heal/__tests__/classify.test.d.ts.map",
       "dist/factory/heal/__tests__/classify.test.js",
@@ -3093,6 +3122,10 @@
       "dist/factory/run/__tests__/fake-lanes.d.ts.map",
       "dist/factory/run/__tests__/fake-lanes.js",
       "dist/factory/run/__tests__/fake-lanes.js.map",
+      "dist/factory/run/__tests__/forge-roots.test.d.ts",
+      "dist/factory/run/__tests__/forge-roots.test.d.ts.map",
+      "dist/factory/run/__tests__/forge-roots.test.js",
+      "dist/factory/run/__tests__/forge-roots.test.js.map",
       "dist/factory/run/__tests__/lane.test.d.ts",
       "dist/factory/run/__tests__/lane.test.d.ts.map",
       "dist/factory/run/__tests__/lane.test.js",
@@ -3133,6 +3166,10 @@
       "dist/factory/run/exec.d.ts.map",
       "dist/factory/run/exec.js",
       "dist/factory/run/exec.js.map",
+      "dist/factory/run/forge-roots.d.ts",
+      "dist/factory/run/forge-roots.d.ts.map",
+      "dist/factory/run/forge-roots.js",
+      "dist/factory/run/forge-roots.js.map",
       "dist/factory/run/gates-driver.d.ts",
       "dist/factory/run/gates-driver.d.ts.map",
       "dist/factory/run/gates-driver.js",
@@ -3177,6 +3214,10 @@
       "dist/factory/run/state.d.ts.map",
       "dist/factory/run/state.js",
       "dist/factory/run/state.js.map",
+      "dist/factory/setup/__tests__/e2e.test.d.ts",
+      "dist/factory/setup/__tests__/e2e.test.d.ts.map",
+      "dist/factory/setup/__tests__/e2e.test.js",
+      "dist/factory/setup/__tests__/e2e.test.js.map",
       "dist/factory/setup/__tests__/guard.test.d.ts",
       "dist/factory/setup/__tests__/guard.test.d.ts.map",
       "dist/factory/setup/__tests__/guard.test.js",
@@ -3601,10 +3642,18 @@
       "dist/forge/__tests__/recording-exec.d.ts.map",
       "dist/forge/__tests__/recording-exec.js",
       "dist/forge/__tests__/recording-exec.js.map",
+      "dist/forge/ado/__tests__/adapter.test.d.ts",
+      "dist/forge/ado/__tests__/adapter.test.d.ts.map",
+      "dist/forge/ado/__tests__/adapter.test.js",
+      "dist/forge/ado/__tests__/adapter.test.js.map",
       "dist/forge/ado/__tests__/az-binary.test.d.ts",
       "dist/forge/ado/__tests__/az-binary.test.d.ts.map",
       "dist/forge/ado/__tests__/az-binary.test.js",
       "dist/forge/ado/__tests__/az-binary.test.js.map",
+      "dist/forge/ado/__tests__/exact-head.test.d.ts",
+      "dist/forge/ado/__tests__/exact-head.test.d.ts.map",
+      "dist/forge/ado/__tests__/exact-head.test.js",
+      "dist/forge/ado/__tests__/exact-head.test.js.map",
       "dist/forge/ado/__tests__/fixtures.d.ts",
       "dist/forge/ado/__tests__/fixtures.d.ts.map",
       "dist/forge/ado/__tests__/fixtures.js",
@@ -3613,26 +3662,90 @@
       "dist/forge/ado/__tests__/fixtures.test.d.ts.map",
       "dist/forge/ado/__tests__/fixtures.test.js",
       "dist/forge/ado/__tests__/fixtures.test.js.map",
+      "dist/forge/ado/__tests__/guard.test.d.ts",
+      "dist/forge/ado/__tests__/guard.test.d.ts.map",
+      "dist/forge/ado/__tests__/guard.test.js",
+      "dist/forge/ado/__tests__/guard.test.js.map",
       "dist/forge/ado/__tests__/html.test.d.ts",
       "dist/forge/ado/__tests__/html.test.d.ts.map",
       "dist/forge/ado/__tests__/html.test.js",
       "dist/forge/ado/__tests__/html.test.js.map",
+      "dist/forge/ado/__tests__/merge-static.test.d.ts",
+      "dist/forge/ado/__tests__/merge-static.test.d.ts.map",
+      "dist/forge/ado/__tests__/merge-static.test.js",
+      "dist/forge/ado/__tests__/merge-static.test.js.map",
+      "dist/forge/ado/__tests__/record.test.d.ts",
+      "dist/forge/ado/__tests__/record.test.d.ts.map",
+      "dist/forge/ado/__tests__/record.test.js",
+      "dist/forge/ado/__tests__/record.test.js.map",
+      "dist/forge/ado/__tests__/redact.test.d.ts",
+      "dist/forge/ado/__tests__/redact.test.d.ts.map",
+      "dist/forge/ado/__tests__/redact.test.js",
+      "dist/forge/ado/__tests__/redact.test.js.map",
       "dist/forge/ado/__tests__/routes.test.d.ts",
       "dist/forge/ado/__tests__/routes.test.d.ts.map",
       "dist/forge/ado/__tests__/routes.test.js",
       "dist/forge/ado/__tests__/routes.test.js.map",
+      "dist/forge/ado/__tests__/wiql.test.d.ts",
+      "dist/forge/ado/__tests__/wiql.test.d.ts.map",
+      "dist/forge/ado/__tests__/wiql.test.js",
+      "dist/forge/ado/__tests__/wiql.test.js.map",
+      "dist/forge/ado/__tests__/world.d.ts",
+      "dist/forge/ado/__tests__/world.d.ts.map",
+      "dist/forge/ado/__tests__/world.js",
+      "dist/forge/ado/__tests__/world.js.map",
       "dist/forge/ado/az-binary.d.ts",
       "dist/forge/ado/az-binary.d.ts.map",
       "dist/forge/ado/az-binary.js",
       "dist/forge/ado/az-binary.js.map",
+      "dist/forge/ado/checks.d.ts",
+      "dist/forge/ado/checks.d.ts.map",
+      "dist/forge/ado/checks.js",
+      "dist/forge/ado/checks.js.map",
+      "dist/forge/ado/guard.d.ts",
+      "dist/forge/ado/guard.d.ts.map",
+      "dist/forge/ado/guard.js",
+      "dist/forge/ado/guard.js.map",
       "dist/forge/ado/html.d.ts",
       "dist/forge/ado/html.d.ts.map",
       "dist/forge/ado/html.js",
       "dist/forge/ado/html.js.map",
+      "dist/forge/ado/index.d.ts",
+      "dist/forge/ado/index.d.ts.map",
+      "dist/forge/ado/index.js",
+      "dist/forge/ado/index.js.map",
+      "dist/forge/ado/invoke.d.ts",
+      "dist/forge/ado/invoke.d.ts.map",
+      "dist/forge/ado/invoke.js",
+      "dist/forge/ado/invoke.js.map",
+      "dist/forge/ado/merge.d.ts",
+      "dist/forge/ado/merge.d.ts.map",
+      "dist/forge/ado/merge.js",
+      "dist/forge/ado/merge.js.map",
+      "dist/forge/ado/record.d.ts",
+      "dist/forge/ado/record.d.ts.map",
+      "dist/forge/ado/record.js",
+      "dist/forge/ado/record.js.map",
+      "dist/forge/ado/redact.d.ts",
+      "dist/forge/ado/redact.d.ts.map",
+      "dist/forge/ado/redact.js",
+      "dist/forge/ado/redact.js.map",
+      "dist/forge/ado/reviews.d.ts",
+      "dist/forge/ado/reviews.d.ts.map",
+      "dist/forge/ado/reviews.js",
+      "dist/forge/ado/reviews.js.map",
       "dist/forge/ado/routes.d.ts",
       "dist/forge/ado/routes.d.ts.map",
       "dist/forge/ado/routes.js",
       "dist/forge/ado/routes.js.map",
+      "dist/forge/ado/tracker.d.ts",
+      "dist/forge/ado/tracker.d.ts.map",
+      "dist/forge/ado/tracker.js",
+      "dist/forge/ado/tracker.js.map",
+      "dist/forge/ado/wiql.d.ts",
+      "dist/forge/ado/wiql.d.ts.map",
+      "dist/forge/ado/wiql.js",
+      "dist/forge/ado/wiql.js.map",
       "dist/forge/config.d.ts",
       "dist/forge/config.d.ts.map",
       "dist/forge/config.js",
@@ -18394,6 +18507,26 @@
         "path": "dist/cli/commands/doctor-team-routing.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-check.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-check.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-check.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-check.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-check.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-check.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-check.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-check.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-setup.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-setup.d.ts"
@@ -19564,6 +19697,126 @@
         "path": "dist/factory/__tests__/workflow-run.test.js.map"
       },
       {
+        "id": "dist/factory/check/__tests__/ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/check/__tests__/ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/ado.test.js"
+      },
+      {
+        "id": "dist/factory/check/__tests__/ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli.test.d.ts"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli.test.js"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli.test.js.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/rules.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/rules.test.d.ts"
+      },
+      {
+        "id": "dist/factory/check/__tests__/rules.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/rules.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/rules.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/rules.test.js"
+      },
+      {
+        "id": "dist/factory/check/__tests__/rules.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/rules.test.js.map"
+      },
+      {
+        "id": "dist/factory/check/cli.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/cli.d.ts"
+      },
+      {
+        "id": "dist/factory/check/cli.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/cli.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/cli.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/cli.js"
+      },
+      {
+        "id": "dist/factory/check/cli.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/cli.js.map"
+      },
+      {
+        "id": "dist/factory/check/rules.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/rules.d.ts"
+      },
+      {
+        "id": "dist/factory/check/rules.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/rules.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/rules.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/rules.js"
+      },
+      {
+        "id": "dist/factory/check/rules.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/rules.js.map"
+      },
+      {
+        "id": "dist/factory/check/score.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/score.d.ts"
+      },
+      {
+        "id": "dist/factory/check/score.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/score.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/score.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/score.js"
+      },
+      {
+        "id": "dist/factory/check/score.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/score.js.map"
+      },
+      {
         "id": "dist/factory/heal/__tests__/classify.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/heal/__tests__/classify.test.d.ts"
@@ -20084,6 +20337,26 @@
         "path": "dist/factory/run/__tests__/fake-lanes.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/forge-roots.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/lane.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/lane.test.d.ts"
@@ -20282,6 +20555,26 @@
         "id": "dist/factory/run/exec.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/exec.js.map"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.d.ts"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.js"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.js.map"
       },
       {
         "id": "dist/factory/run/gates-driver.d.ts",
@@ -20502,6 +20795,26 @@
         "id": "dist/factory/run/state.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/state.js.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/e2e.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/e2e.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/e2e.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/e2e.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/e2e.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/e2e.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/e2e.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/e2e.test.js.map"
       },
       {
         "id": "dist/factory/setup/__tests__/guard.test.d.ts",
@@ -22624,6 +22937,26 @@
         "path": "dist/forge/__tests__/recording-exec.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/adapter.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/adapter.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/adapter.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/adapter.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/adapter.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/adapter.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/adapter.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/adapter.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/az-binary.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/az-binary.test.d.ts"
@@ -22642,6 +22975,26 @@
         "id": "dist/forge/ado/__tests__/az-binary.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/az-binary.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/exact-head.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/exact-head.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/exact-head.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/exact-head.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/exact-head.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/exact-head.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/exact-head.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/exact-head.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/fixtures.d.ts",
@@ -22684,6 +23037,26 @@
         "path": "dist/forge/ado/__tests__/fixtures.test.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/guard.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/guard.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/guard.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/html.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/html.test.d.ts"
@@ -22702,6 +23075,66 @@
         "id": "dist/forge/ado/__tests__/html.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/html.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/merge-static.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/merge-static.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/merge-static.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/merge-static.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/merge-static.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/merge-static.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/merge-static.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/merge-static.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/record.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/record.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/record.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/record.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/record.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/record.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/record.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/record.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/redact.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/redact.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/redact.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/redact.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/redact.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/redact.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/redact.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/redact.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/routes.test.d.ts",
@@ -22724,6 +23157,46 @@
         "path": "dist/forge/ado/__tests__/routes.test.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/wiql.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/wiql.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/wiql.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/wiql.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/wiql.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/wiql.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/wiql.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/wiql.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/world.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/world.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/world.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/world.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/world.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/world.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/world.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/world.js.map"
+      },
+      {
         "id": "dist/forge/ado/az-binary.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/az-binary.d.ts"
@@ -22742,6 +23215,46 @@
         "id": "dist/forge/ado/az-binary.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/az-binary.js.map"
+      },
+      {
+        "id": "dist/forge/ado/checks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/checks.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/checks.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/checks.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/checks.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/checks.js"
+      },
+      {
+        "id": "dist/forge/ado/checks.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/checks.js.map"
+      },
+      {
+        "id": "dist/forge/ado/guard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/guard.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/guard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/guard.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/guard.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/guard.js"
+      },
+      {
+        "id": "dist/forge/ado/guard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/guard.js.map"
       },
       {
         "id": "dist/forge/ado/html.d.ts",
@@ -22764,6 +23277,126 @@
         "path": "dist/forge/ado/html.js.map"
       },
       {
+        "id": "dist/forge/ado/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/index.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/index.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/index.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/index.js"
+      },
+      {
+        "id": "dist/forge/ado/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/index.js.map"
+      },
+      {
+        "id": "dist/forge/ado/invoke.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/invoke.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/invoke.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/invoke.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/invoke.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/invoke.js"
+      },
+      {
+        "id": "dist/forge/ado/invoke.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/invoke.js.map"
+      },
+      {
+        "id": "dist/forge/ado/merge.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/merge.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/merge.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/merge.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/merge.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/merge.js"
+      },
+      {
+        "id": "dist/forge/ado/merge.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/merge.js.map"
+      },
+      {
+        "id": "dist/forge/ado/record.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/record.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/record.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/record.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/record.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/record.js"
+      },
+      {
+        "id": "dist/forge/ado/record.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/record.js.map"
+      },
+      {
+        "id": "dist/forge/ado/redact.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/redact.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/redact.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/redact.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/redact.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/redact.js"
+      },
+      {
+        "id": "dist/forge/ado/redact.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/redact.js.map"
+      },
+      {
+        "id": "dist/forge/ado/reviews.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/reviews.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/reviews.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/reviews.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/reviews.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/reviews.js"
+      },
+      {
+        "id": "dist/forge/ado/reviews.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/reviews.js.map"
+      },
+      {
         "id": "dist/forge/ado/routes.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/routes.d.ts"
@@ -22782,6 +23415,46 @@
         "id": "dist/forge/ado/routes.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/routes.js.map"
+      },
+      {
+        "id": "dist/forge/ado/tracker.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/tracker.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/tracker.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/tracker.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/tracker.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/tracker.js"
+      },
+      {
+        "id": "dist/forge/ado/tracker.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/tracker.js.map"
+      },
+      {
+        "id": "dist/forge/ado/wiql.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/wiql.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/wiql.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/wiql.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/wiql.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/wiql.js"
+      },
+      {
+        "id": "dist/forge/ado/wiql.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/wiql.js.map"
       },
       {
         "id": "dist/forge/config.d.ts",
@@ -44564,6 +45237,11 @@
         "path": "research/hephaestus-vs-deep-executor-comparison.md"
       },
       {
+        "id": "scripts/ado-fixture-diff.mjs",
+        "kind": "script",
+        "path": "scripts/ado-fixture-diff.mjs"
+      },
+      {
         "id": "scripts/audit-multirepo-e2e.mjs",
         "kind": "script",
         "path": "scripts/audit-multirepo-e2e.mjs"
@@ -48269,6 +48947,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory-check.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-check.ts"
+      },
+      {
         "id": "src/cli/commands/factory-setup.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-setup.ts"
@@ -48569,6 +49252,101 @@
         "path": "src/factory/__tests__/workflow-run.test.ts"
       },
       {
+        "id": "src/factory/check/__tests__/ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/ado.test.ts"
+      },
+      {
+        "id": "src/factory/check/__tests__/cli.test.ts",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/cli.test.ts"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-50.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-50.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.42.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.42.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.43.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.43.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.44.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.44.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.45.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.45.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.47.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.47.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.48.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.48.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.49.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.49.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.50.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/wit.workItems.GET.50.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/rules.test.ts",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/rules.test.ts"
+      },
+      {
+        "id": "src/factory/check/cli.ts",
+        "kind": "src",
+        "path": "src/factory/check/cli.ts"
+      },
+      {
+        "id": "src/factory/check/rules.ts",
+        "kind": "src",
+        "path": "src/factory/check/rules.ts"
+      },
+      {
+        "id": "src/factory/check/score.ts",
+        "kind": "src",
+        "path": "src/factory/check/score.ts"
+      },
+      {
         "id": "src/factory/heal/__tests__/classify.test.ts",
         "kind": "src",
         "path": "src/factory/heal/__tests__/classify.test.ts"
@@ -48719,6 +49497,11 @@
         "path": "src/factory/run/__tests__/fake-lanes.ts"
       },
       {
+        "id": "src/factory/run/__tests__/forge-roots.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/forge-roots.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/lane.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/lane.test.ts"
@@ -48767,6 +49550,11 @@
         "id": "src/factory/run/exec.ts",
         "kind": "src",
         "path": "src/factory/run/exec.ts"
+      },
+      {
+        "id": "src/factory/run/forge-roots.ts",
+        "kind": "src",
+        "path": "src/factory/run/forge-roots.ts"
       },
       {
         "id": "src/factory/run/gates-driver.ts",
@@ -48822,6 +49610,11 @@
         "id": "src/factory/run/state.ts",
         "kind": "src",
         "path": "src/factory/run/state.ts"
+      },
+      {
+        "id": "src/factory/setup/__tests__/e2e.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/e2e.test.ts"
       },
       {
         "id": "src/factory/setup/__tests__/fixtures/ado/core.projects.json",
@@ -49424,9 +50217,19 @@
         "path": "src/forge/__tests__/recording-exec.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/adapter.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/adapter.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/az-binary.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/az-binary.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/exact-head.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/exact-head.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures.test.ts",
@@ -49439,9 +50242,94 @@
         "path": "src/forge/ado/__tests__/fixtures.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/build.builds.GET.pr-17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.builds.GET.pr-17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/build.logs.GET.101-7.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.logs.GET.101-7.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/build.timeline.GET.101.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.timeline.GET.101.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequestIterations.GET.17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequestIterations.GET.17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequestStatuses.GET.17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequestStatuses.GET.17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequestThreads.POST.17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequestThreads.POST.17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-branch.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-branch.json"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.PATCH.ready.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.PATCH.ready.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.POST.create.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.POST.create.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/policy.evaluations.GET.pr-17.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/policy.evaluations.GET.pr-17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.comments.GET.42.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.comments.GET.42.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.comments.POST.42.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.comments.POST.42.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.wiql.GET.saved-query.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.wiql.GET.saved-query.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.query.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.query.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.42.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.42.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.missing.json",
@@ -49449,9 +50337,39 @@
         "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.missing.json"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/work.boards.GET.stories.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/work.boards.GET.stories.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/guard.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/guard.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/html.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/html.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/merge-static.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/merge-static.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/record.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/record.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/redact.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/redact.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/routes.test.ts",
@@ -49459,9 +50377,29 @@
         "path": "src/forge/ado/__tests__/routes.test.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/wiql.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/wiql.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/world.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/world.ts"
+      },
+      {
         "id": "src/forge/ado/az-binary.ts",
         "kind": "src",
         "path": "src/forge/ado/az-binary.ts"
+      },
+      {
+        "id": "src/forge/ado/checks.ts",
+        "kind": "src",
+        "path": "src/forge/ado/checks.ts"
+      },
+      {
+        "id": "src/forge/ado/guard.ts",
+        "kind": "src",
+        "path": "src/forge/ado/guard.ts"
       },
       {
         "id": "src/forge/ado/html.ts",
@@ -49469,9 +50407,49 @@
         "path": "src/forge/ado/html.ts"
       },
       {
+        "id": "src/forge/ado/index.ts",
+        "kind": "src",
+        "path": "src/forge/ado/index.ts"
+      },
+      {
+        "id": "src/forge/ado/invoke.ts",
+        "kind": "src",
+        "path": "src/forge/ado/invoke.ts"
+      },
+      {
+        "id": "src/forge/ado/merge.ts",
+        "kind": "src",
+        "path": "src/forge/ado/merge.ts"
+      },
+      {
+        "id": "src/forge/ado/record.ts",
+        "kind": "src",
+        "path": "src/forge/ado/record.ts"
+      },
+      {
+        "id": "src/forge/ado/redact.ts",
+        "kind": "src",
+        "path": "src/forge/ado/redact.ts"
+      },
+      {
+        "id": "src/forge/ado/reviews.ts",
+        "kind": "src",
+        "path": "src/forge/ado/reviews.ts"
+      },
+      {
         "id": "src/forge/ado/routes.ts",
         "kind": "src",
         "path": "src/forge/ado/routes.ts"
+      },
+      {
+        "id": "src/forge/ado/tracker.ts",
+        "kind": "src",
+        "path": "src/forge/ado/tracker.ts"
+      },
+      {
+        "id": "src/forge/ado/wiql.ts",
+        "kind": "src",
+        "path": "src/forge/ado/wiql.ts"
       },
       {
         "id": "src/forge/config.ts",
@@ -55863,6 +56841,26 @@
       {
         "from": "examples/vendor-mcp-server/server.mjs",
         "to": "external:@modelcontextprotocol/sdk/types.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-diff.mjs",
+        "to": "dist/forge/ado/record.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-diff.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-diff.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-diff.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -70436,6 +71434,71 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "external:readline/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-check.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-setup.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -70472,7 +71535,22 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
-        "to": "src/factory/run/exec.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/run/forge-roots.ts",
         "kind": "imports"
       },
       {
@@ -70537,6 +71615,16 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/ado/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
         "to": "src/forge/config.ts",
         "kind": "imports"
       },
@@ -70593,6 +71681,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-check.ts",
         "kind": "imports"
       },
       {
@@ -72976,6 +74069,276 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/cli/commands/factory-check.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/rules.ts",
+        "to": "src/factory/run/plan-rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/rules.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/rules.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/rules.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/rules.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/utils/string-width.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/heal/__tests__/classify.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74456,6 +75819,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/forge-roots.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/lane.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -75017,6 +76425,16 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
@@ -75024,6 +76442,26 @@
         "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/gates-driver.ts",
@@ -75363,6 +76801,56 @@
       {
         "from": "src/factory/run/state.ts",
         "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/e2e.test.ts",
+        "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
       {
@@ -77691,6 +79179,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/adapter.test.ts",
+        "to": "src/forge/ado/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/az-binary.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/az-binary.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -77704,6 +79237,26 @@
         "from": "src/forge/ado/__tests__/az-binary.test.ts",
         "to": "src/forge/ado/az-binary.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/exact-head.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/exact-head.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/exact-head.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/exact-head.test.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/ado/__tests__/fixtures.test.ts",
@@ -77751,6 +79304,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/guard.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/html.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -77763,6 +79361,76 @@
       {
         "from": "src/forge/ado/__tests__/html.test.ts",
         "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/merge-static.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/merge-static.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/merge-static.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/merge-static.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/record.test.ts",
+        "to": "src/forge/ado/record.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/redact.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/redact.test.ts",
+        "to": "src/forge/ado/redact.ts",
         "kind": "imports"
       },
       {
@@ -77781,9 +79449,389 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/wiql.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/wiql.test.ts",
+        "to": "src/forge/ado/wiql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/az-binary.ts",
         "to": "external:path",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/checks.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/checks.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/checks.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/checks.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/checks.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/guard.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/record.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/forge/ado/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/invoke.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "src/forge/ado/reviews.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "src/forge/ado/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/record.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/reviews.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/reviews.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/reviews.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/reviews.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/wiql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/wiql.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/config.ts",
@@ -77979,6 +80027,11 @@
         "from": "src/forge/github/tracker.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/index.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/index.ts",
@@ -95641,6 +97694,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/gates.ts",
         "to": "src/forge/github/checks.ts",
         "kind": "imports"
@@ -110052,12 +112115,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9400,
-      "edgeCount": 10925,
-      "importEdgeCount": 9019,
+      "nodeCount": 9573,
+      "edgeCount": 11142,
+      "importEdgeCount": 9182,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "f3beb17fdb4ec75a9742bc50c64fa5edfa342d40676e770240bc068bdd60f29c",
-  "manifestSha256": "40512a36850c38aae6244d4b19e8a93bad947f0e4e4e52e20c0ccf007801589d"
+  "inventorySha256": "c506df75b34a4bd3e0295e8660e4d13b12d7b35dee8a9ee46b8d1c0bf064a355",
+  "manifestSha256": "ed4c7f30162d4a650eb0f37bd823faaf794ca29746b18f293bd7cc120864797d"
 }

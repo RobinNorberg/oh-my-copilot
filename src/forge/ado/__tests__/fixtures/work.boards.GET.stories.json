@@ -1,0 +1,23 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/work/boards/get?view=azure-devops-rest-7.1",
+  "note": "adapted: the Web Team Stories board and its Kanban column field",
+  "route": "work.boards.GET",
+  "routeParameters": { "project": "Web", "team": "Web Team", "id": "Stories" },
+  "stdout": {
+    "id": "a8e4c6d2-3b1f-4e5a-9c7d-1f2e3d4c5b6a",
+    "name": "Stories",
+    "revision": 3,
+    "columns": [
+      { "id": "c1", "name": "New", "itemLimit": 0, "stateMappings": { "User Story": "New" }, "columnType": "incoming" },
+      { "id": "c2", "name": "Ready", "itemLimit": 5, "stateMappings": { "User Story": "Active" }, "columnType": "inProgress" },
+      { "id": "c3", "name": "Code Review", "itemLimit": 5, "stateMappings": { "User Story": "Active" }, "columnType": "inProgress" },
+      { "id": "c4", "name": "Closed", "itemLimit": 0, "stateMappings": { "User Story": "Closed" }, "columnType": "outgoing" }
+    ],
+    "isValid": true,
+    "fields": {
+      "columnField": { "referenceName": "WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column", "url": "https://dev.azure.com/contoso/_apis/wit/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column" },
+      "rowField": { "referenceName": "WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Lane", "url": "https://dev.azure.com/contoso/_apis/wit/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Lane" },
+      "doneField": { "referenceName": "WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column.Done", "url": "https://dev.azure.com/contoso/_apis/wit/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column.Done" }
+    }
+  }
+}

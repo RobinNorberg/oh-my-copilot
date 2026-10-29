@@ -1,0 +1,22 @@
+{
+  "provenance": "synthetic: pull request search by source branch, shaped like the git/pullRequests GET docs sample",
+  "route": "git.pullRequests.GET",
+  "routeParameters": {
+    "project": "Web",
+    "repositoryId": "web-app"
+  },
+  "queryParameters": {
+    "searchCriteria.sourceRefName": "refs/heads/factory/issue-50",
+    "searchCriteria.status": "active"
+  },
+  "stdout": {
+    "value": [
+      {
+        "pullRequestId": 17,
+        "status": "active",
+        "sourceRefName": "refs/heads/factory/issue-50"
+      }
+    ],
+    "count": 1
+  }
+}

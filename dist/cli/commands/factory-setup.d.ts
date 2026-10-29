@@ -19,21 +19,21 @@
  */
 import { Command } from 'commander';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
-import type { Forge, ResolvedForgeConfig } from '../../forge/types.js';
+import type { ForgeFactory } from '../../forge/types.js';
 import { type AuthReport } from '../../factory/setup/auth.js';
 import { type PreviewCheck, type PreviewRow, type Prompter } from '../../factory/setup/intake-pick.js';
 import { type SetupScope, type SetupSection } from '../../factory/setup/write.js';
 import { type Exec } from '../../ship/exec.js';
 export interface FactorySetupDeps {
-    /** Raw exec; the wizard wraps it in setupGuardExec, the preview's forge in factoryGuardExec. */
+    /** Raw exec; the wizard wraps it in setupGuardExec, the preview's forge in checkGuardExec. */
     exec: Exec;
     env: Readonly<Record<string, string | undefined>>;
     isTTY: () => boolean;
     /** Azure CLI entry point (az-binary.ts); `root` is an untrusted PATH root. */
     resolveAz: (root: string) => AzEntry;
-    createForge: (exec: Exec, cwd: string, config: ResolvedForgeConfig) => Forge;
-    /** Readiness hook of the preview (`omg factory check` plugs its scorer in). */
-    previewCheck: PreviewCheck;
+    createForge: ForgeFactory;
+    /** Readiness hook of the preview; default: the `omg factory check` scorer over the resolved config. */
+    previewCheck?: PreviewCheck;
     userConfigPath: () => string;
     /** Interactive answers; default reads the TTY. */
     prompter?: Prompter;

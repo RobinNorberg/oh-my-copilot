@@ -1,0 +1,35 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-iterations/list?view=azure-devops-rest-7.1",
+  "note": "adapted: iteration 1 at an older push, iteration 2 at head 1111…",
+  "route": "git.pullRequestIterations.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "value": [
+      {
+        "id": 1,
+        "description": "first push",
+        "author": { "displayName": "Factory", "uniqueName": "factory@example.com" },
+        "createdDate": "2026-10-28T10:00:00.000Z",
+        "updatedDate": "2026-10-28T10:00:00.000Z",
+        "sourceRefCommit": { "commitId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "targetRefCommit": { "commitId": "2222222222222222222222222222222222222222" },
+        "commonRefCommit": { "commitId": "2222222222222222222222222222222222222222" },
+        "hasMoreCommits": false,
+        "reason": "create"
+      },
+      {
+        "id": 2,
+        "description": "fix push",
+        "author": { "displayName": "Factory", "uniqueName": "factory@example.com" },
+        "createdDate": "2026-10-28T11:00:00.000Z",
+        "updatedDate": "2026-10-28T11:00:00.000Z",
+        "sourceRefCommit": { "commitId": "1111111111111111111111111111111111111111" },
+        "targetRefCommit": { "commitId": "2222222222222222222222222222222222222222" },
+        "commonRefCommit": { "commitId": "2222222222222222222222222222222222222222" },
+        "hasMoreCommits": false,
+        "reason": "push"
+      }
+    ],
+    "count": 2
+  }
+}

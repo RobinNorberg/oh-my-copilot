@@ -197,7 +197,7 @@ describe('createForge(github)', () => {
       if (s.startsWith('run view 5')) return ok('{"jobs":[]}');
       return ok();
     });
-    const forge = createForge(r.exec, CWD, config);
+    const forge = createForge(r.exec, CWD, config, { untrustedRoots: [CWD] });
     expect(forge.kind).toBe('github');
     expect(forge.provider).toBe('github');
     expect(forge.repo).toBe(config.repo);

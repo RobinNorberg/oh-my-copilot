@@ -1,0 +1,13 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/requeue-policy-evaluation?view=azure-devops-rest-7.1",
+  "note": "adapted: the requeued build evaluation of PR 17",
+  "route": "policy.evaluations.PATCH",
+  "routeParameters": { "project": "Web", "evaluationId": "e1a2b3c4-0000-4000-8000-000000000001" },
+  "stdout": {
+    "evaluationId": "e1a2b3c4-0000-4000-8000-000000000001",
+    "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17",
+    "status": "queued",
+    "configuration": { "id": 4, "isBlocking": true, "type": { "id": "0609b952-1397-4640-95ec-e00a01b2c241", "displayName": "Build" } },
+    "context": { "buildId": 102, "isExpired": false, "buildIsNotCurrent": false }
+  }
+}

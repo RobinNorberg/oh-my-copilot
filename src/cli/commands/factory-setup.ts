@@ -20,14 +20,17 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { createInterface } from 'readline/promises';
 import { getCanonicalProjectConfigPath } from '../../config/project-config-path.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { DEFAULT_ADO_ITEM_TYPES, ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { createForge } from '../../forge/index.js';
-import type { Forge, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
-import { factoryGuardExec } from '../../factory/run/exec.js';
+import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
+import type { Forge, ForgeFactory, ForgeOptions, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
+import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
+import { factoryCheckPreview, type CheckEnv } from '../../factory/check/score.js';
+import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
 import { checkAdoAuth, checkGitHubAuth, type AuthReport } from '../../factory/setup/auth.js';
 import { detectSetupForge } from '../../factory/setup/detect.js';
 import { SetupError, setupGuardExec, type SetupIo } from '../../factory/setup/guard.js';
@@ -35,7 +38,6 @@ import {
   adoWorkItemTypes,
   formatIntakeSpec,
   githubLabels,
-  listOnlyPreview,
   parseIntakeSpec,
   pickIntake,
   previewIntake,
@@ -46,43 +48,35 @@ import {
 } from '../../factory/setup/intake-pick.js';
 import { missingGitHubLabels, pickProgress, progressFromFlag, validateAdoProgress } from '../../factory/setup/progress-pick.js';
 import { applyWrites, buildSection, parsedAfter, planWrites, type PlannedWrite, type SetupScope, type SetupSection } from '../../factory/setup/write.js';
+import { redactAdoSecrets } from '../../forge/ado/redact.js';
 import { redactTokens } from '../../notifications/redact.js';
 import { trustedUserConfigPath } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { checkOrCreateHarborLabels } from './intake.js';
-import { validateFactoryPrerequisites } from './factory.js';
+import { defaultFactoryRunDeps, validateFactoryPrerequisites } from './factory.js';
 
 export interface FactorySetupDeps {
-  /** Raw exec; the wizard wraps it in setupGuardExec, the preview's forge in factoryGuardExec. */
+  /** Raw exec; the wizard wraps it in setupGuardExec, the preview's forge in checkGuardExec. */
   exec: Exec;
   env: Readonly<Record<string, string | undefined>>;
   isTTY: () => boolean;
   /** Azure CLI entry point (az-binary.ts); `root` is an untrusted PATH root. */
   resolveAz: (root: string) => AzEntry;
-  createForge: (exec: Exec, cwd: string, config: ResolvedForgeConfig) => Forge;
-  /** Readiness hook of the preview (`omg factory check` plugs its scorer in). */
-  previewCheck: PreviewCheck;
+  createForge: ForgeFactory;
+  /** Readiness hook of the preview; default: the `omg factory check` scorer over the resolved config. */
+  previewCheck?: PreviewCheck;
   userConfigPath: () => string;
   /** Interactive answers; default reads the TTY. */
   prompter?: Prompter;
 }
 
-const isFile = (p: string): boolean => {
-  try {
-    return statSync(p).isFile();
-  } catch {
-    return false;
-  }
-};
-
 export const defaultFactorySetupDeps: FactorySetupDeps = {
   exec: defaultExec,
   env: process.env,
   isTTY: () => Boolean(process.stdin.isTTY && process.stderr.isTTY),
-  resolveAz: (root) => resolveAzEntry({ platform: process.platform, env: process.env, isFile, untrustedRoots: [root] }),
+  resolveAz: (root) => resolveAzEntry(defaultAzBinaryDeps([root, ...factoryForgeOptions(root).untrustedRoots])),
   createForge,
-  previewCheck: listOnlyPreview,
   userConfigPath: () => trustedUserConfigPath(),
 };
 
@@ -169,9 +163,20 @@ export async function runFactorySetup(o: FactorySetupOptions, deps: FactorySetup
     await setup(o, deps, cwd, outcome);
   } catch (error) {
     outcome.exitCode = error instanceof SetupError ? error.exitCode : 1;
-    outcome.error = error instanceof Error ? error.message : String(error);
+    outcome.error = redactFor(outcome.forge?.kind, error instanceof Error ? error.message : String(error));
   }
   return outcome;
+}
+
+/** Adapter and tool text can carry credentials: the forge's own redactor (ADO PATs and auth headers, else GitHub tokens). */
+const redactFor = (kind: string | undefined, text: string): string => (kind === 'azure-devops' ? redactAdoSecrets(text) : redactTokens(text));
+
+/** The scorer's repository side: run state and plan files at the local origin/<base> (no fetch: the wizard stays read-only). */
+function previewEnv(guarded: Exec, root: string, config: ResolvedForgeConfig): CheckEnv {
+  const base = defaultFactoryRunDeps.base(root);
+  const sha = guarded('git', ['rev-parse', '--verify', `refs/remotes/origin/${base}`], { cwd: root });
+  const baseSha = sha.status === 0 && /^[0-9a-f]{40}$/.test(sha.stdout.trim()) ? sha.stdout.trim() : null;
+  return checkEnvFor(guarded, root, config, base, baseSha);
 }
 
 async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string, out: FactorySetupOutcome): Promise<void> {
@@ -300,13 +305,16 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   // `omg factory init` prerequisites (informational: the chain route table needs them, the engine does not).
   out.prerequisites = validateFactoryPrerequisites(root);
 
-  // Step 7: preview the source's first items through the engine's guard.
+  // Step 7: preview the source's first items through the read-only guard of `omg factory check` (it allows the tracker list reads).
   try {
-    const forge = deps.createForge(factoryGuardExec(deps.exec), root, resolved);
+    // The ADO guard needs the forge repo and the az entry; GitHub needs neither.
+    const guarded = checkGuardExec(deps.exec, undefined, () => (ado && az ? adoGuardContext(resolved, az) : undefined));
+    const forge = deps.createForge(guarded, root, resolved, { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) } as ForgeOptions);
     // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
-    out.preview = previewIntake(forge, source, deps.previewCheck).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));
+    const check = deps.previewCheck ?? factoryCheckPreview(previewEnv(guarded, root, resolved));
+    out.preview = previewIntake(forge, source, check).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));
   } catch (error) {
-    out.previewError = plainText(redactTokens(error instanceof Error ? error.message : String(error)));
+    out.previewError = plainText(redactFor(repo.kind, error instanceof Error ? error.message : String(error)));
   }
   out.notes.push(`intake ${formatIntakeSpec(source)}`);
 }

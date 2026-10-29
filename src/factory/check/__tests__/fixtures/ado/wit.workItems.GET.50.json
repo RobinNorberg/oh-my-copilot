@@ -1,0 +1,28 @@
+{
+  "provenance": "synthetic: work item shaped like the wit/workItems GET docs sample, for the omg factory check rules",
+  "route": "wit.workItems.GET",
+  "routeParameters": {
+    "project": "Web",
+    "id": "50"
+  },
+  "queryParameters": {
+    "$expand": "relations"
+  },
+  "stdout": {
+    "id": 50,
+    "rev": 3,
+    "fields": {
+      "System.WorkItemType": "Product Backlog Item",
+      "System.State": "Active",
+      "System.Title": "Has a PR",
+      "System.Description": "",
+      "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>`omg x` exits 0</li></ul>",
+      "System.CreatedBy": {
+        "displayName": "Owner",
+        "uniqueName": "owner@example.com"
+      }
+    },
+    "relations": [],
+    "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/50"
+  }
+}

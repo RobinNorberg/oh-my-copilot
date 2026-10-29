@@ -18,7 +18,10 @@
  */
 const STABLE = '7.1';
 /** A non-empty string with no control characters other than tab and newlines. */
-const TEXT = { type: 'string', pattern: /^(?:[^\p{Cc}]|[\t\r\n])+$/u };
+const TEXT_CHARS = /^(?:[^\p{Cc}]|[\t\r\n])+$/u;
+const TEXT = { type: 'string', pattern: TEXT_CHARS };
+/** TEXT with a length cap (the PR title and description, critic amendments §A.13). */
+const text = (maxLength) => ({ type: 'string', pattern: TEXT_CHARS, maxLength });
 /** A branch ref; never refs/pull, refs/tags or a ref with `..`. */
 const BRANCH_REF = { type: 'string', pattern: /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]+$/u, maxLength: 400 };
 const route = (r) => Object.freeze(r);
@@ -39,7 +42,8 @@ export const ADO_ROUTES = Object.freeze([
             paths: [
                 { path: /^\/rev$/, value: { type: 'integer', min: 1 } },
                 { path: /^\/fields\/System\.Tags$/, value: TEXT },
-                { path: /^\/fields\/System\.State$/, value: TEXT },
+                // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
+                { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
                 { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT },
             ],
         },
@@ -76,8 +80,8 @@ export const ADO_ROUTES = Object.freeze([
             values: {
                 sourceRefName: BRANCH_REF,
                 targetRefName: BRANCH_REF,
-                title: { type: 'string', maxLength: 400 },
-                description: { type: 'string', maxLength: 4000 },
+                title: text(400),
+                description: text(4000),
                 isDraft: { const: true },
                 workItemRefs: { type: 'array', minItems: 0, maxItems: 1, items: { kind: 'object', keys: ['id'], required: ['id'], values: { id: { type: 'string', pattern: /^[1-9]\d{0,9}$/ } } } },
             },
@@ -120,7 +124,8 @@ export const ADO_ROUTES = Object.freeze([
     // By id, or the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2).
     route({ id: 'build.builds.GET', area: 'build', resource: 'builds', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId'], queryParams: ['branchName', 'reasonFilter', 'queryOrder', '$top'] }),
     route({ id: 'build.timeline.GET', area: 'build', resource: 'timeline', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId'], queryParams: [] }),
-    route({ id: 'build.logs.GET', area: 'build', resource: 'logs', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId', 'logId'], queryParams: [], acceptMediaType: 'text/plain' }),
+    // Read as JSON ({ count, value: [lines] }): az devops invoke refuses a non-JSON response without --out-file, which the guard never allows.
+    route({ id: 'build.logs.GET', area: 'build', resource: 'logs', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'buildId', 'logId'], queryParams: [] }),
 ]);
 /**
  * The writes the factory may make, listed by hand so a new write route needs
@@ -197,9 +202,10 @@ function objectProblem(v, shape, at) {
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
- * (body === undefined).
+ * (body === undefined). `context` adds the config-bound rules (the guard
+ * always passes the run's progress states).
  */
-export function validateAdoBody(route, body) {
+export function validateAdoBody(route, body, context = {}) {
     const shape = route.body;
     if (!shape)
         return `${route.id} takes no body`;
@@ -225,6 +231,9 @@ export function validateAdoBody(route, body) {
         const problem = valueProblem(op.value, target.value, `${at}.value`);
         if (problem)
             return problem;
+        if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value)) {
+            return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
+        }
     }
     return undefined;
 }

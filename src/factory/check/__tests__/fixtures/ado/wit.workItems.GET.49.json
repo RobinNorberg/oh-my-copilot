@@ -1,0 +1,28 @@
+{
+  "provenance": "synthetic: work item shaped like the wit/workItems GET docs sample, for the omg factory check rules",
+  "route": "wit.workItems.GET",
+  "routeParameters": {
+    "project": "Web",
+    "id": "49"
+  },
+  "queryParameters": {
+    "$expand": "relations"
+  },
+  "stdout": {
+    "id": 49,
+    "rev": 3,
+    "fields": {
+      "System.WorkItemType": "Bug",
+      "System.State": "Active",
+      "System.Title": "No plan",
+      "System.Description": "<div>Make it faster</div>",
+      "Microsoft.VSTS.Common.Priority": 3,
+      "System.CreatedBy": {
+        "displayName": "Owner",
+        "uniqueName": "owner@example.com"
+      }
+    },
+    "relations": [],
+    "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/49"
+  }
+}
