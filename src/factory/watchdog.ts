@@ -15,6 +15,7 @@
 
 import * as fs from 'fs';
 import { join } from 'path';
+import { issueAddLabelArgv, issueCommentBodyArgv } from '../forge/github/chain-tracker.js';
 import { defaultSpawnFn, type SpawnNextTracker } from '../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
@@ -150,8 +151,8 @@ export function flagStall(stall: StalledLink, deps: WatchdogDeps): void {
   const tracker = stall.tracker;
   if (tracker) {
     const spawner = deps.spawner ?? defaultSpawnFn;
-    spawner('gh', ['issue', 'edit', String(tracker.issue), '--repo', tracker.repo, '--add-label', HARBOR_NEED_INFO_LABEL]);
-    spawner('gh', ['issue', 'comment', String(tracker.issue), '--repo', tracker.repo, '--body', stallAlertComment(stall)]);
+    spawner('gh', issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_NEED_INFO_LABEL));
+    spawner('gh', issueCommentBodyArgv(tracker.repo, tracker.issue, stallAlertComment(stall)));
     return;
   }
   const audit = deps.audit ?? defaultAudit(deps.cwd);

@@ -6,6 +6,7 @@ import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
+import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
 /**
  * Env var that carries a factory chain link's identity into a Copilot link.
  * Copilot CLI has no `--session-id`, so the spawner pre-generates the link id,
@@ -297,8 +298,8 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
     const trackerCommands = chain.tracker
         ? [
-            ['gh', 'issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.nextLabel],
-            ['gh', 'issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`],
+            ['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
+            ['gh', ...issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`)],
         ]
         : [];
     const nextSessionId = randomUUID();
@@ -347,8 +348,8 @@ export function executeSpawnNext(chain, directory, spawnFn = defaultSpawnFn) {
         }
         catch { /* never written */ }
         if (chain.tracker) {
-            spawnFn('gh', ['issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', spawnNextAlertComment(chain)]);
-            spawnFn('gh', ['issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.failedLabel]);
+            spawnFn('gh', issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, spawnNextAlertComment(chain)));
+            spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
         }
         throw error;
     }

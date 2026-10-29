@@ -10,14 +10,9 @@
  * writeback already uses — and are injectable so the module is testable without
  * a network.
  */
+import { type GhRunner } from '../forge/github/chain-tracker.js';
 import { type Frontier, type TicketRecord } from './map-frontier.js';
-export interface GhRunner {
-    (args: string[]): {
-        status: number | null;
-        stdout: string;
-        stderr: string;
-    };
-}
+export type { GhRunner };
 export declare const defaultGhRunner: GhRunner;
 export interface MapRef {
     repo: string;

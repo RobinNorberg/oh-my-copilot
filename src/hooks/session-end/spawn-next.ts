@@ -6,6 +6,7 @@ import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
+import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
 
 export interface SpawnNextTracker {
   repo: string;
@@ -377,8 +378,8 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: s
   const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker
     ? [
-        ['gh', 'issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.nextLabel],
-        ['gh', 'issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`],
+        ['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
+        ['gh', ...issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`)],
       ]
     : [];
   const nextSessionId = randomUUID();
@@ -423,8 +424,8 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
     // Don't leave a dead ledger pointing at a session that never started.
     try { fs.unlinkSync(ledgerPath); } catch { /* never written */ }
     if (chain.tracker) {
-      spawnFn('gh', ['issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', spawnNextAlertComment(chain)]);
-      spawnFn('gh', ['issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.failedLabel]);
+      spawnFn('gh', issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, spawnNextAlertComment(chain)));
+      spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
     }
     throw error;
   }
