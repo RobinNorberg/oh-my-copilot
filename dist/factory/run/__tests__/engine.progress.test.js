@@ -198,6 +198,33 @@ describe('progress sync on GitHub (fake gh, real git, real guard)', () => {
         expect(again.gate?.name).toBe('merge');
         expect(added()).toEqual(['factory:ready-to-merge']);
     });
+    it('a missing label names omg factory setup, warned once per invocation, one history note per stage', async () => {
+        editResult = () => ({ status: 1, stdout: '', stderr: "failed to update https://github.com/o/r/issues/7: 'factory:queued' not found\n" });
+        const warnings = [];
+        const out = await runFactoryEngine(opts(happy(), { warn: (m) => warnings.push(m) }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        const hints = warnings.filter((w) => w.includes('omg factory setup'));
+        expect(hints).toHaveLength(1);
+        expect(hints[0]).toMatch(/progress label is missing in the repository \(failed to update .*'factory:queued' not found\); run omg factory setup/);
+        const notes = readFactoryState(h.root, ISSUE).history.filter((e) => e.note.startsWith('tracker-sync fail: '));
+        expect(notes.map((e) => e.note.split(':')[1].trim())).toEqual(['queued', 'building', 'reviewing', 'verifying', 'ready-to-merge']);
+        expect(notes.every((e) => e.note.includes('run omg factory setup'))).toBe(true);
+    });
+    it('a crash after the merged save and before the done write: the resume writes done once', async () => {
+        await runFactoryEngine(opts(happy()));
+        // The engine saved merged, then died before the tracker write (trackerStage still ready-to-merge).
+        asEngine(({ gate: _g, ...s }) => ({ ...s, phase: 'merged' }));
+        edits = [];
+        const out = await runFactoryEngine(opts([]));
+        expect(out.phase, out.message).toBe('merged');
+        expect(out.exitCode).toBe(0);
+        expect(added()).toEqual(['factory:done']);
+        expectExclusive();
+        expect(readFactoryState(h.root, ISSUE).trackerStage).toBe('done');
+        edits = [];
+        expect((await runFactoryEngine(opts([]))).phase).toBe('merged');
+        expect(edits).toEqual([]);
+    });
     it('another gate is blocked; cancelled removes the whole family', async () => {
         h.gh.issue.body = 'please add greet';
         const out = await runFactoryEngine(opts([]));

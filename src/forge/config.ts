@@ -78,6 +78,12 @@ function object(value: unknown, what: string): Block {
 }
 
 /** `factory.<name>` of one config layer; {} when absent. */
+/** The config has a `factory.<name>` key (an empty section counts). */
+const hasFactoryKey = (config: unknown, name: string): boolean => {
+  const factory = (config as { factory?: unknown } | null | undefined)?.factory;
+  return typeof factory === 'object' && factory !== null && (factory as Block)[name] !== undefined && (factory as Block)[name] !== null;
+};
+
 function factoryBlock(config: unknown, name: string, source: string): Block {
   const factory = object((config as { factory?: unknown } | null | undefined)?.factory, `${source}: factory config`);
   return { ...object(factory[name], `${source}: factory.${name}`) };
@@ -205,8 +211,9 @@ function resolveCheck(layer: Block): ForgeCheckConfig {
   return check;
 }
 
-function resolveProgress(layer: Block, kind: ForgeKind, source: string): ForgeProgressConfig {
-  const progress: ForgeProgressConfig = { enabled: true, stages: defaultProgressStages(kind) };
+/** Progress sync is opt-in: on only when a trusted layer has a `factory.progress` section (omg factory setup writes one). */
+function resolveProgress(layer: Block, configured: boolean, kind: ForgeKind, source: string): ForgeProgressConfig {
+  const progress: ForgeProgressConfig = { enabled: configured, stages: defaultProgressStages(kind) };
   if (layer.enabled !== undefined) {
     if (typeof layer.enabled !== 'boolean') throw new ForgeConfigError('invalid', `${source}: factory.progress.enabled must be true or false`);
     progress.enabled = layer.enabled;
@@ -352,7 +359,7 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
       ...(azureDevOps ? { azureDevOps } : {}),
       intake: resolveIntake(intake, kind),
       check: resolveCheck(check),
-      progress: resolveProgress({ ...bProgress, ...uProgress }, kind, source),
+      progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),
     },
     warnings,
   };

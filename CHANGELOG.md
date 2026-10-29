@@ -2,6 +2,28 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Factory progress sync (opt-in).** `omg factory run` can write the run's
+  stage to the issue or work item. A stage is one of queued, building,
+  reviewing, verifying, ready-to-merge, done, blocked or cancelled.
+  - On GitHub the stage is one label from the exclusive `factory:<stage>`
+    family.
+  - On Azure DevOps it is the mapped board column and/or state, sent as one
+    JSON-patch guarded by `test /rev`. A rev conflict is retried once.
+  - Sync is off unless the user config or the base-branch
+    `.copilot/omg.jsonc` has a `factory.progress` section, which
+    `omg factory setup` writes. Existing runs change nothing until you run
+    setup.
+  - There is at most one tracker write per stage, recorded as `trackerStage`
+    in the sealed run state.
+  - A failed write is only a warning and a history note; it never blocks a
+    transition. A missing GitHub label points to `omg factory setup`.
+  - The factory guard allows `gh issue edit` only with
+    `--add-label`/`--remove-label` of `factory:*` labels.
+
 # oh-my-copilot v5.17.1
 
 ## [5.17.1] - 2026-10-28

@@ -1170,7 +1170,7 @@ With the default limits the worst case is 12 lanes before retries, which is 360 
 
 ##### Progress sync
 
-When the run has a forge config (`omg factory run` always resolves one) and `factory.progress.enabled` is true (the default), the engine writes the run's stage to the issue or work item. It writes after each state save that changes the stage:
+Progress sync is opt-in. It runs only when the user config or the base-branch `.copilot/omg.jsonc` has a `factory.progress` section, which `omg factory setup` writes. Without that section nothing is written. A section without `enabled` turns it on, and `"enabled": false` turns it off. When it is on, the engine writes the run's stage to the issue or work item after each state save that changes the stage:
 
 | Phase / gate | Stage | GitHub (default) | Azure DevOps |
 |---|---|---|---|
@@ -1183,9 +1183,9 @@ When the run has a forge config (`omg factory run` always resolves one) and `fac
 | any other `awaiting-human`, `failed` | `blocked` | `factory:blocked` | the mapped column, never a state |
 | `cancelled` | `cancelled` | removes the whole family | nothing |
 
-- **GitHub** uses labels only: `gh issue edit <n> --add-label <stage label> --remove-label <every other family label>`, so the family stays mutually exclusive. The factory guard allows `gh issue edit` only in that shape and only with `factory:<name>` labels. A mapped label without the `factory:` prefix is refused and reported like any failed write. Projects v2 columns are not written.
+- **GitHub** uses labels only: `gh issue edit <n> --add-label <stage label> --remove-label <every other family label>`, so the family stays mutually exclusive. The factory guard allows `gh issue edit` only in that shape and only with `factory:<name>` labels. A mapped label without the `factory:` prefix is refused and reported like any failed write. If a label does not exist in the repository, the run warns once and names `omg factory setup`, which creates the labels. Projects v2 columns are not written.
 - **Azure DevOps** sends one JSON-patch per stage: `test /rev`, then the board column and/or state. The az guard limits both to the configured values. On a rev conflict the item is re-read and the patch is retried once. Azure DevOps maps nothing by default, so it writes only what `omg factory setup` or the config maps.
-- **Once per stage.** The written stage is recorded as `trackerStage` in the sealed run state, and a stage that equals it is skipped. After a crash, the resume writes the current stage once if its write was not recorded. A stage with no mapping is skipped. A cancelled run that never wrote a stage writes nothing.
+- **Once per stage.** The written stage is recorded as `trackerStage` in the sealed run state, and a stage that equals it is skipped. After a crash, the resume writes the current stage once if its write was not recorded. This includes a run that ended as `merged`, `cancelled` or `failed`. A stage with no mapping is skipped. A cancelled run that never wrote a stage writes nothing.
 - **Never blocking.** A failed write is a warning, a `tracker-sync fail` progress event and a history note. The transition stands, and that stage is not tried again until the next `omg factory run`. Progress never posts comments; the gate comments are unchanged.
 - ci-heal runs have no item and write nothing. `factory.progress` is read only from the user config and the base-branch `.copilot/omg.jsonc`.
 

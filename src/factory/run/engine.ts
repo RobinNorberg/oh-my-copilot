@@ -595,6 +595,8 @@ class FactoryEngine {
   /** The stage this invocation last tried to write: at most one tracker write per stage. */
   private syncTried?: ProgressStage;
   private syncing = false;
+  /** The missing-label hint was warned in this invocation. */
+  private labelHint = false;
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
     const built = engineExec(o, hardenedGitExec(o.exec, hooksDir));
@@ -708,9 +710,14 @@ class FactoryEngine {
         this.progress.emit('tracker-sync', 'ok', `${stage}: ${res.detail}`, this.fields());
         return;
       }
-      this.o.warn?.(`omg factory run: could not set the tracker stage ${stage} on ${this.what}: ${res.detail}`);
-      this.progress.emit('tracker-sync', 'fail', `${stage}: ${res.detail}`, this.fields());
-      this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `tracker-sync fail: ${stage}: ${res.detail}` }] }));
+      const first = res.detail.split('\n')[0];
+      // gh: "'factory:queued' not found" when the repository has no such label.
+      const missing = !this.forge && /\bnot found\b/i.test(first) && /label|factory:/i.test(first);
+      const detail = missing ? `a factory:* progress label is missing in the repository (${first}); run omg factory setup to create the progress labels` : first;
+      if (!missing || !this.labelHint) this.o.warn?.(`omg factory run: could not set the tracker stage ${stage} on ${this.what}: ${detail}`);
+      if (missing) this.labelHint = true;
+      this.progress.emit('tracker-sync', 'fail', `${stage}: ${detail}`, this.fields());
+      this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `tracker-sync fail: ${stage}: ${detail}` }] }));
     } finally {
       this.syncing = false;
     }
@@ -851,7 +858,19 @@ class FactoryEngine {
       return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} fails its integrity check (edited outside omg factory run); the run is failed and is not resumed` };
     }
     if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
-      return { exitCode: existing.phase === 'failed' ? 1 : 0, phase: existing.phase, state: existing, message: `the factory run for ${this.what} is ${existing.phase}` };
+      let final = existing;
+      // A crash after the terminal save and before its tracker write: write that stage once now.
+      if (this.sync && existing.trackerStage !== trackerStageOf(existing) && !forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url)) {
+        this.state = existing;
+        try {
+          this.syncProgress();
+        } catch (error) {
+          if (error instanceof StateTamperedError) return this.onTampered(error);
+          throw error;
+        }
+        final = this.state;
+      }
+      return { exitCode: final.phase === 'failed' ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
     }
     // A config change cannot swap adapters mid-run (critic amendments §A.9).
     const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url) : null;
