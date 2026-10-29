@@ -32,7 +32,11 @@ interface World {
   /** Ids whose viewItem throws this error. */
   failing?: Record<number, Error>;
   prs?: Record<string, number>;
-  runs?: Record<number, { phase: 'review' | 'merge' | 'merged'; gate?: { name: string } }>;
+  runs?: Record<number, { phase: 'review' | 'merge' | 'merged' | 'cancelled' | 'failed'; gate?: { name: string } }>;
+  /** factory branches that exist on origin. */
+  branches?: string[];
+  /** PR ids (dependencies) and their state; viewItem of these throws like gh does for a PR. */
+  prStates?: Record<number, 'OPEN' | 'MERGED' | 'CLOSED'>;
   plans?: Record<string, string>;
   itemTypes?: string[];
 }
@@ -47,6 +51,7 @@ function fakeForge(w: World): Forge & { reads: number[] } {
       viewItem: (id: number) => {
         reads.push(id);
         if (w.failing?.[id]) throw w.failing[id];
+        if (w.prStates?.[id]) throw new GhCommandError(`gh issue view ${id} returned no issue url`);
         const found = byId.get(id);
         if (!found) throw new Error(`no item ${id}`);
         return found;
@@ -58,6 +63,11 @@ function fakeForge(w: World): Forge & { reads: number[] } {
     },
     reviews: {
       findOpenPrForBranch: (branch: string) => w.prs?.[branch],
+      viewPr: (pr: number) => {
+        const state = w.prStates?.[pr];
+        if (!state) throw new Error(`no PR ${pr}`);
+        return { number: pr, state };
+      },
     },
   };
   return forge as unknown as Forge & { reads: number[] };
@@ -67,6 +77,7 @@ function env(w: World): CheckEnv {
   return {
     config: { intake: { itemTypes: w.itemTypes ?? [...DEFAULT_ADO_ITEM_TYPES], limit: 50, marker: 'factory-ready' }, check: { ...DEFAULT_CHECK_CONFIG } },
     runState: (id) => w.runs?.[id] ?? null,
+    remoteBranch: (branch) => w.branches?.includes(branch) ?? false,
     readPlan: (path) => w.plans?.[path] ?? null,
     planBase: PLAN_BASE,
   };
@@ -99,7 +110,21 @@ const ROWS: Row[] = [
   },
   { rule: 'run-active', world: { items: [item(1)], runs: { 1: { phase: 'review' } } }, bucket: 'blocked', reasons: ['run-active:review'] },
   { rule: 'run-active with a gate', world: { items: [item(1)], runs: { 1: { phase: 'merge', gate: { name: 'merge' } } } }, bucket: 'blocked', reasons: ['run-active:merge/merge'] },
-  { rule: 'a terminal run state does not block', world: { items: [item(1)], runs: { 1: { phase: 'merged' } } }, bucket: 'runnable', reasons: [] },
+  { rule: 'run-finished (merged: the engine never restarts it)', world: { items: [item(1)], runs: { 1: { phase: 'merged' } } }, bucket: 'blocked', reasons: ['run-finished:merged'] },
+  { rule: 'run-finished (cancelled)', world: { items: [item(1)], runs: { 1: { phase: 'cancelled' } } }, bucket: 'blocked', reasons: ['run-finished:cancelled'] },
+  { rule: 'run-finished (failed)', world: { items: [item(1)], runs: { 1: { phase: 'failed' } } }, bucket: 'blocked', reasons: ['run-finished:failed'] },
+  {
+    rule: 'branch-exists (a leftover origin branch without a PR)',
+    world: { items: [item(1)], branches: ['factory/issue-1'] },
+    bucket: 'blocked', reasons: ['branch-exists'], detail: 'origin/factory/issue-1 exists without an open PR; the engine would stop at head-moved-externally',
+  },
+  { rule: 'a dependency that is a merged or closed PR is satisfied', world: { items: [item(1, { dependsOn: [150, 151] })], prStates: { 150: 'MERGED', 151: 'CLOSED' } }, bucket: 'runnable', reasons: [] },
+  { rule: 'a dependency that is an open PR blocks', world: { items: [item(1, { dependsOn: [150, 152] })], prStates: { 150: 'MERGED', 152: 'OPEN' } }, bucket: 'blocked', reasons: ['depends-on:#152'] },
+  {
+    rule: 'read-failed (the item read fails)',
+    world: { items: [item(1)], failing: { 1: new Error('gh: HTTP 502\u001b[31m') } },
+    bucket: 'blocked', reasons: ['read-failed'], detail: '#1 could not be read: gh: HTTP 502',
+  },
   { rule: 'pr-exists', world: { items: [item(1)], prs: { 'factory/issue-1': 57 } }, bucket: 'blocked', reasons: ['pr-exists'], detail: 'open PR #57 already uses factory/issue-1' },
   {
     rule: 'depends-on (closed dependencies are resolved)',
@@ -189,8 +214,11 @@ describe('omg factory check rules (forges §5)', () => {
     expect(check({ items: [item(1, { body: '' })], prs: { 'factory/issue-1': 3 } })[0].reasons).toEqual(['pr-exists']);
   });
 
-  it('a read failure other than "not an issue" propagates', () => {
-    expect(() => check({ items: [item(1)], failing: { 1: new Error('gh: HTTP 502') } })).toThrow(/HTTP 502/);
+  it('a failed read marks that item read-failed and the batch goes on', () => {
+    const results = check({ items: [item(1), item(2)], failing: { 1: new Error('gh: HTTP 502') } });
+    expect(results.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[2, 'runnable', []], [1, 'blocked', ['read-failed']]]);
+    const lookup = checkItems({ ...fakeForge({ items: [item(3)] }), reviews: { findOpenPrForBranch: () => { throw new Error('gh pr list failed'); } } } as unknown as Forge, [3], env({ items: [] }));
+    expect(lookup[0]).toMatchObject({ id: 3, title: 'item 3', bucket: 'blocked', reasons: ['read-failed'], detail: '#3 could not be checked: gh pr list failed' });
   });
 
   it('AC section helpers', () => {
