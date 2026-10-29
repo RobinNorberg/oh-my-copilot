@@ -696,6 +696,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
     if (replacementError) throw replacementError;
     const payload = parseResponseText(response.content[0].text);
     expect(payload.instanceId).toBe(INSTANCE_ID);
+    expect(payload.status).toBe('completed');
     expect(payload.nudges).toBeUndefined();
     expect(tmuxMocks.sendToWorker).not.toHaveBeenCalled();
     expect(tmuxMocks.captureOwnedTeamPane).toHaveBeenCalledTimes(1);
@@ -790,9 +791,10 @@ describe('team-server artifact convergence + scoped cleanup', () => {
       publishTerminalJobResult(jobsDir, jobId, teamName);
     }
 
-    await waitPromise;
+    const response = await waitPromise;
     await competing;
     expect(sendObserved).toBe(true);
+    expect(parseResponseText(response.content[0].text).status).toBe('completed');
     if (competingSetupError) throw competingSetupError;
     expect(competingWasBlocked).toBe(true);
     // The competing lock callback is queued until the original nudge effect
