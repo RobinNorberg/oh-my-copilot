@@ -19,9 +19,12 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { killProcessTree, isProcessAlive, isProcessIdentityLive } from '../platform/process-utils.js';
+import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, } from './worker-launch-ack.js';
 export const SDK_TARGET_PREFIX = 'sdk:';
+const SDK_LAUNCH_POLL_MS = 25;
+const SDK_LAUNCH_FAILURE_GRACE_MS = 1_500;
 /** True for the sdk team target (`sdk:<team>`) and sdk worker ids (`sdk:<worker>`). */
 export function isSdkTarget(value) {
     return typeof value === 'string' && value.startsWith(SDK_TARGET_PREFIX);
@@ -65,7 +68,28 @@ export function readSdkSession(stateRoot, workerName) {
         return null;
     }
 }
-function spawnDetachedHost(cliPath, specPath, logPath, cwd) {
+/** The Copilot credentials the host gets on stdin (sdk-host.ts readHostCredentials), never in its env. */
+export const HOST_CREDENTIAL_ENV = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
+/**
+ * The detached host's env: the leader's minus every credential
+ * (isCredentialEnvKey). A worker can read its host's env (`ps eww`,
+ * /proc/<pid>/environ), so the Copilot token goes over stdin instead
+ * ({@link hostCredentialHandoff}).
+ */
+export function hostSpawnEnv(env) {
+    return Object.fromEntries(Object.entries(env).filter(([key]) => !isCredentialEnvKey(key)));
+}
+/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+export function hostCredentialHandoff(env) {
+    const out = {};
+    for (const [key, value] of Object.entries(env)) {
+        const upper = key.toUpperCase();
+        if (HOST_CREDENTIAL_ENV.includes(upper) && value && !(upper in out))
+            out[upper] = value;
+    }
+    return `${JSON.stringify(out)}\n`;
+}
+export function spawnDetachedHost(cliPath, specPath, logPath, cwd, env = process.env) {
     mkdirSync(dirname(logPath), { recursive: true });
     const fd = openSync(logPath, 'a');
     try {
@@ -73,9 +97,12 @@ function spawnDetachedHost(cliPath, specPath, logPath, cwd) {
             cwd,
             detached: true,
             windowsHide: true,
-            stdio: ['ignore', fd, fd],
-            env: process.env,
+            stdio: ['pipe', fd, fd],
+            env: hostSpawnEnv(env),
         });
+        // A host that died before reading must not crash the leader with EPIPE; it fails its own start.
+        child.stdin?.on('error', () => undefined);
+        child.stdin?.end(hostCredentialHandoff(env));
         child.unref();
         return child.pid;
     }
@@ -146,16 +173,29 @@ export async function launchSdkHost(input) {
         const sliceMs = Math.max(1, Math.min(1_000, startDeadline - Date.now()));
         if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs }))
             break;
-        // A host that failed before provider_started says so in its session file: stop waiting.
-        if (failedBeforeProviderStarted(attempt, input.stateRoot)) {
+        // A host that failed says so in its session file; a terminal record, a
+        // retired decision or a dead host pid means the attempt already ended.
+        // Either way it never hands off.
+        const exited = existsSync(`${attempt.startedPath}.terminal`) || existsSync(`${attempt.decisionPath}.retired`)
+            || (hostPid !== undefined && !isProcessAlive(hostPid));
+        if (exited || failedThisAttempt(attempt, input.stateRoot)) {
+            // The host writes .terminal before its `failed` session file: give that a moment to land.
+            const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;
+            while (!failedThisAttempt(attempt, input.stateRoot) && Date.now() < graceUntil) {
+                await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
+            }
             await kill();
-            const error = readSdkSession(input.stateRoot, input.workerName)?.last_error ?? 'unknown';
-            return { ok: false, attempt, reason: `sdk_host_failed_before_start:${error}`, ...(hostPid ? { hostPid } : {}) };
+            const error = (failedThisAttempt(attempt, input.stateRoot)
+                ? readSdkSession(input.stateRoot, input.workerName)?.last_error : null) ?? 'unknown';
+            const phase = existsSync(attempt.startedPath) ? 'at_start' : 'before_start';
+            return { ok: false, attempt, reason: `sdk_host_failed_${phase}:${error}`, ...(hostPid ? { hostPid } : {}) };
         }
         if (Date.now() >= startDeadline) {
             await kill();
             return { ok: false, attempt, reason: 'sdk_host_provider_not_started', ...(hostPid ? { hostPid } : {}) };
         }
+        // An early false (dead or reused pid) returns at once: do not spin on it.
+        await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
     }
     return { ok: true, attempt, hostPid, paneId };
 }
@@ -175,8 +215,10 @@ async function isTargetGone(target) {
  * reads such an attempt as `unknown` and would make a stop wait out its budget.
  */
 function failedBeforeProviderStarted(attempt, stateRoot) {
-    if (existsSync(attempt.startedPath))
-        return false;
+    return !existsSync(attempt.startedPath) && failedThisAttempt(attempt, stateRoot);
+}
+/** True when this attempt's host wrote its `failed` session file. */
+function failedThisAttempt(attempt, stateRoot) {
     const session = readSdkSession(stateRoot, attempt.worker_name);
     return session?.attempt_id === attempt.attempt_id && session.state === 'failed';
 }

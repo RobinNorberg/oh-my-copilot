@@ -66,7 +66,7 @@ import {
 } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
-import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
+import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
 import {
   ensureWorkerWorktree,
@@ -187,28 +187,9 @@ export interface CopilotRunStartOptions {
   hostCommits?: boolean;
 }
 
-/** Env keys a credential-free session never gets (any case on Windows). */
-export const LANE_CREDENTIAL_ENV = [
-  'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN',
-  'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GIT_SSH', 'GIT_SSH_COMMAND',
-  'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL',
-  // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
-  'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY', 'AZURE_DEVOPS_EXT_GITHUB_PAT', 'SYSTEM_ACCESSTOKEN',
-  // azure-identity / az: service principal, certificate, workload identity and managed identity.
-  'AZURE_CLIENT_SECRET', 'AZURE_CLIENT_CERTIFICATE_PATH', 'AZURE_CLIENT_CERTIFICATE_PASSWORD', 'AZURE_PASSWORD',
-  'AZURE_FEDERATED_TOKEN_FILE', 'IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET',
-  // az storage account keys and SAS.
-  'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN',
-  // Terraform azurerm (ARM_*).
-  'ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN',
-  'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
-] as const;
-/** Names that look like a secret; COPILOT_GITHUB_TOKEN is the session's own credential and stays. */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
-
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
- * ({@link LANE_CREDENTIAL_ENV}), ssh-agent and askpass hooks, every other
+ * (CREDENTIAL_ENV in copilot-session-env.ts), ssh-agent and askpass hooks, every other
  * secret-named var, and `GIT_CONFIG_*` overrides. `GH_CONFIG_DIR` and
  * `AZURE_CONFIG_DIR` point at an empty dir, so `gh` and `az` (the azure-devops
  * extension included) find no stored login; git reads no global or system
@@ -222,11 +203,10 @@ const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|P
  * credential, so a scrubbed session then needs COPILOT_GITHUB_TOKEN.
  */
 export function scrubLaneCredentials(env: NodeJS.ProcessEnv, emptyDir: string): void {
-  const exact = new Set<string>(LANE_CREDENTIAL_ENV);
   for (const key of Object.keys(env)) {
-    const upper = key.toUpperCase();
-    if (upper === 'COPILOT_GITHUB_TOKEN') continue;
-    if (exact.has(upper) || SECRET_NAME.test(upper) || upper.startsWith('GIT_CONFIG') || upper.startsWith('GCM_')) delete env[key];
+    // COPILOT_GITHUB_TOKEN is the session's own credential and stays.
+    if (key.toUpperCase() === 'COPILOT_GITHUB_TOKEN') continue;
+    if (isCredentialEnvKey(key)) delete env[key];
   }
   const emptyConfig = join(emptyDir, 'gitconfig');
   writeFileSync(emptyConfig, '');

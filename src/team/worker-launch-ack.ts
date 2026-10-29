@@ -1789,22 +1789,30 @@ export async function awaitWorkerLaunchProviderStarted(
   while (Date.now() < deadline) {
     const published = await readValidProviderStarted(attempt);
     if (published) try {
-      const handedOff = await withFileLock(lockPathFor(attempt.currentPath), async () => {
+      const liveness = await withFileLock(lockPathFor(attempt.currentPath), async () => {
         if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt)
-          || !await isWorkerLaunchAttemptAccepted(attempt)) return false;
+          || !await isWorkerLaunchAttemptAccepted(attempt)) return 'pending';
         const started = await readValidProviderStarted(attempt);
-        if (!started) return false;
+        if (!started) return 'pending';
         return await isProcessIdentityLive(
           started.pid!,
           started.process_start_identity,
           deadline,
-        ) === 'live';
+        );
       });
-      if (handedOff) return true;
+      if (liveness === 'live') return true;
+      // The started pid is gone: this provider can never hand off. A mismatch is
+      // not final: a Windows identity read can fall back to a coarser clock.
+      if (liveness === 'dead') return false;
     } catch {
       // Bootstrap still owns the launch fence; retry within the bounded window.
     }
-    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== 'absent') return false;
+    // Retirement, a terminal record and a supervisor completion are permanent:
+    // report the failure now instead of at the deadline.
+    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== 'absent'
+      || (await readJson(`${attempt.startedPath}.terminal`)).kind !== 'absent') return false;
+    const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
+    if (completed?.supervisor_completion_path !== undefined && existsSync(completed.supervisor_completion_path)) return false;
     await sleep(pollIntervalMs);
   }
   return false;

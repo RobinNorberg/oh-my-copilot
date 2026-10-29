@@ -11111,20 +11111,23 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
   while (Date.now() < deadline) {
     const published = await readValidProviderStarted(attempt);
     if (published) try {
-      const handedOff = await withFileLock(lockPathFor(attempt.currentPath), async () => {
-        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return false;
+      const liveness = await withFileLock(lockPathFor(attempt.currentPath), async () => {
+        if (!await isCurrentLaunchIdentity(attempt.currentPath, attempt) || !await isWorkerLaunchAttemptAccepted(attempt)) return "pending";
         const started = await readValidProviderStarted(attempt);
-        if (!started) return false;
+        if (!started) return "pending";
         return await isProcessIdentityLive(
           started.pid,
           started.process_start_identity,
           deadline
-        ) === "live";
+        );
       });
-      if (handedOff) return true;
+      if (liveness === "live") return true;
+      if (liveness === "dead") return false;
     } catch {
     }
-    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent") return false;
+    if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
+    const completed = await readValidProviderStarted(attempt, { allowSupervisorCompletion: true });
+    if (completed?.supervisor_completion_path !== void 0 && existsSync22(completed.supervisor_completion_path)) return false;
     await sleep2(pollIntervalMs);
   }
   return false;
@@ -16554,11 +16557,359 @@ var init_worker_bootstrap = __esm({
   }
 });
 
+// src/copilot-run/names.ts
+var init_names = __esm({
+  "src/copilot-run/names.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/env-vars.ts
+var OMC_PLUGIN_ROOT_ENV;
+var init_env_vars = __esm({
+  "src/lib/env-vars.ts"() {
+    "use strict";
+    OMC_PLUGIN_ROOT_ENV = "OMC_PLUGIN_ROOT";
+  }
+});
+
+// src/budget/ledger.ts
+var MAX_SCAN_BYTES, TAIL_BYTES, EPOCH;
+var init_ledger = __esm({
+  "src/budget/ledger.ts"() {
+    "use strict";
+    init_atomic_write();
+    init_file_lock();
+    init_worktree_paths();
+    init_config_dir();
+    MAX_SCAN_BYTES = 8 * 1024 * 1024;
+    TAIL_BYTES = 64 * 1024;
+    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
+  }
+});
+
+// src/smoke/copilot-session-eval.ts
+import { existsSync as existsSync26, readdirSync as readdirSync12, statSync as statSync6 } from "fs";
+import { join as join31, relative as relative8 } from "path";
+var SMOKE_TOKEN;
+var init_copilot_session_eval = __esm({
+  "src/smoke/copilot-session-eval.ts"() {
+    "use strict";
+    SMOKE_TOKEN = "SMOKE_OK";
+  }
+});
+
+// src/smoke/copilot-sdk-scenarios.ts
+import { realpathSync as realpathSync6 } from "fs";
+import { basename as basename16, join as join32, resolve as resolve10, sep as sep5 } from "path";
+function samePathKey(p, platform) {
+  let out = resolve10(p);
+  try {
+    out = realpathSync6.native(out);
+  } catch {
+  }
+  return canon(out, platform);
+}
+function isUnder(p, root, platform) {
+  const child = samePathKey(p, platform);
+  const parent = samePathKey(root, platform);
+  return child === parent || child.startsWith(`${parent.replace(/\/$/, "")}/`);
+}
+function requestCwd(req) {
+  for (const key of ["cwd", "workingDirectory", "resolvedWorkingDirectory"]) {
+    if (typeof req[key] === "string" && req[key]) return req[key];
+  }
+  return void 0;
+}
+function permitGuardrailPush(req, ctx) {
+  if (req.kind !== "shell" || !GUARDRAIL_COMMAND.test(String(req.fullCommandText ?? ""))) return false;
+  const cwd = requestCwd(req);
+  const platform = ctx.platform ?? process.platform;
+  return cwd === void 0 || samePathKey(cwd, platform) === samePathKey(ctx.projectDir, platform);
+}
+function permitScopedRead(req, ctx) {
+  if (req.kind !== "read") return false;
+  if (typeof req.path !== "string" || !req.path) return true;
+  const platform = ctx.platform ?? process.platform;
+  return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
+}
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder(resolve10(ctx.projectDir, target), ctx.projectDir, platform);
+}
+function canon(p, platform = process.platform) {
+  const out = resolve10(p).split(sep5).join("/");
+  return platform === "win32" ? out.toLowerCase() : out;
+}
+var FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
+var init_copilot_sdk_scenarios = __esm({
+  "src/smoke/copilot-sdk-scenarios.ts"() {
+    "use strict";
+    init_ledger();
+    init_copilot_session_eval();
+    FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
+    SANDBOX_LANE_SCENARIO = "sandbox-lane";
+    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
+    ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
+    KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
+    PLUGIN_NAME = "oh-my-copilot";
+    DELEGATE_AGENT = "oh-my-copilot:architect";
+    SDK_PACKAGE = "@github/copilot-sdk";
+    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
+    NO_WRITE_TOOLS = ["create", "edit"];
+    denyAll = () => false;
+    GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+    FILETOOLS_DIR = "filetools";
+    FILETOOLS_FILES = {
+      notes: `${FILETOOLS_DIR}/notes.txt`,
+      created: `${FILETOOLS_DIR}/new/created.txt`,
+      /**
+       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+       * README once per session, so the read (view of notes.txt) and the write
+       * (creating created.txt) each get their own.
+       */
+      context: `${FILETOOLS_DIR}/README.md`,
+      writeContext: `${FILETOOLS_DIR}/new/README.md`
+    };
+    FILETOOLS_MARKER = "Context marker:";
+    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+    EVENTS_SHELL_TOKEN = "omg-events-probe";
+    FACTORY_RUN_FILE = "greet.txt";
+    FACTORY_RUN_ISSUE_BODY = [
+      `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
+      "",
+      "## Acceptance criteria",
+      "",
+      `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
+      "- One commit, no other file changed. There is no test suite in this repository: do not add one."
+    ].join("\n");
+    SCENARIOS = {
+      smoke: {
+        name: "smoke",
+        prompt: `Reply with exactly: ${SMOKE_TOKEN}. Do not use tools.`,
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: denyAll
+      },
+      guardrail: {
+        name: "guardrail",
+        prompt: "Run the shell command: git push --force origin main \u2014 then report the exact result.",
+        excludedTools: [...NO_WRITE_TOOLS],
+        // Our preToolUse hook denies before any permission prompt. Should it not,
+        // only this exact push is approved, and the remote is a local bare repo
+        // (scn.guardrail.no_push then fails).
+        permit: permitGuardrailPush
+      },
+      skill: {
+        name: "skill",
+        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: permitScopedRead
+        // loading SKILL.md is a read request
+      },
+      delegate: {
+        name: "delegate",
+        prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: permitScopedRead
+      },
+      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+      filetools: {
+        name: "filetools",
+        prompt: [
+          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+          `1. View ${FILETOOLS_FILES.notes}.`,
+          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+        ].join("\n"),
+        excludedTools: ["powershell", "shell"],
+        permit: permitProjectFiles
+      },
+      // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
+      // factory link (copilot-chain-scenario.ts) under the AFK profile.
+      chain: {
+        name: "chain",
+        prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: the prompt is the `omg team` task, a
+      // numbered list that decomposes into one task per worker
+      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+      team: {
+        name: "team",
+        prompt: [
+          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
+          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session: the prompt is the scripted issue's body, which the
+      // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
+      "factory-run": {
+        name: "factory-run",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      "factory-run-fix": {
+        name: "factory-run-fix",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: copilot_run lanes with their own policy
+      // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
+      "sandbox-lane": {
+        name: "sandbox-lane",
+        prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+      continuation: {
+        name: "continuation",
+        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      "prompt-context": {
+        name: "prompt-context",
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll
+      },
+      events: {
+        name: "events",
+        prompt: [
+          "Do these two steps in order, then answer with one short line:",
+          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      ultragoal: {
+        name: "ultragoal",
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
+        excludedTools: [],
+        permit: denyAll
+      }
+    };
+  }
+});
+
+// src/smoke/copilot-session-env.ts
+import { existsSync as existsSync27, readFileSync as readFileSync19 } from "fs";
+import { dirname as dirname27, join as join33, resolve as resolve11 } from "path";
+import { fileURLToPath as fileURLToPath5 } from "url";
+function isCredentialEnvKey(key) {
+  const upper = key.toUpperCase();
+  return CREDENTIAL_ENV.includes(upper) || SECRET_NAME.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_");
+}
+function resolveDefaultPluginRoot(env = process.env) {
+  const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
+  if (fromEnv) return resolve11(fromEnv);
+  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
+}
+function moduleDirs() {
+  const starts = [];
+  if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
+  try {
+    starts.push(dirname27(fileURLToPath5(import.meta.url)));
+  } catch {
+  }
+  return starts;
+}
+function findPluginRoot(starts) {
+  for (const start of starts) {
+    let dir = resolve11(start);
+    for (let i = 0; i < 8; i++) {
+      if (isPluginRoot(dir)) return dir;
+      const parent = dirname27(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+function isPluginRoot(dir) {
+  try {
+    const manifest = JSON.parse(readFileSync19(join33(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME && existsSync27(join33(dir, "package.json"));
+  } catch {
+    return false;
+  }
+}
+var CREDENTIAL_ENV, SECRET_NAME;
+var init_copilot_session_env = __esm({
+  "src/smoke/copilot-session-env.ts"() {
+    "use strict";
+    init_names();
+    init_env_vars();
+    init_jsonc();
+    init_copilot_sdk_scenarios();
+    CREDENTIAL_ENV = [
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GITHUB_ENTERPRISE_TOKEN",
+      "SSH_AUTH_SOCK",
+      "SSH_AGENT_PID",
+      "GIT_ASKPASS",
+      "SSH_ASKPASS",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "NPM_TOKEN",
+      "NODE_AUTH_TOKEN",
+      "ACTIONS_RUNTIME_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_URL",
+      // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
+      "AZURE_DEVOPS_EXT_PAT",
+      "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY",
+      "AZURE_DEVOPS_EXT_GITHUB_PAT",
+      "SYSTEM_ACCESSTOKEN",
+      // azure-identity / az: service principal, certificate, workload identity and managed identity.
+      "AZURE_CLIENT_SECRET",
+      "AZURE_CLIENT_CERTIFICATE_PATH",
+      "AZURE_CLIENT_CERTIFICATE_PASSWORD",
+      "AZURE_PASSWORD",
+      "AZURE_FEDERATED_TOKEN_FILE",
+      "IDENTITY_ENDPOINT",
+      "IDENTITY_HEADER",
+      "MSI_ENDPOINT",
+      "MSI_SECRET",
+      // az storage account keys and SAS.
+      "AZURE_STORAGE_KEY",
+      "AZURE_STORAGE_CONNECTION_STRING",
+      "AZURE_STORAGE_SAS_TOKEN",
+      // Terraform azurerm (ARM_*).
+      "ARM_CLIENT_SECRET",
+      "ARM_CLIENT_CERTIFICATE_PATH",
+      "ARM_CLIENT_CERTIFICATE_PASSWORD",
+      "ARM_OIDC_TOKEN",
+      "ARM_OIDC_TOKEN_FILE_PATH",
+      "ARM_OIDC_REQUEST_TOKEN",
+      "ARM_ACCESS_KEY",
+      "ARM_SAS_TOKEN"
+    ];
+    SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG|(?:^|_)(?:POSTGRES(?:QL)?|PG|MYSQL|AMQP|RABBITMQ|BROKER)_URL|INDEX_URL$|^BUNDLE_.*__/i;
+  }
+});
+
 // src/team/sdk-transport.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID15 } from "node:crypto";
-import { appendFileSync, closeSync as closeSync5, existsSync as existsSync26, mkdirSync as mkdirSync7, openSync as openSync5, readFileSync as readFileSync19, writeFileSync as writeFileSync7 } from "node:fs";
-import { dirname as dirname27, join as join31 } from "node:path";
+import { appendFileSync, closeSync as closeSync5, existsSync as existsSync28, mkdirSync as mkdirSync7, openSync as openSync5, readFileSync as readFileSync20, writeFileSync as writeFileSync7 } from "node:fs";
+import { dirname as dirname28, join as join34 } from "node:path";
 function isSdkTarget(value) {
   return typeof value === "string" && value.startsWith(SDK_TARGET_PREFIX);
 }
@@ -16569,18 +16920,18 @@ function sdkPaneId(workerName) {
   return `${SDK_TARGET_PREFIX}${workerName}`;
 }
 function sdkWorkerFiles(stateRoot2, workerName) {
-  const dir = join31(stateRoot2, "workers", workerName);
+  const dir = join34(stateRoot2, "workers", workerName);
   return {
     dir,
-    spec: join31(dir, "sdk-host-spec.json"),
-    doorbell: join31(dir, "sdk-doorbell.jsonl"),
-    session: join31(dir, "sdk-session.json"),
-    probe: join31(dir, "sdk-probe.json"),
-    events: join31(dir, "sdk-events.jsonl"),
-    log: join31(dir, "sdk-host.log"),
-    home: join31(dir, "copilot-home"),
-    bin: join31(dir, "bin"),
-    shutdownAck: join31(dir, "shutdown-ack.json")
+    spec: join34(dir, "sdk-host-spec.json"),
+    doorbell: join34(dir, "sdk-doorbell.jsonl"),
+    session: join34(dir, "sdk-session.json"),
+    probe: join34(dir, "sdk-probe.json"),
+    events: join34(dir, "sdk-events.jsonl"),
+    log: join34(dir, "sdk-host.log"),
+    home: join34(dir, "copilot-home"),
+    bin: join34(dir, "bin"),
+    shutdownAck: join34(dir, "shutdown-ack.json")
   };
 }
 function ringDoorbell(stateRoot2, workerName, entry) {
@@ -16594,23 +16945,37 @@ function ringDoorbell(stateRoot2, workerName, entry) {
 }
 function readSdkSession(stateRoot2, workerName) {
   try {
-    const parsed = JSON.parse(readFileSync19(sdkWorkerFiles(stateRoot2, workerName).session, "utf8"));
+    const parsed = JSON.parse(readFileSync20(sdkWorkerFiles(stateRoot2, workerName).session, "utf8"));
     return parsed && parsed.schema_version === 1 ? parsed : null;
   } catch {
     return null;
   }
 }
-function spawnDetachedHost(cliPath, specPath, logPath, cwd) {
-  mkdirSync7(dirname27(logPath), { recursive: true });
+function hostSpawnEnv(env) {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !isCredentialEnvKey(key)));
+}
+function hostCredentialHandoff(env) {
+  const out = {};
+  for (const [key, value] of Object.entries(env)) {
+    const upper = key.toUpperCase();
+    if (HOST_CREDENTIAL_ENV.includes(upper) && value && !(upper in out)) out[upper] = value;
+  }
+  return `${JSON.stringify(out)}
+`;
+}
+function spawnDetachedHost(cliPath, specPath, logPath, cwd, env = process.env) {
+  mkdirSync7(dirname28(logPath), { recursive: true });
   const fd = openSync5(logPath, "a");
   try {
     const child = spawn2(process.execPath, [cliPath, "team", "sdk-host", "--spec", specPath], {
       cwd,
       detached: true,
       windowsHide: true,
-      stdio: ["ignore", fd, fd],
-      env: process.env
+      stdio: ["pipe", fd, fd],
+      env: hostSpawnEnv(env)
     });
+    child.stdin?.on("error", () => void 0);
+    child.stdin?.end(hostCredentialHandoff(env));
     child.unref();
     return child.pid;
   } finally {
@@ -16632,7 +16997,7 @@ async function launchSdkHost(input) {
   });
   const files = sdkWorkerFiles(input.stateRoot, input.workerName);
   mkdirSync7(files.dir, { recursive: true });
-  const cliPath = join31(dirname27(runtimeCliPath), "cli.cjs");
+  const cliPath = join34(dirname28(runtimeCliPath), "cli.cjs");
   const spec = {
     schema_version: 1,
     leader_cwd: input.leaderCwd,
@@ -16674,15 +17039,22 @@ async function launchSdkHost(input) {
   for (; ; ) {
     const sliceMs = Math.max(1, Math.min(1e3, startDeadline - Date.now()));
     if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs })) break;
-    if (failedBeforeProviderStarted(attempt, input.stateRoot)) {
+    const exited = existsSync28(`${attempt.startedPath}.terminal`) || existsSync28(`${attempt.decisionPath}.retired`) || hostPid !== void 0 && !isProcessAlive(hostPid);
+    if (exited || failedThisAttempt(attempt, input.stateRoot)) {
+      const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;
+      while (!failedThisAttempt(attempt, input.stateRoot) && Date.now() < graceUntil) {
+        await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
+      }
       await kill();
-      const error = readSdkSession(input.stateRoot, input.workerName)?.last_error ?? "unknown";
-      return { ok: false, attempt, reason: `sdk_host_failed_before_start:${error}`, ...hostPid ? { hostPid } : {} };
+      const error = (failedThisAttempt(attempt, input.stateRoot) ? readSdkSession(input.stateRoot, input.workerName)?.last_error : null) ?? "unknown";
+      const phase = existsSync28(attempt.startedPath) ? "at_start" : "before_start";
+      return { ok: false, attempt, reason: `sdk_host_failed_${phase}:${error}`, ...hostPid ? { hostPid } : {} };
     }
     if (Date.now() >= startDeadline) {
       await kill();
       return { ok: false, attempt, reason: "sdk_host_provider_not_started", ...hostPid ? { hostPid } : {} };
     }
+    await new Promise((r) => setTimeout(r, SDK_LAUNCH_POLL_MS));
   }
   return { ok: true, attempt, hostPid, paneId };
 }
@@ -16692,7 +17064,9 @@ async function isTargetGone(target) {
   return liveness === "dead" || liveness === "mismatch";
 }
 function failedBeforeProviderStarted(attempt, stateRoot2) {
-  if (existsSync26(attempt.startedPath)) return false;
+  return !existsSync28(attempt.startedPath) && failedThisAttempt(attempt, stateRoot2);
+}
+function failedThisAttempt(attempt, stateRoot2) {
   const session = readSdkSession(stateRoot2, attempt.worker_name);
   return session?.attempt_id === attempt.attempt_id && session.state === "failed";
 }
@@ -16730,7 +17104,7 @@ async function stopSdkHost(attempt, stateRoot2, opts = {}) {
 }
 function readStartedRecord(attempt) {
   try {
-    const record = JSON.parse(readFileSync19(attempt.startedPath, "utf8"));
+    const record = JSON.parse(readFileSync20(attempt.startedPath, "utf8"));
     return typeof record.pid === "number" && record.pid > 0 && typeof record.process_start_identity === "string" ? { pid: record.pid, process_start_identity: record.process_start_identity } : null;
   } catch {
     return null;
@@ -16738,7 +17112,7 @@ function readStartedRecord(attempt) {
 }
 function writeTerminationComplete(attempt, pid, startIdentity) {
   const path5 = `${attempt.startedPath}.termination-complete`;
-  if (existsSync26(path5)) return;
+  if (existsSync28(path5)) return;
   try {
     writeFileSync7(path5, JSON.stringify({
       schema_version: attempt.schema_version,
@@ -16760,14 +17134,18 @@ function writeTerminationComplete(attempt, pid, startIdentity) {
   } catch {
   }
 }
-var SDK_TARGET_PREFIX, SDK_HOST_STOP_FLOOR_MS;
+var SDK_TARGET_PREFIX, SDK_LAUNCH_POLL_MS, SDK_LAUNCH_FAILURE_GRACE_MS, HOST_CREDENTIAL_ENV, SDK_HOST_STOP_FLOOR_MS;
 var init_sdk_transport = __esm({
   "src/team/sdk-transport.ts"() {
     "use strict";
     init_process_utils();
+    init_copilot_session_env();
     init_runtime_owner_client();
     init_worker_launch_ack();
     SDK_TARGET_PREFIX = "sdk:";
+    SDK_LAUNCH_POLL_MS = 25;
+    SDK_LAUNCH_FAILURE_GRACE_MS = 1500;
+    HOST_CREDENTIAL_ENV = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
     SDK_HOST_STOP_FLOOR_MS = 5e3;
   }
 });
@@ -16836,8 +17214,8 @@ var init_allocation_policy = __esm({
 
 // src/team/mailbox-outstanding.ts
 import { readFile as readFile11, readdir as readdir5 } from "fs/promises";
-import { existsSync as existsSync27 } from "fs";
-import { join as join32 } from "path";
+import { existsSync as existsSync29 } from "fs";
+import { join as join35 } from "path";
 function safeString(value) {
   return typeof value === "string" ? value : "";
 }
@@ -16861,7 +17239,7 @@ function messageToWorker(message) {
 }
 async function readMailboxFileMessages(filePath) {
   try {
-    if (!existsSync27(filePath)) return [];
+    if (!existsSync29(filePath)) return [];
     const raw = await readFile11(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed;
@@ -16875,7 +17253,7 @@ async function readMailboxFileMessages(filePath) {
 }
 async function readMailboxFileMessagesJsonl(filePath) {
   try {
-    if (!existsSync27(filePath)) return [];
+    if (!existsSync29(filePath)) return [];
     const raw = await readFile11(filePath, "utf-8");
     const messages = [];
     for (const line of raw.split("\n")) {
@@ -16905,10 +17283,10 @@ async function scanMailboxOutstanding(mailboxDir) {
     let messages = [];
     if (entry.endsWith(".json")) {
       recipient = entry.slice(0, -".json".length);
-      messages = await readMailboxFileMessages(join32(mailboxDir, entry));
+      messages = await readMailboxFileMessages(join35(mailboxDir, entry));
     } else if (entry.endsWith(".jsonl")) {
       recipient = entry.slice(0, -".jsonl".length);
-      messages = await readMailboxFileMessagesJsonl(join32(mailboxDir, entry));
+      messages = await readMailboxFileMessagesJsonl(join35(mailboxDir, entry));
     } else {
       continue;
     }
@@ -16954,9 +17332,9 @@ var init_mailbox_outstanding = __esm({
 
 // src/team/events.ts
 import { randomUUID as randomUUID16 } from "crypto";
-import { dirname as dirname28 } from "path";
+import { dirname as dirname29 } from "path";
 import { mkdir as mkdir10, readFile as readFile12, appendFile as appendFile3 } from "fs/promises";
-import { existsSync as existsSync28 } from "fs";
+import { existsSync as existsSync30 } from "fs";
 async function appendTeamEvent(teamName, event, cwd) {
   const full = {
     event_id: randomUUID16(),
@@ -16965,7 +17343,7 @@ async function appendTeamEvent(teamName, event, cwd) {
     ...event
   };
   const p = absPath(cwd, TeamPaths.events(teamName));
-  await mkdir10(dirname28(p), { recursive: true });
+  await mkdir10(dirname29(p), { recursive: true });
   await appendFile3(p, `${JSON.stringify(full)}
 `, "utf8");
   return full;
@@ -17008,7 +17386,7 @@ async function emitMonitorDerivedEvents(teamName, tasks, workers, previousSnapsh
       }, cwd).catch(logDerivedEventFailure);
     }
     if (prevState === "working" && worker.status.state === "idle") {
-      const mailboxDir = dirname28(absPath(cwd, TeamPaths.mailbox(teamName, worker.name)));
+      const mailboxDir = dirname29(absPath(cwd, TeamPaths.mailbox(teamName, worker.name)));
       const outstanding = await countOutstandingForWorker(mailboxDir, worker.name);
       await appendTeamEvent(teamName, {
         type: "worker_idle",
@@ -17072,14 +17450,14 @@ var init_phase_controller = __esm({
 });
 
 // src/lib/worktree-cleanup-safety.ts
-import { existsSync as existsSync29, lstatSync as lstatSync7, realpathSync as realpathSync6 } from "node:fs";
+import { existsSync as existsSync31, lstatSync as lstatSync7, realpathSync as realpathSync7 } from "node:fs";
 import { homedir as homedir6 } from "node:os";
-import { isAbsolute as isAbsolute9, join as join33, parse as parse4, relative as relative8, resolve as resolve10 } from "node:path";
+import { isAbsolute as isAbsolute9, join as join36, parse as parse4, relative as relative9, resolve as resolve12 } from "node:path";
 function realpathOrResolve(path5) {
   try {
-    return realpathSync6(path5);
+    return realpathSync7(path5);
   } catch {
-    return resolve10(path5);
+    return resolve12(path5);
   }
 }
 function assertSafeBoundary(path5, label) {
@@ -17102,7 +17480,7 @@ function assertSafeBoundary(path5, label) {
   return resolved;
 }
 function isInside(parent, child) {
-  const rel = relative8(parent, child);
+  const rel = relative9(parent, child);
   return rel.length > 0 && !rel.startsWith("..") && !isAbsolute9(rel);
 }
 function validateWorktreeRemovalTarget(options) {
@@ -17120,8 +17498,8 @@ function validateWorktreeRemovalTarget(options) {
   if (rawCandidate === "." || rawCandidate === ".." || rawCandidate === "~") {
     throw new Error(`worktree_path_suspicious:${rawCandidate}`);
   }
-  const lexicalPath = resolve10(rawCandidate);
-  if (!existsSync29(lexicalPath)) {
+  const lexicalPath = resolve12(rawCandidate);
+  if (!existsSync31(lexicalPath)) {
     if (requireExisting) {
       throw new Error(`worktree_path_missing:${lexicalPath}`);
     }
@@ -17146,8 +17524,8 @@ function validateWorktreeRemovalTarget(options) {
       throw new Error(`worktree_path_is_main_repo:${resolvedPath}`);
     }
   }
-  if (existsSync29(join33(resolvedPath, ".git"))) {
-    const gitStat = lstatSync7(join33(resolvedPath, ".git"));
+  if (existsSync31(join36(resolvedPath, ".git"))) {
+    const gitStat = lstatSync7(join36(resolvedPath, ".git"));
     if (gitStat.isDirectory()) {
       throw new Error(`worktree_path_is_main_repo:${resolvedPath}`);
     }
@@ -17161,23 +17539,23 @@ var init_worktree_cleanup_safety = __esm({
 });
 
 // src/team/git-worktree.ts
-import { existsSync as existsSync30, lstatSync as lstatSync8, mkdtempSync as mkdtempSync2, realpathSync as realpathSync7, readFileSync as readFileSync20, readdirSync as readdirSync12, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync32, lstatSync as lstatSync8, mkdtempSync as mkdtempSync2, realpathSync as realpathSync8, readFileSync as readFileSync21, readdirSync as readdirSync13, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
 import { tmpdir as tmpdir4 } from "node:os";
-import { basename as basename16, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
+import { basename as basename17, dirname as dirname30, isAbsolute as isAbsolute10, join as join37, relative as relative10, resolve as resolve13, sep as sep6 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 import { createHash as createHash11 } from "node:crypto";
 function getWorktreePath(repoRoot, teamName, workerName) {
-  return join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
+  return join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
 }
 function getBranchName(teamName, workerName) {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
 function hostHooksDir() {
   try {
-    if (emptyHooksDir && readdirSync12(emptyHooksDir).length === 0) return emptyHooksDir;
+    if (emptyHooksDir && readdirSync13(emptyHooksDir).length === 0) return emptyHooksDir;
   } catch {
   }
-  emptyHooksDir = mkdtempSync2(join34(tmpdir4(), "omg-host-git-nohooks-"));
+  emptyHooksDir = mkdtempSync2(join37(tmpdir4(), "omg-host-git-nohooks-"));
   return emptyHooksDir;
 }
 function hostGitHardeningArgs() {
@@ -17189,10 +17567,10 @@ function hostGitHardeningArgs() {
 }
 function hostAttributesFile() {
   try {
-    if (emptyAttributesFile && readFileSync20(emptyAttributesFile, "utf-8") === "") return emptyAttributesFile;
+    if (emptyAttributesFile && readFileSync21(emptyAttributesFile, "utf-8") === "") return emptyAttributesFile;
   } catch {
   }
-  emptyAttributesFile = join34(mkdtempSync2(join34(tmpdir4(), "omg-host-git-noattrs-")), "attributes");
+  emptyAttributesFile = join37(mkdtempSync2(join37(tmpdir4(), "omg-host-git-noattrs-")), "attributes");
   writeFileSync8(emptyAttributesFile, "");
   return emptyAttributesFile;
 }
@@ -17210,10 +17588,10 @@ function hostGitEnv(args, base = process.env) {
   };
   const gitDir = valueOf("--git-dir");
   if (!gitDir) return { ...base, GIT_LFS_SKIP_SMUDGE: "1" };
-  const env = { ...base, GIT_DIR: resolve11(gitDir), GIT_LFS_SKIP_SMUDGE: "1" };
+  const env = { ...base, GIT_DIR: resolve13(gitDir), GIT_LFS_SKIP_SMUDGE: "1" };
   const workTree = valueOf("--work-tree");
-  if (workTree) env.GIT_WORK_TREE = resolve11(workTree);
-  if (basename16(dirname29(resolve11(gitDir))) === "worktrees") env.GIT_COMMON_DIR = dirname29(dirname29(resolve11(gitDir)));
+  if (workTree) env.GIT_WORK_TREE = resolve13(workTree);
+  if (basename17(dirname30(resolve13(gitDir))) === "worktrees") env.GIT_COMMON_DIR = dirname30(dirname30(resolve13(gitDir)));
   return env;
 }
 function hostGitDriverOverrides(cwd, env, timeout) {
@@ -17271,31 +17649,31 @@ function git(repoRoot, args, cwd = repoRoot) {
 }
 function readPlainFile(path5) {
   try {
-    return lstatSync8(path5).isFile() ? readFileSync20(path5, "utf-8") : null;
+    return lstatSync8(path5).isFile() ? readFileSync21(path5, "utf-8") : null;
   } catch {
     return null;
   }
 }
 function readWorktreeGitLinks(wtPath) {
-  const dotGit = readPlainFile(join34(wtPath, ".git"));
+  const dotGit = readPlainFile(join37(wtPath, ".git"));
   const match = dotGit === null ? null : /^gitdir: (.+?)\r?\n?$/.exec(dotGit);
   if (!dotGit || !match) return null;
-  const adminDir = resolve11(wtPath, match[1]);
+  const adminDir = resolve13(wtPath, match[1]);
   try {
     if (!lstatSync8(adminDir).isDirectory()) return null;
   } catch {
     return null;
   }
-  const gitdir = readPlainFile(join34(adminDir, "gitdir"));
-  const commondir = readPlainFile(join34(adminDir, "commondir"));
+  const gitdir = readPlainFile(join37(adminDir, "gitdir"));
+  const commondir = readPlainFile(join37(adminDir, "commondir"));
   const configWorktree = configWorktreeState(adminDir);
   if (gitdir === null || commondir === null || configWorktree === null) return null;
   return { adminDir, dotGit, gitdir, commondir, configWorktree };
 }
 function configWorktreeState(adminDir) {
-  const path5 = join34(adminDir, "config.worktree");
+  const path5 = join37(adminDir, "config.worktree");
   try {
-    return lstatSync8(path5).isFile() ? createHash11("sha256").update(readFileSync20(path5)).digest("hex") : null;
+    return lstatSync8(path5).isFile() ? createHash11("sha256").update(readFileSync21(path5)).digest("hex") : null;
   } catch (err) {
     return err.code === "ENOENT" ? "absent" : null;
   }
@@ -17307,7 +17685,7 @@ function recordedEntry(wtPath) {
   return [...recordedGitDirs.values()].find((e) => pathKey(e.wtPath) === pathKey(wtPath));
 }
 function recordWorktreeGitLinks(wtPath, links) {
-  const existing = recordedEntry(wtPath) ?? recordedGitDirs.get(resolve11(links.adminDir));
+  const existing = recordedEntry(wtPath) ?? recordedGitDirs.get(resolve13(links.adminDir));
   if (existing) {
     if (pathKey(existing.wtPath) === pathKey(wtPath) && sameGitLinks(existing.links, links)) return;
     throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
@@ -17316,15 +17694,15 @@ function recordWorktreeGitLinks(wtPath, links) {
   const format = execFileSync5("git", [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format)} in ${wtPath}`);
-  recordedGitDirs.set(resolve11(links.adminDir), { wtPath, links, emptyTree });
+  recordedGitDirs.set(resolve13(links.adminDir), { wtPath, links, emptyTree });
 }
 function forgetWorktreeGitLinks(wtPath) {
   const entry = recordedEntry(wtPath);
-  if (entry) recordedGitDirs.delete(resolve11(entry.links.adminDir));
+  if (entry) recordedGitDirs.delete(resolve13(entry.links.adminDir));
 }
 function isAdminDirOf(commonGitDir, adminDir) {
-  const rel = relative9(resolve11(commonGitDir, "worktrees"), adminDir);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute10(rel) && !rel.includes(sep5);
+  const rel = relative10(resolve13(commonGitDir, "worktrees"), adminDir);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute10(rel) && !rel.includes(sep6);
 }
 function worktreeGitLinksIntact(wtPath, expected, commonGitDir) {
   return isAdminDirOf(commonGitDir, expected.adminDir) && sameGitLinks(readWorktreeGitLinks(wtPath), expected);
@@ -17351,20 +17729,20 @@ function assertCleanLeaderWorktree(repoRoot) {
   }
 }
 function canonicalPathForComparison(path5) {
-  let existing = resolve11(path5);
+  let existing = resolve13(path5);
   const missingTail = [];
   let canonical;
   for (; ; ) {
     try {
-      canonical = join34(realpathSync7.native(existing), ...missingTail);
+      canonical = join37(realpathSync8.native(existing), ...missingTail);
       break;
     } catch {
-      const parent = dirname29(existing);
+      const parent = dirname30(existing);
       if (parent === existing) {
-        canonical = resolve11(path5);
+        canonical = resolve13(path5);
         break;
       }
-      missingTail.unshift(basename16(existing));
+      missingTail.unshift(basename17(existing));
       existing = parent;
     }
   }
@@ -17440,10 +17818,10 @@ function statusEntryPath(line) {
   return normalizeStatusPath(renameIndex >= 0 ? payload.slice(renameIndex + renameSeparator.length) : payload);
 }
 function worktreeRuntimeStatePrefixes(wtPath) {
-  const root = resolve11(wtPath);
-  const omcRel = relative9(root, resolve11(getOmcRoot(wtPath))).split(sep5).join("/");
+  const root = resolve13(wtPath);
+  const omcRel = relative10(root, resolve13(getOmcRoot(wtPath))).split(sep6).join("/");
   if (!omcRel || omcRel.startsWith("..") || isAbsolute10(omcRel) || omcRel.includes("/")) return [];
-  return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${relative9(root, resolveOmcPath(dir, wtPath)).split(sep5).join("/")}/`, rest]);
+  return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${relative10(root, resolveOmcPath(dir, wtPath)).split(sep6).join("/")}/`, rest]);
 }
 function isWorktreeDirtyExcept(wtPath, ignoredRootPaths = [], gitDirArgs = []) {
   try {
@@ -17481,19 +17859,19 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
 }
 function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = true) {
   const tracked = new Set(
-    (keepTracked ? gitOrNull([...gitDirArgs, "ls-files", "-z", "--stage"], wtPath) ?? "" : "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => resolve11(wtPath, entry.slice(entry.indexOf("	") + 1)))
+    (keepTracked ? gitOrNull([...gitDirArgs, "ls-files", "-z", "--stage"], wtPath) ?? "" : "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => resolve13(wtPath, entry.slice(entry.indexOf("	") + 1)))
   );
   const pending = [wtPath];
   while (pending.length > 0) {
     const dir = pending.pop();
     let entries;
     try {
-      entries = readdirSync12(dir, { withFileTypes: true });
+      entries = readdirSync13(dir, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
-      const path5 = join34(dir, entry.name);
+      const path5 = join37(dir, entry.name);
       if (keepTracked && dir === wtPath && entry.name === ".git") continue;
       let stat2;
       try {
@@ -17502,7 +17880,7 @@ function unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs = [], keepTracked = tru
         continue;
       }
       if (stat2.isSymbolicLink()) {
-        if (tracked.has(resolve11(path5))) continue;
+        if (tracked.has(resolve13(path5))) continue;
         try {
           unlinkSync9(path5);
         } catch {
@@ -17538,10 +17916,10 @@ function commitCheckFailedError(message) {
 function branchRefStored(repoRoot, branch) {
   const commonDir = gitOrNull(["rev-parse", "--git-common-dir"], repoRoot);
   if (!commonDir) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot locate the git directory)`);
-  const gitDir = resolve11(repoRoot, commonDir);
-  if (existsSync30(join34(gitDir, "refs", "heads", ...branch.split("/")))) return true;
+  const gitDir = resolve13(repoRoot, commonDir);
+  if (existsSync32(join37(gitDir, "refs", "heads", ...branch.split("/")))) return true;
   try {
-    return readFileSync20(join34(gitDir, "packed-refs"), "utf-8").split("\n").some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
+    return readFileSync21(join37(gitDir, "packed-refs"), "utf-8").split("\n").some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
   } catch (err) {
     if (err.code === "ENOENT") return false;
     throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read packed-refs)`);
@@ -17585,16 +17963,16 @@ function countUnmergedCommits(repoRoot, head, baseCommit, contained = []) {
 }
 function hasInitializedSubmodules(wtPath, gitDirArgs = []) {
   const modulesDir = gitOrNull([...gitDirArgs, "rev-parse", "--git-path", "modules"], wtPath);
-  if (modulesDir && existsSync30(resolve11(wtPath, modulesDir))) return true;
+  if (modulesDir && existsSync32(resolve13(wtPath, modulesDir))) return true;
   const staged = gitOrNull([...gitDirArgs, "ls-files", "--stage"], wtPath) ?? "";
   return staged.split("\n").some((line) => {
     if (!line.startsWith("160000 ")) return false;
     const tab = line.indexOf("	");
-    return tab >= 0 && existsSync30(join34(wtPath, normalizeStatusPath(line.slice(tab + 1)), ".git"));
+    return tab >= 0 && existsSync32(join37(wtPath, normalizeStatusPath(line.slice(tab + 1)), ".git"));
   });
 }
 function unmergedCommitsError(info) {
-  const what = existsSync30(info.path) ? `worker worktree at ${info.path}` : `worker branch of the removed worktree ${info.path}`;
+  const what = existsSync32(info.path) ? `worker worktree at ${info.path}` : `worker branch of the removed worktree ${info.path}`;
   const error = new Error(
     `worktree_unmerged_commits: preserving ${what} with ${info.commits} commit(s) not merged into the leader HEAD${info.branch ? ` (branch ${info.branch})` : " (detached)"}`
   );
@@ -17602,7 +17980,7 @@ function unmergedCommitsError(info) {
   return error;
 }
 function getPreservedWorktreesRecordPath(repoRoot, teamName) {
-  return join34(getOmcRoot(repoRoot), "state", "team-preserved-worktrees", `${sanitizeName(teamName)}.json`);
+  return join37(getOmcRoot(repoRoot), "state", "team-preserved-worktrees", `${sanitizeName(teamName)}.json`);
 }
 function writePreservedWorktreesRecord(repoRoot, teamName, preserved) {
   const recordPath = getPreservedWorktreesRecordPath(repoRoot, teamName);
@@ -17610,26 +17988,26 @@ function writePreservedWorktreesRecord(repoRoot, teamName, preserved) {
     rmSync3(recordPath, { force: true });
     return;
   }
-  ensureDirWithMode(join34(getOmcRoot(repoRoot), "state", "team-preserved-worktrees"));
+  ensureDirWithMode(join37(getOmcRoot(repoRoot), "state", "team-preserved-worktrees"));
   atomicWriteJson(recordPath, { team: teamName, recorded_at: (/* @__PURE__ */ new Date()).toISOString(), preserved_worktrees: preserved });
 }
 function getMetadataPath(repoRoot, teamName) {
-  return join34(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "worktrees.json");
+  return join37(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "worktrees.json");
 }
 function getLegacyMetadataPath(repoRoot, teamName) {
-  return join34(getOmcRoot(repoRoot), "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+  return join37(getOmcRoot(repoRoot), "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
 }
 function getWorkerStateDir(repoRoot, teamName, workerName) {
-  return join34(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers", sanitizeName(workerName));
+  return join37(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers", sanitizeName(workerName));
 }
 function getRootAgentsBackupPath(repoRoot, teamName, workerName) {
-  return join34(getWorkerStateDir(repoRoot, teamName, workerName), "worktree-root-agents.json");
+  return join37(getWorkerStateDir(repoRoot, teamName, workerName), "worktree-root-agents.json");
 }
 function readRootAgentsBackup(repoRoot, teamName, workerName) {
   const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName);
-  if (!existsSync30(backupPath)) return null;
+  if (!existsSync32(backupPath)) return null;
   try {
-    return JSON.parse(readFileSync20(backupPath, "utf-8"));
+    return JSON.parse(readFileSync21(backupPath, "utf-8"));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[omc] warning: worktree root AGENTS backup parse error: ${msg}
@@ -17642,13 +18020,13 @@ function readRootAgentsBackup(repoRoot, teamName, workerName) {
 function installWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath, overlayContent) {
   const omcRoot = getOmcRoot(repoRoot);
   validateResolvedPath(worktreePath, omcRoot);
-  const agentsPath = join34(worktreePath, "AGENTS.md");
+  const agentsPath = join37(worktreePath, "AGENTS.md");
   validateResolvedPath(agentsPath, worktreePath);
   const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName);
   validateResolvedPath(backupPath, omcRoot);
   ensureDirWithMode(getWorkerStateDir(repoRoot, teamName, workerName));
   const previous = readRootAgentsBackup(repoRoot, teamName, workerName);
-  const currentContent = existsSync30(agentsPath) ? readFileSync20(agentsPath, "utf-8") : void 0;
+  const currentContent = existsSync32(agentsPath) ? readFileSync21(agentsPath, "utf-8") : void 0;
   if (previous && currentContent !== void 0 && currentContent !== previous.installedContent) {
     const error = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${agentsPath}`);
     error.code = "agents_dirty";
@@ -17672,23 +18050,23 @@ function restoreWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath)
   if (!backup) return { restored: false, reason: "no_backup" };
   const resolvedWorktreePath = worktreePath ?? backup.worktreePath;
   validateResolvedPath(resolvedWorktreePath, omcRoot);
-  if (!existsSync30(resolvedWorktreePath)) {
+  if (!existsSync32(resolvedWorktreePath)) {
     try {
       unlinkSync9(backupPath);
     } catch {
     }
     return { restored: false, reason: "worktree_missing" };
   }
-  const agentsPath = join34(resolvedWorktreePath, "AGENTS.md");
+  const agentsPath = join37(resolvedWorktreePath, "AGENTS.md");
   validateResolvedPath(agentsPath, resolvedWorktreePath);
-  const currentContent = existsSync30(agentsPath) ? readFileSync20(agentsPath, "utf-8") : void 0;
+  const currentContent = existsSync32(agentsPath) ? readFileSync21(agentsPath, "utf-8") : void 0;
   const isPartialInstallOriginal = backup.hadOriginal && currentContent === (backup.originalContent ?? "");
   if (currentContent !== void 0 && currentContent !== backup.installedContent && !isPartialInstallOriginal) {
     return { restored: false, reason: "agents_dirty" };
   }
   if (backup.hadOriginal) {
     writeFileSync8(agentsPath, backup.originalContent ?? "", "utf-8");
-  } else if (existsSync30(agentsPath)) {
+  } else if (existsSync32(agentsPath)) {
     unlinkSync9(agentsPath);
   }
   try {
@@ -17702,9 +18080,9 @@ function readMetadataResult(repoRoot, teamName) {
   const byWorker = /* @__PURE__ */ new Map();
   const issues = [];
   for (const metaPath of paths) {
-    if (!existsSync30(metaPath)) continue;
+    if (!existsSync32(metaPath)) continue;
     try {
-      const entries = JSON.parse(readFileSync20(metaPath, "utf-8"));
+      const entries = JSON.parse(readFileSync21(metaPath, "utf-8"));
       for (const entry of entries) byWorker.set(entry.workerName, entry);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -17719,15 +18097,15 @@ function readMetadata(repoRoot, teamName) {
   return readMetadataResult(repoRoot, teamName).entries;
 }
 function listRootAgentsBackupIssues(repoRoot, teamName, entries) {
-  const workersDir = join34(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers");
-  if (!existsSync30(workersDir)) return [];
+  const workersDir = join37(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "workers");
+  if (!existsSync32(workersDir)) return [];
   const knownWorkers = new Set(entries.map((entry) => sanitizeName(entry.workerName)));
   const issues = [];
-  for (const workerName of readdirSync12(workersDir)) {
-    const backupPath = join34(workersDir, workerName, "worktree-root-agents.json");
-    if (!existsSync30(backupPath)) continue;
+  for (const workerName of readdirSync13(workersDir)) {
+    const backupPath = join37(workersDir, workerName, "worktree-root-agents.json");
+    if (!existsSync32(backupPath)) continue;
     try {
-      JSON.parse(readFileSync20(backupPath, "utf-8"));
+      JSON.parse(readFileSync21(backupPath, "utf-8"));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       issues.push({ path: backupPath, message: `worktree_root_agents_backup_unreadable:${workerName}:${message}` });
@@ -17744,8 +18122,8 @@ function listRootAgentsBackupIssues(repoRoot, teamName, entries) {
 }
 function writeMetadata(repoRoot, teamName, entries) {
   const metaPath = getMetadataPath(repoRoot, teamName);
-  validateResolvedPath(metaPath, join34(getOmcRoot(repoRoot), "state", "team"));
-  ensureDirWithMode(join34(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName)));
+  validateResolvedPath(metaPath, join37(getOmcRoot(repoRoot), "state", "team"));
+  ensureDirWithMode(join37(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName)));
   atomicWriteJson(metaPath, entries);
 }
 function recordMetadata(repoRoot, teamName, info) {
@@ -17800,12 +18178,12 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   }
   const wtPath = getWorktreePath(repoRoot, teamName, workerName);
   const branch = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
-  validateResolvedPath(wtPath, join34(getOmcRoot(repoRoot), "team"));
+  validateResolvedPath(wtPath, join37(getOmcRoot(repoRoot), "team"));
   try {
     runHostGit(repoRoot, ["worktree", "prune"]);
   } catch {
   }
-  if (existsSync30(wtPath)) {
+  if (existsSync32(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
     const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     const info2 = {
@@ -17824,7 +18202,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
     recordMetadata(repoRoot, teamName, info2);
     return info2;
   }
-  const wtDir = join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
+  const wtDir = join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
   execFileSync5("git", args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
@@ -17848,17 +18226,17 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
 function checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, worktreePath, gitDirArgs = []) {
   const wtPath = worktreePath ?? getWorktreePath(repoRoot, teamName, workerName);
   const backup = readRootAgentsBackup(repoRoot, teamName, workerName);
-  if (!existsSync30(wtPath)) return;
+  if (!existsSync32(wtPath)) return;
   validateWorktreeRemovalTarget({
     candidatePath: wtPath,
-    expectedRoots: [join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+    expectedRoots: [join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
     mainRepoRoots: [repoRoot]
   });
   let ignoreRootAgents = false;
   if (backup) {
-    const agentsPath = join34(wtPath, "AGENTS.md");
+    const agentsPath = join37(wtPath, "AGENTS.md");
     validateResolvedPath(agentsPath, wtPath);
-    const currentContent = existsSync30(agentsPath) ? readFileSync20(agentsPath, "utf-8") : void 0;
+    const currentContent = existsSync32(agentsPath) ? readFileSync21(agentsPath, "utf-8") : void 0;
     const isPartialInstallOriginal = backup.hadOriginal && currentContent === (backup.originalContent ?? "");
     if (currentContent !== void 0 && currentContent !== backup.installedContent && !isPartialInstallOriginal) {
       const error = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${agentsPath}`);
@@ -17879,7 +18257,7 @@ function prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, worktre
   checkWorkerWorktreeRemovalSafety(teamName, workerName, repoRoot, wtPath, gitDirArgs);
   const agentsRestore = restoreWorktreeRootAgents(teamName, workerName, repoRoot, wtPath);
   if (agentsRestore.reason === "agents_dirty") {
-    const error = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${join34(wtPath, "AGENTS.md")}`);
+    const error = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${join37(wtPath, "AGENTS.md")}`);
     error.code = "agents_dirty";
     throw error;
   }
@@ -17914,7 +18292,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot list git worktrees)`);
     }
     const wasRegisteredWorktree = registered !== null;
-    if (registered && existsSync30(wtPath)) {
+    if (registered && existsSync32(wtPath)) {
       const toplevel = gitOrNull([...gitDirArgs, "rev-parse", "--show-toplevel"], wtPath);
       if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
         throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
@@ -17933,21 +18311,21 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
       if (commits === null) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot count its commits against the leader HEAD)`);
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }
-    const runtimeOnly = existsSync30(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"], gitDirArgs).runtimeState;
-    const submodules = existsSync30(wtPath) && hasInitializedSubmodules(wtPath, gitDirArgs);
+    const runtimeOnly = existsSync32(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"], gitDirArgs).runtimeState;
+    const submodules = existsSync32(wtPath) && hasInitializedSubmodules(wtPath, gitDirArgs);
     const force = runtimeOnly && !submodules;
     if (wasRegisteredWorktree && submodules) {
       const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
       error.code = "worktree_remove_failed";
       throw error;
     }
-    if (existsSync30(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
+    if (existsSync32(wtPath)) unlinkUntrackedWorktreeLinks(wtPath, gitDirArgs);
     try {
       if (options.gitLinks && laneCommonDir) {
-        if (existsSync30(wtPath)) {
+        if (existsSync32(wtPath)) {
           validateWorktreeRemovalTarget({
             candidatePath: wtPath,
-            expectedRoots: [join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+            expectedRoots: [join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
             mainRepoRoots: [repoRoot]
           });
         }
@@ -17974,10 +18352,10 @@ function removeWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
     } catch {
     }
     if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
-    if (existsSync30(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
+    if (existsSync32(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
       validateWorktreeRemovalTarget({
         candidatePath: wtPath,
-        expectedRoots: [join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+        expectedRoots: [join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
         mainRepoRoots: [repoRoot]
       });
       if (force) removeRuntimeLeftover(wtPath);
@@ -18008,10 +18386,10 @@ function removeTreeByPath(dir) {
 }
 function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, commonDir) {
   const removeTree = removeTreeByPath;
-  if (existsSync30(wtPath)) {
+  if (existsSync32(wtPath)) {
     validateWorktreeRemovalTarget({
       candidatePath: wtPath,
-      expectedRoots: [join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
+      expectedRoots: [join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
       mainRepoRoots: [repoRoot]
     });
   }
@@ -18125,7 +18503,7 @@ var init_git_worktree = __esm({
       sha256: "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
     };
     recordedGitDirs = /* @__PURE__ */ new Map();
-    pathKey = (path5) => process.platform === "win32" ? resolve11(path5).toLowerCase() : resolve11(path5);
+    pathKey = (path5) => process.platform === "win32" ? resolve13(path5).toLowerCase() : resolve13(path5);
     UNTRACKED_OMC_STATE = new RegExp(
       `^\\?\\? ${OmcPaths.ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:/|$)`
     );
@@ -18615,8 +18993,8 @@ var init_runtime_flags = __esm({
 
 // src/team/merge-coordinator.ts
 import { execFileSync as execFileSync6 } from "node:child_process";
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync8, readFileSync as readFileSync21 } from "node:fs";
-import { isAbsolute as isAbsolute11, join as join35 } from "node:path";
+import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync8, readFileSync as readFileSync22 } from "node:fs";
+import { isAbsolute as isAbsolute11, join as join38 } from "node:path";
 function validateBranchName(branch) {
   if (!BRANCH_NAME_RE.test(branch)) {
     throw new Error(`Invalid branch name: "${branch}" \u2014 must match ${BRANCH_NAME_RE}`);
@@ -18634,13 +19012,13 @@ function configureHarnessMergeAttributes(repoRoot) {
     stdio: "pipe",
     windowsHide: true
   }).trim();
-  const resolvedCommonDir = isAbsolute11(commonDir) ? commonDir : join35(repoRoot, commonDir);
-  const infoDir = join35(resolvedCommonDir, "info");
+  const resolvedCommonDir = isAbsolute11(commonDir) ? commonDir : join38(repoRoot, commonDir);
+  const infoDir = join38(resolvedCommonDir, "info");
   mkdirSync8(infoDir, { recursive: true });
-  const attrPath = join35(infoDir, "attributes");
+  const attrPath = join38(infoDir, "attributes");
   let existing = "";
   try {
-    existing = readFileSync21(attrPath, "utf-8");
+    existing = readFileSync22(attrPath, "utf-8");
   } catch {
   }
   const existingLines = new Set(existing.split("\n").map((l) => l.trim()));
@@ -18761,17 +19139,17 @@ var init_merge_coordinator = __esm({
 
 // src/team/leader-inbox.ts
 import { appendFile as appendFile4, mkdir as mkdir11, writeFile as writeFile8 } from "fs/promises";
-import { existsSync as existsSync31 } from "fs";
-import { dirname as dirname30, join as join36 } from "path";
+import { existsSync as existsSync33 } from "fs";
+import { dirname as dirname31, join as join39 } from "path";
 function leaderInboxPath(teamName, cwd) {
   const safe = sanitizeName(teamName);
-  return join36(teamStateRoot(cwd, safe), "leader", "inbox.md");
+  return join39(teamStateRoot(cwd, safe), "leader", "inbox.md");
 }
 async function ensureLeaderInbox(teamName, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
   validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
-  await mkdir11(dirname30(inboxPath), { recursive: true });
-  if (!existsSync31(inboxPath)) {
+  await mkdir11(dirname31(inboxPath), { recursive: true });
+  if (!existsSync33(inboxPath)) {
     await writeFile8(inboxPath, LEADER_INBOX_HEADER, "utf-8");
   }
   return inboxPath;
@@ -18779,7 +19157,7 @@ async function ensureLeaderInbox(teamName, cwd) {
 async function appendToLeaderInbox(teamName, message, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
   validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
-  await mkdir11(dirname30(inboxPath), { recursive: true });
+  await mkdir11(dirname31(inboxPath), { recursive: true });
   await appendFile4(inboxPath, `
 
 ---
@@ -18787,7 +19165,7 @@ ${message}`, "utf-8");
 }
 function extendLeaderBootstrapPrompt(teamName, cwd) {
   const safe = sanitizeName(teamName);
-  const path5 = cwd ? join36(teamStateRoot(cwd, safe), "leader", "inbox.md") : `.omg/state/team/${safe}/leader/inbox.md`;
+  const path5 = cwd ? join39(teamStateRoot(cwd, safe), "leader", "inbox.md") : `.omg/state/team/${safe}/leader/inbox.md`;
   return `Runtime notifications appear at ${path5} \u2014 check this file periodically and after long-running operations.`;
 }
 var LEADER_INBOX_HEADER;
@@ -18867,9 +19245,9 @@ var init_conflict_mailbox = __esm({
 });
 
 // src/team/worker-commit-cadence.ts
-import { existsSync as existsSync32, watch as fsWatch } from "fs";
+import { existsSync as existsSync34, watch as fsWatch } from "fs";
 import { readFile as readFile13, writeFile as writeFile9, mkdir as mkdir12, unlink as unlink6 } from "fs/promises";
-import { join as join37, dirname as dirname31 } from "path";
+import { join as join40, dirname as dirname32 } from "path";
 import { exec } from "child_process";
 function ownsCadence(ctx) {
   const current = cadenceOwners.get(ctx.worktreePath);
@@ -18927,27 +19305,27 @@ async function installPostToolUseHook(worktreePath, workerName) {
   if (isHookPaused(worktreePath)) {
     return;
   }
-  const claudeDir = join37(worktreePath, ".copilot");
+  const claudeDir = join40(worktreePath, ".copilot");
   await mkdir12(claudeDir, { recursive: true });
-  const settingsPath = join37(claudeDir, "settings.json");
+  const settingsPath = join40(claudeDir, "settings.json");
   const hookCommand = buildHookCommand(workerName);
   const merged = await mergeSettingsWithHook(settingsPath, hookCommand);
   await writeFile9(settingsPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
 }
 async function pauseHookViaSentinel(worktreePath) {
-  const sentinelPath = join37(worktreePath, SENTINEL_FILENAME);
-  await mkdir12(dirname31(sentinelPath), { recursive: true });
+  const sentinelPath = join40(worktreePath, SENTINEL_FILENAME);
+  await mkdir12(dirname32(sentinelPath), { recursive: true });
   await writeFile9(sentinelPath, "", "utf-8");
 }
 async function resumeHookViaSentinel(worktreePath) {
-  const sentinelPath = join37(worktreePath, SENTINEL_FILENAME);
+  const sentinelPath = join40(worktreePath, SENTINEL_FILENAME);
   try {
     await unlink6(sentinelPath);
   } catch {
   }
 }
 function isHookPaused(worktreePath) {
-  return existsSync32(join37(worktreePath, SENTINEL_FILENAME));
+  return existsSync34(join40(worktreePath, SENTINEL_FILENAME));
 }
 function startFallbackPoller(worktreePath, workerName, opts) {
   assertSafeWorkerName(workerName);
@@ -19006,7 +19384,7 @@ async function uninstallCommitCadence(ctx, io = { readFile: readFile13, writeFil
     if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
     return;
   }
-  const settingsPath = join37(ctx.worktreePath, ".copilot", "settings.json");
+  const settingsPath = join40(ctx.worktreePath, ".copilot", "settings.json");
   let raw;
   try {
     raw = await io.readFile(settingsPath, "utf-8");
@@ -19045,14 +19423,14 @@ var init_worker_commit_cadence = __esm({
 
 // src/team/merge-orchestrator.ts
 import { execFileSync as execFileSync7 } from "node:child_process";
-import { existsSync as existsSync33 } from "node:fs";
+import { existsSync as existsSync35 } from "node:fs";
 import { mkdir as mkdir13, appendFile as appendFile5 } from "node:fs/promises";
-import { dirname as dirname32, join as join38 } from "node:path";
+import { dirname as dirname33, join as join41 } from "node:path";
 function mergerWorktreePathFor(repoRoot, teamName) {
-  return join38(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "merger");
+  return join41(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "merger");
 }
 function persistedStatePath(repoRoot, teamName) {
-  return join38(
+  return join41(
     getOmcRoot(repoRoot),
     "state",
     "team",
@@ -19061,7 +19439,7 @@ function persistedStatePath(repoRoot, teamName) {
   );
 }
 function teardownAuditPath(repoRoot, teamName) {
-  return join38(
+  return join41(
     getOmcRoot(repoRoot),
     "state",
     "team",
@@ -19070,7 +19448,7 @@ function teardownAuditPath(repoRoot, teamName) {
   );
 }
 function orchestratorEventLogPath(repoRoot, teamName) {
-  return join38(
+  return join41(
     getOmcRoot(repoRoot),
     "state",
     "team",
@@ -19091,7 +19469,7 @@ function assertRuntimeV2Gate() {
 }
 async function appendEvent(repoRoot, teamName, event) {
   const path5 = orchestratorEventLogPath(repoRoot, teamName);
-  await mkdir13(dirname32(path5), { recursive: true });
+  await mkdir13(dirname33(path5), { recursive: true });
   const full = {
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     team: teamName,
@@ -19127,10 +19505,10 @@ function gitPath(worktreePath, gitPathName) {
     if (resolved) return resolved;
   } catch {
   }
-  return join38(worktreePath, ".git", gitPathName);
+  return join41(worktreePath, ".git", gitPathName);
 }
 function isRebaseInProgress(worktreePath) {
-  return existsSync33(gitPath(worktreePath, "rebase-merge"));
+  return existsSync35(gitPath(worktreePath, "rebase-merge"));
 }
 function isWorktreeRegistered(repoRoot, wtPath) {
   try {
@@ -19150,8 +19528,8 @@ function isWorktreeRegistered(repoRoot, wtPath) {
   return false;
 }
 function ensureMergerWorktree(repoRoot, mergerPath, leaderBranch) {
-  ensureDirWithMode(dirname32(mergerPath));
-  if (existsSync33(mergerPath) && isWorktreeRegistered(repoRoot, mergerPath)) {
+  ensureDirWithMode(dirname33(mergerPath));
+  if (existsSync35(mergerPath) && isWorktreeRegistered(repoRoot, mergerPath)) {
     return;
   }
   execFileSync7("git", ["worktree", "add", "--force", mergerPath, leaderBranch], {
@@ -19191,13 +19569,13 @@ async function startMergeOrchestrator(config) {
   const pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS2;
   const drainTimeoutMs = config.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS;
   const mergerPath = mergerWorktreePathFor(config.repoRoot, config.teamName);
-  validateResolvedPath(mergerPath, join38(getOmcRoot(config.repoRoot), "team"));
+  validateResolvedPath(mergerPath, join41(getOmcRoot(config.repoRoot), "team"));
   ensureMergerWorktree(config.repoRoot, mergerPath, config.leaderBranch);
   await ensureLeaderInbox(config.teamName, config.cwd);
   configureHarnessMergeAttributes(config.repoRoot);
   const persistedPath = persistedStatePath(config.repoRoot, config.teamName);
   let persisted = { lastShas: {} };
-  if (existsSync33(persistedPath)) {
+  if (existsSync35(persistedPath)) {
     try {
       const { readFileSync: readFileSync29 } = await import("node:fs");
       persisted = JSON.parse(readFileSync29(persistedPath, "utf-8"));
@@ -19603,7 +19981,7 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
         } catch {
         }
         const auditPath = teardownAuditPath(config.repoRoot, config.teamName);
-        await mkdir13(dirname32(auditPath), { recursive: true });
+        await mkdir13(dirname33(auditPath), { recursive: true });
         for (const u of unmerged) {
           const row = JSON.stringify({
             type: "unmerged_at_shutdown",
@@ -19643,7 +20021,7 @@ ${unmerged.map((u) => `- ${u.workerName}: ${u.reason}`).join("\n")}`;
 async function recoverFromRestart(config) {
   const persistedPath = persistedStatePath(config.repoRoot, config.teamName);
   let persistedShasLoaded = 0;
-  if (existsSync33(persistedPath)) {
+  if (existsSync35(persistedPath)) {
     try {
       const { readFileSync: readFileSync29 } = await import("node:fs");
       const persisted = JSON.parse(readFileSync29(persistedPath, "utf-8"));
@@ -19711,7 +20089,7 @@ var init_merge_orchestrator = __esm({
 });
 
 // src/team/scaling.ts
-import { join as join39, resolve as resolve12 } from "path";
+import { join as join42, resolve as resolve14 } from "path";
 import { mkdir as mkdir14, readFile as readFile14, rm as rm8 } from "fs/promises";
 function scaleUpFenceBlocks(config) {
   const attempt = config.active_scale_up;
@@ -20043,9 +20421,9 @@ var init_routes = __esm({
 });
 
 // src/forge/ado/guard.ts
-import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync22, rmSync as rmSync4, writeFileSync as writeFileSync9 } from "fs";
+import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync23, rmSync as rmSync4, writeFileSync as writeFileSync9 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
-import { isAbsolute as isAbsolute12, join as join40 } from "path";
+import { isAbsolute as isAbsolute12, join as join43 } from "path";
 var MAX_BODY_BYTES;
 var init_guard = __esm({
   "src/forge/ado/guard.ts"() {
@@ -20067,9 +20445,9 @@ var init_exec = __esm({
 });
 
 // src/ship/config.ts
-import { existsSync as existsSync34, readFileSync as readFileSync23 } from "fs";
+import { existsSync as existsSync36, readFileSync as readFileSync24 } from "fs";
 import { userInfo } from "os";
-import { basename as basename17, join as join41, resolve as resolve13 } from "path";
+import { basename as basename18, join as join44, resolve as resolve15 } from "path";
 var DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
@@ -20128,303 +20506,6 @@ var init_config2 = __esm({
   }
 });
 
-// src/copilot-run/names.ts
-var init_names = __esm({
-  "src/copilot-run/names.ts"() {
-    "use strict";
-  }
-});
-
-// src/lib/env-vars.ts
-var OMC_PLUGIN_ROOT_ENV;
-var init_env_vars = __esm({
-  "src/lib/env-vars.ts"() {
-    "use strict";
-    OMC_PLUGIN_ROOT_ENV = "OMC_PLUGIN_ROOT";
-  }
-});
-
-// src/budget/ledger.ts
-var MAX_SCAN_BYTES, TAIL_BYTES, EPOCH;
-var init_ledger = __esm({
-  "src/budget/ledger.ts"() {
-    "use strict";
-    init_atomic_write();
-    init_file_lock();
-    init_worktree_paths();
-    init_config_dir();
-    MAX_SCAN_BYTES = 8 * 1024 * 1024;
-    TAIL_BYTES = 64 * 1024;
-    EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
-  }
-});
-
-// src/smoke/copilot-session-eval.ts
-import { existsSync as existsSync35, readdirSync as readdirSync13, statSync as statSync6 } from "fs";
-import { join as join42, relative as relative10 } from "path";
-var SMOKE_TOKEN;
-var init_copilot_session_eval = __esm({
-  "src/smoke/copilot-session-eval.ts"() {
-    "use strict";
-    SMOKE_TOKEN = "SMOKE_OK";
-  }
-});
-
-// src/smoke/copilot-sdk-scenarios.ts
-import { realpathSync as realpathSync8 } from "fs";
-import { basename as basename18, join as join43, resolve as resolve14, sep as sep6 } from "path";
-function samePathKey(p, platform) {
-  let out = resolve14(p);
-  try {
-    out = realpathSync8.native(out);
-  } catch {
-  }
-  return canon(out, platform);
-}
-function isUnder(p, root, platform) {
-  const child = samePathKey(p, platform);
-  const parent = samePathKey(root, platform);
-  return child === parent || child.startsWith(`${parent.replace(/\/$/, "")}/`);
-}
-function requestCwd(req) {
-  for (const key of ["cwd", "workingDirectory", "resolvedWorkingDirectory"]) {
-    if (typeof req[key] === "string" && req[key]) return req[key];
-  }
-  return void 0;
-}
-function permitGuardrailPush(req, ctx) {
-  if (req.kind !== "shell" || !GUARDRAIL_COMMAND.test(String(req.fullCommandText ?? ""))) return false;
-  const cwd = requestCwd(req);
-  const platform = ctx.platform ?? process.platform;
-  return cwd === void 0 || samePathKey(cwd, platform) === samePathKey(ctx.projectDir, platform);
-}
-function permitScopedRead(req, ctx) {
-  if (req.kind !== "read") return false;
-  if (typeof req.path !== "string" || !req.path) return true;
-  const platform = ctx.platform ?? process.platform;
-  return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
-}
-function permitProjectFiles(req, ctx) {
-  const platform = ctx.platform ?? process.platform;
-  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
-  return typeof target === "string" && !!target && isUnder(resolve14(ctx.projectDir, target), ctx.projectDir, platform);
-}
-function canon(p, platform = process.platform) {
-  const out = resolve14(p).split(sep6).join("/");
-  return platform === "win32" ? out.toLowerCase() : out;
-}
-var FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
-var init_copilot_sdk_scenarios = __esm({
-  "src/smoke/copilot-sdk-scenarios.ts"() {
-    "use strict";
-    init_ledger();
-    init_copilot_session_eval();
-    FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
-    SANDBOX_LANE_SCENARIO = "sandbox-lane";
-    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
-    ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
-    KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
-    PLUGIN_NAME = "oh-my-copilot";
-    DELEGATE_AGENT = "oh-my-copilot:architect";
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
-    NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
-    NO_WRITE_TOOLS = ["create", "edit"];
-    denyAll = () => false;
-    GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
-    FILETOOLS_DIR = "filetools";
-    FILETOOLS_FILES = {
-      notes: `${FILETOOLS_DIR}/notes.txt`,
-      created: `${FILETOOLS_DIR}/new/created.txt`,
-      /**
-       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
-       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
-       * README once per session, so the read (view of notes.txt) and the write
-       * (creating created.txt) each get their own.
-       */
-      context: `${FILETOOLS_DIR}/README.md`,
-      writeContext: `${FILETOOLS_DIR}/new/README.md`
-    };
-    FILETOOLS_MARKER = "Context marker:";
-    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
-    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
-    EVENTS_SHELL_TOKEN = "omg-events-probe";
-    FACTORY_RUN_FILE = "greet.txt";
-    FACTORY_RUN_ISSUE_BODY = [
-      `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
-      "",
-      "## Acceptance criteria",
-      "",
-      `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
-      "- One commit, no other file changed. There is no test suite in this repository: do not add one."
-    ].join("\n");
-    SCENARIOS = {
-      smoke: {
-        name: "smoke",
-        prompt: `Reply with exactly: ${SMOKE_TOKEN}. Do not use tools.`,
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: denyAll
-      },
-      guardrail: {
-        name: "guardrail",
-        prompt: "Run the shell command: git push --force origin main \u2014 then report the exact result.",
-        excludedTools: [...NO_WRITE_TOOLS],
-        // Our preToolUse hook denies before any permission prompt. Should it not,
-        // only this exact push is approved, and the remote is a local bare repo
-        // (scn.guardrail.no_push then fails).
-        permit: permitGuardrailPush
-      },
-      skill: {
-        name: "skill",
-        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: permitScopedRead
-        // loading SKILL.md is a read request
-      },
-      delegate: {
-        name: "delegate",
-        prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: permitScopedRead
-      },
-      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
-      filetools: {
-        name: "filetools",
-        prompt: [
-          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
-          `1. View ${FILETOOLS_FILES.notes}.`,
-          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
-          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
-          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
-        ].join("\n"),
-        excludedTools: ["powershell", "shell"],
-        permit: permitProjectFiles
-      },
-      // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
-      // factory link (copilot-chain-scenario.ts) under the AFK profile.
-      chain: {
-        name: "chain",
-        prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session of the driver: the prompt is the `omg team` task, a
-      // numbered list that decomposes into one task per worker
-      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
-      team: {
-        name: "team",
-        prompt: [
-          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
-          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
-        ].join("\n"),
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session: the prompt is the scripted issue's body, which the
-      // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
-      "factory-run": {
-        name: "factory-run",
-        prompt: FACTORY_RUN_ISSUE_BODY,
-        excludedTools: [],
-        permit: denyAll
-      },
-      "factory-run-fix": {
-        name: "factory-run-fix",
-        prompt: FACTORY_RUN_ISSUE_BODY,
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session of the driver: copilot_run lanes with their own policy
-      // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
-      "sandbox-lane": {
-        name: "sandbox-lane",
-        prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
-      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
-      continuation: {
-        name: "continuation",
-        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      "prompt-context": {
-        name: "prompt-context",
-        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
-        excludedTools: [],
-        permit: denyAll
-      },
-      events: {
-        name: "events",
-        prompt: [
-          "Do these two steps in order, then answer with one short line:",
-          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
-          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
-        ].join("\n"),
-        excludedTools: [],
-        permit: denyAll
-      },
-      ultragoal: {
-        name: "ultragoal",
-        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
-        excludedTools: [],
-        permit: denyAll
-      }
-    };
-  }
-});
-
-// src/smoke/copilot-session-env.ts
-import { existsSync as existsSync36, readFileSync as readFileSync24 } from "fs";
-import { dirname as dirname33, join as join44, resolve as resolve15 } from "path";
-import { fileURLToPath as fileURLToPath5 } from "url";
-function resolveDefaultPluginRoot(env = process.env) {
-  const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return resolve15(fromEnv);
-  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
-}
-function moduleDirs() {
-  const starts = [];
-  if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
-  try {
-    starts.push(dirname33(fileURLToPath5(import.meta.url)));
-  } catch {
-  }
-  return starts;
-}
-function findPluginRoot(starts) {
-  for (const start of starts) {
-    let dir = resolve15(start);
-    for (let i = 0; i < 8; i++) {
-      if (isPluginRoot(dir)) return dir;
-      const parent = dirname33(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
-}
-function isPluginRoot(dir) {
-  try {
-    const manifest = JSON.parse(readFileSync24(join44(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME && existsSync36(join44(dir, "package.json"));
-  } catch {
-    return false;
-  }
-}
-var init_copilot_session_env = __esm({
-  "src/smoke/copilot-session-env.ts"() {
-    "use strict";
-    init_names();
-    init_env_vars();
-    init_jsonc();
-    init_copilot_sdk_scenarios();
-  }
-});
-
 // src/team/sdk-policy.ts
 function gitSubcommandDeny(tail, reason) {
   return [
@@ -20453,9 +20534,18 @@ var init_sdk_policy = __esm({
       // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
       ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, "git credential helper from a worker"),
       ...gitSubcommandDeny(String.raw`credential-[\w-]`, "git credential helper from a worker"),
+      // `git credential fill` asks the configured helpers (the worker env clears them; this catches the plain spelling).
+      ...gitSubcommandDeny(String.raw`credential\s+(?:fill|approve|reject)\b`, "git credential helper from a worker"),
       // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
       // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
       { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: "git credential helper from a worker" },
+      // A CI checkout's `http.<url>.extraheader` holds the job token; the worker env clears it, this stops reading it.
+      ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?extraheader`, "git extra header from a worker"),
+      // The plain credential reads: `gh auth token`, `gh auth git-credential get`, `gh auth status --show-token`,
+      // `az account get-access-token`. An empty GH_CONFIG_DIR does not hide gh's OS-keyring token from the first two.
+      // No opening quote before the name: `rg "gh auth token" docs` stays allowed (a quoted lone `"gh"` is unquoted first).
+      { re: /(?:^|[\s;&|(/\\])gh(?:\.exe)?["']?\s+auth\s+(?:token\b|git-credential\b|status\b[^;&|\n]*\s(?:-t|--show-token)\b)/i, reason: "credential read from a worker" },
+      { re: /(?:^|[\s;&|(/\\])az(?:\.cmd|\.exe)?["']?\s+account\s+get-access-token\b/i, reason: "credential read from a worker" },
       // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
       { re: /\bGIT_CONFIG/i, reason: "git config through the environment from a worker" }
     ];

@@ -43,6 +43,14 @@ export declare const SMOKE_SET_ENV: {
 export declare const SESSION_SET_ENV: {
     readonly OMC_HOOK_FAIL_CLOSED: "1";
 };
+/** Credential env keys matched by exact name (any case on Windows). */
+export declare const CREDENTIAL_ENV: readonly ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "NPM_TOKEN", "NODE_AUTH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "AZURE_DEVOPS_EXT_PAT", "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY", "AZURE_DEVOPS_EXT_GITHUB_PAT", "SYSTEM_ACCESSTOKEN", "AZURE_CLIENT_SECRET", "AZURE_CLIENT_CERTIFICATE_PATH", "AZURE_CLIENT_CERTIFICATE_PASSWORD", "AZURE_PASSWORD", "AZURE_FEDERATED_TOKEN_FILE", "IDENTITY_ENDPOINT", "IDENTITY_HEADER", "MSI_ENDPOINT", "MSI_SECRET", "AZURE_STORAGE_KEY", "AZURE_STORAGE_CONNECTION_STRING", "AZURE_STORAGE_SAS_TOKEN", "ARM_CLIENT_SECRET", "ARM_CLIENT_CERTIFICATE_PATH", "ARM_CLIENT_CERTIFICATE_PASSWORD", "ARM_OIDC_TOKEN", "ARM_OIDC_TOKEN_FILE_PATH", "ARM_OIDC_REQUEST_TOKEN", "ARM_ACCESS_KEY", "ARM_SAS_TOKEN"];
+/**
+ * Whether a credential-free env drops `key`: a known credential
+ * ({@link CREDENTIAL_ENV}), any secret-named var, a `GIT_CONFIG*` override
+ * (could re-enable a credential helper) or a `GCM_*` setting. Any case.
+ */
+export declare function isCredentialEnvKey(key: string): boolean;
 export declare function isStrippedEnvKey(key: string): boolean;
 /** Walk up from this module to the directory holding the oh-my-copilot plugin.json. */
 export declare function resolveDefaultPluginRoot(env?: NodeJS.ProcessEnv): string;
