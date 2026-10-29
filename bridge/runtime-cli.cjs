@@ -981,8 +981,8 @@ function canonicalRootAliases(root) {
   }
   return [...aliases].sort((a, b) => b.length - a.length);
 }
-function redactCanonicalRoots(text, providedRoot, trustedRoot) {
-  let redacted = text;
+function redactCanonicalRoots(text2, providedRoot, trustedRoot) {
+  let redacted = text2;
   const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)].sort((a, b) => b.length - a.length);
   for (const root of roots) {
     redacted = redacted.split(root).join("<redacted>");
@@ -2560,8 +2560,8 @@ function warnOnDeprecatedDelegationRouting(config) {
     deprecatedProviders.add(defaultProvider);
   }
   const roles = config.delegationRouting?.roles ?? {};
-  for (const route of Object.values(roles)) {
-    const provider = route?.provider;
+  for (const route2 of Object.values(roles)) {
+    const provider = route2?.provider;
     if (isDeprecatedMcpProvider(provider)) {
       deprecatedProviders.add(provider);
     }
@@ -7103,8 +7103,8 @@ function decodeTmuxCommandString(command) {
 }
 function isPsmuxServerNotFoundError(error) {
   const value = error;
-  const text = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
-  return /no server running|failed to connect|can't connect|connection refused|server exited/.test(text);
+  const text2 = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
+  return /no server running|failed to connect|can't connect|connection refused|server exited/.test(text2);
 }
 async function runPsmuxVerifiedCommand(identity, nativeCommand, deps) {
   const argv = decodeTmuxCommandString(nativeCommand);
@@ -10358,9 +10358,9 @@ function sha256(value) {
 }
 function parseCanonical(path5) {
   try {
-    const text = (0, import_fs25.readFileSync)(path5, "utf8");
-    const parsed = JSON.parse(text);
-    return canonicalize2(parsed) === text ? parsed : null;
+    const text2 = (0, import_fs25.readFileSync)(path5, "utf8");
+    const parsed = JSON.parse(text2);
+    return canonicalize2(parsed) === text2 ? parsed : null;
   } catch {
     return null;
   }
@@ -11085,8 +11085,8 @@ async function runGuardedNativeTmuxCreationCommand(identity, nativeCommand, reso
 }
 function isTmuxServerNotFoundError(error) {
   const value = error;
-  const text = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
-  return /no server running|failed to connect|can't connect|no such file|connection refused|server exited/.test(text);
+  const text2 = [value?.stderr, value?.stdout, value?.message].filter((item) => typeof item === "string").join("\n").toLowerCase();
+  return /no server running|failed to connect|can't connect|no such file|connection refused|server exited/.test(text2);
 }
 function detectTeamMultiplexerContext(env = process.env) {
   if (env.TMUX) return "tmux";
@@ -11177,8 +11177,8 @@ ${stderr}`.trim();
   return String(error);
 }
 function isCmuxDialectFailure(error) {
-  const text = getCmuxErrorText(error);
-  return /(?:unknown|unrecognized|invalid|unsupported) (?:command|subcommand|option)|no such (?:command|subcommand)|Found argument .*--surface.*wasn't expected|unexpected argument|unexpected option/i.test(text);
+  const text2 = getCmuxErrorText(error);
+  return /(?:unknown|unrecognized|invalid|unsupported) (?:command|subcommand|option)|no such (?:command|subcommand)|Found argument .*--surface.*wasn't expected|unexpected argument|unexpected option/i.test(text2);
 }
 function redactCmuxFailureMessage(error, argLists) {
   let message = getCmuxErrorText(error);
@@ -11236,10 +11236,10 @@ async function cmuxSplitSurface(targetSurfaceId, direction, _cwd) {
   }
   return { ...result, paneId };
 }
-async function cmuxSendSurface(surfaceId, text) {
+async function cmuxSendSurface(surfaceId, text2) {
   await cmuxExecPrimaryWithLegacyFallback(
-    ["send-surface", "--surface", surfaceId, text],
-    ["send", "--surface", surfaceId, text]
+    ["send-surface", "--surface", surfaceId, text2],
+    ["send", "--surface", surfaceId, text2]
   );
 }
 function normalizeCmuxKey(key) {
@@ -11474,11 +11474,11 @@ async function invokeDirectMailboxEffect(target, message, dependencies = default
       dependencies.serverIdentityDependencies
     );
     if (inputBlockReason) return { kind: "not_attempted", reason: inputBlockReason };
-    const text = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message}`.slice(0, 200) : message;
+    const text2 = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message}`.slice(0, 200) : message;
     try {
       const literal = await runGuardedNativeTmuxCommand(
         tmuxServerIdentity,
-        tmuxCommandString(["send-keys", "-t", target.paneId, "-l", "--", text])
+        tmuxCommandString(["send-keys", "-t", target.paneId, "-l", "--", text2])
       );
       if (literal.outcome !== "executed") {
         return literal.outcome === "not_executed" ? { kind: "not_attempted", reason: "mailbox_membership_unresolvable" } : {
@@ -13086,11 +13086,11 @@ async function sendTeamPaneKey(paneId, key, tmuxServerIdentity) {
   );
   if (result.outcome !== "executed") throw new Error("tmux_server_guard_failed");
 }
-async function guardedSendLiteralAndEnter(paneId, text, tmuxServerIdentity) {
+async function guardedSendLiteralAndEnter(paneId, text2, tmuxServerIdentity) {
   if (await paneInputBlockReason(paneId, tmuxServerIdentity)) return false;
   const literal = await runGuardedNativeTmuxCommand(
     tmuxServerIdentity,
-    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text])
+    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text2])
   );
   if (literal.outcome !== "executed") return false;
   if (await paneInputBlockReason(paneId, tmuxServerIdentity)) return false;
@@ -13265,8 +13265,8 @@ async function waitForPaneReady(paneId, opts = {}) {
   );
   return false;
 }
-function paneTailContainsLiteralLine(captured, text) {
-  return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text));
+function paneTailContainsLiteralLine(captured, text2) {
+  return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text2));
 }
 async function paneCopyModeObservation(paneId, tmuxServerIdentity) {
   if (isCmuxSurfaceTarget(paneId)) return false;
@@ -13291,9 +13291,9 @@ async function paneCopyModeObservation(paneId, tmuxServerIdentity) {
 async function paneInCopyMode(paneId) {
   return await paneCopyModeObservation(paneId) ?? false;
 }
-async function sendLiteralPaneText(paneId, text, tmuxServerIdentity) {
+async function sendLiteralPaneText(paneId, text2, tmuxServerIdentity) {
   if (isCmuxSurfaceTarget(paneId)) {
-    await cmuxSendSurface(paneId, text);
+    await cmuxSendSurface(paneId, text2);
     return;
   }
   if (!tmuxServerIdentity) throw new Error("tmux_server_identity_missing");
@@ -13302,7 +13302,7 @@ async function sendLiteralPaneText(paneId, text, tmuxServerIdentity) {
   }
   const result = await runGuardedNativeTmuxCommand(
     tmuxServerIdentity,
-    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text])
+    tmuxCommandString(["send-keys", "-t", paneId, "-l", "--", text2])
   );
   if (result.outcome !== "executed") throw new Error("tmux_server_guard_failed");
 }
@@ -13635,8 +13635,8 @@ async function injectToLeaderPane(sessionName2, leaderPaneId, message, tmuxServe
 }
 function isTmuxPaneNotFoundError(error) {
   const err = error;
-  const text = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
-  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text);
+  const text2 = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
+  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text2);
 }
 async function getWorkerLiveness(paneId) {
   if (isCmuxSurfaceTarget(paneId)) {
@@ -16963,11 +16963,11 @@ var init_stage_router = __esm({
 });
 
 // src/team/role-router.ts
-function inferLaneIntent(text) {
-  if (!text || text.trim().length === 0) return "unknown";
+function inferLaneIntent(text2) {
+  if (!text2 || text2.trim().length === 0) return "unknown";
   for (const { intent, patterns } of INTENT_PATTERNS) {
     for (const pattern of patterns) {
-      if (pattern.test(text)) {
+      if (pattern.test(text2)) {
         return intent;
       }
     }
@@ -17020,11 +17020,11 @@ function routeTaskToRole(taskSubject, taskDescription, fallbackRole) {
     }
   }
 }
-function scoreByKeywords(text) {
+function scoreByKeywords(text2) {
   let bestRole = null;
   let bestCount = 0;
   for (const [role, patterns] of Object.entries(ROLE_KEYWORDS)) {
-    const count = patterns.filter((p) => p.test(text)).length;
+    const count = patterns.filter((p) => p.test(text2)).length;
     if (count > bestCount) {
       bestCount = count;
       bestRole = role;
@@ -17896,8 +17896,8 @@ async function startMergeOrchestrator(config) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs10.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync26 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync26(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync27 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync27(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -18342,8 +18342,8 @@ async function recoverFromRestart(config) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs10.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync26 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync26(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync27 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync27(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -19031,27 +19031,224 @@ var init_worker_activation_gate = __esm({
   }
 });
 
+// src/utils/url.ts
+var init_url = __esm({
+  "src/utils/url.ts"() {
+    "use strict";
+  }
+});
+
+// src/providers/remote-url.ts
+var init_remote_url = __esm({
+  "src/providers/remote-url.ts"() {
+    "use strict";
+    init_url();
+  }
+});
+
+// src/forge/ado/routes.ts
+var STABLE, TEXT_CHARS, TEXT, text, BRANCH_REF, route, ADO_ROUTES, ADO_WRITE_ALLOWLIST;
+var init_routes = __esm({
+  "src/forge/ado/routes.ts"() {
+    "use strict";
+    STABLE = "7.1";
+    TEXT_CHARS = /^(?:[^\p{Cc}]|[\t\r\n])+$/u;
+    TEXT = { type: "string", pattern: TEXT_CHARS };
+    text = (maxLength) => ({ type: "string", pattern: TEXT_CHARS, maxLength });
+    BRANCH_REF = { type: "string", pattern: /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]+$/u, maxLength: 400 };
+    route = (r) => Object.freeze(r);
+    ADO_ROUTES = Object.freeze([
+      // Setup probes.
+      route({ id: "core.projects.GET", area: "core", resource: "projects", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: [] }),
+      route({ id: "core.teams.GET", area: "core", resource: "teams", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: ["$top", "$skip"] }),
+      route({ id: "git.repositories.GET", area: "git", resource: "repositories", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId"], queryParams: [] }),
+      // Work items (intake, check, progress).
+      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand"] }),
+      route({
+        id: "wit.workItems.PATCH",
+        area: "wit",
+        resource: "workItems",
+        method: "PATCH",
+        apiVersion: STABLE,
+        routeParams: ["project", "id"],
+        queryParams: [],
+        mediaType: "application/json-patch+json",
+        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only writes.
+        body: {
+          kind: "json-patch",
+          ops: ["test", "add"],
+          paths: [
+            { path: /^\/rev$/, value: { type: "integer", min: 1 } },
+            { path: /^\/fields\/System\.Tags$/, value: TEXT },
+            // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
+            { path: /^\/fields\/System\.State$/, value: TEXT, configured: "states" },
+            // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
+            { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: "columns" }
+          ]
+        }
+      }),
+      route({ id: "wit.comments.GET", area: "wit", resource: "comments", method: "GET", apiVersion: "7.1-preview.4", routeParams: ["project", "workItemId"], queryParams: ["$top", "continuationToken", "order"] }),
+      route({
+        id: "wit.comments.POST",
+        area: "wit",
+        resource: "comments",
+        method: "POST",
+        apiVersion: "7.1-preview.4",
+        routeParams: ["project", "workItemId"],
+        queryParams: ["format"],
+        body: { kind: "object", keys: ["text"], required: ["text"], values: { text: TEXT } }
+      }),
+      route({ id: "wit.workItemTypes.GET", area: "wit", resource: "workItemTypes", method: "GET", apiVersion: STABLE, routeParams: ["project"], queryParams: [] }),
+      route({ id: "wit.workItemTypeStates.GET", area: "wit", resource: "workItemTypeStates", method: "GET", apiVersion: STABLE, routeParams: ["project", "type"], queryParams: [] }),
+      route({ id: "wit.wiql.GET", area: "wit", resource: "wiql", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$top"] }),
+      route({
+        id: "wit.wiql.POST",
+        area: "wit",
+        resource: "wiql",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project"],
+        queryParams: ["$top"],
+        body: { kind: "object", keys: ["query"], required: ["query"], values: { query: TEXT } }
+      }),
+      route({ id: "wit.queries.GET", area: "wit", resource: "queries", method: "GET", apiVersion: STABLE, routeParams: ["project"], queryParams: ["$depth", "$expand"] }),
+      route({ id: "wit.classificationNodes.GET", area: "wit", resource: "classificationNodes", method: "GET", apiVersion: STABLE, routeParams: ["project", "structureGroup"], queryParams: ["$depth"] }),
+      // Boards (board-column intake, progress columns).
+      route({ id: "work.boards.GET", area: "work", resource: "boards", method: "GET", apiVersion: STABLE, routeParams: ["project", "team", "id"], queryParams: [] }),
+      route({ id: "work.columns.GET", area: "work", resource: "columns", method: "GET", apiVersion: STABLE, routeParams: ["project", "team", "board"], queryParams: [] }),
+      // Pull requests.
+      route({
+        id: "git.pullRequests.GET",
+        area: "git",
+        resource: "pullRequests",
+        method: "GET",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+      }),
+      route({
+        id: "git.pullRequests.POST",
+        area: "git",
+        resource: "pullRequests",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId"],
+        queryParams: [],
+        // The factory only ever opens drafts.
+        body: {
+          kind: "object",
+          keys: ["sourceRefName", "targetRefName", "title", "description", "isDraft", "workItemRefs"],
+          required: ["sourceRefName", "targetRefName", "title", "isDraft"],
+          values: {
+            sourceRefName: BRANCH_REF,
+            targetRefName: BRANCH_REF,
+            title: text(400),
+            description: text(4e3),
+            isDraft: { const: true },
+            workItemRefs: { type: "array", minItems: 0, maxItems: 1, items: { kind: "object", keys: ["id"], required: ["id"], values: { id: { type: "string", pattern: /^[1-9]\d{0,9}$/ } } } }
+          }
+        }
+      }),
+      // Mark ready only: a body with status, autoCompleteSetBy or completionOptions (a merge) is refused (design §8.4).
+      route({
+        id: "git.pullRequests.PATCH",
+        area: "git",
+        resource: "pullRequests",
+        method: "PATCH",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: [],
+        body: { kind: "object", keys: ["isDraft"], required: ["isDraft"], values: { isDraft: { const: false } } }
+      }),
+      // One new top-level text comment per thread (no replies, no code-review comment types).
+      route({
+        id: "git.pullRequestThreads.POST",
+        area: "git",
+        resource: "pullRequestThreads",
+        method: "POST",
+        apiVersion: STABLE,
+        routeParams: ["project", "repositoryId", "pullRequestId"],
+        queryParams: [],
+        body: {
+          kind: "object",
+          keys: ["comments", "status"],
+          required: ["comments"],
+          values: {
+            comments: {
+              type: "array",
+              minItems: 1,
+              maxItems: 1,
+              items: {
+                kind: "object",
+                keys: ["content", "commentType", "parentCommentId"],
+                required: ["content"],
+                values: { content: { type: "string", maxLength: 15e4 }, commentType: { enum: [1, "text"] }, parentCommentId: { const: 0 } }
+              }
+            },
+            status: { enum: [1, "active", 4, "closed"] }
+          }
+        }
+      }),
+      route({ id: "git.pullRequestIterations.GET", area: "git", resource: "pullRequestIterations", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
+      route({ id: "git.pullRequestStatuses.GET", area: "git", resource: "pullRequestStatuses", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId", "pullRequestId"], queryParams: [] }),
+      // Policy (gates) and builds.
+      route({ id: "policy.evaluations.GET", area: "policy", resource: "evaluations", method: "GET", apiVersion: "7.1-preview.1", routeParams: ["project"], queryParams: ["artifactId", "includeNotApplicable", "$top", "$skip"] }),
+      // Requeue one evaluation (rerun a flaky or expired build); the REST call has no body.
+      route({ id: "policy.evaluations.PATCH", area: "policy", resource: "evaluations", method: "PATCH", apiVersion: "7.1-preview.1", routeParams: ["project", "evaluationId"], queryParams: [], body: { kind: "none" } }),
+      // By id, or the builds of refs/pull/{id}/merge (runsForHead, critic amendments §A.2).
+      route({ id: "build.builds.GET", area: "build", resource: "builds", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: ["branchName", "reasonFilter", "queryOrder", "$top"] }),
+      route({ id: "build.timeline.GET", area: "build", resource: "timeline", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId"], queryParams: [] }),
+      // Read as JSON ({ count, value: [lines] }): az devops invoke refuses a non-JSON response without --out-file, which the guard never allows.
+      route({ id: "build.logs.GET", area: "build", resource: "logs", method: "GET", apiVersion: STABLE, routeParams: ["project", "buildId", "logId"], queryParams: [] })
+    ]);
+    ADO_WRITE_ALLOWLIST = Object.freeze([
+      ["wit", "workItems", "PATCH"],
+      ["wit", "comments", "POST"],
+      ["wit", "wiql", "POST"],
+      ["git", "pullRequests", "POST"],
+      ["git", "pullRequests", "PATCH"],
+      ["git", "pullRequestThreads", "POST"],
+      ["policy", "evaluations", "PATCH"]
+    ]);
+  }
+});
+
+// src/forge/ado/guard.ts
+var import_fs32, import_os9, import_path36, MAX_BODY_BYTES;
+var init_guard = __esm({
+  "src/forge/ado/guard.ts"() {
+    "use strict";
+    import_fs32 = require("fs");
+    import_os9 = require("os");
+    import_path36 = require("path");
+    init_routes();
+    MAX_BODY_BYTES = 1024 * 1024;
+  }
+});
+
 // src/ship/exec.ts
 var import_child_process9, TRUSTED_READ_ENV;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
     import_child_process9 = require("child_process");
+    init_guard();
     TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
   }
 });
 
 // src/ship/config.ts
-var import_fs32, import_os9, import_path36, DEFAULT_SHIP_CONFIG;
+var import_fs33, import_os10, import_path37, DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
-    import_fs32 = require("fs");
-    import_os9 = require("os");
-    import_path36 = require("path");
+    import_fs33 = require("fs");
+    import_os10 = require("os");
+    import_path37 = require("path");
     init_jsonc();
     init_loader();
     init_project_config_path();
+    init_remote_url();
     init_exec();
     DEFAULT_SHIP_CONFIG = Object.freeze({
       base: "dev",
@@ -19134,21 +19331,21 @@ var init_ledger = __esm({
 });
 
 // src/smoke/copilot-session-eval.ts
-var import_fs33, import_path37, SMOKE_TOKEN;
+var import_fs34, import_path38, SMOKE_TOKEN;
 var init_copilot_session_eval = __esm({
   "src/smoke/copilot-session-eval.ts"() {
     "use strict";
-    import_fs33 = require("fs");
-    import_path37 = require("path");
+    import_fs34 = require("fs");
+    import_path38 = require("path");
     SMOKE_TOKEN = "SMOKE_OK";
   }
 });
 
 // src/smoke/copilot-sdk-scenarios.ts
 function samePathKey(p, platform) {
-  let out = (0, import_path38.resolve)(p);
+  let out = (0, import_path39.resolve)(p);
   try {
-    out = import_fs34.realpathSync.native(out);
+    out = import_fs35.realpathSync.native(out);
   } catch {
   }
   return canon(out, platform);
@@ -19179,18 +19376,18 @@ function permitScopedRead(req, ctx) {
 function permitProjectFiles(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
-  return typeof target === "string" && !!target && isUnder((0, import_path38.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+  return typeof target === "string" && !!target && isUnder((0, import_path39.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
 }
 function canon(p, platform = process.platform) {
-  const out = (0, import_path38.resolve)(p).split(import_path38.sep).join("/");
+  const out = (0, import_path39.resolve)(p).split(import_path39.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs34, import_path38, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
+var import_fs35, import_path39, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
-    import_fs34 = require("fs");
-    import_path38 = require("path");
+    import_fs35 = require("fs");
+    import_path39 = require("path");
     init_ledger();
     init_copilot_session_eval();
     FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
@@ -19354,24 +19551,24 @@ var init_copilot_sdk_scenarios = __esm({
 // src/smoke/copilot-session-env.ts
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path39.resolve)(fromEnv);
+  if (fromEnv) return (0, import_path40.resolve)(fromEnv);
   return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
 }
 function moduleDirs() {
   const starts = [];
   if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
   try {
-    starts.push((0, import_path39.dirname)((0, import_url5.fileURLToPath)(importMetaUrl)));
+    starts.push((0, import_path40.dirname)((0, import_url6.fileURLToPath)(importMetaUrl)));
   } catch {
   }
   return starts;
 }
 function findPluginRoot(starts) {
   for (const start of starts) {
-    let dir = (0, import_path39.resolve)(start);
+    let dir = (0, import_path40.resolve)(start);
     for (let i = 0; i < 8; i++) {
       if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path39.dirname)(dir);
+      const parent = (0, import_path40.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -19380,19 +19577,19 @@ function findPluginRoot(starts) {
 }
 function isPluginRoot(dir) {
   try {
-    const manifest = JSON.parse((0, import_fs35.readFileSync)((0, import_path39.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME && (0, import_fs35.existsSync)((0, import_path39.join)(dir, "package.json"));
+    const manifest = JSON.parse((0, import_fs36.readFileSync)((0, import_path40.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME && (0, import_fs36.existsSync)((0, import_path40.join)(dir, "package.json"));
   } catch {
     return false;
   }
 }
-var import_fs35, import_path39, import_url5;
+var import_fs36, import_path40, import_url6;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs35 = require("fs");
-    import_path39 = require("path");
-    import_url5 = require("url");
+    import_fs36 = require("fs");
+    import_path40 = require("path");
+    import_url6 = require("url");
     init_names();
     init_env_vars();
     init_jsonc();
@@ -19423,6 +19620,14 @@ var init_sdk_policy = __esm({
       // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
       ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
       ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?(?:alias|include|includeif)\.`, "git alias or include from a worker"),
+      ...gitSubcommandDeny(String.raw`config\b[^;&|\n]*?credential\.`, "git credential helper from a worker"),
+      // A credential helper re-enabled on the command line (the lane's global config clears it), or one run directly:
+      // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
+      ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, "git credential helper from a worker"),
+      ...gitSubcommandDeny(String.raw`credential-[\w-]`, "git credential helper from a worker"),
+      // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
+      // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
+      { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: "git credential helper from a worker" },
       // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
       { re: /\bGIT_CONFIG/i, reason: "git config through the environment from a worker" }
     ];
@@ -19467,17 +19672,17 @@ function isSdkModule(mod) {
 }
 function readPkg(dir) {
   try {
-    return JSON.parse((0, import_fs36.readFileSync)((0, import_path40.join)(dir, "package.json"), "utf-8"));
+    return JSON.parse((0, import_fs37.readFileSync)((0, import_path41.join)(dir, "package.json"), "utf-8"));
   } catch {
     return null;
   }
 }
 function versionAbove(file) {
-  let dir = (0, import_path40.dirname)(file);
+  let dir = (0, import_path41.dirname)(file);
   for (let i = 0; i < 6; i++) {
     const pkg = readPkg(dir);
     if (pkg?.name === SDK_PACKAGE) return pkg.version ?? null;
-    const parent = (0, import_path40.dirname)(dir);
+    const parent = (0, import_path41.dirname)(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -19499,7 +19704,7 @@ function nodeResolvedVersion() {
   return null;
 }
 function globalModuleRoots(env, platform = process.platform) {
-  return platform === "win32" && env.APPDATA ? [(0, import_path40.join)(env.APPDATA, "npm", "node_modules")] : [];
+  return platform === "win32" && env.APPDATA ? [(0, import_path41.join)(env.APPDATA, "npm", "node_modules")] : [];
 }
 function satisfiesSdkRange(version) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version ?? "").trim());
@@ -19512,13 +19717,13 @@ function satisfiesSdkRange(version) {
 function insideDir(dir, file) {
   const real = (p) => {
     try {
-      return import_fs36.realpathSync.native(p);
+      return import_fs37.realpathSync.native(p);
     } catch {
-      return (0, import_path40.resolve)(p);
+      return (0, import_path41.resolve)(p);
     }
   };
-  const rel = (0, import_path40.relative)(real(dir), real((0, import_path40.resolve)(dir, file)));
-  return rel !== "" && !rel.startsWith("..") && !(0, import_path40.isAbsolute)(rel);
+  const rel = (0, import_path41.relative)(real(dir), real((0, import_path41.resolve)(dir, file)));
+  return rel !== "" && !rel.startsWith("..") && !(0, import_path41.isAbsolute)(rel);
 }
 function exportPath(target, condition) {
   if (typeof target === "string") return target;
@@ -19540,16 +19745,16 @@ async function importFromDir(dir) {
   if (!insideDir(dir, esmEntry) || !insideDir(dir, cjsEntry)) return null;
   let mod;
   try {
-    mod = await import((0, import_url6.pathToFileURL)((0, import_path40.resolve)(dir, esmEntry)).href);
+    mod = await import((0, import_url7.pathToFileURL)((0, import_path41.resolve)(dir, esmEntry)).href);
   } catch {
-    mod = (0, import_module.createRequire)((0, import_path40.join)(dir, "package.json"))((0, import_path40.resolve)(dir, cjsEntry));
+    mod = (0, import_module.createRequire)((0, import_path41.join)(dir, "package.json"))((0, import_path41.resolve)(dir, cjsEntry));
   }
   return isSdkModule(mod) ? { module: mod, version: pkg.version ?? null, from: dir } : null;
 }
-function resolveShimTarget(shim, read = (p) => (0, import_fs36.readFileSync)(p, "utf-8"), exists = import_fs36.existsSync) {
-  let text;
+function resolveShimTarget(shim, read = (p) => (0, import_fs37.readFileSync)(p, "utf-8"), exists = import_fs37.existsSync) {
+  let text2;
   try {
-    text = read(shim);
+    text2 = read(shim);
   } catch {
     return null;
   }
@@ -19560,9 +19765,9 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs36.readFileSync)(p, 
     // ps1 shim: "$basedir/node_modules/.../loader.js"
   ];
   for (const re of patterns) {
-    const m = re.exec(text);
+    const m = re.exec(text2);
     if (!m) continue;
-    const target = (0, import_path40.resolve)((0, import_path40.dirname)(shim), m[1].replace(/\\/g, "/"));
+    const target = (0, import_path41.resolve)((0, import_path41.dirname)(shim), m[1].replace(/\\/g, "/"));
     if (exists(target)) return target;
   }
   return null;
@@ -19578,8 +19783,8 @@ async function loadCopilotSdk(env = process.env, spawnSync7 = import_child_proce
   const tryRoot = async (root) => {
     if (!root || tried.has(root)) return null;
     tried.add(root);
-    const dir = (0, import_path40.join)(root, ...SDK_PACKAGE.split("/"));
-    if (!(0, import_fs36.existsSync)((0, import_path40.join)(dir, "package.json"))) return null;
+    const dir = (0, import_path41.join)(root, ...SDK_PACKAGE.split("/"));
+    if (!(0, import_fs37.existsSync)((0, import_path41.join)(dir, "package.json"))) return null;
     try {
       return await importFromDir(dir);
     } catch {
@@ -19592,17 +19797,17 @@ async function loadCopilotSdk(env = process.env, spawnSync7 = import_child_proce
   }
   return tryRoot(npmRootG(env, spawnSync7));
 }
-var import_child_process10, import_crypto10, import_fs36, import_module, import_os10, import_path40, import_url6, SDK_MIN_VERSION;
+var import_child_process10, import_crypto10, import_fs37, import_module, import_os11, import_path41, import_url7, SDK_MIN_VERSION;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
     import_child_process10 = require("child_process");
     import_crypto10 = require("crypto");
-    import_fs36 = require("fs");
+    import_fs37 = require("fs");
     import_module = require("module");
-    import_os10 = require("os");
-    import_path40 = require("path");
-    import_url6 = require("url");
+    import_os11 = require("os");
+    import_path41 = require("path");
+    import_url7 = require("url");
     init_sandbox();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
@@ -20670,7 +20875,7 @@ async function recordRecoveryPaneRollbackFailure(input, recoveryId, pending, rea
   const recordedAt = Date.now();
   const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, pending.paneAttemptId, recordedAt));
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path41.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path42.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify({
@@ -20700,7 +20905,7 @@ async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAtt
   const recordedAt = Date.now();
   const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, paneAttemptId, recordedAt));
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path41.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path42.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   const boundedSplit = split ? {
     ...split,
@@ -21026,7 +21231,7 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
     adoption_token: (0, import_node_crypto11.randomUUID)(),
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
-  await (0, import_promises19.mkdir)((0, import_path41.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path42.join)(path5, ".."), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
   const candidateHandle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
@@ -22030,7 +22235,7 @@ async function executeRecoverDeadWorkerV2Owner(input) {
           launch_nonce: pending.startupContext.attempt.nonce,
           written_at: (/* @__PURE__ */ new Date()).toISOString()
         };
-        await (0, import_promises19.mkdir)((0, import_path41.join)(pending.gate.activatePath, ".."), { recursive: true });
+        await (0, import_promises19.mkdir)((0, import_path42.join)(pending.gate.activatePath, ".."), { recursive: true });
         await (0, import_promises19.writeFile)(pending.gate.activatePath, JSON.stringify(record), "utf8");
         const adoptedReady = await waitForRecoveryGateRecord(`${pending.gate.readyPath}.adoption-ready`, record, 3e4);
         return adoptedReady && await isWorkerLaunchAttemptCurrent(pending.startupContext.attempt) ? { ok: true } : { ok: false, error: "worker_activation_failed" };
@@ -22157,7 +22362,7 @@ ${recoveryContract}` : ""}`;
         let providerLive = false;
         try {
           const launchedRecord = JSON.parse(await (0, import_promises19.readFile)(launchedPath, "utf8"));
-          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs37.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
+          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs38.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
             launchedRecord.provider_pid,
             launchedRecord.provider_start_identity,
             Date.now() + 1e3
@@ -22237,7 +22442,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
   const recordedAt = (/* @__PURE__ */ new Date()).toISOString();
   const writeFailureMarker = async (extra = {}) => {
     await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
-    await (0, import_promises19.writeFile)((0, import_path41.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+    await (0, import_promises19.writeFile)((0, import_path42.join)(teamRoot, "startup-failure.json"), JSON.stringify({
       reason: "startup_failed_before_config_persisted",
       error: errorMessage,
       recorded_at: recordedAt,
@@ -22268,7 +22473,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
       }
     }
     await (0, import_promises19.rm)(teamRoot, { recursive: true, force: true });
-    if ((0, import_fs37.existsSync)(teamRoot)) {
+    if ((0, import_fs38.existsSync)(teamRoot)) {
       await writeFailureMarker({ rollback_error: "startup_state_removal_unverified" });
       return false;
     }
@@ -22292,7 +22497,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
 async function writeStartedStartupRollbackEvidence(args) {
   const teamRoot = absPath(args.cwd, TeamPaths.root(args.teamName));
   await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
-  await (0, import_promises19.writeFile)((0, import_path41.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+  await (0, import_promises19.writeFile)((0, import_path42.join)(teamRoot, "startup-failure.json"), JSON.stringify({
     reason: args.markerReason ?? "startup_rollback_cleanup_incomplete",
     error: args.cause instanceof Error ? args.cause.message : String(args.cause),
     rollback_error: args.reason,
@@ -22476,7 +22681,7 @@ async function startTeamV2(config) {
   }
   const instance = createTeamInstanceBinding({
     teamName: sanitized,
-    cwd: (0, import_path41.resolve)(config.cwd),
+    cwd: (0, import_path42.resolve)(config.cwd),
     ...config.instanceId !== void 0 ? { instanceId: config.instanceId } : {}
   });
   const leaderCwd = instance.cwd;
@@ -22638,7 +22843,7 @@ async function startTeamV2(config) {
     try {
       const pendingConfig = buildTeamInstancePendingConfig(instance);
       const pendingConfigPath = absPath(leaderCwd, TeamPaths.config(sanitized));
-      await (0, import_promises19.mkdir)((0, import_path41.join)(pendingConfigPath, ".."), { recursive: true });
+      await (0, import_promises19.mkdir)((0, import_path42.join)(pendingConfigPath, ".."), { recursive: true });
       await (0, import_promises19.writeFile)(pendingConfigPath, JSON.stringify(pendingConfig, null, 2), "utf-8");
     } catch (error) {
       if (!await rollbackBeforeConfig(error)) throw startupCleanupIncompleteError(error);
@@ -22649,7 +22854,7 @@ async function startTeamV2(config) {
     try {
       await (0, import_promises19.mkdir)(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
       await (0, import_promises19.mkdir)(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-      await (0, import_promises19.mkdir)((0, import_path41.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
+      await (0, import_promises19.mkdir)((0, import_path42.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
       for (let i = 0; i < config.tasks.length; i++) {
         const taskId = String(i + 1);
         const task = config.tasks[i];
@@ -23261,7 +23466,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename8 } = await import("fs/promises");
-  const { renameSync: renameSync5, readFileSync: readFileSync26, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync5, readFileSync: readFileSync27, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -23342,7 +23547,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
               return;
             }
           }
-          const raw = readFileSync26(outputFile, "utf-8");
+          const raw = readFileSync27(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync5(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -24074,7 +24279,7 @@ async function cleanupStaleReservations(teamName, cwd) {
         cwd,
         TeamPaths.teamInstanceReservation(workspaceHash, sanitized)
       );
-      if (!(0, import_fs37.existsSync)(reservationPath2)) return;
+      if (!(0, import_fs38.existsSync)(reservationPath2)) return;
       const contentStr = await (0, import_promises19.readFile)(reservationPath2, "utf-8");
       const reservation = JSON.parse(contentStr);
       if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
@@ -24316,7 +24521,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs37.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs38.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write("[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n");
       return { outcome: "preserved", reason: "config_missing_cleanup_evidence", workers: [] };
     }
@@ -24645,12 +24850,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
-var import_path41, import_fs37, import_promises19, import_perf_hooks, import_node_child_process8, import_node_crypto11, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, DEFAULT_SDK_LAUNCH_CONCURRENCY, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION, CURSOR_RUNTIME_POLICY_SKIP_REASON, CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE, CURSOR_DELEGATION_EVIDENCE_LINE;
+var import_path42, import_fs38, import_promises19, import_perf_hooks, import_node_child_process8, import_node_crypto11, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, DEFAULT_SDK_LAUNCH_CONCURRENCY, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION, CURSOR_RUNTIME_POLICY_SKIP_REASON, CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE, CURSOR_DELEGATION_EVIDENCE_LINE;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path41 = require("path");
-    import_fs37 = require("fs");
+    import_path42 = require("path");
+    import_fs38 = require("fs");
     import_promises19 = require("fs/promises");
     import_perf_hooks = require("perf_hooks");
     init_state_paths();
@@ -24810,9 +25015,9 @@ __export(runtime_cli_exports, {
 });
 module.exports = __toCommonJS(runtime_cli_exports);
 var import_node_crypto12 = require("node:crypto");
-var import_fs38 = require("fs");
+var import_fs39 = require("fs");
 var import_promises20 = require("fs/promises");
-var import_path42 = require("path");
+var import_path43 = require("path");
 init_events();
 
 // src/team/leader-nudge-guidance.ts
@@ -25446,7 +25651,7 @@ function areAllAuthoritativeWorkersDead(refresh, workers) {
   return classifyAllDeadRecoveryEvidence(refresh, workers, true) === "all_dead";
 }
 function validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5) {
-  const intent = parseRecoveryIntent((0, import_fs38.readFileSync)(path5, "utf8"));
+  const intent = parseRecoveryIntent((0, import_fs39.readFileSync)(path5, "utf8"));
   if (intent.team_name !== teamName || intent.recovery_id !== pathRecoveryId) throw new Error("invalid_persisted_state");
   const reservation = readRecoveryRequestReservation(cwd, intent.request_id);
   const workspaceHash = (0, import_node_crypto12.createHash)("sha256").update(cwd).digest("hex");
@@ -25481,14 +25686,14 @@ async function processPendingRecoveryIntents(teamName, cwd, execute = handleReco
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs38.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
+    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
   } catch {
     return;
   }
   for (const name of names) {
-    const path5 = (0, import_path42.join)(root, name);
+    const path5 = (0, import_path43.join)(root, name);
     try {
-      const pathRecoveryId = (0, import_path42.basename)(name, ".json");
+      const pathRecoveryId = (0, import_path43.basename)(name, ".json");
       const intent = validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5);
       if (intent.instance_id.toLowerCase() !== normalizedExpectedInstanceId) continue;
       if (!await assertRuntimeInstance(teamName, cwd, normalizedExpectedInstanceId)) continue;
@@ -25558,17 +25763,17 @@ async function updateAllDeadRecoveryGrace(teamName, cwd, evidence, nowMs = Date.
 }
 function canonicalRecoveryIntentEntryId(name, path5) {
   if (!name.endsWith(".json")) return null;
-  const recoveryId = (0, import_path42.basename)(name, ".json");
+  const recoveryId = (0, import_path43.basename)(name, ".json");
   if (name !== `${recoveryId}.json` || !isSafeRecoveryRequestId(recoveryId)) return null;
   try {
-    return (0, import_fs38.lstatSync)(path5).isFile() ? recoveryId : null;
+    return (0, import_fs39.lstatSync)(path5).isFile() ? recoveryId : null;
   } catch {
     return null;
   }
 }
 function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path5) {
   try {
-    const raw = JSON.parse((0, import_fs38.readFileSync)(path5, "utf8"));
+    const raw = JSON.parse((0, import_fs39.readFileSync)(path5, "utf8"));
     if (raw.team_name !== teamName || raw.recovery_id !== recoveryId || typeof raw.request_id !== "string" || !isSafeRecoveryRequestId(raw.request_id) || typeof raw.worker_name !== "string" || raw.worker_name.length === 0) return false;
     const final = readRecoveryFinalState(cwd, raw.request_id);
     return final.kind === "valid" && final.final.recovery_id === recoveryId && final.final.team_name === teamName && final.final.worker_name === raw.worker_name;
@@ -25578,7 +25783,7 @@ function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, 
 }
 function malformedIntentMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs38.lstatSync)(path5);
+    const metadata = (0, import_fs39.lstatSync)(path5);
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
       return metadata.birthtimeMs <= deadlineAt;
@@ -25593,14 +25798,14 @@ function canonicalRecoveryAdmissionEntryId(name, path5) {
   const requestId = name.slice(0, -".pending.json".length);
   if (name !== `${requestId}.pending.json` || !isSafeRecoveryRequestId(requestId)) return null;
   try {
-    return (0, import_fs38.lstatSync)(path5).isFile() ? requestId : null;
+    return (0, import_fs39.lstatSync)(path5).isFile() ? requestId : null;
   } catch {
     return null;
   }
 }
 function malformedAdmissionMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs38.lstatSync)(path5);
+    const metadata = (0, import_fs39.lstatSync)(path5);
     if (!metadata.isFile()) return true;
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
@@ -25617,12 +25822,12 @@ function hasPendingRecoveryIntentBeforeDeadline(teamName, cwd, deadlineAt, expec
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs38.readdirSync)(root).filter((name) => name.endsWith(".json"));
+    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path5 = (0, import_path42.join)(root, name);
+    const path5 = (0, import_path43.join)(root, name);
     const recoveryId = canonicalRecoveryIntentEntryId(name, path5);
     if (!recoveryId) continue;
     try {
@@ -25644,12 +25849,12 @@ function hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt, ex
   const root = absPath(cwd, TeamPaths.recoveryRequestsRoot());
   let names;
   try {
-    names = (0, import_fs38.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
+    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path5 = (0, import_path42.join)(root, name);
+    const path5 = (0, import_path43.join)(root, name);
     const requestId = canonicalRecoveryAdmissionEntryId(name, path5);
     if (!requestId) continue;
     try {
@@ -25868,7 +26073,7 @@ async function writeResultArtifact(output, finishedAt, jobId = process.env.OMC_J
   if (!output.instanceId || !isValidTeamInstanceId(output.instanceId)) {
     throw new Error("result_artifact_instance_identity_missing");
   }
-  const resultPath = (0, import_path42.join)(omcJobsDir, `${jobId}-result.json`);
+  const resultPath = (0, import_path43.join)(omcJobsDir, `${jobId}-result.json`);
   const tmpPath = `${resultPath}.tmp`;
   await (0, import_promises20.writeFile)(
     tmpPath,
@@ -25943,7 +26148,7 @@ async function writePanesFile(jobId, instanceId, teamName, cwd, paneIds, leaderP
     if (authoritativePaneIds.some((paneId) => !paneIds.includes(paneId))) {
       throw new Error("pane_artifact_missing_runtime_pane");
     }
-    const panesPath = (0, import_path42.join)(omcJobsDir, `${jobId}-panes.json`);
+    const panesPath = (0, import_path43.join)(omcJobsDir, `${jobId}-panes.json`);
     await (0, import_promises20.writeFile)(
       panesPath + ".tmp",
       JSON.stringify({
@@ -25981,7 +26186,7 @@ function isTerseFinalSummary(summary) {
 function readTaskOutputFallback(outputsDir, teamName, taskId) {
   let entries;
   try {
-    entries = (0, import_fs38.readdirSync)(outputsDir);
+    entries = (0, import_fs39.readdirSync)(outputsDir);
   } catch {
     return null;
   }
@@ -25990,16 +26195,16 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   if (candidates.length === 0) return null;
   let newest = null;
   for (const name of candidates) {
-    const full = (0, import_path42.join)(outputsDir, name);
+    const full = (0, import_path43.join)(outputsDir, name);
     try {
-      const mtime = (0, import_fs38.statSync)(full).mtimeMs;
+      const mtime = (0, import_fs39.statSync)(full).mtimeMs;
       if (!newest || mtime > newest.mtime) newest = { path: full, mtime };
     } catch {
     }
   }
   if (!newest) return null;
   try {
-    const content = (0, import_fs38.readFileSync)(newest.path, "utf-8").trim();
+    const content = (0, import_fs39.readFileSync)(newest.path, "utf-8").trim();
     if (content.length === 0) return null;
     return content.length > MAX_FALLBACK_SUMMARY_CHARS ? content.slice(0, MAX_FALLBACK_SUMMARY_CHARS) + "\n... (truncated)" : content;
   } catch {
@@ -26007,14 +26212,14 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   }
 }
 function collectTaskResults(stateRoot) {
-  const tasksDir = (0, import_path42.join)(stateRoot, "tasks");
-  const teamName = (0, import_path42.basename)(stateRoot);
-  const outputsDir = (0, import_path42.join)(stateRoot, "..", "..", "..", "outputs");
+  const tasksDir = (0, import_path43.join)(stateRoot, "tasks");
+  const teamName = (0, import_path43.basename)(stateRoot);
+  const outputsDir = (0, import_path43.join)(stateRoot, "..", "..", "..", "outputs");
   try {
-    const files = (0, import_fs38.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
+    const files = (0, import_fs39.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
     return files.map((f) => {
       try {
-        const raw = (0, import_fs38.readFileSync)((0, import_path42.join)(tasksDir, f), "utf-8");
+        const raw = (0, import_fs39.readFileSync)((0, import_path43.join)(tasksDir, f), "utf-8");
         const task = JSON.parse(raw);
         const taskId = task.id ?? f.replace(".json", "");
         let summary = task.result ?? task.summary ?? "";
@@ -26358,7 +26563,7 @@ async function main() {
     if (snap.allTasksTerminal) {
       const hasFailures = snap.tasks.failed > 0;
       if (!hasFailures) {
-        const sentinelLogPath = (0, import_path42.join)(cwd, "sentinel_stop.jsonl");
+        const sentinelLogPath = (0, import_path43.join)(cwd, "sentinel_stop.jsonl");
         const gateResult = await waitForSentinelReadiness({
           workspace: cwd,
           logPath: sentinelLogPath,

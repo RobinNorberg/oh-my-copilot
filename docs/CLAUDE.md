@@ -1,5 +1,5 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:5.17.1 -->
+<!-- OMC:VERSION:5.18.0 -->
 
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 
