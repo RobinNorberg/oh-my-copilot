@@ -42,6 +42,12 @@ describe('detectForgeRepo', () => {
     expect(code(() => detectForgeRepo('https://attacker.example#@github.com/o/r'))).toBe('forge-unsupported');
   });
 
+  it('refuses an scp origin whose host is not a plain host name (it feeds gh --hostname)', () => {
+    expect(code(() => detectForgeRepo('git@evil.com#@github.com:o/r'))).toBe('forge-unsupported');
+    expect(code(() => detectForgeRepo('git@evil.com?x:o/r'))).toBe('forge-unsupported');
+    expect(detectForgeRepo('git@ghe.corp.example:acme/widgets').host).toBe('ghe.corp.example');
+  });
+
   it('refuses a remote that is neither GitHub nor Azure DevOps', () => {
     expect(code(() => detectForgeRepo('https://gitlab.com/acme/widgets'))).toBe('forge-unsupported');
     expect(code(() => detectForgeRepo('not a url'))).toBe('forge-unsupported');

@@ -230,6 +230,12 @@ export function repoIdentity(url: string): string {
   return m ? `gh:${m[1]}/${m[2]}/${m[3]}` : `path:${s}`;
 }
 
+/** True when both URLs have the same repoIdentity; an `invalid:` identity equals nothing, itself included. */
+export function sameRepo(a: string, b: string): boolean {
+  const id = repoIdentity(a);
+  return !id.startsWith('invalid:') && id === repoIdentity(b);
+}
+
 /**
  * Null when `git remote get-url <remote>` (insteadOf rewrites applied, so the
  * URL fetch really uses) names the PR's repository (`repoUrl`, from
@@ -245,12 +251,12 @@ export function remoteRepoMismatch(exec: Exec, cwd: string, remote: string, repo
   const got = exec('git', ['remote', 'get-url', remote], { cwd, env: TRUSTED_READ_ENV });
   if (got.status !== 0) return `git remote get-url ${remote} failed: ${got.stderr.trim().split('\n')[0]}`;
   const url = got.stdout.trim();
-  if (repoIdentity(url) !== repoIdentity(repoUrl)) return `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
+  if (!sameRepo(url, repoUrl)) return `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
   const push = exec('git', ['remote', 'get-url', '--push', '--all', remote], { cwd, env: TRUSTED_READ_ENV });
   if (push.status !== 0) return `git remote get-url --push --all ${remote} failed: ${push.stderr.trim().split('\n')[0]}`;
   const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
   if (pushUrls.length === 0) return `git remote get-url --push --all ${remote} printed no push URL`;
-  const foreign = pushUrls.find((u) => repoIdentity(u) !== repoIdentity(repoUrl));
+  const foreign = pushUrls.find((u) => !sameRepo(u, repoUrl));
   return foreign ? `remote ${remote} pushes to ${foreign}, but the PR is in ${repoUrl}` : null;
 }
 

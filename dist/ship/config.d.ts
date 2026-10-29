@@ -87,6 +87,8 @@ export declare function readBaseFile(exec: Exec, cwd: string, commit: string, pa
  * equals a valid repository's identity.
  */
 export declare function repoIdentity(url: string): string;
+/** True when both URLs have the same repoIdentity; an `invalid:` identity equals nothing, itself included. */
+export declare function sameRepo(a: string, b: string): boolean;
 /**
  * Null when `git remote get-url <remote>` (insteadOf rewrites applied, so the
  * URL fetch really uses) names the PR's repository (`repoUrl`, from

@@ -133,6 +133,8 @@ export function detectForgeRepo(originUrl: string): ForgeRepo {
   const parsed = ambiguousAuthority(originUrl) ? null : parseRemoteUrl(originUrl);
   if (!parsed) throw new ForgeConfigError('forge-unsupported', `cannot parse the origin remote ${JSON.stringify(originUrl)}`);
   if (parsed.provider === 'azure-devops') throw new ForgeConfigError('forge-unsupported', `cannot parse the Azure DevOps remote ${JSON.stringify(originUrl)}`);
+  // The host feeds `gh --hostname` (an scp origin `git@evil#@github.com:o/r` would hand evil the token).
+  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(parsed.host)) throw new ForgeConfigError('forge-unsupported', `the origin remote host ${JSON.stringify(parsed.host)} is not a plain host name`);
   // github.com, or a host detectProvider cannot name (GitHub Enterprise): today's GitHub behaviour.
   if (parsed.provider !== 'github' && parsed.provider !== 'unknown') {
     throw new ForgeConfigError('forge-unsupported', `unsupported forge ${parsed.provider} (${parsed.host}); omg factory supports github and azure-devops`);

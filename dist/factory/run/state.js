@@ -25,7 +25,7 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
-import { repoIdentity } from '../../ship/config.js';
+import { sameRepo } from '../../ship/config.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -139,7 +139,7 @@ export function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
     const label = runLabel(runKeyOf(state));
     if (recorded !== resolved)
         return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
-    if (resolvedRepoUrl !== undefined && state.repoUrl && repoIdentity(state.repoUrl) !== repoIdentity(resolvedRepoUrl)) {
+    if (resolvedRepoUrl !== undefined && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
         return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
     }
     return null;

@@ -27,7 +27,7 @@ import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
-import { repoIdentity } from '../../ship/config.js';
+import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import type { ForgeKind } from '../../forge/types.js';
 
@@ -321,7 +321,7 @@ export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'i
   const recorded = state.forgeKind ?? 'github';
   const label = runLabel(runKeyOf(state));
   if (recorded !== resolved) return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
-  if (resolvedRepoUrl !== undefined && state.repoUrl && repoIdentity(state.repoUrl) !== repoIdentity(resolvedRepoUrl)) {
+  if (resolvedRepoUrl !== undefined && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
     return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
   }
   return null;

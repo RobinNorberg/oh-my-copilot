@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prRepoUrl, remoteRepoMismatch, repoIdentity } from '../config.js';
+import { prRepoUrl, remoteRepoMismatch, repoIdentity, sameRepo } from '../config.js';
 describe('repoIdentity', () => {
     // Every identity string a GitHub or local remote produced before Azure DevOps support: pinned unchanged.
     const GITHUB = [
@@ -96,6 +96,13 @@ describe('remoteRepoMismatch on Azure DevOps', () => {
         expect(remoteRepoMismatch(exec(attacker, [repoUrl]), '.', 'origin', repoUrl)).toMatch(/points at/);
         const gh = 'https://github.com/o/r';
         expect(remoteRepoMismatch(exec(gh, ['https://attacker.example#@github.com/o/r']), '.', 'origin', gh)).toMatch(/pushes to/);
+    });
+    it('an invalid identity matches nothing, itself included', () => {
+        const attacker = 'https://attacker.example#@dev.azure.com/contoso/Web/_git/web-app';
+        expect(repoIdentity(attacker)).toBe(repoIdentity(attacker));
+        expect(sameRepo(attacker, attacker)).toBe(false);
+        expect(sameRepo(repoUrl, repoUrl)).toBe(true);
+        expect(remoteRepoMismatch(exec(attacker, [attacker]), '.', 'origin', attacker)).toMatch(/points at/);
     });
 });
 describe('prRepoUrl', () => {

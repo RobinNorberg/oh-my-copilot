@@ -48,6 +48,8 @@ describe('forgeResumeProblem', () => {
     expect(forgeResumeProblem(ado, 'azure-devops', 'https://dev.azure.com/contoso/Web%20/_git/web-app')).toMatch(/started in https:\/\/dev\.azure\.com\/contoso\/Web\/_git\/web-app, but the forge now resolves to/);
     expect(forgeResumeProblem(ado, 'azure-devops', 'https://dev.azure.com/fabrikam/Web/_git/web-app')).toMatch(/#7 started in .*fabrikam/);
     expect(forgeResumeProblem(base, 'github', 'https://github.com/o/other')).toMatch(/started in https:\/\/github\.com\/o\/r/);
+    const invalid = 'https://attacker.example#@dev.azure.com/contoso/Web/_git/web-app';
+    expect(forgeResumeProblem({ ...ado, repoUrl: invalid }, 'azure-devops', invalid)).toMatch(/started in/);
     // Before intake the state has no repoUrl yet: nothing to compare.
     expect(forgeResumeProblem({ ...base, repoUrl: '' }, 'github', 'https://github.com/o/other')).toBeNull();
   });
