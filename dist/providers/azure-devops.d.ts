@@ -1,10 +1,11 @@
 import type { GitProvider, PRInfo, IssueInfo, WorkItem } from './types.js';
+import { isAzureDevOpsHost } from './remote-url.js';
+export { isAzureDevOpsHost };
 export type AdoErrorType = 'auth' | 'not-found' | 'timeout' | 'unknown';
 export declare class AdoError extends Error {
     readonly type: AdoErrorType;
     constructor(message: string, type: AdoErrorType);
 }
-export declare function isAzureDevOpsHost(host: string): boolean;
 export declare class AzureDevOpsProvider implements GitProvider {
     readonly name: "azure-devops";
     readonly displayName = "Azure DevOps";
@@ -60,6 +61,12 @@ export declare class AzureDevOpsProvider implements GitProvider {
         project?: string;
         repository?: string;
     }): PRInfo[];
+    /**
+     * The az CLI has no PR diff subcommand. Read the PR's refs and merge commits with
+     * `az repos pr show`, fetch `refs/pull/<id>/merge` (branch refs as fallback), then diff the two commits locally.
+     * https://learn.microsoft.com/en-us/cli/azure/repos/pr#az-repos-pr-show
+     * https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1
+     */
     getPRDiff(prId: number, org?: string): string;
     private fetchWorkItemTags;
     private normalizeWorkItem;

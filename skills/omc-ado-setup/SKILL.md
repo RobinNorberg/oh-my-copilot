@@ -119,7 +119,9 @@ For each item, probe the available values from ADO to help the user choose:
 ### Work Item Type
 
 ```bash
-az boards work-item type list --project "{project}" --org "https://dev.azure.com/{org}" --query "[].name" -o tsv 2>&1
+az devops invoke --area wit --resource workitemtypes --http-method GET \
+  --route-parameters project="{project}" --api-version 7.1 \
+  --org "https://dev.azure.com/{org}" --detect false --query "value[].name" -o tsv 2>&1
 ```
 
 Common values: `User Story`, `Bug`, `Task`, `Issue`. Default: `User Story`.
@@ -242,3 +244,5 @@ Next steps:
 | `Extension 'azure-devops' not installed` | Missing extension | Run `az extension add --name azure-devops` |
 | `ResourceNotFound` on project show | Wrong org/project | Verify the remote URL and re-run |
 | `TF400813: Resource not available` | PAT missing or expired | Create a PAT in ADO → User Settings → Personal Access Tokens |
+
+> The `az` CLI has no work item type listing subcommand. Work item types use the Work Item Types REST API (`wit/workitemtypes`) through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-item-types/list?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke).

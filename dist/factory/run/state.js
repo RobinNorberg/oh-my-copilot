@@ -127,6 +127,16 @@ export function computeFactoryIntegrity(state) {
 export function verifyFactoryIntegrity(state) {
     return typeof state.integrity === 'string' && state.integrity === computeFactoryIntegrity(state);
 }
+/**
+ * Why a resume must refuse, or null (critic amendments §A.9): a config change
+ * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ */
+export function forgeResumeProblem(state, resolved) {
+    const recorded = state.forgeKind ?? 'github';
+    if (recorded === resolved)
+        return null;
+    return `factory run ${runLabel(runKeyOf(state))} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+}
 const isStr = (v) => typeof v === 'string';
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 function shapeProblem(s) {
@@ -138,6 +148,8 @@ function shapeProblem(s) {
         return 'implementer';
     if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal')
         return 'kind';
+    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops')
+        return 'forgeKind';
     if (s.kind === 'ci-heal') {
         const h = s.heal;
         const d = h?.diagnosis;

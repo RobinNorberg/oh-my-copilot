@@ -1,0 +1,15 @@
+{
+  "provenance": "synthetic: format example for the fixture loader (PR 5 adds docs samples)",
+  "route": "git.pullRequests.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "pullRequestId": 17,
+    "status": "active",
+    "isDraft": true,
+    "sourceRefName": "refs/heads/factory/issue-42",
+    "targetRefName": "refs/heads/main",
+    "lastMergeSourceCommit": { "commitId": "1111111111111111111111111111111111111111" },
+    "lastMergeTargetCommit": { "commitId": "2222222222222222222222222222222222222222" },
+    "createdBy": { "displayName": "Owner", "uniqueName": "owner@example.com" }
+  }
+}
