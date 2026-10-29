@@ -62,6 +62,11 @@ function object(value, what) {
     return value;
 }
 /** `factory.<name>` of one config layer; {} when absent. */
+/** The config has a `factory.<name>` key (an empty section counts). */
+const hasFactoryKey = (config, name) => {
+    const factory = config?.factory;
+    return typeof factory === 'object' && factory !== null && factory[name] !== undefined && factory[name] !== null;
+};
 function factoryBlock(config, name, source) {
     const factory = object(config?.factory, `${source}: factory config`);
     return { ...object(factory[name], `${source}: factory.${name}`) };
@@ -192,8 +197,9 @@ function resolveCheck(layer) {
     }
     return check;
 }
-function resolveProgress(layer, kind, source) {
-    const progress = { enabled: true, stages: defaultProgressStages(kind) };
+/** Progress sync is opt-in: on only when a trusted layer has a `factory.progress` section (omg factory setup writes one). */
+function resolveProgress(layer, configured, kind, source) {
+    const progress = { enabled: configured, stages: defaultProgressStages(kind) };
     if (layer.enabled !== undefined) {
         if (typeof layer.enabled !== 'boolean')
             throw new ForgeConfigError('invalid', `${source}: factory.progress.enabled must be true or false`);
@@ -338,7 +344,7 @@ export function resolveForgeConfig(trustedUser, base, project, originUrl) {
             ...(azureDevOps ? { azureDevOps } : {}),
             intake: resolveIntake(intake, kind),
             check: resolveCheck(check),
-            progress: resolveProgress({ ...bProgress, ...uProgress }, kind, source),
+            progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),
         },
         warnings,
     };

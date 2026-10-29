@@ -26,6 +26,7 @@ import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { sameRepo } from '../../ship/config.js';
+import { PROGRESS_STAGES } from '../../forge/types.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -122,6 +123,31 @@ export function setGate(state, name, reason, now) {
         history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
     };
 }
+/**
+ * The tracker progress stage of a run (factory forges design §7): a merge
+ * gate or the merge phase is ready-to-merge, any other gate and failed are
+ * blocked.
+ */
+export function trackerStageOf(s) {
+    if (s.gate)
+        return s.gate.name === 'merge' ? 'ready-to-merge' : 'blocked';
+    switch (s.phase) {
+        case 'intake':
+        case 'plan': return 'queued';
+        case 'implement':
+        case 'publish':
+        case 'fix':
+        case 'conflict-fix':
+        case 'ci-fix': return 'building';
+        case 'review': return 'reviewing';
+        case 'prepare':
+        case 'gates': return 'verifying';
+        case 'merge': return 'ready-to-merge';
+        case 'merged': return 'done';
+        case 'cancelled': return 'cancelled';
+        case 'failed': return 'blocked';
+    }
+}
 export function computeFactoryIntegrity(state) {
     return createHash('sha256').update(JSON.stringify({ ...state, integrity: undefined })).digest('hex');
 }
@@ -157,6 +183,8 @@ function shapeProblem(s) {
         return 'kind';
     if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops')
         return 'forgeKind';
+    if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
+        return 'trackerStage';
     if (s.kind === 'ci-heal') {
         const h = s.heal;
         const d = h?.diagnosis;

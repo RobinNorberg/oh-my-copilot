@@ -47,6 +47,28 @@ const isBranch = (s: string | undefined): s is string => typeof s === 'string' &
 const isFile = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const isTitle = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const same = (args: string[], shape: string[]) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+/** A progress label of the factory family (factory forges design §7): `factory:<stage>`. */
+const FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
+
+/**
+ * Progress sync's label write: `issue edit <n> [--add-label <factory:*>] (--remove-label <factory:*>)*`,
+ * at least one flag, one add at most, factory labels only and each once.
+ */
+function isProgressLabelEdit(r: string[]): boolean {
+  if (r.length < 3 || r.length % 2 === 0 || !NUMBER.test(r[0])) return false;
+  const labels: string[] = [];
+  let adds = 0;
+  for (let i = 1; i < r.length; i += 2) {
+    if (r[i] === '--add-label') {
+      if (i !== 1 || ++adds > 1) return false;
+    } else if (r[i] !== '--remove-label') {
+      return false;
+    }
+    if (!FACTORY_LABEL.test(r[i + 1]) || labels.includes(r[i + 1])) return false;
+    labels.push(r[i + 1]);
+  }
+  return true;
+}
 
 function isFactoryBranch(name: string | undefined, protectedBranches: readonly string[]): name is string {
   return isBranch(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length
@@ -100,6 +122,7 @@ function factoryGh(a: string[]): boolean | null {
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
+    if (sub === 'edit') return isProgressLabelEdit(r);
     return false;
   }
   if (group === 'pr') {

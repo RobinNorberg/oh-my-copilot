@@ -19,7 +19,7 @@
  */
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
-import type { ForgeKind } from '../../forge/types.js';
+import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -195,6 +195,12 @@ export interface FactoryRunState {
     checkoutHead?: string;
     /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
     gateComments?: string[];
+    /**
+     * The progress stage last written to the tracker (factory forges design §7);
+     * absent until the first write succeeds, and in states written before
+     * progress sync existed (optional, so their seal still verifies).
+     */
+    trackerStage?: ProgressStage;
     lanes: FactoryLaneRecord[];
     /** Lane failures retried per phase key (`implement`, `review@<sha12>`, `fix@<round>`). */
     retries: Record<string, number>;
@@ -239,6 +245,12 @@ export declare function createFactoryState(input: {
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
 export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string): FactoryRunState;
+/**
+ * The tracker progress stage of a run (factory forges design §7): a merge
+ * gate or the merge phase is ready-to-merge, any other gate and failed are
+ * blocked.
+ */
+export declare function trackerStageOf(s: Pick<FactoryRunState, 'phase' | 'gate'>): ProgressStage;
 export declare function computeFactoryIntegrity(state: FactoryRunState): string;
 export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
 /**

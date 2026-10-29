@@ -56,9 +56,21 @@ describe('resolveForgeConfig: defaults', () => {
         expect(config.azureDevOps).toBeUndefined();
         expect(config.intake).toEqual({ itemTypes: ['User Story', 'Bug', 'Product Backlog Item'], limit: 50, marker: 'factory-ready' });
         expect(config.check).toEqual({ maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 20000 });
-        expect(config.progress.enabled).toBe(true);
+        // Progress sync is opt-in: no factory.progress section, no tracker writes.
+        expect(config.progress.enabled).toBe(false);
         expect(config.progress.stages.building).toEqual({ label: 'factory:building' });
         expect(config.progress.stages.cancelled).toBeUndefined();
+    });
+    it('progress is on only when a trusted layer has a factory.progress section', () => {
+        const on = (u, b, p) => resolveForgeConfig(u, b, p, GH).config.progress.enabled;
+        expect(on(undefined, undefined)).toBe(false);
+        expect(on(f({ intake: { limit: 5 } }), f({ check: { maxSize: 3 } }))).toBe(false);
+        expect(on(undefined, f({ progress: {} }))).toBe(true);
+        expect(on(f({ progress: { stages: { building: { label: 'factory:wip' } } } }), undefined)).toBe(true);
+        expect(on(undefined, f({ progress: { enabled: true } }))).toBe(true);
+        expect(on(f({ progress: { enabled: false } }), f({ progress: { enabled: true } }))).toBe(false);
+        // The working tree cannot turn it on.
+        expect(on(undefined, undefined, f({ progress: { enabled: true } }))).toBe(false);
     });
     it('detects Azure DevOps and fills the identity from origin', () => {
         const { config } = resolveForgeConfig(undefined, undefined, undefined, ADO);

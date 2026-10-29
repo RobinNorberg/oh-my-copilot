@@ -35,6 +35,7 @@ export declare function ghQueryItems(exec: Exec, source: IntakeSource, limit: nu
 /**
  * A stage's label; the other stages' labels are removed (one label family).
  * GitHub progress is labels only: a column or state mapping is ignored.
+ * `cancelled` removes the whole family (design §7).
  */
 export declare function ghSetProgress(exec: Exec, issue: number, stage: ProgressStage, mapping: ProgressMapping, stages: ResolvedForgeConfig['progress']['stages'], cwd: string): {
     ok: boolean;
