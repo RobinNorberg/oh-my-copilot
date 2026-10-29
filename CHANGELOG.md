@@ -4,26 +4,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- **Factory progress sync (opt-in).** `omg factory run` can write the run's
-  stage to the issue or work item. A stage is one of queued, building,
-  reviewing, verifying, ready-to-merge, done, blocked or cancelled.
-  - On GitHub the stage is one label from the exclusive `factory:<stage>`
-    family.
-  - On Azure DevOps it is the mapped board column and/or state, sent as one
-    JSON-patch guarded by `test /rev`. A rev conflict is retried once.
-  - Sync is off unless the user config or the base-branch
-    `.copilot/omg.jsonc` has a `factory.progress` section, which
-    `omg factory setup` writes. Existing runs change nothing until you run
-    setup.
-  - There is at most one tracker write per stage, recorded as `trackerStage`
-    in the sealed run state.
-  - A failed write is only a warning and a history note; it never blocks a
-    transition. A missing GitHub label points to `omg factory setup`.
-  - The factory guard allows `gh issue edit` only with
-    `--add-label`/`--remove-label` of `factory:*` labels.
-
 ### Fixed
 
 - **Team worker starts fail fast when the provider already exited.** The
@@ -32,6 +12,143 @@ All notable changes to oh-my-copilot will be documented in this file.
   reused, instead of waiting out the full ack timeout (8 s for a pane,
   30 s for an SDK host). An SDK host that fails after `provider_started`
   is reported at once as `sdk_host_failed_at_start:<last_error>`.
+
+# oh-my-copilot v5.18.0
+
+## [5.18.0] - 2026-10-29
+
+Fork **v5.18.0** (from v5.17.1) is a minor release with three themes. The
+factory now works against more than GitHub: **forges** put GitHub and Azure
+DevOps behind one forge interface, `omg factory setup` writes the config,
+`omg factory check` reports which issues are ready to run, the factory
+engine runs on Azure DevOps, and opt-in progress sync writes the run's stage
+back to the issue or work item. Sandboxed factory lanes are harder to abuse:
+Windows lanes can start `node` and `git`, lanes write only their private
+home and temp directories, and Azure and Git credentials stay out of lanes.
+Two flaky tests are fixed, one of them a real crash-resume bug. Be aware of
+two limits. The Azure DevOps adapter is tested only against documented
+sample responses, not yet against a live organization, and the factory is
+still **experimental**. Merge stays a human step: the factory never
+completes a PR and its command guard refuses `gh pr merge`.
+
+### Added
+
+- **Forge interface for the factory.** Forge types, a trusted config
+  resolver, plan rules and a shared Azure DevOps base (routes, HTML
+  conversion, `az` binary resolution, fixtures) sit under `src/forge/` (#330).
+  Chain-side `gh` calls go through a GitHub chain tracker (#331), and the
+  GitHub adapter is a byte-for-byte move with the `gh` argv baseline tests
+  (#329) and release tests unchanged (#334).
+- **Azure DevOps adapter.** It talks to Azure DevOps through `az devops
+  invoke` only, behind a guard with an exact route allowlist, guard-owned
+  request bodies, an exact-head rule, a PAT redactor and hardened `az`
+  resolution (#332).
+- **`omg factory setup`.** A wizard picks the forge, intake and progress
+  settings and writes them to the project `.copilot/omg.jsonc`; the user
+  config holds only `trustedAuthors`. The preview shows the real readiness
+  buckets and redacts adapter errors (#333).
+- **`omg factory check`.** It sorts issues into runnable, needs-plan and
+  blocked, and `--mark` records the result (#335).
+- **Factory engine on Azure DevOps.** `omg factory run` uses the Azure DevOps
+  repo identity and the exact PR head (allowing for ancestor lag), refuses to
+  resume a run whose forge kind or repo changed, hashes the merge body with
+  SHA-256 and checks that the base is trusted (#336).
+- **Factory progress sync (opt-in).** `omg factory run` can write the run's
+  stage to the issue or work item. A stage is one of queued, building,
+  reviewing, verifying, ready-to-merge, done, blocked or cancelled (#337).
+  - On GitHub the stage is one label from the exclusive `factory:<stage>`
+    family.
+  - On Azure DevOps it is the mapped board column and/or state, sent as one
+    JSON-patch guarded by `test /rev`. A rev conflict is retried once.
+  - Sync is off unless the user config or the base-branch
+    `.copilot/omg.jsonc` has a `factory.progress` section, which
+    `omg factory setup` writes. Existing runs change nothing until you run
+    setup, and the config must be committed to the base branch.
+  - There is at most one tracker write per stage, recorded as `trackerStage`
+    in the sealed run state.
+  - A failed write is only a warning and a history note; it never blocks a
+    transition. A missing GitHub label points to `omg factory setup`.
+  - The factory guard allows `gh issue edit` only with
+    `--add-label`/`--remove-label` of `factory:*` labels.
+- **Sandbox spawn canary.** The free smoke check now launches real programs
+  (`node --version`, `git --version`, and on Windows Git's `sh.exe`) through
+  the lane env, policy and tool grants, and passes only when the launch is
+  attested as sandboxed (#321, #322, #323).
+
+### Changed
+
+- **Lanes get explicit read-only tool grants.** With `allowDevToolAccess`
+  off, Windows lanes could not start `node.exe` or `git`. Lanes now get
+  read-only grants for the `node` directory and the Git for Windows root,
+  never read-write, and a tool dir that is a filesystem root or contains the
+  worktree, git dir, job dir or real home is dropped (#322, #323).
+- **Lanes write only their private home and temp.** The sandbox grants
+  `<jobHome>/tmp` and `<jobHome>/profile` read-write instead of the whole
+  job dir. The runtime cache moves to `<jobHome>/.cache/copilot`, the lane's
+  global git config to a read-only `<jobHome>/git/config`, and the node
+  compile cache is off (#324).
+- **Sandbox smoke checks need positive evidence.** `review_no_write`,
+  `write_outside_blocked`, `q1_profile` and `q2_git_dir` pass only on a
+  successful shell call or the probe's output line, and the lane model is
+  pinned (#321).
+- **The Azure DevOps skills use real routes.** The skills and `getPRDiff`
+  called `az` commands that do not exist. They now use `az devops invoke`,
+  and the diff comes from `refs/pull/{id}/merge` (#326).
+
+### Fixed
+
+- **Windows lanes could launch no process.** Copilot CLI 1.0.105's sandbox
+  rejects every launch unless `LOCALAPPDATA` (and `SYSTEMROOT`) are in the
+  runtime env. `LOCALAPPDATA` is now allowlisted, `COPILOT_CACHE_HOME` is
+  pinned into the job home, and a Windows sandboxed job refuses at start
+  with the missing variable named (#321).
+- **A crash could leave a graph run that would not resume.** If the
+  atomic writer was SIGKILLed while it held a rollback hard link,
+  `projection.json` or the fence's `owner.epoch` kept two links, and the run
+  was refused as not a private regular file on every later resume. One shared
+  cleanup now removes stale `<name>.rollback.<uuid>` links (and, once the
+  fence is held, `.<name>.tmp.<uuid>` leftovers) before the read; only
+  regular files are removed, and an outside hard link is still refused (#338).
+- **Flaky tests.** The team launch-ack and nudge tests were races in the
+  tests themselves, not product bugs, and are now deterministic under load
+  (#339). The `runtime-cli` pre-deadline tests are deflaked (#338).
+- **`release-boundary.mjs` ignored a bad argument on Windows.** Its main
+  guard compares real paths, so `node scripts/release-boundary.mjs bogus`
+  exits 1 (#323, #324).
+
+### Security
+
+- **Lane credentials are scrubbed.** Azure and Azure DevOps credentials stay
+  out of lanes: `AZURE_CONFIG_DIR` points to an empty directory, the Git
+  Credential Manager helper is disabled, and a deny rule blocks
+  `-c credential.*` (#327).
+- **The SDK policy checks every path field.** It refuses `..` segments,
+  hard-linked or non-regular write targets, and requests whose path fields
+  name different targets, and checks containment on every field (#325, #328).
+- **`events.jsonl` cannot be forged from a lane.** The engine opens it once
+  with exclusive create and no-follow before the runtime starts and fails
+  closed if it already exists. Before this, a Linux or macOS write lane could
+  replace it with a link and get host code execution (#324).
+- **Hook debug logs do not follow links.** All five `*-debug.log` writers use
+  a no-follow append that refuses symlinks, junctions, non-files and
+  multiply-linked files (#323, #324).
+- **Lane TEMP is private** to the job (#322).
+
+### Known limitations
+
+- The Azure DevOps adapter has run only against documented sample responses.
+  Route names, the build-log form, the field that carries the PR head and the
+  policy keys are unverified against a live organization.
+- Git hooks cannot run in Windows lanes: Git's `sh.exe` exits with
+  `STATUS_DLL_INIT_FAILED` inside the sandbox on CLI 1.0.105. The canary
+  reports it without failing.
+- Three runtime-owned directories stay lane-writable (tmp, profile, and the
+  session `files` directory), and the runtime follows links in them.
+- Team SDK workers still get the full `process.env`, and Git Credential
+  Manager exposure in Linux and macOS sandboxes is unprobed.
+- `factory listen`, `factory heal` and the factory-run smoke are GitHub-only;
+  on Azure DevOps they refuse. `omg factory board` and GitHub Projects v2
+  intake and progress are not part of this release.
 
 # oh-my-copilot v5.17.1
 
