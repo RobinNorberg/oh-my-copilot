@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-    "sourceSha256": "1c20568660eacf028d5142ccf8d47a04e222050f9dd346f89bb6fc5e365b7efb",
+    "head": "73c4cab883d9da1e0cd58d8b48dae8648af287c8",
+    "sourceSha256": "7242d50d36c3e7217f09083870decf6f7fa61b37c9e69c0ac299f5e550ab87c2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-  "sourceSha256": "1c20568660eacf028d5142ccf8d47a04e222050f9dd346f89bb6fc5e365b7efb",
+  "head": "73c4cab883d9da1e0cd58d8b48dae8648af287c8",
+  "sourceSha256": "7242d50d36c3e7217f09083870decf6f7fa61b37c9e69c0ac299f5e550ab87c2",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1881,
-      "total": 1905
+      "srcFiles": 1882,
+      "total": 1906
     },
     "generated": {
       "distFiles": 6980,
@@ -49671,6 +49671,11 @@
         "path": "src/factory/run/__tests__/lane.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/merge-policy.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/merge-policy.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/plan-rules.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/plan-rules.test.ts"
@@ -76204,6 +76209,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
@@ -76455,6 +76465,51 @@
       {
         "from": "src/factory/run/__tests__/lane.test.ts",
         "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/state.ts",
         "kind": "type-imports"
       },
       {
@@ -77190,6 +77245,11 @@
       {
         "from": "src/factory/run/ledger.ts",
         "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/factory/run/lane-commit.ts",
         "kind": "imports"
       },
       {
@@ -112854,12 +112914,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9604,
-      "edgeCount": 11254,
-      "importEdgeCount": 9268,
+      "nodeCount": 9605,
+      "edgeCount": 11265,
+      "importEdgeCount": 9275,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "6147aa7aab2b22c1e7c22d3714f535debfa1d649e952d94b0f46d7a52393f166",
-  "manifestSha256": "6771da936ffdfcb2da9330739d475d38ff0e22864a3c3bb325b175e7e6db05da"
+  "inventorySha256": "d30303006b162c78233aa781262d1ae4a6debc7f1a01245d9c2e852e610cfe52",
+  "manifestSha256": "c69d949ba929c2351b1c801ddb6994ce92ddf8b9deec2191f65888a08b4950d3"
 }

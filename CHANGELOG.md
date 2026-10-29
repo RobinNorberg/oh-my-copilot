@@ -11,6 +11,11 @@ All notable changes to oh-my-copilot will be documented in this file.
   ADO repository was refused ("no Azure DevOps forge is configured for this
   run"). The az entry is now resolved once; the guard and the adapter both
   get it.
+- **Factory lanes may not edit Azure Pipelines definitions.** A write lane
+  could change `azure-pipelines.yml` (or `.azure-pipelines/`, `.azuredevops/`,
+  `.pipelines/`), the CI that gates its own PR, and turn a red build green.
+  These paths are now lane-protected, and on Azure DevOps a PR touching them
+  needs the owner. `omg ship`'s protected paths are unchanged.
 
 # oh-my-copilot v5.18.1
 
