@@ -18,6 +18,7 @@ import { basename, join, resolve } from 'path';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
+import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
 import { TRUSTED_READ_ENV, type Exec } from './exec.js';
 
 export interface ShipConfig {
@@ -208,44 +209,24 @@ export function readBaseFile(exec: Exec, cwd: string, commit: string, path: stri
 }
 
 /**
- * An Azure DevOps repository URL (design §8.3), already trimmed and
- * lowercased: `[https://][user@]dev.azure.com/<org>/<project>/_git/<repo>`,
- * `[ssh://]git@ssh.dev.azure.com[:/]v3/<org>/<project>/<repo>`, and the
- * legacy `https://<org>.visualstudio.com/[DefaultCollection/]<project>/_git/<repo>`
- * and `<org>@vs-ssh.visualstudio.com:v3/<org>/<project>/<repo>`.
- */
-const ADO_URLS: readonly RegExp[] = [
-  /^https?:\/\/(?:[^@/]+@)?dev\.azure\.com\/(?<org>[^/]+)\/(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/,
-  /^(?:ssh:\/\/)?[^@/:]+@ssh\.dev\.azure\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/,
-  /^https?:\/\/(?:[^@/]+@)?(?<org>[^./@]+)\.visualstudio\.com\/(?:defaultcollection\/)?(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/,
-  /^(?:ssh:\/\/)?[^@/:]+@vs-ssh\.visualstudio\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/,
-];
-
-/** `%20` and friends decoded; a malformed escape keeps the raw segment. */
-const decodeSegment = (s: string): string => {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-};
-
-/**
  * Comparable identity of a repository URL: `ado:<org>/<project>/<repo>` for
- * an Azure DevOps URL (every form in ADO_URLS, escapes decoded),
+ * an Azure DevOps URL (every parseAzureDevOpsRepoUrl form, escapes decoded),
  * `gh:<host>/<owner>/<repo>` for any other https / ssh / scp-style URL
  * (case-insensitive, `.git` and a trailing `/` dropped), `path:<url>` for
  * anything else (a local path), so a local path can never equal a hosted
- * repository.
+ * repository. `invalid:<url>` for a URL whose authority names another host
+ * than git connects to (urlHostAgrees: `https://evil#@github.com/o/r`) or an
+ * Azure DevOps URL parseAzureDevOpsRepoUrl refuses (`a%2Fb/c`): it never
+ * equals a valid repository's identity.
  */
 export function repoIdentity(url: string): string {
   const s = url.trim().replace(/\\/g, '/').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase();
-  for (const re of ADO_URLS) {
-    const g = re.exec(s)?.groups;
-    if (g) return `ado:${[g.org, g.project, g.repo].map(decodeSegment).join('/')}`;
-  }
+  const ado = parseAzureDevOpsRepoUrl(url);
+  if (ado === 'invalid') return `invalid:${s}`;
+  if (ado) return `ado:${[ado.org, ado.project, ado.repo].join('/').toLowerCase()}`;
   const m = /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+)\/([^/]+)$/.exec(s)
     ?? /^(?:[^@/:]+@)?([^/:]{2,}):([^/]+)\/([^/]+)$/.exec(s);
+  if (m && !urlHostAgrees(url, m[1])) return `invalid:${s}`;
   return m ? `gh:${m[1]}/${m[2]}/${m[3]}` : `path:${s}`;
 }
 
@@ -352,6 +333,15 @@ export interface LoadedShipConfig extends ShipConfig {
 }
 
 /**
+ * ship.trustedBases (SHIP_USER_ONLY_KEYS) of the user config at its default
+ * location (userConfigLayers().trustedUser), else the defaults: the only
+ * bases whose committed `.copilot/omg.jsonc` is read.
+ */
+export function resolveTrustedBases(trustedUser: unknown): string[] {
+  return resolveShipConfig({ trustedBases: shipBlock(trustedUser, 'user config (default location)').trustedBases }).trustedBases;
+}
+
+/**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,
  *   then the trusted base's committed `.copilot/omg.jsonc`, then the
@@ -387,7 +377,7 @@ export function loadTrustedShipConfig(input: TrustedShipConfigInput): LoadedShip
     }
     delete userShip[key];
   }
-  const trustedBases = resolveShipConfig({ trustedBases: trustedUserShip.trustedBases }).trustedBases;
+  const trustedBases = resolveTrustedBases(input.trustedUser === undefined ? input.user : input.trustedUser);
 
   // Verify the base against GitHub before reading anything committed on it.
   const ref = `refs/remotes/${remote}/${base}`;

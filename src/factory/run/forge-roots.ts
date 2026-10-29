@@ -18,7 +18,7 @@ import { join, resolve } from 'path';
 import { detectForgeRepo, resolveForgeConfig, type LoadedForgeConfig } from '../../forge/config.js';
 import type { ForgeKind, ForgeOptions } from '../../forge/types.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { BASE_CONFIG_PATH, readBaseFile } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, readBaseFile, resolveTrustedBases } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
@@ -65,10 +65,19 @@ function originUrl(exec: Exec, root: string): string | null {
  * overwrites the tracking ref with the remote's, so a ref a lane moved
  * between runs is not read. Identity keys can only pin the origin's forge;
  * progress keys only narrow what the az guard lets the engine write.
+ * `base` comes from the working tree, so a base outside ship.trustedBases
+ * (resolveTrustedBases, as ship reads it) is neither fetched nor read: that
+ * layer is empty, with a warning.
  */
 export function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown): LoadedForgeConfig {
   const url = originUrl(exec, root);
   if (!url) throw new Error('omg factory run needs an origin remote');
+  const trustedBases = resolveTrustedBases(trustedUser);
+  if (!trustedBases.includes(base)) {
+    const loaded = resolveForgeConfig(trustedUser, undefined, project, url);
+    const warning = `omg factory: base ${base} is not in ship.trustedBases (${trustedBases.join(', ')}); its committed ${BASE_CONFIG_PATH} is not read`;
+    return { ...loaded, warnings: [warning, ...loaded.warnings] };
+  }
   const fetched = exec('git', ['fetch', 'origin', base], { cwd: root, env: TRUSTED_READ_ENV });
   if (fetched.status !== 0) throw new Error(`git fetch origin ${base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
   const sha = exec('git', ['rev-parse', '--verify', `refs/remotes/origin/${base}`], { cwd: root, env: TRUSTED_READ_ENV }).stdout.trim();
