@@ -1,0 +1,33 @@
+{
+  "provenance": "synthetic: work item shaped like the wit/workItems GET docs sample, for the omg factory check rules",
+  "route": "wit.workItems.GET",
+  "routeParameters": {
+    "project": "Web",
+    "id": "44"
+  },
+  "queryParameters": {
+    "$expand": "relations"
+  },
+  "stdout": {
+    "id": 44,
+    "rev": 3,
+    "fields": {
+      "System.WorkItemType": "User Story",
+      "System.State": "New",
+      "System.Title": "Needs 45",
+      "System.Description": "<h2>Acceptance criteria</h2><ul><li>exit code 3</li></ul>",
+      "Microsoft.VSTS.Common.Priority": 1,
+      "System.CreatedBy": {
+        "displayName": "Owner",
+        "uniqueName": "owner@example.com"
+      }
+    },
+    "relations": [
+      {
+        "rel": "System.LinkTypes.Dependency-Reverse",
+        "url": "https://dev.azure.com/contoso/_apis/wit/workItems/45"
+      }
+    ],
+    "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/44"
+  }
+}

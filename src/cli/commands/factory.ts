@@ -38,6 +38,7 @@ import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
+import { defaultFactoryCheckDeps, factoryCheckCommand } from './factory-check.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 
@@ -250,6 +251,7 @@ export function factoryCommand(): Command {
   const cmd = new Command('factory');
   cmd.description('Software factory automation (chain trigger + intake listener)');
   cmd.addCommand(factoryRunCommand());
+  cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(healCommand({
     exec: defaultExec,
     base: defaultFactoryRunDeps.base,
