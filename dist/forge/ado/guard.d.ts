@@ -35,6 +35,8 @@ export interface AdoGuardContext {
     entry: AzEntry;
     /** The progress-mapping states (progressStates): the only System.State a work item PATCH may set; none when absent. */
     allowedStates?: readonly string[];
+    /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
+    allowedColumns?: readonly string[];
 }
 /** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
 export type AdoGuardPolicy = 'factory' | 'ship';

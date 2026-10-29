@@ -17,6 +17,7 @@ import { basename, join, resolve } from 'path';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
+import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
 import { TRUSTED_READ_ENV } from './exec.js';
 export const DEFAULT_SHIP_CONFIG = Object.freeze({
     base: 'dev',
@@ -169,16 +170,33 @@ export function readBaseFile(exec, cwd, commit, path) {
     throw new Error(`git show ${commit.slice(0, 12)}:${path} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
 }
 /**
- * Comparable identity of a repository URL: `gh:<host>/<owner>/<repo>` for an
- * https / ssh / scp-style URL (case-insensitive, `.git` and a trailing `/`
- * dropped), `path:<url>` for anything else (a local path), so a local path
- * can never equal a GitHub repository.
+ * Comparable identity of a repository URL: `ado:<org>/<project>/<repo>` for
+ * an Azure DevOps URL (every parseAzureDevOpsRepoUrl form, escapes decoded),
+ * `gh:<host>/<owner>/<repo>` for any other https / ssh / scp-style URL
+ * (case-insensitive, `.git` and a trailing `/` dropped), `path:<url>` for
+ * anything else (a local path), so a local path can never equal a hosted
+ * repository. `invalid:<url>` for a URL whose authority names another host
+ * than git connects to (urlHostAgrees: `https://evil#@github.com/o/r`) or an
+ * Azure DevOps URL parseAzureDevOpsRepoUrl refuses (`a%2Fb/c`): it never
+ * equals a valid repository's identity.
  */
-function repoIdentity(url) {
+export function repoIdentity(url) {
     const s = url.trim().replace(/\\/g, '/').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase();
+    const ado = parseAzureDevOpsRepoUrl(url);
+    if (ado === 'invalid')
+        return `invalid:${s}`;
+    if (ado)
+        return `ado:${[ado.org, ado.project, ado.repo].join('/').toLowerCase()}`;
     const m = /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+)\/([^/]+)$/.exec(s)
         ?? /^(?:[^@/:]+@)?([^/:]{2,}):([^/]+)\/([^/]+)$/.exec(s);
+    if (m && !urlHostAgrees(url, m[1]))
+        return `invalid:${s}`;
     return m ? `gh:${m[1]}/${m[2]}/${m[3]}` : `path:${s}`;
+}
+/** True when both URLs have the same repoIdentity; an `invalid:` identity equals nothing, itself included. */
+export function sameRepo(a, b) {
+    const id = repoIdentity(a);
+    return !id.startsWith('invalid:') && id === repoIdentity(b);
 }
 /**
  * Null when `git remote get-url <remote>` (insteadOf rewrites applied, so the
@@ -197,7 +215,7 @@ export function remoteRepoMismatch(exec, cwd, remote, repoUrl) {
     if (got.status !== 0)
         return `git remote get-url ${remote} failed: ${got.stderr.trim().split('\n')[0]}`;
     const url = got.stdout.trim();
-    if (repoIdentity(url) !== repoIdentity(repoUrl))
+    if (!sameRepo(url, repoUrl))
         return `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
     const push = exec('git', ['remote', 'get-url', '--push', '--all', remote], { cwd, env: TRUSTED_READ_ENV });
     if (push.status !== 0)
@@ -205,12 +223,22 @@ export function remoteRepoMismatch(exec, cwd, remote, repoUrl) {
     const pushUrls = push.stdout.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
     if (pushUrls.length === 0)
         return `git remote get-url --push --all ${remote} printed no push URL`;
-    const foreign = pushUrls.find((u) => repoIdentity(u) !== repoIdentity(repoUrl));
+    const foreign = pushUrls.find((u) => !sameRepo(u, repoUrl));
     return foreign ? `remote ${remote} pushes to ${foreign}, but the PR is in ${repoUrl}` : null;
 }
-/** The repository URL of a PR URL (`https://github.com/o/r/pull/12` -> `https://github.com/o/r`); undefined when it is not one. */
+/**
+ * The repository URL of a PR URL (`https://github.com/o/r/pull/12` ->
+ * `https://github.com/o/r`; Azure DevOps
+ * `https://dev.azure.com/o/p/_git/r/pullrequest/12` -> `.../_git/r`, the
+ * legacy `<org>.visualstudio.com` form too); undefined when it is not one.
+ */
 export function prRepoUrl(prUrl) {
-    return typeof prUrl === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(prUrl) ? prUrl.replace(/\/pull\/\d+$/, '') : undefined;
+    if (typeof prUrl !== 'string')
+        return undefined;
+    if (/^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(prUrl))
+        return prUrl.replace(/\/pull\/\d+$/, '');
+    const m = /^(https:\/\/[^/\s]+(?:\/[^/\s]+)+)\/pullrequest\/\d+$/i.exec(prUrl);
+    return m && repoIdentity(m[1]).startsWith('ado:') ? m[1] : undefined;
 }
 /**
  * The user config's default location, derived from the account's home
@@ -250,6 +278,14 @@ export function userConfigLayers(envPath = getConfigPaths().user, trustedPath) {
     return { user, trustedUser: defaultPath ? loadJsoncFile(defaultPath) : null };
 }
 /**
+ * ship.trustedBases (SHIP_USER_ONLY_KEYS) of the user config at its default
+ * location (userConfigLayers().trustedUser), else the defaults: the only
+ * bases whose committed `.copilot/omg.jsonc` is read.
+ */
+export function resolveTrustedBases(trustedUser) {
+    return resolveShipConfig({ trustedBases: shipBlock(trustedUser, 'user config (default location)').trustedBases }).trustedBases;
+}
+/**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,
  *   then the trusted base's committed `.copilot/omg.jsonc`, then the
@@ -287,7 +323,7 @@ export function loadTrustedShipConfig(input) {
         }
         delete userShip[key];
     }
-    const trustedBases = resolveShipConfig({ trustedBases: trustedUserShip.trustedBases }).trustedBases;
+    const trustedBases = resolveTrustedBases(input.trustedUser === undefined ? input.user : input.trustedUser);
     // Verify the base against GitHub before reading anything committed on it.
     const ref = `refs/remotes/${remote}/${base}`;
     const unverified = (reason) => {

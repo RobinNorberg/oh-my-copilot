@@ -44,7 +44,8 @@ export const ADO_ROUTES = Object.freeze([
                 { path: /^\/fields\/System\.Tags$/, value: TEXT },
                 // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
                 { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
-                { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT },
+                // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
+                { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: 'columns' },
             ],
         },
     }),
@@ -203,7 +204,7 @@ function objectProblem(v, shape, at) {
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
  * (body === undefined). `context` adds the config-bound rules (the guard
- * always passes the run's progress states).
+ * always passes the run's progress states and columns).
  */
 export function validateAdoBody(route, body, context = {}) {
     const shape = route.body;
@@ -233,6 +234,9 @@ export function validateAdoBody(route, body, context = {}) {
             return problem;
         if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value)) {
             return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
+        }
+        if (target.configured === 'columns' && context.allowedColumns && !context.allowedColumns.includes(op.value)) {
+            return `${at}.value is not a configured progress column (${context.allowedColumns.join(', ') || 'none configured'})`;
         }
     }
     return undefined;

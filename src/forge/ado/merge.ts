@@ -12,7 +12,8 @@
  * there (completionOptions.bypassPolicy, say).
  */
 
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { createHash } from 'crypto';
+import { lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { isAbsolute, join, relative, resolve } from 'path';
 import type { ForgeMerge } from '../types.js';
 import { listEvaluations, policyName } from './checks.js';
@@ -46,30 +47,56 @@ const under = (path: string, root: string): boolean => {
 };
 const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '_');
 
-/** Write the head-pinned body for `pr` and return its absolute path. */
-export function writeAdoMergeBody(ctx: Pick<AdoContext, 'repo'>, o: AdoMergeOptions, pr: number, headSha: string): string {
+/**
+ * Why `dir` (already resolved) may not hold the merge body, or undefined: it
+ * must be a directory, and on POSIX owned by this user and not writable
+ * by group or others, so nobody else can swap the body between the write
+ * and the human's run. Windows modes carry no ACL information; there the
+ * untrusted-root check is the guard.
+ */
+export function mergeBodyDirProblem(dir: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  const st = lstatSync(dir);
+  if (!st.isDirectory()) return `merge body directory ${dir} is not a directory`;
+  if (platform === 'win32') return undefined;
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  if (uid !== undefined && st.uid !== uid) return `merge body directory ${dir} is owned by uid ${st.uid}, not this user (${uid})`;
+  if ((st.mode & 0o022) !== 0) return `merge body directory ${dir} is writable by group or others (mode ${(st.mode & 0o777).toString(8)}); chmod 700 it`;
+  return undefined;
+}
+
+function writeBody(ctx: Pick<AdoContext, 'repo'>, o: AdoMergeOptions, pr: number, headSha: string): { path: string; sha256: string } {
   if (!isAbsolute(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
   mkdirSync(o.stateDir, { recursive: true, mode: 0o700 });
   const dir = realOr(o.stateDir);
   const root = o.untrustedRoots.find((r) => r.trim() !== '' && under(dir, r));
   if (root) throw new Error(`merge body directory ${dir} is under the untrusted root ${root}`);
+  const problem = mergeBodyDirProblem(dir);
+  if (problem) throw new Error(problem);
   const path = join(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
+  const content = `${JSON.stringify(adoMergeBody(headSha), null, 2)}\n`;
   // A fresh file (flag wx after removing any old one), so the mode always applies and nothing pre-planted is reused.
   rmSync(path, { force: true });
-  writeFileSync(path, `${JSON.stringify(adoMergeBody(headSha), null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-  return path;
+  writeFileSync(path, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  return { path, sha256: createHash('sha256').update(content, 'utf8').digest('hex') };
+}
+
+/** Write the head-pinned body for `pr` and return its absolute path. */
+export function writeAdoMergeBody(ctx: Pick<AdoContext, 'repo'>, o: AdoMergeOptions, pr: number, headSha: string): string {
+  return writeBody(ctx, o, pr, headSha).path;
 }
 
 export function adoMerge(ctx: AdoContext, o: AdoMergeOptions): ForgeMerge {
+  /** Writes the body file, then returns the command that reads it and the file's SHA-256. */
+  const humanMerge = (pr: number, headSha: string) => {
+    if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error(`merge command needs a 40-hex head sha, got ${JSON.stringify(headSha)}`);
+    const body = writeBody(ctx, o, pr, headSha);
+    // Printed for a human with plain `az`, whatever entry the adapter spawns.
+    const args = adoInvokeArgs({ entry: { command: 'az', prefix: [], env: {} }, repo: ctx.repo }, 'git.pullRequests.PATCH', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body.path);
+    return { command: ['az', ...args], bodyFile: body.path, bodySha256: body.sha256 };
+  };
   return {
-    /** Writes the body file (writeAdoMergeBody), then returns the command that reads it. */
-    humanMergeCommand(pr: number, headSha: string): string[] {
-      if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error(`merge command needs a 40-hex head sha, got ${JSON.stringify(headSha)}`);
-      const bodyFile = writeAdoMergeBody(ctx, o, pr, headSha);
-      // Printed for a human with plain `az`, whatever entry the adapter spawns.
-      const args = adoInvokeArgs({ entry: { command: 'az', prefix: [], env: {} }, repo: ctx.repo }, 'git.pullRequests.PATCH', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, bodyFile);
-      return ['az', ...args];
-    },
+    humanMerge,
+    humanMergeCommand: (pr: number, headSha: string): string[] => humanMerge(pr, headSha).command,
 
     blockingPolicies(pr: number, headSha: string): string[] {
       const view = readAdoPr(ctx, pr);

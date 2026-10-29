@@ -12,12 +12,14 @@
  * that names an Actions run belongs to a workflow run for that head
  * (`gh run list --commit <head>`); otherwise it is a stale read and the
  * driver polls again. Ship's gate API is used as is: watchGates with
- * `headSha` and fetchHeadSha / fetchWorkflowRuns.
+ * `headSha` and fetchHeadSha / fetchWorkflowRuns. On Azure DevOps the same
+ * reads go through the forge (`forge`): its PR head is
+ * lastMergeSourceCommit, which lags a push the same way (design §8.3).
  */
 
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
-import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateReport } from '../../ship/gates.js';
+import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateForge, type GateReport } from '../../ship/gates.js';
 import { ghJobLog } from '../../forge/github/checks.js';
 import { ghPrHead } from '../../forge/github/reviews.js';
 
@@ -47,6 +49,8 @@ export interface GatesDriverInput {
   /** A poll without an accepted read (waiting for GitHub, a stale read). */
   onWait: (note: string) => void;
   cancelled: () => boolean;
+  /** The forge reads (ship's GateForge); omitted = GitHub, the gh calls below. */
+  forge?: GateForge;
 }
 
 export type GatesOutcome =
@@ -72,20 +76,20 @@ function isAncestor(exec: Exec, cwd: string, sha: string, head: string): boolean
  * head moved, or a reported check names an Actions run that is not one of
  * the head's workflow runs.
  */
-export function staleRead(exec: Exec, pr: number, head: string, report: GateReport, cwd: string): string | null {
-  const now = readPrHead(exec, pr, cwd).headRefOid;
+export function staleRead(exec: Exec, pr: number, head: string, report: GateReport, cwd: string, forge?: GateForge): string | null {
+  const now = (forge ? forge.reviews.prHead(pr) : readPrHead(exec, pr, cwd)).headRefOid;
   if (now !== head) return `the PR head is ${now.slice(0, 12)}, not ${head.slice(0, 12)}`;
-  const runs = new Set(fetchWorkflowRuns(exec, head, cwd).map((r) => String(r.databaseId)));
+  const runs = new Set((forge ? forge.checks.runsForHead(pr, head) : fetchWorkflowRuns(exec, head, cwd)).map((r) => String(r.databaseId)));
   const foreign = report.checks.filter((c) => c.class !== 'advisory' && c.runId && !runs.has(c.runId)).map((c) => c.name);
   return foreign.length > 0 ? `checks ${foreign.join(', ')} belong to workflow runs of another commit` : null;
 }
 
 /** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs, MAX_FAILING_TITLES titles). */
-export function failingTestTitles(exec: Exec, report: GateReport, cwd: string): string[] {
+export function failingTestTitles(exec: Exec, report: GateReport, cwd: string, forge?: GateForge): string[] {
   const out = new Set<string>();
   const jobs = report.checks.filter((c) => c.class === 'failed' && c.jobId).slice(0, MAX_FAILED_LOGS);
   for (const c of jobs) {
-    const log = ghJobLog(exec, c.jobId!, cwd);
+    const log = forge ? forge.checks.jobLog(c.jobId!) : ghJobLog(exec, c.jobId!, cwd);
     if (!log.ok) continue;
     for (const t of parseFailingTests(log.text)) {
       if (out.size >= MAX_FAILING_TITLES) break;
@@ -109,7 +113,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
     if (o.cancelled()) return { kind: 'cancelled' };
     const left = o.deadline - o.now();
     if (left <= 0) return { kind: 'timeout', ...(last ? { report: last } : {}) };
-    const view = readPrHead(o.exec, o.pr, o.cwd);
+    const view = o.forge ? o.forge.reviews.prHead(o.pr) : readPrHead(o.exec, o.pr, o.cwd);
     if (view.state !== 'OPEN') return { kind: 'not-open', state: view.state };
     if (view.headRefOid !== o.head) {
       if (!isAncestor(o.exec, o.cwd, view.headRefOid, o.head)) return { kind: 'head-moved', headRefOid: view.headRefOid };
@@ -123,6 +127,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
         exec: o.exec, pr: o.pr, config: { ...o.config, watchTimeoutMinutes: windowMin }, known: o.known, cwd: o.cwd, headSha: o.head,
         // A cancel lands between ship's polls, not only at the end of its window.
         watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled()) throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
+        ...(o.forge ? { forge: o.forge } : {}),
       });
     } catch (error) {
       if (error instanceof GatesCancelled) return { kind: 'cancelled' };
@@ -130,7 +135,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
     }
     const report = res.report;
     if (report.verdict === 'green' || report.verdict === 'failed' || report.verdict === 'flaky') {
-      const stale = staleRead(o.exec, o.pr, o.head, report, o.cwd);
+      const stale = staleRead(o.exec, o.pr, o.head, report, o.cwd, o.forge);
       if (stale) {
         await wait(`ignored a ${report.verdict} read: ${stale}`);
         continue;
@@ -139,7 +144,7 @@ export async function driveGates(o: GatesDriverInput): Promise<GatesOutcome> {
     last = report;
     o.onReport(report, res.timedOut ? 'watch window elapsed (exit 8); polling on' : report.verdict);
     if (report.verdict === 'green') return { kind: 'green', report };
-    if (report.verdict === 'failed') return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd) };
+    if (report.verdict === 'failed') return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd, o.forge) };
     if (report.verdict === 'flaky' && !res.timedOut) return { kind: 'flaky', report };
     if (report.pending.includes(NO_WORKFLOWS_TRIGGERED)) {
       noWorkflowsSince ??= o.now();

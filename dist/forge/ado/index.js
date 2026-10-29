@@ -14,8 +14,13 @@ import { adoMerge } from './merge.js';
 import { ADO_RECORD_ENV, recordingAdoExec } from './record.js';
 import { adoReviews } from './reviews.js';
 import { adoTracker } from './tracker.js';
-/** The states the progress mapping may write: the only System.State values the guard lets through (design §7). */
-export const progressStates = (config) => [...new Set(Object.values(config.progress.stages).map((m) => m?.state).filter((s) => typeof s === 'string' && s !== ''))];
+const progressValues = (config, key) => config.progress.enabled
+    ? [...new Set(Object.values(config.progress.stages).map((m) => m?.[key]).filter((s) => typeof s === 'string' && s !== ''))]
+    : [];
+/** The states the progress mapping may write: the only System.State values the guard lets through (design §7); none while progress is disabled. */
+export const progressStates = (config) => progressValues(config, 'state');
+/** The board columns the progress mapping may write (a column move can change the state); none while progress is disabled. */
+export const progressColumns = (config) => progressValues(config, 'column');
 /** Production az-binary deps: the real PATH, fs and realpathSync.native. */
 export function defaultAzBinaryDeps(untrustedRoots, env = process.env) {
     return {
@@ -37,7 +42,7 @@ export function defaultAzBinaryDeps(untrustedRoots, env = process.env) {
 export function adoGuardContext(config, entry) {
     if (config.kind !== 'azure-devops' || !config.repo.project)
         throw new Error('the Azure DevOps guard needs an azure-devops forge config');
-    return { repo: config.repo, entry, allowedStates: progressStates(config) };
+    return { repo: config.repo, entry, allowedStates: progressStates(config), allowedColumns: progressColumns(config) };
 }
 export function createAzureDevOpsForge(exec, cwd, config, options) {
     if (config.kind !== 'azure-devops' || !config.azureDevOps || !config.repo.project)

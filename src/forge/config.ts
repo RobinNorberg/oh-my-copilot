@@ -23,7 +23,7 @@
  * is refused (`forge-unsupported`) rather than failing later at the guard.
  */
 
-import { parseRemoteUrl } from '../providers/remote-url.js';
+import { ADO_SEGMENT, ambiguousAuthority, parseAzureDevOpsRepoUrl, parseRemoteUrl } from '../providers/remote-url.js';
 import {
   PROGRESS_STAGES,
   type AzureDevOpsForgeConfig,
@@ -63,8 +63,7 @@ export function defaultProgressStages(kind: ForgeKind): Partial<Record<ProgressS
 }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** One ADO name segment (org, project, repo, team, board): no path separators or control characters. */
-const SEGMENT = /^[^/\\\p{Cc}]{1,256}$/u;
+const SEGMENT = ADO_SEGMENT;
 /** A GitHub label or ADO tag: no `,` (gh --remove-label lists) or `;` (ADO tag separator), no leading `-` or space. */
 const TRACKER_NAME = /^[^\s,;\-\p{Cc}][^,;\p{Cc}]{0,49}$/u;
 /** Free text written to config (board column, state, area path, milestone). */
@@ -117,12 +116,11 @@ const fold = (s: string): string => decode(s).toLowerCase();
 
 /** The forge kind and repository the origin remote names. */
 export function detectForgeRepo(originUrl: string): ForgeRepo {
-  const parsed = parseRemoteUrl(originUrl);
-  if (!parsed) throw new ForgeConfigError('forge-unsupported', `cannot parse the origin remote ${JSON.stringify(originUrl)}`);
-  if (parsed.provider === 'azure-devops') {
-    const [org, project, ...rest] = parsed.owner.split('/');
-    if (!org || !project || rest.length > 0) throw new ForgeConfigError('forge-unsupported', `cannot parse the Azure DevOps remote ${JSON.stringify(originUrl)}`);
-    const o = decode(org), p = decode(project), r = decode(parsed.repo);
+  // The forms (legacy visualstudio.com too) and refusals repoIdentity uses, so both name the same repository.
+  const ado = parseAzureDevOpsRepoUrl(originUrl);
+  if (ado) {
+    if (ado === 'invalid') throw new ForgeConfigError('forge-unsupported', `cannot parse the Azure DevOps remote ${JSON.stringify(originUrl)}`);
+    const { org: o, project: p, repo: r } = ado;
     return {
       kind: 'azure-devops',
       host: 'dev.azure.com',
@@ -132,6 +130,11 @@ export function detectForgeRepo(originUrl: string): ForgeRepo {
       url: `https://dev.azure.com/${encodeURIComponent(o)}/${encodeURIComponent(p)}/_git/${encodeURIComponent(r)}`,
     };
   }
+  const parsed = ambiguousAuthority(originUrl) ? null : parseRemoteUrl(originUrl);
+  if (!parsed) throw new ForgeConfigError('forge-unsupported', `cannot parse the origin remote ${JSON.stringify(originUrl)}`);
+  if (parsed.provider === 'azure-devops') throw new ForgeConfigError('forge-unsupported', `cannot parse the Azure DevOps remote ${JSON.stringify(originUrl)}`);
+  // The host feeds `gh --hostname` (an scp origin `git@evil#@github.com:o/r` would hand evil the token).
+  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(parsed.host)) throw new ForgeConfigError('forge-unsupported', `the origin remote host ${JSON.stringify(parsed.host)} is not a plain host name`);
   // github.com, or a host detectProvider cannot name (GitHub Enterprise): today's GitHub behaviour.
   if (parsed.provider !== 'github' && parsed.provider !== 'unknown') {
     throw new ForgeConfigError('forge-unsupported', `unsupported forge ${parsed.provider} (${parsed.host}); omg factory supports github and azure-devops`);

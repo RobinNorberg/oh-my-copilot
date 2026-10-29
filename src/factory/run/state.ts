@@ -27,6 +27,7 @@ import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
+import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import type { ForgeKind } from '../../forge/types.js';
 
@@ -313,11 +314,17 @@ export function verifyFactoryIntegrity(state: FactoryRunState): boolean {
 /**
  * Why a resume must refuse, or null (critic amendments §A.9): a config change
  * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ * With `resolvedRepoUrl` (the forge config's repository), a run whose
+ * recorded repoUrl names another repository (repoIdentity) refuses too.
  */
-export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal'>, resolved: ForgeKind): string | null {
+export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null {
   const recorded = state.forgeKind ?? 'github';
-  if (recorded === resolved) return null;
-  return `factory run ${runLabel(runKeyOf(state))} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+  const label = runLabel(runKeyOf(state));
+  if (recorded !== resolved) return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+  if (resolvedRepoUrl !== undefined && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
+    return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
+  }
+  return null;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string';

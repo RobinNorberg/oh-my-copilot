@@ -27,9 +27,16 @@ export interface AzureDevOpsForgeOptions extends ForgeOptions {
   env?: Readonly<Record<string, string | undefined>>;
 }
 
-/** The states the progress mapping may write: the only System.State values the guard lets through (design §7). */
-export const progressStates = (config: ResolvedForgeConfig): string[] =>
-  [...new Set(Object.values(config.progress.stages).map((m) => m?.state).filter((s): s is string => typeof s === 'string' && s !== ''))];
+const progressValues = (config: ResolvedForgeConfig, key: 'state' | 'column'): string[] =>
+  config.progress.enabled
+    ? [...new Set(Object.values(config.progress.stages).map((m) => m?.[key]).filter((s): s is string => typeof s === 'string' && s !== ''))]
+    : [];
+
+/** The states the progress mapping may write: the only System.State values the guard lets through (design §7); none while progress is disabled. */
+export const progressStates = (config: ResolvedForgeConfig): string[] => progressValues(config, 'state');
+
+/** The board columns the progress mapping may write (a column move can change the state); none while progress is disabled. */
+export const progressColumns = (config: ResolvedForgeConfig): string[] => progressValues(config, 'column');
 
 /** Production az-binary deps: the real PATH, fs and realpathSync.native. */
 export function defaultAzBinaryDeps(untrustedRoots: readonly string[], env: Readonly<Record<string, string | undefined>> = process.env): AzBinaryDeps {
@@ -51,7 +58,7 @@ export function defaultAzBinaryDeps(untrustedRoots: readonly string[], env: Read
 /** What the ADO guard needs for a run: the forge repo and the az entry the adapter spawns. */
 export function adoGuardContext(config: ResolvedForgeConfig, entry: AzEntry): AdoGuardContext {
   if (config.kind !== 'azure-devops' || !config.repo.project) throw new Error('the Azure DevOps guard needs an azure-devops forge config');
-  return { repo: config.repo, entry, allowedStates: progressStates(config) };
+  return { repo: config.repo, entry, allowedStates: progressStates(config), allowedColumns: progressColumns(config) };
 }
 
 export function createAzureDevOpsForge(exec: Exec, cwd: string, config: ResolvedForgeConfig, options: AzureDevOpsForgeOptions): Forge {

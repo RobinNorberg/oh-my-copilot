@@ -190,6 +190,16 @@ export interface ForgeChecks {
 export interface ForgeMerge {
     /** The command a HUMAN runs; the factory guard refuses it, ship merge alone may run the GitHub one. */
     humanMergeCommand(pr: number, headSha: string): string[];
+    /**
+     * ADO: humanMergeCommand plus the body file it reads and that file's
+     * SHA-256, printed next to the command so the human can check the bytes
+     * before running it. GitHub's command has no body file.
+     */
+    humanMerge?(pr: number, headSha: string): {
+        command: string[];
+        bodyFile: string;
+        bodySha256: string;
+    };
     /** ADO branch-policy decision inputs beyond gates (reviewers, comments, work-item link); GitHub returns []. */
     blockingPolicies(pr: number, headSha: string): string[];
 }

@@ -42,8 +42,19 @@
  * From implement on it is the issue pipeline; every lane also passes the
  * heal caps (FactoryHealStart.laneCap). Nothing here writes the known-flaky
  * list: a write lane touching it parks at protected-paths.
+ *
+ * Forges (factory forges design §6-§8): with an Azure DevOps `forge` every
+ * tracker, PR, check and merge-command call goes through the ADO adapter,
+ * built on the guarded Exec whose az guard knows the run's repository, az
+ * entry and progress mapping; the state records forgeKind and a resume on
+ * another forge is refused. The exact-head rules hold through
+ * reviews.prHead (lastMergeSourceCommit): an ancestor of the engine's push
+ * is the forge lagging (pending), anything else is head-moved-externally.
+ * GitHub runs keep the gh calls unchanged.
  */
 import { type Exec } from '../../ship/exec.js';
+import { type AzEntry } from '../../forge/ado/az-binary.js';
+import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
@@ -110,7 +121,22 @@ export interface FactoryEngineOptions {
     sleep?: (ms: number) => Promise<void>;
     /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
     gateConfig?: GateConfigLoader;
+    /**
+     * The run's forge (factory forges design §3, §6), recorded in the state as
+     * forgeKind. Omitted = GitHub through the gh calls, as before forges; the
+     * CLI always passes it. `options` must list every untrusted root
+     * (factoryForgeOptions); `entry` is the resolved az entry (default:
+     * resolveAzEntry outside those roots).
+     */
+    forge?: FactoryForgeInput;
 }
+export interface FactoryForgeInput {
+    config: ResolvedForgeConfig;
+    options: ForgeOptions;
+    entry?: AzEntry;
+}
+/** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
+export declare const ADO_HEAD_LAG_POLLS = 12;
 /** How the engine checks and stops a lost lane's recorded child process. */
 export interface LaneProcessOps {
     /** dead or mismatch (pid reused): the child is gone; live: it still runs; unknown: cannot tell. */
