@@ -12,6 +12,8 @@ import { resolveRunDirHandle } from "./run-dir.js";
 import { readContainedFileNoFollow, withContainedOperations } from "./safe-fs.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const PROJECTION_FILE_NAME = "projection.json";
+/** Backup name preservePriorTarget (lib/atomic-write) links before a rename. */
+const ROLLBACK_LINK_PATTERN = /^projection\.json\.rollback\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** Closed error surface for projection snapshot failures. */
 export class ProjectionStoreError extends Error {
     code;
@@ -85,6 +87,7 @@ export class FileProjectionStore {
         // A corrupt snapshot is a cache-miss here, not run-fatal: the journal is
         // the source of truth, so treat it as absent and proceed with the overwrite.
         assertOwnership?.();
+        this.removeCrashedRollbackLinks();
         let stored;
         try {
             stored = await this.load();
@@ -116,6 +119,29 @@ export class FileProjectionStore {
                 }
                 : undefined;
             atomicWriteJsonSync(PROJECTION_FILE_NAME, envelope, hooks, operations);
+        });
+    }
+    /**
+     * The atomic writer hard-links the prior snapshot to a rollback name before
+     * its rename. A writer killed inside that window leaves projection.json
+     * with nlink 2, which the private-regular-file check rightly refuses, so
+     * every later save would fail the run. Only the run's owner saves, and the
+     * rollback link is useless once its writer is gone: drop it. Removing a
+     * same-directory name never makes an outside hardlink pass that check.
+     */
+    removeCrashedRollbackLinks() {
+        withContainedOperations(this.runDir(), (operations) => {
+            for (const name of operations.readDir()) {
+                if (!ROLLBACK_LINK_PATTERN.test(name))
+                    continue;
+                try {
+                    operations.unlink(name);
+                }
+                catch (err) {
+                    if (err.code !== "ENOENT")
+                        throw err;
+                }
+            }
         });
     }
     async load() {
