@@ -115270,6 +115270,139 @@ var init_shell_allowlist = __esm({
   }
 });
 
+// src/copilot-run/sandbox-session.ts
+function sandboxBypassDenial(req) {
+  return req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : null;
+}
+function withTimeout3(promise, ms, label2) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject2) => {
+      timer = setTimeout(() => reject2(new Error(`${label2} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+var SessionSandboxController, errText3;
+var init_sandbox_session = __esm({
+  "src/copilot-run/sandbox-session.ts"() {
+    "use strict";
+    init_copilot_sdk_driver();
+    init_sandbox2();
+    SessionSandboxController = class {
+      constructor(opts) {
+        this.opts = opts;
+      }
+      /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
+      state = null;
+      toolNames = /* @__PURE__ */ new Map();
+      /** Whether createSession takes `config` (else confirm applies it via options.update). */
+      atCreate(loaded2, config2) {
+        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      }
+      /**
+       * Probe the host and set `state` (§5). Returns the config to apply when
+       * the host supports the sandbox (the mode stays the unconfirmed one until
+       * confirm), else null with the final mode: `detect-only` when the sandbox
+       * is switched off, otherwise the fail-closed mode.
+       */
+      async decide(client, loaded2) {
+        const { opts } = this;
+        let cliVersion = "unknown";
+        try {
+          const status = await withTimeout3(client.getStatus(), opts.rpcTimeoutMs, "getStatus()");
+          if (typeof status.version === "string") cliVersion = status.version;
+        } catch {
+        }
+        const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {} });
+        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
+        const { settings, profile } = opts;
+        const off = !settings.enabled ? "sandbox.enabled is false" : opts.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
+        if (off) {
+          if (profile === "review") {
+            this.state = { ...base, mode: "read-only-no-shell", reason: off };
+            opts.note(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
+          } else {
+            this.state = { ...base, mode: "detect-only", reason: off };
+            opts.note(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+          }
+          return null;
+        }
+        const fallback = (reason) => {
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason };
+          if (this.state.mode === "detect-only") opts.note(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+          if (this.state.mode === "read-only-no-shell") opts.note(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
+        };
+        if (!host.supported) {
+          fallback(host.reason ?? "the host does not support the sandbox");
+          return null;
+        }
+        try {
+          const config2 = buildSandboxConfig(profile, opts.policyContext(), host);
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason: "not confirmed yet" };
+          return config2;
+        } catch (err) {
+          fallback(errText3(err));
+          return null;
+        }
+      }
+      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      async confirm(session, config2, atCreate) {
+        const { opts } = this;
+        const sbx = this.state;
+        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        if (!why) {
+          sbx.applied = atCreate ? "create" : "options.update";
+          const enf = await readEnforcement(session, opts.rpcTimeoutMs);
+          if (typeof enf === "string") why = enf;
+          else {
+            sbx.enforcement = enf;
+            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
+          }
+        }
+        if (!why) {
+          sbx.mode = "enforced";
+          delete sbx.reason;
+          return;
+        }
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") {
+          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+          try {
+            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+          } catch {
+          }
+        }
+      }
+      /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
+      toolStarted(data) {
+        if (typeof data.toolCallId === "string" && typeof data.toolName === "string") this.toolNames.set(data.toolCallId, data.toolName);
+      }
+      /**
+       * `tool.execution_complete` data: the attestation (§5). A shell call must
+       * report sandboxed: true. A call of an unknown tool must not report false,
+       * and in an enforced session it must report true (a missing field is an
+       * escape). Counts every escape; returns the `sandbox-escaped:` error when
+       * the session must stop (any mode but detect-only), else null.
+       */
+      toolCompleted(data) {
+        const id = String(data.toolCallId ?? "");
+        const name = this.toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
+        this.toolNames.delete(id);
+        const sbx = this.state;
+        const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+        if (!sbx || !escaped) return null;
+        sbx.unsandboxedCalls += 1;
+        if (sbx.mode === "detect-only") return null;
+        return `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
+      }
+    };
+    errText3 = (err) => err instanceof Error ? err.message : String(err);
+  }
+});
+
 // src/copilot-run/job.ts
 var job_exports = {};
 __export(job_exports, {
@@ -115325,7 +115458,7 @@ function resolveStartRef(repoRoot3, ref) {
   }
   return sha2;
 }
-function withTimeout3(promise, ms, label2) {
+function withTimeout4(promise, ms, label2) {
   let timer;
   return Promise.race([
     promise,
@@ -115425,7 +115558,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process16.spawnSync)
   };
 }
-var import_node_child_process16, import_node_crypto15, import_node_fs26, import_node_os8, import_node_path33, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS3, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, errText3, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process16, import_node_crypto15, import_node_fs26, import_node_os8, import_node_path33, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS3, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, errText4, isTerminal2, git2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -115452,6 +115585,7 @@ var init_job = __esm({
     init_config_dir();
     init_names2();
     init_sandbox2();
+    init_sandbox_session();
     DEFAULT_TIMEOUT_MS3 = 15 * 6e4;
     MAX_TIMEOUT_MS = 60 * 6e4;
     DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -115485,7 +115619,7 @@ var init_job = __esm({
     sleep7 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    errText3 = (err) => err instanceof Error ? err.message : String(err);
+    errText4 = (err) => err instanceof Error ? err.message : String(err);
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text4) => (text4 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -115533,7 +115667,7 @@ var init_job = __esm({
         try {
           ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot3 ? (0, import_node_path33.resolve)(repoRoot3) : cwd2, options.sandboxScope ?? "copilot-run"));
         } catch (err) {
-          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText3(err)}`);
+          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText4(err)}`);
         }
         if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== "off") {
           const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
@@ -115582,7 +115716,7 @@ var init_job = __esm({
               }
               if ((0, import_node_fs26.existsSync)(path30)) left = ` The partly created worktree ${path30} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
             }
-            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText3(err)}.${left}`);
+            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText4(err)}.${left}`);
           }
           if (!info) throw new CopilotRunError("copilot_run_start: worktree creation unexpectedly disabled.");
           const commonRaw = git2(ledgerCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
@@ -115689,7 +115823,7 @@ var init_job = __esm({
         const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
         timer.unref?.();
         job.done = this.run(job).catch((err) => {
-          job.error ??= errText3(err);
+          job.error ??= errText4(err);
           return "failed";
         }).then((outcome) => {
           clearTimeout(timer);
@@ -115762,7 +115896,7 @@ var init_job = __esm({
             ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
           } catch (err) {
             throw new CopilotRunError(
-              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText3(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText4(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
             );
           }
           job.cleanedUp = true;
@@ -115795,7 +115929,7 @@ var init_job = __esm({
           recordUsage(ledgerPath2(job.ledgerCwd), job.ledgerKey, usage, void 0, { timeoutMs: lockTimeoutMs });
           return true;
         } catch (err) {
-          return !errText3(err).startsWith("Failed to acquire file lock");
+          return !errText4(err).startsWith("Failed to acquire file lock");
         }
       }
       /** Drive the session to its end and tear it down; returns the final status. */
@@ -115849,8 +115983,37 @@ var init_job = __esm({
           platform: deps.platform
         };
         const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+          profile: job.profile,
+          settings: job.sandboxSettings,
+          env: deps.env,
+          platform: deps.platform,
+          rpcTimeoutMs: RPC_TIMEOUT_MS2,
+          ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+          policyContext: () => {
+            const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
+            const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+            const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            return {
+              worktree: (0, import_node_path33.resolve)(top),
+              commonGitDir: commonRaw ? (0, import_node_path33.resolve)(commonRaw) : (0, import_node_path33.resolve)(top, ".git"),
+              ...gitDirRaw ? { gitDir: (0, import_node_path33.resolve)(gitDirRaw) } : {},
+              pluginRoot,
+              jobHome: job.home,
+              jobDir: job.jobDir,
+              realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
+              platform: deps.platform,
+              settings: job.sandboxSettings,
+              hostCommits: job.hostCommits,
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+            };
+          },
+          note: (text4) => {
+            job.notes.push(text4);
+          }
+        });
         const onPermissionRequest = (req) => {
-          let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : decideSdkPermission(req, policy);
+          let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
           if (decision.approve && req.kind === "write") {
             const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
             const rel = raw ? relativeInside((0, import_node_path33.isAbsolute)(raw) ? raw : (0, import_node_path33.resolve)(job.workCwd, raw), protectedRoot) : null;
@@ -115889,7 +116052,6 @@ var init_job = __esm({
         const shutdown = new Promise((r) => {
           onShutdown = r;
         });
-        const toolNames = /* @__PURE__ */ new Map();
         let eventsFd = null;
         const onEvent = (event) => {
           if (eventsFd !== null) {
@@ -115902,20 +116064,13 @@ var init_job = __esm({
           const data = event.data ?? {};
           switch (event.type) {
             case "tool.execution_start":
-              if (typeof data.toolCallId === "string" && typeof data.toolName === "string") toolNames.set(data.toolCallId, data.toolName);
+              sandbox.toolStarted(data);
               break;
             case "tool.execution_complete": {
-              const id = String(data.toolCallId ?? "");
-              const name = toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
-              toolNames.delete(id);
-              const sbx = job.sandbox;
-              const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-              if (sbx && escaped) {
-                sbx.unsandboxedCalls += 1;
-                if (sbx.mode !== "detect-only" && !job.stopReason) {
-                  job.error = `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-                  job.requestStop("sandbox-escaped");
-                }
+              const escaped = sandbox.toolCompleted(data);
+              if (escaped && !job.stopReason) {
+                job.error = escaped;
+                job.requestStop("sandbox-escaped");
               }
               break;
             }
@@ -115960,14 +116115,14 @@ var init_job = __esm({
           eventsFd = openAppendExclusive(job.eventsPath);
         } catch (err) {
           if (scrubDir) (0, import_node_fs26.rmSync)(scrubDir, { recursive: true, force: true });
-          job.error = `events log ${job.eventsPath}: ${errText3(err)}`;
+          job.error = `events log ${job.eventsPath}: ${errText4(err)}`;
           return "failed";
         }
         let session = null;
         let pid;
         let outcome = "failed";
         try {
-          await withTimeout3(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
+          await withTimeout4(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
           pid = runtimePid(client);
           job.pid = pid;
           if (pid) {
@@ -115977,12 +116132,13 @@ var init_job = __esm({
             });
             await Promise.race([reading, job.stopped]);
           }
-          const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded2, pluginRoot);
+          const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded2);
+          job.sandbox = sandbox.state;
           const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused()) {
-            const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
             const shell = sandboxConfig !== null;
-            session = await withTimeout3(client.createSession({
+            session = await withTimeout4(client.createSession({
               onPermissionRequest,
               onEvent,
               pluginDirectories: [pluginRoot],
@@ -115996,14 +116152,14 @@ var init_job = __esm({
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
             job.sessionId = session.sessionId;
-            if (sandboxConfig) await this.confirmSandbox(job, session, sandboxConfig, atCreate);
+            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
           } else if (session && !job.stopReason) {
             job.status = "running";
             sent = true;
-            await withTimeout3(session.send({ prompt: job.prompt }), RPC_TIMEOUT_MS2, "send()");
+            await withTimeout4(session.send({ prompt: job.prompt }), RPC_TIMEOUT_MS2, "send()");
             const winner = await Promise.race([idle.then(() => "idle"), job.stopped.then(() => "stop")]);
             if (winner === "stop") {
               const s = session;
@@ -116011,7 +116167,7 @@ var init_job = __esm({
                 onIdle = r;
               });
               try {
-                await withTimeout3(s.abort(), RPC_TIMEOUT_MS2, "abort()");
+                await withTimeout4(s.abort(), RPC_TIMEOUT_MS2, "abort()");
               } catch {
               }
               await settleWithin(idle, ABORT_GRACE_MS2);
@@ -116022,16 +116178,16 @@ var init_job = __esm({
           if (job.stopReason === "timeout") job.error = `timed out after ${job.timeoutMs} ms; the turn was aborted`;
         } catch (err) {
           outcome = job.stopReason === "cancelled" ? "cancelled" : "failed";
-          job.error = errText3(err);
+          job.error = errText4(err);
         } finally {
           if (session) {
             try {
-              await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS2, "disconnect()");
+              await withTimeout4(session.disconnect(), RPC_TIMEOUT_MS2, "disconnect()");
             } catch {
             }
             await settleWithin(shutdown, SHUTDOWN_GRACE_MS2);
             try {
-              await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS2, "deleteSession()");
+              await withTimeout4(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS2, "deleteSession()");
             } catch {
             }
           }
@@ -116045,14 +116201,14 @@ var init_job = __esm({
           }
           let stopped = false;
           try {
-            await withTimeout3(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
+            await withTimeout4(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
             stopped = true;
           } catch {
           }
           if (!stopped) {
             if (pid && deps.isAlive(pid)) deps.killTree(pid);
             try {
-              await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
+              await withTimeout4(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
             } catch {
             }
           }
@@ -116070,97 +116226,6 @@ var init_job = __esm({
           }
         }
         return outcome;
-      }
-      /**
-       * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-       * when the host supports the sandbox (the mode stays the unconfirmed one
-       * until confirmSandbox), else null with the final mode: `detect-only` when
-       * the sandbox is switched off, otherwise the fail-closed mode.
-       */
-      async decideSandbox(job, client, loaded2, pluginRoot) {
-        const { deps } = this;
-        let cliVersion = "unknown";
-        try {
-          const status = await withTimeout3(client.getStatus(), RPC_TIMEOUT_MS2, "getStatus()");
-          if (typeof status.version === "string") cliVersion = status.version;
-        } catch {
-        }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS2, { platform: deps.platform, ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {} });
-        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
-        const settings = job.sandboxSettings;
-        const off = !settings.enabled ? "sandbox.enabled is false" : deps.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-          if (job.profile === "review") {
-            job.sandbox = { ...base, mode: "read-only-no-shell", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-          } else {
-            job.sandbox = { ...base, mode: "detect-only", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-          }
-          return null;
-        }
-        const fallback = (reason) => {
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
-          if (job.sandbox.mode === "detect-only") job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-          if (job.sandbox.mode === "read-only-no-shell") job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-          fallback(host.reason ?? "the host does not support the sandbox");
-          return null;
-        }
-        const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
-        const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-        const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
-        try {
-          const commonGitDir = commonRaw ? (0, import_node_path33.resolve)(commonRaw) : (0, import_node_path33.resolve)(top, ".git");
-          const config2 = buildSandboxConfig(job.profile, {
-            worktree: (0, import_node_path33.resolve)(top),
-            commonGitDir,
-            ...gitDirRaw ? { gitDir: (0, import_node_path33.resolve)(gitDirRaw) } : {},
-            pluginRoot,
-            jobHome: job.home,
-            jobDir: job.jobDir,
-            realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
-            platform: deps.platform,
-            settings,
-            hostCommits: job.hostCommits,
-            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
-          }, host);
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: "not confirmed yet" };
-          return config2;
-        } catch (err) {
-          fallback(errText3(err));
-          return null;
-        }
-      }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-      async confirmSandbox(job, session, config2, atCreate) {
-        const sbx = job.sandbox;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, RPC_TIMEOUT_MS2);
-        if (!why) {
-          sbx.applied = atCreate ? "create" : "options.update";
-          const enf = await readEnforcement(session, RPC_TIMEOUT_MS2);
-          if (typeof enf === "string") why = enf;
-          else {
-            sbx.enforcement = enf;
-            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
-          }
-        }
-        if (!why) {
-          sbx.mode = "enforced";
-          delete sbx.reason;
-          return;
-        }
-        sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === "read-only-no-shell") {
-          job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-          try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS2, "options.update()");
-          } catch {
-          }
-        }
       }
       snapshot(job) {
         const usage = {
@@ -119735,7 +119800,7 @@ function commitLaneWork(input) {
       try {
         git6(["read-tree", input.start]);
       } catch (err) {
-        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText4(err)}` };
+        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText5(err)}` };
       }
       return { ok: false, refusal, reason };
     };
@@ -119781,7 +119846,7 @@ function commitLaneWork(input) {
     }
     return { ok: true, sha: sha2, files, notes };
   } catch (err) {
-    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText4(err)}` };
+    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText5(err)}` };
   }
 }
 function conflictFixStart(repoRoot3, head, base, message2) {
@@ -119803,7 +119868,7 @@ function conflictFixStart(repoRoot3, head, base, message2) {
   if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
   return { sha: sha2, conflicted: [...new Set(conflicted)] };
 }
-var import_node_fs27, import_node_path34, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS4, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, LANE_PROTECTED_PATHS, errText4, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
+var import_node_fs27, import_node_path34, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS4, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, LANE_PROTECTED_PATHS, errText5, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
 var init_lane_commit = __esm({
   "src/factory/run/lane-commit.ts"() {
     "use strict";
@@ -119820,7 +119885,7 @@ var init_lane_commit = __esm({
     MAX_WALK_ENTRIES = 2e5;
     MAX_WALK_DEPTH = 64;
     LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
-    errText4 = (err) => err instanceof Error ? err.message : String(err);
+    errText5 = (err) => err instanceof Error ? err.message : String(err);
     CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
     TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
     ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
@@ -120423,7 +120488,7 @@ function engineExec(o, inner) {
   const options = { ...f.options, entry: entry2 };
   return { exec: exec3, forge: createForge(exec3, o.root, f.config, options) };
 }
-function errText5(error2) {
+function errText6(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
 }
 function oneLine2(text4, max = MAX_TITLE_CHARS) {
@@ -120896,7 +120961,7 @@ var init_engine = __esm({
           try {
             res = sync.tracker.setProgress(this.o.issue, stage, mapping);
           } catch (error2) {
-            res = { ok: false, detail: errText5(error2) };
+            res = { ok: false, detail: errText6(error2) };
           }
           if (res.ok) {
             this.save((x) => ({ ...x, trackerStage: stage }));
@@ -121118,7 +121183,7 @@ var init_engine = __esm({
           try {
             aside = this.ledger.restore(error2.paths, stamp);
           } catch (e) {
-            restoreNote = ` (restoring the engine's copies failed: ${errText5(e)})`;
+            restoreNote = ` (restoring the engine's copies failed: ${errText6(e)})`;
           }
           const s = this.ownState();
           if (!s) {
@@ -121160,11 +121225,11 @@ var init_engine = __esm({
             this.state = sealed;
           } catch (e) {
             this.state = parked;
-            this.o.warn?.(`omg factory run: could not write the state-tampered park: ${errText5(e)}`);
+            this.o.warn?.(`omg factory run: could not write the state-tampered park: ${errText6(e)}`);
           }
           return this.parked(this.state.gate);
         } catch (e) {
-          return { exitCode: EXIT_AWAITING_HUMAN, phase: this.ownState()?.phase ?? null, state: this.ownState(), message: `awaiting-human: state-tampered: ${changed} changed outside the engine, and parking failed: ${errText5(e)}. Check the state files by hand, then rerun ${this.resume}.` };
+          return { exitCode: EXIT_AWAITING_HUMAN, phase: this.ownState()?.phase ?? null, state: this.ownState(), message: `awaiting-human: state-tampered: ${changed} changed outside the engine, and parking failed: ${errText6(e)}. Check the state files by hand, then rerun ${this.resume}.` };
         }
       }
       cancelWanted(s) {
@@ -121200,8 +121265,8 @@ var init_engine = __esm({
             if (!after.gate && after.phase !== phase && !TERMINAL_FACTORY_PHASES.includes(after.phase)) this.progress.emit(phase, "ok", `-> ${after.phase}`, this.fields());
           } catch (error2) {
             if (error2 instanceof StateTamperedError) return this.onTampered(error2);
-            this.progress.emit(phase, "fail", errText5(error2), this.fields());
-            return { exitCode: 1, phase, state: this.state, message: `factory run step ${phase} failed: ${errText5(error2)} (rerun ${this.resume} to resume)` };
+            this.progress.emit(phase, "fail", errText6(error2), this.fields());
+            return { exitCode: 1, phase, state: this.state, message: `factory run step ${phase} failed: ${errText6(error2)} (rerun ${this.resume} to resume)` };
           }
         }
       }
@@ -121236,7 +121301,7 @@ var init_engine = __esm({
           this.save((x) => ({ ...x, gateComments: [...x.gateComments ?? [], tag] }));
           return true;
         } catch (error2) {
-          this.o.warn?.(`omg factory run: the ${target} comment for ${key} failed: ${errText5(error2)}`);
+          this.o.warn?.(`omg factory run: the ${target} comment for ${key} failed: ${errText6(error2)}`);
           return false;
         }
       }
@@ -121712,7 +121777,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           loaded2 = load({ exec: this.exec, root: this.o.root, base: this.state.base, baseSha: view.baseRefOid, repoUrl: this.state.repoUrl, warn: (m) => this.o.warn?.(m) });
         } catch (error2) {
-          throw new FactoryStepError(`the trusted ship config could not be loaded: ${errText5(error2)}`);
+          throw new FactoryStepError(`the trusted ship config could not be loaded: ${errText6(error2)}`);
         }
         if (tracking() !== before) this.rebaseRecheck();
         this.gateCfg = { baseSha: view.baseRefOid, loaded: loaded2 };
@@ -121735,7 +121800,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head] });
         } catch (error2) {
-          throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}: ${errText5(error2)}`);
+          throw new FactoryStepError(`could not discard the engine's prepare checkout ${path30}: ${errText6(error2)}`);
         }
         this.save((x) => {
           const { checkoutHead: _c, ...rest } = x;
@@ -121792,7 +121857,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
         } catch (error2) {
-          throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText5(error2)}`);
+          throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText6(error2)}`);
         }
         (0, import_fs158.mkdirSync)((0, import_path185.dirname)(path30), { recursive: true });
         this.run(["worktree", "add", "-B", branch, path30, head]);
@@ -121841,7 +121906,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (now2 !== before.refs[tracking] && now2 !== baseSha) problems.push(`ref ${tracking} is at ${now2?.slice(0, 12) ?? "nothing"}, not GitHub's base ${baseSha.slice(0, 12)}`);
           if (!after.refs[branchRef]) problems.push(`the checkout's branch ${branchRef} is gone`);
         } catch (error2) {
-          problems = [`the post-prepare snapshot failed: ${errText5(error2)}`];
+          problems = [`the post-prepare snapshot failed: ${errText6(error2)}`];
         }
         if (problems.length > 0) {
           this.gate("lane-tampered", `prepare's checks (the PR's own code) changed shared git state outside the checkout's worktree entry, its branch and origin/${this.state.base}, so nothing is pushed; inspect and remove ${path30} by hand: ${problems.slice(0, 5).join("; ")}`);
@@ -121918,7 +121983,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           merged = conflictFixStart(this.o.root, head, baseSha, `factory conflict-fix: merge ${baseSha.slice(0, 12)} into ${head.slice(0, 12)} (unresolved)`);
         } catch (error2) {
-          throw new FactoryStepError(`the engine merge for the conflict-fix lane failed: ${errText5(error2)}`);
+          throw new FactoryStepError(`the engine merge for the conflict-fix lane failed: ${errText6(error2)}`);
         }
         const conflicted = merged.conflicted.length > 0 ? merged.conflicted : this.state.conflicts ?? [];
         const out = await this.runLane("conflict-fix", merged.sha, "write", conflictFixPrompt(this.state, conflicted), key);
@@ -122059,7 +122124,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           const newWorktree = result.worktree ? { path: result.worktree } : result.remoteId ? { id: result.remoteId } : void 0;
           return { after, problems: compareSnapshots(before, after, allowed, newWorktree ? { newWorktree } : {}) };
         } catch (error2) {
-          return { problems: [`the post-lane snapshot failed: ${errText5(error2)}`] };
+          return { problems: [`the post-lane snapshot failed: ${errText6(error2)}`] };
         }
       }
       /** Park after a lane changed shared git state; a review lane's verdict is discarded. */
@@ -122088,7 +122153,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           const own2 = this.state.prepared !== void 0 && now2.refs[tracking] === this.state.prepared.head;
           problems = compareSnapshots(own2 ? { ...r.snapshot, refs: { ...r.snapshot.refs, [tracking]: now2.refs[tracking] } } : r.snapshot, now2);
         } catch (error2) {
-          problems = [`the snapshot failed: ${errText5(error2)}`];
+          problems = [`the snapshot failed: ${errText6(error2)}`];
         }
         if (problems.length === 0) return false;
         this.ledger.setRecheck(void 0);
@@ -122174,7 +122239,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
               ...lane.jobId ? { newWorktree: { id: lane.jobId } } : {}
             });
           } catch (error2) {
-            problems = [`the snapshot failed: ${errText5(error2)}`];
+            problems = [`the snapshot failed: ${errText6(error2)}`];
           }
         }
         const note = `${reason}${childNote}`;
@@ -122211,7 +122276,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (st === "dead" || st === "mismatch") return { gone: true };
           return { gone: false, live: false, why: `whether its Copilot child pid ${p.pid} still runs cannot be determined` };
         } catch (error2) {
-          return { gone: false, live: false, why: `the check of its Copilot child pid ${p.pid} failed (${errText5(error2)})` };
+          return { gone: false, live: false, why: `the check of its Copilot child pid ${p.pid} failed (${errText6(error2)})` };
         }
       }
       /** The user cancelled while a lane ran: stop it, check it if it confirmed its end, record the result. */
@@ -122231,7 +122296,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             note = `cancelled; the cancel was not confirmed (state ${c.result.state}), so the tamper check was skipped`;
           }
         } catch (error2) {
-          note = `cancelled; the cancel failed (${errText5(error2)}), so the tamper check was skipped`;
+          note = `cancelled; the cancel failed (${errText6(error2)}), so the tamper check was skipped`;
         }
         this.ledger.dropBaseline(laneId);
         this.updateLane(laneId, { status: "cancelled", endedAt: this.iso(), usage, note, ...tampered && kind === "review" ? { verdict: "invalid" } : {} });
@@ -122262,7 +122327,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
         } catch (error2) {
-          throw new FactoryStepError(`the pre-lane snapshot failed: ${errText5(error2)}`);
+          throw new FactoryStepError(`the pre-lane snapshot failed: ${errText6(error2)}`);
         }
         let cap = runCap;
         let settleHeal = (_credits) => {
@@ -122278,7 +122343,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             try {
               heal.settle?.(credits);
             } catch (error2) {
-              this.o.warn?.(`omg factory run: the heal credit reservation was not settled (it stays at the lane cap): ${errText5(error2)}`);
+              this.o.warn?.(`omg factory run: the heal credit reservation was not settled (it stays at the lane cap): ${errText6(error2)}`);
             }
           };
         }
@@ -122308,9 +122373,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           }));
         } catch (error2) {
           this.ledger.dropBaseline(id);
-          this.updateLane(id, { status: "failed", note: `start failed: ${errText5(error2)}`, endedAt: this.iso() });
+          this.updateLane(id, { status: "failed", note: `start failed: ${errText6(error2)}`, endedAt: this.iso() });
           settleHeal(0);
-          this.laneFailed(retryKey, kind, `lane ${id} could not start: ${errText5(error2)}`);
+          this.laneFailed(retryKey, kind, `lane ${id} could not start: ${errText6(error2)}`);
           return { kind: "stopped" };
         }
         this.updateLane(id, { jobId: remoteId });
@@ -126668,7 +126733,7 @@ ${FIX_REVIEW_INSTRUCTION}` : input.prompt;
 function defaultSharedDir(env2, platform = process.platform) {
   return platform === "win32" ? env2.PUBLIC || "C:\\Users\\Public" : "/var/tmp";
 }
-function withTimeout4(promise, ms, label2) {
+function withTimeout5(promise, ms, label2) {
   let timer;
   return Promise.race([
     promise,
@@ -126720,7 +126785,7 @@ async function runCanary(session, probe) {
   }
   probe.called = true;
   try {
-    const r = await withTimeout4(shell.executeUserRequested.call(shell, { requestId: (0, import_crypto55.randomUUID)(), command: probe.command }), CANARY_RPC_TIMEOUT_MS, "shell.executeUserRequested()");
+    const r = await withTimeout5(shell.executeUserRequested.call(shell, { requestId: (0, import_crypto55.randomUUID)(), command: probe.command }), CANARY_RPC_TIMEOUT_MS, "shell.executeUserRequested()");
     probe.result = {
       success: r?.success === true,
       exitCode: typeof r?.exitCode === "number" ? r.exitCode : null,
@@ -126729,7 +126794,7 @@ async function runCanary(session, probe) {
     };
     if (typeof r?.error === "string" && r.error) probe.error = r.error;
   } catch (err) {
-    probe.error = errText6(err);
+    probe.error = errText7(err);
   }
 }
 async function probeSandboxHost(input, cwd2) {
@@ -126740,7 +126805,7 @@ async function probeSandboxHost(input, cwd2) {
   try {
     loaded2 = await defaultCopilotRunDeps(env2).loadSdk();
   } catch (err) {
-    return unsupported(`loading the SDK failed: ${errText6(err)}`);
+    return unsupported(`loading the SDK failed: ${errText7(err)}`);
   }
   if (!loaded2) return unsupported("the @github/copilot-sdk package is not installed");
   const { CopilotClient, RuntimeConnection } = loaded2.module;
@@ -126750,13 +126815,13 @@ async function probeSandboxHost(input, cwd2) {
     workingDirectory: cwd2
   });
   try {
-    await withTimeout4(client.start(), CANARY_RPC_TIMEOUT_MS, "client.start()");
+    await withTimeout5(client.start(), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
   } catch (err) {
-    return unsupported(`the host probe could not start the runtime: ${errText6(err)}`);
+    return unsupported(`the host probe could not start the runtime: ${errText7(err)}`);
   } finally {
     try {
-      await withTimeout4(client.stop(), CANARY_RPC_TIMEOUT_MS, "client.stop()");
+      await withTimeout5(client.stop(), CANARY_RPC_TIMEOUT_MS, "client.stop()");
     } catch {
       try {
         await client.forceStop?.();
@@ -126787,7 +126852,7 @@ function commitProbe(repo) {
   try {
     (0, import_fs171.writeFileSync)((0, import_path198.join)(repo, SANDBOX_PROBE_SCRIPT), SANDBOX_PROBE_SOURCE);
   } catch (err) {
-    return { error: `probe script: ${errText6(err)}` };
+    return { error: `probe script: ${errText7(err)}` };
   }
   for (const args of [["add", SANDBOX_PROBE_SCRIPT], ["commit", "-q", "-m", "sandbox probe"]]) {
     const r = defaultExec("git", args, { cwd: repo });
@@ -126966,7 +127031,7 @@ async function runSandboxLaneScenario(input) {
       events[role] = laneEvents(r);
       if (r.state !== "completed") errors.push(`${role} lane ended ${r.state}${r.error ? `: ${excerpt(r.error, 200)}` : ""}`);
     } catch (err) {
-      errors.push(`${role} lane: ${excerpt(errText6(err), 200)}`);
+      errors.push(`${role} lane: ${excerpt(errText7(err), 200)}`);
     }
   };
   let evidence;
@@ -127037,7 +127102,7 @@ async function runSandboxLaneScenario(input) {
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto55, import_fs171, import_http2, import_os35, import_path198, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote2;
+var import_crypto55, import_fs171, import_http2, import_os35, import_path198, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText7, quote2;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
@@ -127080,7 +127145,7 @@ var init_copilot_sandbox_lane_scenario = __esm({
       "console.log('OMG_SANDBOX_PROBE ' + JSON.stringify(out));",
       ""
     ].join("\n");
-    errText6 = (err) => err instanceof Error ? err.message : String(err);
+    errText7 = (err) => err instanceof Error ? err.message : String(err);
     quote2 = (p) => `"${p}"`;
   }
 });
@@ -128337,7 +128402,7 @@ __export(sdk_host_exports, {
   urlScopedExtraHeaderKeys: () => urlScopedExtraHeaderKeys,
   workerGitHubToken: () => workerGitHubToken
 });
-function withTimeout5(promise, ms, label2) {
+function withTimeout6(promise, ms, label2) {
   let timer;
   return Promise.race([
     promise,
@@ -128525,17 +128590,17 @@ async function probeSession(s) {
   const out = { at: (/* @__PURE__ */ new Date()).toISOString() };
   try {
     const tools = s.rpc.tools;
-    if (tools?.initializeAndValidate) await withTimeout5(tools.initializeAndValidate(), RPC_TIMEOUT_MS3, "tools.initializeAndValidate");
-    const meta = tools?.getCurrentMetadata ? await withTimeout5(tools.getCurrentMetadata(), RPC_TIMEOUT_MS3, "tools.getCurrentMetadata") : null;
+    if (tools?.initializeAndValidate) await withTimeout6(tools.initializeAndValidate(), RPC_TIMEOUT_MS3, "tools.initializeAndValidate");
+    const meta = tools?.getCurrentMetadata ? await withTimeout6(tools.getCurrentMetadata(), RPC_TIMEOUT_MS3, "tools.getCurrentMetadata") : null;
     const list2 = meta?.tools ?? [];
     out.tools = list2.map((t) => t.name).filter(Boolean).sort();
   } catch (err) {
-    out.tools_error = errText7(err);
+    out.tools_error = errText8(err);
   }
   try {
-    out.mcp = await withTimeout5(s.rpc.mcp.list(), RPC_TIMEOUT_MS3, "mcp.list");
+    out.mcp = await withTimeout6(s.rpc.mcp.list(), RPC_TIMEOUT_MS3, "mcp.list");
   } catch (err) {
-    out.mcp_error = errText7(err);
+    out.mcp_error = errText8(err);
   }
   return out;
 }
@@ -128543,14 +128608,14 @@ async function sessionOffersTool(s, name) {
   const tools = s.rpc.tools;
   if (!tools?.getCurrentMetadata) return null;
   const names = async () => {
-    const meta = await withTimeout5(tools.getCurrentMetadata(), RPC_TIMEOUT_MS3, "tools.getCurrentMetadata");
+    const meta = await withTimeout6(tools.getCurrentMetadata(), RPC_TIMEOUT_MS3, "tools.getCurrentMetadata");
     const list2 = meta?.tools;
     return Array.isArray(list2) ? list2.map((t) => t?.name) : [];
   };
   try {
     let offered = await names();
     if (offered.length === 0 && tools.initializeAndValidate) {
-      await withTimeout5(tools.initializeAndValidate(), RPC_TIMEOUT_MS3, "tools.initializeAndValidate");
+      await withTimeout6(tools.initializeAndValidate(), RPC_TIMEOUT_MS3, "tools.initializeAndValidate");
       offered = await names();
     }
     return offered.length === 0 ? null : offered.includes(name);
@@ -128619,9 +128684,9 @@ async function runSdkHost(spec, deps) {
       recordedUsage = stamp;
       return true;
     } catch (err) {
-      const busy2 = errText7(err).startsWith("Failed to acquire file lock");
+      const busy2 = errText8(err).startsWith("Failed to acquire file lock");
       if (!busy2) {
-        log3(`budget ledger write failed: ${errText7(err)}`);
+        log3(`budget ledger write failed: ${errText8(err)}`);
         recordedUsage = stamp;
       }
       return !busy2;
@@ -128636,7 +128701,7 @@ async function runSdkHost(spec, deps) {
       await writeSessionJson(files.session, session);
     } catch (err) {
       dirty = true;
-      log3(`session write failed: ${errText7(err)}`);
+      log3(`session write failed: ${errText8(err)}`);
     }
   };
   const mark = (stamp) => {
@@ -128663,7 +128728,7 @@ async function runSdkHost(spec, deps) {
     try {
       await atomicWriteJson(`${attempt.startedPath}.terminal`, record3);
     } catch (err) {
-      log3(`terminal write failed: ${errText7(err)}`);
+      log3(`terminal write failed: ${errText8(err)}`);
     }
     if (cleanupVerified && (0, import_node_fs29.existsSync)(`${attempt.startedPath}.termination-request`)) {
       await writeExclusive(`${attempt.startedPath}.termination-complete`, {
@@ -128837,7 +128902,7 @@ async function runSdkHost(spec, deps) {
       builderLoaded = build !== null;
       inProcess = build ? build(loaded2.module, spec.mcp_server, excludedTools, env2.OMC_DISABLE_TOOLS) : null;
     } catch (err) {
-      log3(`in-process tools failed to load: ${errText7(err)}`);
+      log3(`in-process tools failed to load: ${errText8(err)}`);
     }
     if (!inProcess) log3(`in-process tools unavailable; using the ${spec.mcp_server} MCP server`);
   }
@@ -128847,13 +128912,13 @@ async function runSdkHost(spec, deps) {
   const guards = [];
   if (builderLoaded && deps.processEvents) {
     guards.push(["uncaughtException", (err) => {
-      crashed = errText7(err);
+      crashed = errText8(err);
       session.last_error = `in-process tool crash: ${crashed}`.slice(0, 500);
       log3(`uncaughtException: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
       dirty = true;
     }]);
     guards.push(["unhandledRejection", (reason) => {
-      session.last_error = `unhandled rejection: ${errText7(reason)}`.slice(0, 500);
+      session.last_error = `unhandled rejection: ${errText8(reason)}`.slice(0, 500);
       log3(`unhandledRejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`);
       dirty = true;
     }]);
@@ -128866,7 +128931,7 @@ async function runSdkHost(spec, deps) {
   const removeGuards = () => {
     for (const [event, handler] of guards) deps.processEvents?.off(event, handler);
   };
-  const createWith = (tools) => withTimeout5(client.createSession({
+  const createWith = (tools) => withTimeout6(client.createSession({
     onPermissionRequest,
     onEvent,
     pluginDirectories: [spec.plugin_root],
@@ -128879,7 +128944,7 @@ async function runSdkHost(spec, deps) {
     ...spec.model ? { model: spec.model } : {}
   }), RPC_TIMEOUT_MS3, "createSession()");
   try {
-    await withTimeout5(client.start(), START_TIMEOUT_MS3, "client.start()");
+    await withTimeout6(client.start(), START_TIMEOUT_MS3, "client.start()");
     session.runtime_pid = runtimePid(client) ?? null;
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark("client_started_at");
@@ -128893,11 +128958,11 @@ async function runSdkHost(spec, deps) {
         const stale = sessionRef;
         sessionRef = null;
         try {
-          await withTimeout5(stale.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+          await withTimeout6(stale.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
         } catch {
         }
         try {
-          await withTimeout5(client.deleteSession(stale.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+          await withTimeout6(client.deleteSession(stale.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
         } catch {
         }
         inProcess = null;
@@ -128918,11 +128983,11 @@ async function runSdkHost(spec, deps) {
     const pid2 = session.runtime_pid ?? runtimePid(client);
     if (pid2 && deps.isAlive(pid2)) deps.killTree(pid2);
     try {
-      await withTimeout5(client.forceStop?.() ?? Promise.resolve(), 5e3, "forceStop()");
+      await withTimeout6(client.forceStop?.() ?? Promise.resolve(), 5e3, "forceStop()");
     } catch {
     }
     removeGuards();
-    return fail7("start_failed", errText7(err));
+    return fail7("start_failed", errText8(err));
   }
   const queue = [];
   let offset = 0;
@@ -128941,7 +129006,7 @@ async function runSdkHost(spec, deps) {
         try {
           await atomicWriteJson(files.shutdownAck, { status: "accept", reason: "sdk_host_shutdown", updated_at: (/* @__PURE__ */ new Date()).toISOString() });
         } catch (err) {
-          log3(`shutdown ack failed: ${errText7(err)}`);
+          log3(`shutdown ack failed: ${errText8(err)}`);
         }
         stop = "graceful";
       } else if (entry2.kind === "stop") {
@@ -128976,11 +129041,11 @@ async function runSdkHost(spec, deps) {
       session.delivered.push(next.id);
       mark("first_send_at");
       try {
-        await withTimeout5(s.send({ prompt: next.text }), RPC_TIMEOUT_MS3, "send()");
+        await withTimeout6(s.send({ prompt: next.text }), RPC_TIMEOUT_MS3, "send()");
       } catch (err) {
         busy = false;
         session.state = "idle";
-        session.last_error = `send failed: ${errText7(err)}`;
+        session.last_error = `send failed: ${errText8(err)}`;
       }
     }
     await flush();
@@ -128992,7 +129057,7 @@ async function runSdkHost(spec, deps) {
   if (stop === "hard") {
     if (pid && deps.isAlive(pid)) deps.killTree(pid);
     try {
-      await withTimeout5(client.forceStop?.() ?? Promise.resolve(), 5e3, "forceStop()");
+      await withTimeout6(client.forceStop?.() ?? Promise.resolve(), 5e3, "forceStop()");
     } catch {
     }
   } else {
@@ -129004,24 +129069,24 @@ async function runSdkHost(spec, deps) {
       await Promise.race([settled, sleep10(ABORT_GRACE_MS3)]);
     }
     try {
-      await withTimeout5(s.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+      await withTimeout6(s.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
     } catch {
     }
     await Promise.race([shutdownEvent, sleep10(SHUTDOWN_GRACE_MS3)]);
     try {
-      await withTimeout5(client.deleteSession(s.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+      await withTimeout6(client.deleteSession(s.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
     } catch {
     }
     let stopped = false;
     try {
-      await withTimeout5(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+      await withTimeout6(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
       stopped = true;
     } catch {
     }
     if (!stopped) {
       if (pid && deps.isAlive(pid)) deps.killTree(pid);
       try {
-        await withTimeout5(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "forceStop()");
+        await withTimeout6(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "forceStop()");
       } catch {
       }
     }
@@ -129030,9 +129095,9 @@ async function runSdkHost(spec, deps) {
   const runtimeGone = !pid || !deps.isAlive(pid);
   if (inProcess) {
     try {
-      await withTimeout5(inProcess.cleanup(), TOOL_CLEANUP_TIMEOUT_MS, "in-process tool cleanup");
+      await withTimeout6(inProcess.cleanup(), TOOL_CLEANUP_TIMEOUT_MS, "in-process tool cleanup");
     } catch (err) {
-      log3(`in-process tool cleanup: ${errText7(err)}`);
+      log3(`in-process tool cleanup: ${errText8(err)}`);
     }
   }
   removeGuards();
@@ -129084,7 +129149,7 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs29, import_promises32, import_node_crypto16, import_node_child_process17, import_node_path35, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TimeoutError2, sleep10, errText7, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs29, import_promises32, import_node_crypto16, import_node_child_process17, import_node_path35, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TimeoutError2, sleep10, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
@@ -129117,7 +129182,7 @@ var init_sdk_host = __esm({
     sleep10 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    errText7 = (err) => err instanceof Error ? err.message : String(err);
+    errText8 = (err) => err instanceof Error ? err.message : String(err);
     WORKER_CREDENTIAL_RESET = ["GH_CONFIG_DIR", "AZURE_CONFIG_DIR", "GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE"];
     WORKER_GIT_CONFIG = [
       ["credential.helper", ""],

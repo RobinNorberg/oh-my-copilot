@@ -298,15 +298,6 @@ export declare class CopilotRunManager {
     private recordBudget;
     /** Drive the session to its end and tear it down; returns the final status. */
     private run;
-    /**
-     * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-     * when the host supports the sandbox (the mode stays the unconfirmed one
-     * until confirmSandbox), else null with the final mode: `detect-only` when
-     * the sandbox is switched off, otherwise the fail-closed mode.
-     */
-    private decideSandbox;
-    /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-    private confirmSandbox;
     private snapshot;
 }
 //# sourceMappingURL=job.d.ts.map
