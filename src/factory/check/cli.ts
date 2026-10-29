@@ -8,8 +8,9 @@
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
  * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
- * and `git ls-remote origin refs/heads/factory/<name>`. az goes through the factory guard (fail
- * closed until the ADO guard context lands) and only as GET while not marking.
+ * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
+ * runGuardedAdo (fail closed without an ADO guard context), and while not
+ * marking only as a GET or the wit.wiql.POST query.
  *
  * Exit codes: 0 checked (whatever the buckets; a declined `--mark` writes
  * nothing), 1 a tracker read or a marker write failed, 2 usage (bad id,
@@ -24,7 +25,7 @@ import { factoryForgeOptions } from '../run/forge-roots.js';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
-import type { AdoGuardContext } from '../../forge/ado/guard.js';
+import { isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckEnv, type CheckResult } from './score.js';
@@ -65,7 +66,7 @@ const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', '
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
- * and non-GET az calls pass.
+ * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
 export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
@@ -81,10 +82,14 @@ export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ad
       if (!read) refuse('not one of the read-only git shapes omg factory check runs');
       // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.
       assertFactoryCommand(cmd, args, [], opts?.env);
-    } else if (file === 'az' || file === 'python') {
-      const at = args.indexOf('--http-method');
-      if (mark === undefined && at >= 0 && args[at + 1]?.toUpperCase() !== 'GET') refuse('only reads run without a confirmed --mark');
-      assertFactoryCommand(cmd, args, [], opts?.env, ado());
+    } else if (isAdoCommand(cmd)) {
+      // Reads: a GET, or the WIQL query the area-tag and board-column sources POST (wit.wiql.POST; the guard validates its body).
+      const flag = (f: string) => { const at = args.indexOf(f); return at >= 0 ? args[at + 1] : undefined; };
+      const method = flag('--http-method')?.toUpperCase();
+      const wiql = method === 'POST' && flag('--area')?.toLowerCase() === 'wit' && flag('--resource')?.toLowerCase() === 'wiql';
+      if (mark === undefined && method !== undefined && method !== 'GET' && !wiql) refuse('only reads run without a confirmed --mark');
+      // The factory guard's path: az gets the guard's own copy of a validated --in-file body, never the caller's file.
+      return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', (why) => new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`));
     } else {
       refuse('not a command omg factory check runs');
     }

@@ -90,6 +90,32 @@ describe('loadFactoryForgeConfig', () => {
         const user = { factory: { forge: { azureDevOps: { org: 'fabrikam' } } } };
         expect(() => loadFactoryForgeConfig(exec, '/repo', 'dev', user, undefined)).toThrow(/config can pin the forge, never redirect it/);
     });
+    it('never fetches or reads a base outside ship.trustedBases: its progress states are not allowed', () => {
+        const calls = [];
+        const sha = 'd'.repeat(40);
+        const committed = JSON.stringify({ factory: { progress: { stages: { building: { state: 'Closed' }, done: { state: 'Removed' } } } } });
+        const exec = (cmd, args) => {
+            calls.push(`${cmd} ${args.join(' ')}`);
+            const a = args.join(' ');
+            if (a === 'remote get-url origin')
+                return ok(`${ADO_URL}\n`);
+            if (a.startsWith('rev-parse'))
+                return ok(`${sha}\n`);
+            if (a.startsWith('show'))
+                return ok(committed);
+            return ok();
+        };
+        // ship.base from the working tree names a lane's branch; the user config trusts only the defaults.
+        const loaded = loadFactoryForgeConfig(exec, '/repo', 'lane-branch', undefined, undefined);
+        expect(calls).toEqual(['git remote get-url origin']);
+        expect(loaded.warnings[0]).toMatch(/base lane-branch is not in ship\.trustedBases \(dev, main, master\)/);
+        const states = Object.values(loaded.config.progress.stages).map((m) => m?.state);
+        expect(states).not.toContain('Closed');
+        expect(states).not.toContain('Removed');
+        // The same branch named in the user's trustedBases is read.
+        const trusted = loadFactoryForgeConfig(exec, '/repo', 'lane-branch', { ship: { trustedBases: ['lane-branch'] } }, undefined);
+        expect(trusted.config.progress.stages.building?.state).toBe('Closed');
+    });
 });
 describe('GitHub-only commands on an Azure DevOps origin', () => {
     let dir;

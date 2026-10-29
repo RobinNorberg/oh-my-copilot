@@ -77,11 +77,14 @@ export declare const BASE_CONFIG_PATH = ".copilot/omg.jsonc";
 export declare function readBaseFile(exec: Exec, cwd: string, commit: string, path: string): string | null;
 /**
  * Comparable identity of a repository URL: `ado:<org>/<project>/<repo>` for
- * an Azure DevOps URL (every form in ADO_URLS, escapes decoded),
+ * an Azure DevOps URL (every parseAzureDevOpsRepoUrl form, escapes decoded),
  * `gh:<host>/<owner>/<repo>` for any other https / ssh / scp-style URL
  * (case-insensitive, `.git` and a trailing `/` dropped), `path:<url>` for
  * anything else (a local path), so a local path can never equal a hosted
- * repository.
+ * repository. `invalid:<url>` for a URL whose authority names another host
+ * than git connects to (urlHostAgrees: `https://evil#@github.com/o/r`) or an
+ * Azure DevOps URL parseAzureDevOpsRepoUrl refuses (`a%2Fb/c`): it never
+ * equals a valid repository's identity.
  */
 export declare function repoIdentity(url: string): string;
 /**
@@ -146,6 +149,12 @@ export interface LoadedShipConfig extends ShipConfig {
     /** Base commit whose committed files were read (equal to GitHub's base sha); undefined when the base layer was skipped. */
     trustedBaseCommit?: string;
 }
+/**
+ * ship.trustedBases (SHIP_USER_ONLY_KEYS) of the user config at its default
+ * location (userConfigLayers().trustedUser), else the defaults: the only
+ * bases whose committed `.copilot/omg.jsonc` is read.
+ */
+export declare function resolveTrustedBases(trustedUser: unknown): string[];
 /**
  * Resolve the ship config for a run. Precedence:
  * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,

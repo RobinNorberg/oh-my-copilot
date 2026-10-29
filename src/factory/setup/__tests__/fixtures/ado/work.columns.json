@@ -1,0 +1,15 @@
+{
+  "provenance": "synthetic: board columns, shape of the Columns - List sample (REST 7.1)",
+  "route": "work.columns.GET",
+  "routeParameters": { "project": "Web", "team": "Web Team", "board": "Stories" },
+  "stdout": {
+    "count": 5,
+    "value": [
+      { "id": "c1", "name": "New", "columnType": "incoming" },
+      { "id": "c2", "name": "Ready", "columnType": "inProgress" },
+      { "id": "c3", "name": "Code Review", "columnType": "inProgress" },
+      { "id": "c4", "name": "Ready to merge", "columnType": "inProgress" },
+      { "id": "c5", "name": "Closed", "columnType": "outgoing" }
+    ]
+  }
+}

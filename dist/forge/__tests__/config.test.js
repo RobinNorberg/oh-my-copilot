@@ -23,6 +23,20 @@ describe('detectForgeRepo', () => {
     ])('%s', (url, want) => {
         expect(detectForgeRepo(url)).toEqual(want);
     });
+    it.each([
+        'https://contoso.visualstudio.com/DefaultCollection/Web/_git/web-app',
+        'https://user@contoso.visualstudio.com/Web/_git/web-app',
+        'contoso@vs-ssh.visualstudio.com:v3/contoso/Web/web-app',
+    ])('maps the legacy form %s to the dev.azure.com repository (as repoIdentity does)', (url) => {
+        expect(detectForgeRepo(url)).toEqual({ kind: 'azure-devops', host: 'dev.azure.com', owner: 'contoso', project: 'Web', name: 'web-app', url: 'https://dev.azure.com/contoso/Web/_git/web-app' });
+    });
+    it('refuses an escaped / in a segment and an ambiguous authority', () => {
+        expect(code(() => detectForgeRepo('https://dev.azure.com/a%2Fb/c/_git/r'))).toBe('forge-unsupported');
+        expect(code(() => detectForgeRepo('https://dev.azure.com/a/b%2Fc/_git/r'))).toBe('forge-unsupported');
+        expect(code(() => detectForgeRepo('https://dev.azure.com/a/b/_git/r%5Cx'))).toBe('forge-unsupported');
+        expect(code(() => detectForgeRepo('https://attacker.example#@dev.azure.com/victim/proj/_git/repo'))).toBe('forge-unsupported');
+        expect(code(() => detectForgeRepo('https://attacker.example#@github.com/o/r'))).toBe('forge-unsupported');
+    });
     it('refuses a remote that is neither GitHub nor Azure DevOps', () => {
         expect(code(() => detectForgeRepo('https://gitlab.com/acme/widgets'))).toBe('forge-unsupported');
         expect(code(() => detectForgeRepo('not a url'))).toBe('forge-unsupported');

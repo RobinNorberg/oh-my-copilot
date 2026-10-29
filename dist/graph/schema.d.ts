@@ -106,9 +106,9 @@ export declare const graphCommandNodeSchema: z.ZodObject<{
     title: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     title: string;
-    command: string;
     id: string;
     kind: "command";
+    command: string;
     timeout_ms: number;
     max_attempts: number;
     effect_policy: {
@@ -121,9 +121,9 @@ export declare const graphCommandNodeSchema: z.ZodObject<{
     };
 }, {
     title: string;
-    command: string;
     id: string;
     kind: "command";
+    command: string;
     timeout_ms: number;
     max_attempts: number;
     effect_policy: {
@@ -142,14 +142,14 @@ export declare const graphHumanApprovalNodeSchema: z.ZodObject<{
     title: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     title: string;
-    prompt: string;
     id: string;
     kind: "human-approval";
+    prompt: string;
 }, {
     title: string;
-    prompt: string;
     id: string;
     kind: "human-approval";
+    prompt: string;
 }>;
 export declare const graphJoinNodeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"join">;
@@ -260,9 +260,9 @@ export declare const graphNodeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObje
     title: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     title: string;
-    command: string;
     id: string;
     kind: "command";
+    command: string;
     timeout_ms: number;
     max_attempts: number;
     effect_policy: {
@@ -275,9 +275,9 @@ export declare const graphNodeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObje
     };
 }, {
     title: string;
-    command: string;
     id: string;
     kind: "command";
+    command: string;
     timeout_ms: number;
     max_attempts: number;
     effect_policy: {
@@ -295,14 +295,14 @@ export declare const graphNodeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObje
     title: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     title: string;
-    prompt: string;
     id: string;
     kind: "human-approval";
+    prompt: string;
 }, {
     title: string;
-    prompt: string;
     id: string;
     kind: "human-approval";
+    prompt: string;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"join">;
     fan_out_node_id: z.ZodString;
@@ -347,15 +347,15 @@ export declare const graphConditionalEdgeSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     id: string;
     kind: "conditional";
+    route: string;
     to: string;
     from: string;
-    route: string;
 }, {
     id: string;
     kind: "conditional";
+    route: string;
     to: string;
     from: string;
-    route: string;
 }>;
 export declare const graphFanOutEdgeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"fan_out">;
@@ -389,16 +389,16 @@ export declare const graphBackEdgeSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     id: string;
     kind: "back_edge";
+    route: string;
     to: string;
     from: string;
-    route: string;
     max_traversals: number;
 }, {
     id: string;
     kind: "back_edge";
+    route: string;
     to: string;
     from: string;
-    route: string;
     max_traversals: number;
 }>;
 export declare const graphEdgeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
@@ -425,15 +425,15 @@ export declare const graphEdgeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObje
 }, "strict", z.ZodTypeAny, {
     id: string;
     kind: "conditional";
+    route: string;
     to: string;
     from: string;
-    route: string;
 }, {
     id: string;
     kind: "conditional";
+    route: string;
     to: string;
     from: string;
-    route: string;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"fan_out">;
     branch_id: z.ZodString;
@@ -465,16 +465,16 @@ export declare const graphEdgeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObje
 }, "strict", z.ZodTypeAny, {
     id: string;
     kind: "back_edge";
+    route: string;
     to: string;
     from: string;
-    route: string;
     max_traversals: number;
 }, {
     id: string;
     kind: "back_edge";
+    route: string;
     to: string;
     from: string;
-    route: string;
     max_traversals: number;
 }>]>;
 export declare const graphDescriptorSchema: z.ZodObject<{
@@ -572,9 +572,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         title: z.ZodString;
     }, "strict", z.ZodTypeAny, {
         title: string;
-        command: string;
         id: string;
         kind: "command";
+        command: string;
         timeout_ms: number;
         max_attempts: number;
         effect_policy: {
@@ -587,9 +587,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         };
     }, {
         title: string;
-        command: string;
         id: string;
         kind: "command";
+        command: string;
         timeout_ms: number;
         max_attempts: number;
         effect_policy: {
@@ -607,14 +607,14 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         title: z.ZodString;
     }, "strict", z.ZodTypeAny, {
         title: string;
-        prompt: string;
         id: string;
         kind: "human-approval";
+        prompt: string;
     }, {
         title: string;
-        prompt: string;
         id: string;
         kind: "human-approval";
+        prompt: string;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"join">;
         fan_out_node_id: z.ZodString;
@@ -658,15 +658,15 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     }, "strict", z.ZodTypeAny, {
         id: string;
         kind: "conditional";
+        route: string;
         to: string;
         from: string;
-        route: string;
     }, {
         id: string;
         kind: "conditional";
+        route: string;
         to: string;
         from: string;
-        route: string;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"fan_out">;
         branch_id: z.ZodString;
@@ -698,16 +698,16 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     }, "strict", z.ZodTypeAny, {
         id: string;
         kind: "back_edge";
+        route: string;
         to: string;
         from: string;
-        route: string;
         max_traversals: number;
     }, {
         id: string;
         kind: "back_edge";
+        route: string;
         to: string;
         from: string;
-        route: string;
         max_traversals: number;
     }>]>, "many">;
     entry_node_ids: z.ZodArray<z.ZodString, "many">;
@@ -736,9 +736,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         };
     } | {
         title: string;
-        command: string;
         id: string;
         kind: "command";
+        command: string;
         timeout_ms: number;
         max_attempts: number;
         effect_policy: {
@@ -751,9 +751,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         };
     } | {
         title: string;
-        prompt: string;
         id: string;
         kind: "human-approval";
+        prompt: string;
     } | {
         title: string;
         id: string;
@@ -769,9 +769,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     } | {
         id: string;
         kind: "conditional";
+        route: string;
         to: string;
         from: string;
-        route: string;
     } | {
         id: string;
         kind: "fan_out";
@@ -782,9 +782,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     } | {
         id: string;
         kind: "back_edge";
+        route: string;
         to: string;
         from: string;
-        route: string;
         max_traversals: number;
     })[];
     entry_node_ids: string[];
@@ -813,9 +813,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         };
     } | {
         title: string;
-        command: string;
         id: string;
         kind: "command";
+        command: string;
         timeout_ms: number;
         max_attempts: number;
         effect_policy: {
@@ -828,9 +828,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
         };
     } | {
         title: string;
-        prompt: string;
         id: string;
         kind: "human-approval";
+        prompt: string;
     } | {
         title: string;
         id: string;
@@ -846,9 +846,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     } | {
         id: string;
         kind: "conditional";
+        route: string;
         to: string;
         from: string;
-        route: string;
     } | {
         id: string;
         kind: "fan_out";
@@ -859,9 +859,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     } | {
         id: string;
         kind: "back_edge";
+        route: string;
         to: string;
         from: string;
-        route: string;
         max_traversals: number;
     })[];
     entry_node_ids: string[];
@@ -874,11 +874,11 @@ export declare const graphEvidenceReferenceSchema: z.ZodObject<{
     ref: z.ZodString;
     summary: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    kind: "file" | "command" | "test" | "url" | "human";
+    kind: "test" | "file" | "command" | "url" | "human";
     ref: string;
     summary?: string | undefined;
 }, {
-    kind: "file" | "command" | "test" | "url" | "human";
+    kind: "test" | "file" | "command" | "url" | "human";
     ref: string;
     summary?: string | undefined;
 }>;
@@ -892,11 +892,11 @@ export declare const graphNodeResultSchema: z.ZodObject<{
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }, {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }>, "many">;
@@ -905,7 +905,7 @@ export declare const graphNodeResultSchema: z.ZodObject<{
     outcome: "failed" | "succeeded";
     attempt_id: string;
     evidence_refs: {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -916,7 +916,7 @@ export declare const graphNodeResultSchema: z.ZodObject<{
     outcome: "failed" | "succeeded";
     attempt_id: string;
     evidence_refs: {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -931,11 +931,11 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }, {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }>, "many">;
@@ -943,7 +943,7 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     decision: "approved" | "denied";
     evidence_refs: {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -951,7 +951,7 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
 }, {
     decision: "approved" | "denied";
     evidence_refs: {
-        kind: "file" | "command" | "test" | "url" | "human";
+        kind: "test" | "file" | "command" | "url" | "human";
         ref: string;
         summary?: string | undefined;
     }[];

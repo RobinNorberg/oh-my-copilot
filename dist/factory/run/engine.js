@@ -653,7 +653,7 @@ class FactoryEngine {
             return { exitCode: existing.phase === 'failed' ? 1 : 0, phase: existing.phase, state: existing, message: `the factory run for ${this.what} is ${existing.phase}` };
         }
         // A config change cannot swap adapters mid-run (critic amendments §A.9).
-        const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github') : null;
+        const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url) : null;
         if (existing && swapped) {
             this.progress.emit(existing.phase, 'fail', 'forge changed');
             return { exitCode: 1, phase: existing.phase, state: existing, message: swapped };
@@ -2132,7 +2132,7 @@ function dryRun(o) {
     const key = engineRunKey(o);
     const existing = readFactoryState(o.root, key);
     const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
-    const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github') : null;
+    const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
     if (existing && swapped)
         return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
     if (existing) {

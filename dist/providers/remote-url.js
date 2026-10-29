@@ -9,6 +9,77 @@ export function isAzureDevOpsHost(host) {
     const normalized = host.toLowerCase().replace(/\.$/, '');
     return normalized === 'dev.azure.com' || normalized === 'ssh.dev.azure.com' || normalized.endsWith('.visualstudio.com');
 }
+/** One Azure DevOps name segment (org, project, repo, team, board): no path separators or control characters. */
+export const ADO_SEGMENT = /^[^/\\\p{Cc}]{1,256}$/u;
+/**
+ * True when a `<scheme>://` URL's authority (everything before the first
+ * `/`) holds `#?[]\`, whitespace or a control character: a regex then reads
+ * another host than git / curl connect to (`https://evil#@github.com/o/r`
+ * connects to evil).
+ */
+export function ambiguousAuthority(url) {
+    const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/]*)/i.exec(url.trim())?.[1];
+    return authority !== undefined && /[#?[\]\\\s\p{Cc}]/u.test(authority);
+}
+/**
+ * False when `url` is http(s) and its WHATWG hostname (the host git / curl
+ * connect to) is not `host`, or its authority is ambiguous; true otherwise.
+ */
+export function urlHostAgrees(url, host) {
+    if (ambiguousAuthority(url))
+        return false;
+    if (!/^https?:\/\//i.test(url.trim()))
+        return true;
+    try {
+        return new URL(url.trim()).hostname.toLowerCase() === host.toLowerCase();
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * The Azure DevOps repository URL forms (design §8.3), matched after trim,
+ * `\` -> `/` and a trailing `/` and `.git` dropped:
+ * `[https://][user@]dev.azure.com/<org>/<project>/_git/<repo>`,
+ * `[ssh://]git@ssh.dev.azure.com[:/]v3/<org>/<project>/<repo>`, and the
+ * legacy `https://<org>.visualstudio.com/[DefaultCollection/]<project>/_git/<repo>`
+ * and `<org>@vs-ssh.visualstudio.com:v3/<org>/<project>/<repo>`.
+ */
+const ADO_URLS = [
+    { re: /^https?:\/\/(?:[^@/]+@)?dev\.azure\.com\/(?<org>[^/]+)\/(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/i, host: () => 'dev.azure.com' },
+    { re: /^(?:ssh:\/\/)?[^@/:]+@ssh\.dev\.azure\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/i, host: () => null },
+    { re: /^https?:\/\/(?:[^@/]+@)?(?<org>[^./@]+)\.visualstudio\.com\/(?:defaultcollection\/)?(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/i, host: (org) => `${org}.visualstudio.com` },
+    { re: /^(?:ssh:\/\/)?[^@/:]+@vs-ssh\.visualstudio\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/i, host: () => null },
+];
+/** `%20` and friends decoded; a malformed escape keeps the raw segment. */
+const decodeSegment = (s) => {
+    try {
+        return decodeURIComponent(s);
+    }
+    catch {
+        return s;
+    }
+};
+/**
+ * The org, project and repository (escapes decoded, case kept) of an Azure
+ * DevOps URL in any ADO_URLS form; null when it is none of them; 'invalid'
+ * when it matches one but its authority is ambiguous (urlHostAgrees) or a
+ * decoded segment is not an ADO_SEGMENT (`a%2Fb` would collide with `a/b`).
+ */
+export function parseAzureDevOpsRepoUrl(url) {
+    const s = url.trim().replace(/\\/g, '/').replace(/\/+$/, '').replace(/\.git$/i, '');
+    for (const { re, host } of ADO_URLS) {
+        const g = re.exec(s)?.groups;
+        if (!g)
+            continue;
+        const expected = host(g.org);
+        if (ambiguousAuthority(url) || (expected !== null && !urlHostAgrees(url, expected)))
+            return 'invalid';
+        const [org, project, repo] = [g.org, g.project, g.repo].map(decodeSegment);
+        return [org, project, repo].every((p) => ADO_SEGMENT.test(p)) ? { org, project, repo } : 'invalid';
+    }
+    return null;
+}
 /**
  * Detect provider from a git remote URL by matching known hostnames.
  */

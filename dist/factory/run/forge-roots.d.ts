@@ -32,6 +32,9 @@ export declare function assertFactoryForgeOptions(repoRoot: string, options: For
  * overwrites the tracking ref with the remote's, so a ref a lane moved
  * between runs is not read. Identity keys can only pin the origin's forge;
  * progress keys only narrow what the az guard lets the engine write.
+ * `base` comes from the working tree, so a base outside ship.trustedBases
+ * (resolveTrustedBases, as ship reads it) is neither fetched nor read: that
+ * layer is empty, with a warning.
  */
 export declare function loadFactoryForgeConfig(exec: Exec, root: string, base: string, trustedUser: unknown, project: unknown): LoadedForgeConfig;
 /**

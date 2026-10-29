@@ -244,8 +244,10 @@ export declare function verifyFactoryIntegrity(state: FactoryRunState): boolean;
 /**
  * Why a resume must refuse, or null (critic amendments §A.9): a config change
  * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ * With `resolvedRepoUrl` (the forge config's repository), a run whose
+ * recorded repoUrl names another repository (repoIdentity) refuses too.
  */
-export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal'>, resolved: ForgeKind): string | null;
+export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */
 export declare function readFactoryState(root: string, key: FactoryRunKey): FactoryRunState | null;
 /** Parse and shape-check the bytes of a state file (read once by the caller). */

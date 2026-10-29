@@ -1,0 +1,13 @@
+{
+  "provenance": "synthetic: area tree, shape of the Classification Nodes - Get sample (REST 7.1)",
+  "route": "wit.classificationNodes.GET",
+  "routeParameters": { "project": "Web", "structureGroup": "areas" },
+  "queryParameters": { "$depth": "5" },
+  "stdout": {
+    "id": 1,
+    "name": "Web",
+    "structureType": "area",
+    "hasChildren": true,
+    "children": [{ "id": 2, "name": "Factory", "structureType": "area", "hasChildren": false }]
+  }
+}

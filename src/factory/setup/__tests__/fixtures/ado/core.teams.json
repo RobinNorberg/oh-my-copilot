@@ -1,0 +1,6 @@
+{
+  "provenance": "synthetic: project teams, shape of the Teams - Get Teams sample (REST 7.1)",
+  "route": "core.teams.GET",
+  "routeParameters": { "projectId": "Web" },
+  "stdout": { "count": 1, "value": [{ "id": "8a7d1c2b-3e4f-4a5b-9c6d-7e8f9a0b1c2d", "name": "Web Team" }] }
+}
