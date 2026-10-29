@@ -80,26 +80,55 @@ describe('omg factory setup end to end', () => {
         expect(r.previewError).toBeDefined();
         expect(r.previewError).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
     });
-    it('Azure DevOps: detect -> auth -> intake -> progress -> write -> preview with real buckets', async () => {
-        const w = adoWorld();
-        // The adapter fixtures answer the saved query under their own GUID and limit; the wizard validates QUERY_ID.
+    /** The wizard's ADO fixtures plus the adapter's; `bodies` records each --in-file az received (path and JSON). */
+    function adoE2e(w) {
+        // The adapter fixtures answer the saved query and the WIQL under their own GUID and limit; the wizard validates QUERY_ID and previews 10.
         const setupFixtures = loadAdoFixtures(SETUP_ADO_FIXTURES);
         const taken = new Set(setupFixtures.map(adoFixtureKey));
         const fixtures = [
             ...setupFixtures,
-            ...loadAdoFixtures(ADAPTER_FIXTURES).filter((f) => !taken.has(adoFixtureKey(f))).map((f) => (f.name === 'wit.wiql.GET.saved-query.json' ? { ...f, routeParameters: { ...f.routeParameters, id: QUERY_ID }, queryParameters: { $top: '10' } } : f)),
+            ...loadAdoFixtures(ADAPTER_FIXTURES).filter((f) => !taken.has(adoFixtureKey(f))).map((f) => {
+                if (f.name === 'wit.wiql.GET.saved-query.json')
+                    return { ...f, routeParameters: { ...f.routeParameters, id: QUERY_ID }, queryParameters: { $top: '10' } };
+                return f.name === 'wit.wiql.POST.query.json' ? { ...f, queryParameters: { $top: '10' } } : f;
+            }),
         ];
         const az = adoFixtureExec(fixtures);
         const base = fakeExec(w);
+        const bodies = [];
         const exec = (cmd, args, opts) => {
             if (cmd === 'git' && args[0] === 'ls-remote')
                 return ok('');
             if (cmd === 'git' && args.join(' ').startsWith('rev-parse --verify refs/remotes/origin/'))
                 return { status: 1, stdout: '', stderr: 'fatal: Needed a single revision' };
-            if (cmd === 'az' && args[0] === 'devops' && args[1] === 'invoke')
+            if (cmd === 'az' && args[0] === 'devops' && args[1] === 'invoke') {
+                const at = args.indexOf('--in-file');
+                if (at >= 0)
+                    bodies.push({ inFile: args[at + 1], body: JSON.parse(readFileSync(args[at + 1], 'utf8')) });
                 return az(cmd, args);
+            }
             return base(cmd, args, opts);
         };
+        return { exec, bodies };
+    }
+    it.each([
+        ['area-tag:Web\\Factory#factory', "[System.AreaPath] UNDER 'Web\\Factory' AND [System.Tags] CONTAINS 'factory'"],
+        ['board-column:Web Team/Stories/Ready', "[WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column] = 'Ready'"],
+    ])('Azure DevOps %s: the preview queries wit.wiql.POST through the check guard', async (intake, where) => {
+        const w = adoWorld();
+        const { exec, bodies } = adoE2e(w);
+        const r = await runFactorySetup({ intake, yes: true, json: true }, setupDeps(w, { exec, createForge, previewCheck: undefined }), w.root);
+        expect(r.error).toBeUndefined();
+        expect(r.exitCode).toBe(0);
+        expect(r.previewError).toBeUndefined();
+        expect(r.preview.map((p) => p.id)).toEqual([42]);
+        expect(r.preview[0].readiness).toMatch(/^(runnable|needs-plan|blocked)/);
+        // One WIQL body, the guard's validated copy, built by escapeWiql from the config.
+        expect(bodies).toEqual([{ inFile: expect.stringMatching(/omg-ado-body-[^/\\]+[/\\]body\.json$/), body: { query: expect.stringContaining(where) } }]);
+    });
+    it('Azure DevOps: detect -> auth -> intake -> progress -> write -> preview with real buckets', async () => {
+        const w = adoWorld();
+        const { exec } = adoE2e(w);
         const r = await runFactorySetup({ intake: `wiql-query:${QUERY_ID}`, yes: true, json: true }, setupDeps(w, { exec, createForge, previewCheck: undefined }), w.root);
         expect(r.error).toBeUndefined();
         expect(r.exitCode).toBe(0);

@@ -26,8 +26,8 @@ import { getCanonicalProjectConfigPath } from '../../config/project-config-path.
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { DEFAULT_ADO_ITEM_TYPES, ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { createForge } from '../../forge/index.js';
-import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
-import type { Forge, ForgeFactory, ForgeOptions, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
+import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
+import type { Forge, ForgeFactory, ForgeProgressConfig, IntakeSource, ResolvedForgeConfig } from '../../forge/types.js';
 import { checkEnvFor, checkGuardExec } from '../../factory/check/cli.js';
 import { factoryCheckPreview, type CheckEnv } from '../../factory/check/score.js';
 import { factoryForgeOptions } from '../../factory/run/forge-roots.js';
@@ -309,7 +309,9 @@ async function setup(o: FactorySetupOptions, deps: FactorySetupDeps, cwd: string
   try {
     // The ADO guard needs the forge repo and the az entry; GitHub needs neither.
     const guarded = checkGuardExec(deps.exec, undefined, () => (ado && az ? adoGuardContext(resolved, az) : undefined));
-    const forge = deps.createForge(guarded, root, resolved, { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) } as ForgeOptions);
+    // The ADO adapter reads `entry` (its options extend ForgeOptions); GitHub ignores it.
+    const options: AzureDevOpsForgeOptions = { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) };
+    const forge = deps.createForge(guarded, root, resolved, options);
     // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
     const check = deps.previewCheck ?? factoryCheckPreview(previewEnv(guarded, root, resolved));
     out.preview = previewIntake(forge, source, check).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));

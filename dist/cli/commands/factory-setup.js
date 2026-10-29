@@ -258,7 +258,9 @@ async function setup(o, deps, cwd, out) {
     try {
         // The ADO guard needs the forge repo and the az entry; GitHub needs neither.
         const guarded = checkGuardExec(deps.exec, undefined, () => (ado && az ? adoGuardContext(resolved, az) : undefined));
-        const forge = deps.createForge(guarded, root, resolved, { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) });
+        // The ADO adapter reads `entry` (its options extend ForgeOptions); GitHub ignores it.
+        const options = { ...factoryForgeOptions(root), ...(az ? { entry: az } : {}) };
+        const forge = deps.createForge(guarded, root, resolved, options);
         // Item titles are untrusted tracker text: no terminal sequences or control characters reach the output.
         const check = deps.previewCheck ?? factoryCheckPreview(previewEnv(guarded, root, resolved));
         out.preview = previewIntake(forge, source, check).map((row) => ({ ...row, title: plainText(row.title), url: plainText(row.url), readiness: plainText(row.readiness) }));

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "943d0be201300a6f6caf7c0855e896f82c192fbc",
-    "sourceSha256": "238ac419df951ff4dc9784b67017440786b1167f61d1d0469dd00cc9891d2bed",
+    "head": "2c5d66f54c8b7695c3e1a85c7684ec25e39c4be7",
+    "sourceSha256": "813535a581605c06311599072532a3f170ea0261f0a4074112d14d62a50782ce",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "943d0be201300a6f6caf7c0855e896f82c192fbc",
-  "sourceSha256": "238ac419df951ff4dc9784b67017440786b1167f61d1d0469dd00cc9891d2bed",
+  "head": "2c5d66f54c8b7695c3e1a85c7684ec25e39c4be7",
+  "sourceSha256": "813535a581605c06311599072532a3f170ea0261f0a4074112d14d62a50782ce",
   "counts": {
     "public": {
       "skills": 63,
@@ -71620,6 +71620,11 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
         "to": "src/forge/ado/redact.ts",
         "kind": "imports"
       },
@@ -74070,6 +74075,16 @@
       },
       {
         "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -74116,6 +74131,11 @@
       {
         "from": "src/factory/check/__tests__/ado.test.ts",
         "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/ado.test.ts",
+        "to": "src/forge/ado/invoke.ts",
         "kind": "imports"
       },
       {
@@ -74251,6 +74271,11 @@
       {
         "from": "src/factory/check/cli.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/guard.ts",
         "kind": "imports"
       },
       {
@@ -112116,11 +112141,11 @@
     ],
     "stats": {
       "nodeCount": 9573,
-      "edgeCount": 11142,
-      "importEdgeCount": 9182,
+      "edgeCount": 11147,
+      "importEdgeCount": 9186,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "c506df75b34a4bd3e0295e8660e4d13b12d7b35dee8a9ee46b8d1c0bf064a355",
-  "manifestSha256": "ed4c7f30162d4a650eb0f37bd823faaf794ca29746b18f293bd7cc120864797d"
+  "manifestSha256": "e63a5dff8e32ec105c9dd5cba5e6daaa25cf8bc5a82ba42e6e074da686f218cb"
 }
