@@ -51,11 +51,12 @@ describe('jsonc writes', () => {
         expect(() => applyFactoryEdits('{ "ship": ', [[['factory', 'x'], 1]])).toThrow(expect.objectContaining({ exitCode: 5 }));
     });
     it('keeps a leading UTF-8 BOM', () => {
-        const out = applyFactoryEdits(`﻿${EXISTING}`, [[['factory', 'forge', 'kind'], 'github']]);
-        expect(out.startsWith('﻿{') || out.startsWith('﻿//')).toBe(true);
-        expect(out.indexOf('﻿', 1)).toBe(-1);
+        const bom = String.fromCharCode(0xfeff);
+        const out = applyFactoryEdits(`${bom}${EXISTING}`, [[['factory', 'forge', 'kind'], 'github']]);
+        expect(out.startsWith(`${bom}// project config`)).toBe(true);
+        expect(out.indexOf(bom, 1)).toBe(-1);
         expect(parseJsonc(out)).toMatchObject({ factory: { forge: { kind: 'github' } } });
-        expect(() => assertFactoryOnly(`﻿${EXISTING}`, out, 'project')).not.toThrow();
+        expect(() => assertFactoryOnly(`${bom}${EXISTING}`, out, 'project')).not.toThrow();
     });
     it.each([
         ['top-level factory twice', '{ "factory": { "forge": { "kind": "github" } }, "factory": {} }', /"factory" appears twice/],

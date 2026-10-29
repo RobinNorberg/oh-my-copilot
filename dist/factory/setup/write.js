@@ -60,7 +60,7 @@ const OWNED = {
     project: [['factory', 'forge'], ['factory', 'intake'], ['factory', 'progress']],
     user: [TRUSTED_AUTHORS],
 };
-const BOM = '﻿';
+const BOM = String.fromCharCode(0xfeff);
 /** Duplicate keys in an object node; a duplicate makes `modify` edit one copy while the engine reads the other. */
 function duplicateKey(node) {
     const seen = new Set();
