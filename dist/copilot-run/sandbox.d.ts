@@ -124,6 +124,8 @@ export interface SandboxPolicyContext {
     hostCommits?: boolean;
     /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
     toolPaths?: string[];
+    /** The dirs of the CA bundles the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
+    extraReadonly?: string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
@@ -256,6 +258,15 @@ export declare function unconfirmedMode(profile: SandboxProfile, settings: Sandb
  * session over RPC instead (sessionGitHubToken).
  */
 export declare const SESSION_ENV_ALLOWLIST: readonly string[];
+/**
+ * The CA bundle dirs (NODE_EXTRA_CA_CERTS, SSL_CERT_FILE) to grant sandboxed node and git read-only, and a note
+ * when a proxy URL carries userinfo: the shells inherit the runtime env, so they see it, and it is not stripped
+ * because the runtime needs it.
+ */
+export declare function proxyCaEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): {
+    caDirs: string[];
+    notes: string[];
+};
 /**
  * The variables the Windows sandbox (MXC) needs to launch any process,
  * hook or shell, with the runtime's env taken verbatim

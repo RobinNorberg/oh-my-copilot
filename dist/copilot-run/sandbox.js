@@ -206,7 +206,7 @@ export function buildSandboxConfig(profile, ctx, host) {
     catch {
         return p;
     } };
-    const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+    const tools = [...(ctx.toolPaths ?? []), ...(ctx.extraReadonly ?? [])].filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
     // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
     // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
     // The lane's global git config is read-only.
@@ -509,6 +509,8 @@ export const SESSION_ENV_ALLOWLIST = [
     'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'LANG',
     // Non-secret OS variables shells and git expect.
     'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
+    // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+    'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
     'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
     // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
     // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
@@ -516,6 +518,31 @@ export const SESSION_ENV_ALLOWLIST = [
     // are denied, so the effect is breakage or shared read state, never escalation.
     'LOCALAPPDATA',
 ];
+/**
+ * The CA bundle dirs (NODE_EXTRA_CA_CERTS, SSL_CERT_FILE) to grant sandboxed node and git read-only, and a note
+ * when a proxy URL carries userinfo: the shells inherit the runtime env, so they see it, and it is not stripped
+ * because the runtime needs it.
+ */
+export function proxyCaEnv(env, platform) {
+    const P = platform === 'win32' ? win32 : posix;
+    const caDirs = ['NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE']
+        .map((n) => envValue(env, n)).filter((v) => v !== undefined && P.isAbsolute(v)).map((v) => P.dirname(v));
+    const notes = [];
+    for (const name of ['HTTPS_PROXY', 'HTTP_PROXY']) {
+        const value = envValue(env, name);
+        let userinfo = false;
+        try {
+            if (value) {
+                const u = new URL(value);
+                userinfo = u.username !== '' || u.password !== '';
+            }
+        }
+        catch { /* not a URL */ }
+        if (userinfo)
+            notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+    }
+    return { caDirs, notes };
+}
 /**
  * The variables the Windows sandbox (MXC) needs to launch any process,
  * hook or shell, with the runtime's env taken verbatim

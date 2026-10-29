@@ -61,7 +61,7 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, laneToolPaths, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, laneToolPaths, proxyCaEnv, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -1061,6 +1061,7 @@ export class CopilotRunManager {
         const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
         try {
             const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
+            const proxy = proxyCaEnv(deps.env, deps.platform);
             const config = buildSandboxConfig(job.profile, {
                 worktree: resolve(top),
                 commonGitDir,
@@ -1073,7 +1074,9 @@ export class CopilotRunManager {
                 settings,
                 hostCommits: job.hostCommits,
                 toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+                extraReadonly: proxy.caDirs,
             }, host);
+            job.notes.push(...proxy.notes);
             job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
             return config;
         }

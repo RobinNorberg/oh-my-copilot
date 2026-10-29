@@ -16,6 +16,7 @@ import {
   laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
+  proxyCaEnv,
   MXC_REQUIRED_ENV,
   probeHostSupport,
   resolveSandboxSettings,
@@ -162,6 +163,28 @@ describe('buildSandboxConfig', () => {
       expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
     }
     expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
+  });
+
+  it('grants a CA bundle dir read-only in both profiles, never a root or a dir holding the real home', () => {
+    const ca = join(root, 'certs');
+    for (const profile of ['review', 'write'] as const) {
+      const fs = buildSandboxConfig(profile, { ...ctx, extraReadonly: [ca, root, resolve('/')] }, host()).userPolicy.filesystem;
+      expect(fs.readonlyPaths).toContain(ca);
+      expect(fs.readonlyPaths).not.toContain(root);
+      expect(fs.readonlyPaths).not.toContain(resolve('/'));
+      expect(fs.readwritePaths).not.toContain(ca);
+    }
+  });
+
+  it('proxyCaEnv returns the dirs of NODE_EXTRA_CA_CERTS and SSL_CERT_FILE, and notes a proxy URL with userinfo', () => {
+    const ca = join(root, 'certs', 'ca.pem');
+    const env = { node_extra_ca_certs: ca, SSL_CERT_FILE: join(root, 'etc', 'bundle.pem'), HTTPS_PROXY: 'http://u:p@proxy:3128', HTTP_PROXY: 'http://proxy:3128' };
+    const out = proxyCaEnv(env, process.platform);
+    expect(out.caDirs).toEqual([join(root, 'certs'), join(root, 'etc')]);
+    expect(out.notes).toHaveLength(1);
+    expect(out.notes[0]).toContain('HTTPS_PROXY');
+    expect(out.notes[0]).not.toContain('u:p');
+    expect(proxyCaEnv({ NODE_EXTRA_CA_CERTS: 'relative.pem' }, process.platform)).toEqual({ caDirs: [], notes: [] });
   });
 
   it('drops a tool dir that holds the worktree, the common git dir or the job dir', () => {
@@ -399,6 +422,13 @@ describe('detection helpers', () => {
       // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
       COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
     });
+  });
+
+  it('allowlistSessionEnv keeps the proxy and CA variables in any case', () => {
+    const hostEnv = { https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c', ALL_PROXY: 'x' };
+    const env = allowlistSessionEnv(hostEnv, join(root, 'h'));
+    expect(env).toMatchObject({ https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c' });
+    expect(env.ALL_PROXY).toBeUndefined();
   });
 
   it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {

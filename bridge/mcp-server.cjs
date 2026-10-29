@@ -32401,7 +32401,7 @@ function buildSandboxConfig(profile, ctx, host) {
       return p;
     }
   };
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path7.dirname)(relocated.GIT_CONFIG_GLOBAL);
@@ -32589,6 +32589,24 @@ function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
 }
+function proxyCaEnv(env, platform) {
+  const P = platform === "win32" ? import_node_path7.win32 : import_node_path7.posix;
+  const caDirs = ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((n) => envValue(env, n)).filter((v) => v !== void 0 && P.isAbsolute(v)).map((v) => P.dirname(v));
+  const notes = [];
+  for (const name of ["HTTPS_PROXY", "HTTP_PROXY"]) {
+    const value = envValue(env, name);
+    let userinfo = false;
+    try {
+      if (value) {
+        const u = new URL(value);
+        userinfo = u.username !== "" || u.password !== "";
+      }
+    } catch {
+    }
+    if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+  }
+  return { caDirs, notes };
+}
 function missingSandboxEnv(env, platform) {
   return platform === "win32" ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === void 0) : [];
 }
@@ -32689,6 +32707,13 @@ var init_sandbox2 = __esm({
       "ProgramW6432",
       "ProgramData",
       "CommonProgramFiles",
+      // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "NO_PROXY",
+      "NODE_EXTRA_CA_CERTS",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
       "NUMBER_OF_PROCESSORS",
       "PROCESSOR_ARCHITECTURE",
       "OS",
@@ -39396,6 +39421,7 @@ var init_job = __esm({
         const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
         try {
           const commonGitDir = commonRaw ? (0, import_node_path11.resolve)(commonRaw) : (0, import_node_path11.resolve)(top, ".git");
+          const proxy = proxyCaEnv(deps.env, deps.platform);
           const config2 = buildSandboxConfig(job.profile, {
             worktree: (0, import_node_path11.resolve)(top),
             commonGitDir,
@@ -39407,8 +39433,10 @@ var init_job = __esm({
             platform: deps.platform,
             settings,
             hostCommits: job.hostCommits,
-            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+            extraReadonly: proxy.caDirs
           }, host);
+          job.notes.push(...proxy.notes);
           job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: "not confirmed yet" };
           return config2;
         } catch (err) {

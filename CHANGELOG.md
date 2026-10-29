@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The dir of a `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE` bundle is granted read-only (never a root or a dir holding the home). A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
+
 # oh-my-copilot v5.18.1
 
 ## [5.18.1] - 2026-10-29

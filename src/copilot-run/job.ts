@@ -104,6 +104,7 @@ import {
   applySandboxConfig,
   buildSandboxConfig,
   laneToolPaths,
+  proxyCaEnv,
   loadSandboxSettings,
   missingSandboxEnv,
   probeHostSupport,
@@ -1206,6 +1207,7 @@ export class CopilotRunManager {
     const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
     try {
       const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
+      const proxy = proxyCaEnv(deps.env, deps.platform);
       const config = buildSandboxConfig(job.profile, {
         worktree: resolve(top),
         commonGitDir,
@@ -1218,7 +1220,9 @@ export class CopilotRunManager {
         settings,
         hostCommits: job.hostCommits,
         toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+        extraReadonly: proxy.caDirs,
       }, host);
+      job.notes.push(...proxy.notes);
       job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
       return config;
     } catch (err) {
