@@ -955,8 +955,47 @@ describe('launchSdkHost', () => {
     expect(await run).toBe('sdk_missing');
     expect(existsSync(result.attempt!.startedPath)).toBe(true);
     expect(result).toMatchObject({ ok: false, reason: expect.stringMatching(/^sdk_host_failed_at_start:@github\/copilot-sdk is not installed/) });
-    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(Date.now() - t0).toBeLessThan(4_000);
     await until(() => !isProcessAlive(host.pid));
+  });
+
+  /** Ack like a host, then run `afterAccept` once the leader has accepted. */
+  function ackingHost(pid: number, afterAccept: (a: WorkerLaunchAttempt) => void): SdkLaunchInput['spawnHost'] {
+    return (_cli, specPath) => {
+      void attemptFor(specAt(specPath)).then(async (a) => {
+        writeFileSync(a.ackPath, JSON.stringify({
+          schema_version: a.schema_version, attempt_id: a.attempt_id, nonce: a.nonce, instance_id: a.instance_id,
+          team_name: a.team_name, worker_name: a.worker_name, pane_id: a.pane_id, provider: a.provider,
+          created_at: a.created_at, kind: 'worker_launch_ack', written_at: new Date().toISOString(),
+        }));
+        await until(() => existsSync(a.decisionPath));
+        afterAccept(a);
+      });
+      return pid;
+    };
+  }
+
+  it('stops waiting as soon as the attempt is retired', async () => {
+    const host = await dummyProcess();
+    const t0 = Date.now();
+    const result = await launchSdkHost(launchInput({
+      ackTimeoutMs: 20_000,
+      spawnHost: ackingHost(host.pid, (a) => writeFileSync(`${a.decisionPath}.retired`, '{}')),
+    }));
+    expect(result).toMatchObject({ ok: false, reason: 'sdk_host_failed_before_start:unknown', hostPid: host.pid });
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    await until(() => !isProcessAlive(host.pid));
+  });
+
+  it('stops waiting as soon as the host process dies', async () => {
+    const host = await dummyProcess();
+    const t0 = Date.now();
+    const result = await launchSdkHost(launchInput({
+      ackTimeoutMs: 20_000,
+      spawnHost: ackingHost(host.pid, () => { process.kill(host.pid, 'SIGKILL'); }),
+    }));
+    expect(result).toMatchObject({ ok: false, reason: 'sdk_host_failed_before_start:unknown', hostPid: host.pid });
+    expect(Date.now() - t0).toBeLessThan(5_000);
   });
 });
 

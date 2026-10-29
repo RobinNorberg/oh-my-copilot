@@ -13884,7 +13884,7 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
         );
       });
       if (liveness === "live") return true;
-      if (liveness === "dead" || liveness === "mismatch") return false;
+      if (liveness === "dead") return false;
     } catch {
     }
     if ((await readJson(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;

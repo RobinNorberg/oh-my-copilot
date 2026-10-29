@@ -629,6 +629,20 @@ describe('worker launch acknowledgement', () => {
       expect(started).toBe(false);
       expect(elapsedMs).toBeLessThan(2_000);
     });
+
+    it.each(['mismatch', 'unknown'] as const)('keeps waiting through a transient %s liveness read', async (transient) => {
+      const launchAttempt = await attempt();
+      const identity = await getProcessStartIdentity(process.pid);
+      await writeStarted(launchAttempt, process.pid, identity!);
+      const liveness = vi.spyOn(processUtils, 'isProcessIdentityLive').mockResolvedValueOnce(transient);
+      try {
+        const { started } = await timedStartWait(launchAttempt);
+        expect(started).toBe(true);
+        expect(liveness.mock.calls.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        liveness.mockRestore();
+      }
+    });
   });
 
   it('rejects a completion marker from another launch even when the path is substituted', async () => {

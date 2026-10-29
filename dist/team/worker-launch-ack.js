@@ -1609,8 +1609,9 @@ export async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
                 });
                 if (liveness === 'live')
                     return true;
-                // The started pid is gone or reused: this provider can never hand off.
-                if (liveness === 'dead' || liveness === 'mismatch')
+                // The started pid is gone: this provider can never hand off. A mismatch is
+                // not final: a Windows identity read can fall back to a coarser clock.
+                if (liveness === 'dead')
                     return false;
             }
             catch {

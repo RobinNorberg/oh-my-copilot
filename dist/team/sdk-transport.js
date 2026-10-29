@@ -23,7 +23,7 @@ import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, } from './worker-launch-ack.js';
 export const SDK_TARGET_PREFIX = 'sdk:';
 const SDK_LAUNCH_POLL_MS = 25;
-const SDK_LAUNCH_FAILURE_GRACE_MS = 500;
+const SDK_LAUNCH_FAILURE_GRACE_MS = 1_500;
 /** True for the sdk team target (`sdk:<team>`) and sdk worker ids (`sdk:<worker>`). */
 export function isSdkTarget(value) {
     return typeof value === 'string' && value.startsWith(SDK_TARGET_PREFIX);
@@ -148,9 +148,11 @@ export async function launchSdkHost(input) {
         const sliceMs = Math.max(1, Math.min(1_000, startDeadline - Date.now()));
         if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs }))
             break;
-        // A host that failed says so in its session file; a terminal record or a
-        // retired decision means the attempt already ended. Either way it never hands off.
-        const exited = existsSync(`${attempt.startedPath}.terminal`) || existsSync(`${attempt.decisionPath}.retired`);
+        // A host that failed says so in its session file; a terminal record, a
+        // retired decision or a dead host pid means the attempt already ended.
+        // Either way it never hands off.
+        const exited = existsSync(`${attempt.startedPath}.terminal`) || existsSync(`${attempt.decisionPath}.retired`)
+            || (hostPid !== undefined && !isProcessAlive(hostPid));
         if (exited || failedThisAttempt(attempt, input.stateRoot)) {
             // The host writes .terminal before its `failed` session file: give that a moment to land.
             const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;

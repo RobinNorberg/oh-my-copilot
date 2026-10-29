@@ -83222,7 +83222,7 @@ async function awaitWorkerLaunchProviderStarted(attempt, options = {}) {
         );
       });
       if (liveness === "live") return true;
-      if (liveness === "dead" || liveness === "mismatch") return false;
+      if (liveness === "dead") return false;
     } catch {
     }
     if ((await readJson2(`${attempt.decisionPath}.retired`)).kind !== "absent" || (await readJson2(`${attempt.startedPath}.terminal`)).kind !== "absent") return false;
@@ -92126,7 +92126,7 @@ async function launchSdkHost(input) {
   for (; ; ) {
     const sliceMs = Math.max(1, Math.min(1e3, startDeadline - Date.now()));
     if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs })) break;
-    const exited = (0, import_node_fs19.existsSync)(`${attempt.startedPath}.terminal`) || (0, import_node_fs19.existsSync)(`${attempt.decisionPath}.retired`);
+    const exited = (0, import_node_fs19.existsSync)(`${attempt.startedPath}.terminal`) || (0, import_node_fs19.existsSync)(`${attempt.decisionPath}.retired`) || hostPid !== void 0 && !isProcessAlive(hostPid);
     if (exited || failedThisAttempt(attempt, input.stateRoot)) {
       const graceUntil = Date.now() + SDK_LAUNCH_FAILURE_GRACE_MS;
       while (!failedThisAttempt(attempt, input.stateRoot) && Date.now() < graceUntil) {
@@ -92234,7 +92234,7 @@ var init_sdk_transport = __esm({
     init_worker_launch_ack();
     SDK_TARGET_PREFIX = "sdk:";
     SDK_LAUNCH_POLL_MS = 25;
-    SDK_LAUNCH_FAILURE_GRACE_MS = 500;
+    SDK_LAUNCH_FAILURE_GRACE_MS = 1500;
     SDK_HOST_STOP_FLOOR_MS = 5e3;
   }
 });
