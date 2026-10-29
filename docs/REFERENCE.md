@@ -1180,6 +1180,49 @@ omg smoke copilot --tier 2 --scenario sandbox-lane      # review, write and cana
 
 `sandbox-lane` checks the lanes' sandbox rather than the engine's phases. See [`omg smoke copilot`](#omg-smoke-copilot) for the checks.
 
+#### `omg factory check` (experimental)
+
+`omg factory check` sorts intake items into three buckets: `runnable`, `needs-plan` or `blocked`. It reads the items through the forge tracker (GitHub issues, or Azure DevOps work items), using the `factory.intake` settings, and it starts no run. It is read-only unless you pass `--mark`.
+
+```bash
+omg factory check [<id>...] [--json]           # the given ids, or the items of factory.intake.source
+omg factory check --source label:factory       # label:<name> | milestone:<name> | wiql-query:<guid> |
+                                               # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>
+omg factory check --limit 20                   # read at most 20 items from the source (1..200; default factory.intake.limit)
+omg factory check --mark [--yes]               # add factory.intake.marker to the runnable items, after confirming
+```
+
+The rules are evaluated in order, and the first one that matches sets the bucket and the reason:
+
+| Reason | Bucket | When |
+|---|---|---|
+| `closed` | blocked | The item is closed (GitHub `CLOSED`, or an ADO Completed/Removed state). |
+| `wrong-type` | blocked | The ADO type is not in `factory.intake.itemTypes`, or the GitHub id is a pull request. |
+| `run-active:<phase>[/<gate>]` | blocked | A factory run for the item exists and is not merged, cancelled or failed. |
+| `pr-exists` | blocked | An open PR already uses `factory/issue-<n>`. |
+| `depends-on:#n,…` | blocked | An item it depends on is still open. |
+| `needs-split` | blocked | It has open children, is an ADO Epic or Feature, or has the GitHub label `epic`. |
+| `no-plan` | needs-plan | There is no trusted `omg-plan:` line, no `Acceptance criteria` heading, and no ADO Acceptance Criteria. |
+| `plan-missing` | needs-plan | The `omg-plan:` path is not repo-relative, or is missing or empty on `origin/<base>`. |
+| `ac-not-testable` | needs-plan | The Acceptance criteria contain no list or checkbox items. |
+| `too-big` | blocked | There are more than `factory.check.maxAcceptanceItems` AC items, or the size is above `maxSize`, or the body is longer than `maxBodyChars`. |
+| `ac-vague` | needs-plan | Every AC item is vague ("should work", "as needed", "clean up", …) and names no path, backticked command, number or code. |
+
+Items that match no rule are `runnable`. The plan rules are the same ones `omg factory run` uses: an `omg-plan:` line counts only from the issue author when trusted, or from an owner, member or collaborator (on ADO, from a `trustedAuthors` identity). The AC rules check only an Acceptance-criteria plan; an `omg-plan:` file is checked only for existence.
+
+Results are sorted by bucket, then by priority, then by id. Priority is the ADO `Priority` field, or a GitHub `priority:p0`…`priority:p3` label read as 1…4; items without a priority come last. There is no numeric score. Titles come from the tracker and are untrusted, so ANSI sequences and control characters are removed before they are printed.
+
+`--mark` touches only runnable items that do not already carry the marker (GitHub label, ADO tag; default `factory-ready`). It asks first. Without a terminal, or with `--json`, it needs `--yes`. The guard allows the label write only after you confirm.
+
+`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }`. Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The check ran (whatever the buckets), including a `--mark` you declined |
+| `1` | A tracker read or a marker write failed |
+| `2` | A usage error: a bad id, `--source` or limit; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
+| `5` | Incompatible: the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, or this build has no adapter for the forge |
+
 #### `omg factory heal` (experimental)
 
 `omg factory heal scan` reads recent `ci.yml` runs and classifies new red runs. It makes no LLM call and no GitHub write. It starts no lane, and a rerun is recorded as an intent but never issued. `omg factory heal run` diagnoses one signature in a read-only debugger lane and then stops for a human. `omg factory heal approve` turns an approved diagnosis into a draft fix PR that parks at the human merge.

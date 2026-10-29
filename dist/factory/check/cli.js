@@ -1,0 +1,295 @@
+/**
+ * `omg factory check [<id>...] [--source <spec>] [--limit n] [--json] [--mark [--yes]]`
+ * (factory forges design §5): bucket intake items as runnable, needs-plan
+ * or blocked. Read-only unless `--mark`, which adds `factory.intake.marker`
+ * (a GitHub label or an ADO tag) to the runnable items only, after a TTY
+ * confirmation or `--yes`, through `forge.tracker.addMarker`.
+ *
+ * Every command passes checkGuardExec: the gh reads the tracker builds, the
+ * open-PR lookup on `factory/issue-<n>`, the label write only while marking,
+ * and the git reads of the base. az goes through the factory guard (fail
+ * closed until the ADO guard context lands) and only as GET while not marking.
+ *
+ * Exit codes: 0 checked (whatever the buckets; a declined `--mark` writes
+ * nothing), 1 a tracker read or a marker write failed, 2 usage (bad id,
+ * source or limit, no intake source, `--mark` without `--yes` and no TTY),
+ * 5 incompatible (forge mismatch, unsupported remote, no adapter for the forge).
+ */
+import chalk from 'chalk';
+import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
+import { assertSafeCommand, TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { parseJsonc } from '../../utils/jsonc.js';
+import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
+import { readFactoryState } from '../run/state.js';
+import { BUCKET_ORDER, checkItems, plainText } from './score.js';
+export const EXIT_CHECK_FAILED = 1;
+export const EXIT_CHECK_USAGE = 2;
+export const EXIT_CHECK_INCOMPATIBLE = 5;
+/** Bumped on any change to the `--json` shape (src/factory/check/__tests__/cli.test.ts pins it). */
+export const CHECK_JSON_SCHEMA_VERSION = 1;
+export class CheckUsageError extends Error {
+}
+export class CheckIncompatibleError extends Error {
+}
+const NUMBER = /^\d+$/;
+const JSON_FIELDS = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
+const FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
+const VALUE = (s) => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
+const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+function checkGh(a, marker) {
+    const [group, sub, ...r] = a;
+    if (group === 'issue' && sub === 'view')
+        return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
+    if (group === 'issue' && sub === 'list') {
+        return r.length === 8 && (r[0] === '--label' || r[0] === '--milestone') && VALUE(r[1]) && r[2] === '--state' && r[3] === 'open'
+            && r[4] === '--json' && r[5] === 'number' && r[6] === '--limit' && NUMBER.test(r[7]);
+    }
+    if (group === 'issue' && sub === 'edit')
+        return marker !== undefined && same(r.slice(1), ['--add-label', marker]) && NUMBER.test(r[0] ?? '');
+    if (group === 'pr' && sub === 'list')
+        return r.length === 4 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+    return false;
+}
+const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show']);
+/**
+ * The `omg factory check` guard. `marker` is set only after `--mark` was
+ * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
+ * and non-GET az calls pass.
+ */
+export function checkGuardExec(exec, marker) {
+    return (cmd, args, opts) => {
+        const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
+        const refuse = (why) => { throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`); };
+        const mark = marker?.();
+        if (!args.every((x) => typeof x === 'string'))
+            refuse('non-string argument');
+        if (file === 'gh') {
+            if (opts?.env !== undefined)
+                refuse('gh takes no environment');
+            if (!checkGh(args, mark))
+                refuse('not one of the command shapes omg factory check runs');
+        }
+        else if (file === 'git') {
+            const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
+            if (!read)
+                refuse('not one of the read-only git shapes omg factory check runs');
+            assertSafeCommand(cmd, args, [], opts?.env);
+        }
+        else if (file === 'az' || file === 'python') {
+            const at = args.indexOf('--http-method');
+            if (mark === undefined && at >= 0 && args[at + 1]?.toUpperCase() !== 'GET')
+                refuse('only reads run without a confirmed --mark');
+            assertFactoryCommand(cmd, args, [], opts?.env);
+        }
+        else {
+            refuse('not a command omg factory check runs');
+        }
+        return exec(cmd, args, opts);
+    };
+}
+/** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
+export function parseSourceSpec(spec) {
+    const at = spec.indexOf(':');
+    const type = at > 0 ? spec.slice(0, at) : '';
+    const value = spec.slice(at + 1);
+    switch (type) {
+        case 'label': return { type, label: value };
+        case 'milestone': return { type, milestone: value };
+        case 'wiql-query': return { type, queryId: value };
+        case 'board-column': {
+            const [team, board, ...column] = value.split('/');
+            if (!team || !board || column.length === 0)
+                break;
+            return { type, team, board, column: column.join('/') };
+        }
+        case 'area-tag': {
+            const hash = value.lastIndexOf('#');
+            if (hash <= 0)
+                break;
+            return { type, areaPath: value.slice(0, hash), tag: value.slice(hash + 1) };
+        }
+        default: break;
+    }
+    throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column> or area-tag:<area path>#<tag>`);
+}
+export function parseItemId(raw) {
+    const n = Number(raw.replace(/^#/, ''));
+    if (!Number.isInteger(n) || n <= 0 || !/^#?\d+$/.test(raw))
+        throw new CheckUsageError(`item id must be a positive number, got ${JSON.stringify(raw)}`);
+    return n;
+}
+function git(exec, root, args) {
+    const r = exec('git', args, { cwd: root, env: TRUSTED_READ_ENV });
+    return { ok: r.status === 0, out: r.stdout.trim(), err: r.stderr.trim().split('\n')[0] ?? '' };
+}
+/**
+ * The repository side of a check: the run state under `root` and the plan
+ * files at `origin/<base>` (null = no base: every omg-plan is plan-missing).
+ * The setup wizard builds its preview env with this too.
+ */
+export function checkEnvFor(exec, root, config, base, baseSha) {
+    return {
+        config,
+        runState: (id) => readFactoryState(root, id),
+        readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
+        planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
+    };
+}
+/** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
+function fetchBase(exec, root, base, warnings) {
+    const fetched = git(exec, root, ['fetch', 'origin', base]);
+    if (!fetched.ok)
+        warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
+    const sha = git(exec, root, ['rev-parse', '--verify', `refs/remotes/origin/${base}`]);
+    if (sha.ok && /^[0-9a-f]{40}$/.test(sha.out))
+        return sha.out;
+    warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
+    return null;
+}
+/** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
+function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
+    const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
+    if (!trustedBases.includes(base)) {
+        warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
+        return undefined;
+    }
+    if (!baseSha)
+        return undefined;
+    const text = readBaseFile(exec, root, baseSha, BASE_CONFIG_PATH);
+    return text && text.trim() ? parseJsonc(text) : undefined;
+}
+/** The project layer with `--source` / `--limit` as working-tree intake keys (the resolver validates them). */
+function withFlags(project, o) {
+    if (o.source === undefined && o.limit === undefined)
+        return project;
+    const p = (project && typeof project === 'object' ? project : {});
+    const factory = (p.factory && typeof p.factory === 'object' ? p.factory : {});
+    const intake = (factory.intake && typeof factory.intake === 'object' ? factory.intake : {});
+    return {
+        ...p,
+        factory: {
+            ...factory,
+            intake: { ...intake, ...(o.source !== undefined ? { source: parseSourceSpec(o.source) } : {}), ...(o.limit !== undefined ? { limit: o.limit } : {}) },
+        },
+    };
+}
+export function renderCheckTable(items) {
+    if (items.length === 0)
+        return 'no items to check';
+    const color = { runnable: chalk.green, 'needs-plan': chalk.yellow, blocked: chalk.red };
+    const rows = items.map((r) => [`#${r.id}`, r.bucket, r.priority === null ? '-' : `P${r.priority}`, r.reasons[0] ?? '', r.title.slice(0, 60), r.detail]);
+    const widths = [0, 1, 2, 3].map((i) => Math.max(...rows.map((row) => row[i].length), ['ID', 'BUCKET', 'PRI', 'REASON'][i].length));
+    const pad = (row) => row.slice(0, 4).map((c, i) => c.padEnd(widths[i])).join('  ');
+    const lines = [chalk.bold(`${pad(['ID', 'BUCKET', 'PRI', 'REASON'])}  TITLE`)];
+    items.forEach((r, i) => {
+        const row = rows[i];
+        lines.push(`${color[r.bucket](pad(row))}  ${row[4]}`);
+        lines.push(chalk.gray(`${' '.repeat(widths[0] + 2)}${row[5]}`));
+    });
+    const counts = BUCKET_ORDER.map((b) => `${items.filter((r) => r.bucket === b).length} ${b}`).join(', ');
+    lines.push(counts);
+    return lines.join('\n');
+}
+/** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
+export async function runFactoryCheck(o, deps) {
+    const ids = o.ids.map(parseItemId);
+    const warnings = [];
+    let marker;
+    const exec = checkGuardExec(deps.exec, () => marker);
+    const top = git(exec, process.cwd(), ['rev-parse', '--show-toplevel']);
+    if (!top.ok)
+        throw new CheckUsageError('omg factory check must run inside a git repository');
+    const root = top.out;
+    const origin = git(exec, root, ['remote', 'get-url', 'origin']);
+    if (!origin.ok)
+        throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+    const base = deps.base(root);
+    if (!isPlainBranchName(base))
+        throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
+    const baseSha = fetchBase(exec, root, base, warnings);
+    const trustedUser = deps.trustedUser();
+    let config;
+    try {
+        const loaded = resolveForgeConfig(trustedUser, baseLayer(exec, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
+        config = loaded.config;
+        warnings.push(...loaded.warnings);
+    }
+    catch (error) {
+        if (!(error instanceof ForgeConfigError))
+            throw error;
+        throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
+    }
+    let forge;
+    try {
+        forge = deps.createForge(exec, root, config);
+    }
+    catch (error) {
+        throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
+    }
+    const source = config.intake.source;
+    if (ids.length === 0 && !source)
+        throw new CheckUsageError('no item ids and no intake source: pass ids, --source <spec>, or set factory.intake.source');
+    if (o.mark && !o.yes && (o.json || !deps.isTTY()))
+        throw new CheckUsageError('--mark needs --yes without an interactive terminal (or with --json)');
+    const wanted = ids.length > 0 ? ids : forge.tracker.queryItems(source, config.intake.limit);
+    const items = checkItems(forge, wanted, checkEnvFor(exec, root, config, base, baseSha));
+    const m = { marker: config.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
+    if (o.mark) {
+        const runnable = items.filter((r) => r.bucket === 'runnable');
+        // Re-read the labels through the tracker: an item that already carries the marker is left alone.
+        const todo = [];
+        for (const r of runnable)
+            (forge.tracker.viewItem(r.id).labels.includes(m.marker) ? m.alreadyMarked : todo).push(r.id);
+        if (todo.length > 0) {
+            m.confirmed = Boolean(o.yes) || await deps.confirm(`Add ${forge.kind === 'github' ? 'label' : 'tag'} ${m.marker} to ${todo.length} runnable item${todo.length > 1 ? 's' : ''} (${todo.map((id) => `#${id}`).join(', ')})?`);
+            if (m.confirmed) {
+                marker = m.marker;
+                try {
+                    for (const id of todo) {
+                        const res = forge.tracker.addMarker(id, m.marker);
+                        if (res.ok)
+                            m.marked.push(id);
+                        else
+                            m.failed.push({ id, error: plainText(res.stderr.trim()) });
+                    }
+                }
+                finally {
+                    marker = undefined;
+                }
+            }
+        }
+    }
+    const ok = m.failed.length === 0;
+    if (o.json) {
+        const json = {
+            schemaVersion: CHECK_JSON_SCHEMA_VERSION,
+            ok,
+            forge: config.kind,
+            repo: config.repo.url,
+            source: ids.length > 0 || !source ? null : { ...source },
+            counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
+            items,
+            mark: m,
+            warnings: warnings.map(plainText),
+        };
+        deps.out(JSON.stringify(json, null, 2));
+    }
+    else {
+        for (const w of warnings)
+            deps.err(chalk.yellow(plainText(w)));
+        deps.out(renderCheckTable(items));
+        if (o.mark) {
+            if (m.marked.length > 0)
+                deps.out(chalk.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(', ')}`));
+            if (m.alreadyMarked.length > 0)
+                deps.out(`already marked: ${m.alreadyMarked.map((id) => `#${id}`).join(', ')}`);
+            for (const f of m.failed)
+                deps.err(chalk.red(`#${f.id}: could not add ${m.marker}: ${f.error}`));
+            if (m.marked.length === 0 && m.failed.length === 0)
+                deps.out('nothing marked');
+        }
+    }
+    return ok ? 0 : EXIT_CHECK_FAILED;
+}
+//# sourceMappingURL=cli.js.map
