@@ -40,6 +40,8 @@ export interface AdoGuardContext {
   entry: AzEntry;
   /** The progress-mapping states (progressStates): the only System.State a work item PATCH may set; none when absent. */
   allowedStates?: readonly string[];
+  /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
+  allowedColumns?: readonly string[];
 }
 
 /** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
@@ -243,7 +245,7 @@ export function checkAdoCommand(
   } catch {
     throw fail('--in-file is not JSON');
   }
-  const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [] });
+  const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [], allowedColumns: ctx.allowedColumns ?? [] });
   if (bodyProblem) throw fail(`--in-file refused: ${bodyProblem}`);
   // Re-serialized from the parsed value: a duplicate key cannot smuggle a second value past the check.
   return { invoke: inv, inFileArg: entry.prefix.length + inv.inFileAt, body: JSON.stringify(parsed) };

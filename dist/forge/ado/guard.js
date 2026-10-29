@@ -245,7 +245,7 @@ export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
     catch {
         throw fail('--in-file is not JSON');
     }
-    const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [] });
+    const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [], allowedColumns: ctx.allowedColumns ?? [] });
     if (bodyProblem)
         throw fail(`--in-file refused: ${bodyProblem}`);
     // Re-serialized from the parsed value: a duplicate key cannot smuggle a second value past the check.

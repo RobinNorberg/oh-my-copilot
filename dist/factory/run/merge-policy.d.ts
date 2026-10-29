@@ -12,14 +12,24 @@ import type { Exec } from '../../ship/exec.js';
 import { type MergeDecision } from '../../ship/merge.js';
 import { type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
+import type { Forge } from '../../forge/types.js';
 import { type FactoryRunKey } from './state.js';
 export { MERGE_VIEW_FIELDS, parseMergeView, type MergeView } from '../../forge/github/reviews.js';
+/** A merge decision; on Azure DevOps also the body file the human command reads and its SHA-256. */
+export interface FactoryMergeDecision extends MergeDecision {
+    body?: {
+        file: string;
+        sha256: string;
+    };
+}
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
  * in the local object store (the trusted config load fetched and checked it).
+ * With an Azure DevOps `forge` the gate read goes through it, its blocking
+ * branch policies are reasons too, and the command is its head-pinned PATCH.
  */
-export declare function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[]): MergeDecision;
+export declare function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>): FactoryMergeDecision;
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */
-export declare function mergeComment(issue: FactoryRunKey, decision: MergeDecision, resume?: string): string;
+export declare function mergeComment(issue: FactoryRunKey, decision: FactoryMergeDecision, resume?: string): string;
 //# sourceMappingURL=merge-policy.d.ts.map

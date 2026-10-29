@@ -41,12 +41,14 @@ export type AdoBody =
   | { kind: 'none' }
   | AdoObjectBody
   /** RFC 6902 JSON-patch array: only these ops, only paths matching one pattern, each with its value rule. */
-  | { kind: 'json-patch'; ops: readonly string[]; paths: readonly { path: RegExp; value: AdoValue; configured?: 'states' }[] };
+  | { kind: 'json-patch'; ops: readonly string[]; paths: readonly { path: RegExp; value: AdoValue; configured?: 'states' | 'columns' }[] };
 
 /** Values only the run's config knows, for validateAdoBody. */
 export interface AdoBodyContext {
   /** When set, a `configured: 'states'` path may only carry one of these (exact match). */
   allowedStates?: readonly string[];
+  /** When set, a `configured: 'columns'` path may only carry one of these (exact match). */
+  allowedColumns?: readonly string[];
 }
 
 export interface AdoRoute {
@@ -97,7 +99,8 @@ export const ADO_ROUTES: readonly AdoRoute[] = Object.freeze([
         { path: /^\/fields\/System\.Tags$/, value: TEXT },
         // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
         { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
-        { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT },
+        // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
+        { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: 'columns' },
       ],
     },
   }),
@@ -254,7 +257,7 @@ function objectProblem(v: unknown, shape: AdoObjectBody, at: string): string | u
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
  * (body === undefined). `context` adds the config-bound rules (the guard
- * always passes the run's progress states).
+ * always passes the run's progress states and columns).
  */
 export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBodyContext = {}): string | undefined {
   const shape = route.body;
@@ -275,6 +278,9 @@ export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBody
     if (problem) return problem;
     if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value as string)) {
       return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
+    }
+    if (target.configured === 'columns' && context.allowedColumns && !context.allowedColumns.includes(op.value as string)) {
+      return `${at}.value is not a configured progress column (${context.allowedColumns.join(', ') || 'none configured'})`;
     }
   }
   return undefined;

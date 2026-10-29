@@ -19,6 +19,7 @@ import { Command } from 'commander';
 import { type ChainStatus } from '../../factory/status.js';
 import { type RouteTable } from '../../hooks/session-end/routing.js';
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
+import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { type FactoryRunState } from '../../factory/run/state.js';
@@ -36,6 +37,12 @@ export interface FactoryRunDeps {
     ledgerDir?: string;
     /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
     gateConfig?: GateConfigLoader;
+    /**
+     * The run's forge config (loadFactoryForgeConfig: user, base-branch and
+     * project layers plus the origin remote). Omitted = GitHub through the gh
+     * calls with no forge config, as before forges (the default deps set it).
+     */
+    forge?: (root: string, base: string) => LoadedForgeConfig;
 }
 export declare const defaultFactoryRunDeps: FactoryRunDeps;
 export declare function renderFactoryRunState(state: FactoryRunState): string;

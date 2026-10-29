@@ -12,11 +12,13 @@
  * that names an Actions run belongs to a workflow run for that head
  * (`gh run list --commit <head>`); otherwise it is a stale read and the
  * driver polls again. Ship's gate API is used as is: watchGates with
- * `headSha` and fetchHeadSha / fetchWorkflowRuns.
+ * `headSha` and fetchHeadSha / fetchWorkflowRuns. On Azure DevOps the same
+ * reads go through the forge (`forge`): its PR head is
+ * lastMergeSourceCommit, which lags a push the same way (design §8.3).
  */
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { type Exec } from '../../ship/exec.js';
-import { type GateReport } from '../../ship/gates.js';
+import { type GateForge, type GateReport } from '../../ship/gates.js';
 /** `pending: no-workflows-triggered` for this long goes to awaiting-human: no-workflows. */
 export declare const NO_WORKFLOWS_GRACE_MS: number;
 /** Test titles kept from those logs (a log is untrusted, PR-controlled output). */
@@ -43,6 +45,8 @@ export interface GatesDriverInput {
     /** A poll without an accepted read (waiting for GitHub, a stale read). */
     onWait: (note: string) => void;
     cancelled: () => boolean;
+    /** The forge reads (ship's GateForge); omitted = GitHub, the gh calls below. */
+    forge?: GateForge;
 }
 export type GatesOutcome = {
     kind: 'green';
@@ -79,8 +83,8 @@ export declare function readPrHead(exec: Exec, pr: number, cwd: string): {
  * head moved, or a reported check names an Actions run that is not one of
  * the head's workflow runs.
  */
-export declare function staleRead(exec: Exec, pr: number, head: string, report: GateReport, cwd: string): string | null;
+export declare function staleRead(exec: Exec, pr: number, head: string, report: GateReport, cwd: string, forge?: GateForge): string | null;
 /** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs, MAX_FAILING_TITLES titles). */
-export declare function failingTestTitles(exec: Exec, report: GateReport, cwd: string): string[];
+export declare function failingTestTitles(exec: Exec, report: GateReport, cwd: string, forge?: GateForge): string[];
 export declare function driveGates(o: GatesDriverInput): Promise<GatesOutcome>;
 //# sourceMappingURL=gates-driver.d.ts.map

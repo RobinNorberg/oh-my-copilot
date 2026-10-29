@@ -208,13 +208,42 @@ export function readBaseFile(exec: Exec, cwd: string, commit: string, path: stri
 }
 
 /**
- * Comparable identity of a repository URL: `gh:<host>/<owner>/<repo>` for an
- * https / ssh / scp-style URL (case-insensitive, `.git` and a trailing `/`
- * dropped), `path:<url>` for anything else (a local path), so a local path
- * can never equal a GitHub repository.
+ * An Azure DevOps repository URL (design §8.3), already trimmed and
+ * lowercased: `[https://][user@]dev.azure.com/<org>/<project>/_git/<repo>`,
+ * `[ssh://]git@ssh.dev.azure.com[:/]v3/<org>/<project>/<repo>`, and the
+ * legacy `https://<org>.visualstudio.com/[DefaultCollection/]<project>/_git/<repo>`
+ * and `<org>@vs-ssh.visualstudio.com:v3/<org>/<project>/<repo>`.
  */
-function repoIdentity(url: string): string {
+const ADO_URLS: readonly RegExp[] = [
+  /^https?:\/\/(?:[^@/]+@)?dev\.azure\.com\/(?<org>[^/]+)\/(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/,
+  /^(?:ssh:\/\/)?[^@/:]+@ssh\.dev\.azure\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/,
+  /^https?:\/\/(?:[^@/]+@)?(?<org>[^./@]+)\.visualstudio\.com\/(?:defaultcollection\/)?(?<project>[^/]+)\/_git\/(?<repo>[^/]+)$/,
+  /^(?:ssh:\/\/)?[^@/:]+@vs-ssh\.visualstudio\.com(?::|(?::\d+)?\/)v3\/(?<org>[^/]+)\/(?<project>[^/]+)\/(?<repo>[^/]+)$/,
+];
+
+/** `%20` and friends decoded; a malformed escape keeps the raw segment. */
+const decodeSegment = (s: string): string => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+/**
+ * Comparable identity of a repository URL: `ado:<org>/<project>/<repo>` for
+ * an Azure DevOps URL (every form in ADO_URLS, escapes decoded),
+ * `gh:<host>/<owner>/<repo>` for any other https / ssh / scp-style URL
+ * (case-insensitive, `.git` and a trailing `/` dropped), `path:<url>` for
+ * anything else (a local path), so a local path can never equal a hosted
+ * repository.
+ */
+export function repoIdentity(url: string): string {
   const s = url.trim().replace(/\\/g, '/').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase();
+  for (const re of ADO_URLS) {
+    const g = re.exec(s)?.groups;
+    if (g) return `ado:${[g.org, g.project, g.repo].map(decodeSegment).join('/')}`;
+  }
   const m = /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+)\/([^/]+)$/.exec(s)
     ?? /^(?:[^@/:]+@)?([^/:]{2,}):([^/]+)\/([^/]+)$/.exec(s);
   return m ? `gh:${m[1]}/${m[2]}/${m[3]}` : `path:${s}`;
@@ -244,9 +273,17 @@ export function remoteRepoMismatch(exec: Exec, cwd: string, remote: string, repo
   return foreign ? `remote ${remote} pushes to ${foreign}, but the PR is in ${repoUrl}` : null;
 }
 
-/** The repository URL of a PR URL (`https://github.com/o/r/pull/12` -> `https://github.com/o/r`); undefined when it is not one. */
+/**
+ * The repository URL of a PR URL (`https://github.com/o/r/pull/12` ->
+ * `https://github.com/o/r`; Azure DevOps
+ * `https://dev.azure.com/o/p/_git/r/pullrequest/12` -> `.../_git/r`, the
+ * legacy `<org>.visualstudio.com` form too); undefined when it is not one.
+ */
 export function prRepoUrl(prUrl: unknown): string | undefined {
-  return typeof prUrl === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(prUrl) ? prUrl.replace(/\/pull\/\d+$/, '') : undefined;
+  if (typeof prUrl !== 'string') return undefined;
+  if (/^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(prUrl)) return prUrl.replace(/\/pull\/\d+$/, '');
+  const m = /^(https:\/\/[^/\s]+(?:\/[^/\s]+)+)\/pullrequest\/\d+$/i.exec(prUrl);
+  return m && repoIdentity(m[1]).startsWith('ado:') ? m[1] : undefined;
 }
 
 /**

@@ -15,8 +15,10 @@ export interface AzureDevOpsForgeOptions extends ForgeOptions {
     /** Default process.env; OMG_ADO_RECORD_DIR there turns on fixture recording (record.ts). */
     env?: Readonly<Record<string, string | undefined>>;
 }
-/** The states the progress mapping may write: the only System.State values the guard lets through (design §7). */
+/** The states the progress mapping may write: the only System.State values the guard lets through (design §7); none while progress is disabled. */
 export declare const progressStates: (config: ResolvedForgeConfig) => string[];
+/** The board columns the progress mapping may write (a column move can change the state); none while progress is disabled. */
+export declare const progressColumns: (config: ResolvedForgeConfig) => string[];
 /** Production az-binary deps: the real PATH, fs and realpathSync.native. */
 export declare function defaultAzBinaryDeps(untrustedRoots: readonly string[], env?: Readonly<Record<string, string | undefined>>): AzBinaryDeps;
 /** What the ADO guard needs for a run: the forge repo and the az entry the adapter spawns. */

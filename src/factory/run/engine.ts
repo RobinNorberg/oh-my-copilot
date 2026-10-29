@@ -42,6 +42,15 @@
  * From implement on it is the issue pipeline; every lane also passes the
  * heal caps (FactoryHealStart.laneCap). Nothing here writes the known-flaky
  * list: a write lane touching it parks at protected-paths.
+ *
+ * Forges (factory forges design §6-§8): with an Azure DevOps `forge` every
+ * tracker, PR, check and merge-command call goes through the ADO adapter,
+ * built on the guarded Exec whose az guard knows the run's repository, az
+ * entry and progress mapping; the state records forgeKind and a resume on
+ * another forge is refused. The exact-head rules hold through
+ * reviews.prHead (lastMergeSourceCommit): an ancestor of the engine's push
+ * is the forge lagging (pending), anything else is head-moved-externally.
+ * GitHub runs keep the gh calls unchanged.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -53,6 +62,10 @@ import { runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
 import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
+import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
+import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
+import { createForge } from '../../forge/index.js';
+import type { Forge, ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { GhCommandError } from '../../forge/github/gh.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
 import { ghIssueComment, ghIssueJson, ghIssueView } from '../../forge/github/tracker.js';
@@ -75,6 +88,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { assertFactoryForgeOptions } from './forge-roots.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
@@ -87,6 +101,7 @@ import {
   acquireFactoryOwner,
   createFactoryState,
   factoryCancelRequested,
+  forgeResumeProblem,
   factoryOwnerPath,
   factoryStateDir,
   factoryStatePath,
@@ -182,6 +197,42 @@ export interface FactoryEngineOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
   gateConfig?: GateConfigLoader;
+  /**
+   * The run's forge (factory forges design §3, §6), recorded in the state as
+   * forgeKind. Omitted = GitHub through the gh calls, as before forges; the
+   * CLI always passes it. `options` must list every untrusted root
+   * (factoryForgeOptions); `entry` is the resolved az entry (default:
+   * resolveAzEntry outside those roots).
+   */
+  forge?: FactoryForgeInput;
+}
+
+export interface FactoryForgeInput {
+  config: ResolvedForgeConfig;
+  options: ForgeOptions;
+  entry?: AzEntry;
+}
+
+/** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
+export const ADO_HEAD_LAG_POLLS = 12;
+
+/**
+ * The engine's guarded Exec and, on Azure DevOps, its forge built on that
+ * Exec. The az guard gets the run's forge repo, az entry and progress
+ * mapping (src/forge/ado/guard.ts); without it every az call is refused.
+ * GitHub (no forge, or a github forge) keeps the plain factory guard and the
+ * gh calls. ci-heal runs are GitHub-only.
+ */
+function engineExec(o: FactoryEngineOptions, inner: Exec): { exec: Exec; forge?: Forge } {
+  const f = o.forge;
+  if (f) assertFactoryForgeOptions(o.root, f.options);
+  if (!f || f.config.kind !== 'azure-devops') return { exec: factoryGuardExec(inner, () => [o.base]) };
+  if (o.heal) throw new FactoryStepError('ci-heal runs are GitHub-only (omg factory heal reads GitHub Actions history); this repository is on Azure DevOps');
+  const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
+  const guard = adoGuardContext(f.config, entry);
+  const exec = factoryGuardExec(inner, () => [o.base], () => guard);
+  const options: AzureDevOpsForgeOptions = { ...f.options, entry };
+  return { exec, forge: createForge(exec, o.root, f.config, options) };
 }
 
 /** How the engine checks and stops a lost lane's recorded child process. */
@@ -534,9 +585,16 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
+  /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
+  private readonly forge?: Forge;
+  /** The forge, for messages. */
+  private readonly forgeName: string;
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
-    this.exec = factoryGuardExec(hardenedGitExec(o.exec, hooksDir), () => [o.base]);
+    const built = engineExec(o, hardenedGitExec(o.exec, hooksDir));
+    this.exec = built.exec;
+    this.forge = built.forge;
+    this.forgeName = this.forge ? 'Azure DevOps' : 'GitHub';
     this.clock = o.now ?? Date.now;
     this.lastTick = this.clock();
     this.key = engineRunKey(o);
@@ -655,6 +713,40 @@ class FactoryEngine {
     }
   }
 
+  // --- Forge calls: Azure DevOps through this.forge, else the gh calls unchanged --------------
+
+  private commentIssue(n: number, file: string): { ok: boolean; stderr: string } {
+    return this.forge ? this.forge.tracker.comment(n, file) : ghIssueComment(this.exec, n, file, this.o.root);
+  }
+
+  private commentPr(pr: number, file: string): { ok: boolean; stderr: string } {
+    return this.forge ? this.forge.reviews.commentPr(pr, file) : ghCommentPr(this.exec, pr, file, this.o.root);
+  }
+
+  /** True when `sha` is an ancestor of `head` in the local object store. */
+  private isAncestor(sha: string, head: string): boolean {
+    return HEX40.test(sha) && this.exec('git', ['merge-base', '--is-ancestor', sha, head], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status === 0;
+  }
+
+  /**
+   * One PR read, re-read while Azure DevOps reports an ancestor of the
+   * engine's push `head` (lastMergeSourceCommit lags a push by seconds,
+   * design §8.3). Still lagging after ADO_HEAD_LAG_POLLS reads: the step
+   * stops pending (exit 1, a rerun resumes), never at head-moved-externally.
+   * Any other head is the caller's to judge. GitHub reads once, as before.
+   */
+  private async settledPr<T extends { headRefOid?: unknown }>(pr: number, head: string, read: () => T): Promise<T> {
+    let v = read();
+    if (!this.forge) return v;
+    const lagging = () => typeof v.headRefOid === 'string' && v.headRefOid !== head && this.isAncestor(v.headRefOid, head);
+    for (let i = 0; i < ADO_HEAD_LAG_POLLS && lagging(); i++) {
+      await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(this.o.pollMs ?? DEFAULT_POLL_MS);
+      v = read();
+    }
+    if (lagging()) throw new FactoryStepError(`pending: Azure DevOps still reports PR #${pr} at ${String(v.headRefOid).slice(0, 12)}, an ancestor of the engine's push ${head.slice(0, 12)} (the forge is lagging); rerun ${this.resume}`);
+    return v;
+  }
+
   private writeBody(name: string, text: string): string {
     const path = join(factoryStateDir(this.o.root), `run-${this.key}-${name}.md`);
     writeFileSync(path, text, 'utf8');
@@ -708,13 +800,20 @@ class FactoryEngine {
     if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
       return { exitCode: existing.phase === 'failed' ? 1 : 0, phase: existing.phase, state: existing, message: `the factory run for ${this.what} is ${existing.phase}` };
     }
+    // A config change cannot swap adapters mid-run (critic amendments §A.9).
+    const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github') : null;
+    if (existing && swapped) {
+      this.progress.emit(existing.phase, 'fail', 'forge changed');
+      return { exitCode: 1, phase: existing.phase, state: existing, message: swapped };
+    }
     try {
       if (!existing) {
         if (!isPlainBranchName(this.o.base)) throw new FactoryStepError(`base ${JSON.stringify(this.o.base)} is not a branch name`);
         const heal = this.o.heal;
         if (heal && heal.record?.sig8 !== heal.sig8) throw new FactoryStepError(`no ci-heal run ${this.key} exists, and no diagnosis record for signature ${heal.sig8} was given to start one`);
         this.check();
-        this.state = updateFactoryState(this.o.root, this.key, () => createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}) }, this.iso()), {
+        const forgeKind = this.o.forge ? { forgeKind: this.o.forge.config.kind } : {};
+        this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}) }, this.iso()), ...forgeKind }), {
           verify: (b) => { if (b !== null) throw new StateTamperedError([resolve(this.statePath)]); },
           onWrite: (path, content) => this.ledger.record(path, content),
         });
@@ -884,7 +983,7 @@ class FactoryEngine {
     if (this.state.gateComments?.includes(tag)) return true;
     try {
       const file = this.writeBody(name, body);
-      const res = target === 'issue' ? ghIssueComment(this.exec, n, file, this.o.root) : ghCommentPr(this.exec, n, file, this.o.root);
+      const res = target === 'issue' ? this.commentIssue(n, file) : this.commentPr(n, file);
       if (!res.ok) {
         this.o.warn?.(`omg factory run: could not comment on ${target} #${n}: ${res.stderr.trim()}`);
         return false;
@@ -938,7 +1037,7 @@ class FactoryEngine {
     }, 'cancelled', why, at));
     if (this.state.pr) {
       const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. The PR, its branch and the lane worktrees are kept.\n`);
-      const res = ghCommentPr(this.exec, this.state.pr, body, this.o.root);
+      const res = this.commentPr(this.state.pr, body);
       if (!res.ok) this.o.warn?.(`omg factory run: could not comment on PR #${this.state.pr}: ${res.stderr.trim()}`);
     }
     this.progress.emit('cancelled', 'done', 'cancelled', this.fields());
@@ -964,6 +1063,13 @@ class FactoryEngine {
   /** An open PR on the run's branch that this run did not create parks at pr-exists; true when it parked. */
   private foreignPr(repoUrl: string): boolean {
     if (this.state.pr) return false;
+    if (this.forge) {
+      const open = this.forge.reviews.findOpenPrForBranch(this.state.branch);
+      if (open === undefined) return false;
+      this.save((s) => ({ ...s, repoUrl }));
+      this.gate('pr-exists', `open PR #${open} already uses ${this.state.branch} and this run did not create it; close it or adopt it by hand`);
+      return true;
+    }
     const open = this.gh((exec, cwd) => ghOpenPrs(exec, this.state.branch, cwd));
     if (!Array.isArray(open) || open.length === 0) return false;
     this.save((s) => ({ ...s, repoUrl }));
@@ -1008,8 +1114,30 @@ class FactoryEngine {
     this.save((x) => moveTo({ ...x, heal: { ...h, approved }, plan: { source: 'heal-diagnosis', text } }, 'implement', `plan: heal diagnosis (${approved.by === 'human' ? 'approved by a human' : 'factory.heal.autoImplement'})`, this.iso()));
   }
 
+  /**
+   * Azure DevOps intake: the work item through the tracker. The plan rules
+   * read the adapter's trust seam (ForgeComment.trusted, authorTrusted:
+   * createdBy.uniqueName in trustedAuthors). The Acceptance Criteria field
+   * joins the body under an `Acceptance criteria` heading, so the plan step
+   * treats it as GitHub treats that heading in an issue body.
+   */
+  private adoIntake(forge: Forge): void {
+    const item = forge.tracker.viewItem(this.o.issue!);
+    if (item.id !== this.o.issue) throw new FactoryStepError(`work item ${this.o.issue}: the tracker returned item ${item.id}`);
+    if (!item.open) {
+      this.save((s) => moveTo(s, 'cancelled', `work item is ${item.rawState.toLowerCase() || 'closed'}`, this.iso()));
+      this.progress.emit('intake', 'done', 'work item closed');
+      return;
+    }
+    const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
+    const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+    if (this.foreignPr(item.repoUrl)) return;
+    this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `work item ${item.url}`, this.iso()));
+  }
+
   private async intake(): Promise<void> {
     if (this.state.kind === 'ci-heal') return this.healIntake();
+    if (this.forge) return this.adoIntake(this.forge);
     const v = this.gh((exec, cwd) => ghIssueJson(exec, this.o.issue!, cwd));
     const url = typeof v.url === 'string' ? v.url : '';
     const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
@@ -1155,16 +1283,21 @@ class FactoryEngine {
     }
     let pr = s.pr;
     if (!pr) {
-      pr = this.gh((exec, cwd) => ghFindOpenPr(exec, s.branch, cwd));
+      const forge = this.forge;
+      pr = forge ? forge.reviews.findOpenPrForBranch(s.branch) : this.gh((exec, cwd) => ghFindOpenPr(exec, s.branch, cwd));
       if (!pr) {
         // A write lane that ran without a confirmed OS sandbox (writeUnsandboxed "detect-only") is recorded on the PR (design §3).
         const unsandboxed = s.lanes.filter((l) => l.sandbox?.mode === 'detect-only').map((l) => l.id);
         const sandboxNote = unsandboxed.length > 0 ? `\n**Sandbox: detect-only.** Lane(s) ${unsandboxed.join(', ')} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n` : '';
         const heal = s.kind === 'ci-heal';
-        const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `Closes #${s.issue}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
+        // Azure DevOps links the work item through workItemRefs; `Closes #n` is GitHub's issue link.
+        const link = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
+        const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `${link}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
         // A ci-heal title is fixed: the diagnosis is untrusted lane output.
         const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, '') || `issue ${s.issue}`} (#${s.issue})`;
-        pr = this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
+        pr = forge
+          ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, itemId: s.issue })
+          : this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
       }
       this.save((x) => ({ ...x, pr }));
     }
@@ -1185,7 +1318,7 @@ class FactoryEngine {
     const head = s.head;
     const pr = s.pr;
     if (!head || !pr || !s.baseSha) throw new FactoryStepError('review needs a published head, a PR and the base sha');
-    const view = this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
+    const view = await this.settledPr(pr, head, () => this.prHeadState(pr));
     if (view.state !== 'OPEN') {
       this.gate('pr-not-open', `PR #${pr} is ${String(view.state).toLowerCase()}`);
       return;
@@ -1228,7 +1361,7 @@ class FactoryEngine {
       return;
     }
     const parsed = parseReviewOutput(result.finalText, head);
-    const again = this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
+    const again = this.prHeadState(pr);
     if (again.headRefOid !== head) {
       this.markVerdict(lane.id, 'invalid', 'head moved during review');
       this.gate('head-moved-externally', `PR #${pr} head moved to ${String(again.headRefOid).slice(0, 12)} during the review`);
@@ -1248,7 +1381,7 @@ class FactoryEngine {
     });
     this.save((x) => ({ ...x, findings: parsed.findings }));
     const body = this.writeBody('review', reviewComment(parsed, reviewer));
-    const posted = ghCommentPr(this.exec, pr, body, this.o.root);
+    const posted = this.commentPr(pr, body);
     if (!posted.ok) this.o.warn?.(`omg factory run: the review was recorded but the PR comment failed: ${posted.stderr.trim()}`);
     this.followShip(next, `${reviewer}: ${parsed.verdict}`);
   }
@@ -1299,9 +1432,16 @@ class FactoryEngine {
 
   // --- prepare -> gates -> merge ---------------------------------------------------------------
 
-  /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`. */
+  /** The review's head read: `gh pr view <pr> --json headRefOid,state`, or the forge's prHead. */
+  private prHeadState(pr: number): { headRefOid?: unknown; state?: unknown } {
+    return this.forge ? this.forge.reviews.prHead(pr) : this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
+  }
+
+  /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`, or the forge's viewPr (ADO: base/head = lastMergeTarget/SourceCommit). */
   private prView(pr: number): MergeView {
-    return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+    if (!this.forge) return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+    const v = this.forge.reviews.viewPr(pr);
+    return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: v.baseRefOid, headRefOid: v.headRefOid };
   }
 
   /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
@@ -1377,7 +1517,7 @@ class FactoryEngine {
     const s = this.state;
     const { pr, head } = s;
     if (!pr || !head) throw new FactoryStepError('prepare needs a published head and PR');
-    const view = this.prView(pr);
+    const view = await this.settledPr(pr, head, () => this.prView(pr));
     if (this.prGone(view)) return;
     const ship = this.readShip(pr);
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
@@ -1404,7 +1544,10 @@ class FactoryEngine {
       this.gate('head-moved-externally', `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, the engine pushed ${head.slice(0, 12)}`);
       return;
     }
-    if (view.isDraft) this.gh((exec, cwd) => ghMarkReady(exec, pr, cwd));
+    if (view.isDraft) {
+      if (this.forge) this.forge.reviews.markReady(pr);
+      else this.gh((exec, cwd) => ghMarkReady(exec, pr, cwd));
+    }
 
     // A restarted prepare no longer owns a recorded push: the recheck stops tolerating its tracking-ref move.
     if (s.prepared) this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
@@ -1585,6 +1728,7 @@ class FactoryEngine {
     const fields = () => ({ ...this.fields() });
     const out = await driveGates({
       exec: this.exec, cwd: this.o.root, pr, head, config, known,
+      ...(this.forge ? { forge: this.forge } : {}),
       deadline: this.clock() + this.o.limits.gatesTimeoutMs,
       now: this.clock,
       sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
@@ -1642,7 +1786,7 @@ class FactoryEngine {
   private async merge(): Promise<void> {
     const { pr, head } = this.state;
     if (!pr || !head) throw new FactoryStepError('merge needs a published head and PR');
-    const view = this.prView(pr);
+    const view = await this.settledPr(pr, head, () => this.prView(pr));
     if (this.prGone(view)) return;
     if (view.headRefOid !== head) {
       this.gate('head-moved-externally', `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, the engine pushed ${head.slice(0, 12)}`);
@@ -1652,7 +1796,7 @@ class FactoryEngine {
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     const { config, known } = this.gateConfig(view);
-    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known);
+    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge);
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
       // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.
       const bounces = (this.state.mergeBounces ?? 0) + 1;
@@ -1676,9 +1820,9 @@ class FactoryEngine {
   private finishMerged(pr: number): void {
     this.writeShip(pr, (cur) => {
       if (!cur) throw new FactoryStepError(`no ship state for PR #${pr}`);
-      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', 'merged on GitHub by a human', this.iso()) : cur;
+      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by a human`, this.iso()) : cur;
     });
-    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on GitHub`, this.iso()));
+    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}`, this.iso()));
     this.progress.emit('merged', 'done', `PR #${pr} merged`, this.fields());
   }
 
@@ -2023,10 +2167,12 @@ class FactoryEngine {
 
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
 function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
-  const exec = factoryGuardExec(o.exec, () => [o.base]);
+  const { exec, forge } = engineExec(o, o.exec);
   const key = engineRunKey(o);
   const existing = readFactoryState(o.root, key);
   const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
+  const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github') : null;
+  if (existing && swapped) return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
   if (existing) {
     return {
       exitCode: 0, phase: existing.phase, state: existing, ...(existing.gate ? { gate: existing.gate } : {}),
@@ -2041,6 +2187,15 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     return go
       ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
       : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
+  }
+  if (forge) {
+    const item = forge.tracker.viewItem(o.issue!);
+    if (!item.open) return { exitCode: 0, phase: null, state: null, message: 'dry run: the work item is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+    const link = findPlanLink(item.body, item.comments, item.authorTrusted);
+    const source = link ? `omg-plan ${link}` : item.acceptance ? 'work item Acceptance Criteria' : hasAcceptanceCriteria(item.body) ? 'work item description (Acceptance criteria)' : undefined;
+    return source
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
+      : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
   }
   const res = ghIssueView(exec, o.issue!, o.root);
   if (res.status !== 0) throw new FactoryStepError(`gh issue view ${o.issue} failed: ${res.stderr.trim()}`);

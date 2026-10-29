@@ -29,6 +29,14 @@ export interface AdoMergeOptions {
     /** Roots a lane or job can write; the body file must be outside every one. */
     untrustedRoots: readonly string[];
 }
+/**
+ * Why `dir` (already resolved) may not hold the merge body, or undefined: it
+ * must be a directory, and on POSIX owned by this user and not writable
+ * by group or others, so nobody else can swap the body between the write
+ * and the human's run. Windows modes carry no ACL information; there the
+ * untrusted-root check is the guard.
+ */
+export declare function mergeBodyDirProblem(dir: string, platform?: NodeJS.Platform): string | undefined;
 /** Write the head-pinned body for `pr` and return its absolute path. */
 export declare function writeAdoMergeBody(ctx: Pick<AdoContext, 'repo'>, o: AdoMergeOptions, pr: number, headSha: string): string;
 export declare function adoMerge(ctx: AdoContext, o: AdoMergeOptions): ForgeMerge;

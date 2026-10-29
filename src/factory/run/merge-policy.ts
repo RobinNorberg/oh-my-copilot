@@ -14,30 +14,51 @@ import { evaluateGates } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview, type MergeDecision } from '../../ship/merge.js';
 import { latestVerdict, type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
+import type { Forge } from '../../forge/types.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView, type MergeView } from '../../forge/github/reviews.js';
 
+/** A merge decision; on Azure DevOps also the body file the human command reads and its SHA-256. */
+export interface FactoryMergeDecision extends MergeDecision {
+  body?: { file: string; sha256: string };
+}
+
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
  * in the local object store (the trusted config load fetched and checked it).
+ * With an Azure DevOps `forge` the gate read goes through it, its blocking
+ * branch policies are reasons too, and the command is its head-pinned PATCH.
  */
-export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[]): MergeDecision {
-  const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid);
+export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>): FactoryMergeDecision {
+  const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge);
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : [];
-  return decideMerge({
+  const decision = decideMerge({
     state: ship, pr: view, gate, ...commits,
     changedFiles: listChangedFiles(exec, root, view.baseRefOid, view.headRefOid),
     extraProtected,
   });
+  if (!forge) return decision;
+  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
+  const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    command: human?.command ?? forge.merge.humanMergeCommand(view.number, view.headRefOid),
+    ...(human ? { body: { file: human.bodyFile, sha256: human.bodySha256 } } : {}),
+  };
 }
 
+/** The body file's lines under the command (ADO): its path and SHA-256, for the human to check before running it. */
+const bodyLines = (decision: FactoryMergeDecision): string[] =>
+  decision.body ? ['', `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
+
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */
-export function mergeComment(issue: FactoryRunKey, decision: MergeDecision, resume = `omg factory run ${issue}`): string {
+export function mergeComment(issue: FactoryRunKey, decision: FactoryMergeDecision, resume = `omg factory run ${issue}`): string {
   const cmd = decision.command.join(' ');
   const label = runLabel(issue);
   return decision.ok
@@ -49,6 +70,7 @@ export function mergeComment(issue: FactoryRunKey, decision: MergeDecision, resu
       '```',
       cmd,
       '```',
+      ...bodyLines(decision),
       '',
       `Then run \`${resume}\` to finish the run as merged.`,
       '',
@@ -59,6 +81,7 @@ export function mergeComment(issue: FactoryRunKey, decision: MergeDecision, resu
       ...decision.reasons.map((r) => `- ${r}`),
       '',
       `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`.`,
+      ...bodyLines(decision),
       '',
     ].join('\n');
 }

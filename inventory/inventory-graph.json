@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "78abb93ec38a6ad85872fb8a5daceb5f14b79cd8",
-    "sourceSha256": "91153f120b8845291e50f05a58460ca8c449da1a88bb740ce62d835e9790b564",
+    "head": "db2ed0fe77690368ce40f5e60de857289e0f1c14",
+    "sourceSha256": "3724e5df308ee1ebbe2468299a733b581741690cb622b396aad2bf43fdf5a71d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "78abb93ec38a6ad85872fb8a5daceb5f14b79cd8",
-  "sourceSha256": "91153f120b8845291e50f05a58460ca8c449da1a88bb740ce62d835e9790b564",
+  "head": "db2ed0fe77690368ce40f5e60de857289e0f1c14",
+  "sourceSha256": "3724e5df308ee1ebbe2468299a733b581741690cb622b396aad2bf43fdf5a71d",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1832,
-      "total": 1856
+      "srcFiles": 1836,
+      "total": 1860
     },
     "generated": {
-      "distFiles": 6880,
+      "distFiles": 6896,
       "bridgeFiles": 9,
-      "total": 6889
+      "total": 6905
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2664,6 +2664,10 @@
       "dist/cli/commands/__tests__/doctor-team-routing.test.d.ts.map",
       "dist/cli/commands/__tests__/doctor-team-routing.test.js",
       "dist/cli/commands/__tests__/doctor-team-routing.test.js.map",
+      "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts",
+      "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-forge-cli.test.js",
+      "dist/cli/commands/__tests__/factory-forge-cli.test.js.map",
       "dist/cli/commands/__tests__/factory-init.test.d.ts",
       "dist/cli/commands/__tests__/factory-init.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-init.test.js",
@@ -3078,6 +3082,10 @@
       "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
       "dist/factory/run/__tests__/ci-heal.test.js",
       "dist/factory/run/__tests__/ci-heal.test.js.map",
+      "dist/factory/run/__tests__/engine.ado.test.d.ts",
+      "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.ado.test.js",
+      "dist/factory/run/__tests__/engine.ado.test.js.map",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.sandbox.test.js",
@@ -3598,6 +3606,10 @@
       "dist/forge/ado/__tests__/merge-static.test.d.ts.map",
       "dist/forge/ado/__tests__/merge-static.test.js",
       "dist/forge/ado/__tests__/merge-static.test.js.map",
+      "dist/forge/ado/__tests__/progress-guard.test.d.ts",
+      "dist/forge/ado/__tests__/progress-guard.test.d.ts.map",
+      "dist/forge/ado/__tests__/progress-guard.test.js",
+      "dist/forge/ado/__tests__/progress-guard.test.js.map",
       "dist/forge/ado/__tests__/record.test.d.ts",
       "dist/forge/ado/__tests__/record.test.d.ts.map",
       "dist/forge/ado/__tests__/record.test.js",
@@ -6348,6 +6360,10 @@
       "dist/ship/__tests__/prepare-merge.test.d.ts.map",
       "dist/ship/__tests__/prepare-merge.test.js",
       "dist/ship/__tests__/prepare-merge.test.js.map",
+      "dist/ship/__tests__/repo-identity.test.d.ts",
+      "dist/ship/__tests__/repo-identity.test.d.ts.map",
+      "dist/ship/__tests__/repo-identity.test.js",
+      "dist/ship/__tests__/repo-identity.test.js.map",
       "dist/ship/__tests__/safety-state.test.d.ts",
       "dist/ship/__tests__/safety-state.test.d.ts.map",
       "dist/ship/__tests__/safety-state.test.js",
@@ -17971,6 +17987,26 @@
         "path": "dist/cli/commands/__tests__/doctor-team-routing.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-forge-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-forge-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-forge-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-forge-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-forge-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/factory-init.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/factory-init.test.d.ts"
@@ -20039,6 +20075,26 @@
         "id": "dist/factory/run/__tests__/ci-heal.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/ci-heal.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
@@ -22639,6 +22695,26 @@
         "id": "dist/forge/ado/__tests__/merge-static.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/merge-static.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/progress-guard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/progress-guard.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/progress-guard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/progress-guard.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/progress-guard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/progress-guard.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/progress-guard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/progress-guard.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/record.test.d.ts",
@@ -36391,6 +36467,26 @@
         "path": "dist/ship/__tests__/prepare-merge.test.js.map"
       },
       {
+        "id": "dist/ship/__tests__/repo-identity.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/repo-identity.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/repo-identity.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/repo-identity.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/repo-identity.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/repo-identity.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/repo-identity.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/repo-identity.test.js.map"
+      },
+      {
         "id": "dist/ship/__tests__/safety-state.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/ship/__tests__/safety-state.test.d.ts"
@@ -48371,6 +48467,11 @@
         "path": "src/cli/commands/__tests__/doctor-team-routing.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/factory-forge-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/factory-init.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/factory-init.test.ts"
@@ -48914,6 +49015,11 @@
         "id": "src/factory/run/__tests__/ci-heal.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/ci-heal.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.sandbox.test.ts",
@@ -49689,6 +49795,11 @@
         "id": "src/forge/ado/__tests__/merge-static.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/merge-static.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/progress-guard.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/record.test.ts",
@@ -53229,6 +53340,11 @@
         "id": "src/ship/__tests__/prepare-merge.test.ts",
         "kind": "src",
         "path": "src/ship/__tests__/prepare-merge.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/repo-identity.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/repo-identity.test.ts"
       },
       {
         "id": "src/ship/__tests__/safety-state.test.ts",
@@ -70033,6 +70149,91 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-forge-cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/factory-init.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -70844,6 +71045,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "imports"
       },
@@ -70880,6 +71086,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/factory/status.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/forge/config.ts",
         "kind": "type-imports"
       },
       {
@@ -73684,6 +73895,11 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/lib/file-lock.ts",
         "kind": "imports"
       },
@@ -74408,6 +74624,96 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -75059,6 +75365,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/gates-driver.ts",
         "kind": "imports"
       },
@@ -75159,6 +75470,26 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/github/gh.ts",
         "kind": "imports"
       },
@@ -75171,6 +75502,16 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/forge/github/tracker.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -75264,12 +75605,42 @@
       },
       {
         "from": "src/factory/run/forge-roots.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
         "from": "src/factory/run/forge-roots.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/forge-roots.ts",
+        "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
       {
@@ -75410,6 +75781,11 @@
       {
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/forge/github/reviews.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -77828,6 +78204,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "src/forge/ado/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/progress-guard.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/record.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -78146,6 +78572,11 @@
         "from": "src/forge/ado/invoke.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/merge.ts",
+        "to": "external:crypto",
+        "kind": "imports"
       },
       {
         "from": "src/forge/ado/merge.ts",
@@ -96003,6 +96434,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/ship/__tests__/repo-identity.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/repo-identity.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/repo-identity.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/__tests__/safety-state.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -96151,6 +96597,11 @@
         "from": "src/ship/gates.ts",
         "to": "src/forge/github/checks.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/ship/gates.ts",
@@ -110559,12 +111010,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9454,
-      "edgeCount": 10965,
-      "importEdgeCount": 9051,
+      "nodeCount": 9474,
+      "edgeCount": 11032,
+      "importEdgeCount": 9102,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ccc1d39a5d1459be7e4e2aa719037184a1165acf29afd4785f29a81afc9f430f",
-  "manifestSha256": "4a6a68c64d596cbf8e8da35e751102307b34dc0a9334454abe8f42c05c704865"
+  "inventorySha256": "725b381e2b7c38521512c6601561146576e22d0004c385d7409aa47abf715479",
+  "manifestSha256": "0bbd2ac9399185eecc48c3dfbd47798bf14bfa710370a3544f17ef5813ee7e23"
 }
