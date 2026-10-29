@@ -119,14 +119,13 @@ export declare function analyzeFailedLog(check: string, runId: string | undefine
  * rerunnable only when all its required jobs are finished.
  */
 export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]): GateReport;
-/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list. */
+/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
 export declare function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[];
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
 export declare function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string;
 /**
- * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
- * the head sha. A run whose reported head_sha is another commit is dropped, so
- * a previous head's failed run never counts against this one.
+ * Every Actions workflow run for the head sha (`gh run list --commit`); a run
+ * whose reported head_sha is another commit is dropped (the GitHub forge's runsForHead).
  */
 export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[];
 /**

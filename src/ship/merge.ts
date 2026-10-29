@@ -7,6 +7,7 @@
  */
 
 import { TRUSTED_READ_ENV, type Exec } from './exec.js';
+import { ghMergeCommand } from '../forge/github/merge.js';
 import type { GateReport } from './gates.js';
 import { latestVerdict, verifyShipIntegrity, type ShipState } from './state.js';
 
@@ -187,9 +188,8 @@ export interface MergeDecision {
   command: string[];
 }
 
-export function mergeCommand(pr: number, headSha: string): string[] {
-  return ['gh', 'pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', headSha];
-}
+/** The GitHub forge's human merge command. */
+export function mergeCommand(pr: number, headSha: string): string[] { return ghMergeCommand(pr, headSha); }
 
 /**
  * Why the commits after the reviewed sha need a new verdict (empty = they are

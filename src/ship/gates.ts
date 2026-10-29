@@ -13,6 +13,7 @@
 
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
+import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
 
 export const CHECK_FIELDS = 'name,state,bucket,link,workflow,event,startedAt,completedAt';
 
@@ -321,40 +322,17 @@ export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]
   };
 }
 
-/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list. */
-export function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] {
-  const res = exec('gh', ['pr', 'checks', String(pr), '--json', CHECK_FIELDS], { cwd });
-  const out = res.stdout.trim();
-  if (out.startsWith('[')) return parseChecksJson(out);
-  if (/no checks reported/i.test(res.stderr) || /no checks reported/i.test(res.stdout)) return [];
-  throw new GhChecksError(`gh pr checks ${pr} failed (exit ${res.status}): ${res.stderr.trim() || out}`);
-}
+/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
+export function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] { return ghPrChecks(exec, pr, cwd); }
 
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
-export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string {
-  const res = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefOid'], { cwd });
-  let sha: unknown;
-  try {
-    sha = (JSON.parse(res.stdout) as { headRefOid?: unknown }).headRefOid;
-  } catch {
-    sha = undefined;
-  }
-  if (res.status !== 0 || typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
-    throw new GhChecksError(`gh pr view ${pr} did not return a head sha (exit ${res.status}): ${res.stderr.trim()}`);
-  }
-  return sha;
-}
+export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string { return ghHeadSha(exec, pr, cwd); }
 
 /**
- * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
- * the head sha. A run whose reported head_sha is another commit is dropped, so
- * a previous head's failed run never counts against this one.
+ * Every Actions workflow run for the head sha (`gh run list --commit`); a run
+ * whose reported head_sha is another commit is dropped (the GitHub forge's runsForHead).
  */
-export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] {
-  const res = exec('gh', ['run', 'list', '--commit', headSha, '--json', RUN_FIELDS, '--limit', '100'], { cwd });
-  if (res.status !== 0) throw new GhChecksError(`gh run list --commit ${headSha.slice(0, 12)} failed (exit ${res.status}): ${res.stderr.trim()}`);
-  return parseRunsJson(res.stdout.trim() || '[]').filter((r) => !r.headSha || r.headSha === headSha);
-}
+export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] { return ghRunsForHead(exec, headSha, cwd); }
 
 /**
  * One gate evaluation against a single head sha: resolve the head first
@@ -380,8 +358,8 @@ export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known:
   const analyses: FlakyAnalysis[] = [];
   for (const check of report.checks) {
     if (check.class !== 'failed' || !check.jobId) continue;
-    const log = exec('gh', ['run', 'view', '--job', check.jobId, '--log'], { cwd });
-    analyses.push(analyzeFailedLog(check.name, check.runId, log.status === 0 ? log.stdout : '', known, check.jobId));
+    const log = ghJobLog(exec, check.jobId, cwd);
+    analyses.push(analyzeFailedLog(check.name, check.runId, log.ok ? log.text : '', known, check.jobId));
   }
   return applyFlakyAnalysis(report, analyses);
 }
@@ -449,8 +427,8 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
       for (const id of ready) {
         // Spend the budget first: a crash after the rerun must not allow a second one.
         budget!.record(id);
-        const res = opts.exec('gh', ['run', 'rerun', id, '--failed'], { cwd: opts.cwd });
-        if (res.status !== 0) {
+        const res = ghRerun(opts.exec, id, opts.cwd);
+        if (!res.ok) {
           report.suggestions.push(`gh run rerun ${id} --failed failed: ${res.stderr.trim()}`);
           return { report, rerun, timedOut: false };
         }
