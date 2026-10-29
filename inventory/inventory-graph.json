@@ -5,14 +5,14 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ffdc652fd96750355e556151a3a30e5cb1d25084",
+    "head": "1b4e155ba282af008294a15cc15a582c3d0e9b47",
     "sourceSha256": "fa1cc29526640ea57890e641252dfb1564efa13b5dc7fbe7471b573c2de3e7ce",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ffdc652fd96750355e556151a3a30e5cb1d25084",
+  "head": "1b4e155ba282af008294a15cc15a582c3d0e9b47",
   "sourceSha256": "fa1cc29526640ea57890e641252dfb1564efa13b5dc7fbe7471b573c2de3e7ce",
   "counts": {
     "public": {
@@ -32,9 +32,9 @@
       "total": 1848
     },
     "generated": {
-      "distFiles": 6840,
+      "distFiles": 6848,
       "bridgeFiles": 9,
-      "total": 6849
+      "total": 6857
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3090,6 +3090,10 @@
       "dist/factory/run/__tests__/fake-lanes.d.ts.map",
       "dist/factory/run/__tests__/fake-lanes.js",
       "dist/factory/run/__tests__/fake-lanes.js.map",
+      "dist/factory/run/__tests__/forge-roots.test.d.ts",
+      "dist/factory/run/__tests__/forge-roots.test.d.ts.map",
+      "dist/factory/run/__tests__/forge-roots.test.js",
+      "dist/factory/run/__tests__/forge-roots.test.js.map",
       "dist/factory/run/__tests__/lane.test.d.ts",
       "dist/factory/run/__tests__/lane.test.d.ts.map",
       "dist/factory/run/__tests__/lane.test.js",
@@ -3130,6 +3134,10 @@
       "dist/factory/run/exec.d.ts.map",
       "dist/factory/run/exec.js",
       "dist/factory/run/exec.js.map",
+      "dist/factory/run/forge-roots.d.ts",
+      "dist/factory/run/forge-roots.d.ts.map",
+      "dist/factory/run/forge-roots.js",
+      "dist/factory/run/forge-roots.js.map",
       "dist/factory/run/gates-driver.d.ts",
       "dist/factory/run/gates-driver.d.ts.map",
       "dist/factory/run/gates-driver.js",
@@ -20061,6 +20069,26 @@
         "path": "dist/factory/run/__tests__/fake-lanes.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/forge-roots.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/forge-roots.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/forge-roots.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/lane.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/lane.test.d.ts"
@@ -20259,6 +20287,26 @@
         "id": "dist/factory/run/exec.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/exec.js.map"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.d.ts"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.js"
+      },
+      {
+        "id": "dist/factory/run/forge-roots.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/forge-roots.js.map"
       },
       {
         "id": "dist/factory/run/gates-driver.d.ts",
@@ -110034,12 +110082,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9406,
+      "nodeCount": 9414,
       "edgeCount": 10916,
       "importEdgeCount": 9024,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "8ea98a749b0ea0963d03db7aa59efd2e238ba8b49cb1f1b5c75e3fad213abcbf",
-  "manifestSha256": "cdc7b22aff134e1d6cd71f8fda393cfd0a0d38b72510137584c8290cffca3263"
+  "manifestSha256": "277e10e1a28241d1fe1a69d786c5df7740b6bca9a316e525f11af78056e8de38"
 }
