@@ -18,6 +18,7 @@
  */
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
+import { factoryForgeOptions } from '../run/forge-roots.js';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -64,7 +65,7 @@ const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', '
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and non-GET az calls pass.
  */
-export function checkGuardExec(exec, marker) {
+export function checkGuardExec(exec, marker, ado = () => undefined) {
     return (cmd, args, opts) => {
         const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
         const refuse = (why) => { throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`); };
@@ -88,7 +89,7 @@ export function checkGuardExec(exec, marker) {
             const at = args.indexOf('--http-method');
             if (mark === undefined && at >= 0 && args[at + 1]?.toUpperCase() !== 'GET')
                 refuse('only reads run without a confirmed --mark');
-            assertFactoryCommand(cmd, args, [], opts?.env);
+            assertFactoryCommand(cmd, args, [], opts?.env, ado());
         }
         else {
             refuse('not a command omg factory check runs');
@@ -252,7 +253,7 @@ export async function runFactoryCheck(o, deps) {
     }
     let forge;
     try {
-        forge = deps.createForge(exec, root, config);
+        forge = deps.createForge(exec, root, config, factoryForgeOptions(root));
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));

@@ -19,10 +19,12 @@
 
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
-import type { Forge, ResolvedForgeConfig } from '../../forge/types.js';
+import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
+import { factoryForgeOptions } from '../run/forge-roots.js';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
+import type { AdoGuardContext } from '../../forge/ado/guard.js';
 import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckEnv, type CheckResult } from './score.js';
@@ -65,7 +67,7 @@ const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', '
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and non-GET az calls pass.
  */
-export function checkGuardExec(exec: Exec, marker?: () => string | undefined): Exec {
+export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
     const file = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
     const refuse = (why: string): never => { throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`); };
@@ -82,7 +84,7 @@ export function checkGuardExec(exec: Exec, marker?: () => string | undefined): E
     } else if (file === 'az' || file === 'python') {
       const at = args.indexOf('--http-method');
       if (mark === undefined && at >= 0 && args[at + 1]?.toUpperCase() !== 'GET') refuse('only reads run without a confirmed --mark');
-      assertFactoryCommand(cmd, args, [], opts?.env);
+      assertFactoryCommand(cmd, args, [], opts?.env, ado());
     } else {
       refuse('not a command omg factory check runs');
     }
@@ -130,7 +132,7 @@ export interface FactoryCheckDeps {
   /** The parsed working-tree project config. */
   projectConfig: (root: string) => unknown;
   /** The forge adapter (src/forge/index.ts createForge; tests inject a fake). */
-  createForge: (exec: Exec, cwd: string, config: ResolvedForgeConfig) => Forge;
+  createForge: ForgeFactory;
   isTTY: () => boolean;
   confirm: (question: string) => Promise<boolean>;
   out: (line: string) => void;
@@ -274,7 +276,7 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
   }
   let forge: Forge;
   try {
-    forge = deps.createForge(exec, root, config);
+    forge = deps.createForge(exec, root, config, factoryForgeOptions(root));
   } catch (error) {
     throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
   }

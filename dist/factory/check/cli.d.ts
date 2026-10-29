@@ -16,8 +16,9 @@
  * source or limit, no intake source, `--mark` without `--yes` and no TTY),
  * 5 incompatible (forge mismatch, unsupported remote, no adapter for the forge).
  */
-import type { Forge, ResolvedForgeConfig } from '../../forge/types.js';
+import type { ForgeFactory } from '../../forge/types.js';
 import { type Exec } from '../../ship/exec.js';
+import type { AdoGuardContext } from '../../forge/ado/guard.js';
 import { type CheckEnv, type CheckResult } from './score.js';
 export declare const EXIT_CHECK_FAILED = 1;
 export declare const EXIT_CHECK_USAGE = 2;
@@ -33,7 +34,7 @@ export declare class CheckIncompatibleError extends Error {
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and non-GET az calls pass.
  */
-export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined): Exec;
+export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export declare function parseSourceSpec(spec: string): Record<string, string>;
 export declare function parseItemId(raw: string): number;
@@ -47,7 +48,7 @@ export interface FactoryCheckDeps {
     /** The parsed working-tree project config. */
     projectConfig: (root: string) => unknown;
     /** The forge adapter (src/forge/index.ts createForge; tests inject a fake). */
-    createForge: (exec: Exec, cwd: string, config: ResolvedForgeConfig) => Forge;
+    createForge: ForgeFactory;
     isTTY: () => boolean;
     confirm: (question: string) => Promise<boolean>;
     out: (line: string) => void;

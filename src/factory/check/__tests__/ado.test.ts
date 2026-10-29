@@ -1,15 +1,18 @@
 /**
  * The Azure DevOps path of `omg factory check`, on recorded-format fixtures
- * (src/forge/ado/__tests__/fixtures.ts) in ./fixtures/ado. The ADO adapter
- * (PR 5) is not on this base, so a minimal tracker over the same
- * `az devops invoke` calls stands in for it; the check reads only through
- * the Forge interface, so the adapter drops in unchanged.
+ * (src/forge/ado/__tests__/fixtures.ts). The rule coverage uses ./fixtures/ado
+ * with a minimal tracker over the same `az devops invoke` calls (more work
+ * item shapes than the adapter's fixture world has); the last block runs the
+ * real adapter (createAzureDevOpsForge) on the adapter's own fixtures behind
+ * checkGuardExec with an ADO guard context.
  */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { adoFixtureExec, loadAdoFixtures } from '../../../forge/ado/__tests__/fixtures.js';
+import { adoConfig, CHECKOUT, POSIX_ENTRY, STATE_DIR, variant } from '../../../forge/ado/__tests__/world.js';
 import { adoHtmlToText } from '../../../forge/ado/html.js';
+import { adoGuardContext, createAzureDevOpsForge } from '../../../forge/ado/index.js';
 import { DEFAULT_ADO_ITEM_TYPES, DEFAULT_CHECK_CONFIG } from '../../../forge/config.js';
 import type { Exec } from '../../../ship/exec.js';
 import type { Forge, ForgeItem } from '../../../forge/types.js';
@@ -95,9 +98,48 @@ describe('omg factory check on Azure DevOps fixtures', () => {
   it('checkGuardExec refuses an az write without a confirmed mark before it reaches the exec', () => {
     const inner = adoFixtureExec(loadAdoFixtures(DIR));
     const seen: string[][] = [];
-    // The factory guard has no ADO shapes on this base (fail closed); count what reaches it.
+    // Refused by check's own read-only rule, before the factory guard; count what reaches the exec.
     const guarded = checkGuardExec(((cmd: string, args: string[]) => { seen.push(args); return inner(cmd, args); }) as Exec);
     expect(() => guarded('az', ['devops', 'invoke', '--area', 'wit', '--resource', 'workItems', '--http-method', 'PATCH'])).toThrow(/only reads run without a confirmed --mark/);
     expect(seen).toEqual([]);
+  });
+});
+
+describe('omg factory check through the real Azure DevOps adapter', () => {
+  function world(fixtures = loadAdoFixtures()) {
+    const inner = adoFixtureExec(fixtures);
+    const config = adoConfig();
+    const guard = adoGuardContext(config, POSIX_ENTRY);
+    const mark: { marker?: string } = {};
+    const exec = checkGuardExec(inner, () => mark.marker, () => guard);
+    const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry: POSIX_ENTRY, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR });
+    return { forge, mark, calls: inner.calls, env: { ...env, config } };
+  }
+  const methodOf = (args: string[]) => (args.includes('--http-method') ? args[args.indexOf('--http-method') + 1] : 'GET');
+
+  it('work item 42 with an active PR on factory/issue-42 is pr-exists, read with GETs only', () => {
+    const w = world();
+    expect(checkItems(w.forge, [42], w.env)).toEqual([
+      { id: 42, title: 'Add CSV export to the report page', url: expect.stringContaining('42'), bucket: 'blocked', reasons: ['pr-exists'], detail: 'open PR #17 already uses factory/issue-42', priority: expect.anything(), planSource: null },
+    ]);
+    expect(w.calls.length).toBeGreaterThan(0);
+    expect(w.calls.every((c) => methodOf(c.args) === 'GET')).toBe(true);
+  });
+
+  it('without the PR and links, 42 runs from the trusted author\'s omg-plan; addMarker passes the guard only while marking', () => {
+    const noPr = variant(loadAdoFixtures(), 'git.pullRequests.GET.by-branch.json', (s) => ({ ...s, value: [], count: 0 }));
+    // Its predecessor #40 and child #43 have no fixture: unreadable counts as open.
+    expect(checkItems(world(noPr).forge, [42], env)[0]).toMatchObject({ bucket: 'blocked', reasons: ['depends-on:#40'] });
+    const w = world(variant(noPr, 'wit.workItems.GET.42.json', (s) => ({ ...s, relations: [] })));
+    // Only the trustedAuthors comment's plan exists; the display-name spoof's docs/plans/evil.md would be plan-missing.
+    const plans: Record<string, string> = { 'docs/plans/csv-export.md': '# CSV export' };
+    expect(checkItems(w.forge, [42], { ...w.env, readPlan: (p) => plans[p] ?? null })[0]).toMatchObject({ id: 42, bucket: 'runnable', reasons: [], detail: 'plan: omg-plan docs/plans/csv-export.md', planSource: 'omg-plan' });
+    expect(checkItems(w.forge, [42], w.env)[0]).toMatchObject({ bucket: 'needs-plan', reasons: ['plan-missing'] });
+
+    expect(w.forge.tracker.addMarker(42, 'factory-ready')).toMatchObject({ ok: false });
+    expect(w.calls.some((c) => methodOf(c.args) === 'PATCH')).toBe(false);
+    w.mark.marker = 'factory-ready';
+    expect(w.forge.tracker.addMarker(42, 'factory-ready')).toEqual({ ok: true, stderr: '' });
+    expect(w.calls.filter((c) => methodOf(c.args) === 'PATCH')).toHaveLength(1);
   });
 });
