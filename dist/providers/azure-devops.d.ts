@@ -1,10 +1,11 @@
 import type { GitProvider, PRInfo, IssueInfo, WorkItem } from './types.js';
+import { isAzureDevOpsHost } from './remote-url.js';
+export { isAzureDevOpsHost };
 export type AdoErrorType = 'auth' | 'not-found' | 'timeout' | 'unknown';
 export declare class AdoError extends Error {
     readonly type: AdoErrorType;
     constructor(message: string, type: AdoErrorType);
 }
-export declare function isAzureDevOpsHost(host: string): boolean;
 export declare class AzureDevOpsProvider implements GitProvider {
     readonly name: "azure-devops";
     readonly displayName = "Azure DevOps";

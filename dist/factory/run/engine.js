@@ -66,6 +66,7 @@ import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './l
 import { createFactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
+import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
 import { acquireFactoryOwner, createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
@@ -84,8 +85,6 @@ const LANE_GRACE_MS = 60_000;
 export const MAX_REVIEW_DIFF_CHARS = 60_000;
 /** Issue titles in prompts and the PR title are cut to one line of this many characters. */
 const MAX_TITLE_CHARS = 200;
-/** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
-export const TRUSTED_PLAN_AUTHORS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 /** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
 const ISSUE_FIELDS = 'title,body,labels,state,url,author,comments';
 const PROCESS_DEADLINE_MS = 15_000;
@@ -122,54 +121,11 @@ export class StateTamperedError extends Error {
     }
 }
 const HEX40 = /^[0-9a-f]{40}$/;
-const PLAN_LINK = /^[^\S\r\n]*omg-plan:[^\S\r\n]*(\S+)[^\S\r\n]*$/im;
-const ACCEPTANCE = /^[^\S\r\n]*#{1,6}[^\S\r\n]*acceptance criteria\b/im;
 function errText(error) {
     return error instanceof Error ? error.message : String(error);
 }
-const loginOf = (author) => {
-    const login = author?.login;
-    return typeof login === 'string' ? login.toLowerCase() : '';
-};
-const trustedAssociation = (a) => typeof a === 'string' && TRUSTED_PLAN_AUTHORS.includes(a);
-/**
- * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
- * view --json` has no authorAssociation for the issue itself, so: the author
- * owns the repository (the issue URL's owner), or a comment by the same login
- * carries a trusted association (it is per user and repository). Unknown is
- * untrusted.
- */
-export function issueAuthorTrusted(v) {
-    const login = loginOf(v.author);
-    if (!login)
-        return false;
-    const owner = typeof v.url === 'string' ? /^https:\/\/[^/\s]+\/([^/\s]+)\//.exec(v.url)?.[1] : undefined;
-    if (owner && owner.toLowerCase() === login)
-        return true;
-    const comments = Array.isArray(v.comments) ? v.comments : [];
-    return comments.some((c) => loginOf(c?.author) === login && trustedAssociation(c.authorAssociation));
-}
-/**
- * The issue body's `omg-plan:` line when its author is trusted
- * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
- */
-export function findPlanLink(body, comments = [], bodyAuthorTrusted = false) {
-    const inBody = bodyAuthorTrusted ? PLAN_LINK.exec(body)?.[1] : undefined;
-    if (inBody)
-        return inBody;
-    for (const c of [...comments].reverse()) {
-        if (typeof c.authorAssociation !== 'string' || !TRUSTED_PLAN_AUTHORS.includes(c.authorAssociation))
-            continue;
-        const m = typeof c.body === 'string' ? PLAN_LINK.exec(c.body)?.[1] : undefined;
-        if (m)
-            return m;
-    }
-    return undefined;
-}
-export function hasAcceptanceCriteria(body) {
-    return ACCEPTANCE.test(body);
-}
+// The plan rules live in plan-rules.ts (shared with `omg factory check`).
+export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS } from './plan-rules.js';
 /** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
 export function oneLine(text, max = MAX_TITLE_CHARS) {
     return (text ?? '').replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);

@@ -5,19 +5,11 @@
  * access to provider-specific adapters.
  */
 import type { ProviderName, RemoteUrlInfo, GitProvider } from './types.js';
+export { detectProvider, parseRemoteUrl } from './remote-url.js';
 /**
  * Reset the remote URL cache. Intended for use in tests.
  */
 export declare function resetProviderCache(): void;
-/**
- * Detect provider from a git remote URL by matching known hostnames.
- */
-export declare function detectProvider(remoteUrl: string): ProviderName;
-/**
- * Parse a git remote URL into structured components.
- * Supports HTTPS, SSH (SCP-style), and provider-specific formats.
- */
-export declare function parseRemoteUrl(url: string): RemoteUrlInfo | null;
 /**
  * Detect the git provider for the current working directory
  * by reading the origin remote URL.

@@ -28,6 +28,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import type { ShipVerdict } from '../../ship/state.js';
+import type { ForgeKind } from '../../forge/types.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -149,6 +150,12 @@ export interface FactoryRunState {
   /** The issue number; 0 for a ci-heal run, which has no issue. */
   issue: number;
   heal?: FactoryHealRecord;
+  /**
+   * The forge the run started on (critic amendments §A.9). Absent in states
+   * written before forges existed, which ran on GitHub; optional, so their
+   * integrity seal still verifies.
+   */
+  forgeKind?: ForgeKind;
   repoUrl: string;
   base: string;
   branch: string;
@@ -303,6 +310,16 @@ export function verifyFactoryIntegrity(state: FactoryRunState): boolean {
   return typeof state.integrity === 'string' && state.integrity === computeFactoryIntegrity(state);
 }
 
+/**
+ * Why a resume must refuse, or null (critic amendments §A.9): a config change
+ * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ */
+export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal'>, resolved: ForgeKind): string | null {
+  const recorded = state.forgeKind ?? 'github';
+  if (recorded === resolved) return null;
+  return `factory run ${runLabel(runKeyOf(state))} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+}
+
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
@@ -311,6 +328,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (!FACTORY_PHASES.includes(s.phase as FactoryPhase)) return 'phase';
   if (!isStr(s.implementer) || !s.implementer) return 'implementer';
   if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal') return 'kind';
+  if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops') return 'forgeKind';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;

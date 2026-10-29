@@ -57,8 +57,6 @@ export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the can
 export declare const DEFAULT_POLL_MS = 5000;
 /** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
 export declare const MAX_REVIEW_DIFF_CHARS = 60000;
-/** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
-export declare const TRUSTED_PLAN_AUTHORS: readonly string[];
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
     sig8: string;
@@ -153,30 +151,7 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
-export interface IssueComment {
-    body?: unknown;
-    authorAssociation?: unknown;
-    author?: unknown;
-}
-/**
- * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
- * view --json` has no authorAssociation for the issue itself, so: the author
- * owns the repository (the issue URL's owner), or a comment by the same login
- * carries a trusted association (it is per user and repository). Unknown is
- * untrusted.
- */
-export declare function issueAuthorTrusted(v: {
-    author?: unknown;
-    url?: unknown;
-    comments?: unknown;
-}): boolean;
-/**
- * The issue body's `omg-plan:` line when its author is trusted
- * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
- */
-export declare function findPlanLink(body: string, comments?: ReadonlyArray<IssueComment>, bodyAuthorTrusted?: boolean): string | undefined;
-export declare function hasAcceptanceCriteria(body: string): boolean;
+export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS, type IssueComment } from './plan-rules.js';
 /** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
 export declare function oneLine(text: string | undefined, max?: number): string;
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
