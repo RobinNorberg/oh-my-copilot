@@ -93,10 +93,17 @@ function editLabels(exec: Exec, issue: number, flags: string[], cwd: string): { 
 /**
  * A stage's label; the other stages' labels are removed (one label family).
  * GitHub progress is labels only: a column or state mapping is ignored.
+ * `cancelled` removes the whole family (design §7).
  */
 export function ghSetProgress(exec: Exec, issue: number, stage: ProgressStage, mapping: ProgressMapping, stages: ResolvedForgeConfig['progress']['stages'], cwd: string): { ok: boolean; detail: string } {
+  const family = [...new Set(Object.values(stages).map((m) => m?.label).filter((l): l is string => Boolean(l)))];
+  if (stage === 'cancelled') {
+    if (family.length === 0) return { ok: true, detail: 'no label family' };
+    const res = editLabels(exec, issue, family.flatMap((l) => ['--remove-label', l]), cwd);
+    return { ok: res.ok, detail: res.ok ? 'label family removed' : res.stderr.trim() };
+  }
   if (!mapping.label) return { ok: true, detail: `no label for stage ${stage}` };
-  const others = [...new Set(Object.values(stages).map((m) => m?.label).filter((l): l is string => Boolean(l) && l !== mapping.label))];
+  const others = family.filter((l) => l !== mapping.label);
   const res = editLabels(exec, issue, ['--add-label', mapping.label, ...others.flatMap((l) => ['--remove-label', l])], cwd);
   return { ok: res.ok, detail: res.ok ? `label ${mapping.label}` : res.stderr.trim() };
 }

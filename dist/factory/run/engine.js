@@ -66,7 +66,7 @@ import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { createForge } from '../../forge/index.js';
 import { GhCommandError } from '../../forge/github/gh.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
-import { ghIssueComment, ghIssueJson, ghIssueView } from '../../forge/github/tracker.js';
+import { ghIssueComment, ghIssueJson, ghIssueView, githubTracker } from '../../forge/github/tracker.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules } from './prepare.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { lockPathFor } from '../../lib/file-lock.js';
@@ -83,7 +83,7 @@ import { createFactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
@@ -443,6 +443,11 @@ class FactoryEngine {
     forge;
     /** The forge, for messages. */
     forgeName;
+    /** Progress sync's tracker and mapping; undefined without a forge config, with progress disabled, or on a ci-heal run. */
+    sync;
+    /** The stage this invocation last tried to write: at most one tracker write per stage. */
+    syncTried;
+    syncing = false;
     constructor(o, ledger, hooksDir) {
         this.o = o;
         this.ledger = ledger;
@@ -453,6 +458,10 @@ class FactoryEngine {
         this.clock = o.now ?? Date.now;
         this.lastTick = this.clock();
         this.key = engineRunKey(o);
+        const cfg = o.forge?.config;
+        if (cfg?.progress.enabled && typeof this.key === 'number') {
+            this.sync = { tracker: this.forge ? this.forge.tracker : githubTracker(this.exec, o.root, cfg), progress: cfg.progress };
+        }
         this.resume = resumeCommand(this.key);
         this.what = typeof this.key === 'number' ? `issue #${this.key}` : `ci-heal ${this.key}`;
         this.progress = createFactoryProgress({ root: o.root, issue: this.key, file: o.progressFile, now: this.clock });
@@ -514,7 +523,56 @@ class FactoryEngine {
             verify: (bytes) => this.ownBytes(this.statePath, bytes),
             onWrite: (path, content) => this.ledger.record(path, content),
         });
+        this.syncProgress();
         return this.state;
+    }
+    /**
+     * Progress sync (factory forges design §7): after a save, write the run's
+     * stage to the tracker once. Skipped while the stage is the recorded
+     * trackerStage, so a resume re-applies only a stage whose write was not
+     * recorded. A failure is a warning, a `tracker-sync fail` progress event
+     * and a history note; it never changes or blocks a transition, and the
+     * stage is not tried again in this invocation.
+     */
+    syncProgress() {
+        const sync = this.sync;
+        if (!sync || this.syncing)
+            return;
+        const s = this.state;
+        // Intake has not read (or trusted) the item yet.
+        if (s.phase === 'intake')
+            return;
+        const stage = trackerStageOf(s);
+        if (stage === s.trackerStage || stage === this.syncTried)
+            return;
+        // A cancelled run that never wrote a stage has nothing to take back.
+        if (stage === 'cancelled' && s.trackerStage === undefined)
+            return;
+        const mapping = sync.progress.stages[stage] ?? {};
+        if (stage !== 'cancelled' && !mapping.label && !mapping.column && !mapping.state)
+            return;
+        this.syncTried = stage;
+        this.syncing = true;
+        try {
+            let res;
+            try {
+                res = sync.tracker.setProgress(this.o.issue, stage, mapping);
+            }
+            catch (error) {
+                res = { ok: false, detail: errText(error) };
+            }
+            if (res.ok) {
+                this.save((x) => ({ ...x, trackerStage: stage }));
+                this.progress.emit('tracker-sync', 'ok', `${stage}: ${res.detail}`, this.fields());
+                return;
+            }
+            this.o.warn?.(`omg factory run: could not set the tracker stage ${stage} on ${this.what}: ${res.detail}`);
+            this.progress.emit('tracker-sync', 'fail', `${stage}: ${res.detail}`, this.fields());
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `tracker-sync fail: ${stage}: ${res.detail}` }] }));
+        }
+        finally {
+            this.syncing = false;
+        }
     }
     /** Every engine-owned file still holds the engine's last write; the state is the engine's own copy. */
     reload() {

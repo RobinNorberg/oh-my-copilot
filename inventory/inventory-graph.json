@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7170722063d0ebb99a86283e365714ef1d7cc938",
-    "sourceSha256": "7d47c908f58418123176ace7569cf2b8ba78a6f92de54da7e52c504fcad973a7",
+    "head": "2652c930945dfd5c69e59777471a017bbef7ba72",
+    "sourceSha256": "a0b46eccdf79d195e38c42e82f0b825c77d50e86b8929f94e4033d53c9c8bb96",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7170722063d0ebb99a86283e365714ef1d7cc938",
-  "sourceSha256": "7d47c908f58418123176ace7569cf2b8ba78a6f92de54da7e52c504fcad973a7",
+  "head": "2652c930945dfd5c69e59777471a017bbef7ba72",
+  "sourceSha256": "a0b46eccdf79d195e38c42e82f0b825c77d50e86b8929f94e4033d53c9c8bb96",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1878,
-      "total": 1902
+      "srcFiles": 1879,
+      "total": 1903
     },
     "generated": {
-      "distFiles": 6972,
+      "distFiles": 6976,
       "bridgeFiles": 9,
-      "total": 6981
+      "total": 6985
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3118,6 +3118,10 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.progress.test.d.ts",
+      "dist/factory/run/__tests__/engine.progress.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.progress.test.js",
+      "dist/factory/run/__tests__/engine.progress.test.js.map",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
       "dist/factory/run/__tests__/engine.sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.sandbox.test.js",
@@ -20331,6 +20335,26 @@
         "id": "dist/factory/run/__tests__/engine.ado.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.progress.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.progress.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.sandbox.test.d.ts",
@@ -49588,6 +49612,11 @@
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.progress.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.progress.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.sandbox.test.ts"
@@ -75925,6 +75954,96 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.progress.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -77173,6 +77292,11 @@
         "from": "src/factory/run/state.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/state.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/state.ts",
@@ -112601,12 +112725,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9593,
-      "edgeCount": 11216,
-      "importEdgeCount": 9239,
+      "nodeCount": 9598,
+      "edgeCount": 11235,
+      "importEdgeCount": 9253,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c3e9826a1cf4b7d8b00b2956d7eeda3b4abc60574dd9fb91b2977a8bde7eeae3",
-  "manifestSha256": "b4514e0976b3bb2e5b789a06d4168bf090e7e5f26a60da6bc65ec1520a0028fa"
+  "inventorySha256": "fdf6ea414cb7f3b0212c0bc8c68e6a3de49156d941318d103afb2866843a012a",
+  "manifestSha256": "1862ff87c33be82fe3cdd8d84de81f9ce7533e795e6c1f48aaf4ca426d730be5"
 }

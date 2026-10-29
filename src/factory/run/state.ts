@@ -29,7 +29,7 @@ import { isProcessAlive } from '../../platform/process-utils.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
-import type { ForgeKind } from '../../forge/types.js';
+import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -190,6 +190,12 @@ export interface FactoryRunState {
   checkoutHead?: string;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
+  /**
+   * The progress stage last written to the tracker (factory forges design §7);
+   * absent until the first write succeeds, and in states written before
+   * progress sync existed (optional, so their seal still verifies).
+   */
+  trackerStage?: ProgressStage;
   lanes: FactoryLaneRecord[];
   /** Lane failures retried per phase key (`implement`, `review@<sha12>`, `fix@<round>`). */
   retries: Record<string, number>;
@@ -303,6 +309,25 @@ export function setGate(state: FactoryRunState, name: string, reason: string, no
   };
 }
 
+/**
+ * The tracker progress stage of a run (factory forges design §7): a merge
+ * gate or the merge phase is ready-to-merge, any other gate and failed are
+ * blocked.
+ */
+export function trackerStageOf(s: Pick<FactoryRunState, 'phase' | 'gate'>): ProgressStage {
+  if (s.gate) return s.gate.name === 'merge' ? 'ready-to-merge' : 'blocked';
+  switch (s.phase) {
+    case 'intake': case 'plan': return 'queued';
+    case 'implement': case 'publish': case 'fix': case 'conflict-fix': case 'ci-fix': return 'building';
+    case 'review': return 'reviewing';
+    case 'prepare': case 'gates': return 'verifying';
+    case 'merge': return 'ready-to-merge';
+    case 'merged': return 'done';
+    case 'cancelled': return 'cancelled';
+    case 'failed': return 'blocked';
+  }
+}
+
 export function computeFactoryIntegrity(state: FactoryRunState): string {
   return createHash('sha256').update(JSON.stringify({ ...state, integrity: undefined })).digest('hex');
 }
@@ -336,6 +361,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (!isStr(s.implementer) || !s.implementer) return 'implementer';
   if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal') return 'kind';
   if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops') return 'forgeKind';
+  if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;
