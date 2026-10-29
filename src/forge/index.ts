@@ -9,6 +9,7 @@
 // GitHub adapter import (PR 2).
 import type { Exec } from '../ship/exec.js';
 // Azure DevOps adapter import (PR 5).
+import { createAzureDevOpsForge } from './ado/index.js';
 import type { Forge, ForgeFactory, ForgeKind, ResolvedForgeConfig } from './types.js';
 
 export type * from './types.js';
@@ -18,7 +19,7 @@ export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConf
 const ADAPTERS: Readonly<Record<ForgeKind, ForgeFactory | undefined>> = {
   github: undefined,
   // (slots kept on separate lines for the PR 2 / PR 5 edits)
-  'azure-devops': undefined,
+  'azure-devops': (exec, cwd, config) => createAzureDevOpsForge(exec, cwd, config),
 };
 
 export function createForge(exec: Exec, cwd: string, config: ResolvedForgeConfig): Forge {

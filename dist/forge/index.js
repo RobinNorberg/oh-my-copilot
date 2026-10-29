@@ -5,12 +5,14 @@
  * which are kept apart so the two edits merge cleanly. Adapters receive the
  * caller's already-guarded Exec and never spawn.
  */
+// Azure DevOps adapter import (PR 5).
+import { createAzureDevOpsForge } from './ado/index.js';
 export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConfig } from './config.js';
 /** One slot per forge kind; undefined until that adapter lands. */
 const ADAPTERS = {
     github: undefined,
     // (slots kept on separate lines for the PR 2 / PR 5 edits)
-    'azure-devops': undefined,
+    'azure-devops': (exec, cwd, config) => createAzureDevOpsForge(exec, cwd, config),
 };
 export function createForge(exec, cwd, config) {
     const factory = ADAPTERS[config.kind];

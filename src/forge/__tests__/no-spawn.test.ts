@@ -11,10 +11,20 @@ import { describe, expect, it } from 'vitest';
 // src/providers/remote-url.ts, not src/providers/index.ts.
 const FORGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = join(FORGE_DIR, '..');
+/**
+ * child_process, and the bare packages that spawn on its behalf (critic
+ * amendments §A.13): importing one is spawning by proxy.
+ */
+const SPAWNING_PACKAGES = [
+  'execa', 'cross-spawn', 'cross-spawn-async', 'child-process-promise', 'child-process-async', 'spawn-sync', 'spawn-command',
+  'shelljs', 'zx', 'node-pty', '@lydell/node-pty', 'tree-kill', 'ps-tree', 'npm-run-path', 'foreground-child', 'execa-cjs',
+  '@npmcli/promise-spawn', '@npmcli/run-script', 'promisify-child-process', 'await-spawn', 'superspawn', 'nano-spawn', 'tinyexec', 'open',
+];
+const SPAWN_MODULE = `(?:(?:node:)?child_process|(?:${SPAWNING_PACKAGES.map((p) => p.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|')})(?:/[^'"]*)?)`;
 const SPAWN_IMPORT = [
-  /\bfrom\s*['"](?:node:)?child_process['"]/,
-  /\bimport\s*['"](?:node:)?child_process['"]/,
-  /\b(?:require|import)\s*\(\s*['"](?:node:)?child_process['"]\s*\)/,
+  new RegExp(`\\bfrom\\s*['"]${SPAWN_MODULE}['"]`),
+  new RegExp(`\\bimport\\s*['"]${SPAWN_MODULE}['"]`),
+  new RegExp(`\\b(?:require|import)\\s*\\(\\s*['"]${SPAWN_MODULE}['"]\\s*\\)`),
 ];
 /** Relative value imports and re-exports; `import type`/`export type` are erased and never load. */
 const RELATIVE_IMPORT = [
@@ -108,6 +118,21 @@ describe('src/forge never spawns', () => {
       "const cp = await import('node:child_process');",
     ];
     for (const form of forms) expect(SPAWN_IMPORT.some((re) => re.test(form)), form).toBe(true);
+  });
+
+  it('the deny-list catches the bare spawning packages, and not look-alikes', () => {
+    const caught = [
+      "import { execa } from 'execa';",
+      "import spawn from 'cross-spawn';",
+      "const cpp = require('child-process-promise');",
+      "import 'shelljs';",
+      "const pty = await import('node-pty');",
+      "import promiseSpawn from '@npmcli/promise-spawn';",
+      "import { $ } from 'zx/core';",
+    ];
+    for (const form of caught) expect(SPAWN_IMPORT.some((re) => re.test(form)), form).toBe(true);
+    const fine = ["import { readFileSync } from 'fs';", "import { parse } from 'jsonc-parser';", "import x from 'execa-like';", "import o from 'opener-lib';"];
+    for (const form of fine) expect(SPAWN_IMPORT.some((re) => re.test(form)), form).toBe(false);
   });
 
   it('follows value imports and skips type-only ones', () => {

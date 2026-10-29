@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "361a5790a3613943c91f4689a5894ee95e84b9c2",
-    "sourceSha256": "bab1d07c9cc5acaa5c8a45b2388d9763c2e9a0dbb71a617faed37b80ade5f953",
+    "head": "23eaf88cb703c83bbc6ff4db4788babdd1b67dd1",
+    "sourceSha256": "5045db7f939bfd61fef363f167c3fe750d415be78021fa40f75d9906b6d313e9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "361a5790a3613943c91f4689a5894ee95e84b9c2",
-  "sourceSha256": "bab1d07c9cc5acaa5c8a45b2388d9763c2e9a0dbb71a617faed37b80ade5f953",
+  "head": "23eaf88cb703c83bbc6ff4db4788babdd1b67dd1",
+  "sourceSha256": "5045db7f939bfd61fef363f167c3fe750d415be78021fa40f75d9906b6d313e9",
   "counts": {
     "public": {
       "skills": 63,
@@ -74168,6 +74168,16 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
@@ -76478,6 +76488,11 @@
       },
       {
         "from": "src/forge/ado/__tests__/az-binary.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/az-binary.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -76584,6 +76599,11 @@
       {
         "from": "src/forge/config.ts",
         "to": "src/providers/remote-url.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/index.ts",
+        "to": "src/forge/ado/index.ts",
         "kind": "imports"
       },
       {
@@ -94237,6 +94257,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/ship/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/exec.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/ship/gates.ts",
         "to": "src/ship/config.ts",
         "kind": "type-imports"
@@ -108639,11 +108669,11 @@
     ],
     "stats": {
       "nodeCount": 9284,
-      "edgeCount": 10775,
-      "importEdgeCount": 8919,
+      "edgeCount": 10781,
+      "importEdgeCount": 8923,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "d4b8d05bf8819ac1a1d2a4214c16762b90130cd20438a4cba0ec2ad6f5c5accd",
-  "manifestSha256": "572264309520d46d4e5b5ad6fd32260138bd043a1a95d630a1534e6b1a28507a"
+  "manifestSha256": "b56cd756239c2c6132287f6f58176f2b331b1b6c787b4a57402832a92ba39558"
 }

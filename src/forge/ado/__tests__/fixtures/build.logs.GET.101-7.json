@@ -1,0 +1,14 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/get-build-log?view=azure-devops-rest-7.1",
+  "note": "adapted: the JSON form of a build log ({count, value: lines}), which az devops invoke returns for an application/json accept; unverified against live",
+  "route": "build.logs.GET",
+  "routeParameters": { "project": "Web", "buildId": "101", "logId": "7" },
+  "stdout": {
+    "count": 3,
+    "value": [
+      "2026-10-28T11:10:00.0000000Z ##[section]Starting: Run tests",
+      "2026-10-28T11:12:00.0000000Z FAIL src/report.test.ts > exports CSV",
+      "2026-10-28T11:12:01.0000000Z ##[error]Process completed with exit code 1."
+    ]
+  }
+}

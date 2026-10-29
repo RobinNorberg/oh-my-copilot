@@ -28,8 +28,15 @@ export interface AzBinaryDeps {
     env: Readonly<Record<string, string | undefined>>;
     isFile(path: string): boolean;
     /**
+     * The real path of an existing file or directory (production:
+     * fs.realpathSync.native, which resolves 8.3 short names, junctions and
+     * symlinks); throws when it does not exist.
+     */
+    realpath(path: string): string;
+    /**
      * Roots a lane or job can write: the repository and its worktrees, lane and
-     * job roots. A PATH entry at or under one is never searched for az.cmd.
+     * job roots. A PATH entry whose real path is at or under one is never
+     * searched for az.cmd. Required (non-empty) on Windows.
      */
     untrustedRoots: readonly string[];
 }
@@ -41,7 +48,9 @@ export declare class AzBinaryError extends Error {
  * Resolve the az entry point once. Windows: the first searchable PATH entry
  * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
  * next to `<dir>\..\Lib\site-packages\azure\cli` (checked through its
- * `__main__.py`, the module `-m azure.cli` runs).
+ * `__main__.py`, the module `-m azure.cli` runs). PATH entries and roots
+ * compare by real path, so an 8.3 short name or a junction cannot alias a
+ * root, and the python.exe found must itself be outside the roots.
  */
 export declare function resolveAzEntry(deps: AzBinaryDeps): AzEntry;
 //# sourceMappingURL=az-binary.d.ts.map

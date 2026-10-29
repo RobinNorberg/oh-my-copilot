@@ -1,3 +1,4 @@
+import { win32 } from 'path';
 import { describe, expect, it } from 'vitest';
 import { AZ_PYTHON_PREFIX, AzBinaryError, resolveAzEntry, type AzBinaryDeps } from '../az-binary.js';
 
@@ -10,17 +11,25 @@ const files = (...paths: string[]) => {
   const set = new Set(paths.map((p) => p.toLowerCase()));
   return (p: string) => set.has(p.toLowerCase());
 };
-const win = (path: string, isFile: AzBinaryDeps['isFile'], key = 'Path', untrustedRoots: readonly string[] = [REPO]): AzBinaryDeps => ({
+/** An injected realpath: identity, except the listed aliases (8.3 short names, junctions) and missing paths (throws). */
+const realpaths = (aliases: Record<string, string> = {}, missing: string[] = []) => (p: string): string => {
+  const r = win32.resolve(p);
+  if (missing.some((m) => r.toLowerCase() === m.toLowerCase())) throw new Error(`ENOENT: ${p}`);
+  const hit = Object.keys(aliases).find((a) => r.toLowerCase() === a.toLowerCase() || r.toLowerCase().startsWith(`${a.toLowerCase()}\\`));
+  return hit ? aliases[hit] + r.slice(hit.length) : r;
+};
+const win = (path: string, isFile: AzBinaryDeps['isFile'], key = 'Path', untrustedRoots: readonly string[] = [REPO], realpath = realpaths()): AzBinaryDeps => ({
   platform: 'win32',
   env: { [key]: path },
   isFile,
+  realpath,
   untrustedRoots,
 });
 
 describe('resolveAzEntry', () => {
   it('POSIX runs az directly', () => {
-    expect(resolveAzEntry({ platform: 'linux', env: { PATH: '/usr/bin' }, isFile: () => false, untrustedRoots: [] })).toEqual({ command: 'az', prefix: [], env: {} });
-    expect(resolveAzEntry({ platform: 'darwin', env: {}, isFile: () => false, untrustedRoots: [] }).command).toBe('az');
+    expect(resolveAzEntry({ platform: 'linux', env: { PATH: '/usr/bin' }, isFile: () => false, realpath: realpaths(), untrustedRoots: [] })).toEqual({ command: 'az', prefix: [], env: {} });
+    expect(resolveAzEntry({ platform: 'darwin', env: {}, isFile: () => false, realpath: realpaths(), untrustedRoots: [] }).command).toBe('az');
   });
 
   it('accepts a real MSI layout: bundled python.exe with -IBm azure.cli and AZ_INSTALLER=MSI', () => {
@@ -42,10 +51,10 @@ describe('resolveAzEntry', () => {
   it('refuses a planted node_modules\\.bin\\az.cmd, even with a python.exe and azure\\cli beside it', () => {
     const planted = 'C:\\Users\\me\\proj\\node_modules';
     const fs = files(`${planted}\\.bin\\az.cmd`, `${planted}\\python.exe`, `${planted}\\Lib\\site-packages\\azure\\cli\\__main__.py`);
-    expect(() => resolveAzEntry(win(`${planted}\\.bin`, fs, 'Path', []))).toThrow(/Azure CLI not found/);
+    expect(() => resolveAzEntry(win(`${planted}\\.bin`, fs))).toThrow(/Azure CLI not found/);
     // Ahead of the real install on PATH, it is skipped and the MSI one wins.
     const both = files(`${planted}\\.bin\\az.cmd`, `${planted}\\python.exe`, `${planted}\\Lib\\site-packages\\azure\\cli\\__main__.py`, ...msi(MSI));
-    expect(resolveAzEntry(win(`${planted}\\.bin;${MSI}\\wbin`, both, 'Path', [])).command).toBe(`${MSI}\\python.exe`);
+    expect(resolveAzEntry(win(`${planted}\\.bin;${MSI}\\wbin`, both)).command).toBe(`${MSI}\\python.exe`);
   });
 
   it('refuses PATH entries at or under the repository, lane and job roots', () => {
@@ -71,6 +80,35 @@ describe('resolveAzEntry', () => {
 
   it('refuses when az.cmd is not on PATH', () => {
     expect(() => resolveAzEntry(win('C:\\Windows', files()))).toThrow(/Azure CLI not found/);
-    expect(() => resolveAzEntry({ platform: 'win32', env: {}, isFile: () => true, untrustedRoots: [] })).toThrow(AzBinaryError);
+    expect(() => resolveAzEntry({ platform: 'win32', env: {}, isFile: () => true, realpath: realpaths(), untrustedRoots: [REPO] })).toThrow(/Azure CLI not found/);
+  });
+
+  it('requires non-empty untrustedRoots on Windows', () => {
+    for (const roots of [[], ['  ']]) {
+      expect(() => resolveAzEntry(win(`${MSI}\\wbin`, files(...msi(MSI)), 'Path', roots))).toThrow(/untrustedRoots/);
+    }
+  });
+
+  it('compares real paths: an 8.3 short name or a junction cannot alias a root', () => {
+    const short = 'C:\\Code\\WIDGET~1';
+    const junction = 'C:\\tools\\azlink';
+    const fs = files(...msi(short), ...msi(junction), ...msi(REPO));
+    const rp = realpaths({ [short]: REPO, [junction]: `${REPO}\\vendor` });
+    expect(() => resolveAzEntry(win(`${short}\\wbin`, fs, 'Path', [REPO], rp))).toThrow(/Azure CLI not found/);
+    expect(() => resolveAzEntry(win(`${junction}\\wbin`, fs, 'Path', [REPO], rp))).toThrow(/Azure CLI not found/);
+    // A root given by its short name covers its long path too.
+    expect(() => resolveAzEntry(win(`${REPO}\\wbin`, fs, 'Path', [short], rp))).toThrow(/Azure CLI not found/);
+  });
+
+  it('refuses a PATH entry whose real path does not resolve, and a python.exe that resolves into a root', () => {
+    expect(() => resolveAzEntry(win(`${MSI}\\wbin`, files(...msi(MSI)), 'Path', [REPO], realpaths({}, [`${MSI}\\wbin`])))).toThrow(/Azure CLI not found/);
+    const rp = realpaths({ [`${MSI}\\python.exe`]: `${REPO}\\python.exe` });
+    expect(() => resolveAzEntry(win(`${MSI}\\wbin`, files(...msi(MSI)), 'Path', [REPO], rp))).toThrow(/resolves into node_modules or a repository/);
+  });
+
+  it('refuses segments ending in a dot or a space (Windows strips them)', () => {
+    for (const dir of [`${REPO}.\\wbin`, `${REPO} \\wbin`, 'C:\\CLI2.\\wbin', 'C:\\CLI2 \\wbin', 'C:\\CLI2\\.\\wbin']) {
+      expect(() => resolveAzEntry(win(dir, () => true)), dir).toThrow(/Azure CLI not found/);
+    }
   });
 });
