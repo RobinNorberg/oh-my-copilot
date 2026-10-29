@@ -20,16 +20,26 @@ All notable changes to oh-my-copilot will be documented in this file.
   - The leader hands the Copilot token to the host on stdin, and the host
     passes it to the session over RPC.
   - A worker with neither a stored Copilot login nor a token now fails to start.
-- **Wider secret-name match for credential-free factory lanes too.** Names with
-  `WEBHOOK`, a whole-segment `AUTH`, `_DSN`, `_PWD`, connection strings,
-  `DATABASE_URL`, `REDIS_URL`, `MONGODB_URI` and `DOCKER_AUTH_CONFIG` are now
-  dropped.
+- **Wider secret-name match, for credential-free factory lanes too.** Team
+  workers and credential-free factory lanes now also drop these variables:
+  - names with `WEBHOOK`, a whole-segment `AUTH`, `_DSN`, `_PWD`;
+  - connection strings;
+  - database and broker URLs (`DATABASE_URL`, `POSTGRES_URL`, `REDIS_URL`,
+    `AMQP_URL`, `CELERY_BROKER_URL`, `MONGODB_URI`);
+  - package index URLs (`PIP_INDEX_URL`);
+  - bundler's `BUNDLE_<HOST>__<TLD>`;
+  - `DOCKER_AUTH_CONFIG`.
+
+  Notification hooks, and tests that need a webhook, DSN or database URL,
+  no longer get those values inside a worker or lane.
 - **SDK workers keep their own Copilot home.** The leader's `COPILOT_HOME` and
   `COPILOT_MODEL` no longer override the per-worker home and model.
 - **More credential reads denied in team workers.** The shell policy also
-  refuses `git credential fill`/`approve`/`reject`, `git config … extraheader`,
-  `gh auth token`, `gh auth status --show-token` and
-  `az account get-access-token`.
+  refuses these commands:
+  - `git credential fill`/`approve`/`reject`;
+  - `git config … extraheader`;
+  - `gh auth token`, `gh auth git-credential` and `gh auth status --show-token`;
+  - `az account get-access-token`.
 
 # oh-my-copilot v5.18.0
 

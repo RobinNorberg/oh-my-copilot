@@ -77,10 +77,11 @@ export const CREDENTIAL_ENV = [
 /**
  * Names that look like a secret (COPILOT_GITHUB_TOKEN included: callers that
  * keep it skip it themselves), or a URL / connection string that carries one
- * (`npm_config__auth`, a webhook, a DSN, a database URL). `AUTH` only as a
- * whole segment, so GIT_AUTHOR_NAME stays; proxy vars stay.
+ * (`npm_config__auth`, a webhook, a DSN, a database or broker URL, a package
+ * index URL, bundler's `BUNDLE_<HOST>__<TLD>`). `AUTH` only as a whole
+ * segment, so GIT_AUTHOR_NAME stays; proxy vars and other `*_URL` names stay.
  */
-const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG/i;
+const SECRET_NAME = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG|(?:^|_)(?:POSTGRES(?:QL)?|PG|MYSQL|AMQP|RABBITMQ|BROKER)_URL|INDEX_URL$|^BUNDLE_.*__/i;
 /**
  * Whether a credential-free env drops `key`: a known credential
  * ({@link CREDENTIAL_ENV}), any secret-named var, a `GIT_CONFIG*` override
