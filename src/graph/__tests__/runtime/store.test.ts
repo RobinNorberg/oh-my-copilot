@@ -188,6 +188,30 @@ describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"
     await expect(store.load()).resolves.toMatchObject({ epoch: 2, saved_at_seq: 1 });
   });
 
+  it("removes the temp file a writer killed before its rename left behind", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const residue = ".projection.json.tmp.00000000-0000-4000-8000-000000000000";
+    writeFileSync(join(runDir, residue), "{partial");
+
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 }));
+    expect(readdirSync(runDir)).not.toContain(residue);
+  });
+
+  it("leaves a directory named like write residue alone and still saves", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const planted = "projection.json.rollback.00000000-0000-4000-8000-000000000000";
+    mkdirSync(join(runDir, planted));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
+    ).resolves.toBeUndefined();
+    expect(statSync(join(runDir, planted)).isDirectory()).toBe(true);
+  });
+
   it("still refuses a projection hardlinked from outside the run directory", async () => {
     const runDir = join(runsRoot, "run-1");
     const store = new FileProjectionStore(runsRoot, "run-1");

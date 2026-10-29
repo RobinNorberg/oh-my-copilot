@@ -21,15 +21,6 @@ export declare class FileProjectionStore implements ProjectionStore {
     constructor(runsRoot: string, runId: string, runDirHandle?: RunDirHandle);
     private runDir;
     save(envelope: ProjectionSnapshotEnvelope, assertOwnership?: () => void): Promise<void>;
-    /**
-     * The atomic writer hard-links the prior snapshot to a rollback name before
-     * its rename. A writer killed inside that window leaves projection.json
-     * with nlink 2, which the private-regular-file check rightly refuses, so
-     * every later save would fail the run. Only the run's owner saves, and the
-     * rollback link is useless once its writer is gone: drop it. Removing a
-     * same-directory name never makes an outside hardlink pass that check.
-     */
-    private removeCrashedRollbackLinks;
     load(): Promise<ProjectionSnapshotEnvelope | null>;
 }
 //# sourceMappingURL=store.d.ts.map

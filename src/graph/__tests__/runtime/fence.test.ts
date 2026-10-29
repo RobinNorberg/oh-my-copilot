@@ -12,11 +12,14 @@
 import { spawnSync } from "child_process";
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync, realpathSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   utimesSync,
@@ -141,6 +144,39 @@ describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"
       epoch: 2,
     });
     expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("2");
+  });
+
+  it("takes over after a holder was killed mid owner.epoch publication", async () => {
+    const dir = makeRunDir();
+    writeFileSync(join(dir, EPOCH_FILE_NAME), "3", "utf8");
+    // SIGKILL between the atomic writer's backup link() and its rename:
+    // owner.epoch keeps a second same-directory name, and the temp survives.
+    const rollback = `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`;
+    const temporary = `.${EPOCH_FILE_NAME}.tmp.00000000-0000-4000-8000-000000000000`;
+    linkSync(join(dir, EPOCH_FILE_NAME), join(dir, rollback));
+    writeFileSync(join(dir, temporary), "4", "utf8");
+    craftJsonLock(dir, { pid: spawnDeadPid(), epoch: 3, timestamp: Date.now() });
+    backdate(join(dir, LOCK_NAME));
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 4,
+    });
+    expect(readdirSync(dir)).not.toContain(rollback);
+    expect(readdirSync(dir)).not.toContain(temporary);
+    expect(statSync(join(dir, EPOCH_FILE_NAME)).nlink).toBe(1);
+  });
+
+  it("leaves a directory named like owner.epoch residue alone and still acquires", async () => {
+    const dir = makeRunDir();
+    const planted = `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`;
+    mkdirSync(join(dir, planted));
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 1,
+    });
+    expect(statSync(join(dir, planted)).isDirectory()).toBe(true);
   });
 
   it.each(["10garbage", "1garbage", "+10", " 10", "10 ", "1.0", "1e2", "0", "9007199254740992"]) (
