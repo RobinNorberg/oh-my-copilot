@@ -18,6 +18,8 @@
 import type { KnownFlakyTest, ShipConfig } from '../../ship/config.js';
 import { TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates, type GateReport } from '../../ship/gates.js';
+import { ghJobLog } from '../../forge/github/checks.js';
+import { ghPrHead } from '../../forge/github/reviews.js';
 
 /** `pending: no-workflows-triggered` for this long goes to awaiting-human: no-workflows. */
 export const NO_WORKFLOWS_GRACE_MS = 5 * 60_000;
@@ -57,18 +59,8 @@ export type GatesOutcome =
   | { kind: 'not-open'; state: string }
   | { kind: 'cancelled' };
 
-interface PrHead { headRefOid: string; state: string }
-
-/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state. */
-export function readPrHead(exec: Exec, pr: number, cwd: string): PrHead {
-  const res = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefOid,state'], { cwd });
-  let v: { headRefOid?: unknown; state?: unknown } = {};
-  try { v = JSON.parse(res.stdout) as typeof v; } catch { /* checked below */ }
-  if (res.status !== 0 || typeof v.headRefOid !== 'string' || !/^[0-9a-f]{40}$/.test(v.headRefOid) || typeof v.state !== 'string') {
-    throw new Error(`gh pr view ${pr} did not return a head sha and state (exit ${res.status}): ${res.stderr.trim()}`);
-  }
-  return { headRefOid: v.headRefOid, state: v.state };
-}
+/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state (the GitHub forge's prHead). */
+export function readPrHead(exec: Exec, pr: number, cwd: string): { headRefOid: string; state: string } { return ghPrHead(exec, pr, cwd); }
 
 /** True when `sha` is an ancestor of `head` in the local object store (GitHub still reports an older engine push). */
 function isAncestor(exec: Exec, cwd: string, sha: string, head: string): boolean {
@@ -93,9 +85,9 @@ export function failingTestTitles(exec: Exec, report: GateReport, cwd: string): 
   const out = new Set<string>();
   const jobs = report.checks.filter((c) => c.class === 'failed' && c.jobId).slice(0, MAX_FAILED_LOGS);
   for (const c of jobs) {
-    const log = exec('gh', ['run', 'view', '--job', c.jobId!, '--log'], { cwd });
-    if (log.status !== 0) continue;
-    for (const t of parseFailingTests(log.stdout)) {
+    const log = ghJobLog(exec, c.jobId!, cwd);
+    if (!log.ok) continue;
+    for (const t of parseFailingTests(log.text)) {
       if (out.size >= MAX_FAILING_TITLES) break;
       out.add(t.title ? `${t.file} > ${t.title}` : t.file);
     }

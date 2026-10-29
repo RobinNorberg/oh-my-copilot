@@ -6,7 +6,7 @@
  * caller's already-guarded Exec and never spawn.
  */
 
-// GitHub adapter import (PR 2).
+import { createGitHubForge } from './github/index.js';
 import type { Exec } from '../ship/exec.js';
 // Azure DevOps adapter import (PR 5).
 import { createAzureDevOpsForge } from './ado/index.js';
@@ -17,7 +17,7 @@ export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConf
 
 /** One slot per forge kind; undefined until that adapter lands. */
 const ADAPTERS: Readonly<Record<ForgeKind, ForgeFactory | undefined>> = {
-  github: undefined,
+  github: createGitHubForge,
   // (slots kept on separate lines for the PR 2 / PR 5 edits)
   'azure-devops': (exec, cwd, config, options) => createAzureDevOpsForge(exec, cwd, config, options),
 };
