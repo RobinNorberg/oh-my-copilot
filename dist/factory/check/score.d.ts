@@ -33,6 +33,7 @@ export interface CheckEnv {
             name: string;
         };
     } | null;
+    remoteBranch(branch: string): boolean;
     readPlan(path: string): string | null;
     planBase: string;
 }
@@ -41,7 +42,11 @@ export declare const plainText: (v: string) => string;
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export declare function itemPriority(item: ForgeItem): number | null;
 export declare function compareResults(a: CheckResult, b: CheckResult): number;
-/** The result of one item (a GitHub PR id is `wrong-type`; any other read failure throws). */
+/**
+ * The result of one item. A GitHub PR id is `wrong-type`; any other failed
+ * read (the item, its run state, PR or branch lookup) is `read-failed`, so one
+ * bad item never stops the batch.
+ */
 export declare function checkItem(forge: Forge, id: number, env: CheckEnv): CheckResult;
 /** Every id once, checked and ordered. */
 export declare function checkItems(forge: Forge, ids: readonly number[], env: CheckEnv): CheckResult[];

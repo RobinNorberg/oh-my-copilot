@@ -62,6 +62,7 @@ function adoForge(exec) {
 const env = {
     config: { intake: { itemTypes: [...DEFAULT_ADO_ITEM_TYPES], limit: 50, marker: 'factory-ready' }, check: { ...DEFAULT_CHECK_CONFIG } },
     runState: () => null,
+    remoteBranch: () => false,
     readPlan: () => null,
     planBase: 'origin/main (not available)',
 };

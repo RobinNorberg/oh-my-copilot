@@ -6,8 +6,9 @@
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, the label write only while marking,
- * and the git reads of the base. az goes through the factory guard (fail
+ * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * label lookup, the label write only while marking, the git reads of the base
+ * and `git ls-remote origin refs/heads/factory/<name>`. az goes through the factory guard (fail
  * closed until the ADO guard context lands) and only as GET while not marking.
  *
  * Exit codes: 0 checked (whatever the buckets; a declined `--mark` writes
@@ -18,7 +19,7 @@
 import chalk from 'chalk';
 import { ForgeConfigError, resolveForgeConfig } from '../../forge/config.js';
 import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig } from '../../ship/config.js';
-import { assertSafeCommand, TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { assertFactoryCommand, FactorySafetyError } from '../run/exec.js';
 import { readFactoryState } from '../run/state.js';
@@ -49,9 +50,15 @@ function checkGh(a, marker) {
         return marker !== undefined && same(r.slice(1), ['--add-label', marker]) && NUMBER.test(r[0] ?? '');
     if (group === 'pr' && sub === 'list')
         return r.length === 4 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+    // A dependency that is a PR: its state.
+    if (group === 'pr' && sub === 'view')
+        return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
+    // `--mark` first checks that the marker label exists (check never creates labels).
+    if (group === 'label' && sub === 'list')
+        return r.length === 6 && r[0] === '--search' && VALUE(r[1]) && r[2] === '--json' && r[3] === 'name' && r[4] === '--limit' && NUMBER.test(r[5]);
     return false;
 }
-const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show']);
+const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', 'ls-remote']);
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
@@ -74,7 +81,8 @@ export function checkGuardExec(exec, marker) {
             const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
             if (!read)
                 refuse('not one of the read-only git shapes omg factory check runs');
-            assertSafeCommand(cmd, args, [], opts?.env);
+            // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.
+            assertFactoryCommand(cmd, args, [], opts?.env);
         }
         else if (file === 'az' || file === 'python') {
             const at = args.indexOf('--http-method');
@@ -132,9 +140,31 @@ export function checkEnvFor(exec, root, config, base, baseSha) {
     return {
         config,
         runState: (id) => readFactoryState(root, id),
+        remoteBranch: (branch) => {
+            const r = git(exec, root, ['ls-remote', 'origin', `refs/heads/${branch}`]);
+            if (!r.ok)
+                throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${r.err}`);
+            return r.out.length > 0;
+        },
         readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
         planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
     };
+}
+/** `--mark` on GitHub: the marker label must exist (gh would fail every edit); check never creates it. */
+function requireLabel(exec, root, marker, repo) {
+    const res = exec('gh', ['label', 'list', '--search', marker, '--json', 'name', '--limit', '100'], { cwd: root });
+    if (res.status !== 0)
+        throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
+    let names;
+    try {
+        names = JSON.parse(res.stdout);
+    }
+    catch {
+        throw new Error('gh label list returned no JSON');
+    }
+    const found = Array.isArray(names) && names.some((l) => typeof l?.name === 'string' && l.name.toLowerCase() === marker.toLowerCase());
+    if (!found)
+        throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
 function fetchBase(exec, root, base, warnings) {
@@ -239,8 +269,12 @@ export async function runFactoryCheck(o, deps) {
         const runnable = items.filter((r) => r.bucket === 'runnable');
         // Re-read the labels through the tracker: an item that already carries the marker is left alone.
         const todo = [];
+        // Labels and ADO tags compare case-insensitively, so a differently cased marker is never added twice.
+        const marked = (labels) => labels.some((l) => l.toLowerCase() === m.marker.toLowerCase());
         for (const r of runnable)
-            (forge.tracker.viewItem(r.id).labels.includes(m.marker) ? m.alreadyMarked : todo).push(r.id);
+            (marked(forge.tracker.viewItem(r.id).labels) ? m.alreadyMarked : todo).push(r.id);
+        if (todo.length > 0 && forge.kind === 'github')
+            requireLabel(exec, root, m.marker, config.repo.url);
         if (todo.length > 0) {
             m.confirmed = Boolean(o.yes) || await deps.confirm(`Add ${forge.kind === 'github' ? 'label' : 'tag'} ${m.marker} to ${todo.length} runnable item${todo.length > 1 ? 's' : ''} (${todo.map((id) => `#${id}`).join(', ')})?`);
             if (m.confirmed) {
@@ -260,7 +294,7 @@ export async function runFactoryCheck(o, deps) {
             }
         }
     }
-    const ok = m.failed.length === 0;
+    const ok = m.failed.length === 0 && !items.some((r) => r.reasons[0] === 'read-failed');
     if (o.json) {
         const json = {
             schemaVersion: CHECK_JSON_SCHEMA_VERSION,

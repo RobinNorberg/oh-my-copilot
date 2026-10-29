@@ -9,8 +9,10 @@
  * |--------------------------------------------------------------|------------|----------------------------|
  * | item closed (GitHub CLOSED, ADO Completed/Removed category)  | blocked    | closed                     |
  * | ADO type not in intake.itemTypes, or the GitHub id is a PR   | blocked    | wrong-type                 |
- * | a factory run state exists and is not terminal               | blocked    | run-active:<phase>[/<gate>]|
- * | an open PR on factory/issue-<n>                              | blocked    | pr-exists                  |
+ * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
+ * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
+ * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
+ * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
  * | a dependsOn item is still open                               | blocked    | depends-on:#n,...          |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
@@ -39,7 +41,7 @@ export interface RuleVerdict {
 }
 /** What the rules read beyond the item itself; score.ts builds it from the forge and the repository. */
 export interface RuleLookups {
-    /** Whether another item (a dependency or child) is open; an unreadable item counts as open. */
+    /** Whether another item (a dependency or child, or a PR) is open; an unreadable one counts as open. */
     isOpen(id: number): boolean;
     /** The persisted factory run of the item, if any. */
     runState(id: number): {
@@ -48,8 +50,10 @@ export interface RuleLookups {
             name: string;
         };
     } | null;
-    /** The open PR number on the item's factory branch, if any. */
+    /** The open PR number on the item's factory branch, if any (fork PRs included, as the engine's pr-exists gate). */
     openPr(branch: string): number | undefined;
+    /** Whether origin has the item's factory branch. */
+    remoteBranch(branch: string): boolean;
     /** The file at the verified base commit; null when it does not exist there (or the base is unavailable). */
     readPlan(path: string): string | null;
     /** Where readPlan reads, for the reason text (e.g. `origin/dev at 0123456789ab`). */

@@ -9,8 +9,10 @@
  * |--------------------------------------------------------------|------------|----------------------------|
  * | item closed (GitHub CLOSED, ADO Completed/Removed category)  | blocked    | closed                     |
  * | ADO type not in intake.itemTypes, or the GitHub id is a PR   | blocked    | wrong-type                 |
- * | a factory run state exists and is not terminal               | blocked    | run-active:<phase>[/<gate>]|
- * | an open PR on factory/issue-<n>                              | blocked    | pr-exists                  |
+ * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
+ * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
+ * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
+ * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
  * | a dependsOn item is still open                               | blocked    | depends-on:#n,...          |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
@@ -61,7 +63,11 @@ export function evaluateItem(item, kind, config, look) {
         }
     }
     const run = look.runState(item.id);
-    if (run && !TERMINAL_FACTORY_PHASES.includes(run.phase)) {
+    if (run && TERMINAL_FACTORY_PHASES.includes(run.phase)) {
+        // The engine never restarts a merged, cancelled or failed run (engine.ts start()).
+        return hit('blocked', `run-finished:${run.phase}`, `the factory run is ${run.phase} and is not restarted; see omg factory run status ${item.id}`);
+    }
+    if (run) {
         const at = run.gate ? `${run.phase}/${run.gate.name}` : run.phase;
         return hit('blocked', `run-active:${at}`, `a factory run is active (${at}); see omg factory run status ${item.id}`);
     }
@@ -69,6 +75,8 @@ export function evaluateItem(item, kind, config, look) {
     const pr = look.openPr(branch);
     if (pr !== undefined)
         return hit('blocked', 'pr-exists', `open PR #${pr} already uses ${branch}`);
+    if (look.remoteBranch(branch))
+        return hit('blocked', 'branch-exists', `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
     const deps = item.dependsOn.filter((d) => look.isOpen(d));
     if (deps.length > 0)
         return hit('blocked', `depends-on:${ids(deps)}`, `depends on open item${deps.length > 1 ? 's' : ''} ${ids(deps)}`);

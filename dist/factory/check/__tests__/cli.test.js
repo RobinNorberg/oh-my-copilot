@@ -25,6 +25,8 @@ function scripted(root, issues, o = {}) {
                 return ok(`${SHA}\n`);
             if (a === `cat-file -e ${SHA}^{commit}`)
                 return ok();
+            if (args[0] === 'ls-remote')
+                return ok(o.branches?.includes(Number(/issue-(\d+)$/.exec(args[2])[1])) ? `${SHA}\t${args[2]}\n` : '');
             if (args[0] === 'show') {
                 const path = args[1].slice(41);
                 const text = o.files?.[path];
@@ -45,6 +47,8 @@ function scripted(root, issues, o = {}) {
                 const n = Number(/issue-(\d+)$/.exec(args[3])[1]);
                 return ok(JSON.stringify(o.prs?.[n] ? [{ number: o.prs[n], state: 'OPEN' }] : []));
             }
+            if (args[0] === 'label' && args[1] === 'list')
+                return ok(JSON.stringify((o.labels ?? ['factory-ready', 'factory-ready-later']).map((name) => ({ name }))));
             if (args[0] === 'issue' && args[1] === 'edit')
                 return o.failEdit?.includes(Number(args[2])) ? { status: 1, stdout: '', stderr: 'HTTP 403\u001b[31m' } : ok();
         }
@@ -81,7 +85,7 @@ const ISSUES = {
     2: { title: 'no plan', body: 'just do it' },
     3: { title: 'has a PR', body: AC },
     4: { title: 'ready two \u001b[2J\u0007', body: AC, labels: ['priority:p0'] },
-    5: { title: 'already marked', body: AC, labels: ['factory-ready'] },
+    5: { title: 'already marked', body: AC, labels: ['Factory-Ready'] },
 };
 async function run(exec, o, over = {}) {
     return runFactoryCheck({ ids: [], ...o }, deps(exec, over));
@@ -137,6 +141,26 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
         await expect(run(rec.exec, { source: 'label:factory', mark: true, json: true })).rejects.toThrow(/--mark needs --yes/);
         expect(rec.calls.some((c) => c.includes('"edit"'))).toBe(false);
         expect(prompts).toEqual([]);
+    });
+    it('--mark with a missing marker label exits 5 with a setup hint and writes nothing', async () => {
+        const rec = recordingExec(scripted(root, ISSUES, { prs: { 3: 9 }, labels: ['factory-ready-later'] }), {}, ['gh']);
+        await expect(run(rec.exec, { source: 'label:factory', mark: true, yes: true })).rejects.toThrow('label factory-ready does not exist in https://github.com/o/r; run `omg factory setup` to create it');
+        expect(rec.calls.some((c) => c.includes('"edit"'))).toBe(false);
+        expect(rec.calls).toContain(`gh ["label","list","--search","factory-ready","--json","name","--limit","100"] cwd=${root}`);
+        process.exitCode = undefined;
+        await factoryCheckCommand(deps(rec.exec)).parseAsync(['--source', 'label:factory', '--mark', '--yes'], { from: 'user' });
+        expect(Number(process.exitCode)).toBe(5);
+        process.exitCode = undefined;
+    });
+    it('a leftover origin/factory/issue-<n> branch without a PR blocks (git ls-remote)', async () => {
+        expect(await run(scripted(root, ISSUES, { branches: [1] }), { ids: ['1'], json: true })).toBe(0);
+        expect(JSON.parse(out.join('\n')).items[0]).toMatchObject({ id: 1, bucket: 'blocked', reasons: ['branch-exists'] });
+    });
+    it('a failed item read is read-failed, the batch goes on, and the exit is 1', async () => {
+        expect(await run(scripted(root, ISSUES), { ids: ['1', '99'], json: true })).toBe(1);
+        const json = JSON.parse(out.join('\n'));
+        expect(json.ok).toBe(false);
+        expect(json.items.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[1, 'runnable', []], [99, 'blocked', ['read-failed']]]);
     });
     it('--mark after confirmation labels the runnable items only, through forge.tracker', async () => {
         const rec = recordingExec(scripted(root, ISSUES, { prs: { 3: 9 } }), {}, ['gh']);
@@ -198,6 +222,8 @@ describe('checkGuardExec', () => {
         refused(exec, 'gh', ['issue', 'list', '--label', '--repo=x', '--state', 'open', '--json', 'number', '--limit', '5']);
         refused(exec, 'git', ['push', 'origin', 'HEAD:refs/heads/x']);
         refused(exec, 'git', ['show', 'HEAD']);
+        expect(exec('git', ['ls-remote', 'origin', 'refs/heads/factory/issue-1']).status).toBe(0);
+        refused(exec, 'git', ['ls-remote', 'origin', 'refs/heads/main']);
         refused(exec, 'az', ['devops', 'invoke', '--area', 'wit', '--resource', 'workItems', '--http-method', 'PATCH']);
         refused(exec, 'npm', ['ci']);
     });

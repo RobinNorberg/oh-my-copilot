@@ -25,32 +25,52 @@ export function compareResults(a, b) {
 }
 /** gh prints a PR for `gh issue view <pr>`; the GitHub tracker refuses it with this message. */
 const NOT_AN_ISSUE = /returned no issue url/;
-/** The result of one item (a GitHub PR id is `wrong-type`; any other read failure throws). */
+const messageOf = (error) => (error instanceof Error ? error.message : String(error));
+const failed = (id, reason, detail) => ({ id, title: '', url: '', bucket: 'blocked', reasons: [reason], detail: plainText(detail), priority: null, planSource: null });
+/** An item, else a PR (a dependency may be one): open unless the forge says it is closed or merged; unreadable counts as open. */
+function isOpen(forge, id) {
+    try {
+        return forge.tracker.viewItem(id).open;
+    }
+    catch {
+        try {
+            return forge.reviews.viewPr(id).state === 'OPEN';
+        }
+        catch {
+            return true;
+        }
+    }
+}
+/**
+ * The result of one item. A GitHub PR id is `wrong-type`; any other failed
+ * read (the item, its run state, PR or branch lookup) is `read-failed`, so one
+ * bad item never stops the batch.
+ */
 export function checkItem(forge, id, env) {
     let item;
     try {
         item = forge.tracker.viewItem(id);
     }
     catch (error) {
-        if (forge.kind !== 'github' || !NOT_AN_ISSUE.test(error instanceof Error ? error.message : String(error)))
-            throw error;
-        return { id, title: '', url: '', bucket: 'blocked', reasons: ['wrong-type'], detail: `#${id} is not an issue (a pull request?)`, priority: null, planSource: null };
+        if (forge.kind === 'github' && NOT_AN_ISSUE.test(messageOf(error)))
+            return failed(id, 'wrong-type', `#${id} is not an issue (a pull request?)`);
+        return failed(id, 'read-failed', `#${id} could not be read: ${messageOf(error)}`);
     }
     const look = {
-        isOpen: (other) => {
-            try {
-                return forge.tracker.viewItem(other).open;
-            }
-            catch {
-                return true;
-            }
-        },
+        isOpen: (other) => isOpen(forge, other),
         runState: env.runState,
         openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
+        remoteBranch: env.remoteBranch,
         readPlan: env.readPlan,
         planBase: env.planBase,
     };
-    const v = evaluateItem(item, forge.kind, env.config, look);
+    let v;
+    try {
+        v = evaluateItem(item, forge.kind, env.config, look);
+    }
+    catch (error) {
+        return { ...failed(id, 'read-failed', `#${id} could not be checked: ${messageOf(error)}`), title: plainText(item.title), url: plainText(item.url), priority: itemPriority(item) };
+    }
     return {
         id: item.id,
         title: plainText(item.title),

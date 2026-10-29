@@ -6,8 +6,9 @@
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, the label write only while marking,
- * and the git reads of the base. az goes through the factory guard (fail
+ * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * label lookup, the label write only while marking, the git reads of the base
+ * and `git ls-remote origin refs/heads/factory/<name>`. az goes through the factory guard (fail
  * closed until the ADO guard context lands) and only as GET while not marking.
  *
  * Exit codes: 0 checked (whatever the buckets; a declined `--mark` writes
