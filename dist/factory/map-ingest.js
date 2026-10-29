@@ -11,6 +11,7 @@
  * a network.
  */
 import { spawnSync } from 'child_process';
+import { createGithubChainTracker, issueCommentStdinArgv } from '../forge/github/chain-tracker.js';
 import { enumerateFrontier, WAYFINDER_AWAITING_HUMAN_LABEL, } from './map-frontier.js';
 export const defaultGhRunner = (args) => {
     const result = spawnSync('gh', args, { encoding: 'utf8', windowsHide: true, timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
@@ -47,10 +48,11 @@ const VIEW_FIELDS = 'number,state,labels,assignees,body,parent,blockedBy';
  */
 export function loadMapRecords(ref, gh = defaultGhRunner) {
     const seen = new Map();
-    const list = gh(['issue', 'list', '--repo', ref.repo, '--state', 'all', '--limit', '200', '--search', `${ref.number} in:body`, '--json', 'number,state,labels,assignees,body']);
+    const tracker = createGithubChainTracker(gh, defaultCommentRunner);
+    const list = tracker.listIssues(ref.repo, ref.number);
     const candidates = list.status === 0 ? safeJson(list.stdout, []) : [];
     // The map itself is not a child but references may resolve to it.
-    const mapView = gh(['issue', 'view', String(ref.number), '--repo', ref.repo, '--json', VIEW_FIELDS]);
+    const mapView = tracker.viewIssue(ref.repo, ref.number, VIEW_FIELDS);
     const views = [...candidates];
     if (mapView.status === 0) {
         const parsed = safeJson(mapView.stdout, null);
@@ -61,7 +63,7 @@ export function loadMapRecords(ref, gh = defaultGhRunner) {
     // then chase every body-named reference for blocker states.
     const refsToView = new Set(views.map((view) => view.number));
     for (const view of views) {
-        const detail = gh(['issue', 'view', String(view.number), '--repo', ref.repo, '--json', VIEW_FIELDS]);
+        const detail = tracker.viewIssue(ref.repo, view.number, VIEW_FIELDS);
         if (detail.status !== 0)
             continue;
         const parsed = safeJson(detail.stdout, null);
@@ -77,7 +79,7 @@ export function loadMapRecords(ref, gh = defaultGhRunner) {
     for (const number of refsToView) {
         if (seen.has(number))
             continue;
-        const detail = gh(['issue', 'view', String(number), '--repo', ref.repo, '--json', VIEW_FIELDS]);
+        const detail = tracker.viewIssue(ref.repo, number, VIEW_FIELDS);
         if (detail.status !== 0)
             continue;
         const parsed = safeJson(detail.stdout, null);
@@ -169,7 +171,7 @@ export function renderRoutingComment(ref, ticket, awaitingHuman) {
 }
 export const defaultCommentRunner = (ref, ticket, body) => {
     // Body via stdin (--body-file -): cmd.exe codepages mangle non-ASCII argv.
-    const result = spawnSync('gh', ['issue', 'comment', String(ticket), '--repo', ref.repo, '--body-file', '-'], {
+    const result = spawnSync('gh', issueCommentStdinArgv(ref.repo, ticket), {
         input: body,
         encoding: 'utf8',
         windowsHide: true,
@@ -180,6 +182,7 @@ export const defaultCommentRunner = (ref, ticket, body) => {
 export function executePlanActions(plan, options) {
     const gh = options.gh ?? defaultGhRunner;
     const comment = options.comment ?? defaultCommentRunner;
+    const tracker = createGithubChainTracker(gh, comment);
     const outcomes = [];
     for (const ticket of plan.planned) {
         if (ticket.gateClass === 'human') {
@@ -187,7 +190,7 @@ export function executePlanActions(plan, options) {
                 outcomes.push({ ticket: ticket.number, action: 'skipped', detail: 'already awaiting human' });
                 continue;
             }
-            const labeled = gh(['issue', 'edit', String(ticket.number), '--repo', plan.map.repo, '--add-label', WAYFINDER_AWAITING_HUMAN_LABEL]);
+            const labeled = tracker.addLabel(plan.map.repo, ticket.number, WAYFINDER_AWAITING_HUMAN_LABEL);
             const commented = comment(plan.map, ticket.number, renderRoutingComment(plan.map, ticket.number, false));
             outcomes.push({
                 ticket: ticket.number,
@@ -197,7 +200,7 @@ export function executePlanActions(plan, options) {
             continue;
         }
         // auto-executable: claim atomically, then record provenance.
-        const assigned = gh(['issue', 'edit', String(ticket.number), '--repo', plan.map.repo, '--add-assignee', '@me']);
+        const assigned = tracker.addAssignee(plan.map.repo, ticket.number, '@me');
         if (assigned.status !== 0) {
             outcomes.push({ ticket: ticket.number, action: 'skipped', detail: `claim failed (gh exit ${assigned.status})` });
             continue;
@@ -207,7 +210,7 @@ export function executePlanActions(plan, options) {
             const records = loadMapRecords(plan.map, gh);
             const record = records.find((r) => r.number === ticket.number);
             const draft = draftCriteriaFromQuestion(record?.body ?? '');
-            gh(['issue', 'edit', String(ticket.number), '--repo', plan.map.repo, '--add-label', WAYFINDER_AWAITING_HUMAN_LABEL]);
+            tracker.addLabel(plan.map.repo, ticket.number, WAYFINDER_AWAITING_HUMAN_LABEL);
             comment(plan.map, ticket.number, `Drafted acceptance criteria (ralph planning run — EDIT AND ACCEPT before any execution):\n\n${draft.join('\n')}`);
             // The pass keeps going: routing and claiming are bookkeeping a human
             // benefits from immediately. The STOP is the launch decision — the
