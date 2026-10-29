@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "361a5790a3613943c91f4689a5894ee95e84b9c2",
-    "sourceSha256": "bab1d07c9cc5acaa5c8a45b2388d9763c2e9a0dbb71a617faed37b80ade5f953",
+    "head": "23eaf88cb703c83bbc6ff4db4788babdd1b67dd1",
+    "sourceSha256": "f378532e96495fc59066206d734299a4425f37f907e73bccfb75c04a8c967d9b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "361a5790a3613943c91f4689a5894ee95e84b9c2",
-  "sourceSha256": "bab1d07c9cc5acaa5c8a45b2388d9763c2e9a0dbb71a617faed37b80ade5f953",
+  "head": "23eaf88cb703c83bbc6ff4db4788babdd1b67dd1",
+  "sourceSha256": "f378532e96495fc59066206d734299a4425f37f907e73bccfb75c04a8c967d9b",
   "counts": {
     "public": {
       "skills": 63,
@@ -73227,6 +73227,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/map-ingest.ts",
+        "to": "src/forge/github/chain-tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-ingest.ts",
+        "to": "src/forge/github/chain-tracker.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/map-run.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -74564,6 +74574,11 @@
       {
         "from": "src/factory/watchdog.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
       {
@@ -85544,6 +85559,11 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
       {
@@ -108639,11 +108659,11 @@
     ],
     "stats": {
       "nodeCount": 9284,
-      "edgeCount": 10775,
-      "importEdgeCount": 8919,
+      "edgeCount": 10779,
+      "importEdgeCount": 8922,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "d4b8d05bf8819ac1a1d2a4214c16762b90130cd20438a4cba0ec2ad6f5c5accd",
-  "manifestSha256": "572264309520d46d4e5b5ad6fd32260138bd043a1a95d630a1534e6b1a28507a"
+  "manifestSha256": "82db443d3e96cf7e4b8b6d37ba3b77ad8c341d789273e5b2b67ec55ceb520c10"
 }
