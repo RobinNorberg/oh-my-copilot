@@ -2,7 +2,20 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.18.1
+
+## [5.18.1] - 2026-10-29
+
+Fork **v5.18.1** (from v5.18.0) is a security and fix release for headless
+`omg team` SDK workers. Workers now start without the leader's credentials,
+keep their own Copilot home, and fail fast when their provider has already
+exited. Workers are still not sandboxed: the env reset and the extra shell
+denies are hygiene against accidental use, not a boundary. Like v5.18.0, this
+release was published without the live Copilot smoke (the account's Copilot
+quota is exhausted); the token-only CI path for SDK workers, where the
+Copilot token now reaches the session over RPC, is covered by unit tests
+only so far.
+
 
 ### Fixed
 
