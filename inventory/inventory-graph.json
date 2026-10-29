@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "bc82722004eb99f580d941a5a7624562b4ed1a8b",
-    "sourceSha256": "3da7c3a0c6e02e117e70de4a3ffe3772f8eeaa6c4d887a1ecf44c790a14b91cf",
+    "head": "5eacce0263a6ae6dffeb938acc66701fd1707628",
+    "sourceSha256": "59d3551b56524487efa1e33ff08f6962f1b9c17b372e32bdfd5df28662e09e97",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "bc82722004eb99f580d941a5a7624562b4ed1a8b",
-  "sourceSha256": "3da7c3a0c6e02e117e70de4a3ffe3772f8eeaa6c4d887a1ecf44c790a14b91cf",
+  "head": "5eacce0263a6ae6dffeb938acc66701fd1707628",
+  "sourceSha256": "59d3551b56524487efa1e33ff08f6962f1b9c17b372e32bdfd5df28662e09e97",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1879,
-      "total": 1903
+      "srcFiles": 1880,
+      "total": 1904
     },
     "generated": {
-      "distFiles": 6976,
+      "distFiles": 6980,
       "bridgeFiles": 9,
-      "total": 6985
+      "total": 6989
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6516,6 +6516,10 @@
       "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts.map",
       "dist/smoke/__tests__/copilot-sdk-scenarios.test.js",
       "dist/smoke/__tests__/copilot-sdk-scenarios.test.js.map",
+      "dist/smoke/__tests__/copilot-session-env.test.d.ts",
+      "dist/smoke/__tests__/copilot-session-env.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-session-env.test.js",
+      "dist/smoke/__tests__/copilot-session-env.test.js.map",
       "dist/smoke/__tests__/copilot-session-eval.test.d.ts",
       "dist/smoke/__tests__/copilot-session-eval.test.d.ts.map",
       "dist/smoke/__tests__/copilot-session-eval.test.js",
@@ -37327,6 +37331,26 @@
         "path": "dist/smoke/__tests__/copilot-sdk-scenarios.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-session-env.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-session-env.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-session-env.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-session-env.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-session-env.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-session-env.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-session-env.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-session-env.test.js.map"
+      },
+      {
         "id": "dist/smoke/__tests__/copilot-session-eval.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/__tests__/copilot-session-eval.test.d.ts"
@@ -54135,6 +54159,11 @@
         "id": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
         "kind": "src",
         "path": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts"
+      },
+      {
+        "id": "src/smoke/__tests__/copilot-session-env.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-session-env.test.ts"
       },
       {
         "id": "src/smoke/__tests__/copilot-session-eval.test.ts",
@@ -98869,6 +98898,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-session-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-session-env.test.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-session-eval.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -102976,6 +103015,11 @@
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "external:stream",
         "kind": "imports"
       },
       {
@@ -107130,6 +107174,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/team/sdk-inprocess-tools.ts",
         "kind": "type-imports"
       },
@@ -107221,6 +107270,11 @@
       {
         "from": "src/team/sdk-transport.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-transport.ts",
+        "to": "src/smoke/copilot-session-env.ts",
         "kind": "imports"
       },
       {
@@ -112725,12 +112779,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9598,
-      "edgeCount": 11235,
-      "importEdgeCount": 9253,
+      "nodeCount": 9603,
+      "edgeCount": 11240,
+      "importEdgeCount": 9258,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "fdf6ea414cb7f3b0212c0bc8c68e6a3de49156d941318d103afb2866843a012a",
-  "manifestSha256": "a4e688f0e22869ce4171572bffa8e9b1d3d336eddd17e81f5ad398ab2d5df07d"
+  "inventorySha256": "34e394b574adf9c13be39c1a1dc069a428d2559cf0cedda90eb43484048d67ab",
+  "manifestSha256": "cfebd5e0170923cd5c6966faeab1e582fb29b9b2dcf96d830a035c0c5b4d7149"
 }
