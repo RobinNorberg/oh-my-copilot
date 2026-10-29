@@ -101,12 +101,9 @@ mcp__azure-devops__work_get_iteration_capacities
 
 az CLI fallback:
 ```bash
-az boards iteration team show-capacity \
-  --iteration "{iterationPath}" \
-  --team "{team}" \
-  --project "{project}" \
-  --org "{org}" \
-  -o json 2>&1
+az devops invoke --area work --resource capacities --http-method GET \
+  --route-parameters project="{project}" team="{team}" iterationId={iterationId} \
+  --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 ```
 
 Present capacity as:
@@ -288,9 +285,9 @@ az boards iteration team list \
   --team "{team}" --project "{project}" --org "{org}" -o table
 
 # Show capacity for an iteration
-az boards iteration team show-capacity \
-  --iteration "{iterationPath}" \
-  --team "{team}" --project "{project}" --org "{org}" -o json
+az devops invoke --area work --resource capacities --http-method GET \
+  --route-parameters project="{project}" team="{team}" iterationId={iterationId} \
+  --api-version 7.1 --org "{org}" --detect false -o json
 
 # Query unplanned backlog items
 az boards query \
@@ -333,3 +330,5 @@ az boards iteration team add \
 | Capacity data unavailable | Note that team has not configured capacity; continue with backlog review |
 | Rate limit / 429 | Wait 2 seconds and retry once; if still failing, note the section as unavailable |
 | `work_update_team_capacity` fails | Advise user to set capacity via ADO web UI at `{org}/{project}/_sprints/capacity` |
+
+> The `az` CLI has no team capacity subcommand. Capacity uses the Capacities REST API (`work/teamsettings/iterations/{iterationId}/capacities`; `{iterationId}` is the GUID from `az boards iteration team list`) through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/work/capacities/get-capacities-with-identity-ref-and-totals?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke).
