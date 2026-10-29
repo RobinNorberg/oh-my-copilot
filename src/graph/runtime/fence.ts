@@ -32,6 +32,7 @@ import { resolveRunDirHandle } from "./run-dir.js";
 import type { RunDirHandle } from "./run-dir.js";
 import {
   readOperationFileNoFollow,
+  removeCrashedAtomicWriteResidue,
   withContainedOperations,
 } from "./safe-fs.js";
 import { FenceError } from "./types.js";
@@ -170,6 +171,16 @@ export class FileOwnershipFence implements OwnershipFence {
         // any other concurrent takeover rather than racing it.
         return { outcome: "busy" };
       }
+      // A holder killed mid owner.epoch publication leaves a rollback link
+      // that gives the sidecar nlink 2, which the read below refuses forever.
+      // Dropping it is safe before we own the run: the epoch write passes no
+      // hooks, so a live holder rolls back only when its published identity
+      // is known and still matches; with the backup gone that rename fails
+      // ENOENT and only warns, and the sidecar keeps the higher epoch, so no
+      // epoch is ever reissued. Temporaries wait until we hold the lock.
+      removeCrashedAtomicWriteResidue(operations, epochFilePath, {
+        temporaries: false,
+      });
       const ceiling = readSidecarCeiling(operations, epochFilePath);
       if (ceiling === Number.MAX_SAFE_INTEGER) {
         throw new Error("owner.epoch has no representable successor");
@@ -182,6 +193,18 @@ export class FileOwnershipFence implements OwnershipFence {
       }
       const fd = this.tryCreate(operations, lockPath, epochFilePath, candidate);
       if (fd !== null) {
+        // Holding the lock, no other writer can be mid owner.epoch publish.
+        // Best effort: a stale temp is harmless, a failed acquire is not.
+        try {
+          removeCrashedAtomicWriteResidue(operations, epochFilePath, {
+            temporaries: true,
+          });
+        } catch (error) {
+          // Leave the residue for the next owner.
+          if (process.env.OMC_DEBUG && (error as NodeJS.ErrnoException).code !== "ENOENT") {
+            console.error("[graph] owner.epoch residue cleanup failed:", error);
+          }
+        }
         this.fd = fd;
         this.heldEpoch = candidate;
         return { outcome: "acquired", epoch: candidate };

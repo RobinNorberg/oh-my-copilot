@@ -16,7 +16,11 @@ import {
 
 import { resolveRunDirHandle } from "./run-dir.js";
 import type { RunDirHandle } from "./run-dir.js";
-import { readContainedFileNoFollow, withContainedOperations } from "./safe-fs.js";
+import {
+  readContainedFileNoFollow,
+  removeCrashedAtomicWriteResidue,
+  withContainedOperations,
+} from "./safe-fs.js";
 import type {
   ProjectionSnapshotEnvelope,
   ProjectionStore,
@@ -149,6 +153,13 @@ export class FileProjectionStore implements ProjectionStore {
     // A corrupt snapshot is a cache-miss here, not run-fatal: the journal is
     // the source of truth, so treat it as absent and proceed with the overwrite.
     assertOwnership?.();
+    // Only the run's owner saves, so residue of a killed earlier writer
+    // (rollback link, temp file) has no live writer and is safe to drop.
+    withContainedOperations(this.runDir(), (operations) =>
+      removeCrashedAtomicWriteResidue(operations, PROJECTION_FILE_NAME, {
+        temporaries: true,
+      }),
+    );
     let stored: ProjectionSnapshotEnvelope | null;
     try {
       stored = await this.load();

@@ -9,7 +9,7 @@
 import { join } from "path";
 import { atomicWriteJsonSync, } from "../../lib/atomic-write.js";
 import { resolveRunDirHandle } from "./run-dir.js";
-import { readContainedFileNoFollow, withContainedOperations } from "./safe-fs.js";
+import { readContainedFileNoFollow, removeCrashedAtomicWriteResidue, withContainedOperations, } from "./safe-fs.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const PROJECTION_FILE_NAME = "projection.json";
 /** Closed error surface for projection snapshot failures. */
@@ -85,6 +85,11 @@ export class FileProjectionStore {
         // A corrupt snapshot is a cache-miss here, not run-fatal: the journal is
         // the source of truth, so treat it as absent and proceed with the overwrite.
         assertOwnership?.();
+        // Only the run's owner saves, so residue of a killed earlier writer
+        // (rollback link, temp file) has no live writer and is safe to drop.
+        withContainedOperations(this.runDir(), (operations) => removeCrashedAtomicWriteResidue(operations, PROJECTION_FILE_NAME, {
+            temporaries: true,
+        }));
         let stored;
         try {
             stored = await this.load();

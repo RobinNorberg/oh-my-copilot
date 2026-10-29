@@ -5,11 +5,15 @@
  * descriptor binding (AC-3), and idempotent resave.
  */
 import {
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync, realpathSync,
+  readdirSync,
   renameSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
@@ -166,6 +170,74 @@ describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"
     const loaded = await store.load();
     expect(loaded?.epoch).toBe(2);
     expect(loaded?.saved_at_seq).toBe(9);
+  });
+
+  it("resaves over the rollback link a writer killed mid-publication left behind", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    // A SIGKILL between the atomic writer's backup link() and its rename
+    // leaves projection.json with a second, same-directory name.
+    const residue = "projection.json.rollback.00000000-0000-4000-8000-000000000000";
+    linkSync(join(runDir, "projection.json"), join(runDir, residue));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 2, saved_at_seq: 1 })),
+    ).resolves.toBeUndefined();
+    expect(readdirSync(runDir)).not.toContain(residue);
+    expect(statSync(join(runDir, "projection.json")).nlink).toBe(1);
+    await expect(store.load()).resolves.toMatchObject({ epoch: 2, saved_at_seq: 1 });
+  });
+
+  it("removes the temp file a writer killed before its rename left behind", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const residue = ".projection.json.tmp.00000000-0000-4000-8000-000000000000";
+    writeFileSync(join(runDir, residue), "{partial");
+
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 }));
+    expect(readdirSync(runDir)).not.toContain(residue);
+  });
+
+  it("leaves a directory named like write residue alone and still saves", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const planted = "projection.json.rollback.00000000-0000-4000-8000-000000000000";
+    mkdirSync(join(runDir, planted));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
+    ).resolves.toBeUndefined();
+    expect(statSync(join(runDir, planted)).isDirectory()).toBe(true);
+  });
+
+  it("leaves a symlink named like write residue alone and still saves", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    const outside = join(runsRoot, "outside.json");
+    writeFileSync(outside, "keep");
+    const planted = "projection.json.rollback.00000000-0000-4000-8000-000000000000";
+    symlinkSync(outside, join(runDir, planted));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
+    ).resolves.toBeUndefined();
+    expect(lstatSync(join(runDir, planted)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(outside, "utf8")).toBe("keep");
+  });
+
+  it("still refuses a projection hardlinked from outside the run directory", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const store = new FileProjectionStore(runsRoot, "run-1");
+    await store.save(makeEnvelope({ epoch: 1, saved_at_seq: 0 }));
+    linkSync(join(runDir, "projection.json"), join(runsRoot, "outside.json"));
+
+    await expect(
+      store.save(makeEnvelope({ epoch: 1, saved_at_seq: 1 })),
+    ).rejects.toThrow(/not a private regular file/);
   });
 
   it("rolls back a snapshot when ownership changes at publication", async () => {

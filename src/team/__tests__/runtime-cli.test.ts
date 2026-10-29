@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { existsSync, mkdtempSync as rawMkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, lstatSync, mkdtempSync as rawMkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash } from 'node:crypto';
@@ -724,6 +724,27 @@ describe('runtime-cli recovery intent cleanup', () => {
     return { path, repairedBytes };
   }
 
+  /**
+   * Seed a reservation, then fix the deadline AFTER it exists: its birthtime
+   * is then <= the deadline however long the durable seed write took on a
+   * loaded host (a deadline guessed ahead of the seed raced it). Returns once
+   * the clock is clearly past the deadline, so a following write is a
+   * postdeadline touch even with coarse filesystem timestamps.
+   */
+  function seedReservationThenPassDeadline(cwd: string, requestId: string, recoveryId: string): { path: string; deadline: number } {
+    const { path } = seedPredeadlineReservation(cwd, requestId, recoveryId, Date.now());
+    const deadline = Date.now();
+    const { birthtimeMs } = lstatSync(path);
+    if (birthtimeMs > 0) expect(birthtimeMs).toBeLessThanOrEqual(deadline);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(50));
+    return { path, deadline };
+  }
+
+  /** The corruption must not carry a predeadline mtime, or the test proves nothing. */
+  function expectPostdeadlineTouch(path: string, deadline: number): void {
+    expect(lstatSync(path).mtimeMs).toBeGreaterThan(deadline);
+  }
+
   function seedPendingAdmission(
     cwd: string,
     requestId: string,
@@ -1210,12 +1231,11 @@ describe('runtime-cli recovery intent cleanup', () => {
   it('keeps a predeadline malformed admission fenced after a postdeadline corruption touch', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-grace-touched-malformed-admission-'));
     try {
-      const deadline = Date.now() + scaleTiming(100);
-      const { path } = seedPredeadlineReservation(cwd, 'request-touched-corrupt', 'recovery-touched-corrupt', deadline);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(150));
+      const { path, deadline } = seedReservationThenPassDeadline(cwd, 'request-touched-corrupt', 'recovery-touched-corrupt');
       const reservation = JSON.parse(readFileSync(path, 'utf8')) as { payload_hash: string };
       reservation.payload_hash = '0'.repeat(64);
       writeFileSync(path, JSON.stringify(reservation));
+      expectPostdeadlineTouch(path, deadline);
 
       expect(hasPendingRecoveryAdmissionBeforeDeadline('intent-team', cwd, deadline, INSTANCE_ID)).toBe(true);
     } finally {
@@ -1226,12 +1246,11 @@ describe('runtime-cli recovery intent cleanup', () => {
     'keeps a predeadline admission fenced when a postdeadline corruption changes %s without its payload hash', field => {
       const cwd = mkdtempSync(join(tmpdir(), `runtime-cli-grace-touched-${field}-`));
       try {
-        const deadline = Date.now() + scaleTiming(100);
-        const { path } = seedPredeadlineReservation(cwd, `request-touched-${field}`, `recovery-touched-${field}`, deadline);
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, scaleTiming(150));
+        const { path, deadline } = seedReservationThenPassDeadline(cwd, `request-touched-${field}`, `recovery-touched-${field}`);
         const reservation = JSON.parse(readFileSync(path, 'utf8')) as Record<string, string>;
         reservation[field] = field === 'team_name' ? 'foreign-team' : '0'.repeat(64);
         writeFileSync(path, JSON.stringify(reservation));
+        expectPostdeadlineTouch(path, deadline);
 
         expect(hasPendingRecoveryAdmissionBeforeDeadline('intent-team', cwd, deadline, INSTANCE_ID)).toBe(true);
       } finally {
