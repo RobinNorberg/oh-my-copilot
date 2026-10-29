@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a069e383b39b90f45f2e5227859bc3f6a56be70c",
-    "sourceSha256": "a153eecb804cfb4398dad3d035b623a9f6cba245bbda481e3ea3c2c99b0da807",
+    "head": "34713a3d9e1e51a738e60a0fc5f3c7145f880910",
+    "sourceSha256": "9119bc474d8e1726b50b50683b5ff2daf080c42dde58521c1bed53259daba5e0",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a069e383b39b90f45f2e5227859bc3f6a56be70c",
-  "sourceSha256": "a153eecb804cfb4398dad3d035b623a9f6cba245bbda481e3ea3c2c99b0da807",
+  "head": "34713a3d9e1e51a738e60a0fc5f3c7145f880910",
+  "sourceSha256": "9119bc474d8e1726b50b50683b5ff2daf080c42dde58521c1bed53259daba5e0",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1785,
-      "total": 1809
+      "srcFiles": 1783,
+      "total": 1807
     },
     "generated": {
-      "distFiles": 6768,
+      "distFiles": 6760,
       "bridgeFiles": 9,
-      "total": 6777
+      "total": 6769
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3525,10 +3525,6 @@
       "dist/features/verification/types.d.ts.map",
       "dist/features/verification/types.js",
       "dist/features/verification/types.js.map",
-      "dist/forge/__tests__/chain-tracker.test.d.ts",
-      "dist/forge/__tests__/chain-tracker.test.d.ts.map",
-      "dist/forge/__tests__/chain-tracker.test.js",
-      "dist/forge/__tests__/chain-tracker.test.js.map",
       "dist/forge/__tests__/config.test.d.ts",
       "dist/forge/__tests__/config.test.d.ts.map",
       "dist/forge/__tests__/config.test.js",
@@ -3593,10 +3589,6 @@
       "dist/forge/config.d.ts.map",
       "dist/forge/config.js",
       "dist/forge/config.js.map",
-      "dist/forge/github/chain-tracker.d.ts",
-      "dist/forge/github/chain-tracker.d.ts.map",
-      "dist/forge/github/chain-tracker.js",
-      "dist/forge/github/chain-tracker.js.map",
       "dist/forge/index.d.ts",
       "dist/forge/index.d.ts.map",
       "dist/forge/index.js",
@@ -22168,26 +22160,6 @@
         "path": "dist/features/verification/types.js.map"
       },
       {
-        "id": "dist/forge/__tests__/chain-tracker.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/forge/__tests__/chain-tracker.test.d.ts"
-      },
-      {
-        "id": "dist/forge/__tests__/chain-tracker.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/forge/__tests__/chain-tracker.test.d.ts.map"
-      },
-      {
-        "id": "dist/forge/__tests__/chain-tracker.test.js",
-        "kind": "generated-dist",
-        "path": "dist/forge/__tests__/chain-tracker.test.js"
-      },
-      {
-        "id": "dist/forge/__tests__/chain-tracker.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/forge/__tests__/chain-tracker.test.js.map"
-      },
-      {
         "id": "dist/forge/__tests__/config.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/config.test.d.ts"
@@ -22506,26 +22478,6 @@
         "id": "dist/forge/config.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/config.js.map"
-      },
-      {
-        "id": "dist/forge/github/chain-tracker.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/forge/github/chain-tracker.d.ts"
-      },
-      {
-        "id": "dist/forge/github/chain-tracker.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/forge/github/chain-tracker.d.ts.map"
-      },
-      {
-        "id": "dist/forge/github/chain-tracker.js",
-        "kind": "generated-dist",
-        "path": "dist/forge/github/chain-tracker.js"
-      },
-      {
-        "id": "dist/forge/github/chain-tracker.js.map",
-        "kind": "generated-dist",
-        "path": "dist/forge/github/chain-tracker.js.map"
       },
       {
         "id": "dist/forge/index.d.ts",
@@ -48818,11 +48770,6 @@
         "path": "src/features/verification/types.ts"
       },
       {
-        "id": "src/forge/__tests__/chain-tracker.test.ts",
-        "kind": "src",
-        "path": "src/forge/__tests__/chain-tracker.test.ts"
-      },
-      {
         "id": "src/forge/__tests__/config.test.ts",
         "kind": "src",
         "path": "src/forge/__tests__/config.test.ts"
@@ -48911,11 +48858,6 @@
         "id": "src/forge/config.ts",
         "kind": "src",
         "path": "src/forge/config.ts"
-      },
-      {
-        "id": "src/forge/github/chain-tracker.ts",
-        "kind": "src",
-        "path": "src/forge/github/chain-tracker.ts"
       },
       {
         "id": "src/forge/index.ts",
@@ -73285,16 +73227,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/map-ingest.ts",
-        "to": "src/forge/github/chain-tracker.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/map-ingest.ts",
-        "to": "src/forge/github/chain-tracker.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/map-run.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -74632,11 +74564,6 @@
       {
         "from": "src/factory/watchdog.ts",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/watchdog.ts",
-        "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
       {
@@ -76252,21 +76179,6 @@
       {
         "from": "src/features/verification/index.ts",
         "to": "src/features/verification/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/forge/__tests__/chain-tracker.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/forge/__tests__/chain-tracker.test.ts",
-        "to": "src/forge/github/chain-tracker.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/forge/__tests__/chain-tracker.test.ts",
-        "to": "src/forge/github/chain-tracker.ts",
         "kind": "type-imports"
       },
       {
@@ -85632,11 +85544,6 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/cli/tmux-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/session-end/spawn-next.ts",
-        "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
       {
@@ -108731,12 +108638,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9294,
-      "edgeCount": 10782,
-      "importEdgeCount": 8924,
+      "nodeCount": 9284,
+      "edgeCount": 10775,
+      "importEdgeCount": 8919,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "83acd2acbb3ff4a2c6828588661263fa13bd85f4eb833d6f0fcd26fc064917cf",
-  "manifestSha256": "ba5996f7ad817506100660b819f06b6c2f240d97ce54c5f0283587abc9f031c2"
+  "inventorySha256": "d4b8d05bf8819ac1a1d2a4214c16762b90130cd20438a4cba0ec2ad6f5c5accd",
+  "manifestSha256": "6e5aa29cf0d7ced495b344ca4e3f071689affca8838b3a1a79bb21ad1271cdfe"
 }
