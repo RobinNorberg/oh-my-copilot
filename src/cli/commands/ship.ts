@@ -51,6 +51,7 @@ import {
 } from '../../ship/config.js';
 import { defaultExec, guardExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { TRANSIENT_GH_ERROR, watchGates, type GateReport, type WatchResult } from '../../ship/gates.js';
+import { ghPrView } from '../../forge/github/reviews.js';
 import { emitProgress, resolveProgressFile } from '../../lib/agent-progress.js';
 import {
   defaultDriveProcess,
@@ -124,7 +125,7 @@ const FULL_SHA = /^[0-9a-f]{40}$/;
 
 /** The PR's base branch, base sha and repository URL as GitHub reports them. */
 function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string; repoUrl: string | undefined } {
-  const view = exec('gh', ['pr', 'view', String(pr), '--json', 'baseRefName,baseRefOid,url']);
+  const view = ghPrView(exec, pr, 'baseRefName,baseRefOid,url');
   let info: { baseRefName?: unknown; baseRefOid?: unknown; url?: unknown } = {};
   try {
     info = JSON.parse(view.stdout) as typeof info;
@@ -249,7 +250,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
       guarded(Boolean(o.json), () => {
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName,baseRefOid,url']);
+        const view = ghPrView(exec, pr, 'headRefName,baseRefName,baseRefOid,url');
         const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string; baseRefOid?: string; url?: string }) : {};
         if (o.base !== undefined && prInfo.baseRefName !== undefined && o.base !== prInfo.baseRefName) {
           throw new UsageError(`--base ${JSON.stringify(o.base)} differs from PR #${pr}'s base on GitHub (${prInfo.baseRefName}); retarget the PR on GitHub instead`);
@@ -534,7 +535,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
         const state = requireState(root, pr);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url']);
+        const view = ghPrView(exec, pr, 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url');
         if (view.status !== 0) throw new Error(`gh pr view ${pr} failed: ${view.stderr.trim()}`);
         const prView = JSON.parse(view.stdout) as PrView & { headRefName: string; baseRefOid: string; url?: string };
         if (!isPlainBranchName(prView.baseRefName) || !FULL_SHA.test(String(prView.baseRefOid)) || !FULL_SHA.test(String(prView.headRefOid))) {

@@ -51,7 +51,10 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
-import { MERGE_VIEW_FIELDS, mergeComment, mergeDecision, parseMergeView } from './merge-policy.js';
+import { mergeComment, mergeDecision } from './merge-policy.js';
+import { GhCommandError } from '../../forge/github/gh.js';
+import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
+import { ghIssueComment, ghIssueJson, ghIssueView } from '../../forge/github/tracker.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules } from './prepare.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { lockPathFor } from '../../lib/file-lock.js';
@@ -85,8 +88,6 @@ const LANE_GRACE_MS = 60_000;
 export const MAX_REVIEW_DIFF_CHARS = 60_000;
 /** Issue titles in prompts and the PR title are cut to one line of this many characters. */
 const MAX_TITLE_CHARS = 200;
-/** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
-const ISSUE_FIELDS = 'title,body,labels,state,url,author,comments';
 const PROCESS_DEADLINE_MS = 15_000;
 /**
  * Start-identity checks from platform/process-utils.ts (PowerShell ticks on
@@ -507,13 +508,15 @@ class FactoryEngine {
             throw new FactoryStepError(`${cmd} ${args.join(' ')} failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
         return res.stdout;
     }
-    ghJson(args) {
-        const out = this.run(args, 'gh');
+    /** A GitHub forge call as an engine step: its gh failure is this step's failure, same message. */
+    gh(call) {
         try {
-            return JSON.parse(out);
+            return call(this.exec, this.o.root);
         }
-        catch {
-            throw new FactoryStepError(`gh ${args.join(' ')} returned no JSON`);
+        catch (error) {
+            if (error instanceof GhCommandError)
+                throw new FactoryStepError(error.message);
+            throw error;
         }
     }
     writeBody(name, text) {
@@ -781,8 +784,8 @@ class FactoryEngine {
             return true;
         try {
             const file = this.writeBody(name, body);
-            const res = this.exec('gh', [target, 'comment', String(n), '--body-file', file], { cwd: this.o.root });
-            if (res.status !== 0) {
+            const res = target === 'issue' ? ghIssueComment(this.exec, n, file, this.o.root) : ghCommentPr(this.exec, n, file, this.o.root);
+            if (!res.ok) {
                 this.o.warn?.(`omg factory run: could not comment on ${target} #${n}: ${res.stderr.trim()}`);
                 return false;
             }
@@ -837,8 +840,8 @@ class FactoryEngine {
         }, 'cancelled', why, at));
         if (this.state.pr) {
             const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. The PR, its branch and the lane worktrees are kept.\n`);
-            const res = this.exec('gh', ['pr', 'comment', String(this.state.pr), '--body-file', body], { cwd: this.o.root });
-            if (res.status !== 0)
+            const res = ghCommentPr(this.exec, this.state.pr, body, this.o.root);
+            if (!res.ok)
                 this.o.warn?.(`omg factory run: could not comment on PR #${this.state.pr}: ${res.stderr.trim()}`);
         }
         this.progress.emit('cancelled', 'done', 'cancelled', this.fields());
@@ -863,7 +866,7 @@ class FactoryEngine {
     foreignPr(repoUrl) {
         if (this.state.pr)
             return false;
-        const open = this.ghJson(['pr', 'list', '--head', this.state.branch, '--json', 'number,state,headRefOid,url']);
+        const open = this.gh((exec, cwd) => ghOpenPrs(exec, this.state.branch, cwd));
         if (!Array.isArray(open) || open.length === 0)
             return false;
         this.save((s) => ({ ...s, repoUrl }));
@@ -872,7 +875,7 @@ class FactoryEngine {
     }
     /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
     healIntake() {
-        const v = this.ghJson(['repo', 'view', '--json', 'url']);
+        const v = this.gh(ghRepoView);
         const url = typeof v?.url === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : '';
         if (!url)
             throw new FactoryStepError('gh repo view returned no repository url');
@@ -911,7 +914,7 @@ class FactoryEngine {
     async intake() {
         if (this.state.kind === 'ci-heal')
             return this.healIntake();
-        const v = this.ghJson(['issue', 'view', String(this.o.issue), '--json', ISSUE_FIELDS]);
+        const v = this.gh((exec, cwd) => ghIssueJson(exec, this.o.issue, cwd));
         const url = typeof v.url === 'string' ? v.url : '';
         const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
         if (!m || Number(m[2]) !== this.o.issue)
@@ -1071,8 +1074,7 @@ class FactoryEngine {
         }
         let pr = s.pr;
         if (!pr) {
-            const open = this.ghJson(['pr', 'list', '--head', s.branch, '--json', 'number,state,headRefOid,url']);
-            pr = Array.isArray(open) && typeof open[0]?.number === 'number' ? open[0].number : undefined;
+            pr = this.gh((exec, cwd) => ghFindOpenPr(exec, s.branch, cwd));
             if (!pr) {
                 // A write lane that ran without a confirmed OS sandbox (writeUnsandboxed "detect-only") is recorded on the PR (design §3).
                 const unsandboxed = s.lanes.filter((l) => l.sandbox?.mode === 'detect-only').map((l) => l.id);
@@ -1081,11 +1083,7 @@ class FactoryEngine {
                 const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `Closes #${s.issue}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
                 // A ci-heal title is fixed: the diagnosis is untrusted lane output.
                 const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, '') || `issue ${s.issue}`} (#${s.issue})`;
-                const out = this.run(['pr', 'create', '--draft', '--base', s.base, '--head', s.branch, '--title', title, '--body-file', body], 'gh');
-                const m = /\/pull\/(\d+)/.exec(out);
-                if (!m)
-                    throw new FactoryStepError(`gh pr create printed no PR url: ${out.trim().slice(0, 200)}`);
-                pr = Number(m[1]);
+                pr = this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
             }
             this.save((x) => ({ ...x, pr }));
         }
@@ -1108,7 +1106,7 @@ class FactoryEngine {
         const pr = s.pr;
         if (!head || !pr || !s.baseSha)
             throw new FactoryStepError('review needs a published head, a PR and the base sha');
-        const view = this.ghJson(['pr', 'view', String(pr), '--json', 'headRefOid,state']);
+        const view = this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
         if (view.state !== 'OPEN') {
             this.gate('pr-not-open', `PR #${pr} is ${String(view.state).toLowerCase()}`);
             return;
@@ -1151,7 +1149,7 @@ class FactoryEngine {
             return;
         }
         const parsed = parseReviewOutput(result.finalText, head);
-        const again = this.ghJson(['pr', 'view', String(pr), '--json', 'headRefOid,state']);
+        const again = this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
         if (again.headRefOid !== head) {
             this.markVerdict(lane.id, 'invalid', 'head moved during review');
             this.gate('head-moved-externally', `PR #${pr} head moved to ${String(again.headRefOid).slice(0, 12)} during the review`);
@@ -1172,8 +1170,8 @@ class FactoryEngine {
         });
         this.save((x) => ({ ...x, findings: parsed.findings }));
         const body = this.writeBody('review', reviewComment(parsed, reviewer));
-        const posted = this.exec('gh', ['pr', 'comment', String(pr), '--body-file', body], { cwd: this.o.root });
-        if (posted.status !== 0)
+        const posted = ghCommentPr(this.exec, pr, body, this.o.root);
+        if (!posted.ok)
             this.o.warn?.(`omg factory run: the review was recorded but the PR comment failed: ${posted.stderr.trim()}`);
         this.followShip(next, `${reviewer}: ${parsed.verdict}`);
     }
@@ -1226,10 +1224,7 @@ class FactoryEngine {
     // --- prepare -> gates -> merge ---------------------------------------------------------------
     /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`. */
     prView(pr) {
-        const view = parseMergeView(this.run(['pr', 'view', String(pr), '--json', MERGE_VIEW_FIELDS], 'gh'));
-        if (!view || view.number !== pr)
-            throw new FactoryStepError(`gh pr view ${pr} did not return the PR's state, base and head`);
-        return view;
+        return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
     }
     /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
     prGone(view) {
@@ -1341,7 +1336,7 @@ class FactoryEngine {
             return;
         }
         if (view.isDraft)
-            this.run(['pr', 'ready', String(pr)], 'gh');
+            this.gh((exec, cwd) => ghMarkReady(exec, pr, cwd));
         // A restarted prepare no longer owns a recorded push: the recheck stops tolerating its tracking-ref move.
         if (s.prepared)
             this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
@@ -2023,7 +2018,7 @@ function dryRun(o) {
             ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
             : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
     }
-    const res = exec('gh', ['issue', 'view', String(o.issue), '--json', ISSUE_FIELDS], { cwd: o.root });
+    const res = ghIssueView(exec, o.issue, o.root);
     if (res.status !== 0)
         throw new FactoryStepError(`gh issue view ${o.issue} failed: ${res.stderr.trim()}`);
     let v;

@@ -7,7 +7,9 @@
 
 import type { Exec } from '../../ship/exec.js';
 import { ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
-import { capLog } from './logs.js';
+import { RUN_LIST_FIELDS } from '../../forge/github/ci.js';
+
+export { RUN_LIST_FIELDS };
 
 export class HealSafetyError extends ShipSafetyError {
   constructor(message: string) {
@@ -15,8 +17,6 @@ export class HealSafetyError extends ShipSafetyError {
     this.name = 'HealSafetyError';
   }
 }
-
-export const RUN_LIST_FIELDS = 'databaseId,conclusion,status,headSha,headBranch,event,createdAt';
 
 const NUMBER = /^\d{1,20}$/;
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -105,55 +105,8 @@ export interface HealJob {
   failedSteps: string[];
 }
 
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-
-function runGh(exec: Exec, args: string[], cwd?: string): string {
-  const r = exec('gh', args, cwd ? { cwd } : undefined);
-  if (r.status !== 0) throw new Error(`gh ${args.slice(0, 2).join(' ')} failed (exit ${r.status}): ${r.stderr.trim().slice(0, 300)}`);
-  return r.stdout;
-}
-
-export function parseRunList(stdout: string): HealRun[] {
-  const parsed: unknown = JSON.parse(stdout);
-  if (!Array.isArray(parsed)) throw new Error('gh run list: expected a JSON array');
-  return parsed.flatMap((e: Record<string, unknown>) => {
-    const id = typeof e?.databaseId === 'number' ? String(e.databaseId) : str(e?.databaseId);
-    const headSha = str(e?.headSha);
-    if (!NUMBER.test(id) || !HEX40.test(headSha)) return [];
-    return [{ id, headSha, conclusion: str(e.conclusion), status: str(e.status), headBranch: str(e.headBranch), event: str(e.event), createdAt: str(e.createdAt) }];
-  });
-}
-
-export function listRuns(exec: Exec, opts: { workflow: string; event: 'push' | 'pull_request'; branch?: string; limit: number; cwd?: string }): HealRun[] {
-  const args = ['run', 'list', ...(opts.branch ? ['--branch', opts.branch] : []), '--workflow', opts.workflow, '--event', opts.event, '--json', RUN_LIST_FIELDS, '--limit', String(opts.limit)];
-  // Newest first, whatever order gh returned.
-  return parseRunList(runGh(exec, args, opts.cwd)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-export function parseRunJobs(stdout: string): HealJob[] {
-  const jobs = (JSON.parse(stdout) as { jobs?: unknown })?.jobs;
-  if (!Array.isArray(jobs)) throw new Error('gh run view --json jobs: expected { jobs: [...] }');
-  return jobs.flatMap((j: Record<string, unknown>) => {
-    const jobId = typeof j?.databaseId === 'number' ? String(j.databaseId) : str(j?.databaseId);
-    if (!NUMBER.test(jobId)) return [];
-    const steps = Array.isArray(j.steps) ? (j.steps as Record<string, unknown>[]) : [];
-    return [{
-      jobId,
-      name: str(j.name).slice(0, 200),
-      conclusion: str(j.conclusion),
-      failedSteps: steps.filter((s) => s?.conclusion === 'failure').map((s) => str(s.name).slice(0, 200)),
-    }];
-  });
-}
-
-export function viewRunJobs(exec: Exec, runId: string, cwd?: string): HealJob[] {
-  return parseRunJobs(runGh(exec, ['run', 'view', runId, '--json', 'jobs'], cwd));
-}
-
-/** A job's log, capped (capLog) before anything parses it. */
-export function jobLog(exec: Exec, jobId: string, cwd?: string): string {
-  return capLog(runGh(exec, ['run', 'view', '--job', jobId, '--log'], cwd));
-}
+// The run and job reads are the GitHub forge's CI history (src/forge/github/ci.ts).
+export { jobLog, listRuns, parseRunJobs, parseRunList, viewRunJobs } from '../../forge/github/ci.js';
 
 export interface ShaRange {
   /** Commits in the red sha that the green sha lacks. */

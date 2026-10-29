@@ -69,12 +69,11 @@ export type GatesOutcome = {
 } | {
     kind: 'cancelled';
 };
-interface PrHead {
+/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state (the GitHub forge's prHead). */
+export declare function readPrHead(exec: Exec, pr: number, cwd: string): {
     headRefOid: string;
     state: string;
-}
-/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state. */
-export declare function readPrHead(exec: Exec, pr: number, cwd: string): PrHead;
+};
 /**
  * Why an accepted-looking read is stale (null: it is for `head`): the PR
  * head moved, or a reported check names an Actions run that is not one of
@@ -84,5 +83,4 @@ export declare function staleRead(exec: Exec, pr: number, head: string, report: 
 /** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs, MAX_FAILING_TITLES titles). */
 export declare function failingTestTitles(exec: Exec, report: GateReport, cwd: string): string[];
 export declare function driveGates(o: GatesDriverInput): Promise<GatesOutcome>;
-export {};
 //# sourceMappingURL=gates-driver.d.ts.map

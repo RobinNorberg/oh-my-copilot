@@ -6,10 +6,11 @@
  */
 import type { Exec } from '../../ship/exec.js';
 import { ShipSafetyError } from '../../ship/exec.js';
+import { RUN_LIST_FIELDS } from '../../forge/github/ci.js';
+export { RUN_LIST_FIELDS };
 export declare class HealSafetyError extends ShipSafetyError {
     constructor(message: string);
 }
-export declare const RUN_LIST_FIELDS = "databaseId,conclusion,status,headSha,headBranch,event,createdAt";
 export declare function assertHealCommand(cmd: string, args: string[]): void;
 /** The exec every heal command runs through: allowlisted read shapes, git with replace refs off. */
 export declare function healGuardExec(exec: Exec): Exec;
@@ -28,18 +29,7 @@ export interface HealJob {
     conclusion: string;
     failedSteps: string[];
 }
-export declare function parseRunList(stdout: string): HealRun[];
-export declare function listRuns(exec: Exec, opts: {
-    workflow: string;
-    event: 'push' | 'pull_request';
-    branch?: string;
-    limit: number;
-    cwd?: string;
-}): HealRun[];
-export declare function parseRunJobs(stdout: string): HealJob[];
-export declare function viewRunJobs(exec: Exec, runId: string, cwd?: string): HealJob[];
-/** A job's log, capped (capLog) before anything parses it. */
-export declare function jobLog(exec: Exec, jobId: string, cwd?: string): string;
+export { jobLog, listRuns, parseRunJobs, parseRunList, viewRunJobs } from '../../forge/github/ci.js';
 export interface ShaRange {
     /** Commits in the red sha that the green sha lacks. */
     commits: number;
