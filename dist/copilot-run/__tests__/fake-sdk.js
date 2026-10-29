@@ -1,9 +1,9 @@
 /** A fake @github/copilot-sdk and a scratch git repository for copilot_run job tests (no live session). */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [] });
+export const newCalls = () => ({ connections: [], sessions: [], prompts: [], optionsUpdates: [], globalGitConfigs: [] });
 /** The server `rpc` of a fake client with sandbox support `sandbox`. */
 export function fakeClientRpc(sandbox) {
     if (sandbox === 'no-rpc')
@@ -81,7 +81,14 @@ export function fakeSdk(behavior, calls, sandbox = 'supported') {
     return {
         module: {
             CopilotClient: Client,
-            RuntimeConnection: { forStdio: (opts) => { calls.connections.push(opts); return opts; } },
+            RuntimeConnection: {
+                forStdio: (opts) => {
+                    calls.connections.push(opts);
+                    const globalConfig = opts.env?.GIT_CONFIG_GLOBAL;
+                    calls.globalGitConfigs.push(globalConfig && existsSync(globalConfig) ? readFileSync(globalConfig, 'utf8') : null);
+                    return opts;
+                },
+            },
         },
         version: '1.0.16',
         from: 'test',
@@ -97,6 +104,7 @@ export function fakeDeps(root, behavior, calls, env, sandbox = 'supported') {
         userConfigDir: () => join(root, 'user-copilot'),
         isAlive: () => false,
         killTree: () => { },
+        sandboxTrialLaunch: () => null,
     };
 }
 /** A temp root with a logged-in user config and a one-commit repository at `<root>/repo` (branch main). */
