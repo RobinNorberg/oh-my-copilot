@@ -1,13 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { isAbsolute, join, relative } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { FactorySafetyError, factoryGuardExec } from '../../../factory/run/exec.js';
-import { adoMergeBody } from '../merge.js';
+import { adoMergeBody, writeAdoMergeBody } from '../merge.js';
 import { adoFixtureExec, loadAdoFixtures } from './fixtures.js';
-import { adoWorld, HEAD, REPO, variant, WINDOWS_ENTRY } from './world.js';
+import { adoWorld, CHECKOUT, HEAD, REPO, STATE_DIR, variant, WINDOWS_ENTRY } from './world.js';
 const scratch = mkdtempSync(join(tmpdir(), 'omg-ado-adapter-'));
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+afterAll(() => {
+    rmSync(scratch, { recursive: true, force: true });
+    rmSync(STATE_DIR, { recursive: true, force: true });
+});
 const bodyFile = (name, text) => {
     const path = join(scratch, name);
     writeFileSync(path, text, 'utf8');
@@ -210,16 +213,33 @@ describe('ADO adapter, design §6 rows', () => {
             'Minimum number of reviewers: rejected',
         ]);
     });
-    it('human merge command: printed with the head pinned body, and the factory guard refuses to run it', () => {
+    it('human merge command: the engine writes the head-pinned body to an absolute 0600 file outside the roots, and the factory guard refuses to run it', () => {
         const { forge, guard } = adoWorld();
         const argv = forge.merge.humanMergeCommand(17, HEAD);
         expect(argv.slice(0, 3)).toEqual(['az', 'devops', 'invoke']);
-        expect(argv).toEqual(expect.arrayContaining(['pullRequests', 'PATCH', 'pullRequestId=17', '--in-file', 'omg-merge-pr-17.json', '--detect', 'false']));
-        expect(adoMergeBody(HEAD)).toEqual({ status: 'completed', lastMergeSourceCommit: { commitId: HEAD }, completionOptions: { mergeStrategy: 'noFastForward' } });
-        const file = bodyFile('omg-merge-pr-17.json', JSON.stringify(adoMergeBody(HEAD)));
+        expect(argv).toEqual(expect.arrayContaining(['pullRequests', 'PATCH', 'pullRequestId=17', '--detect', 'false']));
+        const file = flag(argv, '--in-file');
+        expect(isAbsolute(file)).toBe(true);
+        expect(relative(realpathSync.native(STATE_DIR), file).startsWith('..')).toBe(false);
+        expect(relative(CHECKOUT, file).startsWith('..')).toBe(true);
+        expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ status: 'completed', lastMergeSourceCommit: { commitId: HEAD }, completionOptions: { mergeStrategy: 'noFastForward' } });
+        expect(adoMergeBody(HEAD)).toEqual(JSON.parse(readFileSync(file, 'utf8')));
+        if (process.platform !== 'win32')
+            expect(statSync(file).mode & 0o777).toBe(0o600);
         const run = factoryGuardExec(adoFixtureExec(loadAdoFixtures()), () => [], () => guard);
-        expect(() => run('az', argv.slice(1).map((a) => (a === 'omg-merge-pr-17.json' ? file : a)))).toThrow(FactorySafetyError);
+        expect(() => run('az', argv.slice(1))).toThrow(FactorySafetyError);
         expect(() => forge.merge.humanMergeCommand(17, 'HEAD')).toThrow(/40-hex/);
+    });
+    it('human merge command: a planted body file is replaced, and a state dir under an untrusted root is refused', () => {
+        const { forge } = adoWorld();
+        const first = flag(forge.merge.humanMergeCommand(17, HEAD), '--in-file');
+        writeFileSync(first, JSON.stringify({ status: 'completed', completionOptions: { bypassPolicy: true } }), 'utf8');
+        const again = flag(forge.merge.humanMergeCommand(17, HEAD), '--in-file');
+        expect(again).toBe(first);
+        expect(JSON.parse(readFileSync(again, 'utf8')).completionOptions).toEqual({ mergeStrategy: 'noFastForward' });
+        const lane = join(scratch, 'lane-root');
+        expect(() => writeAdoMergeBody({ repo: REPO }, { stateDir: join(lane, 'state'), untrustedRoots: [lane] }, 17, HEAD)).toThrow(/under the untrusted root/);
+        expect(() => writeAdoMergeBody({ repo: REPO }, { stateDir: 'relative/state', untrustedRoots: [lane] }, 17, HEAD)).toThrow(/not absolute/);
     });
     it('runs the same way through the Windows entry: python.exe -IBm azure.cli with AZ_INSTALLER=MSI', () => {
         const w = adoWorld({ entry: WINDOWS_ENTRY });

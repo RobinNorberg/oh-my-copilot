@@ -6,8 +6,9 @@
  * caller's already-guarded Exec and never spawn.
  */
 import type { Exec } from '../ship/exec.js';
-import type { Forge, ResolvedForgeConfig } from './types.js';
+import type { Forge, ForgeOptions, ResolvedForgeConfig } from './types.js';
 export type * from './types.js';
 export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConfig, type LoadedForgeConfig } from './config.js';
-export declare function createForge(exec: Exec, cwd: string, config: ResolvedForgeConfig): Forge;
+/** `options.untrustedRoots` is required: the factory builds it with factoryForgeOptions (src/factory/run/forge-roots.ts). */
+export declare function createForge(exec: Exec, cwd: string, config: ResolvedForgeConfig, options: ForgeOptions): Forge;
 //# sourceMappingURL=index.d.ts.map

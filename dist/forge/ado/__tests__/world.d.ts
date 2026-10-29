@@ -14,6 +14,9 @@ export declare const OLD_HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 export declare const MERGE_COMMIT = "3333333333333333333333333333333333333333";
 export declare const POSIX_ENTRY: AzEntry;
 export declare const WINDOWS_ENTRY: AzEntry;
+/** The checkout (an untrusted root) and the engine-owned state dir outside it. */
+export declare const CHECKOUT: string;
+export declare const STATE_DIR: string;
 export declare const REPO: ForgeRepo;
 export declare function adoConfig(source?: IntakeSource): ResolvedForgeConfig;
 /** The fixtures with `name`'s stdout replaced (a scenario variant, synthetic by construction). */

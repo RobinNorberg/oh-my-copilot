@@ -6,15 +6,20 @@
  * write's body is the guard's validated copy.
  */
 import { readFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { factoryGuardExec } from '../../../factory/run/exec.js';
 import { AZ_PYTHON_PREFIX } from '../az-binary.js';
-import { createAzureDevOpsForge } from '../index.js';
+import { adoGuardContext, createAzureDevOpsForge } from '../index.js';
 import { adoFixtureExec, loadAdoFixtures } from './fixtures.js';
 export const HEAD = '1111111111111111111111111111111111111111';
 export const OLD_HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 export const MERGE_COMMIT = '3333333333333333333333333333333333333333';
 export const POSIX_ENTRY = { command: 'az', prefix: [], env: {} };
 export const WINDOWS_ENTRY = { command: 'C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\python.exe', prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: 'MSI' } };
+/** The checkout (an untrusted root) and the engine-owned state dir outside it. */
+export const CHECKOUT = join(tmpdir(), 'omg-ado-world-checkout');
+export const STATE_DIR = join(tmpdir(), 'omg-ado-world-state');
 export const REPO = { kind: 'azure-devops', host: 'dev.azure.com', owner: 'contoso', project: 'Web', name: 'web-app', url: 'https://dev.azure.com/contoso/Web/_git/web-app' };
 export function adoConfig(source) {
     return {
@@ -23,7 +28,7 @@ export function adoConfig(source) {
         azureDevOps: { org: 'contoso', project: 'Web', repo: 'web-app', workItemProject: 'Web', team: 'Web Team', apiVersion: '7.1', trustedAuthors: ['Owner@Example.com'] },
         intake: { source, itemTypes: ['User Story', 'Bug'], limit: 50, marker: 'factory-ready' },
         check: { maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 20_000 },
-        progress: { enabled: true, stages: {} },
+        progress: { enabled: true, stages: { reviewing: { column: 'Code Review' }, done: { state: 'Closed' } } },
     };
 }
 /** The fixtures with `name`'s stdout replaced (a scenario variant, synthetic by construction). */
@@ -44,9 +49,10 @@ export function adoWorld(o = {}) {
         calls.push({ cmd, args: [...args], ...(inFile ? { inFile, body: JSON.parse(readFileSync(inFile, 'utf8')) } : {}) });
         return inner(cmd, args, opts);
     };
-    const guard = { repo: REPO, entry };
+    const config = adoConfig(o.source);
+    const guard = adoGuardContext(config, entry);
     const exec = factoryGuardExec(recording, () => [], () => guard);
-    const forge = createAzureDevOpsForge(exec, 'C:\\Code\\web-app', adoConfig(o.source), { entry, env: {} });
+    const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR });
     const routeOf = (c) => {
         const a = c.args;
         const v = (f) => a[a.indexOf(f) + 1];

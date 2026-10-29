@@ -11,7 +11,7 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 describe('fixture recording (OMG_ADO_RECORD_DIR)', () => {
     it('records every invoke call as a fixture the loader reads back under the same key', () => {
         const dir = join(scratch, 'rec1');
-        const forge = createAzureDevOpsForge(adoFixtureExec(loadAdoFixtures()), scratch, adoConfig(), { entry: POSIX_ENTRY, env: { [ADO_RECORD_ENV]: dir } });
+        const forge = createAzureDevOpsForge(adoFixtureExec(loadAdoFixtures()), scratch, adoConfig(), { entry: POSIX_ENTRY, env: { [ADO_RECORD_ENV]: dir }, untrustedRoots: [scratch] });
         forge.reviews.viewPr(17);
         forge.checks.checks(17, HEAD);
         forge.reviews.markReady(17);

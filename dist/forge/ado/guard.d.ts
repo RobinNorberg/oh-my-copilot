@@ -33,6 +33,8 @@ export interface AdoGuardContext {
     repo: ForgeRepo;
     /** The az entry az-binary.ts resolved; the only command accepted. */
     entry: AzEntry;
+    /** The progress-mapping states (progressStates): the only System.State a work item PATCH may set; none when absent. */
+    allowedStates?: readonly string[];
 }
 /** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
 export type AdoGuardPolicy = 'factory' | 'ship';

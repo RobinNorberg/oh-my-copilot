@@ -12,10 +12,11 @@
  * so the adapter runs that python.exe with `-IBm azure.cli` itself and sets
  * AZ_INSTALLER=MSI in the env as az.cmd does (az reads it for telemetry and
  * `az upgrade`). A pip or winget layout without the bundled python.exe is
- * refused with a clear error; there is no cmd.exe fallback. POSIX runs `az`.
+ * refused with a clear error; there is no cmd.exe fallback. POSIX runs the
+ * absolute real path of the first trusted `az` on PATH.
  */
 export interface AzEntry {
-    /** Absolute python.exe on Windows; `az` elsewhere. */
+    /** Absolute python.exe on Windows; the absolute real path of `az` elsewhere. */
     command: string;
     /** Arguments before the az ones: `-IBm azure.cli` on Windows. */
     prefix: readonly string[];
@@ -36,7 +37,7 @@ export interface AzBinaryDeps {
     /**
      * Roots a lane or job can write: the repository and its worktrees, lane and
      * job roots. A PATH entry whose real path is at or under one is never
-     * searched for az.cmd. Required (non-empty) on Windows.
+     * searched for az. Required (non-empty) on every platform.
      */
     untrustedRoots: readonly string[];
 }

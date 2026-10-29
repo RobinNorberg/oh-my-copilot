@@ -27,8 +27,23 @@ const win = (path, isFile, key = 'Path', untrustedRoots = [REPO], realpath = rea
 });
 describe('resolveAzEntry', () => {
     it('POSIX runs az directly', () => {
-        expect(resolveAzEntry({ platform: 'linux', env: { PATH: '/usr/bin' }, isFile: () => false, realpath: realpaths(), untrustedRoots: [] })).toEqual({ command: 'az', prefix: [], env: {} });
-        expect(resolveAzEntry({ platform: 'darwin', env: {}, isFile: () => false, realpath: realpaths(), untrustedRoots: [] }).command).toBe('az');
+        const isAz = (...paths) => (p) => paths.includes(p);
+        const posix = (PATH, isFile, realpath = (p) => p, roots = ['/home/me/repo']) => ({ platform: 'linux', env: { PATH }, isFile, realpath, untrustedRoots: roots });
+        expect(resolveAzEntry(posix('/usr/local/bin:/usr/bin', isAz('/usr/bin/az')))).toEqual({ command: '/usr/bin/az', prefix: [], env: {} });
+        // The real path spawns, so what was checked is what runs.
+        const brew = (p) => (p === '/opt/homebrew/bin/az' ? '/opt/homebrew/Cellar/azure-cli/2.66.0/bin/az' : p);
+        expect(resolveAzEntry({ ...posix('/opt/homebrew/bin', isAz('/opt/homebrew/bin/az'), brew), platform: 'darwin' }).command).toBe('/opt/homebrew/Cellar/azure-cli/2.66.0/bin/az');
+    });
+    it('POSIX skips relative, dot, node_modules and untrusted-root PATH entries, and an az that resolves into a root', () => {
+        const isFile = (p) => p.endsWith('/az');
+        const posix = (PATH, realpath = (p) => p) => ({ platform: 'linux', env: { PATH }, isFile, realpath, untrustedRoots: ['/home/me/repo', '/home/me/repo/.omg'] });
+        for (const dir of ['bin', '.', '/usr/../home/me/repo/bin', '/home/me/repo/node_modules/.bin', '/home/me/repo/bin', '/home/me/repo/.omg/team/factory-run/worktrees/issue-1/bin', '/opt/x/node_modules/.bin']) {
+            expect(() => resolveAzEntry(posix(dir)), dir).toThrow(/Azure CLI not found/);
+        }
+        expect(() => resolveAzEntry(posix('/tmp/link', (p) => p.replace('/tmp/link', '/home/me/repo/tools')))).toThrow(/Azure CLI not found/);
+        expect(() => resolveAzEntry(posix('/usr/bin', (p) => (p === '/usr/bin/az' ? '/home/me/repo/az' : p)))).toThrow(/Azure CLI not found/);
+        expect(resolveAzEntry(posix('/home/me/repo/bin:/usr/bin')).command).toBe('/usr/bin/az');
+        expect(() => resolveAzEntry({ ...posix('/usr/bin'), untrustedRoots: [] })).toThrow(/untrustedRoots/);
     });
     it('accepts a real MSI layout: bundled python.exe with -IBm azure.cli and AZ_INSTALLER=MSI', () => {
         const entry = resolveAzEntry(win(`C:\\Windows\\system32;"${MSI}\\wbin";C:\\tools`, files(...msi(MSI))));

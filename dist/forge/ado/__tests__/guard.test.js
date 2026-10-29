@@ -103,6 +103,22 @@ describe('az guard: refusals', () => {
         refused(factory('az', invoke('policy', 'evaluations', 'GET', '7.1-preview.1', ['project=Web'], ['--query-parameters', 'artifactId=vstfs:///Other/1'])), /artifactId has a refused value/);
         refused(factory('az', invoke('build', 'builds', 'GET', '7.1', ['project=Web'], ['--query-parameters', 'branchName=refs/heads/main'])), /branchName has a refused value/);
     });
+    it('refuses a leading @ in names and free values (az reads @<path> as that file)', () => {
+        refused(factory('az', invoke('work', 'boards', 'GET', '7.1', ['project=Web', 'team=@C:\\secrets.txt', 'id=Stories'])), /team has a refused value/);
+        refused(factory('az', invoke('work', 'boards', 'GET', '7.1', ['project=Web', 'team=Web Team', 'id=@/etc/passwd'])), /id has a refused value/);
+        refused(factory('az', invoke('wit', 'workItemTypeStates', 'GET', '7.1', ['project=Web', 'type=@x'])), /type has a refused value/);
+        refused(factory('az', invoke('git', 'pullRequests', 'GET', '7.1', ['project=Web', 'repositoryId=web-app'], ['--query-parameters', 'searchCriteria.sourceRefName=@refs.txt'])), /sourceRefName has a refused value/);
+        refused(factory('az', PR_GET.map((a) => (a === 'repositoryId=web-app' ? 'repositoryId=@web-app' : a))), /repositoryId must be the forge repository/);
+    });
+    it('a work item PATCH may set System.State only to a configured progress state', () => {
+        const wi = (state) => invoke('wit', 'workItems', 'PATCH', '7.1', ['project=Web', 'id=42'], ['--in-file', file([{ op: 'test', path: '/rev', value: 3 }, { op: 'add', path: '/fields/System.State', value: state }]), '--media-type', 'application/json-patch+json']);
+        const withStates = { ...CTX, allowedStates: ['Resolved', 'Closed'] };
+        expect(factory('az', wi('Closed'), withStates)).not.toThrow();
+        refused(factory('az', wi('Removed'), withStates), /not a configured progress state \(Resolved, Closed\)/);
+        refused(factory('az', wi('closed'), withStates), /not a configured progress state/);
+        // No configured states: no state write at all.
+        refused(factory('az', wi('Closed')), /none configured/);
+    });
     it('refuses unknown flags: --out-file, --query, --subscription, positionals', () => {
         refused(factory('az', [...PR_GET, '--out-file', 'C:\\x']), /--out-file.* is not an allowed/);
         refused(factory('az', [...PR_GET, '--query', 'value']), /--query.* is not an allowed/);

@@ -12,13 +12,14 @@ export { detectForgeRepo, ForgeConfigError, isTrustedAdoAuthor, resolveForgeConf
 const ADAPTERS = {
     github: undefined,
     // (slots kept on separate lines for the PR 2 / PR 5 edits)
-    'azure-devops': (exec, cwd, config) => createAzureDevOpsForge(exec, cwd, config),
+    'azure-devops': (exec, cwd, config, options) => createAzureDevOpsForge(exec, cwd, config, options),
 };
-export function createForge(exec, cwd, config) {
+/** `options.untrustedRoots` is required: the factory builds it with factoryForgeOptions (src/factory/run/forge-roots.ts). */
+export function createForge(exec, cwd, config, options) {
     const factory = ADAPTERS[config.kind];
     if (!factory)
         throw new Error(`no forge adapter for ${config.kind} in this build`);
-    const forge = factory(exec, cwd, config);
+    const forge = factory(exec, cwd, config, options);
     if (forge.kind !== config.kind)
         throw new Error(`forge adapter for ${config.kind} returned a ${forge.kind} forge`);
     return forge;

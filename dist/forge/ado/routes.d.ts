@@ -54,8 +54,14 @@ export type AdoBody = {
     paths: readonly {
         path: RegExp;
         value: AdoValue;
+        configured?: 'states';
     }[];
 };
+/** Values only the run's config knows, for validateAdoBody. */
+export interface AdoBodyContext {
+    /** When set, a `configured: 'states'` path may only carry one of these (exact match). */
+    allowedStates?: readonly string[];
+}
 export interface AdoRoute {
     /** Fixture and call-site key: `<area>.<resource>.<method>[.<variant>]`. */
     id: string;
@@ -87,7 +93,8 @@ export declare function adoRouteById(id: string): AdoRoute;
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
- * (body === undefined).
+ * (body === undefined). `context` adds the config-bound rules (the guard
+ * always passes the run's progress states).
  */
-export declare function validateAdoBody(route: AdoRoute, body: unknown): string | undefined;
+export declare function validateAdoBody(route: AdoRoute, body: unknown, context?: AdoBodyContext): string | undefined;
 //# sourceMappingURL=routes.d.ts.map

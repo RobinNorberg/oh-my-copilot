@@ -6,12 +6,16 @@
  * (design §10.9).
  */
 import { realpathSync, statSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { resolveAzEntry } from './az-binary.js';
 import { adoChecks } from './checks.js';
 import { adoMerge } from './merge.js';
 import { ADO_RECORD_ENV, recordingAdoExec } from './record.js';
 import { adoReviews } from './reviews.js';
 import { adoTracker } from './tracker.js';
+/** The states the progress mapping may write: the only System.State values the guard lets through (design §7). */
+export const progressStates = (config) => [...new Set(Object.values(config.progress.stages).map((m) => m?.state).filter((s) => typeof s === 'string' && s !== ''))];
 /** Production az-binary deps: the real PATH, fs and realpathSync.native. */
 export function defaultAzBinaryDeps(untrustedRoots, env = process.env) {
     return {
@@ -33,13 +37,14 @@ export function defaultAzBinaryDeps(untrustedRoots, env = process.env) {
 export function adoGuardContext(config, entry) {
     if (config.kind !== 'azure-devops' || !config.repo.project)
         throw new Error('the Azure DevOps guard needs an azure-devops forge config');
-    return { repo: config.repo, entry };
+    return { repo: config.repo, entry, allowedStates: progressStates(config) };
 }
-export function createAzureDevOpsForge(exec, cwd, config, options = {}) {
+export function createAzureDevOpsForge(exec, cwd, config, options) {
     if (config.kind !== 'azure-devops' || !config.azureDevOps || !config.repo.project)
         throw new Error('createAzureDevOpsForge needs a resolved azure-devops forge config');
     const env = options.env ?? process.env;
-    const entry = options.entry ?? resolveAzEntry(defaultAzBinaryDeps([cwd, ...(options.untrustedRoots ?? [])], env));
+    const untrustedRoots = [cwd, ...options.untrustedRoots];
+    const entry = options.entry ?? resolveAzEntry(defaultAzBinaryDeps(untrustedRoots, env));
     const recordDir = env[ADO_RECORD_ENV]?.trim();
     const ctx = {
         exec: recordDir ? recordingAdoExec(exec, recordDir) : exec,
@@ -56,7 +61,7 @@ export function createAzureDevOpsForge(exec, cwd, config, options = {}) {
         tracker: adoTracker(ctx, config.intake.source),
         reviews: adoReviews(ctx),
         checks: adoChecks(ctx),
-        merge: adoMerge(ctx),
+        merge: adoMerge(ctx, { stateDir: options.stateDir ?? join(homedir(), '.omg', 'forge'), untrustedRoots }),
         capabilities: { heal: false, projectsV2: false, boardColumns: true, webhookIntake: false },
     };
 }

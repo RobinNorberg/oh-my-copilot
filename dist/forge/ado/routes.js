@@ -42,7 +42,8 @@ export const ADO_ROUTES = Object.freeze([
             paths: [
                 { path: /^\/rev$/, value: { type: 'integer', min: 1 } },
                 { path: /^\/fields\/System\.Tags$/, value: TEXT },
-                { path: /^\/fields\/System\.State$/, value: TEXT },
+                // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
+                { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
                 { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT },
             ],
         },
@@ -201,9 +202,10 @@ function objectProblem(v, shape, at) {
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
- * (body === undefined).
+ * (body === undefined). `context` adds the config-bound rules (the guard
+ * always passes the run's progress states).
  */
-export function validateAdoBody(route, body) {
+export function validateAdoBody(route, body, context = {}) {
     const shape = route.body;
     if (!shape)
         return `${route.id} takes no body`;
@@ -229,6 +231,9 @@ export function validateAdoBody(route, body) {
         const problem = valueProblem(op.value, target.value, `${at}.value`);
         if (problem)
             return problem;
+        if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value)) {
+            return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
+        }
     }
     return undefined;
 }
