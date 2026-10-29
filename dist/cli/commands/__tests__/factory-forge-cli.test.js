@@ -149,7 +149,7 @@ describe('GitHub-only commands on an Azure DevOps origin', () => {
                 process.env.OMC_FACTORY_HMAC_SECRET = prev;
         }
         expect(process.exitCode).toBe(1);
-        expect(out.join('\n')).toMatch(/omg factory listen is GitHub-only/);
+        expect(out.join('\n')).toMatch(/omg factory listen receives GitHub webhooks only/);
     });
     it('omg factory heal refuses', async () => {
         const exec = (cmd, args) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${dir}\n`) : { status: 1, stdout: '', stderr: `unexpected ${cmd} ${args.join(' ')}` });

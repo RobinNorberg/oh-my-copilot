@@ -310,12 +310,6 @@ export function factoryCommand(): Command {
         return;
       }
       const cwd = resolve(options.cwd);
-      // Webhook intake is GitHub's (capabilities.webhookIntake is false on Azure DevOps).
-      if (originForgeKind(factoryGuardExec(defaultExec), cwd) === 'azure-devops') {
-        console.error(chalk.red('refused: omg factory listen is GitHub-only (GitHub webhook intake); this repository\'s origin is on Azure DevOps. Run omg factory run <work item> by hand.'));
-        process.exitCode = 1;
-        return;
-      }
       void startListener({ port: options.port, secret, whitelist, cwd, host: options.host }).then((server) => {
         const addr = server.address();
         const port = addr && typeof addr !== 'string' ? addr.port : options.port;
