@@ -1,0 +1,14 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/update?view=azure-devops-rest-7.1",
+  "note": "adapted: PR 17 after {isDraft:false}",
+  "route": "git.pullRequests.PATCH",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "pullRequestId": 17,
+    "status": "active",
+    "isDraft": false,
+    "sourceRefName": "refs/heads/factory/issue-42",
+    "targetRefName": "refs/heads/main",
+    "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/17"
+  }
+}

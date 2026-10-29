@@ -1,0 +1,12 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update?view=azure-devops-rest-7.1",
+  "note": "adapted: the updated item 42 after a JSON-patch with test /rev",
+  "route": "wit.workItems.PATCH",
+  "routeParameters": { "project": "Web", "id": "42" },
+  "stdout": {
+    "id": 42,
+    "rev": 8,
+    "fields": { "System.WorkItemType": "User Story", "System.State": "Active", "System.Title": "Add CSV export to the report page" },
+    "url": "https://dev.azure.com/contoso/_apis/wit/workItems/42"
+  }
+}
