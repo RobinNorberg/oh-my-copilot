@@ -12,13 +12,14 @@
  * so the adapter runs that python.exe with `-IBm azure.cli` itself and sets
  * AZ_INSTALLER=MSI in the env as az.cmd does (az reads it for telemetry and
  * `az upgrade`). A pip or winget layout without the bundled python.exe is
- * refused with a clear error; there is no cmd.exe fallback. POSIX runs `az`.
+ * refused with a clear error; there is no cmd.exe fallback. POSIX runs the
+ * absolute real path of the first trusted `az` on PATH.
  */
 
-import { win32 } from 'path';
+import { posix, win32 } from 'path';
 
 export interface AzEntry {
-  /** Absolute python.exe on Windows; `az` elsewhere. */
+  /** Absolute python.exe on Windows; the absolute real path of `az` elsewhere. */
   command: string;
   /** Arguments before the az ones: `-IBm azure.cli` on Windows. */
   prefix: readonly string[];
@@ -40,7 +41,7 @@ export interface AzBinaryDeps {
   /**
    * Roots a lane or job can write: the repository and its worktrees, lane and
    * job roots. A PATH entry whose real path is at or under one is never
-   * searched for az.cmd. Required (non-empty) on Windows.
+   * searched for az. Required (non-empty) on every platform.
    */
   untrustedRoots: readonly string[];
 }
@@ -94,6 +95,34 @@ function searchable(dir: string, deps: AzBinaryDeps, roots: readonly string[]): 
 const trustedPath = (path: string, roots: readonly string[]): boolean =>
   !win32.resolve(path).split('\\').some((s) => s.toLowerCase() === 'node_modules') && !roots.some((root) => within(path, root));
 
+const posixWithin = (path: string, root: string): boolean => {
+  const p = posix.resolve(path), r = posix.resolve(root);
+  return p === r || p.startsWith(r === '/' ? '/' : `${r}/`);
+};
+const posixTrusted = (path: string, roots: readonly string[]): boolean =>
+  !path.split('/').includes('node_modules') && !roots.some((root) => posixWithin(path, root));
+
+/**
+ * POSIX: the first absolute PATH entry (no `.`/`..` segment) whose real
+ * path is outside node_modules and the untrusted roots and holds `az`; the
+ * entry is that file's real path, itself outside them, so what was checked
+ * is what spawns (never a bare `az` looked up again at spawn time).
+ */
+function resolvePosixAz(deps: AzBinaryDeps, given: readonly string[]): AzEntry {
+  const roots = given.flatMap((r) => [posix.resolve(r), real(deps, r)].filter((x): x is string => x !== undefined));
+  for (const dir of (deps.env.PATH ?? '').split(':')) {
+    if (!dir.startsWith('/') || dir.split('/').some((s) => s === '.' || s === '..')) continue;
+    const realDir = real(deps, dir);
+    if (realDir === undefined || !posixTrusted(realDir, roots)) continue;
+    const candidate = posix.join(realDir, 'az');
+    if (!deps.isFile(candidate)) continue;
+    const realAz = real(deps, candidate);
+    if (realAz === undefined || !realAz.startsWith('/') || !posixTrusted(realAz, roots)) continue;
+    return { command: realAz, prefix: [], env: {} };
+  }
+  throw new AzBinaryError('Azure CLI not found: no az on an absolute PATH entry outside node_modules and the repository, lane and job roots.');
+}
+
 /**
  * Resolve the az entry point once. Windows: the first searchable PATH entry
  * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
@@ -103,9 +132,9 @@ const trustedPath = (path: string, roots: readonly string[]): boolean =>
  * root, and the python.exe found must itself be outside the roots.
  */
 export function resolveAzEntry(deps: AzBinaryDeps): AzEntry {
-  if (deps.platform !== 'win32') return { command: 'az', prefix: [], env: {} };
   const given = deps.untrustedRoots.filter((r) => r.trim() !== '');
-  if (given.length === 0) throw new AzBinaryError('Azure CLI resolution needs the repository, worktree, lane and job roots (untrustedRoots) on Windows');
+  if (given.length === 0) throw new AzBinaryError('Azure CLI resolution needs the repository, worktree, lane and job roots (untrustedRoots)');
+  if (deps.platform !== 'win32') return resolvePosixAz(deps, given);
   // A root that does not exist yet still counts, at its resolved path.
   const roots = given.flatMap((r) => [win32.resolve(r), real(deps, r)].filter((x): x is string => x !== undefined));
   const dirs = pathEnv(deps.env, deps.platform)

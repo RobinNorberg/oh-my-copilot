@@ -38,6 +38,8 @@ export interface AdoGuardContext {
   repo: ForgeRepo;
   /** The az entry az-binary.ts resolved; the only command accepted. */
   entry: AzEntry;
+  /** The progress-mapping states (progressStates): the only System.State a work item PATCH may set; none when absent. */
+  allowedStates?: readonly string[];
 }
 
 /** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
@@ -60,8 +62,9 @@ const SINGLE = new Set(['--area', '--resource', '--http-method', '--api-version'
 const NUMBER_ID = /^[1-9]\d{0,9}$/;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A name (work item type, team, board): no control characters or URL-path syntax. */
-const NAME = /^[^\p{Cc}/\\?#%&]{1,256}$/u;
-const VALUE = /^[^\p{Cc}]{1,2048}$/u;
+/** No leading `@`: az reads `@<path>` arguments as that file's contents. */
+const NAME = /^(?!@)[^\p{Cc}/\\?#%&]{1,256}$/u;
+const VALUE = /^(?!@)[^\p{Cc}]{1,2048}$/u;
 const ROUTE_VALUE: Readonly<Record<string, RegExp>> = {
   id: NUMBER_ID, workItemId: NUMBER_ID, pullRequestId: NUMBER_ID, buildId: NUMBER_ID, logId: NUMBER_ID,
   evaluationId: GUID, type: NAME, team: NAME, board: NAME, structureGroup: /^(?:areas|iterations)$/,
@@ -240,7 +243,7 @@ export function checkAdoCommand(
   } catch {
     throw fail('--in-file is not JSON');
   }
-  const bodyProblem = validateAdoBody(inv.route, parsed);
+  const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [] });
   if (bodyProblem) throw fail(`--in-file refused: ${bodyProblem}`);
   // Re-serialized from the parsed value: a duplicate key cannot smuggle a second value past the check.
   return { invoke: inv, inFileArg: entry.prefix.length + inv.inFileAt, body: JSON.stringify(parsed) };

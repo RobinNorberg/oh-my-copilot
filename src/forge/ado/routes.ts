@@ -41,7 +41,13 @@ export type AdoBody =
   | { kind: 'none' }
   | AdoObjectBody
   /** RFC 6902 JSON-patch array: only these ops, only paths matching one pattern, each with its value rule. */
-  | { kind: 'json-patch'; ops: readonly string[]; paths: readonly { path: RegExp; value: AdoValue }[] };
+  | { kind: 'json-patch'; ops: readonly string[]; paths: readonly { path: RegExp; value: AdoValue; configured?: 'states' }[] };
+
+/** Values only the run's config knows, for validateAdoBody. */
+export interface AdoBodyContext {
+  /** When set, a `configured: 'states'` path may only carry one of these (exact match). */
+  allowedStates?: readonly string[];
+}
 
 export interface AdoRoute {
   /** Fixture and call-site key: `<area>.<resource>.<method>[.<variant>]`. */
@@ -89,7 +95,8 @@ export const ADO_ROUTES: readonly AdoRoute[] = Object.freeze([
       paths: [
         { path: /^\/rev$/, value: { type: 'integer', min: 1 } },
         { path: /^\/fields\/System\.Tags$/, value: TEXT },
-        { path: /^\/fields\/System\.State$/, value: TEXT },
+        // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
+        { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
         { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT },
       ],
     },
@@ -246,9 +253,10 @@ function objectProblem(v: unknown, shape: AdoObjectBody, at: string): string | u
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
- * (body === undefined).
+ * (body === undefined). `context` adds the config-bound rules (the guard
+ * always passes the run's progress states).
  */
-export function validateAdoBody(route: AdoRoute, body: unknown): string | undefined {
+export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBodyContext = {}): string | undefined {
   const shape = route.body;
   if (!shape) return `${route.id} takes no body`;
   if (shape.kind === 'none') return body === undefined ? undefined : `${route.id} takes no body`;
@@ -265,6 +273,9 @@ export function validateAdoBody(route: AdoRoute, body: unknown): string | undefi
     if (!target) return `${at}.path is not allowed`;
     const problem = valueProblem(op.value, target.value, `${at}.value`);
     if (problem) return problem;
+    if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value as string)) {
+      return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
+    }
   }
   return undefined;
 }

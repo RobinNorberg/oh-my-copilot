@@ -4,8 +4,16 @@
  * a human runs. Nothing here merges: the guard refuses a PR body with
  * `status`, `completionOptions` or `autoCompleteSetBy`, so the printed
  * command cannot run through the factory.
+ *
+ * The printed command reads its body from a file the engine writes
+ * (adoMergeBody, mode 0600) at an ABSOLUTE path in the engine-owned state
+ * directory, outside every untrusted root: a relative path would resolve
+ * against wherever the human stands, and a lane could have committed a body
+ * there (completionOptions.bypassPolicy, say).
  */
 
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { isAbsolute, join, relative, resolve } from 'path';
 import type { ForgeMerge } from '../types.js';
 import { listEvaluations, policyName } from './checks.js';
 import { adoInvokeArgs, repoParams, type AdoContext } from './invoke.js';
@@ -16,17 +24,50 @@ export function adoMergeBody(headSha: string): { status: 'completed'; lastMergeS
   return { status: 'completed', lastMergeSourceCommit: { commitId: headSha }, completionOptions: { mergeStrategy: 'noFastForward' } };
 }
 
-/** The file name the printed merge command reads its body from. */
-export const adoMergeBodyFile = (pr: number): string => `omg-merge-pr-${pr}.json`;
+export interface AdoMergeOptions {
+  /** Engine-owned directory for the merge body (ForgeOptions.stateDir). */
+  stateDir: string;
+  /** Roots a lane or job can write; the body file must be outside every one. */
+  untrustedRoots: readonly string[];
+}
 
 const SATISFIED = new Set(['approved', 'notApplicable']);
 
-export function adoMerge(ctx: AdoContext): ForgeMerge {
+const realOr = (p: string): string => {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return resolve(p);
+  }
+};
+const under = (path: string, root: string): boolean => {
+  const rel = relative(realOr(root), path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '_');
+
+/** Write the head-pinned body for `pr` and return its absolute path. */
+export function writeAdoMergeBody(ctx: Pick<AdoContext, 'repo'>, o: AdoMergeOptions, pr: number, headSha: string): string {
+  if (!isAbsolute(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
+  mkdirSync(o.stateDir, { recursive: true, mode: 0o700 });
+  const dir = realOr(o.stateDir);
+  const root = o.untrustedRoots.find((r) => r.trim() !== '' && under(dir, r));
+  if (root) throw new Error(`merge body directory ${dir} is under the untrusted root ${root}`);
+  const path = join(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
+  // A fresh file (flag wx after removing any old one), so the mode always applies and nothing pre-planted is reused.
+  rmSync(path, { force: true });
+  writeFileSync(path, `${JSON.stringify(adoMergeBody(headSha), null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  return path;
+}
+
+export function adoMerge(ctx: AdoContext, o: AdoMergeOptions): ForgeMerge {
   return {
+    /** Writes the body file (writeAdoMergeBody), then returns the command that reads it. */
     humanMergeCommand(pr: number, headSha: string): string[] {
       if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error(`merge command needs a 40-hex head sha, got ${JSON.stringify(headSha)}`);
+      const bodyFile = writeAdoMergeBody(ctx, o, pr, headSha);
       // Printed for a human with plain `az`, whatever entry the adapter spawns.
-      const args = adoInvokeArgs({ entry: { command: 'az', prefix: [], env: {} }, repo: ctx.repo }, 'git.pullRequests.PATCH', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, adoMergeBodyFile(pr));
+      const args = adoInvokeArgs({ entry: { command: 'az', prefix: [], env: {} }, repo: ctx.repo }, 'git.pullRequests.PATCH', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, bodyFile);
       return ['az', ...args];
     },
 
