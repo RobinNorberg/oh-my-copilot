@@ -94734,6 +94734,10 @@ var init_copilot_sdk_scenarios = __esm({
 });
 
 // src/smoke/copilot-session-env.ts
+function isCredentialEnvKey(key) {
+  const upper = key.toUpperCase();
+  return CREDENTIAL_ENV.includes(upper) || SECRET_NAME2.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_");
+}
 function isStrippedEnvKey(key) {
   const upper = process.platform === "win32" ? key.toUpperCase() : key;
   return STRIPPED_ENV_EXACT.includes(upper) || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
@@ -94798,7 +94802,7 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs97, import_path118, import_url15, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
+var import_fs97, import_path118, import_url15, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME2;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
@@ -94828,6 +94832,52 @@ var init_copilot_session_env = __esm({
       NO_COLOR: "1"
     };
     SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: "1" };
+    CREDENTIAL_ENV = [
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GITHUB_ENTERPRISE_TOKEN",
+      "SSH_AUTH_SOCK",
+      "SSH_AGENT_PID",
+      "GIT_ASKPASS",
+      "SSH_ASKPASS",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "NPM_TOKEN",
+      "NODE_AUTH_TOKEN",
+      "ACTIONS_RUNTIME_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_URL",
+      // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
+      "AZURE_DEVOPS_EXT_PAT",
+      "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY",
+      "AZURE_DEVOPS_EXT_GITHUB_PAT",
+      "SYSTEM_ACCESSTOKEN",
+      // azure-identity / az: service principal, certificate, workload identity and managed identity.
+      "AZURE_CLIENT_SECRET",
+      "AZURE_CLIENT_CERTIFICATE_PATH",
+      "AZURE_CLIENT_CERTIFICATE_PASSWORD",
+      "AZURE_PASSWORD",
+      "AZURE_FEDERATED_TOKEN_FILE",
+      "IDENTITY_ENDPOINT",
+      "IDENTITY_HEADER",
+      "MSI_ENDPOINT",
+      "MSI_SECRET",
+      // az storage account keys and SAS.
+      "AZURE_STORAGE_KEY",
+      "AZURE_STORAGE_CONNECTION_STRING",
+      "AZURE_STORAGE_SAS_TOKEN",
+      // Terraform azurerm (ARM_*).
+      "ARM_CLIENT_SECRET",
+      "ARM_CLIENT_CERTIFICATE_PATH",
+      "ARM_CLIENT_CERTIFICATE_PASSWORD",
+      "ARM_OIDC_TOKEN",
+      "ARM_OIDC_TOKEN_FILE_PATH",
+      "ARM_OIDC_REQUEST_TOKEN",
+      "ARM_ACCESS_KEY",
+      "ARM_SAS_TOKEN"
+    ];
+    SECRET_NAME2 = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
   }
 });
 
@@ -95044,6 +95094,8 @@ var init_sdk_policy = __esm({
       // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
       ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, "git credential helper from a worker"),
       ...gitSubcommandDeny(String.raw`credential-[\w-]`, "git credential helper from a worker"),
+      // `git credential fill` asks the configured helpers (the worker env clears them; this catches the plain spelling).
+      ...gitSubcommandDeny(String.raw`credential\s+(?:fill|approve|reject)\b`, "git credential helper from a worker"),
       // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
       // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
       { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: "git credential helper from a worker" },
@@ -115184,7 +115236,6 @@ __export(job_exports, {
   CopilotRunManager: () => CopilotRunManager,
   DEFAULT_MAX_CREDITS: () => DEFAULT_MAX_CREDITS,
   DEFAULT_TIMEOUT_MS: () => DEFAULT_TIMEOUT_MS3,
-  LANE_CREDENTIAL_ENV: () => LANE_CREDENTIAL_ENV,
   MAX_PROMPT_CHARS: () => MAX_PROMPT_CHARS,
   MAX_RUNNING_JOBS: () => MAX_RUNNING_JOBS,
   MAX_TIMEOUT_MS: () => MAX_TIMEOUT_MS,
@@ -115201,11 +115252,9 @@ __export(job_exports, {
   summarizeChanges: () => summarizeChanges
 });
 function scrubLaneCredentials(env2, emptyDir) {
-  const exact = new Set(LANE_CREDENTIAL_ENV);
   for (const key of Object.keys(env2)) {
-    const upper = key.toUpperCase();
-    if (upper === "COPILOT_GITHUB_TOKEN") continue;
-    if (exact.has(upper) || SECRET_NAME2.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_")) delete env2[key];
+    if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
+    if (isCredentialEnvKey(key)) delete env2[key];
   }
   const emptyConfig = (0, import_node_path33.join)(emptyDir, "gitconfig");
   (0, import_node_fs26.writeFileSync)(emptyConfig, "");
@@ -115335,7 +115384,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process16.spawnSync)
   };
 }
-var import_node_child_process16, import_node_crypto15, import_node_fs26, import_node_os8, import_node_path33, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS3, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, LANE_CREDENTIAL_ENV, SECRET_NAME2, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, errText3, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process16, import_node_crypto15, import_node_fs26, import_node_os8, import_node_path33, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS3, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, errText3, isTerminal2, git2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -115382,52 +115431,6 @@ var init_job = __esm({
     STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
     CopilotRunError = class extends Error {
     };
-    LANE_CREDENTIAL_ENV = [
-      "GH_TOKEN",
-      "GITHUB_TOKEN",
-      "GH_ENTERPRISE_TOKEN",
-      "GITHUB_ENTERPRISE_TOKEN",
-      "SSH_AUTH_SOCK",
-      "SSH_AGENT_PID",
-      "GIT_ASKPASS",
-      "SSH_ASKPASS",
-      "GIT_SSH",
-      "GIT_SSH_COMMAND",
-      "NPM_TOKEN",
-      "NODE_AUTH_TOKEN",
-      "ACTIONS_RUNTIME_TOKEN",
-      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-      "ACTIONS_ID_TOKEN_REQUEST_URL",
-      // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
-      "AZURE_DEVOPS_EXT_PAT",
-      "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY",
-      "AZURE_DEVOPS_EXT_GITHUB_PAT",
-      "SYSTEM_ACCESSTOKEN",
-      // azure-identity / az: service principal, certificate, workload identity and managed identity.
-      "AZURE_CLIENT_SECRET",
-      "AZURE_CLIENT_CERTIFICATE_PATH",
-      "AZURE_CLIENT_CERTIFICATE_PASSWORD",
-      "AZURE_PASSWORD",
-      "AZURE_FEDERATED_TOKEN_FILE",
-      "IDENTITY_ENDPOINT",
-      "IDENTITY_HEADER",
-      "MSI_ENDPOINT",
-      "MSI_SECRET",
-      // az storage account keys and SAS.
-      "AZURE_STORAGE_KEY",
-      "AZURE_STORAGE_CONNECTION_STRING",
-      "AZURE_STORAGE_SAS_TOKEN",
-      // Terraform azurerm (ARM_*).
-      "ARM_CLIENT_SECRET",
-      "ARM_CLIENT_CERTIFICATE_PATH",
-      "ARM_CLIENT_CERTIFICATE_PASSWORD",
-      "ARM_OIDC_TOKEN",
-      "ARM_OIDC_TOKEN_FILE_PATH",
-      "ARM_OIDC_REQUEST_TOKEN",
-      "ARM_ACCESS_KEY",
-      "ARM_SAS_TOKEN"
-    ];
-    SECRET_NAME2 = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE/i;
     REVIEW_SHELL_DENY_PATTERNS = [
       ...gitSubcommandDeny(
         String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config|pull|bisect|remote|clean|sparse-checkout|submodule|read-tree|update-index|checkout-index|filter-branch|gc\s+[^;&|\n]*--prune|reflog\s+expire)(?![\w-])`,
@@ -128286,7 +128289,9 @@ __export(sdk_host_exports, {
   prependPath: () => prependPath,
   readDoorbell: () => readDoorbell,
   runSdkHost: () => runSdkHost,
-  runSdkHostMain: () => runSdkHostMain
+  runSdkHostMain: () => runSdkHostMain,
+  scrubWorkerCredentials: () => scrubWorkerCredentials,
+  workerGitHubToken: () => workerGitHubToken
 });
 function withTimeout5(promise, ms, label2) {
   let timer;
@@ -128376,6 +128381,32 @@ function prependPath(env2, dir, platform) {
   const key = platform === "win32" ? Object.keys(env2).find((k) => k.toUpperCase() === "PATH") ?? "Path" : "PATH";
   const sep23 = platform === "win32" ? ";" : ":";
   env2[key] = env2[key] ? `${dir}${sep23}${env2[key]}` : dir;
+}
+function scrubWorkerCredentials(env2, emptyDir) {
+  const reset = new Set(WORKER_CREDENTIAL_RESET);
+  for (const key of Object.keys(env2)) {
+    if (isCredentialEnvKey(key) || reset.has(key.toUpperCase())) delete env2[key];
+  }
+  (0, import_node_fs29.mkdirSync)(emptyDir, { recursive: true });
+  Object.assign(env2, {
+    GH_CONFIG_DIR: emptyDir,
+    AZURE_CONFIG_DIR: emptyDir,
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never",
+    // An empty value clears the helper list (system `manager` included).
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.helper",
+    GIT_CONFIG_VALUE_0: ""
+  });
+}
+function workerGitHubToken(env2, hasLogin) {
+  const names = hasLogin ? ["COPILOT_GITHUB_TOKEN"] : ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+  for (const name of names) {
+    const key = Object.keys(env2).find((k) => k.toUpperCase() === name);
+    const value = key ? env2[key]?.trim() : void 0;
+    if (value) return value;
+  }
+  return void 0;
 }
 function adoptSessionEnv(target, env2) {
   for (const key of Object.keys(target)) {
@@ -128594,9 +128625,17 @@ async function runSdkHost(spec, deps) {
     (0, import_node_fs29.writeFileSync)(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}
 `);
   }
+  const hasLogin = ident.loggedInUsers !== void 0;
+  const gitHubToken = workerGitHubToken(deps.env, hasLogin);
+  if (!hasLogin && !gitHubToken) {
+    return fail7("start_failed", "an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login");
+  }
   writeOmgShims(files.bin, spec.omg_cli_path, spec.node_path);
-  const env2 = buildSessionEnv(deps.env, files.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 });
+  const env2 = buildSessionEnv(deps.env, files.home, { session: false, hasLogin });
   Object.assign(env2, spec.worker_env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1" });
+  env2.COPILOT_HOME = files.home;
+  delete env2.COPILOT_MODEL;
+  scrubWorkerCredentials(env2, (0, import_node_path35.join)(files.home, "no-credentials"));
   prependPath(env2, files.bin, deps.platform);
   const policy = {
     cwd: spec.worker_cwd,
@@ -128740,6 +128779,8 @@ async function runSdkHost(spec, deps) {
     pluginDirectories: [spec.plugin_root],
     workingDirectory: spec.worker_cwd,
     disabledMcpServers: tools ? ["github-mcp-server", tools.disabledMcpServer] : ["github-mcp-server"],
+    // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
+    ...gitHubToken ? { gitHubToken } : {},
     excludedTools,
     ...tools ? { tools: tools.tools } : {},
     ...spec.model ? { model: spec.model } : {}
@@ -128948,7 +128989,7 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs29, import_promises32, import_node_crypto16, import_node_path35, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, STOP_SIGNALS, TimeoutError2, sleep10, errText7;
+var import_node_fs29, import_promises32, import_node_crypto16, import_node_path35, DECISION_TIMEOUT_MS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS3, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, STOP_SIGNALS, TimeoutError2, sleep10, errText7, WORKER_CREDENTIAL_RESET;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
@@ -128979,6 +129020,7 @@ var init_sdk_host = __esm({
       setTimeout(r, ms);
     });
     errText7 = (err) => err instanceof Error ? err.message : String(err);
+    WORKER_CREDENTIAL_RESET = ["GH_CONFIG_DIR", "AZURE_CONFIG_DIR", "GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE"];
   }
 });
 

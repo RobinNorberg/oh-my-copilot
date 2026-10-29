@@ -93,6 +93,8 @@ export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string
   // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
   ...gitSubcommandDeny(String.raw`(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, 'git credential helper from a worker'),
   ...gitSubcommandDeny(String.raw`credential-[\w-]`, 'git credential helper from a worker'),
+  // `git credential fill` asks the configured helpers (the worker env clears them; this catches the plain spelling).
+  ...gitSubcommandDeny(String.raw`credential\s+(?:fill|approve|reject)\b`, 'git credential helper from a worker'),
   // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
   // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
   { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: 'git credential helper from a worker' },

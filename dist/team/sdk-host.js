@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
-import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
+import { buildSessionEnv, isCredentialEnvKey, loginIdentity } from '../smoke/copilot-session-env.js';
 import { runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { loadWorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission } from './sdk-policy.js';
@@ -143,6 +143,51 @@ export function prependPath(env, dir, platform) {
         : 'PATH';
     const sep = platform === 'win32' ? ';' : ':';
     env[key] = env[key] ? `${dir}${sep}${env[key]}` : dir;
+}
+/** Env vars {@link scrubWorkerCredentials} sets on every worker. */
+const WORKER_CREDENTIAL_RESET = ['GH_CONFIG_DIR', 'AZURE_CONFIG_DIR', 'GIT_TERMINAL_PROMPT', 'GCM_INTERACTIVE'];
+/**
+ * A credential-free worker env, in place. Workers run arbitrary toolchains
+ * unsandboxed, so this is a denylist (isCredentialEnvKey): every token,
+ * secret-named var, ssh-agent and askpass hook, `GIT_CONFIG*` and `GCM_*` goes,
+ * COPILOT_GITHUB_TOKEN included (the session gets it over RPC instead). `gh`
+ * and `az` see an empty config dir; git never prompts and runs no credential
+ * helper (`credential.helper` reset through GIT_CONFIG_COUNT, so identity,
+ * safe.directory and core.longpaths from the user's config still apply).
+ * PATH, the home dirs, toolchain, proxy and CA vars stay.
+ */
+export function scrubWorkerCredentials(env, emptyDir) {
+    const reset = new Set(WORKER_CREDENTIAL_RESET);
+    for (const key of Object.keys(env)) {
+        if (isCredentialEnvKey(key) || reset.has(key.toUpperCase()))
+            delete env[key];
+    }
+    mkdirSync(emptyDir, { recursive: true });
+    Object.assign(env, {
+        GH_CONFIG_DIR: emptyDir,
+        AZURE_CONFIG_DIR: emptyDir,
+        GIT_TERMINAL_PROMPT: '0',
+        GCM_INTERACTIVE: 'never',
+        // An empty value clears the helper list (system `manager` included).
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'credential.helper',
+        GIT_CONFIG_VALUE_0: '',
+    });
+}
+/**
+ * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else
+ * GH_TOKEN / GITHUB_TOKEN when no stored login was copied (with a login they
+ * would shadow it, as buildSessionEnv drops them then).
+ */
+export function workerGitHubToken(env, hasLogin) {
+    const names = hasLogin ? ['COPILOT_GITHUB_TOKEN'] : ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
+    for (const name of names) {
+        const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+        const value = key ? env[key]?.trim() : undefined;
+        if (value)
+            return value;
+    }
+    return undefined;
 }
 /**
  * Make `target` hold exactly `env`. The `t` MCP server child runs with the
@@ -400,10 +445,20 @@ export async function runSdkHost(spec, deps) {
     if (!existsSync(homeConfig)) {
         writeFileSync(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}\n`);
     }
+    const hasLogin = ident.loggedInUsers !== undefined;
+    const gitHubToken = workerGitHubToken(deps.env, hasLogin);
+    if (!hasLogin && !gitHubToken) {
+        return fail('start_failed', 'an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login');
+    }
     writeOmgShims(files.bin, spec.omg_cli_path, spec.node_path);
-    const env = buildSessionEnv(deps.env, files.home, { session: false, hasLogin: ident.loggedInUsers !== undefined });
+    const env = buildSessionEnv(deps.env, files.home, { session: false, hasLogin });
     // OMC_BUDGET_HOST_LEDGER: this host records the session's usage; its hooks must not count it again.
     Object.assign(env, spec.worker_env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
+    // The leader's COPILOT_HOME / COPILOT_MODEL (pane workers' getWorkerEnv) must not replace the worker's own home
+    // or the explicit --model; the scrub runs after the merge, so worker_env cannot bring a credential back.
+    env.COPILOT_HOME = files.home;
+    delete env.COPILOT_MODEL;
+    scrubWorkerCredentials(env, join(files.home, 'no-credentials'));
     prependPath(env, files.bin, deps.platform);
     const policy = {
         cwd: spec.worker_cwd,
@@ -565,6 +620,8 @@ export async function runSdkHost(spec, deps) {
         pluginDirectories: [spec.plugin_root],
         workingDirectory: spec.worker_cwd,
         disabledMcpServers: tools ? ['github-mcp-server', tools.disabledMcpServer] : ['github-mcp-server'],
+        // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
+        ...(gitHubToken ? { gitHubToken } : {}),
         excludedTools,
         ...(tools ? { tools: tools.tools } : {}),
         ...(spec.model ? { model: spec.model } : {}),

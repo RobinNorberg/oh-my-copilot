@@ -2,6 +2,23 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **SDK team workers start credential-free.** The worker runtime and its
+  shells no longer inherit the leader's tokens and cloud credentials
+  (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, AWS keys, Azure, npm, `ANTHROPIC_API_KEY`,
+  ssh-agent, askpass and every other secret-named variable, `GIT_CONFIG*`,
+  `GCM_*`), also when they come through the worker env. `gh` and `az` see an
+  empty config dir, git runs no credential helper and never prompts, and the
+  Copilot credential goes over the session RPC. A worker with neither a stored
+  Copilot login nor a token now fails to start.
+- **SDK workers keep their own Copilot home.** The leader's `COPILOT_HOME` and
+  `COPILOT_MODEL` no longer override the per-worker home and model.
+- **`git credential fill` denied in team workers.** The shell policy also
+  refuses `git credential fill`, `approve` and `reject`.
+
 # oh-my-copilot v5.18.0
 
 ## [5.18.0] - 2026-10-29

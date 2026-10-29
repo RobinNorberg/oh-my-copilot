@@ -54,6 +54,23 @@ export declare function readDoorbell(path: string, offset: number): {
 /** Prepend `dir` to PATH, matching the key case-insensitively on win32. */
 export declare function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJS.Platform): void;
 /**
+ * A credential-free worker env, in place. Workers run arbitrary toolchains
+ * unsandboxed, so this is a denylist (isCredentialEnvKey): every token,
+ * secret-named var, ssh-agent and askpass hook, `GIT_CONFIG*` and `GCM_*` goes,
+ * COPILOT_GITHUB_TOKEN included (the session gets it over RPC instead). `gh`
+ * and `az` see an empty config dir; git never prompts and runs no credential
+ * helper (`credential.helper` reset through GIT_CONFIG_COUNT, so identity,
+ * safe.directory and core.longpaths from the user's config still apply).
+ * PATH, the home dirs, toolchain, proxy and CA vars stay.
+ */
+export declare function scrubWorkerCredentials(env: NodeJS.ProcessEnv, emptyDir: string): void;
+/**
+ * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else
+ * GH_TOKEN / GITHUB_TOKEN when no stored login was copied (with a login they
+ * would shadow it, as buildSessionEnv drops them then).
+ */
+export declare function workerGitHubToken(env: NodeJS.ProcessEnv, hasLogin: boolean): string | undefined;
+/**
  * Make `target` hold exactly `env`. The `t` MCP server child runs with the
  * session env; in-process tool handlers read `process.env`, so with
  * `in_process_tools` the host adopts that env once the runtime is spawned.

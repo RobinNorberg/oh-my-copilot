@@ -14,6 +14,8 @@ import { teamStateRoot } from '../state-paths.js';
 import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 let TEAM = 'sdk-team';
 const WORKER = 'worker-1';
+/** The Copilot credential every fake host env carries (a worker needs a login or a token). */
+const TEST_TOKEN = 'cgt-test-token';
 let cwd;
 let worktree;
 let pluginRoot;
@@ -193,7 +195,16 @@ describe('sdk permission policy', () => {
         ['git config --worktree credential.https://github.com.helper x', false],
         ['npm test && git-credential-manager get', false],
         ['cmd /c git-credential-manager.exe get', false],
-        ['git credential fill', true],
+        ['git credential fill', false],
+        ['"git" credential fill', false],
+        ['git -C ../wt credential fill', false],
+        ['git  credential   approve', false],
+        ['GIT credential reject', false],
+        ['& "C:\\Program Files\\Git\\cmd\\git.exe" credential fill', false],
+        ['$g="git"; & $g credential fill', false],
+        ["git cred''ential fill", false],
+        ['git credential', true],
+        ['git commit -m "credential fill docs"', true],
         ['rg git-credential-manager src', true],
         ['cat docs/git-credential-notes.md', true],
         ['git -c user.name=x commit -m y', true],
@@ -373,7 +384,7 @@ function deps(sdk, over = {}) {
         // The terminal record's shape follows the real platform, which the shared observers read.
         platform: process.platform,
         pollMs: 10,
-        env: { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home' },
+        env: { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home', COPILOT_GITHUB_TOKEN: TEST_TOKEN },
         ...over,
     };
 }
@@ -424,6 +435,8 @@ describe('sdk host', () => {
         expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
         expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'task', 'web_fetch']));
         expect(cfg.model).toBe('gpt-test');
+        // The Copilot credential goes over the session RPC, not into the env shell children inherit.
+        expect(cfg.gitHubToken).toBe(TEST_TOKEN);
         // Runtime: installed exe, credit cap floor, deny flag, no allow-all, worker env, isolated home.
         expect(rec.connection?.path).toBe('C:/fake/copilot.exe');
         expect(rec.connection?.args).toEqual(['--log-level', 'debug', '--max-ai-credits', '30', '--deny-tool=web_fetch']);
@@ -433,6 +446,7 @@ describe('sdk host', () => {
         expect(env.OMC_TEAM_WORKER).toBe(`${TEAM}/${WORKER}`);
         expect(env.OMC_STRIPPED).toBeUndefined();
         expect(env.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
+        expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
         const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH');
         expect(env[pathKey]?.startsWith(sdkWorkerFiles(stateRoot, WORKER).bin)).toBe(true);
         expect(existsSync(join(sdkWorkerFiles(stateRoot, WORKER).bin, 'omg.cmd'))).toBe(true);
@@ -474,6 +488,8 @@ describe('sdk host', () => {
         const toolNames = (config) => (config.tools ?? []).map((t) => t.name);
         async function runWith(builder, hostEnv, opts = {}) {
             const attempt = await newAttempt();
+            // In place: a test compares the caller's object with the runtime env after adoption.
+            hostEnv.COPILOT_GITHUB_TOKEN ??= TEST_TOKEN;
             const { loaded, rec } = fakeSdk(opts.fake);
             const calls = [];
             const cleanups = [];
@@ -497,7 +513,7 @@ describe('sdk host', () => {
         }
         const withTools = (tools = [fakeTool]) => (async () => () => ({ tools, disabledMcpServer: 't', cleanup: async () => { } }));
         it('registers the tools, disables the t server and gives the handlers the session env', async () => {
-            const hostEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home' };
+            const hostEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home', AWS_SECRET_ACCESS_KEY: 'aws' };
             const { cfg, connEnv, calls, cleanups, events, session } = await runWith(withTools(), hostEnv);
             expect(cfg.tools).toEqual([fakeTool]);
             expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
@@ -511,6 +527,10 @@ describe('sdk host', () => {
             // The host env now equals the runtime's (MCP child) env.
             expect(hostEnv).toEqual(connEnv);
             expect(hostEnv.OMC_STRIPPED).toBeUndefined();
+            // The in-process handlers get the scrubbed env too.
+            expect(hostEnv.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+            expect(hostEnv.COPILOT_GITHUB_TOKEN).toBeUndefined();
+            expect(cfg.gitHubToken).toBe(TEST_TOKEN);
             expect(hostEnv.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
             // Teardown ran the tools' cleanup once and removed every process guard.
             expect(cleanups).toHaveLength(1);
@@ -628,6 +648,78 @@ describe('sdk host', () => {
         const session = readSdkSession(stateRoot, WORKER);
         expect(session.last_error).toMatch(/credit cap 10 reached/);
         expect(session.aborts).toBeGreaterThanOrEqual(2);
+    });
+    describe('worker env', () => {
+        const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
+        async function runEnv(hostEnv, specOver = {}) {
+            const attempt = await newAttempt();
+            const { loaded, rec } = fakeSdk();
+            const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv }), async () => {
+                await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+                ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+            }, specFor(attempt, specOver));
+            expect(await host).toBe('stopped');
+            return { env: rec.connection.env, cfg: rec.sessions[0] };
+        }
+        const secrets = {
+            AWS_ACCESS_KEY_ID: 'a', AWS_SECRET_ACCESS_KEY: 'b', AWS_SESSION_TOKEN: 'c',
+            AZURE_CLIENT_SECRET: 'd', AZURE_DEVOPS_EXT_PAT: 'e', ARM_CLIENT_SECRET: 'f',
+            NPM_TOKEN: 'g', ANTHROPIC_API_KEY: 'h', OPENAI_API_KEY: 'i', SSH_AUTH_SOCK: '/tmp/agent',
+            GIT_ASKPASS: '/askpass', GIT_SSH_COMMAND: 'ssh -i key', GH_TOKEN: 'gh', GITHUB_TOKEN: 'ghub',
+            GCM_CREDENTIAL_STORE: 'wincredman', GIT_CONFIG_GLOBAL: '/evil', GIT_CONFIG_PARAMETERS: "'credential.helper=x'",
+            SYSTEM_ACCESSTOKEN: 'ado',
+        };
+        const kept = {
+            JAVA_HOME: '/jdk', HTTPS_PROXY: 'http://proxy:8080', NO_PROXY: 'localhost', NODE_EXTRA_CA_CERTS: '/ca.pem',
+            APPDATA: '/appdata', LOCALAPPDATA: '/localappdata', USERPROFILE: '/user', HOME: '/user', TEMP: '/tmp',
+            SystemRoot: 'C:\\Windows', ANDROID_HOME: '/sdk',
+        };
+        it('drops every credential, keeps toolchain, proxy and home vars, and resets the credential helper', async () => {
+            const { env, cfg } = await runEnv({ [pathKey]: '/usr/bin', COPILOT_GITHUB_TOKEN: TEST_TOKEN, ...secrets, ...kept });
+            for (const key of [...Object.keys(secrets), 'COPILOT_GITHUB_TOKEN'])
+                expect(env[key], key).toBeUndefined();
+            expect(env).toMatchObject(kept);
+            const gitConfig = Object.fromEntries(Object.entries(env).filter(([k]) => k.toUpperCase().startsWith('GIT_CONFIG')));
+            expect(gitConfig).toEqual({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '' });
+            const emptyDir = join(sdkWorkerFiles(stateRoot, WORKER).home, 'no-credentials');
+            expect(env).toMatchObject({ GH_CONFIG_DIR: emptyDir, AZURE_CONFIG_DIR: emptyDir, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+            expect(existsSync(emptyDir)).toBe(true);
+            expect(env.OMC_TEAM_WORKER).toBe(`${TEAM}/${WORKER}`);
+            expect(cfg.gitHubToken).toBe(TEST_TOKEN);
+        });
+        it('drops credentials worker_env carries, and the leader COPILOT_HOME / COPILOT_MODEL do not override the worker', async () => {
+            const attemptEnv = { OMC_TEAM_WORKER: `${TEAM}/${WORKER}` };
+            const { env } = await runEnv({ [pathKey]: '/usr/bin', COPILOT_GITHUB_TOKEN: TEST_TOKEN }, {
+                worker_env: { ...attemptEnv, NPM_TOKEN: 'npm', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'alias.p', GIT_CONFIG_VALUE_0: 'push',
+                    COPILOT_HOME: '/leader-home', COPILOT_MODEL: 'leader-model', OMC_STATE_DIR: omcStateDir },
+            });
+            expect(env.NPM_TOKEN).toBeUndefined();
+            expect(env.GIT_CONFIG_KEY_0).toBe('credential.helper');
+            expect(env.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
+            expect(env.COPILOT_MODEL).toBeUndefined();
+            expect(env.OMC_STATE_DIR).toBe(omcStateDir);
+        });
+        it('without a stored login GH_TOKEN becomes the session credential', async () => {
+            const { env, cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh-only' });
+            expect(cfg.gitHubToken).toBe('gh-only');
+            expect(env.GH_TOKEN).toBeUndefined();
+        });
+        it('with a stored login no generic token is sent and none is needed', async () => {
+            const userConfig = join(cwd, 'user-config');
+            mkdirSync(userConfig, { recursive: true });
+            writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'robin' }], lastLoggedInUser: { login: 'robin' } }));
+            const { cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig });
+            expect(cfg.gitHubToken).toBeUndefined();
+        });
+        it('no stored login and no token fails the start before the runtime is spawned', async () => {
+            const attempt = await newAttempt();
+            const { loaded, rec } = fakeSdk();
+            const host = await hostWithLeader(attempt, deps(loaded, { env: { [pathKey]: '/usr/bin', NPM_TOKEN: 'x' } }), async () => { });
+            expect(await host).toBe('start_failed');
+            expect(rec.ops).toEqual([]);
+            expect(readSdkSession(stateRoot, WORKER)?.last_error).toMatch(/stored Copilot login .* or COPILOT_GITHUB_TOKEN/);
+            expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
+        });
     });
     it('a missing SDK fails the launch with a terminal record and an install hint', async () => {
         const attempt = await newAttempt();
