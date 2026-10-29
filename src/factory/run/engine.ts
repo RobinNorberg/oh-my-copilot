@@ -42,6 +42,15 @@
  * From implement on it is the issue pipeline; every lane also passes the
  * heal caps (FactoryHealStart.laneCap). Nothing here writes the known-flaky
  * list: a write lane touching it parks at protected-paths.
+ *
+ * Forges (factory forges design §6-§8): with an Azure DevOps `forge` every
+ * tracker, PR, check and merge-command call goes through the ADO adapter,
+ * built on the guarded Exec whose az guard knows the run's repository, az
+ * entry and progress mapping; the state records forgeKind and a resume on
+ * another forge is refused. The exact-head rules hold through
+ * reviews.prHead (lastMergeSourceCommit): an ancestor of the engine's push
+ * is the forge lagging (pending), anything else is head-moved-externally.
+ * GitHub runs keep the gh calls unchanged.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -52,7 +61,14 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import { removeWorkerWorktree } from '../../team/git-worktree.js';
 import { driveGates, MAX_FAILING_TITLES } from './gates-driver.js';
-import { MERGE_VIEW_FIELDS, mergeComment, mergeDecision, parseMergeView, type MergeView } from './merge-policy.js';
+import { mergeComment, mergeDecision, type MergeView } from './merge-policy.js';
+import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
+import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
+import { createForge } from '../../forge/index.js';
+import type { Forge, ForgeOptions, ForgeProgressConfig, ForgeTracker, ProgressStage, ResolvedForgeConfig } from '../../forge/types.js';
+import { GhCommandError } from '../../forge/github/gh.js';
+import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
+import { ghIssueComment, ghIssueJson, ghIssueView, githubTracker } from '../../forge/github/tracker.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import {
   canTransition,
@@ -72,6 +88,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
 import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { factoryGuardExec, hardenedGitExec } from './exec.js';
+import { assertFactoryForgeOptions } from './forge-roots.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
@@ -79,10 +96,12 @@ import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './l
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
+import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, type IssueComment } from './plan-rules.js';
 import {
   acquireFactoryOwner,
   createFactoryState,
   factoryCancelRequested,
+  forgeResumeProblem,
   factoryOwnerPath,
   factoryStateDir,
   factoryStatePath,
@@ -99,6 +118,7 @@ import {
   setGate,
   shipVerdictHash,
   TERMINAL_FACTORY_PHASES,
+  trackerStageOf,
   updateFactoryState,
   verifyFactoryIntegrity,
   type FactoryCiFailure,
@@ -129,10 +149,6 @@ const LANE_GRACE_MS = 60_000;
 export const MAX_REVIEW_DIFF_CHARS = 60_000;
 /** Issue titles in prompts and the PR title are cut to one line of this many characters. */
 const MAX_TITLE_CHARS = 200;
-/** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
-export const TRUSTED_PLAN_AUTHORS: readonly string[] = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-/** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
-const ISSUE_FIELDS = 'title,body,labels,state,url,author,comments';
 
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
@@ -182,6 +198,42 @@ export interface FactoryEngineOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
   gateConfig?: GateConfigLoader;
+  /**
+   * The run's forge (factory forges design §3, §6), recorded in the state as
+   * forgeKind. Omitted = GitHub through the gh calls, as before forges; the
+   * CLI always passes it. `options` must list every untrusted root
+   * (factoryForgeOptions); `entry` is the resolved az entry (default:
+   * resolveAzEntry outside those roots).
+   */
+  forge?: FactoryForgeInput;
+}
+
+export interface FactoryForgeInput {
+  config: ResolvedForgeConfig;
+  options: ForgeOptions;
+  entry?: AzEntry;
+}
+
+/** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
+export const ADO_HEAD_LAG_POLLS = 12;
+
+/**
+ * The engine's guarded Exec and, on Azure DevOps, its forge built on that
+ * Exec. The az guard gets the run's forge repo, az entry and progress
+ * mapping (src/forge/ado/guard.ts); without it every az call is refused.
+ * GitHub (no forge, or a github forge) keeps the plain factory guard and the
+ * gh calls. ci-heal runs are GitHub-only.
+ */
+function engineExec(o: FactoryEngineOptions, inner: Exec): { exec: Exec; forge?: Forge } {
+  const f = o.forge;
+  if (f) assertFactoryForgeOptions(o.root, f.options);
+  if (!f || f.config.kind !== 'azure-devops') return { exec: factoryGuardExec(inner, () => [o.base]) };
+  if (o.heal) throw new FactoryStepError('ci-heal runs are GitHub-only (omg factory heal reads GitHub Actions history); this repository is on Azure DevOps');
+  const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
+  const guard = adoGuardContext(f.config, entry);
+  const exec = factoryGuardExec(inner, () => [o.base], () => guard);
+  const options: AzureDevOpsForgeOptions = { ...f.options, entry };
+  return { exec, forge: createForge(exec, o.root, f.config, options) };
 }
 
 /** How the engine checks and stops a lost lane's recorded child process. */
@@ -239,60 +291,13 @@ export class StateTamperedError extends Error {
 }
 
 const HEX40 = /^[0-9a-f]{40}$/;
-const PLAN_LINK = /^[^\S\r\n]*omg-plan:[^\S\r\n]*(\S+)[^\S\r\n]*$/im;
-const ACCEPTANCE = /^[^\S\r\n]*#{1,6}[^\S\r\n]*acceptance criteria\b/im;
 
 function errText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export interface IssueComment {
-  body?: unknown;
-  authorAssociation?: unknown;
-  author?: unknown;
-}
-
-const loginOf = (author: unknown): string => {
-  const login = (author as { login?: unknown } | null | undefined)?.login;
-  return typeof login === 'string' ? login.toLowerCase() : '';
-};
-const trustedAssociation = (a: unknown): boolean => typeof a === 'string' && TRUSTED_PLAN_AUTHORS.includes(a);
-
-/**
- * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
- * view --json` has no authorAssociation for the issue itself, so: the author
- * owns the repository (the issue URL's owner), or a comment by the same login
- * carries a trusted association (it is per user and repository). Unknown is
- * untrusted.
- */
-export function issueAuthorTrusted(v: { author?: unknown; url?: unknown; comments?: unknown }): boolean {
-  const login = loginOf(v.author);
-  if (!login) return false;
-  const owner = typeof v.url === 'string' ? /^https:\/\/[^/\s]+\/([^/\s]+)\//.exec(v.url)?.[1] : undefined;
-  if (owner && owner.toLowerCase() === login) return true;
-  const comments = Array.isArray(v.comments) ? (v.comments as IssueComment[]) : [];
-  return comments.some((c) => loginOf(c?.author) === login && trustedAssociation(c.authorAssociation));
-}
-
-/**
- * The issue body's `omg-plan:` line when its author is trusted
- * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
- */
-export function findPlanLink(body: string, comments: ReadonlyArray<IssueComment> = [], bodyAuthorTrusted = false): string | undefined {
-  const inBody = bodyAuthorTrusted ? PLAN_LINK.exec(body)?.[1] : undefined;
-  if (inBody) return inBody;
-  for (const c of [...comments].reverse()) {
-    if (typeof c.authorAssociation !== 'string' || !TRUSTED_PLAN_AUTHORS.includes(c.authorAssociation)) continue;
-    const m = typeof c.body === 'string' ? PLAN_LINK.exec(c.body)?.[1] : undefined;
-    if (m) return m;
-  }
-  return undefined;
-}
-
-export function hasAcceptanceCriteria(body: string): boolean {
-  return ACCEPTANCE.test(body);
-}
+// The plan rules live in plan-rules.ts (shared with `omg factory check`).
+export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS, type IssueComment } from './plan-rules.js';
 
 /** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
 export function oneLine(text: string | undefined, max = MAX_TITLE_CHARS): string {
@@ -581,12 +586,30 @@ class FactoryEngine {
   private mergeCmd?: string;
   /** Ship's gate config of this invocation, by the base sha it was loaded at. */
   private gateCfg?: { baseSha: string; loaded: GateConfig };
+  /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
+  private readonly forge?: Forge;
+  /** The forge, for messages. */
+  private readonly forgeName: string;
+  /** Progress sync's tracker and mapping; undefined without a forge config, with progress disabled, or on a ci-heal run. */
+  private readonly sync?: { tracker: ForgeTracker; progress: ForgeProgressConfig };
+  /** The stage this invocation last tried to write: at most one tracker write per stage. */
+  private syncTried?: ProgressStage;
+  private syncing = false;
+  /** The missing-label hint was warned in this invocation. */
+  private labelHint = false;
 
   constructor(private readonly o: FactoryEngineOptions, private readonly ledger: EngineLedger, hooksDir: string) {
-    this.exec = factoryGuardExec(hardenedGitExec(o.exec, hooksDir), () => [o.base]);
+    const built = engineExec(o, hardenedGitExec(o.exec, hooksDir));
+    this.exec = built.exec;
+    this.forge = built.forge;
+    this.forgeName = this.forge ? 'Azure DevOps' : 'GitHub';
     this.clock = o.now ?? Date.now;
     this.lastTick = this.clock();
     this.key = engineRunKey(o);
+    const cfg = o.forge?.config;
+    if (cfg?.progress.enabled && typeof this.key === 'number') {
+      this.sync = { tracker: this.forge ? this.forge.tracker : githubTracker(this.exec, o.root, cfg), progress: cfg.progress };
+    }
     this.resume = resumeCommand(this.key);
     this.what = typeof this.key === 'number' ? `issue #${this.key}` : `ci-heal ${this.key}`;
     this.progress = createFactoryProgress({ root: o.root, issue: this.key, file: o.progressFile, now: this.clock });
@@ -649,7 +672,55 @@ class FactoryEngine {
       verify: (bytes) => this.ownBytes(this.statePath, bytes),
       onWrite: (path, content) => this.ledger.record(path, content),
     });
+    this.syncProgress();
     return this.state;
+  }
+
+  /**
+   * Progress sync (factory forges design §7): after a save, write the run's
+   * stage to the tracker once. Skipped while the stage is the recorded
+   * trackerStage, so a resume re-applies only a stage whose write was not
+   * recorded. A failure is a warning, a `tracker-sync fail` progress event
+   * and a history note; it never changes or blocks a transition, and the
+   * stage is not tried again in this invocation.
+   */
+  private syncProgress(): void {
+    const sync = this.sync;
+    if (!sync || this.syncing) return;
+    const s = this.state;
+    // Intake has not read (or trusted) the item yet.
+    if (s.phase === 'intake') return;
+    const stage = trackerStageOf(s);
+    if (stage === s.trackerStage || stage === this.syncTried) return;
+    // A cancelled run that never wrote a stage has nothing to take back.
+    if (stage === 'cancelled' && s.trackerStage === undefined) return;
+    const mapping = sync.progress.stages[stage] ?? {};
+    if (stage !== 'cancelled' && !mapping.label && !mapping.column && !mapping.state) return;
+    this.syncTried = stage;
+    this.syncing = true;
+    try {
+      let res: { ok: boolean; detail: string };
+      try {
+        res = sync.tracker.setProgress(this.o.issue!, stage, mapping);
+      } catch (error) {
+        res = { ok: false, detail: errText(error) };
+      }
+      if (res.ok) {
+        this.save((x) => ({ ...x, trackerStage: stage }));
+        this.progress.emit('tracker-sync', 'ok', `${stage}: ${res.detail}`, this.fields());
+        return;
+      }
+      const first = res.detail.split('\n')[0];
+      // gh: "'factory:queued' not found" when the repository has no such label.
+      const missing = !this.forge && /\bnot found\b/i.test(first) && /label|factory:/i.test(first);
+      const detail = missing ? `a factory:* progress label is missing in the repository (${first}); run omg factory setup to create the progress labels` : first;
+      if (!missing || !this.labelHint) this.o.warn?.(`omg factory run: could not set the tracker stage ${stage} on ${this.what}: ${detail}`);
+      if (missing) this.labelHint = true;
+      this.progress.emit('tracker-sync', 'fail', `${stage}: ${detail}`, this.fields());
+      this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `tracker-sync fail: ${stage}: ${detail}` }] }));
+    } finally {
+      this.syncing = false;
+    }
   }
 
   /** Every engine-owned file still holds the engine's last write; the state is the engine's own copy. */
@@ -686,19 +757,54 @@ class FactoryEngine {
     return { pr: this.state?.pr, sha: this.state?.head, credits: this.state ? runCredits(this.state) : 0 };
   }
 
-  private run(args: string[], cmd: 'git' | 'gh' = 'git', env?: Readonly<Record<string, string>>, cwd = this.o.root): string {
+  private run(args: string[], cmd: 'git' = 'git', env?: Readonly<Record<string, string>>, cwd = this.o.root): string {
     const res = this.exec(cmd, args, { cwd, ...(env ? { env } : {}) });
     if (res.status !== 0) throw new FactoryStepError(`${cmd} ${args.join(' ')} failed (exit ${res.status}): ${res.stderr.trim().split('\n')[0]}`);
     return res.stdout;
   }
 
-  private ghJson<T>(args: string[]): T {
-    const out = this.run(args, 'gh');
+  /** A GitHub forge call as an engine step: its gh failure is this step's failure, same message. */
+  private gh<T>(call: (exec: Exec, cwd: string) => T): T {
     try {
-      return JSON.parse(out) as T;
-    } catch {
-      throw new FactoryStepError(`gh ${args.join(' ')} returned no JSON`);
+      return call(this.exec, this.o.root);
+    } catch (error) {
+      if (error instanceof GhCommandError) throw new FactoryStepError(error.message);
+      throw error;
     }
+  }
+
+  // --- Forge calls: Azure DevOps through this.forge, else the gh calls unchanged --------------
+
+  private commentIssue(n: number, file: string): { ok: boolean; stderr: string } {
+    return this.forge ? this.forge.tracker.comment(n, file) : ghIssueComment(this.exec, n, file, this.o.root);
+  }
+
+  private commentPr(pr: number, file: string): { ok: boolean; stderr: string } {
+    return this.forge ? this.forge.reviews.commentPr(pr, file) : ghCommentPr(this.exec, pr, file, this.o.root);
+  }
+
+  /** True when `sha` is an ancestor of `head` in the local object store. */
+  private isAncestor(sha: string, head: string): boolean {
+    return HEX40.test(sha) && this.exec('git', ['merge-base', '--is-ancestor', sha, head], { cwd: this.o.root, env: TRUSTED_READ_ENV }).status === 0;
+  }
+
+  /**
+   * One PR read, re-read while Azure DevOps reports an ancestor of the
+   * engine's push `head` (lastMergeSourceCommit lags a push by seconds,
+   * design §8.3). Still lagging after ADO_HEAD_LAG_POLLS reads: the step
+   * stops pending (exit 1, a rerun resumes), never at head-moved-externally.
+   * Any other head is the caller's to judge. GitHub reads once, as before.
+   */
+  private async settledPr<T extends { headRefOid?: unknown }>(pr: number, head: string, read: () => T): Promise<T> {
+    let v = read();
+    if (!this.forge) return v;
+    const lagging = () => typeof v.headRefOid === 'string' && v.headRefOid !== head && this.isAncestor(v.headRefOid, head);
+    for (let i = 0; i < ADO_HEAD_LAG_POLLS && lagging(); i++) {
+      await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(this.o.pollMs ?? DEFAULT_POLL_MS);
+      v = read();
+    }
+    if (lagging()) throw new FactoryStepError(`pending: Azure DevOps still reports PR #${pr} at ${String(v.headRefOid).slice(0, 12)}, an ancestor of the engine's push ${head.slice(0, 12)} (the forge is lagging); rerun ${this.resume}`);
+    return v;
   }
 
   private writeBody(name: string, text: string): string {
@@ -752,7 +858,25 @@ class FactoryEngine {
       return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} fails its integrity check (edited outside omg factory run); the run is failed and is not resumed` };
     }
     if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
-      return { exitCode: existing.phase === 'failed' ? 1 : 0, phase: existing.phase, state: existing, message: `the factory run for ${this.what} is ${existing.phase}` };
+      let final = existing;
+      // A crash after the terminal save and before its tracker write: write that stage once now.
+      if (this.sync && existing.trackerStage !== trackerStageOf(existing) && !forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url)) {
+        this.state = existing;
+        try {
+          this.syncProgress();
+        } catch (error) {
+          if (error instanceof StateTamperedError) return this.onTampered(error);
+          throw error;
+        }
+        final = this.state;
+      }
+      return { exitCode: final.phase === 'failed' ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
+    }
+    // A config change cannot swap adapters mid-run (critic amendments §A.9).
+    const swapped = existing ? forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url) : null;
+    if (existing && swapped) {
+      this.progress.emit(existing.phase, 'fail', 'forge changed');
+      return { exitCode: 1, phase: existing.phase, state: existing, message: swapped };
     }
     try {
       if (!existing) {
@@ -760,7 +884,8 @@ class FactoryEngine {
         const heal = this.o.heal;
         if (heal && heal.record?.sig8 !== heal.sig8) throw new FactoryStepError(`no ci-heal run ${this.key} exists, and no diagnosis record for signature ${heal.sig8} was given to start one`);
         this.check();
-        this.state = updateFactoryState(this.o.root, this.key, () => createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}) }, this.iso()), {
+        const forgeKind = this.o.forge ? { forgeKind: this.o.forge.config.kind } : {};
+        this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: '', base: this.o.base, ...(heal?.record ? { heal: heal.record } : {}) }, this.iso()), ...forgeKind }), {
           verify: (b) => { if (b !== null) throw new StateTamperedError([resolve(this.statePath)]); },
           onWrite: (path, content) => this.ledger.record(path, content),
         });
@@ -930,8 +1055,8 @@ class FactoryEngine {
     if (this.state.gateComments?.includes(tag)) return true;
     try {
       const file = this.writeBody(name, body);
-      const res = this.exec('gh', [target, 'comment', String(n), '--body-file', file], { cwd: this.o.root });
-      if (res.status !== 0) {
+      const res = target === 'issue' ? this.commentIssue(n, file) : this.commentPr(n, file);
+      if (!res.ok) {
         this.o.warn?.(`omg factory run: could not comment on ${target} #${n}: ${res.stderr.trim()}`);
         return false;
       }
@@ -984,8 +1109,8 @@ class FactoryEngine {
     }, 'cancelled', why, at));
     if (this.state.pr) {
       const body = this.writeBody('cancel', `Factory run for ${runLabel(this.key)} was cancelled. The PR, its branch and the lane worktrees are kept.\n`);
-      const res = this.exec('gh', ['pr', 'comment', String(this.state.pr), '--body-file', body], { cwd: this.o.root });
-      if (res.status !== 0) this.o.warn?.(`omg factory run: could not comment on PR #${this.state.pr}: ${res.stderr.trim()}`);
+      const res = this.commentPr(this.state.pr, body);
+      if (!res.ok) this.o.warn?.(`omg factory run: could not comment on PR #${this.state.pr}: ${res.stderr.trim()}`);
     }
     this.progress.emit('cancelled', 'done', 'cancelled', this.fields());
   }
@@ -1010,7 +1135,14 @@ class FactoryEngine {
   /** An open PR on the run's branch that this run did not create parks at pr-exists; true when it parked. */
   private foreignPr(repoUrl: string): boolean {
     if (this.state.pr) return false;
-    const open = this.ghJson<Array<{ number?: number }>>(['pr', 'list', '--head', this.state.branch, '--json', 'number,state,headRefOid,url']);
+    if (this.forge) {
+      const open = this.forge.reviews.findOpenPrForBranch(this.state.branch);
+      if (open === undefined) return false;
+      this.save((s) => ({ ...s, repoUrl }));
+      this.gate('pr-exists', `open PR #${open} already uses ${this.state.branch} and this run did not create it; close it or adopt it by hand`);
+      return true;
+    }
+    const open = this.gh((exec, cwd) => ghOpenPrs(exec, this.state.branch, cwd));
     if (!Array.isArray(open) || open.length === 0) return false;
     this.save((s) => ({ ...s, repoUrl }));
     this.gate('pr-exists', `open PR #${open[0].number} already uses ${this.state.branch} and this run did not create it; close it or adopt it by hand`);
@@ -1019,7 +1151,7 @@ class FactoryEngine {
 
   /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
   private healIntake(): void {
-    const v = this.ghJson<{ url?: unknown }>(['repo', 'view', '--json', 'url']);
+    const v = this.gh(ghRepoView);
     const url = typeof v?.url === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : '';
     if (!url) throw new FactoryStepError('gh repo view returned no repository url');
     if (this.foreignPr(url)) return;
@@ -1054,11 +1186,31 @@ class FactoryEngine {
     this.save((x) => moveTo({ ...x, heal: { ...h, approved }, plan: { source: 'heal-diagnosis', text } }, 'implement', `plan: heal diagnosis (${approved.by === 'human' ? 'approved by a human' : 'factory.heal.autoImplement'})`, this.iso()));
   }
 
+  /**
+   * Azure DevOps intake: the work item through the tracker. The plan rules
+   * read the adapter's trust seam (ForgeComment.trusted, authorTrusted:
+   * createdBy.uniqueName in trustedAuthors). The Acceptance Criteria field
+   * joins the body under an `Acceptance criteria` heading, so the plan step
+   * treats it as GitHub treats that heading in an issue body.
+   */
+  private adoIntake(forge: Forge): void {
+    const item = forge.tracker.viewItem(this.o.issue!);
+    if (item.id !== this.o.issue) throw new FactoryStepError(`work item ${this.o.issue}: the tracker returned item ${item.id}`);
+    if (!item.open) {
+      this.save((s) => moveTo(s, 'cancelled', `work item is ${item.rawState.toLowerCase() || 'closed'}`, this.iso()));
+      this.progress.emit('intake', 'done', 'work item closed');
+      return;
+    }
+    const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
+    const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+    if (this.foreignPr(item.repoUrl)) return;
+    this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `work item ${item.url}`, this.iso()));
+  }
+
   private async intake(): Promise<void> {
     if (this.state.kind === 'ci-heal') return this.healIntake();
-    const v = this.ghJson<{ title?: unknown; body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] }>(
-      ['issue', 'view', String(this.o.issue), '--json', ISSUE_FIELDS],
-    );
+    if (this.forge) return this.adoIntake(this.forge);
+    const v = this.gh((exec, cwd) => ghIssueJson(exec, this.o.issue!, cwd));
     const url = typeof v.url === 'string' ? v.url : '';
     const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
     if (!m || Number(m[2]) !== this.o.issue) throw new FactoryStepError(`gh issue view ${this.o.issue} returned no issue url`);
@@ -1203,20 +1355,21 @@ class FactoryEngine {
     }
     let pr = s.pr;
     if (!pr) {
-      const open = this.ghJson<Array<{ number?: number }>>(['pr', 'list', '--head', s.branch, '--json', 'number,state,headRefOid,url']);
-      pr = Array.isArray(open) && typeof open[0]?.number === 'number' ? open[0].number : undefined;
+      const forge = this.forge;
+      pr = forge ? forge.reviews.findOpenPrForBranch(s.branch) : this.gh((exec, cwd) => ghFindOpenPr(exec, s.branch, cwd));
       if (!pr) {
         // A write lane that ran without a confirmed OS sandbox (writeUnsandboxed "detect-only") is recorded on the PR (design §3).
         const unsandboxed = s.lanes.filter((l) => l.sandbox?.mode === 'detect-only').map((l) => l.id);
         const sandboxNote = unsandboxed.length > 0 ? `\n**Sandbox: detect-only.** Lane(s) ${unsandboxed.join(', ')} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n` : '';
         const heal = s.kind === 'ci-heal';
-        const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `Closes #${s.issue}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
+        // Azure DevOps links the work item through workItemRefs; `Closes #n` is GitHub's issue link.
+        const link = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
+        const body = this.writeBody('pr-body', `${heal ? healPrBody(s) : `${link}\n\nOpened by \`omg factory run ${s.issue}\` (draft until the factory review approves).\n`}${sandboxNote}`);
         // A ci-heal title is fixed: the diagnosis is untrusted lane output.
         const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, '') || `issue ${s.issue}`} (#${s.issue})`;
-        const out = this.run(['pr', 'create', '--draft', '--base', s.base, '--head', s.branch, '--title', title, '--body-file', body], 'gh');
-        const m = /\/pull\/(\d+)/.exec(out);
-        if (!m) throw new FactoryStepError(`gh pr create printed no PR url: ${out.trim().slice(0, 200)}`);
-        pr = Number(m[1]);
+        pr = forge
+          ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, itemId: s.issue })
+          : this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
       }
       this.save((x) => ({ ...x, pr }));
     }
@@ -1237,7 +1390,7 @@ class FactoryEngine {
     const head = s.head;
     const pr = s.pr;
     if (!head || !pr || !s.baseSha) throw new FactoryStepError('review needs a published head, a PR and the base sha');
-    const view = this.ghJson<{ headRefOid?: unknown; state?: unknown }>(['pr', 'view', String(pr), '--json', 'headRefOid,state']);
+    const view = await this.settledPr(pr, head, () => this.prHeadState(pr));
     if (view.state !== 'OPEN') {
       this.gate('pr-not-open', `PR #${pr} is ${String(view.state).toLowerCase()}`);
       return;
@@ -1280,7 +1433,7 @@ class FactoryEngine {
       return;
     }
     const parsed = parseReviewOutput(result.finalText, head);
-    const again = this.ghJson<{ headRefOid?: unknown }>(['pr', 'view', String(pr), '--json', 'headRefOid,state']);
+    const again = this.prHeadState(pr);
     if (again.headRefOid !== head) {
       this.markVerdict(lane.id, 'invalid', 'head moved during review');
       this.gate('head-moved-externally', `PR #${pr} head moved to ${String(again.headRefOid).slice(0, 12)} during the review`);
@@ -1300,8 +1453,8 @@ class FactoryEngine {
     });
     this.save((x) => ({ ...x, findings: parsed.findings }));
     const body = this.writeBody('review', reviewComment(parsed, reviewer));
-    const posted = this.exec('gh', ['pr', 'comment', String(pr), '--body-file', body], { cwd: this.o.root });
-    if (posted.status !== 0) this.o.warn?.(`omg factory run: the review was recorded but the PR comment failed: ${posted.stderr.trim()}`);
+    const posted = this.commentPr(pr, body);
+    if (!posted.ok) this.o.warn?.(`omg factory run: the review was recorded but the PR comment failed: ${posted.stderr.trim()}`);
     this.followShip(next, `${reviewer}: ${parsed.verdict}`);
   }
 
@@ -1351,11 +1504,16 @@ class FactoryEngine {
 
   // --- prepare -> gates -> merge ---------------------------------------------------------------
 
-  /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`. */
+  /** The review's head read: `gh pr view <pr> --json headRefOid,state`, or the forge's prHead. */
+  private prHeadState(pr: number): { headRefOid?: unknown; state?: unknown } {
+    return this.forge ? this.forge.reviews.prHead(pr) : this.gh((exec, cwd) => ghPrHeadState(exec, pr, cwd));
+  }
+
+  /** `gh pr view <pr> --json MERGE_VIEW_FIELDS`, or the forge's viewPr (ADO: base/head = lastMergeTarget/SourceCommit). */
   private prView(pr: number): MergeView {
-    const view = parseMergeView(this.run(['pr', 'view', String(pr), '--json', MERGE_VIEW_FIELDS], 'gh'));
-    if (!view || view.number !== pr) throw new FactoryStepError(`gh pr view ${pr} did not return the PR's state, base and head`);
-    return view;
+    if (!this.forge) return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+    const v = this.forge.reviews.viewPr(pr);
+    return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: v.baseRefOid, headRefOid: v.headRefOid };
   }
 
   /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
@@ -1431,7 +1589,7 @@ class FactoryEngine {
     const s = this.state;
     const { pr, head } = s;
     if (!pr || !head) throw new FactoryStepError('prepare needs a published head and PR');
-    const view = this.prView(pr);
+    const view = await this.settledPr(pr, head, () => this.prView(pr));
     if (this.prGone(view)) return;
     const ship = this.readShip(pr);
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
@@ -1458,7 +1616,10 @@ class FactoryEngine {
       this.gate('head-moved-externally', `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, the engine pushed ${head.slice(0, 12)}`);
       return;
     }
-    if (view.isDraft) this.run(['pr', 'ready', String(pr)], 'gh');
+    if (view.isDraft) {
+      if (this.forge) this.forge.reviews.markReady(pr);
+      else this.gh((exec, cwd) => ghMarkReady(exec, pr, cwd));
+    }
 
     // A restarted prepare no longer owns a recorded push: the recheck stops tolerating its tracking-ref move.
     if (s.prepared) this.save((x) => { const { prepared: _p, ...rest } = x; return rest; });
@@ -1639,6 +1800,7 @@ class FactoryEngine {
     const fields = () => ({ ...this.fields() });
     const out = await driveGates({
       exec: this.exec, cwd: this.o.root, pr, head, config, known,
+      ...(this.forge ? { forge: this.forge } : {}),
       deadline: this.clock() + this.o.limits.gatesTimeoutMs,
       now: this.clock,
       sleep: this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
@@ -1696,7 +1858,7 @@ class FactoryEngine {
   private async merge(): Promise<void> {
     const { pr, head } = this.state;
     if (!pr || !head) throw new FactoryStepError('merge needs a published head and PR');
-    const view = this.prView(pr);
+    const view = await this.settledPr(pr, head, () => this.prView(pr));
     if (this.prGone(view)) return;
     if (view.headRefOid !== head) {
       this.gate('head-moved-externally', `PR #${pr} head is ${view.headRefOid.slice(0, 12)}, the engine pushed ${head.slice(0, 12)}`);
@@ -1706,7 +1868,7 @@ class FactoryEngine {
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     const { config, known } = this.gateConfig(view);
-    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known);
+    const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge);
     if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
       // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.
       const bounces = (this.state.mergeBounces ?? 0) + 1;
@@ -1730,9 +1892,9 @@ class FactoryEngine {
   private finishMerged(pr: number): void {
     this.writeShip(pr, (cur) => {
       if (!cur) throw new FactoryStepError(`no ship state for PR #${pr}`);
-      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', 'merged on GitHub by a human', this.iso()) : cur;
+      return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by a human`, this.iso()) : cur;
     });
-    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on GitHub`, this.iso()));
+    this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}`, this.iso()));
     this.progress.emit('merged', 'done', `PR #${pr} merged`, this.fields());
   }
 
@@ -2077,10 +2239,12 @@ class FactoryEngine {
 
 /** Read-only preview: issue and plan resolution, the resolved caps; no state, lanes or pushes. */
 function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
-  const exec = factoryGuardExec(o.exec, () => [o.base]);
+  const { exec, forge } = engineExec(o, o.exec);
   const key = engineRunKey(o);
   const existing = readFactoryState(o.root, key);
   const caps = { laneMaxCredits: o.limits.laneMaxCredits, ...(o.limits.maxRunCredits !== undefined ? { maxRunCredits: o.limits.maxRunCredits } : {}) };
+  const swapped = existing ? forgeResumeProblem(existing, o.forge?.config.kind ?? 'github', o.forge?.config.repo.url) : null;
+  if (existing && swapped) return { exitCode: 1, phase: existing.phase, state: existing, message: `dry run: ${swapped}` };
   if (existing) {
     return {
       exitCode: 0, phase: existing.phase, state: existing, ...(existing.gate ? { gate: existing.gate } : {}),
@@ -2096,7 +2260,16 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
       ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from the heal diagnosis; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: 'heal diagnosis', ...caps } }
       : { exitCode: 0, phase: null, state: null, message: `dry run: the run would stop at awaiting-human: ${HEAL_APPROVE_GATE}`, plan: { next: 'awaiting-human', reason: HEAL_APPROVE_GATE, ...caps } };
   }
-  const res = exec('gh', ['issue', 'view', String(o.issue), '--json', ISSUE_FIELDS], { cwd: o.root });
+  if (forge) {
+    const item = forge.tracker.viewItem(o.issue!);
+    if (!item.open) return { exitCode: 0, phase: null, state: null, message: 'dry run: the work item is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+    const link = findPlanLink(item.body, item.comments, item.authorTrusted);
+    const source = link ? `omg-plan ${link}` : item.acceptance ? 'work item Acceptance Criteria' : hasAcceptanceCriteria(item.body) ? 'work item description (Acceptance criteria)' : undefined;
+    return source
+      ? { exitCode: 0, phase: null, state: null, message: `dry run: plan from ${source}; the run would start an implement lane capped at ${o.limits.laneMaxCredits} AI credits`, plan: { next: 'implement', planSource: source, ...caps } }
+      : { exitCode: 0, phase: null, state: null, message: 'dry run: no plan (no Acceptance Criteria, "Acceptance criteria" heading or trusted omg-plan: link); the run would stop at awaiting-human: needs-plan', plan: { next: 'awaiting-human', reason: 'needs-plan', ...caps } };
+  }
+  const res = ghIssueView(exec, o.issue!, o.root);
   if (res.status !== 0) throw new FactoryStepError(`gh issue view ${o.issue} failed: ${res.stderr.trim()}`);
   let v: { body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] };
   try {

@@ -29,14 +29,18 @@ import { resolveFactoryRunLimits, runCredits } from '../../factory/run/budget.js
 import { cleanFactoryRun } from '../../factory/run/clean.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../factory/run/engine.js';
 import { factoryGuardExec } from '../../factory/run/exec.js';
+import { factoryForgeOptions, loadFactoryForgeConfig, originForgeKind } from '../../factory/run/forge-roots.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
 import { factoryCancelRequested, factoryStatePath, readFactoryState, requestFactoryCancel, verifyFactoryIntegrity } from '../../factory/run/state.js';
 import { resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
+import { defaultFactoryCheckDeps, factoryCheckCommand } from './factory-check.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import { listenForgeRefusal } from '../../factory/setup/detect.js';
+import { factorySetupCommand } from './factory-setup.js';
 export function renderChainStatus(status) {
     const lines = [];
     lines.push(`链状态 ${status.directory}`);
@@ -76,6 +80,7 @@ export const defaultFactoryRunDeps = {
         const pick = (c) => c?.ship?.base;
         return resolveShipConfig({ base: pick(projectConfig(root)) ?? pick(userConfigLayers().user) }).base;
     },
+    forge: (root, base) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root)),
 };
 class FactoryUsageError extends Error {
 }
@@ -145,7 +150,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     const run = new Command('run');
     run
         .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge')
-        .argument('[issue]', 'GitHub issue number')
+        .argument('[issue]', 'GitHub issue or Azure DevOps work item number')
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
@@ -154,6 +159,12 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const { limits, warnings } = deps.limits(root);
         for (const w of warnings)
             console.error(chalk.yellow(w));
+        const base = deps.base(root);
+        const loaded = deps.forge?.(root, base);
+        for (const w of loaded?.warnings ?? [])
+            console.error(chalk.yellow(w));
+        // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
+        const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
         let signals = 0;
         const onSignal = () => {
             signals += 1;
@@ -167,8 +178,9 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         }
         try {
             const outcome = await runFactoryEngine({
-                root, issue, exec: deps.exec, limits, base: deps.base(root), dryRun: Boolean(o.dryRun),
+                root, issue, exec: deps.exec, limits, base, dryRun: Boolean(o.dryRun),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
+                ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
                 ...(deps.gateConfig ? { gateConfig: deps.gateConfig } : {}),
                 interrupted: () => signals > 0,
@@ -241,6 +253,7 @@ export function factoryCommand() {
     const cmd = new Command('factory');
     cmd.description('Software factory automation (chain trigger + intake listener)');
     cmd.addCommand(factoryRunCommand());
+    cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(healCommand({
         exec: defaultExec,
         base: defaultFactoryRunDeps.base,
@@ -251,7 +264,9 @@ export function factoryCommand() {
         lanes: defaultFactoryRunDeps.lanes,
         ledgerDir: defaultLedgerDir(),
         runLimits: defaultFactoryRunDeps.limits,
+        forgeKind: (root) => originForgeKind(factoryGuardExec(defaultExec), root),
     }));
+    cmd.addCommand(factorySetupCommand());
     cmd
         .command('listen')
         .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions')
@@ -260,6 +275,12 @@ export function factoryCommand() {
         .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
         .option('--cwd <dir>', 'repository whose .omg state root the daemon writes to', process.cwd())
         .action((options) => {
+        const forgeRefusal = listenForgeRefusal(defaultExec, resolve(options.cwd), userConfigLayers().trustedUser);
+        if (forgeRefusal) {
+            console.error(chalk.red(forgeRefusal));
+            process.exitCode = 1;
+            return;
+        }
         const secret = process.env.OMC_FACTORY_HMAC_SECRET;
         if (!secret) {
             console.error(chalk.red('refused: no HMAC secret. Set OMC_FACTORY_HMAC_SECRET.'));

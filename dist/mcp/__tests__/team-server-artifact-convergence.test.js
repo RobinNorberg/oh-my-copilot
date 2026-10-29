@@ -128,6 +128,19 @@ function paneArtifact(instanceId, paneIds, leaderPaneId = '%1', sessionName = 't
 function jobRecord(teamName, cwd, instanceId = INSTANCE_ID) {
     return { status: 'running', startedAt: Date.now(), cwd, teamName, instanceId };
 }
+// handleWait scans for idle panes once per 5s and only after its first 500ms
+// poll, and its deadline also covers the initial locked job read. A short wait
+// can end before that single scan on a loaded runner, so the nudge tests wait
+// generously and end the wait by publishing a terminal result artifact.
+const NUDGE_WAIT_TIMEOUT_MS = 15_000;
+function publishTerminalJobResult(jobsDir, jobId, teamName, instanceId = INSTANCE_ID) {
+    writeFileSync(join(jobsDir, `${jobId}-result.json`), JSON.stringify({
+        status: 'completed',
+        instanceId,
+        teamName,
+        taskResults: [],
+    }), 'utf-8');
+}
 function parseResponseText(text) {
     return JSON.parse(text);
 }
@@ -518,7 +531,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         tmuxMocks.sendToWorker.mockResolvedValue(true);
         const waitPromise = handleWait({
             job_id: jobId,
-            timeout_ms: 700,
+            timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
             nudge_delay_ms: 0,
             nudge_max_count: 1,
         });
@@ -541,12 +554,14 @@ describe('team-server artifact convergence + scoped cleanup', () => {
                 '> ',
             ].join('\n'));
         }
+        publishTerminalJobResult(jobsDir, jobId, teamName);
         const response = await waitPromise;
         expect(captureObserved).toBe(true);
         if (replacementError)
             throw replacementError;
         const payload = parseResponseText(response.content[0].text);
         expect(payload.instanceId).toBe(INSTANCE_ID);
+        expect(payload.status).toBe('completed');
         expect(payload.nudges).toBeUndefined();
         expect(tmuxMocks.sendToWorker).not.toHaveBeenCalled();
         expect(tmuxMocks.captureOwnedTeamPane).toHaveBeenCalledTimes(1);
@@ -597,7 +612,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         });
         const waitPromise = handleWait({
             job_id: jobId,
-            timeout_ms: 700,
+            timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
             nudge_delay_ms: 0,
             nudge_max_count: 1,
         });
@@ -622,10 +637,12 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         }
         finally {
             releaseSend?.(true);
+            publishTerminalJobResult(jobsDir, jobId, teamName);
         }
-        await waitPromise;
+        const response = await waitPromise;
         await competing;
         expect(sendObserved).toBe(true);
+        expect(parseResponseText(response.content[0].text).status).toBe('completed');
         if (competingSetupError)
             throw competingSetupError;
         expect(competingWasBlocked).toBe(true);
@@ -670,7 +687,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         });
         const response = await handleWait({
             job_id: jobId,
-            timeout_ms: 700,
+            timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
             nudge_delay_ms: 0,
             nudge_max_count: 1,
         });
@@ -693,15 +710,19 @@ describe('team-server artifact convergence + scoped cleanup', () => {
             '',
             '> ',
         ].join('\n'));
-        tmuxMocks.sendToWorker.mockResolvedValue(true);
+        tmuxMocks.sendToWorker.mockImplementation(async () => {
+            publishTerminalJobResult(jobsDir, jobId, teamName);
+            return true;
+        });
         const response = await handleWait({
             job_id: jobId,
-            timeout_ms: 700,
+            timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
             nudge_delay_ms: 0,
             nudge_max_count: 1,
         });
         const payload = parseResponseText(response.content[0].text);
         expect(payload.instanceId).toBe(INSTANCE_ID);
+        expect(payload.status).toBe('completed');
         expect(payload.nudges).toBeDefined();
         expect(tmuxMocks.captureOwnedTeamPane).toHaveBeenCalledWith(expect.objectContaining({
             provider: 'cmux',

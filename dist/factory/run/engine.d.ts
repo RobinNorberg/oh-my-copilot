@@ -42,8 +42,19 @@
  * From implement on it is the issue pipeline; every lane also passes the
  * heal caps (FactoryHealStart.laneCap). Nothing here writes the known-flaky
  * list: a write lane touching it parks at protected-paths.
+ *
+ * Forges (factory forges design §6-§8): with an Azure DevOps `forge` every
+ * tracker, PR, check and merge-command call goes through the ADO adapter,
+ * built on the guarded Exec whose az guard knows the run's repository, az
+ * entry and progress mapping; the state records forgeKind and a resume on
+ * another forge is refused. The exact-head rules hold through
+ * reviews.prHead (lastMergeSourceCommit): an ancestor of the engine's push
+ * is the forge lagging (pending), anything else is head-moved-externally.
+ * GitHub runs keep the gh calls unchanged.
  */
 import { type Exec } from '../../ship/exec.js';
+import { type AzEntry } from '../../forge/ado/az-binary.js';
+import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
@@ -57,8 +68,6 @@ export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the can
 export declare const DEFAULT_POLL_MS = 5000;
 /** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
 export declare const MAX_REVIEW_DIFF_CHARS = 60000;
-/** Comment authors whose `omg-plan:` line is read (GitHub authorAssociation). */
-export declare const TRUSTED_PLAN_AUTHORS: readonly string[];
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
     sig8: string;
@@ -112,7 +121,22 @@ export interface FactoryEngineOptions {
     sleep?: (ms: number) => Promise<void>;
     /** Ship's gate config at GitHub's base sha (default: ship's strict safety-key loader). */
     gateConfig?: GateConfigLoader;
+    /**
+     * The run's forge (factory forges design §3, §6), recorded in the state as
+     * forgeKind. Omitted = GitHub through the gh calls, as before forges; the
+     * CLI always passes it. `options` must list every untrusted root
+     * (factoryForgeOptions); `entry` is the resolved az entry (default:
+     * resolveAzEntry outside those roots).
+     */
+    forge?: FactoryForgeInput;
 }
+export interface FactoryForgeInput {
+    config: ResolvedForgeConfig;
+    options: ForgeOptions;
+    entry?: AzEntry;
+}
+/** Re-reads of a lagging Azure DevOps PR head (an ancestor of the engine's push) before the step stops as pending. */
+export declare const ADO_HEAD_LAG_POLLS = 12;
 /** How the engine checks and stops a lost lane's recorded child process. */
 export interface LaneProcessOps {
     /** dead or mismatch (pid reused): the child is gone; live: it still runs; unknown: cannot tell. */
@@ -153,30 +177,7 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
-export interface IssueComment {
-    body?: unknown;
-    authorAssociation?: unknown;
-    author?: unknown;
-}
-/**
- * Whether the issue's author is an OWNER, MEMBER or COLLABORATOR. `gh issue
- * view --json` has no authorAssociation for the issue itself, so: the author
- * owns the repository (the issue URL's owner), or a comment by the same login
- * carries a trusted association (it is per user and repository). Unknown is
- * untrusted.
- */
-export declare function issueAuthorTrusted(v: {
-    author?: unknown;
-    url?: unknown;
-    comments?: unknown;
-}): boolean;
-/**
- * The issue body's `omg-plan:` line when its author is trusted
- * (issueAuthorTrusted), then the newest comment carrying one by an OWNER,
- * MEMBER or COLLABORATOR (anyone else could redirect the plan).
- */
-export declare function findPlanLink(body: string, comments?: ReadonlyArray<IssueComment>, bodyAuthorTrusted?: boolean): string | undefined;
-export declare function hasAcceptanceCriteria(body: string): boolean;
+export { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, TRUSTED_PLAN_AUTHORS, type IssueComment } from './plan-rules.js';
 /** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
 export declare function oneLine(text: string | undefined, max?: number): string;
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */

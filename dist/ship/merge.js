@@ -6,6 +6,7 @@
  * this module says yes or no and why.
  */
 import { TRUSTED_READ_ENV } from './exec.js';
+import { ghMergeCommand } from '../forge/github/merge.js';
 import { latestVerdict, verifyShipIntegrity } from './state.js';
 /**
  * The PR's changed files, computed locally between GitHub's base and head
@@ -135,9 +136,8 @@ export function protectedChanges(changed, extra = []) {
         return rules.some((p) => (p.endsWith('/') ? f === p.slice(0, -1) || f.startsWith(p) : f === p));
     });
 }
-export function mergeCommand(pr, headSha) {
-    return ['gh', 'pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', headSha];
-}
+/** The GitHub forge's human merge command. */
+export function mergeCommand(pr, headSha) { return ghMergeCommand(pr, headSha); }
 /**
  * Why the commits after the reviewed sha need a new verdict (empty = they are
  * all ship housekeeping). Accepted only: a first-parent chain from the head

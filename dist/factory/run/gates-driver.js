@@ -12,29 +12,22 @@
  * that names an Actions run belongs to a workflow run for that head
  * (`gh run list --commit <head>`); otherwise it is a stale read and the
  * driver polls again. Ship's gate API is used as is: watchGates with
- * `headSha` and fetchHeadSha / fetchWorkflowRuns.
+ * `headSha` and fetchHeadSha / fetchWorkflowRuns. On Azure DevOps the same
+ * reads go through the forge (`forge`): its PR head is
+ * lastMergeSourceCommit, which lags a push the same way (design §8.3).
  */
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { fetchWorkflowRuns, NO_WORKFLOWS_TRIGGERED, parseFailingTests, watchGates } from '../../ship/gates.js';
+import { ghJobLog } from '../../forge/github/checks.js';
+import { ghPrHead } from '../../forge/github/reviews.js';
 /** `pending: no-workflows-triggered` for this long goes to awaiting-human: no-workflows. */
 export const NO_WORKFLOWS_GRACE_MS = 5 * 60_000;
 /** Failed jobs whose logs are read for the ci-fix lane's test titles. */
 const MAX_FAILED_LOGS = 5;
 /** Test titles kept from those logs (a log is untrusted, PR-controlled output). */
 export const MAX_FAILING_TITLES = 50;
-/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state. */
-export function readPrHead(exec, pr, cwd) {
-    const res = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefOid,state'], { cwd });
-    let v = {};
-    try {
-        v = JSON.parse(res.stdout);
-    }
-    catch { /* checked below */ }
-    if (res.status !== 0 || typeof v.headRefOid !== 'string' || !/^[0-9a-f]{40}$/.test(v.headRefOid) || typeof v.state !== 'string') {
-        throw new Error(`gh pr view ${pr} did not return a head sha and state (exit ${res.status}): ${res.stderr.trim()}`);
-    }
-    return { headRefOid: v.headRefOid, state: v.state };
-}
+/** `gh pr view <pr> --json headRefOid,state`; throws on anything but a full sha and a state (the GitHub forge's prHead). */
+export function readPrHead(exec, pr, cwd) { return ghPrHead(exec, pr, cwd); }
 /** True when `sha` is an ancestor of `head` in the local object store (GitHub still reports an older engine push). */
 function isAncestor(exec, cwd, sha, head) {
     return exec('git', ['merge-base', '--is-ancestor', sha, head], { cwd, env: TRUSTED_READ_ENV }).status === 0;
@@ -44,23 +37,23 @@ function isAncestor(exec, cwd, sha, head) {
  * head moved, or a reported check names an Actions run that is not one of
  * the head's workflow runs.
  */
-export function staleRead(exec, pr, head, report, cwd) {
-    const now = readPrHead(exec, pr, cwd).headRefOid;
+export function staleRead(exec, pr, head, report, cwd, forge) {
+    const now = (forge ? forge.reviews.prHead(pr) : readPrHead(exec, pr, cwd)).headRefOid;
     if (now !== head)
         return `the PR head is ${now.slice(0, 12)}, not ${head.slice(0, 12)}`;
-    const runs = new Set(fetchWorkflowRuns(exec, head, cwd).map((r) => String(r.databaseId)));
+    const runs = new Set((forge ? forge.checks.runsForHead(pr, head) : fetchWorkflowRuns(exec, head, cwd)).map((r) => String(r.databaseId)));
     const foreign = report.checks.filter((c) => c.class !== 'advisory' && c.runId && !runs.has(c.runId)).map((c) => c.name);
     return foreign.length > 0 ? `checks ${foreign.join(', ')} belong to workflow runs of another commit` : null;
 }
 /** `file > title` of the failing tests in the failed checks' job logs (at most MAX_FAILED_LOGS jobs, MAX_FAILING_TITLES titles). */
-export function failingTestTitles(exec, report, cwd) {
+export function failingTestTitles(exec, report, cwd, forge) {
     const out = new Set();
     const jobs = report.checks.filter((c) => c.class === 'failed' && c.jobId).slice(0, MAX_FAILED_LOGS);
     for (const c of jobs) {
-        const log = exec('gh', ['run', 'view', '--job', c.jobId, '--log'], { cwd });
-        if (log.status !== 0)
+        const log = forge ? forge.checks.jobLog(c.jobId) : ghJobLog(exec, c.jobId, cwd);
+        if (!log.ok)
             continue;
-        for (const t of parseFailingTests(log.stdout)) {
+        for (const t of parseFailingTests(log.text)) {
             if (out.size >= MAX_FAILING_TITLES)
                 break;
             out.add(t.title ? `${t.file} > ${t.title}` : t.file);
@@ -84,7 +77,7 @@ export async function driveGates(o) {
         const left = o.deadline - o.now();
         if (left <= 0)
             return { kind: 'timeout', ...(last ? { report: last } : {}) };
-        const view = readPrHead(o.exec, o.pr, o.cwd);
+        const view = o.forge ? o.forge.reviews.prHead(o.pr) : readPrHead(o.exec, o.pr, o.cwd);
         if (view.state !== 'OPEN')
             return { kind: 'not-open', state: view.state };
         if (view.headRefOid !== o.head) {
@@ -101,6 +94,7 @@ export async function driveGates(o) {
                 // A cancel lands between ship's polls, not only at the end of its window.
                 watch: true, reruns: o.reruns, sleep: async (ms) => { if (o.cancelled())
                     throw new GatesCancelled(); await o.sleep(ms); }, now: o.now,
+                ...(o.forge ? { forge: o.forge } : {}),
             });
         }
         catch (error) {
@@ -110,7 +104,7 @@ export async function driveGates(o) {
         }
         const report = res.report;
         if (report.verdict === 'green' || report.verdict === 'failed' || report.verdict === 'flaky') {
-            const stale = staleRead(o.exec, o.pr, o.head, report, o.cwd);
+            const stale = staleRead(o.exec, o.pr, o.head, report, o.cwd, o.forge);
             if (stale) {
                 await wait(`ignored a ${report.verdict} read: ${stale}`);
                 continue;
@@ -121,7 +115,7 @@ export async function driveGates(o) {
         if (report.verdict === 'green')
             return { kind: 'green', report };
         if (report.verdict === 'failed')
-            return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd) };
+            return { kind: 'failed', report, tests: failingTestTitles(o.exec, report, o.cwd, o.forge) };
         if (report.verdict === 'flaky' && !res.timedOut)
             return { kind: 'flaky', report };
         if (report.pending.includes(NO_WORKFLOWS_TRIGGERED)) {

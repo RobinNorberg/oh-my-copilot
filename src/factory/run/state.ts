@@ -27,7 +27,9 @@ import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
+import { sameRepo } from '../../ship/config.js';
 import type { ShipVerdict } from '../../ship/state.js';
+import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -149,6 +151,12 @@ export interface FactoryRunState {
   /** The issue number; 0 for a ci-heal run, which has no issue. */
   issue: number;
   heal?: FactoryHealRecord;
+  /**
+   * The forge the run started on (critic amendments §A.9). Absent in states
+   * written before forges existed, which ran on GitHub; optional, so their
+   * integrity seal still verifies.
+   */
+  forgeKind?: ForgeKind;
   repoUrl: string;
   base: string;
   branch: string;
@@ -182,6 +190,12 @@ export interface FactoryRunState {
   checkoutHead?: string;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
   gateComments?: string[];
+  /**
+   * The progress stage last written to the tracker (factory forges design §7);
+   * absent until the first write succeeds, and in states written before
+   * progress sync existed (optional, so their seal still verifies).
+   */
+  trackerStage?: ProgressStage;
   lanes: FactoryLaneRecord[];
   /** Lane failures retried per phase key (`implement`, `review@<sha12>`, `fix@<round>`). */
   retries: Record<string, number>;
@@ -295,12 +309,47 @@ export function setGate(state: FactoryRunState, name: string, reason: string, no
   };
 }
 
+/**
+ * The tracker progress stage of a run (factory forges design §7): a merge
+ * gate or the merge phase is ready-to-merge, any other gate and failed are
+ * blocked.
+ */
+export function trackerStageOf(s: Pick<FactoryRunState, 'phase' | 'gate'>): ProgressStage {
+  if (s.gate) return s.gate.name === 'merge' ? 'ready-to-merge' : 'blocked';
+  switch (s.phase) {
+    case 'intake': case 'plan': return 'queued';
+    case 'implement': case 'publish': case 'fix': case 'conflict-fix': case 'ci-fix': return 'building';
+    case 'review': return 'reviewing';
+    case 'prepare': case 'gates': return 'verifying';
+    case 'merge': return 'ready-to-merge';
+    case 'merged': return 'done';
+    case 'cancelled': return 'cancelled';
+    case 'failed': return 'blocked';
+  }
+}
+
 export function computeFactoryIntegrity(state: FactoryRunState): string {
   return createHash('sha256').update(JSON.stringify({ ...state, integrity: undefined })).digest('hex');
 }
 
 export function verifyFactoryIntegrity(state: FactoryRunState): boolean {
   return typeof state.integrity === 'string' && state.integrity === computeFactoryIntegrity(state);
+}
+
+/**
+ * Why a resume must refuse, or null (critic amendments §A.9): a config change
+ * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ * With `resolvedRepoUrl` (the forge config's repository), a run whose
+ * recorded repoUrl names another repository (repoIdentity) refuses too.
+ */
+export function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKind' | 'issue' | 'kind' | 'heal' | 'repoUrl'>, resolved: ForgeKind, resolvedRepoUrl?: string): string | null {
+  const recorded = state.forgeKind ?? 'github';
+  const label = runLabel(runKeyOf(state));
+  if (recorded !== resolved) return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+  if (resolvedRepoUrl !== undefined && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
+    return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
+  }
+  return null;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
@@ -311,6 +360,8 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (!FACTORY_PHASES.includes(s.phase as FactoryPhase)) return 'phase';
   if (!isStr(s.implementer) || !s.implementer) return 'implementer';
   if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal') return 'kind';
+  if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops') return 'forgeKind';
+  if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.kind === 'ci-heal') {
     const h = s.heal as Record<string, unknown> | undefined;
     const d = h?.diagnosis as Record<string, unknown> | undefined;

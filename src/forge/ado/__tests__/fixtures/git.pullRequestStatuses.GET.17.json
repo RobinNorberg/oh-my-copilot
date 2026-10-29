@@ -1,0 +1,31 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-statuses/list?view=azure-devops-rest-7.1",
+  "note": "adapted: ci/lint failed on iteration 1 and succeeded on iteration 2 (the head)",
+  "route": "git.pullRequestStatuses.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "value": [
+      {
+        "id": 1,
+        "state": "failed",
+        "description": "lint failed",
+        "context": { "name": "lint", "genre": "ci" },
+        "createdBy": { "displayName": "Lint bot", "uniqueName": "lint@example.com" },
+        "creationDate": "2026-10-28T10:02:00.000Z",
+        "updatedDate": "2026-10-28T10:02:00.000Z",
+        "iterationId": 1
+      },
+      {
+        "id": 2,
+        "state": "succeeded",
+        "description": "lint passed",
+        "context": { "name": "lint", "genre": "ci" },
+        "createdBy": { "displayName": "Lint bot", "uniqueName": "lint@example.com" },
+        "creationDate": "2026-10-28T11:02:00.000Z",
+        "updatedDate": "2026-10-28T11:02:00.000Z",
+        "iterationId": 2
+      }
+    ],
+    "count": 2
+  }
+}

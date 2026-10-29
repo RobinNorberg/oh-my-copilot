@@ -33,7 +33,7 @@ import { resolveShipConfig } from '../ship/config.js';
 import { defaultExec } from '../ship/exec.js';
 import { latestVerdict, readShipState } from '../ship/state.js';
 import { excerpt, parseJsonl } from './copilot-session-eval.js';
-import { FACTORY_RUN_BASE, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE, FACTORY_RUN_PR, FACTORY_RUN_REPO_URL, SCENARIOS, } from './copilot-sdk-scenarios.js';
+import { FACTORY_RUN_BASE, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE, FACTORY_RUN_PR, FACTORY_RUN_REPO_URL, laneModelLabel, SCENARIOS, } from './copilot-sdk-scenarios.js';
 /** Appended to the first review prompt of `factory-run-fix` (by the scenario, not the issue: the implementer never sees it). */
 export const FIX_REVIEW_INSTRUCTION = [
     '',
@@ -162,20 +162,23 @@ export function prepareFactoryRepo(dir) {
 export class RecordingLanes {
     inner;
     requestChangesOnce;
+    model;
     kind;
     starts = [];
     results = new Map();
     reviews = 0;
-    constructor(inner, requestChangesOnce) {
+    /** `model`: pinned on every lane start (the engine sets none, so lanes would run on runtime auto). */
+    constructor(inner, requestChangesOnce, model) {
         this.inner = inner;
         this.requestChangesOnce = requestChangesOnce;
+        this.model = model;
         this.kind = inner.kind;
     }
     async start(input) {
         this.starts.push({ laneId: input.laneId, profile: input.profile, maxCredits: input.maxCredits, baseRef: input.baseRef });
         const firstReview = input.profile === 'review' && this.reviews++ === 0;
         const prompt = firstReview && this.requestChangesOnce ? `${input.prompt}\n${FIX_REVIEW_INSTRUCTION}` : input.prompt;
-        return this.inner.start({ ...input, prompt });
+        return this.inner.start({ ...input, prompt, ...(this.model ? { model: this.model } : {}) });
     }
     async poll(remoteId) {
         return this.keep(await this.inner.poll(remoteId));
@@ -230,7 +233,7 @@ export async function runFactoryRunScenario(input) {
     const base = {
         name: input.name,
         timeoutMs: limits.laneTimeoutMs,
-        model: 'copilot_run lanes (runtime auto)',
+        model: laneModelLabel(input.model, []),
         maxCredits: input.maxCredits,
         budget: input.budget,
         capped: false,
@@ -244,7 +247,7 @@ export async function runFactoryRunScenario(input) {
     const bare = join(dir, 'remote.git');
     const baseBefore = bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`);
     const gh = scriptedFactoryGh(bare);
-    const lanes = new RecordingLanes(input.lanes ? input.lanes(repo) : copilotLanes(input), input.name === 'factory-run-fix');
+    const lanes = new RecordingLanes(input.lanes ? input.lanes(repo) : copilotLanes(input), input.name === 'factory-run-fix', input.model);
     const warnings = [];
     let outcome = null;
     let error;
@@ -301,6 +304,7 @@ export async function runFactoryRunScenario(input) {
     catch { /* best effort */ }
     const parked = evidence.outcome?.gate === 'merge';
     error ??= parked ? undefined : `run did not park at awaiting-human: merge: ${evidence.outcome?.message ?? 'no outcome'}`;
-    return { ...base, events, idle: parked && !error, timedOut: false, ...(error ? { error } : {}), factory: evidence };
+    const model = laneModelLabel(input.model, [...lanes.results.values()].map((r) => r.model ?? null));
+    return { ...base, model, events, idle: parked && !error, timedOut: false, ...(error ? { error } : {}), factory: evidence };
 }
 //# sourceMappingURL=copilot-factory-run-scenario.js.map

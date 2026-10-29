@@ -1,0 +1,32 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1",
+  "note": "adapted: ids, refs and shas changed so the samples of one PR join up (project Web, repository web-app, PR 17, head 1111…)",
+  "route": "git.pullRequests.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
+  "stdout": {
+    "repository": {
+      "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+      "name": "web-app",
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719",
+      "project": { "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c", "name": "Web", "state": "wellFormed" }
+    },
+    "pullRequestId": 17,
+    "codeReviewId": 17,
+    "status": "active",
+    "createdBy": { "displayName": "Owner", "uniqueName": "owner@example.com", "id": "d6245f20-2af8-44f4-9451-8107cb2767db" },
+    "creationDate": "2026-10-28T10:00:00.000Z",
+    "title": "factory: issue 42",
+    "description": "Closes AB#42",
+    "sourceRefName": "refs/heads/factory/issue-42",
+    "targetRefName": "refs/heads/main",
+    "mergeStatus": "succeeded",
+    "isDraft": true,
+    "mergeId": "f5fc8381-3fb2-49fe-8a0d-27dcc2d6ef82",
+    "lastMergeSourceCommit": { "commitId": "1111111111111111111111111111111111111111", "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/1111111111111111111111111111111111111111" },
+    "lastMergeTargetCommit": { "commitId": "2222222222222222222222222222222222222222", "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/2222222222222222222222222222222222222222" },
+    "lastMergeCommit": { "commitId": "3333333333333333333333333333333333333333", "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/3333333333333333333333333333333333333333" },
+    "reviewers": [],
+    "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/17",
+    "supportsIterations": true
+  }
+}

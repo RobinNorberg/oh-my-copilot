@@ -1,0 +1,49 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1",
+  "note": "adapted: the PR 17 merge-ref builds: 101 for head 1111… on merge commit 3333…, 100 for the older push aaaa…, 99 with no PR head field",
+  "route": "build.builds.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "branchName": "refs/pull/17/merge", "reasonFilter": "pullRequest", "queryOrder": "queueTimeDescending", "$top": "50" },
+  "stdout": {
+    "count": 3,
+    "value": [
+      {
+        "id": 101,
+        "buildNumber": "20261028.3",
+        "status": "completed",
+        "result": "succeeded",
+        "queueTime": "2026-10-28T11:00:08.000Z",
+        "definition": { "id": 9, "name": "web-app CI", "path": "\\", "type": "build" },
+        "project": { "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c", "name": "Web" },
+        "reason": "pullRequest",
+        "sourceBranch": "refs/pull/17/merge",
+        "sourceVersion": "3333333333333333333333333333333333333333",
+        "parameters": "{\"system.pullRequest.pullRequestId\":\"17\",\"system.pullRequest.sourceBranch\":\"refs/heads/factory/issue-42\",\"system.pullRequest.targetBranch\":\"refs/heads/main\",\"system.pullRequest.sourceCommitId\":\"1111111111111111111111111111111111111111\"}",
+        "triggerInfo": { "pr.number": "17", "pr.isFork": "False", "pr.triggerRepository": "3411ebc1-d5aa-464f-9615-0b527bc66719", "pr.triggerRepository.Type": "TfsGit", "pr.sourceSha": "1111111111111111111111111111111111111111", "pr.sourceBranch": "refs/heads/factory/issue-42" },
+        "url": "https://dev.azure.com/contoso/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/Builds/101"
+      },
+      {
+        "id": 100,
+        "buildNumber": "20261028.2",
+        "status": "completed",
+        "result": "failed",
+        "definition": { "id": 9, "name": "web-app CI" },
+        "reason": "pullRequest",
+        "sourceBranch": "refs/pull/17/merge",
+        "sourceVersion": "4444444444444444444444444444444444444444",
+        "triggerInfo": { "pr.number": "17", "pr.sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      },
+      {
+        "id": 99,
+        "buildNumber": "20261028.1",
+        "status": "completed",
+        "result": "succeeded",
+        "definition": { "id": 9, "name": "web-app CI" },
+        "reason": "pullRequest",
+        "sourceBranch": "refs/pull/17/merge",
+        "sourceVersion": "3333333333333333333333333333333333333333",
+        "triggerInfo": { "pr.number": "17" }
+      }
+    ]
+  }
+}

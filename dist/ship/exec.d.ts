@@ -4,6 +4,7 @@
  * array, and `guardExec` refuses anything outside an allowlist of the exact
  * command shapes the engine builds before anything spawns.
  */
+import { type AdoGuardContext } from '../forge/ado/guard.js';
 export interface ExecResult {
     status: number;
     stdout: string;
@@ -55,6 +56,9 @@ export declare function assertSafeCommand(cmd: string, args: string[], extraProt
 /**
  * Wrap an Exec so every call is checked by assertSafeCommand first.
  * `extraProtected` is read per call (the CLI sets it to the run's base once known).
+ * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts) with
+ * the ship policy: reads and the build-evaluation requeue, for `ado`'s forge
+ * only; without `ado` they are refused.
  */
-export declare function guardExec(exec: Exec, extraProtected?: () => readonly string[]): Exec;
+export declare function guardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined): Exec;
 //# sourceMappingURL=exec.d.ts.map

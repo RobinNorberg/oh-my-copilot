@@ -188,11 +188,10 @@ mcp__azure-devops__repo_create_pull_request_thread
 
 az CLI fallback:
 ```bash
-az repos pr comment create \
-  --id {prId} \
-  --content '{comment}' \
-  --org "{org}" \
-  -o json 2>&1
+# {"comments":[{"parentCommentId":0,"content":"{comment}","commentType":1}],"status":1}
+az devops invoke --area git --resource pullRequestThreads --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --in-file "{threadBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 ```
 
 **Reply to an existing thread:**
@@ -209,13 +208,10 @@ mcp__azure-devops__repo_reply_to_comment
 
 az CLI fallback:
 ```bash
-az repos pr comment create \
-  --id {prId} \
-  --content '{reply}' \
-  --reply-id {commentId} \
-  --thread-id {threadId} \
-  --org "{org}" \
-  -o json 2>&1
+# {replyBodyFile} holds {"content":"{reply}","parentCommentId":{commentId},"commentType":1}
+az devops invoke --area git --resource pullRequestThreadComments --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} threadId={threadId} \
+  --in-file "{replyBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 ```
 
 Confirm after each action:
@@ -354,11 +350,15 @@ az repos pr list \
 az repos pr show --id {prId} --org "{org}" -o json
 
 # Add a comment
-az repos pr comment create \
-  --id {prId} --content '{comment}' --org "{org}" -o json
+# {"comments":[{"parentCommentId":0,"content":"{comment}","commentType":1}],"status":1}
+az devops invoke --area git --resource pullRequestThreads --http-method POST \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --in-file "{threadBodyFile}" --api-version 7.1 --org "{org}" --detect false -o json 2>&1
 
-# List comments
-az repos pr comment list --id {prId} --org "{org}" -o table
+# List comment threads
+az devops invoke --area git --resource pullRequestThreads --http-method GET \
+  --route-parameters project="{project}" repositoryId="{repo}" pullRequestId={prId} \
+  --api-version 7.1 --org "{org}" --detect false -o json
 
 # Add a reviewer
 az repos pr reviewer add \
@@ -385,3 +385,5 @@ az repos pr update --id {prId} --status {status} --org "{org}" -o json
 | Permission denied on vote | User may not be listed as a reviewer; add themselves first via Step 6 |
 | Thread update fails | Verify thread is still `Active`; resolved threads cannot receive new replies |
 | Rate limit / 429 | Wait 2 seconds and retry once; if still failing, note the section as unavailable |
+
+> The `az` CLI has no PR comment or PR diff subcommand. Comments use the Pull Request Threads REST API through `az devops invoke` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads?view=azure-devops-rest-7.1, https://learn.microsoft.com/en-us/cli/azure/devops#az-devops-invoke). The diff comes from `git fetch` of `refs/pull/{prId}/merge` (source and target branch refs as fallback) plus `git diff` of `lastMergeTargetCommit.commitId...lastMergeSourceCommit.commitId` (https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests/get-pull-request?view=azure-devops-rest-7.1).

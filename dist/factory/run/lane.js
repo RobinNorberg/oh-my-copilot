@@ -108,6 +108,7 @@ export class CopilotLaneBackend {
             notes: snap.notes ?? [],
             process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
             ...(snap.sandbox ? { sandbox: snap.sandbox } : {}),
+            ...(snap.model ? { model: snap.model } : {}),
         };
     }
 }

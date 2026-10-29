@@ -1,0 +1,6 @@
+{
+  "provenance": "synthetic: team boards, shape of the Boards - List sample (REST 7.1)",
+  "route": "work.boards.GET",
+  "routeParameters": { "project": "Web", "team": "Web Team" },
+  "stdout": { "count": 1, "value": [{ "id": "4a7c1bb1-b5f1-4c2e-8d1f-8d2c1b6b7e4a", "name": "Stories" }] }
+}

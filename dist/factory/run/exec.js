@@ -9,6 +9,8 @@
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
+ *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
@@ -19,6 +21,7 @@
  */
 import { existsSync, readdirSync } from 'fs';
 import { isAbsolute } from 'path';
+import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -39,6 +42,31 @@ const isBranch = (s) => typeof s === 'string' && BRANCH.test(s) && !s.includes('
 const isFile = (s) => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const isTitle = (s) => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
 const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+/** A progress label of the factory family (factory forges design §7): `factory:<stage>`. */
+const FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
+/**
+ * Progress sync's label write: `issue edit <n> [--add-label <factory:*>] (--remove-label <factory:*>)*`,
+ * at least one flag, one add at most, factory labels only and each once.
+ */
+function isProgressLabelEdit(r) {
+    if (r.length < 3 || r.length % 2 === 0 || !NUMBER.test(r[0]))
+        return false;
+    const labels = [];
+    let adds = 0;
+    for (let i = 1; i < r.length; i += 2) {
+        if (r[i] === '--add-label') {
+            if (i !== 1 || ++adds > 1)
+                return false;
+        }
+        else if (r[i] !== '--remove-label') {
+            return false;
+        }
+        if (!FACTORY_LABEL.test(r[i + 1]) || labels.includes(r[i + 1]))
+            return false;
+        labels.push(r[i + 1]);
+    }
+    return true;
+}
 function isFactoryBranch(name, protectedBranches) {
     return isBranch(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length
         && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
@@ -93,6 +121,8 @@ function factoryGh(a) {
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
         if (sub === 'comment')
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
+        if (sub === 'edit')
+            return isProgressLabelEdit(r);
         return false;
     }
     if (group === 'pr') {
@@ -116,11 +146,18 @@ function factoryGh(a) {
         return sub === 'view' && same(r, ['--json', 'url']);
     return null;
 }
+const adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, '/').split('/').pop()} ${args.join(' ')}\`: ${reason}`);
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
+ * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
+ * which refuses them unless `ado` names the run's forge and az entry.
  */
-export function assertFactoryCommand(cmd, args, extraProtected = [], env) {
+export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
+    if (isAdoCommand(cmd)) {
+        checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args));
+        return;
+    }
     const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase();
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
@@ -143,9 +180,14 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env) {
         throw new FactorySafetyError(error instanceof Error ? error.message.replace(/^omg ship refuses/, 'omg factory run refuses') : String(error));
     }
 }
-/** Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call. */
-export function factoryGuardExec(exec, extraProtected = () => []) {
+/**
+ * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ */
+export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined) {
     return (cmd, args, opts) => {
+        if (isAdoCommand(cmd))
+            return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
         assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
         return exec(cmd, args, opts);
     };

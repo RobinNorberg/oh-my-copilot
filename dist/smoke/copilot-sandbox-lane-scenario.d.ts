@@ -73,6 +73,8 @@ export interface SandboxLaneScenarioInput {
     tempDir?: string;
     /** Test seam: the host support probe that gates the lanes (default: a credit-free SDK client on `bin`). */
     probeHost?: () => Promise<SandboxHostRecord>;
+    /** The model every lane runs on (the driver's cheap pick); unset: runtime auto. */
+    model?: string;
 }
 /** A world-writable directory outside the temp dir and the profile: `%PUBLIC%` on Windows, else /var/tmp. */
 export declare function defaultSharedDir(env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): string;

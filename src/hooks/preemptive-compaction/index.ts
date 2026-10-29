@@ -11,7 +11,7 @@
  * This version injects warning messages to prompt manual compaction.
  */
 
-import * as fs from 'fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import * as path from 'path';
 import { tmpdir } from 'os';
 
@@ -60,7 +60,7 @@ function debugLog(...args: unknown[]): void {
         typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
       )
       .join(' ')}\n`;
-    fs.appendFileSync(DEBUG_FILE, msg);
+    appendFileNoFollow(DEBUG_FILE, msg);
   }
 }
 

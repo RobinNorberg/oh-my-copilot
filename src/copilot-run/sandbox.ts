@@ -15,8 +15,9 @@
  * reports as not sandboxed stops the session with `sandbox-escaped`.
  */
 
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, posix, resolve, win32 } from 'node:path';
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
@@ -31,6 +32,8 @@ export interface SandboxHostRecord {
   supported: boolean;
   reason?: string;
   capabilities: Record<string, boolean>;
+  /** The runtime reported support but the trial launch failed (Linux); `reason` says why. */
+  launchFailed?: true;
 }
 
 /** `CopilotRunSnapshot.sandbox` (§5). */
@@ -196,6 +199,8 @@ export interface SandboxPolicyContext {
   settings: SandboxSettings;
   /** The host commits for a write session (omg factory run): the common git dir is read-only as a whole (§4.3). */
   hostCommits?: boolean;
+  /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
+  toolPaths?: string[];
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -218,10 +223,12 @@ function nodeModulesLinkTarget(worktree: string): string | null {
  *
  * The grants are directories, and git writes by lock and rename (`index.lock`
  * then `index`, `HEAD.lock` then `HEAD`), which needs create and rename rights
- * in the directory itself, so the admin dir's `commondir`, `gitdir` and
- * `config.worktree` files (and the worktree's `.git` file) cannot be kept
- * read-only inside it: a lane can create or rename over any of them. The
- * host records them at creation (config.worktree as a hash, absent counts)
+ * in the directory itself. The admin dir's `commondir`, `gitdir` and
+ * `config.worktree` files and the worktree's `.git` file are read-only
+ * entries nested in those grants (buildSandboxConfig): on Copilot CLI 1.0.105
+ * on Windows the sandbox then refuses writing, renaming over and deleting
+ * them, but it cannot protect a name that does not exist yet. The
+ * host also records them at creation (config.worktree as a hash, absent counts)
  * and runs no git in the worktree once they differ (git-worktree.ts
  * worktreeGitLinksIntact, and runHostGit before every command), with every host git call
  * hardened (hostGitHardeningArgs) and pointed at the recorded git dir.
@@ -231,9 +238,18 @@ function nodeModulesLinkTarget(worktree: string): string | null {
  */
 export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | 'platform'>): string[] {
   const out = [join(ctx.commonGitDir, 'objects')];
-  const own = ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+  const own = ownGitDir(ctx);
   if (own) out.push(own);
   return out;
+}
+
+/** The session's own `<commonGitDir>/worktrees/<name>` admin dir, or null (isolation "none", or a git dir elsewhere). */
+function ownGitDir(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | 'platform'>): string | null {
+  return ctx.gitDir && resolve(ctx.gitDir) !== resolve(ctx.commonGitDir) && isUnderRoot(ctx.gitDir, join(ctx.commonGitDir, 'worktrees'), ctx.platform) ? ctx.gitDir : null;
+}
+
+function existingFile(p: string): string | null {
+  try { return lstatSync(p).isFile() ? p : null; } catch { return null; }
 }
 
 /**
@@ -246,13 +262,34 @@ export function laneGitWritePaths(ctx: Pick<SandboxPolicyContext, 'commonGitDir'
  * config, hooks, info, packed-refs and every ref stay read-only: the session
  * cannot plant core.hooksPath, core.fsmonitor or a hook for host-side git.
  * `deniedPaths` is sent only when the host reports `denied_paths`. An extra
- * read-write path outside the worktree throws.
+ * read-write path outside the worktree throws. The tool dirs (`toolPaths`)
+ * are read-only in both profiles; one that holds the real home, the worktree,
+ * the common git dir or the job dir (a `D:\dev\node.exe` with every repo
+ * beside it), or is a filesystem root, is dropped.
  */
 export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyContext, host: SandboxHostRecord): SandboxConfig {
   const { settings } = ctx;
   for (const p of settings.extraReadwritePaths) {
     if (!isUnderRoot(p, ctx.worktree, ctx.platform)) throw new Error(`sandbox.extraReadwritePaths: ${p} is not under the worktree ${ctx.worktree}`);
   }
+  const P = ctx.platform === 'win32' ? win32 : posix;
+  const real = (p: string): string => { try { return realpathSync.native(p); } catch { return p; } };
+  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
+  // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
+  // The lane's global git config is read-only.
+  const relocated = relocatedProfileEnv(ctx.jobHome);
+  const laneHome = [relocated.TEMP!, relocated.USERPROFILE!];
+  const gitConfigDir = dirname(relocated.GIT_CONFIG_GLOBAL!);
+  // The unsandboxed runtime runs git in the worktree too: a lane that rewrote the worktree's `.git` gitfile or
+  // the admin dir's commondir or config.worktree would point that git at its own config (core.fsmonitor, a filter
+  // driver). The sandbox keeps a read-only file nested in a read-write dir read-only, rename-over and delete
+  // included (Copilot CLI 1.0.105, Windows), but only a file that exists: job.ts creates config.worktree when git
+  // reads one. `<worktree>/.git` is a file only in a linked worktree; with isolation "none" it is the (read-only)
+  // git dir. With hostCommits the whole common git dir, the admin dir in it, is read-only already.
+  const own = ctx.hostCommits ? null : ownGitDir(ctx);
+  const gitLinks = [join(ctx.worktree, '.git'), ...(own ? ['commondir', 'gitdir', 'config.worktree'].map((f) => join(own, f)) : [])]
+    .map(existingFile).filter((p): p is string => p !== null);
   const common = {
     allowBypass: false as const,
     allowDevToolAccess: false as const,
@@ -267,25 +304,133 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...common,
       userPolicy: {
         filesystem: {
-          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...settings.extraReadonlyPaths],
-          readwritePaths: [ctx.jobDir, ...settings.extraReadwritePaths],
+          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
+          readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
         },
         network: { allowOutbound: false, allowLocalNetwork: false },
       },
     };
   }
+  // The worktree is read-write: a job dir inside it (isolation "none" with the OMC state root in the repository)
+  // would hand the lane the job home and events.jsonl, which the unsandboxed engine and runtime read back.
+  if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
+    throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
+  }
   const nm = nodeModulesLinkTarget(ctx.worktree);
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
-    readwritePaths: [ctx.worktree, ctx.jobDir, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, ctx.jobHome, ...(nm ? [nm] : []), ...settings.extraReadonlyPaths],
+    readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
-    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot'].map((p) => join(ctx.realHome, p));
+    // Git's plaintext credential stores (~/.git-credentials, XDG) and the credential-cache daemon's socket dir.
+    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
+      .map((p) => join(ctx.realHome, p));
   }
   const network: SandboxConfig['userPolicy']['network'] = settings.writeNetwork === 'registry'
     ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
     : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
+}
+
+// ---------------------------------------------------------------------------
+// Tool dirs (allowDevToolAccess stays off)
+// ---------------------------------------------------------------------------
+
+/** The host lookups behind laneToolPaths (a test seam). */
+export interface ToolPathProbe {
+  /** The engine's own node binary (process.execPath). */
+  execPath: string;
+  /** `name` resolved on the lane's PATH, or null. */
+  which: (name: string) => string | null;
+  /** `<git> --exec-path`, or null. */
+  gitExecPath: (git: string) => string | null;
+  realpath: (p: string) => string;
+}
+
+const isFile = (p: string): boolean => { try { return statSync(p).isFile(); } catch { return false; } };
+
+/**
+ * `name` on `env`'s PATH (PATHEXT on win32), or null. Empty and relative
+ * entries are skipped, and so is any entry under a `node_modules` dir (npx
+ * and npm scripts put `node_modules/.bin` first, so a package's shim would
+ * stand in for the host git that `git --exec-path` runs).
+ */
+export function findOnPath(name: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, exists: (p: string) => boolean = isFile): string | null {
+  const P = platform === 'win32' ? win32 : posix;
+  const exts = platform === 'win32' ? (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  const inNodeModules = platform === 'win32' ? /(^|[\\/])node_modules([\\/]|$)/i : /(^|\/)node_modules(\/|$)/;
+  for (const raw of (envValue(env, 'PATH') ?? '').split(P.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, '$1');
+    if (!dir || !P.isAbsolute(dir) || inNodeModules.test(dir)) continue;
+    for (const ext of exts) if (exists(P.join(dir, name + ext))) return P.join(dir, name + ext);
+  }
+  return null;
+}
+
+function defaultToolPathProbe(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): ToolPathProbe {
+  return {
+    execPath: process.execPath,
+    which: (name) => findOnPath(name, env, platform),
+    gitExecPath: (git) => {
+      const r = spawnSync(git, ['--exec-path'], { encoding: 'utf8', timeout: 10_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      const out = r.status === 0 ? (r.stdout ?? '').trim() : '';
+      return out || null;
+    },
+    realpath: (p) => realpathSync.native(p),
+  };
+}
+
+/**
+ * The install dirs of the programs every lane starts: node (the plugin
+ * hooks and the `t` MCP server run `node`) and git. With
+ * `allowDevToolAccess` off the runtime grants no PATH entry, and on Windows
+ * MXC then denies launching `C:\Program Files\nodejs\node.exe`; on Linux
+ * and macOS the system dirs stay granted, so this matters there for a
+ * toolchain outside them (nvm, the runner's tool cache, Homebrew's Cellar).
+ * They are granted read-only, never read-write, and by name rather than all
+ * of PATH (allowDevToolAccess): PATH entries can be per-user dirs that hold
+ * config or credentials, and a lane needs only these two programs.
+ *
+ * node: the dir of the engine's own binary and of the `node` the lane's
+ * PATH resolves to (both, realpath and link). git: Git for Windows's install
+ * root (`<root>\cmd\git.exe` launches `<root>\mingw64\bin\git.exe`, which
+ * runs `<root>\usr\bin\sh.exe` for hooks), found from `git --exec-path`
+ * (`<root>\mingw64\libexec\git-core`) and kept only when the PATH git lies
+ * under it; elsewhere the git binary's dir and its exec path.
+ */
+export function laneToolPaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, probe: ToolPathProbe = defaultToolPathProbe(env, platform)): string[] {
+  const P = platform === 'win32' ? win32 : posix;
+  const out: string[] = [];
+  const real = (p: string) => { try { return probe.realpath(p); } catch { return p; } };
+  const binDirs = (p: string | null) => (p ? [P.dirname(p), P.dirname(real(p))] : []);
+  out.push(...binDirs(probe.execPath), ...binDirs(probe.which('node')));
+  const git = probe.which('git');
+  if (git) {
+    const execDir = probe.gitExecPath(git);
+    const root = platform === 'win32' ? gitForWindowsRoot(execDir) : null;
+    const under = (p: string, dir: string) => { const rel = P.relative(dir, p); return !!rel && !rel.startsWith('..') && !P.isAbsolute(rel); };
+    if (root && under(real(git), root)) out.push(root);
+    else out.push(...binDirs(git), ...(execDir ? [execDir] : []));
+  }
+  const seen = new Set<string>();
+  return out.map((p) => P.resolve(p)).filter((p) => {
+    const key = platform === 'win32' ? p.toLowerCase() : p;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Git for Windows's install root from its `--exec-path` (`<root>\mingw64\libexec\git-core`), or null. */
+function gitForWindowsRoot(execDir: string | null): string | null {
+  return execDir && /[\\/]libexec[\\/]git-core[\\/]?$/i.test(execDir) ? win32.resolve(execDir, '..', '..', '..') : null;
+}
+
+/** `<root>\usr\bin\sh.exe`, the shell Git for Windows runs hooks with, for the git on `env`'s PATH; or null. */
+export function gitForWindowsShell(env: NodeJS.ProcessEnv, probe: ToolPathProbe = defaultToolPathProbe(env, 'win32')): string | null {
+  const git = probe.which('git');
+  const root = git ? gitForWindowsRoot(probe.gitExecPath(git)) : null;
+  return root ? win32.join(root, 'usr', 'bin', 'sh.exe') : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,8 +459,66 @@ function rpcMethod(root: unknown, path: string[], name: string): (() => Promise<
   }
 }
 
-/** `client.rpc.sandbox.getHostSupport()`; supported only with the `shell` capability. */
-export async function probeHostSupport(client: unknown, timeoutMs: number): Promise<SandboxHostRecord> {
+/** Runs `cmd args` to completion, shaped like spawnSync's result. */
+export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string };
+
+/**
+ * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
+ * creates, network included (`--unshare-all`; policies without outbound
+ * access get an empty net namespace), around `true`.
+ */
+export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--', 'true'];
+
+const defaultTrialSpawner: SandboxTrialSpawner = (cmd, args, timeoutMs) => {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
+  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '' };
+};
+
+/**
+ * Whether bwrap can launch a process here: null when it can, else why not.
+ * `sandbox.getHostSupport` reports a host with bwrap installed as supported
+ * even where unprivileged user namespaces lack capabilities (Ubuntu 24.04's
+ * AppArmor default), and there every sandboxed launch fails.
+ */
+export function bwrapTrialLaunchError(spawn: SandboxTrialSpawner = defaultTrialSpawner, timeoutMs = 10_000): string | null {
+  const r = spawn('bwrap', BWRAP_TRIAL_ARGS, timeoutMs);
+  if ((r.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return 'bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap';
+  if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
+  if (r.status === 0) return null;
+  const stderr = r.stderr.trim().slice(0, 200);
+  if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
+    return 'unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; '
+      + `see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
+  }
+  return `a trial bwrap launch failed (exit ${String(r.status)})${stderr ? `: ${stderr}` : ''}`;
+}
+
+let cachedBwrapTrial: string | null | undefined;
+/** bwrapTrialLaunchError with the real bwrap, run once per process. */
+export function cachedBwrapTrialLaunchError(): string | null {
+  if (cachedBwrapTrial === undefined) cachedBwrapTrial = bwrapTrialLaunchError();
+  return cachedBwrapTrial;
+}
+
+export interface HostLaunchCheck {
+  /** Default process.platform; the trial launch runs on linux only. */
+  platform?: NodeJS.Platform;
+  /** Test seam: the trial launch (default cachedBwrapTrialLaunchError). */
+  trialLaunch?: () => string | null;
+}
+
+/**
+ * `client.rpc.sandbox.getHostSupport()`; supported only with the `shell`
+ * capability and, on Linux, a trial bwrap launch that succeeds.
+ */
+export async function probeHostSupport(client: unknown, timeoutMs: number, launch: HostLaunchCheck = {}): Promise<SandboxHostRecord> {
+  const host = await askHostSupport(client, timeoutMs);
+  if (!host.supported || (launch.platform ?? process.platform) !== 'linux') return host;
+  const launchError = (launch.trialLaunch ?? cachedBwrapTrialLaunchError)();
+  return launchError ? { supported: false, reason: launchError, capabilities: host.capabilities, launchFailed: true } : host;
+}
+
+async function askHostSupport(client: unknown, timeoutMs: number): Promise<SandboxHostRecord> {
   const call = rpcMethod(client, ['rpc', 'sandbox'], 'getHostSupport') as (() => Promise<unknown>) | null;
   if (!call) return { supported: false, reason: 'the SDK has no sandbox.getHostSupport RPC', capabilities: {} };
   try {
@@ -383,11 +586,35 @@ export function unconfirmedMode(profile: SandboxProfile, settings: SandboxSettin
  * session over RPC instead (sessionGitHubToken).
  */
 export const SESSION_ENV_ALLOWLIST: readonly string[] = [
-  'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'LANG',
+  // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
+  'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'LANG',
   // Non-secret OS variables shells and git expect.
   'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
   'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
+  // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
+  // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
+  // paths from it (python-repl/paths.ts, utils/paths.ts getDataDir/getStateDir) finds them, but sandboxed writes there
+  // are denied, so the effect is breakage or shared read state, never escalation.
+  'LOCALAPPDATA',
 ];
+
+/**
+ * The variables the Windows sandbox (MXC) needs to launch any process,
+ * hook or shell, with the runtime's env taken verbatim
+ * (`inheritDefaultEnv` false): presence only, the value is not checked.
+ * Copilot CLI 1.0.105 rejects a launch without them ("policy_validation:
+ * ... missing the required variable(s)"). In runtime.node 1.0.105 only
+ * SYSTEMROOT sits next to that message; LOCALAPPDATA comes from separate MXC
+ * strings ("LOCALAPPDATA and USERPROFILE both unset", "no user-profile
+ * grants: %LOCALAPPDATA% is unset ... Programs") and from the live error.
+ * SystemRoot locates the system DLLs, LOCALAPPDATA the container's profile.
+ */
+export const MXC_REQUIRED_ENV: readonly string[] = ['SYSTEMROOT', 'LOCALAPPDATA'];
+
+/** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
+export function missingSandboxEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+  return platform === 'win32' ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === undefined) : [];
+}
 
 /** The caller's env value for `name`, looked up case-insensitively (Windows env keys). */
 function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -427,14 +654,35 @@ export function scrubTokens(text: string, secrets: readonly string[]): string {
   return out.replace(TOKEN_PATTERN, '[redacted]');
 }
 
-/** The relocated profile variables, all under `<jobHome>/profile`. */
+/**
+ * The relocated profile variables, all under `<jobHome>/profile`, and the
+ * temp variables, `<jobHome>/tmp` (the caller creates it). The runtime
+ * grants the sandbox read-write on the dir its own TEMP names ("temporary
+ * storage" in the SDK's allowDevToolAccess doc; the host value was the
+ * user's whole %TEMP%, other jobs' homes and repositories included), and
+ * no temp dir at all when that dir is missing. The temp and profile dirs
+ * are lane-writable (buildSandboxConfig), so nothing the unsandboxed
+ * runtime loads code or config from sits in them: the global git config
+ * (the runtime runs git itself, and core.fsmonitor or a filter driver would
+ * run unsandboxed) is read-only in `<jobHome>/git`, the package cache sits
+ * in `<jobHome>/.cache`, and node's compile cache, which defaults to the
+ * temp dir, is off.
+ */
 export function relocatedProfileEnv(jobHome: string): Record<string, string> {
   const profile = join(jobHome, 'profile');
+  const tmp = join(jobHome, 'tmp');
   return {
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
     USERPROFILE: profile,
     HOME: profile,
     XDG_CONFIG_HOME: join(profile, '.config'),
-    GIT_CONFIG_GLOBAL: join(profile, '.gitconfig'),
+    GIT_CONFIG_GLOBAL: join(jobHome, 'git', 'config'),
+    NODE_DISABLE_COMPILE_CACHE: '1',
+    // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant
+    // anchored on it, in the job home but outside the lane-writable profile: the runtime loads code from its pkg dir.
+    COPILOT_CACHE_HOME: join(jobHome, '.cache', 'copilot'),
   };
 }
 

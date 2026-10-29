@@ -12,11 +12,15 @@
 import { spawnSync } from "child_process";
 import {
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync, realpathSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   utimesSync,
@@ -141,6 +145,78 @@ describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"
       epoch: 2,
     });
     expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("2");
+  });
+
+  it("takes over after a holder was killed mid owner.epoch publication", async () => {
+    const dir = makeRunDir();
+    writeFileSync(join(dir, EPOCH_FILE_NAME), "3", "utf8");
+    // SIGKILL between the atomic writer's backup link() and its rename:
+    // owner.epoch keeps a second same-directory name, and the temp survives.
+    const rollback = `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`;
+    const temporary = `.${EPOCH_FILE_NAME}.tmp.00000000-0000-4000-8000-000000000000`;
+    linkSync(join(dir, EPOCH_FILE_NAME), join(dir, rollback));
+    writeFileSync(join(dir, temporary), "4", "utf8");
+    craftJsonLock(dir, { pid: spawnDeadPid(), epoch: 3, timestamp: Date.now() });
+    backdate(join(dir, LOCK_NAME));
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 4,
+    });
+    expect(readdirSync(dir)).not.toContain(rollback);
+    expect(readdirSync(dir)).not.toContain(temporary);
+    expect(statSync(join(dir, EPOCH_FILE_NAME)).nlink).toBe(1);
+  });
+
+  it("stays busy against a live holder mid owner.epoch publication without lowering the ceiling", async () => {
+    const dir = makeRunDir();
+    writeFileSync(join(dir, EPOCH_FILE_NAME), "5", "utf8");
+    linkSync(
+      join(dir, EPOCH_FILE_NAME),
+      join(dir, `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`),
+    );
+    craftJsonLock(dir, { pid: process.pid, epoch: 5, timestamp: Date.now() });
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({ outcome: "busy" });
+    expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8")).toBe("5");
+  });
+
+  it("keeps a live holder's owner.epoch temp when the contender is busy", async () => {
+    const dir = makeRunDir();
+    writeFileSync(join(dir, EPOCH_FILE_NAME), "5", "utf8");
+    const temporary = `.${EPOCH_FILE_NAME}.tmp.00000000-0000-4000-8000-000000000000`;
+    writeFileSync(join(dir, temporary), "6", "utf8");
+    craftJsonLock(dir, { pid: process.pid, epoch: 6, timestamp: Date.now() });
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({ outcome: "busy" });
+    expect(readdirSync(dir)).toContain(temporary);
+  });
+
+  it("leaves a symlink named like owner.epoch residue alone and still acquires", async () => {
+    const dir = makeRunDir();
+    const outside = join(dirname(dir), "outside");
+    writeFileSync(outside, "keep", "utf8");
+    const planted = `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`;
+    symlinkSync(outside, join(dir, planted));
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 1,
+    });
+    expect(lstatSync(join(dir, planted)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(outside, "utf8")).toBe("keep");
+  });
+
+  it("leaves a directory named like owner.epoch residue alone and still acquires", async () => {
+    const dir = makeRunDir();
+    const planted = `${EPOCH_FILE_NAME}.rollback.00000000-0000-4000-8000-000000000000`;
+    mkdirSync(join(dir, planted));
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 1,
+    });
+    expect(statSync(join(dir, planted)).isDirectory()).toBe(true);
   });
 
   it.each(["10garbage", "1garbage", "+10", " 10", "10 ", "1.0", "1e2", "0", "9007199254740992"]) (

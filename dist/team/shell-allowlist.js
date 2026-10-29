@@ -13,7 +13,7 @@
  */
 import { realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { isUnderRoot, normalizeShellCommand } from './sdk-policy.js';
+import { hasDotDotSegment, isUnderRoot, normalizeShellCommand } from './sdk-policy.js';
 export const MAX_ALLOWLIST_COMMAND_CHARS = 2000;
 const MAX_SEGMENTS = 3;
 /**
@@ -128,10 +128,20 @@ function checkPath(value, quoted, gitRev, ctx) {
         // bash (before 5.2) matches `..` with `.*`.
         if (!quoted && part.split(/[\\/]/).some((seg) => seg.startsWith('.') && /[*?]/.test(seg)))
             return `hidden-file glob ${part}`;
-        // A backslash separates path segments on every platform (`src\a.ts`, `..\..\x`).
+        // `resolve` collapses `l/../x` lexically; the kernel climbs from the target of the link `l`.
+        if (hasDotDotSegment(part))
+            return `.. segment in path ${part}`;
+        // A backslash separates path segments on every platform (`src\a.ts`).
         const slashed = part.replace(/\\/g, '/');
         const abs = isAbsolute(slashed) ? slashed : resolve(ctx.cwd, slashed);
-        if (!isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform))
+        let inside = false;
+        try {
+            inside = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
+        }
+        catch {
+            return `path not resolvable: ${part}`;
+        }
+        if (!inside)
             return `path outside the worktree: ${part}`;
     }
     return null;

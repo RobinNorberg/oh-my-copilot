@@ -1,0 +1,17 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/comments/add-comment?view=azure-devops-rest-7.1",
+  "note": "adapted: a markdown comment on item 42",
+  "route": "wit.comments.POST",
+  "routeParameters": { "project": "Web", "workItemId": "42" },
+  "queryParameters": { "format": "markdown" },
+  "stdout": {
+    "workItemId": 42,
+    "id": 52,
+    "version": 1,
+    "text": "factory: PR opened",
+    "format": "markdown",
+    "createdBy": { "displayName": "Factory", "uniqueName": "factory@example.com" },
+    "createdDate": "2026-10-28T10:05:00.000Z",
+    "url": "https://dev.azure.com/contoso/Web/_apis/wit/workItems/42/comments/52"
+  }
+}

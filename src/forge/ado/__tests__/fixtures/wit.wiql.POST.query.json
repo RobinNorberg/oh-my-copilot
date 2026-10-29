@@ -1,0 +1,15 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/wiql/query-by-wiql?view=azure-devops-rest-7.1",
+  "note": "adapted: the answer to the area/tag and board-column WIQL (the fixture key does not include the body; tests assert the body)",
+  "route": "wit.wiql.POST",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "$top": "50" },
+  "stdout": {
+    "queryType": "flat",
+    "queryResultType": "workItem",
+    "asOf": "2026-10-28T10:00:00.000Z",
+    "columns": [{ "referenceName": "System.Id", "name": "ID", "url": "https://dev.azure.com/contoso/_apis/wit/fields/System.Id" }],
+    "sortColumns": [{ "field": { "referenceName": "Microsoft.VSTS.Common.Priority", "name": "Priority" }, "descending": false }],
+    "workItems": [{ "id": 42, "url": "https://dev.azure.com/contoso/_apis/wit/workItems/42" }]
+  }
+}

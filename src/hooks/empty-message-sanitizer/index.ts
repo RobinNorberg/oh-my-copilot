@@ -17,7 +17,7 @@
  * Adapted from oh-my-opencode's empty-message-sanitizer hook.
  */
 
-import * as fs from 'fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import {
@@ -42,7 +42,7 @@ function debugLog(...args: unknown[]): void {
     const msg = `[${new Date().toISOString()}] ${DEBUG_PREFIX} ${args
       .map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)))
       .join(' ')}\n`;
-    fs.appendFileSync(DEBUG_FILE, msg);
+    appendFileNoFollow(DEBUG_FILE, msg);
   }
 }
 

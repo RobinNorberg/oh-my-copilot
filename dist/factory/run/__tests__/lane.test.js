@@ -91,6 +91,8 @@ describe('CopilotLaneBackend', () => {
         expect(started[0][0]).toMatchObject({ isolation: 'worktree', startRef: 'main', profile: 'review', model: 'gpt-test', timeoutMs: 60_000, maxCredits: 30 });
         expect(started[0][1]).toEqual({ allowLive: true, disableStopContinuations: true, ledgerKey: 'factory-lane:implement-1', sandboxScope: 'factory' });
         expect(result.sandbox?.mode).toBe('enforced');
+        // The model the session ran on (copilot_run snapshot.model) reaches the lane result.
+        expect(result.model).toBe('gpt-test');
         // A review lane that changed nothing ends on its base commit.
         expect(result.headSha).toBe(result.baseSha);
         expect(result.changes?.changedFiles).toEqual([]);

@@ -534,6 +534,16 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends bubblewrap slirp4netns uidmap
           bwrap --version
+          # This job exists to prove the sandbox really launches. Ubuntu 24.04
+          # restricts unprivileged user namespaces through AppArmor, so bwrap
+          # fails with `loopback: Failed RTM_NEWADDR` and the host probe
+          # reports `launch-blocked`. Lift the restriction on this throwaway
+          # runner (docs/REFERENCE.md, "Linux: restricted user namespaces").
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --ro-bind / / --dev /dev --unshare-all --die-with-parent -- true
+          echo "bwrap trial launch ok"
 
       - name: Prepare isolated smoke dirs
         if: steps.gate.outputs.enabled == 'true'
@@ -619,7 +629,11 @@ jobs:
           pgrep -af "$GITHUB_WORKSPACE/(scripts|dist|bridge)/" && echo "::notice::hook children still running after 30 s; snapshotting anyway" || true
           mkdir -p "$STAGE"
           set +e
-          rsync -a --exclude='cache-occupancy/' --exclude='*.lock' "$SMOKE_ROOT/" "$STAGE/"
+          # The .node binaries under a relocated profile's .cache/copilot/pkg/
+          # (COPILOT_CACHE_HOME) are the Copilot CLI runtime the canary downloads,
+          # not an artifact; runtime.node holds token-shaped strings that trip the
+          # scan. The rest of that tree is still staged and scanned.
+          rsync -a --exclude='cache-occupancy/' --exclude='*.lock' --exclude='**/.cache/copilot/pkg/**/*.node' "$SMOKE_ROOT/" "$STAGE/"
           status=$?
           set -e
           # 24 = some source files vanished during the copy (a late child): the snapshot is still usable.

@@ -90,6 +90,7 @@ export interface MergeDecision {
     reasons: string[];
     command: string[];
 }
+/** The GitHub forge's human merge command. */
 export declare function mergeCommand(pr: number, headSha: string): string[];
 export declare function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, housekeepingContent, changedFiles, humanOverride, extraProtected }: MergeInput): MergeDecision;
 //# sourceMappingURL=merge.d.ts.map

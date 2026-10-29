@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -113,6 +113,68 @@ describe('sdk permission policy', () => {
     expect(decideSdkPermission(req(), ctx()).approve).toBe(approve);
   });
 
+  // A junction needs no privilege on Windows; elsewhere the type is ignored and a symlink is made.
+  it.each(['cwd', 'stateRoot'] as const)('refuses a new file under a link planted in the %s root', (rootName) => {
+    const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+    try {
+      const root = rootName === 'cwd' ? worktree : stateRoot;
+      symlinkSync(outside, join(root, 'd'), 'junction');
+      for (const fileName of [join(root, 'd', 'new.txt'), join(root, 'd', 'sub', 'new.txt')]) {
+        expect(decideSdkPermission({ kind: 'write', fileName }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/outside/) });
+      }
+      // A missing leaf under a real dir still resolves inside.
+      expect(decideSdkPermission({ kind: 'write', fileName: join(root, 'real', 'new.txt') }, ctx()).approve).toBe(true);
+      // A dangling link at the missing name fails closed.
+      symlinkSync(join(outside, 'gone'), join(root, 'dangling'), 'junction');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(root, 'dangling', 'new.txt') }, ctx()).approve).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  // `resolve` would collapse `l/../x` to `x`; the kernel climbs from the target of the link `l`.
+  it('refuses a read or write path with a .. segment', () => {
+    for (const p of [`${worktree}/l/../x.txt`, `${worktree}\\l\\..\\x.txt`, 'l/../x.txt']) {
+      expect(decideSdkPermission({ kind: 'write', fileName: p }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+      expect(decideSdkPermission({ kind: 'read', path: p }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+    }
+  });
+
+  it('refuses a .. segment in any path field, not only the first', () => {
+    const clean = join(worktree, 'x.txt');
+    expect(decideSdkPermission({ kind: 'write', resolvedPath: clean, path: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+    expect(decideSdkPermission({ kind: 'read', resolvedPath: clean, fileName: 'l/../x.txt' }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/\.\. segment/) });
+  });
+
+  it('checks containment on every path field and refuses fields that disagree', () => {
+    const outside = join(tmpdir(), 'sdk-team-elsewhere', 'x.txt');
+    const clean = join(worktree, 'x.txt');
+    for (const kind of ['read', 'write'] as const) {
+      expect(decideSdkPermission({ kind, resolvedPath: clean, path: outside }, ctx())).toMatchObject({ approve: false });
+      expect(decideSdkPermission({ kind, resolvedPath: clean, fileName: outside }, ctx())).toMatchObject({ approve: false });
+      expect(decideSdkPermission({ kind, resolvedPath: clean, path: join(worktree, 'y.txt') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/different targets/) });
+      expect(decideSdkPermission({ kind, resolvedPath: clean, path: 'x.txt' }, ctx()).approve).toBe(true);
+    }
+  });
+
+  // A hard link needs no privilege on Windows (NTFS); realpath cannot see it.
+  it('refuses a write to a hard-linked or non-regular existing target', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+    try {
+      writeFileSync(join(outside, 'victim.txt'), 'x');
+      linkSync(join(outside, 'victim.txt'), join(worktree, 'h.txt'));
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'h.txt') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/hard link/) });
+      mkdirSync(join(worktree, 'adir'), { recursive: true });
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'adir') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/not a regular file/) });
+      writeFileSync(join(worktree, 'plain.txt'), 'x');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'plain.txt') }, ctx()).approve).toBe(true);
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'fresh', 'new.txt') }, ctx()).approve).toBe(true);
+    } finally {
+      rmSync(join(worktree, 'h.txt'), { force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   // Review cases: quoted tokens, doubled whitespace, variable indirection, and
   // the false positives of a loose `git ... push` match. The policy is a
   // denylist, not a sandbox (see SDK_SHELL_DENY_PATTERNS); these are the
@@ -152,6 +214,24 @@ describe('sdk permission policy', () => {
     ['git p""ush', false],
     ['git --git-dir .git push', false],
     ['git --work-tree . push', false],
+    // A credential helper re-enabled or run directly.
+    ['git -c credential.helper=manager credential fill', false],
+    ['git -c "credential.helper=manager" credential fill', false],
+    ['git --config-env=credential.helper=H credential fill', false],
+    ['git --config-env credential.https://github.com.helper=H fetch', false],
+    ['git credential-manager get', false],
+    ['git credential-store get', false],
+    ['git-credential-manager get', false],
+    ['& "C:\\Program Files\\Git\\mingw64\\bin\\git-credential-manager.exe" get', false],
+    ['/usr/lib/git-core/git-credential-libsecret get', false],
+    ['git config credential.helper manager', false],
+    ['git config --global credential.helper manager', false],
+    ['git config --worktree credential.https://github.com.helper x', false],
+    ['npm test && git-credential-manager get', false],
+    ['cmd /c git-credential-manager.exe get', false],
+    ['git credential fill', true],
+    ['rg git-credential-manager src', true],
+    ['cat docs/git-credential-notes.md', true],
     ['git -c user.name=x commit -m y', true],
     ['git -c core.autocrlf=false status', true],
     ['git config --get user.name', true],

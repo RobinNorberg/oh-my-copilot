@@ -13,6 +13,19 @@
 
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
+import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
+import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
+
+/**
+ * The forge reads of a gate evaluation (factory forges design §2): the PR
+ * head and its checks, runs, logs and reruns. Omitted = GitHub through the
+ * gh calls in this file, unchanged; the factory engine passes the Azure
+ * DevOps adapter's.
+ */
+export interface GateForge {
+  checks: ForgeChecks;
+  reviews: Pick<ForgeReviews, 'prHead'>;
+}
 
 export const CHECK_FIELDS = 'name,state,bucket,link,workflow,event,startedAt,completedAt';
 
@@ -118,9 +131,10 @@ function actionsIds(link: string | undefined): { runId?: string; jobId?: string 
   return m ? { runId: m[1], jobId: m[2] } : {};
 }
 
-export function classifyCheck(check: GhCheck, advisory: readonly string[]): ClassifiedCheck {
+/** `advisory` is set only by a forge adapter (an ADO non-blocking policy); gh's JSON has no such field. */
+export function classifyCheck(check: GhCheck & { advisory?: boolean }, advisory: readonly string[]): ClassifiedCheck {
   const state = check.state.toUpperCase();
-  const cls: CheckClass = advisory.includes(check.name)
+  const cls: CheckClass = advisory.includes(check.name) || check.advisory === true
     ? 'advisory'
     : PASS_STATES.has(state) ? 'pass' : PENDING_STATES.has(state) ? 'pending' : 'failed';
   return { ...check, class: cls, ...actionsIds(check.link) };
@@ -321,54 +335,33 @@ export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]
   };
 }
 
-/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list. */
-export function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] {
-  const res = exec('gh', ['pr', 'checks', String(pr), '--json', CHECK_FIELDS], { cwd });
-  const out = res.stdout.trim();
-  if (out.startsWith('[')) return parseChecksJson(out);
-  if (/no checks reported/i.test(res.stderr) || /no checks reported/i.test(res.stdout)) return [];
-  throw new GhChecksError(`gh pr checks ${pr} failed (exit ${res.status}): ${res.stderr.trim() || out}`);
-}
+/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
+export function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] { return ghPrChecks(exec, pr, cwd); }
 
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
-export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string {
-  const res = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefOid'], { cwd });
-  let sha: unknown;
-  try {
-    sha = (JSON.parse(res.stdout) as { headRefOid?: unknown }).headRefOid;
-  } catch {
-    sha = undefined;
-  }
-  if (res.status !== 0 || typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
-    throw new GhChecksError(`gh pr view ${pr} did not return a head sha (exit ${res.status}): ${res.stderr.trim()}`);
-  }
-  return sha;
-}
+export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string { return ghHeadSha(exec, pr, cwd); }
 
 /**
- * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
- * the head sha. A run whose reported head_sha is another commit is dropped, so
- * a previous head's failed run never counts against this one.
+ * Every Actions workflow run for the head sha (`gh run list --commit`); a run
+ * whose reported head_sha is another commit is dropped (the GitHub forge's runsForHead).
  */
-export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] {
-  const res = exec('gh', ['run', 'list', '--commit', headSha, '--json', RUN_FIELDS, '--limit', '100'], { cwd });
-  if (res.status !== 0) throw new GhChecksError(`gh run list --commit ${headSha.slice(0, 12)} failed (exit ${res.status}): ${res.stderr.trim()}`);
-  return parseRunsJson(res.stdout.trim() || '[]').filter((r) => !r.headSha || r.headSha === headSha);
-}
+export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] { return ghRunsForHead(exec, headSha, cwd); }
 
 /**
  * One gate evaluation against a single head sha: resolve the head first
  * (unless given), read the checks and the workflow runs for it, then re-read
  * the head; a head that moved in between is pending whatever the verdict
  * (green, failed or flaky), since the read may mix two heads. Failed Actions
- * jobs' logs are read for known-flaky attribution.
+ * jobs' logs are read for known-flaky attribution. `forge` replaces the gh
+ * reads (GateForge); without it every call is the GitHub one.
  */
-export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport {
-  const head = headSha ?? fetchHeadSha(exec, pr, cwd);
-  const checked = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
-  const runs = fetchWorkflowRuns(exec, head, cwd);
+export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport {
+  const readHead = () => (forge ? forge.reviews.prHead(pr).headRefOid : fetchHeadSha(exec, pr, cwd));
+  const head = headSha ?? readHead();
+  const checked = evaluateChecks(pr, forge ? forge.checks.checks(pr, head) : fetchChecks(exec, pr, cwd), config);
+  const runs = forge ? forge.checks.runsForHead(pr, head) : fetchWorkflowRuns(exec, head, cwd);
   const report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
-  const after = fetchHeadSha(exec, pr, cwd);
+  const after = readHead();
   if (after !== head) {
     return {
       ...report,
@@ -380,8 +373,8 @@ export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known:
   const analyses: FlakyAnalysis[] = [];
   for (const check of report.checks) {
     if (check.class !== 'failed' || !check.jobId) continue;
-    const log = exec('gh', ['run', 'view', '--job', check.jobId, '--log'], { cwd });
-    analyses.push(analyzeFailedLog(check.name, check.runId, log.status === 0 ? log.stdout : '', known, check.jobId));
+    const log = forge ? forge.checks.jobLog(check.jobId) : ghJobLog(exec, check.jobId, cwd);
+    analyses.push(analyzeFailedLog(check.name, check.runId, log.ok ? log.text : '', known, check.jobId));
   }
   return applyFlakyAnalysis(report, analyses);
 }
@@ -403,6 +396,8 @@ export interface WatchOptions {
   /** Drive mode: a transient GitHub error while reading the gates is a pending poll, not a thrown error. */
   retryTransient?: boolean;
   onTransient?: (message: string) => void;
+  /** The forge reads (GateForge); omitted = GitHub. */
+  forge?: GateForge;
 }
 
 export interface WatchResult {
@@ -425,7 +420,7 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
   for (;;) {
     let report: GateReport;
     try {
-      report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
+      report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha, opts.forge);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!opts.retryTransient || !opts.watch || !(error instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message)) throw error;
@@ -449,9 +444,9 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
       for (const id of ready) {
         // Spend the budget first: a crash after the rerun must not allow a second one.
         budget!.record(id);
-        const res = opts.exec('gh', ['run', 'rerun', id, '--failed'], { cwd: opts.cwd });
-        if (res.status !== 0) {
-          report.suggestions.push(`gh run rerun ${id} --failed failed: ${res.stderr.trim()}`);
+        const res = opts.forge ? opts.forge.checks.rerun(opts.pr, id) : ghRerun(opts.exec, id, opts.cwd);
+        if (!res.ok) {
+          report.suggestions.push(`${opts.forge ? `rerun of ${id}` : `gh run rerun ${id} --failed`} failed: ${res.stderr.trim()}`);
           return { report, rerun, timedOut: false };
         }
         rerun.push(id);

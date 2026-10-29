@@ -1,0 +1,77 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list?view=azure-devops-rest-7.1",
+  "note": "adapted: a blocking build policy (build 101), a blocking status policy (ci/lint), a non-blocking build policy and a blocking minimum-reviewers policy on PR 17",
+  "route": "policy.evaluations.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17" },
+  "stdout": {
+    "value": [
+      {
+        "evaluationId": "e1a2b3c4-0000-4000-8000-000000000001",
+        "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17",
+        "startedDate": "2026-10-28T11:00:05.000Z",
+        "completedDate": "2026-10-28T11:20:00.000Z",
+        "status": "approved",
+        "configuration": {
+          "id": 4,
+          "revision": 1,
+          "isEnabled": true,
+          "isBlocking": true,
+          "isDeleted": false,
+          "settings": { "buildDefinitionId": 9, "displayName": "CI", "queueOnSourceUpdateOnly": true, "validDuration": 720, "scope": [{ "refName": "refs/heads/main", "matchKind": "Exact", "repositoryId": "3411ebc1-d5aa-464f-9615-0b527bc66719" }] },
+          "type": { "id": "0609b952-1397-4640-95ec-e00a01b2c241", "displayName": "Build", "url": "https://dev.azure.com/contoso/Web/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241" }
+        },
+        "context": { "lastMergeCommitId": "3333333333333333333333333333333333333333", "lastMergeSourceCommitId": "1111111111111111111111111111111111111111", "lastMergeTargetCommitId": "2222222222222222222222222222222222222222", "buildId": 101, "buildDefinitionId": 9, "buildDefinitionName": "web-app CI", "buildIsNotCurrent": false, "buildStartedUtc": "2026-10-28T11:00:10.000Z", "isExpired": false, "wasAutoQueued": true }
+      },
+      {
+        "evaluationId": "e1a2b3c4-0000-4000-8000-000000000002",
+        "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17",
+        "startedDate": "2026-10-28T10:02:00.000Z",
+        "status": "approved",
+        "configuration": {
+          "id": 5,
+          "revision": 1,
+          "isEnabled": true,
+          "isBlocking": true,
+          "isDeleted": false,
+          "settings": { "statusName": "lint", "statusGenre": "ci", "authorId": null, "invalidateOnSourceUpdate": true, "defaultDisplayName": "Lint", "policyApplicability": null },
+          "type": { "id": "cbdc66da-9728-4af8-aada-9a5a32e4a226", "displayName": "Status", "url": "https://dev.azure.com/contoso/Web/_apis/policy/types/cbdc66da-9728-4af8-aada-9a5a32e4a226" }
+        },
+        "context": null
+      },
+      {
+        "evaluationId": "e1a2b3c4-0000-4000-8000-000000000003",
+        "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17",
+        "startedDate": "2026-10-28T11:00:05.000Z",
+        "status": "rejected",
+        "configuration": {
+          "id": 6,
+          "revision": 1,
+          "isEnabled": true,
+          "isBlocking": false,
+          "isDeleted": false,
+          "settings": { "buildDefinitionId": 11, "displayName": "Docs build", "validDuration": 0 },
+          "type": { "id": "0609b952-1397-4640-95ec-e00a01b2c241", "displayName": "Build", "url": "https://dev.azure.com/contoso/Web/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241" }
+        },
+        "context": { "buildId": 101, "buildDefinitionId": 11, "buildIsNotCurrent": false, "isExpired": false }
+      },
+      {
+        "evaluationId": "e1a2b3c4-0000-4000-8000-000000000004",
+        "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/17",
+        "startedDate": "2026-10-28T10:00:05.000Z",
+        "status": "rejected",
+        "configuration": {
+          "id": 2,
+          "revision": 1,
+          "isEnabled": true,
+          "isBlocking": true,
+          "isDeleted": false,
+          "settings": { "minimumApproverCount": 1, "creatorVoteCounts": false, "resetOnSourcePush": true },
+          "type": { "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd", "displayName": "Minimum number of reviewers", "url": "https://dev.azure.com/contoso/Web/_apis/policy/types/fa4e907d-c16b-4a4c-9dfa-4906e5d171dd" }
+        },
+        "context": null
+      }
+    ],
+    "count": 4
+  }
+}

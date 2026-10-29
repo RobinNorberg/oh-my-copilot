@@ -1,0 +1,17 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/wiql/query-by-id?view=azure-devops-rest-7.1",
+  "note": "adapted: a flat saved query returning items 42 and 44",
+  "route": "wit.wiql.GET",
+  "routeParameters": { "project": "Web", "id": "0b6c6d2e-1a5f-4c83-9d2e-7f1a2b3c4d5e" },
+  "queryParameters": { "$top": "50" },
+  "stdout": {
+    "queryType": "flat",
+    "queryResultType": "workItem",
+    "asOf": "2026-10-28T10:00:00.000Z",
+    "columns": [{ "referenceName": "System.Id", "name": "ID", "url": "https://dev.azure.com/contoso/_apis/wit/fields/System.Id" }],
+    "workItems": [
+      { "id": 42, "url": "https://dev.azure.com/contoso/_apis/wit/workItems/42" },
+      { "id": 44, "url": "https://dev.azure.com/contoso/_apis/wit/workItems/44" }
+    ]
+  }
+}

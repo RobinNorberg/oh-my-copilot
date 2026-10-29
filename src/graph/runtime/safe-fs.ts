@@ -272,6 +272,42 @@ export function writeOperationFileAtomically(
   operations.sync();
 }
 
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Remove what lib/atomic-write leaves next to `fileName` when its writer is
+ * killed: the `<name>.rollback.<uuid>` hard link to the prior target (which
+ * leaves the target with nlink 2, so every later private-regular-file read
+ * refuses it) and, with `temporaries`, the `.<name>.tmp.<uuid>` file. Only
+ * regular files are removed; anything else with a matching name is left
+ * alone. Unlinking a same-directory name never lets an outside hardlink pass
+ * the nlink check. Temporaries belong to a writer mid-publication, so pass
+ * `temporaries` only while holding the exclusive right to write `fileName`.
+ */
+export function removeCrashedAtomicWriteResidue(
+  operations: DirectoryOperations,
+  fileName: string,
+  options: { readonly temporaries: boolean },
+): void {
+  const name = escapeRegExp(fileName);
+  const residue = options.temporaries
+    ? new RegExp(`^(?:${name}\\.rollback|\\.${name}\\.tmp)\\.${UUID}$`)
+    : new RegExp(`^${name}\\.rollback\\.${UUID}$`);
+  for (const entry of operations.readDir()) {
+    if (!residue.test(entry)) continue;
+    try {
+      if (!operations.lstat(entry).isFile()) continue;
+      operations.unlink(entry);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+}
+
 export interface ContainedSubdirectoryOptions {
   /** Create missing components (descriptor-relative). Default: false. */
   readonly create?: boolean;

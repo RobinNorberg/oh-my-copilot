@@ -165,6 +165,8 @@ describe('reviewShellAllowlist refuses everything else', () => {
     'cat C:\\Users\\x\\.ssh\\id_rsa',
     'cat C:/Users/x/.ssh/id_rsa',
     'cat ..\\..\\.gitconfig',
+    'cat link/../a.ts',
+    'cat src\\..\\a.ts',
     'cat /etc/passwd',
     'type \\\\host\\share',
     'cat //host/share',

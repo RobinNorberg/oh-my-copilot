@@ -25,6 +25,8 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
+import { sameRepo } from '../../ship/config.js';
+import { PROGRESS_STAGES } from '../../forge/types.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -121,11 +123,52 @@ export function setGate(state, name, reason, now) {
         history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }],
     };
 }
+/**
+ * The tracker progress stage of a run (factory forges design §7): a merge
+ * gate or the merge phase is ready-to-merge, any other gate and failed are
+ * blocked.
+ */
+export function trackerStageOf(s) {
+    if (s.gate)
+        return s.gate.name === 'merge' ? 'ready-to-merge' : 'blocked';
+    switch (s.phase) {
+        case 'intake':
+        case 'plan': return 'queued';
+        case 'implement':
+        case 'publish':
+        case 'fix':
+        case 'conflict-fix':
+        case 'ci-fix': return 'building';
+        case 'review': return 'reviewing';
+        case 'prepare':
+        case 'gates': return 'verifying';
+        case 'merge': return 'ready-to-merge';
+        case 'merged': return 'done';
+        case 'cancelled': return 'cancelled';
+        case 'failed': return 'blocked';
+    }
+}
 export function computeFactoryIntegrity(state) {
     return createHash('sha256').update(JSON.stringify({ ...state, integrity: undefined })).digest('hex');
 }
 export function verifyFactoryIntegrity(state) {
     return typeof state.integrity === 'string' && state.integrity === computeFactoryIntegrity(state);
+}
+/**
+ * Why a resume must refuse, or null (critic amendments §A.9): a config change
+ * cannot swap adapters mid-run. A state without forgeKind ran on GitHub.
+ * With `resolvedRepoUrl` (the forge config's repository), a run whose
+ * recorded repoUrl names another repository (repoIdentity) refuses too.
+ */
+export function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
+    const recorded = state.forgeKind ?? 'github';
+    const label = runLabel(runKeyOf(state));
+    if (recorded !== resolved)
+        return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+    if (resolvedRepoUrl !== undefined && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
+        return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
+    }
+    return null;
 }
 const isStr = (v) => typeof v === 'string';
 const isCount = (v) => Number.isInteger(v) && v >= 0;
@@ -138,6 +181,10 @@ function shapeProblem(s) {
         return 'implementer';
     if (s.kind !== undefined && s.kind !== 'issue' && s.kind !== 'ci-heal')
         return 'kind';
+    if (s.forgeKind !== undefined && s.forgeKind !== 'github' && s.forgeKind !== 'azure-devops')
+        return 'forgeKind';
+    if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
+        return 'trackerStage';
     if (s.kind === 'ci-heal') {
         const h = s.heal;
         const d = h?.diagnosis;

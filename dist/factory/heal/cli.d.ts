@@ -12,6 +12,7 @@
  */
 import { Command } from 'commander';
 import type { Exec } from '../../ship/exec.js';
+import type { ForgeKind } from '../../forge/types.js';
 import { type HealConfig } from './config.js';
 import { type HealSignatureState } from './state.js';
 import type { LaneBackend } from '../run/lane.js';
@@ -48,6 +49,8 @@ export interface HealDeps {
     gateConfig?: GateConfigLoader;
     /** Test seams of the factory engine. */
     engine?: HealEngineDeps['engine'];
+    /** The origin's forge kind (originForgeKind); heal reads GitHub Actions only, so Azure DevOps is refused. Omitted = GitHub. */
+    forgeKind?: (root: string) => ForgeKind;
 }
 export interface ScanEntry {
     runId: string;

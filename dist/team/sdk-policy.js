@@ -5,8 +5,8 @@
  * host answers every `onPermissionRequest` with {@link decideSdkPermission},
  * and removes tools up front with {@link buildSdkExcludedTools}.
  */
-import { realpathSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { lstatSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 /**
  * git's global options before the subcommand: `-C <dir>`, `-c <k=v>`, the long
@@ -48,6 +48,14 @@ export const SDK_SHELL_DENY_PATTERNS = [
     // An alias (or an included config file) renames a denied subcommand: `git -c alias.p=push p`, `git config alias.p push`.
     ...gitSubcommandDeny(String.raw `(?:-c\s+|--config-env(?:=|\s+))['"]?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
     ...gitSubcommandDeny(String.raw `config\b[^;&|\n]*?(?:alias|include|includeif)\.`, 'git alias or include from a worker'),
+    ...gitSubcommandDeny(String.raw `config\b[^;&|\n]*?credential\.`, 'git credential helper from a worker'),
+    // A credential helper re-enabled on the command line (the lane's global config clears it), or one run directly:
+    // `git -c credential.helper=manager credential fill`, `git credential-manager get`, `git-credential-manager.exe get`.
+    ...gitSubcommandDeny(String.raw `(?:-c\s+|--config-env(?:=|\s+))['"]?credential\.`, 'git credential helper from a worker'),
+    ...gitSubcommandDeny(String.raw `credential-[\w-]`, 'git credential helper from a worker'),
+    // Only in command position (`rg git-credential-manager src` stays allowed): at the start, after a separator or
+    // `cmd /c`, after PowerShell's `&`, optionally as the basename of a path.
+    { re: /(?:^|[;&|(]|\bcmd(?:\.exe)?\s+\/[ck])\s*(?:&\s*)?(?:["'][^"']*[/\\]|["']|[^\s"';&|]*[/\\])?git-credential-[\w-]/i, reason: 'git credential helper from a worker' },
     // GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_CONFIG_PARAMETERS and GIT_CONFIG_GLOBAL set config (aliases) through the environment.
     { re: /\bGIT_CONFIG/i, reason: 'git config through the environment from a worker' },
 ];
@@ -58,16 +66,46 @@ export const SDK_SHELL_DENY_PATTERNS = [
 export function normalizeShellCommand(command) {
     return command.replace(/''|""/g, '').replace(/(["'])([^"'\s]+)\1/g, '$2');
 }
+/**
+ * The realpath of the deepest existing ancestor plus the missing components:
+ * `<root>/link/new.txt` with `link` a planted junction or symlink resolves
+ * through the link, so a write that creates a file is judged where it lands.
+ * A missing name that is itself a (dangling) link, and a realpath error
+ * other than ENOENT, throw: the permission callers deny.
+ */
 function canon(p, platform) {
-    let out = resolve(p);
-    try {
-        out = realpathSync.native(out);
+    let cur = resolve(p);
+    const rest = [];
+    let out;
+    for (;;) {
+        try {
+            out = join(realpathSync.native(cur), ...rest.reverse());
+            break;
+        }
+        catch (err) {
+            if (err.code !== 'ENOENT')
+                throw err;
+            let link = false;
+            try {
+                lstatSync(cur);
+                link = true;
+            }
+            catch { /* truly missing */ }
+            if (link)
+                throw new Error(`dangling link ${cur}`);
+            const up = dirname(cur);
+            if (up === cur) {
+                out = resolve(p);
+                break;
+            }
+            rest.push(basename(cur));
+            cur = up;
+        }
     }
-    catch { /* missing: keep the resolved form */ }
     out = out.replace(/\\/g, '/').replace(/\/+$/, '');
     return platform === 'win32' ? out.toLowerCase() : out;
 }
-/** True when `p` is `root` or lies below it (realpath, case-folded on win32). */
+/** True when `p` is `root` or lies below it (canon: realpath of the deepest existing ancestor, case-folded on win32). Throws as canon does. */
 export function isUnderRoot(p, root, platform = process.platform) {
     if (!p || !root)
         return false;
@@ -75,14 +113,68 @@ export function isUnderRoot(p, root, platform = process.platform) {
     const parent = canon(root, platform);
     return child === parent || child.startsWith(`${parent}/`);
 }
-function requestPath(req, cwd) {
+/**
+ * True when `p` has a `..` segment. `resolve` collapses `l/../x` lexically to
+ * `x`, but the kernel follows the link `l` first and climbs from its target.
+ */
+export function hasDotDotSegment(p) {
+    return p.split(/[\\/]+/).includes('..');
+}
+/**
+ * Why an existing write target is refused, or null (also for a new file).
+ * realpath cannot see a hard link: `<root>/h` linked to `~/.bashrc` resolves
+ * inside, and an in-place write lands in the outside file. A FIFO, device or
+ * directory is no file to edit either. `stat` follows a link, which
+ * {@link canon} has already judged.
+ */
+function existingWriteTargetDenial(p) {
+    let st;
+    try {
+        st = statSync(p);
+    }
+    catch (err) {
+        if (err.code === 'ENOENT')
+            return null;
+        throw err;
+    }
+    if (!st.isFile())
+        return 'write target is not a regular file';
+    return st.nlink > 1 ? 'write target has more than one hard link' : null;
+}
+/** The request's path, unresolved as given. */
+function rawRequestPath(req) {
     for (const key of ['resolvedPath', 'path', 'fileName']) {
         const value = req[key];
-        if (typeof value === 'string' && value.trim()) {
-            return isAbsolute(value) ? value : resolve(cwd, value);
-        }
+        if (typeof value === 'string' && value.trim())
+            return value;
     }
     return null;
+}
+/** True when any string path field of the request has a `..` segment, not only the first one. */
+function anyDotDotPath(req) {
+    return ['resolvedPath', 'path', 'fileName'].some((key) => {
+        const value = req[key];
+        return typeof value === 'string' && hasDotDotSegment(value);
+    });
+}
+function requestPath(req, cwd) {
+    const value = rawRequestPath(req);
+    return value === null ? null : isAbsolute(value) ? value : resolve(cwd, value);
+}
+/** Every string path field present, resolved: the runtime may act on any of them. */
+function requestPaths(req, cwd) {
+    const out = [];
+    for (const key of ['resolvedPath', 'path', 'fileName']) {
+        const value = req[key];
+        if (typeof value === 'string' && value.trim())
+            out.push(isAbsolute(value) ? value : resolve(cwd, value));
+    }
+    return out;
+}
+/** Why the fields of one request disagree on the target, or null. */
+function pathFieldsDisagree(paths, platform) {
+    const first = canon(paths[0], platform);
+    return paths.some((q) => canon(q, platform) !== first) ? 'path fields name different targets' : null;
 }
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export function shellDenyPrefixes(denyTools = []) {
@@ -117,18 +209,45 @@ export function decideSdkPermission(req, ctx) {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: true, reason: 'read without a path' };
+            if (anyDotDotPath(req))
+                return { approve: false, reason: `read path with a .. segment: ${path}` };
             const roots = [ctx.cwd, ctx.stateRoot, ctx.pluginRoot, ...(ctx.readRoots ?? [])];
-            return roots.some((root) => isUnderRoot(path, root, platform))
-                ? { approve: true, reason: 'read inside worker roots' }
-                : { approve: false, reason: `read outside worker roots: ${path}` };
+            try {
+                const disagree = pathFieldsDisagree(requestPaths(req, ctx.cwd), platform);
+                if (disagree)
+                    return { approve: false, reason: `read ${disagree}: ${path}` };
+                return requestPaths(req, ctx.cwd).every((q) => roots.some((root) => isUnderRoot(q, root, platform)))
+                    ? { approve: true, reason: 'read inside worker roots' }
+                    : { approve: false, reason: `read outside worker roots: ${path}` };
+            }
+            catch (err) {
+                return { approve: false, reason: `read path not resolvable: ${path}: ${err.message}` };
+            }
         }
         case 'write': {
             const path = requestPath(req, ctx.cwd);
             if (!path)
                 return { approve: false, reason: 'write without a path' };
-            return isUnderRoot(path, ctx.cwd, platform) || isUnderRoot(path, ctx.stateRoot, platform)
-                ? { approve: true, reason: 'write inside worktree or team state' }
-                : { approve: false, reason: `write outside worktree and team state: ${path}` };
+            if (anyDotDotPath(req))
+                return { approve: false, reason: `write path with a .. segment: ${path}` };
+            try {
+                const paths = requestPaths(req, ctx.cwd);
+                const disagree = pathFieldsDisagree(paths, platform);
+                if (disagree)
+                    return { approve: false, reason: `write ${disagree}: ${path}` };
+                for (const q of paths) {
+                    if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
+                        return { approve: false, reason: `write outside worktree and team state: ${q}` };
+                    }
+                    const target = existingWriteTargetDenial(q);
+                    if (target)
+                        return { approve: false, reason: `${target}: ${q}` };
+                }
+                return { approve: true, reason: 'write inside worktree or team state' };
+            }
+            catch (err) {
+                return { approve: false, reason: `write path not resolvable: ${path}: ${err.message}` };
+            }
         }
         case 'shell': {
             const command = String(req.fullCommandText ?? '');

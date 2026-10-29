@@ -8,7 +8,7 @@
  * Instead of using an external CLI binary, this implementation does
  * comment detection directly in TypeScript.
  */
-import * as fs from 'fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import { HOOK_MESSAGE_HEADER, LINE_COMMENT_PATTERNS, EXTENSION_TO_LANGUAGE, } from './constants.js';
@@ -20,7 +20,7 @@ function debugLog(...args) {
         const msg = `[${new Date().toISOString()}] [comment-checker] ${args
             .map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)))
             .join(' ')}\n`;
-        fs.appendFileSync(DEBUG_FILE, msg);
+        appendFileNoFollow(DEBUG_FILE, msg);
     }
 }
 /**

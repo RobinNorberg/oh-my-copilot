@@ -1,8 +1,9 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, summarizeChanges, } from '../job.js';
+import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, scrubLaneCredentials, summarizeChanges, } from '../job.js';
 import { forgetWorktreeGitLinks, hostGitAttrSourceProblem, hostGitEnv, readWorktreeGitLinks, recordWorktreeGitLinks, recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { SANDBOX_KILL_ENV } from '../sandbox.js';
@@ -69,6 +70,43 @@ describe('copilot_run startRef', () => {
         expect(() => manager().start({ prompt: 'x', cwd: repo, isolation: 'none', startRef: 'main' })).toThrow('needs isolation "worktree"');
     });
 });
+describe('copilot_run events.jsonl', () => {
+    it('fails the job, writing nothing, when the name already exists (a planted link where the host allows one)', async () => {
+        const victim = join(root, 'victim');
+        writeFileSync(victim, 'keep\n');
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        // The log is opened after the first await in the job: plant the name before it.
+        const eventsPath = started.eventsPath;
+        let planted = 'symlink';
+        try {
+            symlinkSync(victim, eventsPath, 'file');
+        }
+        catch {
+            writeFileSync(eventsPath, '');
+            planted = 'file';
+        }
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status, planted).toBe('failed');
+        expect(done.error).toContain('events log');
+        // The runtime never started: no session exists.
+        expect(calls.sessions).toHaveLength(0);
+        expect(readFileSync(victim, 'utf8')).toBe('keep\n');
+    });
+    it('keeps writing the opened file after its name is renamed and replaced', async () => {
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const eventsPath = started.eventsPath;
+        const moved = `${eventsPath}.moved`;
+        renameSync(eventsPath, moved);
+        writeFileSync(eventsPath, '');
+        calls.sessions[0].onEvent({ type: 'assistant.message', data: { content: 'after the swap' } });
+        await m.cancel(started.jobId);
+        expect(readFileSync(moved, 'utf8')).toContain('after the swap');
+        expect(readFileSync(eventsPath, 'utf8')).toBe('');
+    });
+});
 describe('copilot_run review profile', () => {
     it('denies every write and the tree-changing git commands, allows reads and read-only git', async () => {
         const m = manager('hang');
@@ -110,6 +148,14 @@ describe('copilot_run review profile', () => {
         const wt = started.worktree.path;
         expect(await decide({ kind: 'shell', fullCommandText: 'git commit -am x' }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
         expect(await decide({ kind: 'write', path: join(wt, 'README.md') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        // The file tools reach the job's temp dir, never the engine's events.jsonl nor what the runtime reads back from the home.
+        const eventsPath = started.eventsPath;
+        expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', 'tmp', 'x') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        expect(await decide({ kind: 'write', path: eventsPath }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+        expect(await decide({ kind: 'write', fileName: join(dirname(eventsPath), 'home', '..', 'events.jsonl') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+        for (const p of ['config.json', join('session-state', 's', 'events.jsonl'), join('.cache', 'copilot', 'pkg', 'runtime.node'), join('git', 'config')]) {
+            expect(await decide({ kind: 'write', path: join(dirname(eventsPath), 'home', p) }, { sessionId: 's' }), p).toMatchObject({ kind: 'reject' });
+        }
         await m.cancel(started.jobId);
     });
     it('reviewProfileDenial leaves other request kinds to the worker policy', () => {
@@ -194,6 +240,7 @@ describe('copilot_run allowLive and session env', () => {
         const secrets = {
             GH_TOKEN: 'ghp_x', GITHUB_TOKEN: 'ghs_x', GH_ENTERPRISE_TOKEN: 'e', GITHUB_ENTERPRISE_TOKEN: 'e', NPM_TOKEN: 'n', AWS_SECRET_ACCESS_KEY: 'a',
             SSH_AUTH_SOCK: '/tmp/agent', GIT_ASKPASS: 'askpass', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: 'store', MY_API_KEY: 'k',
+            AZURE_DEVOPS_EXT_PAT: 'x', azure_client_certificate_path: '/home/me/sp.pem', OMC_ADO_PAT: 'x',
         };
         const m = manager('idle', { OMG_COPILOT_RUN_ALLOW: '1', COPILOT_GITHUB_TOKEN: 'copilot-only', GH_CONFIG_DIR: '/home/me/.config/gh', ...secrets });
         await m.wait(m.start({ prompt: 'a', cwd: repo }, { allowLive: true, scrubCredentials: true }).jobId, 10_000);
@@ -205,6 +252,7 @@ describe('copilot_run allowLive and session env', () => {
         expect(lane.COPILOT_GITHUB_TOKEN).toBeUndefined();
         expect(calls.sessions[0].gitHubToken).toBe('copilot-only');
         expect(lane.GH_CONFIG_DIR).not.toBe('/home/me/.config/gh');
+        expect(lane.AZURE_CONFIG_DIR).toBe(lane.GH_CONFIG_DIR);
         expect(lane).toMatchObject({ GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
         // The empty gh config dir is removed with the session.
         expect(existsSync(lane.GH_CONFIG_DIR)).toBe(false);
@@ -212,7 +260,42 @@ describe('copilot_run allowLive and session env', () => {
         expect(plain.NPM_TOKEN).toBeUndefined();
         expect(plain.GH_CONFIG_DIR).toBeUndefined();
         // The scrubbed lane keeps the relocated, identity-only global config, so it can still commit.
-        expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]\.gitconfig$/);
+        expect(lane.GIT_CONFIG_GLOBAL).toMatch(/[\\/]git[\\/]config$/);
+        // No session's git reaches a credential helper (Git for Windows' system config sets manager) or prompts.
+        for (const [i, env] of [lane, plain].entries()) {
+            const globalConfig = join(root, `global-gitconfig-${i}`);
+            writeFileSync(globalConfig, calls.globalGitConfigs[i] ?? '');
+            const helpers = execFileSync('git', ['config', '--get-all', 'credential.helper'], { cwd: repo, env: { ...env, GIT_CONFIG_GLOBAL: globalConfig }, encoding: 'utf8' });
+            expect(helpers.split(/\r?\n/).slice(0, -1).at(-1)).toBe('');
+            expect(env).toMatchObject({ GCM_INTERACTIVE: 'never', GIT_TERMINAL_PROMPT: '0' });
+        }
+    });
+    it('scrubLaneCredentials removes every Azure DevOps and Azure credential in any letter case and points az at the empty dir', () => {
+        const azure = [
+            'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY', 'AZURE_DEVOPS_EXT_GITHUB_PAT', 'SYSTEM_ACCESSTOKEN',
+            'AZURE_CLIENT_SECRET', 'AZURE_CLIENT_CERTIFICATE_PATH', 'AZURE_FEDERATED_TOKEN_FILE', 'ARM_CLIENT_SECRET',
+            'AZURE_CLIENT_CERTIFICATE_PASSWORD', 'AZURE_PASSWORD', 'IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET',
+            'AZURE_STORAGE_KEY', 'AZURE_STORAGE_CONNECTION_STRING', 'AZURE_STORAGE_SAS_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH',
+            'ARM_CLIENT_CERTIFICATE_PASSWORD', 'ARM_OIDC_TOKEN', 'ARM_OIDC_TOKEN_FILE_PATH', 'ARM_OIDC_REQUEST_TOKEN', 'ARM_ACCESS_KEY', 'ARM_SAS_TOKEN',
+            // Caught by the name pattern alone (_PAT, PRINCIPAL_KEY).
+            'OMC_ADO_PAT', 'MY_SERVICE_PRINCIPAL_KEY', 'ADO_PAT_VALUE', 'AZURE_DEVOPS_EXT_SERVICEPRINCIPALKEY',
+            'VSS_NUGET_EXTERNAL_FEED_ENDPOINTS', 'ARM_CLIENT_CERTIFICATE',
+        ];
+        // Windows env keys are case-insensitive: a lower- or mixed-case key is the same variable.
+        const mixed = (n) => [...n].map((c, i) => (i % 2 ? c.toLowerCase() : c)).join('');
+        for (const variant of [(n) => n, (n) => n.toLowerCase(), mixed]) {
+            const emptyDir = join(root, `nocreds-${variant('AB')}`);
+            mkdirSync(emptyDir, { recursive: true });
+            const env = { PATH: '/bin', AZURE_CONFIG_DIR: '/home/me/.azure', AZURE_DEVOPS_EXT_PAT: 'x' };
+            for (const name of azure)
+                env[variant(name)] = 'x';
+            scrubLaneCredentials(env, emptyDir);
+            for (const name of azure)
+                expect(env[variant(name)], variant(name)).toBeUndefined();
+            expect(Object.keys(env).filter((k) => azure.includes(k.toUpperCase()))).toEqual([]);
+            expect(env.AZURE_CONFIG_DIR).toBe(emptyDir);
+            expect(env.PATH).toBe('/bin');
+        }
     });
     it('scrubCredentials without a stored login or COPILOT_GITHUB_TOKEN fails instead of starting an unauthenticated session', async () => {
         rmSync(join(root, 'user-copilot', 'config.json'));
@@ -450,7 +533,8 @@ describe('copilot_run worktree git links (a lane redirecting host git)', () => {
         const m = manager();
         const job = await finishedJob(m);
         const links = readWorktreeGitLinks(job.wt);
-        expect(links.configWorktree).toBe('absent');
+        // The job created an empty config.worktree (the sandbox keeps only an existing file read-only): its hash is recorded.
+        expect(links.configWorktree).toBe(createHash('sha256').update('').digest('hex'));
         const args = worktreeGitDirArgs(job.wt);
         plantConfigWorktreeFilter(links.adminDir);
         stale(job.wt);

@@ -23,7 +23,8 @@ export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
  * `omg factory run` with a real implement and review lane (two lanes, about
  * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
  * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
- * OS sandbox (three lanes, about 3 AI credits estimated). The
+ * OS sandbox (three lanes, about 3 AI credits estimated). Lane scenarios pin
+ * their lanes to the session's cheap model ({@link chooseModel}). The
  * {@link CLI_SCENARIOS}, AI credits measured on Copilot CLI 1.0.91 (legacy
  * premium requests in brackets): `continuation` 0.31 [2] (the prompt plus one
  * Stop-hook continuation, an extra model turn), `prompt-context` 0.29 [1],
@@ -600,8 +601,10 @@ function evaluateChain(run) {
 // ---------------------------------------------------------------------------
 /**
  * AI credits ceilings: about 1 credit per lane is the estimate (a small write
- * or review with a few tool turns), 3 per lane the ceiling, as for chain. It
- * catches a runaway lane, not a measured figure.
+ * or review with a few tool turns) on the cheap model the driver pins for the
+ * lanes, 3 per lane the ceiling, as for chain. It catches a runaway lane, not
+ * a measured figure. Lanes on runtime auto (no cheap model listed, or none
+ * pinned) measured about 3.6 credits each on Sonnet (CLI 1.0.105) and fail it.
  */
 export const FACTORY_RUN_MAX_CREDITS = { 'factory-run': 6, 'factory-run-fix': 12 };
 /** Check ids of both factory run variants (before the common exit, adapter_errors and cost). */
@@ -669,7 +672,7 @@ export const SANDBOX_CANARY_FILE = 'canary-inside.txt';
 /** The probe script committed at the scenario repository's root; it prints one {@link SANDBOX_PROBE_MARKER} line. */
 export const SANDBOX_PROBE_SCRIPT = 'sandbox-probe.mjs';
 export const SANDBOX_PROBE_MARKER = 'OMG_SANDBOX_PROBE ';
-/** A ceiling of 3 AI credits per lane over the three lanes, as for factory-run: it catches a runaway lane. */
+/** A ceiling of 3 AI credits per lane over the three lanes on the pinned cheap model, as for factory-run: it catches a runaway lane. */
 export const SANDBOX_LANE_MAX_CREDITS = 9;
 /** The probe output line in a tool result text, or null. */
 export function parseSandboxProbe(text) {
@@ -707,7 +710,10 @@ function evaluateSandboxLane(run) {
     const hostOk = !!host?.supported && e.lanes.length === 3 && e.lanes.every(enforced);
     const caps = host ? Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? '' : ' (no)'}`).join(', ') || 'none listed' : 'unknown';
     const reviewLanded = e.reviewTargets.filter((t) => t.landed);
-    const reviewOk = !!review && review.state === 'completed' && enforced(review) && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
+    // A lane whose tools never ran (a dead sandbox launch) lands nothing: "blocked" counts only once a shell call of the
+    // lane succeeded (its `git status`; the review allowlist refuses the probe's `node`).
+    const reviewRan = !!review && review.okShellCalls > 0;
+    const reviewOk = !!review && review.state === 'completed' && enforced(review) && reviewRan && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
     const inside = target(e.writeTargets, 'worktree');
     const insideOk = !!write && enforced(write) && !!inside?.landed;
     const outside = e.writeTargets.filter((t) => t.kind === 'main-checkout' || t.kind === 'shared');
@@ -715,40 +721,45 @@ function evaluateSandboxLane(run) {
     // The scenario repository must live somewhere (no dir is surely outside every default grant), so under the temp dir its
     // main-checkout target is informational: a landed write there is the temp grant, not a checkout confinement failure.
     const mainInformational = !!main && isUnder(main.path, e.tempDir, process.platform);
-    const outsideOk = enforced(write) && outside.length === 2 && outside.every((t) => !t.landed || (mainInformational && t === main));
+    // No probe output: the probe never ran, so a target that did not land was never tried.
+    const noProbe = `the write lane's probe never ran (no probe output), so no target was tried; ${modeOf(write)}${write?.error ? `; ${excerpt(write.error, 160)}` : ''}`;
+    const outsideOk = enforced(write) && !!e.probe && outside.length === 2 && outside.every((t) => !t.landed || (mainInformational && t === main));
     const tempNote = mainInformational ? ` (main-checkout is informational: the scenario repository is under the OS temp dir${main?.landed ? ', which the default sandbox grant includes' : ''}; the shared target decides)` : '';
     const outbound = e.probe?.net.outbound;
     const local = e.probe?.net.local;
     const networkOk = enforced(write) && !!e.probe && e.localHits === 0 && outbound?.ok === false && local?.ok !== true;
     const reach = (r) => (!r ? 'not tried' : r.ok ? `REACHED (HTTP ${r.status ?? '?'})` : `blocked (${excerpt(r.error ?? 'error', 80)})`);
     const enforcedLanes = e.lanes.filter(enforced);
-    const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.shellCalls > 0
+    const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0
         && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
     const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;
     const realHome = target(e.writeTargets, 'real-home');
     const profile = target(e.writeTargets, 'profile');
-    const q1Answered = enforced(write) && !!realHome;
+    const q1Answered = enforced(write) && !!realHome && !!e.probe;
     const q1Ok = q1Answered && !realHome.landed;
-    const q1Detail = !q1Answered ? `Q1 ${unanswered(write)}`
+    const q1Detail = !q1Answered ? (enforced(write) && !e.probe ? `Q1 unanswered: ${noProbe}` : `Q1 ${unanswered(write)}`)
         : `Q1: real profile write ${realHome.landed ? `LANDED (${realHome.path}): the profile grant is read-write and relocation does not move it; add the real home to readonlyPaths` : 'blocked'}; `
             + `relocated profile write ${!profile ? 'not probed (the probe printed no home)' : profile.landed ? `landed (${profile.path}): the profile grant follows USERPROFILE/HOME, and the read-only job home entry does not narrow it` : `blocked (${profile.path})`}`;
     const gitDir = target(e.writeTargets, 'git-dir');
-    const q2Answered = enforced(write) && !!gitDir;
+    const q2Answered = enforced(write) && !!gitDir && !!e.probe;
     const q2Ok = q2Answered && !gitDir.landed;
-    const q2Detail = !q2Answered ? `Q2 ${unanswered(write)}`
+    const q2Detail = !q2Answered ? (enforced(write) && !e.probe ? `Q2 unanswered: ${noProbe}` : `Q2 ${unanswered(write)}`)
         : gitDir.landed ? `Q2: common git dir write LANDED (${gitDir.path}): the CLI grants it read-write for a linked worktree over the readonlyPaths entry; write lanes are not confined (upstream feature request)`
             : `Q2: common git dir write blocked (${gitDir.path}): no linked-worktree auto-grant overrides the readonlyPaths entry`;
     const c = e.canary;
     const cOutside = c ? target(c.targets, 'shared') : undefined;
     const cInside = c ? target(c.targets, 'worktree') : undefined;
-    const q5Answered = enforced(canaryLane) && !!c?.called && !!c.result;
+    // No probe line in the output: the probe never launched (node denied, say), so an outside write that did not land was never tried.
+    const cProbeRan = !!c?.result && parseSandboxProbe(c.result.output) !== null;
+    const q5Answered = enforced(canaryLane) && !!c?.called && cProbeRan;
     const q5Ok = q5Answered && c.sandboxed === true && !!cOutside && !cOutside.landed && !!cInside?.landed;
     const q5Detail = !c?.called ? `Q5 ${unanswered(canaryLane)}`
         : !c.result ? `Q5: shell.executeUserRequested failed: ${excerpt(c.error ?? 'no result', 200)}`
-            : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? 'sandboxed' : c.sandboxed === false ? 'NOT sandboxed' : 'with no sandboxed attestation'}`
-                + ` (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? 'landed' : 'missing'}; `
-                + `onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : 'bypassed'}`
-                + (q5Ok ? ': a free canary through this RPC works' : ': the canary needs a model turn instead');
+            : !cProbeRan ? `Q5 unanswered: probe did not run (exit ${String(c.result.exitCode)}, no ${SANDBOX_PROBE_MARKER.trim()} line; output ${JSON.stringify(excerpt(c.result.output || c.error || '', 200))})`
+                : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? 'sandboxed' : c.sandboxed === false ? 'NOT sandboxed' : 'with no sandboxed attestation'}`
+                    + ` (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? 'landed' : 'missing'}; `
+                    + `onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : 'bypassed'}`
+                    + (q5Ok ? ': a free canary through this RPC works' : ': the canary needs a model turn instead');
     const capsOk = e.lanes.length > 0 && e.lanes.every((l) => l.maxCredits === RUNTIME_MIN_MAX_CREDITS);
     const measured = e.lanes.length > 0 && e.lanes.every((l) => typeof l.credits === 'number');
     const creditsOk = capsOk && measured && e.cost.credits > 0 && e.cost.credits <= SANDBOX_LANE_MAX_CREDITS;
@@ -757,10 +768,11 @@ function evaluateSandboxLane(run) {
         {
             id: `${p}.review_no_write`,
             ok: reviewOk,
-            detail: !review ? 'no review lane' : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? 'LANDED' : 'blocked'}`).join(', ') || 'no targets'}; worktree changes ${review.changedFiles.join(', ') || 'none'}`,
+            detail: !review ? 'no review lane' : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? 'LANDED' : 'blocked'}`).join(', ') || 'no targets'}; worktree changes ${review.changedFiles.join(', ') || 'none'}`
+                + (reviewRan ? '' : `; the lane ran no command (none of its ${review.shellCalls} shell call(s) succeeded), so "blocked" is no evidence${review.error ? `: ${excerpt(review.error, 160)}` : ''}`),
         },
         { id: `${p}.write_inside`, ok: insideOk, detail: !write ? 'no write lane' : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside?.landed ? 'created' : 'missing'}` },
-        { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join('; ')}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
+        { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: !e.probe ? noProbe : outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join('; ')}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
         { id: `${p}.network_blocked`, ok: networkOk, detail: !e.probe ? `no probe output from the write lane; ${modeOf(write)}` : `loopback listener ${e.localHits} hit(s), probe local ${reach(local)}; outbound https://github.com ${reach(outbound)}` },
         {
             id: `${p}.attested`,
@@ -776,7 +788,8 @@ function evaluateSandboxLane(run) {
             ok: creditsOk,
             detail: `${Number(e.cost.credits.toFixed(3))} AI credits (legacy ${e.cost.premiumRequests} premium request(s)) over ${e.cost.source} (max ${SANDBOX_LANE_MAX_CREDITS} credits)`
                 + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${e.lanes.map((l) => l.maxCredits).join(', ') || 'none'} (expected ${RUNTIME_MIN_MAX_CREDITS})`)
-                + (measured ? '' : '; a lane has no recorded usage'),
+                + (measured ? '' : '; a lane has no recorded usage')
+                + `; lanes ran on ${e.lanes.map((l) => `${l.role} ${l.model ?? 'unreported'}`).join(', ') || 'none'}`,
         },
     ];
 }
@@ -1117,9 +1130,9 @@ export function evaluateSdkToolsExcluded(meta, server) {
  * `sdk.sandbox`, no model call: what copilot_run would decide on this host.
  * An unsupported host passes (sessions fail closed: no shell for review,
  * write refuses); a supported host must take the review policy without
- * enforcement reporting blocked. The detail starts with `supported` or
- * `unsupported`. No canary runs here: copilot_run records `skipped`, and the
- * opt-in `sandbox-lane` scenario answers whether the canary RPC is sandboxed.
+ * enforcement reporting blocked, and the spawn canary must launch a
+ * sandboxed process with the lane env. The detail starts with `supported`
+ * or `unsupported`.
  */
 export function evaluateSdkSandbox(probe) {
     const id = 'sdk.sandbox';
@@ -1127,6 +1140,10 @@ export function evaluateSdkSandbox(probe) {
     const caps = Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? '' : ' (no)'}`).join(', ') || 'none listed';
     if (!probe.answered)
         return { id, ok: false, detail: `host probe failed: ${host.reason ?? 'no answer'}` };
+    // The runtime claims support but cannot launch: lanes fail closed, yet nothing proved a sandboxed launch.
+    if (!host.supported && host.launchFailed) {
+        return { id, ok: false, detail: `launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: ${host.reason ?? 'no reason'}; copilot_run sessions here run fail-closed; spawn canary not run (not a pass)` };
+    }
     if (!host.supported) {
         return { id, ok: true, detail: `unsupported (${host.reason ?? 'no reason'}), capabilities ${caps}: copilot_run review sessions run read-only without a shell, write sessions refuse (sandbox-unavailable); canary skipped` };
     }
@@ -1135,11 +1152,12 @@ export function evaluateSdkSandbox(probe) {
     const enf = probe.enforcement;
     if (enf === undefined || typeof enf === 'string')
         return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? 'not asked'}` };
+    const spawn = probe.spawn ?? { ok: false, detail: 'not run' };
     return {
         id,
-        ok: !enf.blocked,
+        ok: !enf.blocked && spawn.ok,
         detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ''}; `
-            + 'canary skipped (copilot_run runs none; --scenario sandbox-lane answers Q5)',
+            + `spawn canary: ${spawn.detail}`,
     };
 }
 /**
@@ -1374,6 +1392,36 @@ function evaluateCommon(run, cost) {
         },
     ];
 }
+/**
+ * The account quota error in a scenario's events, or null: a
+ * `model.call_failure` with HTTP 402 or a quota errorCode
+ * (`quota_exceeded`), or a `session.error` of errorType `quota`.
+ */
+export function accountQuotaError(events) {
+    const e = events.find(isQuotaEvent);
+    if (!e)
+        return null;
+    const d = (e.data ?? {});
+    if (e.type === 'session.error')
+        return `session.error quota${typeof d.message === 'string' ? ` "${excerpt(d.message, 120)}"` : ''}`;
+    let message = typeof d.errorMessage === 'string' ? d.errorMessage : '';
+    try {
+        message = String(JSON.parse(message).message ?? message);
+    }
+    catch { /* plain text */ }
+    return [String(d.statusCode ?? '?'), typeof d.errorCode === 'string' ? d.errorCode : '', message && `"${excerpt(message, 120)}"`].filter(Boolean).join(' ');
+}
+function isQuotaEvent(e) {
+    const d = (e.data ?? {});
+    if (e.type === 'model.call_failure')
+        return d.statusCode === 402 || (typeof d.errorCode === 'string' && /quota/i.test(d.errorCode));
+    return e.type === 'session.error' && d.errorType === 'quota';
+}
+/** Whether a model call succeeded (an `assistant.usage` event) before the first quota event. */
+export function modelCallBeforeQuota(events) {
+    const first = events.findIndex(isQuotaEvent);
+    return events.slice(0, first < 0 ? events.length : first).some((e) => e.type === 'assistant.usage');
+}
 export function evaluateScenario(run) {
     const own = {
         smoke: evaluateSmoke,
@@ -1392,10 +1440,23 @@ export function evaluateScenario(run) {
         ultragoal: evaluateUltragoal,
     }[run.name](run);
     const cost = runCost(run);
-    const checks = [...own, ...evaluateCommon(run, cost)];
+    let checks = [...own, ...evaluateCommon(run, cost)];
     const pending = PENDING_SCENARIOS[run.name];
+    if (pending)
+        checks = checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` }));
+    const quota = accountQuotaError(run.events);
+    if (quota) {
+        checks = [
+            {
+                id: `scn.${run.name}.quota`,
+                ok: false,
+                detail: `account quota exhausted (${quota}), not a product failure; the checks below ${modelCallBeforeQuota(run.events) ? 'may have failed because of the quota' : 'failed because no model call ran'}`,
+            },
+            ...checks.map((c) => (c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })),
+        ];
+    }
     return {
-        checks: pending ? checks.map((c) => (c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` })) : checks,
+        checks,
         cost: { premiumRequests: cost.premiumRequests, credits: cost.credits },
     };
 }
@@ -1403,6 +1464,11 @@ export function evaluateScenario(run) {
 // Model choice
 // ---------------------------------------------------------------------------
 const CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
+/** `ScenarioRun.model` of a lane scenario: the model pinned for its lanes, then the ones they reported running on. */
+export function laneModelLabel(pinned, used) {
+    const ran = [...new Set(used.map((m) => m ?? 'unreported'))];
+    return `copilot_run lanes ${pinned ? `pinned to ${pinned}` : 'on runtime auto (no cheap model listed)'}; ran on ${ran.join(', ') || 'no lane yet'}`;
+}
 /**
  * An explicit request wins. Otherwise the first listed non-`auto` model whose
  * id looks cheap; when the runtime lists only `auto` (Copilot CLI 1.0.91 for

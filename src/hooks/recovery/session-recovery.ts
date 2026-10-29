@@ -5,7 +5,7 @@
  * Detects and fixes various error conditions that can cause session failures.
  */
 
-import { appendFileSync } from 'node:fs';
+import { appendFileNoFollow } from '../../lib/append-no-follow.js';
 import {
   findEmptyMessages,
   findEmptyMessageByIndex,
@@ -50,7 +50,7 @@ function debugLog(...args: unknown[]): void {
     const msg = `[${new Date().toISOString()}] [session-recovery] ${args
       .map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)))
       .join(' ')}\n`;
-    appendFileSync(DEBUG_FILE, msg);
+    appendFileNoFollow(DEBUG_FILE, msg);
   }
 }
 

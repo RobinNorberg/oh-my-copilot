@@ -1,0 +1,6 @@
+{
+  "provenance": "synthetic: setup probe, shape of the Projects - Get sample (REST 7.1)",
+  "route": "core.projects.GET",
+  "routeParameters": { "projectId": "Web" },
+  "stdout": { "id": "eb6e4656-77fc-42a1-9181-4c6d8e9da5d1", "name": "Web", "state": "wellFormed", "visibility": "private" }
+}

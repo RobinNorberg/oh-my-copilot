@@ -17,6 +17,7 @@ import { withFileLockSync } from '../../lib/file-lock.js';
 import chalk from 'chalk';
 import { parseKnownFlaky, type KnownFlakyTest } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
+import type { ForgeKind } from '../../forge/types.js';
 import { classifyRun, type ClassifyJobInput, type HealClassification, type HistoryEntry, type JobSample } from './classify.js';
 import { HEAL_WORKFLOW, type HealConfig } from './config.js';
 import { healGuardExec, jobLog, listRuns, shaRange, viewRunJobs, type HealJob, type HealRun } from './history.js';
@@ -58,6 +59,8 @@ export interface HealDeps {
   gateConfig?: GateConfigLoader;
   /** Test seams of the factory engine. */
   engine?: HealEngineDeps['engine'];
+  /** The origin's forge kind (originForgeKind); heal reads GitHub Actions only, so Azure DevOps is refused. Omitted = GitHub. */
+  forgeKind?: (root: string) => ForgeKind;
 }
 
 export interface ScanEntry {
@@ -351,10 +354,14 @@ function engineDeps(deps: HealDeps): HealEngineDeps {
   };
 }
 
-function healRoot(exec: Exec): string {
-  const r = healGuardExec(exec)('git', ['rev-parse', '--show-toplevel']);
+function healRoot(deps: Pick<HealDeps, 'exec' | 'forgeKind'>): string {
+  const r = healGuardExec(deps.exec)('git', ['rev-parse', '--show-toplevel']);
   if (r.status !== 0) throw new HealUsageError('omg factory heal must run inside a git repository');
-  return r.stdout.trim();
+  const root = r.stdout.trim();
+  if (deps.forgeKind?.(root) === 'azure-devops') {
+    throw new HealRunRefused('omg factory heal is GitHub-only (it reads GitHub Actions history); this repository\'s origin is on Azure DevOps');
+  }
+  return root;
 }
 
 /** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
@@ -369,7 +376,7 @@ export function healCommand(deps: HealDeps): Command {
     .option('--json', 'JSON output')
     .action((o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), () => {
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         const { config, warnings } = deps.config(root);
         for (const w of warnings) console.error(chalk.yellow(w));
         const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir });
@@ -389,7 +396,7 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string | undefined, _o: unknown, c: Command) =>
       guarded(Boolean(c.optsWithGlobals().json), () => {
         const json = Boolean(c.optsWithGlobals().json);
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         if (sig8 !== undefined) {
           if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
           const state = readHealState(root, sig8);
@@ -419,7 +426,7 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         const { config, warnings } = deps.config(root);
         for (const w of warnings) console.error(chalk.yellow(w));
         const outcome = await runHeal(
@@ -451,7 +458,7 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { dryRun?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         const { config, warnings } = deps.config(root);
         for (const w of warnings) console.error(chalk.yellow(w));
         const outcome = await runHealEngine({ root, base: deps.base(root), sig8, config, approved: true, dryRun: Boolean(o.dryRun) }, engineDeps(deps));
@@ -466,7 +473,7 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         const key = healRunKey(sig8);
         if (!readFactoryState(root, key)) throw new HealRunRefused(`heal ${sig8} has no ci-heal run (omg factory heal close ${sig8} closes a parked heal run)`);
         requestFactoryCancel(root, key, deps.now().toISOString());
@@ -492,7 +499,7 @@ export function healCommand(deps: HealDeps): Command {
     .action((sig8: string, o: { json?: boolean }) =>
       guarded(Boolean(o.json), () => {
         if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-        const root = healRoot(deps.exec);
+        const root = healRoot(deps);
         const state = closeHeal(root, sig8, { ledgerDir: deps.ledgerDir, now: deps.now });
         if (o.json) console.log(JSON.stringify({ ok: true, sig8, healRun: state.healRun, next: state.next }, null, 2));
         else console.log(`${chalk.bold(`factory heal close ${sig8}`)}  closed heal run ${termSafe(state.healRun!.id)}`);

@@ -12,6 +12,17 @@
  */
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
+import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
+/**
+ * The forge reads of a gate evaluation (factory forges design §2): the PR
+ * head and its checks, runs, logs and reruns. Omitted = GitHub through the
+ * gh calls in this file, unchanged; the factory engine passes the Azure
+ * DevOps adapter's.
+ */
+export interface GateForge {
+    checks: ForgeChecks;
+    reviews: Pick<ForgeReviews, 'prHead'>;
+}
 export declare const CHECK_FIELDS = "name,state,bucket,link,workflow,event,startedAt,completedAt";
 export interface GhCheck {
     name: string;
@@ -77,7 +88,10 @@ export declare class GhChecksError extends Error {
 export declare const TRANSIENT_GH_ERROR: RegExp;
 /** Parse `gh pr checks --json` stdout; throws GhChecksError on anything but an array of {name,state}. */
 export declare function parseChecksJson(stdout: string): GhCheck[];
-export declare function classifyCheck(check: GhCheck, advisory: readonly string[]): ClassifiedCheck;
+/** `advisory` is set only by a forge adapter (an ADO non-blocking policy); gh's JSON has no such field. */
+export declare function classifyCheck(check: GhCheck & {
+    advisory?: boolean;
+}, advisory: readonly string[]): ClassifiedCheck;
 /**
  * Pure merge-rule evaluation without log analysis (failed stays failed). A
  * `requiredChecks` name absent from `checks` is listed as pending.
@@ -119,14 +133,13 @@ export declare function analyzeFailedLog(check: string, runId: string | undefine
  * rerunnable only when all its required jobs are finished.
  */
 export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]): GateReport;
-/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list. */
+/** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
 export declare function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[];
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */
 export declare function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string;
 /**
- * Run `gh run list --commit <sha> --json ...`: every Actions workflow run for
- * the head sha. A run whose reported head_sha is another commit is dropped, so
- * a previous head's failed run never counts against this one.
+ * Every Actions workflow run for the head sha (`gh run list --commit`); a run
+ * whose reported head_sha is another commit is dropped (the GitHub forge's runsForHead).
  */
 export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[];
 /**
@@ -134,9 +147,10 @@ export declare function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: str
  * (unless given), read the checks and the workflow runs for it, then re-read
  * the head; a head that moved in between is pending whatever the verdict
  * (green, failed or flaky), since the read may mix two heads. Failed Actions
- * jobs' logs are read for known-flaky attribution.
+ * jobs' logs are read for known-flaky attribution. `forge` replaces the gh
+ * reads (GateForge); without it every call is the GitHub one.
  */
-export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport;
+export declare function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string, forge?: GateForge): GateReport;
 export interface WatchOptions {
     exec: Exec;
     pr: number;
@@ -157,6 +171,8 @@ export interface WatchOptions {
     /** Drive mode: a transient GitHub error while reading the gates is a pending poll, not a thrown error. */
     retryTransient?: boolean;
     onTransient?: (message: string) => void;
+    /** The forge reads (GateForge); omitted = GitHub. */
+    forge?: GateForge;
 }
 export interface WatchResult {
     report: GateReport;
