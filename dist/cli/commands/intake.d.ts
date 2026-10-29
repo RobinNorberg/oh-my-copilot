@@ -37,8 +37,19 @@ export interface PreconditionCheck {
 }
 /** Tracker reachable: `gh repo view` answers in the working directory. */
 export declare function checkTrackerReachable(cwd: string, runner: IntakeRunner): PreconditionCheck;
-/** Harbor labels exist or can be created (harbor's own first-use contract). */
-export declare function checkOrCreateHarborLabels(cwd: string, runner: IntakeRunner): PreconditionCheck;
+/** The repository's label names (`gh label list` lists 30 by default, so the limit is explicit). */
+export declare function listLabels(cwd: string, runner: IntakeRunner): {
+    ok: true;
+    names: string[];
+} | {
+    ok: false;
+    reason: string;
+};
+/**
+ * Harbor labels exist or can be created (harbor's own first-use contract).
+ * `omg factory setup` reuses it for the factory progress and intake labels.
+ */
+export declare function checkOrCreateHarborLabels(cwd: string, runner: IntakeRunner, labels?: readonly string[]): PreconditionCheck;
 /**
  * Single-writer lock: one intake run per repository. The lock is stale after
  * LOCK_STALE_MS regardless of pid liveness (crashed runners must not wedge

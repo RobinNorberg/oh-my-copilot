@@ -1,0 +1,22 @@
+{
+  "provenance": "synthetic: saved queries, shape of the Queries - List sample (REST 7.1) with one flat and one tree query",
+  "route": "wit.queries.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "$depth": "2", "$expand": "wiql" },
+  "stdout": {
+    "count": 1,
+    "value": [
+      {
+        "id": "a0c1e9b5-0000-4000-8000-000000000001",
+        "name": "Shared Queries",
+        "path": "Shared Queries",
+        "isFolder": true,
+        "hasChildren": true,
+        "children": [
+          { "id": "0b6c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3", "name": "Factory ready", "path": "Shared Queries/Factory ready", "queryType": "flat", "wiql": "SELECT [System.Id] FROM WorkItems WHERE [System.Tags] CONTAINS 'factory'" },
+          { "id": "1c7d2e3f-4051-4b6c-9d7e-8f90a1b2c3d4", "name": "Epic tree", "path": "Shared Queries/Epic tree", "queryType": "tree" }
+        ]
+      }
+    ]
+  }
+}

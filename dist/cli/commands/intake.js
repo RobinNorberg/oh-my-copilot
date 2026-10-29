@@ -83,20 +83,29 @@ export function checkTrackerReachable(cwd, runner) {
     }
     return { ok: true };
 }
-/** Harbor labels exist or can be created (harbor's own first-use contract). */
-export function checkOrCreateHarborLabels(cwd, runner) {
-    const list = runner('gh', ['label', 'list', '--json', 'name'], { cwd });
+/** The repository's label names (`gh label list` lists 30 by default, so the limit is explicit). */
+export function listLabels(cwd, runner) {
+    const list = runner('gh', ['label', 'list', '--json', 'name', '--limit', '1000'], { cwd });
     if (list.status !== 0) {
         return { ok: false, reason: `cannot list labels:\n${list.stderr.trim().slice(0, 400)}` };
     }
-    let existing = [];
     try {
-        existing = JSON.parse(list.stdout).map((l) => l.name);
+        return { ok: true, names: JSON.parse(list.stdout).map((l) => l.name) };
     }
     catch {
         return { ok: false, reason: 'cannot parse gh label list output' };
     }
-    const missing = HARBOR_LABELS.filter((label) => !existing.includes(label));
+}
+/**
+ * Harbor labels exist or can be created (harbor's own first-use contract).
+ * `omg factory setup` reuses it for the factory progress and intake labels.
+ */
+export function checkOrCreateHarborLabels(cwd, runner, labels = HARBOR_LABELS) {
+    const list = listLabels(cwd, runner);
+    if (!list.ok)
+        return list;
+    const existing = list.names;
+    const missing = labels.filter((label) => !existing.includes(label));
     for (const label of missing) {
         const create = runner('gh', ['label', 'create', label, '--color', '7c7c7c'], { cwd });
         if (create.status !== 0) {
