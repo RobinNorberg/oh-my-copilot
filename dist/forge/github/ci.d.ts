@@ -20,5 +20,7 @@ export declare function parseRunJobs(stdout: string): HealJob[];
 export declare function viewRunJobs(exec: Exec, runId: string, cwd?: string): HealJob[];
 /** A job's log, capped (capLog) before anything parses it. */
 export declare function jobLog(exec: Exec, jobId: string, cwd?: string): string;
+/** The rerun heal records for a human; healGuardExec refuses it and omg never issues it. */
+export declare const githubRerunIntent: (runId: string) => string;
 export declare function githubCi(exec: Exec, cwd?: string): ForgeCi;
 //# sourceMappingURL=ci.d.ts.map
