@@ -41,6 +41,8 @@ import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand } from './factory-check.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import { listenForgeRefusal } from '../../factory/setup/detect.js';
+import { factorySetupCommand } from './factory-setup.js';
 
 export function renderChainStatus(status: ChainStatus): string {
   const lines: string[] = [];
@@ -263,6 +265,7 @@ export function factoryCommand(): Command {
     ledgerDir: defaultLedgerDir(),
     runLimits: defaultFactoryRunDeps.limits,
   }));
+  cmd.addCommand(factorySetupCommand());
 
   cmd
     .command('listen')
@@ -272,6 +275,12 @@ export function factoryCommand(): Command {
     .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
     .option('--cwd <dir>', 'repository whose .omg state root the daemon writes to', process.cwd())
     .action((options: { port: number; host: string; repo: string; cwd: string }) => {
+      const forgeRefusal = listenForgeRefusal(defaultExec, resolve(options.cwd), userConfigLayers().trustedUser);
+      if (forgeRefusal) {
+        console.error(chalk.red(forgeRefusal));
+        process.exitCode = 1;
+        return;
+      }
       const secret = process.env.OMC_FACTORY_HMAC_SECRET;
       if (!secret) {
         console.error(chalk.red('refused: no HMAC secret. Set OMC_FACTORY_HMAC_SECRET.'));

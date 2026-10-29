@@ -1,0 +1,15 @@
+{
+  "provenance": "synthetic: Agile User Story states, shape of the Work Item Type States - List sample (REST 7.1)",
+  "route": "wit.workItemTypeStates.GET",
+  "routeParameters": { "project": "Web", "type": "User Story" },
+  "stdout": {
+    "count": 5,
+    "value": [
+      { "name": "New", "color": "b2b2b2", "category": "Proposed" },
+      { "name": "Active", "color": "007acc", "category": "InProgress" },
+      { "name": "Resolved", "color": "ff9d00", "category": "Resolved" },
+      { "name": "Closed", "color": "339933", "category": "Completed" },
+      { "name": "Removed", "color": "ffffff", "category": "Removed" }
+    ]
+  }
+}

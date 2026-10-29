@@ -1,0 +1,14 @@
+{
+  "provenance": "synthetic: Agile process types, shape of the Work Item Types - List sample (REST 7.1)",
+  "route": "wit.workItemTypes.GET",
+  "routeParameters": { "project": "Web" },
+  "stdout": {
+    "count": 4,
+    "value": [
+      { "name": "User Story", "referenceName": "Microsoft.VSTS.WorkItemTypes.UserStory", "isDisabled": false },
+      { "name": "Bug", "referenceName": "Microsoft.VSTS.WorkItemTypes.Bug", "isDisabled": false },
+      { "name": "Task", "referenceName": "Microsoft.VSTS.WorkItemTypes.Task", "isDisabled": false },
+      { "name": "Epic", "referenceName": "Microsoft.VSTS.WorkItemTypes.Epic", "isDisabled": false }
+    ]
+  }
+}

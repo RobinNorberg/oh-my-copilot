@@ -1256,6 +1256,34 @@ omg factory heal close <sig8> [--json]           # close a heal run parked at he
 - **Sandbox:** the ci-heal write lanes use the same lane profiles and the same `factory.run.sandbox` settings as `omg factory run`. The debugger lane is a local `review` session: it has no write tool and no MCP tools, and it gets a shell only when the OS sandbox is confirmed. That shell runs only the read-only allowlist, with every path inside its worktree, so the debugger lane cannot write files. A local lane that the sandbox does not confine, such as a write lane under `writeUnsandboxed: "detect-only"`, runs with your user's file access. Such a lane can write the factory ledger directory directly, including the scan-time record, the seal and the counters mirror. The seal and the scan-time record fully hold only for sandboxed lanes.
 - **Webhook:** `omg factory listen` accepts HMAC-signed `workflow_run` events. A completed, failed `push` run of `.github/workflows/ci.yml` on `dev` only adds its run id to `.omg/state/factory/heal/webhook-queue.json`. The next scan puts queued runs first, re-reads them through `gh` and clears them. The webhook never starts a lane.
 
+#### `omg factory setup`
+
+`omg factory setup` configures the factory for one repository on GitHub or Azure DevOps. It writes only the `factory` keys of the config and runs no lane.
+
+```bash
+omg factory setup                                     # interactive on a TTY
+omg factory setup --intake label:factory --yes --json # non-interactive (no TTY needed)
+omg factory setup --forge azure-devops --org contoso --project Web --repo web-app \
+  --intake wiql-query:<guid> | board-column:"Web Team/Stories/Ready" | area-tag:"Web\Factory#factory" \
+  [--item-types "User Story,Bug"] [--progress default|none|<file.json>] [--board "Web Team/Stories"] \
+  [--trusted-author owner@example.com] [--scope project|user] [--dry-run] [--yes] [--json]
+omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
+```
+
+1. **Detect.** The forge comes from `git remote get-url origin`. `--forge`, `--org`, `--project` and `--repo` can only pin it: a value that disagrees with the remote exits 5. Any other remote also exits 5 (`unsupported forge`). On Azure DevOps, `.omg/config.json` `ado` and an existing `factory.forge.azureDevOps.team` prefill the answers.
+2. **Auth.** On GitHub this runs `gh auth status --hostname <host>`. On Azure DevOps it checks `az extension show --name azure-devops`, then `az account show` or a set `AZURE_DEVOPS_EXT_PAT`, then reads the project and the repository. A failure exits 3 and prints the command that fixes it. Nothing an auth command prints is shown, so no token reaches the output.
+3. **Intake.** On GitHub the source is a label or an open milestone. GitHub Projects v2 is not supported yet. On Azure DevOps it is a flat saved query (its GUID), a board column (`<team>/<board>/<column>`), or an area path plus a tag (`<area>#<tag>`). Each value is checked against the forge, and an unknown query, milestone, board, column or area exits 5. On Azure DevOps, `--item-types` must name existing types. Without it, the defaults that exist in the project are used.
+4. **Progress.** `default` on GitHub is the `factory:<stage>` label family. On Azure DevOps it maps nothing, so you map columns and states yourself. `none` turns progress off. A file holds `{ "enabled"?: boolean, "stages": { "<stage>": { "label" | "column" | "state": "…" } } }`. On Azure DevOps a column must be on the board: either the intake board, or the board given with `--board <team>/<board>`. A state must exist for every item type. A Completed or Removed state is allowed only for `done`, and `blocked` and `cancelled` never change the state. A validation failure exits 5. On GitHub, missing intake and progress labels are created with `gh label create <name> --color 7c7c7c` only after confirmation or `--yes`. This reuses the harbor label helper of `omg intake`.
+5. **Write.** The wizard edits with `jsonc-parser`, so comments and every other key stay as they were. It prints the diff and asks before writing; `--yes` confirms without asking. An edit that would change anything but `factory.forge`, `factory.intake` and `factory.progress` (or `trustedAuthors` in the user config) is refused, so the `ship.*` safety keys never move. A config with duplicate keys, a `factory` that is not an object, or a symlinked `.copilot/omg.jsonc` (or `.copilot` directory) is refused with exit 5; a leading UTF-8 BOM is kept. The forge identity, intake and progress always go to `.copilot/omg.jsonc`, whatever `--scope` says. That file is protected, so the engine reads its `forge.*` and `progress.*` only from `<base>` once the file is committed there. The user config at its default location is shared by every repository, so it gets only `factory.forge.azureDevOps.trustedAuthors` (`--trusted-author`); `--scope user` is accepted and only notes this. The config is written before any missing label is created. The result must pass the same resolver the engine uses.
+6. **Preview.** The wizard lists the source's first 10 items through the forge adapter and the engine's guard. For now each row says `readiness: run omg factory check`. A forge without an adapter in this build loses only the preview. The wizard also reports any `omg factory init` prerequisites that are missing. Those are needed only for the chain route table.
+
+- **Non-interactive:** `--yes`, `--json` or no TTY takes every answer from flags. A missing `--intake`, or a missing `--yes` without `--dry-run`, exits 2 and names the missing flags.
+- **Dry run:** `--dry-run` shows the diff and the preview, writes no file and creates no label.
+- **Guard:** every forge call goes through a setup allowlist. On GitHub it allows `gh auth status`, `gh label list`, `gh label create` with the fixed color, and one GET of this repository's open milestones. On Azure DevOps it allows `az devops invoke` GETs of routes in `src/forge/ado/routes.ts`. Each GET is pinned to the detected org and project, uses the route's API version and `--detect false`, and has no `--in-file`, `--debug` or `--verbose`.
+- **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, error? }`.
+- **Exit codes:** `0` written or dry run, `2` usage error, `3` auth or Azure DevOps extension missing, `5` incompatible (unsupported forge, mismatch, unknown query, state validation failed), `1` other failures.
+- **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`.
+
 ### `omg smoke copilot`
 
 Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a throwaway `COPILOT_HOME`. Use it on a local build before opening a PR or tagging a release.

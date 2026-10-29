@@ -8,8 +8,9 @@
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
  * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
- * and `git ls-remote origin refs/heads/factory/<name>`. az goes through the factory guard (fail
- * closed until the ADO guard context lands) and only as GET while not marking.
+ * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
+ * runGuardedAdo (fail closed without an ADO guard context), and while not
+ * marking only as a GET or the wit.wiql.POST query.
  *
  * Exit codes: 0 checked (whatever the buckets; a declined `--mark` writes
  * nothing), 1 a tracker read or a marker write failed, 2 usage (bad id,
@@ -18,7 +19,7 @@
  */
 import type { ForgeFactory } from '../../forge/types.js';
 import { type Exec } from '../../ship/exec.js';
-import type { AdoGuardContext } from '../../forge/ado/guard.js';
+import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { type CheckEnv, type CheckResult } from './score.js';
 export declare const EXIT_CHECK_FAILED = 1;
 export declare const EXIT_CHECK_USAGE = 2;
@@ -32,7 +33,7 @@ export declare class CheckIncompatibleError extends Error {
 /**
  * The `omg factory check` guard. `marker` is set only after `--mark` was
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
- * and non-GET az calls pass.
+ * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
 export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */

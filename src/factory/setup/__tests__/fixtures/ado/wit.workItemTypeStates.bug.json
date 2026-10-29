@@ -1,0 +1,13 @@
+{
+  "provenance": "synthetic: Agile Bug states, shape of the Work Item Type States - List sample (REST 7.1)",
+  "route": "wit.workItemTypeStates.GET",
+  "routeParameters": { "project": "Web", "type": "Bug" },
+  "stdout": {
+    "count": 3,
+    "value": [
+      { "name": "Active", "color": "007acc", "category": "InProgress" },
+      { "name": "Resolved", "color": "ff9d00", "category": "Resolved" },
+      { "name": "Closed", "color": "339933", "category": "Completed" }
+    ]
+  }
+}
