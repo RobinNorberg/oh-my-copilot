@@ -31,6 +31,8 @@ export interface SdkHostDeps {
     pollMs: number;
     /** Source env for the runtime (the host's own env). */
     env: NodeJS.ProcessEnv;
+    /** The Copilot credentials the leader handed over on stdin (readHostCredentials); they win over `env`. */
+    credentials?: Record<string, string>;
     log?: (line: string) => void;
     /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
     writeSessionJson?: (path: string, value: unknown) => Promise<void>;
@@ -53,6 +55,48 @@ export declare function readDoorbell(path: string, offset: number): {
 };
 /** Prepend `dir` to PATH, matching the key case-insensitively on win32. */
 export declare function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJS.Platform): void;
+/**
+ * Git config every worker command gets through GIT_CONFIG_COUNT/KEY_n/VALUE_n.
+ * An empty value clears a multi-valued list: `credential.helper` (the system
+ * `manager` included) and `http.extraHeader` (a CI checkout's
+ * `AUTHORIZATION: basic ...`). A URL-scoped `http.<url>.extraheader` wins over
+ * the plain key, so each one the repository config holds is reset by name
+ * (probed with git 2.51: the plain reset leaves it in place).
+ */
+export declare const WORKER_GIT_CONFIG: ReadonlyArray<readonly [string, string]>;
+/**
+ * The `http.<url>.extraheader` keys git sees in `cwd` (every config level).
+ * Listing the config runs nothing; any failure lists none.
+ */
+export declare function urlScopedExtraHeaderKeys(cwd: string, env: NodeJS.ProcessEnv): string[];
+/**
+ * A credential-free worker env, in place. Workers run arbitrary toolchains
+ * unsandboxed, so this is a denylist (isCredentialEnvKey): every token,
+ * secret-named var, ssh-agent and askpass hook, `GIT_CONFIG*` and `GCM_*` goes,
+ * COPILOT_GITHUB_TOKEN included (the session gets it over RPC instead). `gh`
+ * and `az` see an empty config dir; git never prompts, runs no credential
+ * helper, sends no configured extra header and uses no ssh-agent
+ * ({@link WORKER_GIT_CONFIG}, so identity, safe.directory and core.longpaths
+ * from the user's config still apply). PATH, the home dirs, toolchain, proxy
+ * and CA vars stay. This is hygiene against accidental use, not a boundary.
+ */
+export declare function scrubWorkerCredentials(env: NodeJS.ProcessEnv, emptyDir: string, cwd: string): void;
+/**
+ * The credentials the leader wrote to the host's stdin (sdk-transport.ts
+ * hostCredentialHandoff): one JSON object of {@link HOST_CREDENTIAL_ENV}
+ * strings, then EOF. Anything else (a TTY, no data, bad JSON, a timeout)
+ * reads as none, and a host without a login then fails its start.
+ */
+export declare function readHostCredentials(stream: NodeJS.ReadableStream & {
+    isTTY?: boolean;
+    destroy?: () => void;
+}, timeoutMs: number): Promise<Record<string, string>>;
+/**
+ * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else
+ * GH_TOKEN / GITHUB_TOKEN when no stored login was copied (with a login they
+ * would shadow it, as buildSessionEnv drops them then).
+ */
+export declare function workerGitHubToken(env: NodeJS.ProcessEnv, hasLogin: boolean): string | undefined;
 /**
  * Make `target` hold exactly `env`. The `t` MCP server child runs with the
  * session env; in-process tool handlers read `process.env`, so with

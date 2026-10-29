@@ -14,6 +14,43 @@ All notable changes to oh-my-copilot will be documented in this file.
   reported within about 1.5 s; one that fails after `provider_started` as
   `sdk_host_failed_at_start:<last_error>`.
 
+### Security
+
+- **SDK team workers start credential-free.** This is hygiene against
+  accidental use, not a sandbox.
+  - The detached host, the worker runtime and its shells no longer inherit the
+    leader's tokens and cloud credentials. Gone are `COPILOT_GITHUB_TOKEN`,
+    `GH_TOKEN`, AWS keys, Azure, npm, `ANTHROPIC_API_KEY`, ssh-agent, askpass,
+    webhook and database URLs, every other secret-named variable, `GIT_CONFIG*`
+    and `GCM_*`. This holds also when they come through the worker env.
+  - `gh` and `az` see an empty config dir.
+  - git runs no credential helper and never prompts. It sends no configured
+    extra header, which clears a CI checkout's URL-scoped job token, and it
+    uses no ssh-agent.
+  - The leader hands the Copilot token to the host on stdin, and the host
+    passes it to the session over RPC.
+  - A worker with neither a stored Copilot login nor a token now fails to start.
+- **Wider secret-name match, for credential-free factory lanes too.** Team
+  workers and credential-free factory lanes now also drop these variables:
+  - names with `WEBHOOK`, a whole-segment `AUTH`, `_DSN`, `_PWD`;
+  - connection strings;
+  - database and broker URLs (`DATABASE_URL`, `POSTGRES_URL`, `REDIS_URL`,
+    `AMQP_URL`, `CELERY_BROKER_URL`, `MONGODB_URI`);
+  - package index URLs (`PIP_INDEX_URL`);
+  - bundler's `BUNDLE_<HOST>__<TLD>`;
+  - `DOCKER_AUTH_CONFIG`.
+
+  Notification hooks, and tests that need a webhook, DSN or database URL,
+  no longer get those values inside a worker or lane.
+- **SDK workers keep their own Copilot home.** The leader's `COPILOT_HOME` and
+  `COPILOT_MODEL` no longer override the per-worker home and model.
+- **More credential reads denied in team workers.** The shell policy also
+  refuses these commands:
+  - `git credential fill`/`approve`/`reject`;
+  - `git config … extraheader`;
+  - `gh auth token`, `gh auth git-credential` and `gh auth status --show-token`;
+  - `az account get-access-token`.
+
 # oh-my-copilot v5.18.0
 
 ## [5.18.0] - 2026-10-29
