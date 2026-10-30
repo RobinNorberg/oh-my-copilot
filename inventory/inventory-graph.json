@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2c1385cee3f86ab853c693a20b50fadcc3d2c9da",
-    "sourceSha256": "cda9c8444fb75982358173a50169e1132686277a504492198c4764c05df0599c",
+    "head": "b1d84dea8826d548685b2fdc946bf2daa75f5d00",
+    "sourceSha256": "3487eb83d0588569d0d15a8c1fbd8e903c297d12c01f5dd38a014aaf0dc5b9c7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2c1385cee3f86ab853c693a20b50fadcc3d2c9da",
-  "sourceSha256": "cda9c8444fb75982358173a50169e1132686277a504492198c4764c05df0599c",
+  "head": "b1d84dea8826d548685b2fdc946bf2daa75f5d00",
+  "sourceSha256": "3487eb83d0588569d0d15a8c1fbd8e903c297d12c01f5dd38a014aaf0dc5b9c7",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1880,
-      "total": 1904
+      "srcFiles": 1883,
+      "total": 1907
     },
     "generated": {
-      "distFiles": 6980,
+      "distFiles": 6992,
       "bridgeFiles": 9,
-      "total": 6989
+      "total": 7001
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2955,6 +2955,10 @@
       "dist/copilot-run/__tests__/job.test.d.ts.map",
       "dist/copilot-run/__tests__/job.test.js",
       "dist/copilot-run/__tests__/job.test.js.map",
+      "dist/copilot-run/__tests__/sandbox-session.test.d.ts",
+      "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map",
+      "dist/copilot-run/__tests__/sandbox-session.test.js",
+      "dist/copilot-run/__tests__/sandbox-session.test.js.map",
       "dist/copilot-run/__tests__/sandbox.test.d.ts",
       "dist/copilot-run/__tests__/sandbox.test.d.ts.map",
       "dist/copilot-run/__tests__/sandbox.test.js",
@@ -2967,10 +2971,18 @@
       "dist/copilot-run/names.d.ts.map",
       "dist/copilot-run/names.js",
       "dist/copilot-run/names.js.map",
+      "dist/copilot-run/sandbox-session.d.ts",
+      "dist/copilot-run/sandbox-session.d.ts.map",
+      "dist/copilot-run/sandbox-session.js",
+      "dist/copilot-run/sandbox-session.js.map",
       "dist/copilot-run/sandbox.d.ts",
       "dist/copilot-run/sandbox.d.ts.map",
       "dist/copilot-run/sandbox.js",
       "dist/copilot-run/sandbox.js.map",
+      "dist/copilot-run/timeout.d.ts",
+      "dist/copilot-run/timeout.d.ts.map",
+      "dist/copilot-run/timeout.js",
+      "dist/copilot-run/timeout.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -19522,6 +19534,26 @@
         "path": "dist/copilot-run/__tests__/job.test.js.map"
       },
       {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.js.map"
+      },
+      {
         "id": "dist/copilot-run/__tests__/sandbox.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/sandbox.test.d.ts"
@@ -19582,6 +19614,26 @@
         "path": "dist/copilot-run/names.js.map"
       },
       {
+        "id": "dist/copilot-run/sandbox-session.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.js"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.js.map"
+      },
+      {
         "id": "dist/copilot-run/sandbox.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/sandbox.d.ts"
@@ -19600,6 +19652,26 @@
         "id": "dist/copilot-run/sandbox.js.map",
         "kind": "generated-dist",
         "path": "dist/copilot-run/sandbox.js.map"
+      },
+      {
+        "id": "dist/copilot-run/timeout.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/timeout.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/timeout.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.js"
+      },
+      {
+        "id": "dist/copilot-run/timeout.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -49352,6 +49424,11 @@
         "path": "src/copilot-run/__tests__/job.test.ts"
       },
       {
+        "id": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "kind": "src",
+        "path": "src/copilot-run/__tests__/sandbox-session.test.ts"
+      },
+      {
         "id": "src/copilot-run/__tests__/sandbox.test.ts",
         "kind": "src",
         "path": "src/copilot-run/__tests__/sandbox.test.ts"
@@ -49367,9 +49444,19 @@
         "path": "src/copilot-run/names.ts"
       },
       {
+        "id": "src/copilot-run/sandbox-session.ts",
+        "kind": "src",
+        "path": "src/copilot-run/sandbox-session.ts"
+      },
+      {
         "id": "src/copilot-run/sandbox.ts",
         "kind": "src",
         "path": "src/copilot-run/sandbox.ts"
+      },
+      {
+        "id": "src/copilot-run/timeout.ts",
+        "kind": "src",
+        "path": "src/copilot-run/timeout.ts"
       },
       {
         "id": "src/factory/__tests__/check-run.test.ts",
@@ -73884,6 +73971,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/copilot-run/__tests__/sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -73970,6 +74107,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
@@ -73977,6 +74119,11 @@
         "from": "src/copilot-run/job.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
       },
       {
         "from": "src/copilot-run/job.ts",
@@ -74067,6 +74214,36 @@
         "from": "src/copilot-run/job.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/copilot-run/sandbox.ts",
@@ -112855,12 +113032,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9604,
-      "edgeCount": 11254,
-      "importEdgeCount": 9268,
+      "nodeCount": 9619,
+      "edgeCount": 11272,
+      "importEdgeCount": 9279,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
-  "manifestSha256": "7c753a444d099942fe5275a43c4dd6afe338de14e9020e0d767c5a0cdf366d12"
+  "inventorySha256": "eb5fb0ecc1b995379418ad032a6e47152ef7884edbef506d37d06f7ef7b2f4a3",
+  "manifestSha256": "7e93c1f9a4d95dd48286ded32d5759ffdd059a8f769759798d56e5116e0e7ca8"
 }
