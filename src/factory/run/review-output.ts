@@ -10,12 +10,17 @@
  * (no verdict recorded): no block, two blocks (a quoted block could be the
  * PR's), text after the block, a wrong sha, bad fields. An approve carrying a
  * blocker or major finding counts as changes-requested (fail closed).
+ *
+ * Two-axis review (the base has docs/standards/): every finding also names
+ * its `"axis": "spec" | "standards"`, so a blocker or major on either axis
+ * fails the verdict. A single-axis review ignores `axis`.
  */
 
 import type { FactoryFinding } from './state.js';
 
 export const MAX_REVIEW_NOTES = 500;
 const SEVERITIES = ['blocker', 'major', 'minor', 'nit'] as const;
+const AXES = ['spec', 'standards'] as const;
 
 export type ParsedReview =
   | { kind: 'valid'; verdict: 'approve' | 'changes-requested'; sha: string; findings: FactoryFinding[]; notes: string; downgraded: boolean }
@@ -32,7 +37,8 @@ export const FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
 /** Any line opening a json fence, quoted, indented or longer: counted so a pasted copy cannot hide. */
 export const ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
 
-export function parseReviewOutput(finalText: string | null | undefined, expectedSha: string): ParsedReview {
+/** `twoAxis`: every finding must name its axis. */
+export function parseReviewOutput(finalText: string | null | undefined, expectedSha: string, twoAxis = false): ParsedReview {
   const invalid = (reason: string): ParsedReview => ({ kind: 'invalid', reason });
   if (typeof finalText !== 'string' || !finalText.trim()) return invalid('the review lane left no final message');
   const blocks = [...finalText.matchAll(FENCE)];
@@ -61,8 +67,10 @@ export function parseReviewOutput(finalText: string | null | undefined, expected
     if (typeof x.summary !== 'string' || !x.summary.trim()) return invalid(`findings[${i}].summary must be a non-empty string`);
     if (x.file !== undefined && typeof x.file !== 'string') return invalid(`findings[${i}].file must be a string`);
     if (x.line !== undefined && !(Number.isInteger(x.line) && (x.line as number) > 0)) return invalid(`findings[${i}].line must be a positive integer`);
+    if (twoAxis && !AXES.includes(x.axis as NonNullable<FactoryFinding['axis']>)) return invalid(`findings[${i}].axis is not one of ${AXES.join(', ')}`);
     findings.push({
       severity: x.severity as FactoryFinding['severity'],
+      ...(twoAxis ? { axis: x.axis as NonNullable<FactoryFinding['axis']> } : {}),
       summary: x.summary.slice(0, 500),
       ...(typeof x.file === 'string' ? { file: x.file.slice(0, 300) } : {}),
       ...(typeof x.line === 'number' ? { line: x.line } : {}),
@@ -93,10 +101,11 @@ export function reviewComment(review: Extract<ParsedReview, { kind: 'valid' }>, 
   ];
   if (review.downgraded) lines.push('', 'The reviewer approved with a blocker or major finding; the engine counts that as changes requested.');
   if (review.findings.length > 0) {
-    lines.push('', '| Severity | Where | Finding |', '|---|---|---|');
+    const axis = review.findings.some((f) => f.axis);
+    lines.push('', axis ? '| Severity | Axis | Where | Finding |' : '| Severity | Where | Finding |', axis ? '|---|---|---|---|' : '|---|---|---|');
     for (const f of review.findings) {
       const where = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
-      lines.push(`| ${f.severity} | ${where} | ${f.summary.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} |`);
+      lines.push(`| ${f.severity} |${axis ? ` ${f.axis ?? ''} |` : ''} ${where} | ${f.summary.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} |`);
     }
   }
   if (review.notes) lines.push('', review.notes);

@@ -173,6 +173,45 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(readFactoryState(h.root, ISSUE)!.lanes[1].verdict).toBe('changes-requested');
   });
 
+  describe('two-axis review', () => {
+    const withStandards = () => {
+      mkdirSync(join(h.root, 'docs', 'standards'));
+      writeFileSync(join(h.root, 'docs', 'standards', 'code.md'), '# Code\n\nNo default exports.\n');
+      gitIn(h.root, 'add', '.');
+      gitIn(h.root, 'commit', '-q', '-m', 'standards');
+      gitIn(h.root, 'push', '-q', 'origin', 'dev');
+    };
+
+    it('no docs/standards/ on the base: the single-axis prompt', async () => {
+      const { lanes, done } = run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')]);
+      expect((await done).gate?.name).toBe('merge');
+      expect(lanes.started[1].prompt).toContain('against the plan. Diff first');
+      expect(lanes.started[1].prompt).not.toContain('axis');
+    });
+
+    it('docs/standards/ on the base: both axes, and a standards-axis blocker fails an approve', async () => {
+      withStandards();
+      const finding = { severity: 'blocker', axis: 'standards', summary: 'default export', file: 'src/greet.ts' };
+      const { lanes, done } = run([commitFile('src/greet.ts', 'export default 1;\n'), review('approve', [finding])], { limits: limits({ maxFixRounds: 0 }) });
+      const out = await done;
+      expect(out.gate?.name).toBe('fix-rounds-spent');
+      expect(lanes.started[1].prompt).toContain('on two axes');
+      expect(lanes.started[1].prompt).toContain('- docs/standards/code.md');
+      const state = readFactoryState(h.root, ISSUE)!;
+      expect(state.lanes[1].verdict).toBe('changes-requested');
+      expect(state.findings).toEqual([finding]);
+      expect(readShipState(h.root, PR)!.verdicts[0].verdict).toBe('changes-requested');
+    });
+
+    it('docs/standards/ on the base: a finding without an axis is an invalid review', async () => {
+      withStandards();
+      const { done } = run([commitFile('src/greet.ts', 'x\n'), review('approve', [{ severity: 'nit', summary: 'no axis' }]), review('approve', [{ severity: 'nit', summary: 'no axis' }])]);
+      const out = await done;
+      expect(out.gate?.name).toBe('review-invalid');
+      expect(readFactoryState(h.root, ISSUE)!.lanes[1]).toMatchObject({ verdict: 'invalid', note: expect.stringContaining('axis is not one of spec, standards') });
+    });
+  });
+
   it('no Acceptance criteria and no omg-plan link parks at needs-plan without a lane', async () => {
     h.gh.issue.body = 'please add greet';
     const { lanes, done } = run([]);
