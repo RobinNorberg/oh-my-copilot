@@ -97403,7 +97403,10 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
               } catch {
               }
             }
-            (0, import_fs100.rmSync)(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
+            try {
+              (0, import_fs100.rmSync)(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
+            } catch {
+            }
           }
           return errors;
         };

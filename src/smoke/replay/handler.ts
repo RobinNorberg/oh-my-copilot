@@ -764,7 +764,8 @@ export function withCassette(loaded: LoadedSdk, env: NodeJS.ProcessEnv = process
                 writeFileSync(`${part}${RECORD_FAILED_SUFFIX}`, `${error.message}\n`);
               } catch { /* the error is still returned */ }
             }
-            rmSync(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
+            // A marker that can't be removed (e.g. ENOTDIR on Linux when parts/ is not a dir) stays and makes the merge refuse.
+            try { rmSync(`${part}${RECORD_STARTED_SUFFIX}`, { force: true }); } catch { /* stop() must not throw */ }
           }
           return errors;
         };

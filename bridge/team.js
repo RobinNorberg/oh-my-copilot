@@ -22233,7 +22233,10 @@ function withCassette(loaded2, env = process.env, options = {}) {
               } catch {
               }
             }
-            rmSync5(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
+            try {
+              rmSync5(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
+            } catch {
+            }
           }
           return errors;
         };
