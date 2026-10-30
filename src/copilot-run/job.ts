@@ -104,6 +104,7 @@ import {
   laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
+  proxyCaEnv,
   scrubTokens,
   secretValues,
   sessionGitHubToken,
@@ -1296,6 +1297,9 @@ export class CopilotRunManager {
         // A job worktree's git dirs come from the links recorded at creation, never from discovery.
         const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
         const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
+        const realHome = (deps.realHome ?? (() => userInfo().homedir))();
+        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+        job.notes.push(...proxy.notes);
         return {
           worktree: resolve(top),
           commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
@@ -1303,11 +1307,12 @@ export class CopilotRunManager {
           pluginRoot,
           jobHome: job.home,
           jobDir: job.jobDir,
-          realHome: (deps.realHome ?? (() => userInfo().homedir))(),
+          realHome,
           platform: deps.platform,
           settings: job.sandboxSettings,
           hostCommits: job.hostCommits,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+          extraReadonly: proxy.caPaths,
         };
       },
       note: (text) => { job.notes.push(text); },

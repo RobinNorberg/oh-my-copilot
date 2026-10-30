@@ -205,6 +205,8 @@ export interface SandboxPolicyContext {
   uid?: number;
   /** The engine's SSH_AUTH_SOCK: the agent socket's dir is denied (Linux/macOS). */
   sshAuthSock?: string;
+  /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
+  extraReadonly?: string[];
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -289,7 +291,10 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   }
   const P = ctx.platform === 'win32' ? win32 : posix;
   const real = (p: string): string => { try { return realpathSync.native(p); } catch { return p; } };
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  // A path that does not resolve (a dangling link) is dropped rather than failing the whole config.
+  const tools = [...(ctx.toolPaths ?? []), ...(ctx.extraReadonly ?? [])].filter((p) => {
+    try { return P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)); } catch { return false; }
+  });
   // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
   // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
   // The lane's global git config is read-only.
@@ -624,6 +629,8 @@ export const SESSION_ENV_ALLOWLIST: readonly string[] = [
   'PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'LANG',
   // Non-secret OS variables shells and git expect.
   'SystemDrive', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
+  // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+  'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
   'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS', 'USERNAME', 'USER', 'LOGNAME', 'TERM', 'TZ',
   // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
   // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
@@ -631,6 +638,50 @@ export const SESSION_ENV_ALLOWLIST: readonly string[] = [
   // are denied, so the effect is breakage or shared read state, never escalation.
   'LOCALAPPDATA',
 ];
+
+/**
+ * The CA paths to grant sandboxed node and git read-only, and notes: the bundle file itself of NODE_EXTRA_CA_CERTS
+ * and SSL_CERT_FILE (never its dir, which may be ~/Downloads), and each SSL_CERT_DIR entry unless it is a filesystem
+ * root or holds the real home. An entry that does not resolve (missing, a dangling link) is dropped with a note
+ * rather than failing the whole sandbox config. A proxy URL with userinfo is noted too: the shells inherit the
+ * runtime env, so they see it, and it is not stripped because the runtime needs it.
+ */
+export function proxyCaEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, realHome: string): { caPaths: string[]; notes: string[] } {
+  const P = platform === 'win32' ? win32 : posix;
+  const caPaths: string[] = [];
+  const notes: string[] = [];
+  const entries = [
+    ...['NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE'].map((name) => ({ name, value: envValue(env, name), dir: false })),
+    ...(envValue(env, 'SSL_CERT_DIR') ?? '').split(P.delimiter).map((value) => ({ name: 'SSL_CERT_DIR', value, dir: true })),
+  ];
+  for (const { name, value, dir } of entries) {
+    if (!value || !P.isAbsolute(value)) continue;
+    let real: string;
+    let isDir: boolean;
+    try { real = realpathSync.native(value); isDir = statSync(real).isDirectory(); } catch (err) {
+      notes.push(`sandbox: ${name} ${value} does not resolve (${(err as NodeJS.ErrnoException).code ?? 'error'}); it is not granted to the lane.`);
+      continue;
+    }
+    if (isDir !== dir) {
+      notes.push(`sandbox: ${name} ${value} is not a ${dir ? 'directory' : 'file'}; it is not granted to the lane.`);
+      continue;
+    }
+    let tooBroad = true;
+    try { tooBroad = dir && (P.dirname(real) === real || isUnderRoot(realHome, real, platform)); } catch { /* unresolvable: refuse */ }
+    if (tooBroad) {
+      notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+      continue;
+    }
+    caPaths.push(real);
+  }
+  for (const name of ['HTTPS_PROXY', 'HTTP_PROXY']) {
+    const value = envValue(env, name);
+    let userinfo = false;
+    try { if (value) { const u = new URL(value); userinfo = u.username !== '' || u.password !== ''; } } catch { /* not a URL */ }
+    if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+  }
+  return { caPaths, notes };
+}
 
 /**
  * The variables the Windows sandbox (MXC) needs to launch any process,

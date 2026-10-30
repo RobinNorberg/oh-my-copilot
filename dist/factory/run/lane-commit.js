@@ -30,7 +30,8 @@
  * to the start tree.
  */
 import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { jobRefProblem } from '../../copilot-run/job.js';
 import { OmcPaths } from '../../lib/worktree-paths.js';
 import { protectedChanges } from '../../ship/merge.js';
 import { EMPTY_TREE, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
@@ -258,6 +259,13 @@ export function commitLaneWork(input) {
         const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
         if (hit.length > 0)
             return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+        if (input.branch) {
+            // The job has ended, but a loose ref rewritten since as `ref: refs/heads/main` (or a link) would make update-ref move main.
+            const common = resolve(input.repoRoot, runHostGit(input.repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], GIT_TIMEOUT_MS).trim());
+            const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+            if (problem)
+                return refuse('escaped', `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+        }
         const tree = git(['write-tree']);
         if (!HEX.test(tree))
             return { ok: false, refusal: 'error', reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
@@ -273,7 +281,7 @@ export function commitLaneWork(input) {
             const ref = `refs/heads/${input.branch}`;
             const at = runHostGit(input.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();
             if (at === input.start)
-                runHostGit(input.repoRoot, ['update-ref', '-m', 'omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
+                runHostGit(input.repoRoot, ['update-ref', '--no-deref', '-m', 'omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
             else
                 notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || '(none)'}, not the lane start; it was left there`);
         }

@@ -7097,7 +7097,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve42.call(this, root, ref);
+      let _sch = resolve43.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7124,7 +7124,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve42(root, ref) {
+    function resolve43(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7755,7 +7755,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve42(baseURI, relativeURI, options) {
+    function resolve43(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse13(baseURI, schemelessOptions), parse13(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -8013,7 +8013,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize8,
-      resolve: resolve42,
+      resolve: resolve43,
       resolveComponent,
       equal,
       serialize,
@@ -12720,7 +12720,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve42) => setTimeout(resolve42, ms));
+  return new Promise((resolve43) => setTimeout(resolve43, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13419,7 +13419,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve42, reject2) => {
+        return new Promise((resolve43, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13467,7 +13467,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve42();
+            resolve43();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13726,13 +13726,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve42, reject2) => {
+        return new Promise((resolve43, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve42,
+            resolve: resolve43,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -13912,7 +13912,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve42) => setTimeout(resolve42, 100));
+        await new Promise((resolve43) => setTimeout(resolve43, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -14144,7 +14144,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve42, reject2) => {
+        return new Promise((resolve43, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -14163,7 +14163,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve42();
+                resolve43();
               }
             }
           };
@@ -14171,7 +14171,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve42();
+              resolve43();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -17547,7 +17547,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve42) => setTimeout(resolve42, ms));
+  return new Promise((resolve43) => setTimeout(resolve43, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17739,7 +17739,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve42, reject2) => {
+  return new Promise((resolve43, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17829,7 +17829,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve42(response.result);
+            resolve43(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -21364,7 +21364,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve42) => setTimeout(resolve42, 25));
+        await new Promise((resolve43) => setTimeout(resolve43, 25));
         continue;
       }
       try {
@@ -21385,7 +21385,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve42) => setTimeout(resolve42, 25));
+        await new Promise((resolve43) => setTimeout(resolve43, 25));
       }
     }
     return await fn();
@@ -23561,7 +23561,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve42) => setTimeout(resolve42, ms));
+  return new Promise((resolve43) => setTimeout(resolve43, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -24605,7 +24605,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve42) {
+function mergeByKey(base, incoming, keyFn, resolve43) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -24614,7 +24614,7 @@ function mergeByKey(base, incoming, keyFn, resolve42) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve42(existing, item));
+      seen.set(key, resolve43(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -29236,15 +29236,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? import_fs44.existsSync;
-  const resolve42 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve43 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs44.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve42(override);
+    const found = resolve43(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve42("copilot");
+  const onPath = resolve43("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29567,7 +29567,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve42) => {
+  return new Promise((resolve43) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29576,7 +29576,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve42({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve43({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29589,7 +29589,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve42({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve43({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -32455,7 +32455,13 @@ function buildSandboxConfig(profile, ctx, host) {
       return p;
     }
   };
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => {
+    try {
+      return P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform));
+    } catch {
+      return false;
+    }
+  });
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path7.dirname)(relocated.GIT_CONFIG_GLOBAL);
@@ -32682,6 +32688,54 @@ function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
 }
+function proxyCaEnv(env, platform, realHome) {
+  const P = platform === "win32" ? import_node_path7.win32 : import_node_path7.posix;
+  const caPaths = [];
+  const notes = [];
+  const entries = [
+    ...["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((name) => ({ name, value: envValue(env, name), dir: false })),
+    ...(envValue(env, "SSL_CERT_DIR") ?? "").split(P.delimiter).map((value) => ({ name: "SSL_CERT_DIR", value, dir: true }))
+  ];
+  for (const { name, value, dir } of entries) {
+    if (!value || !P.isAbsolute(value)) continue;
+    let real2;
+    let isDir;
+    try {
+      real2 = import_node_fs6.realpathSync.native(value);
+      isDir = (0, import_node_fs6.statSync)(real2).isDirectory();
+    } catch (err) {
+      notes.push(`sandbox: ${name} ${value} does not resolve (${err.code ?? "error"}); it is not granted to the lane.`);
+      continue;
+    }
+    if (isDir !== dir) {
+      notes.push(`sandbox: ${name} ${value} is not a ${dir ? "directory" : "file"}; it is not granted to the lane.`);
+      continue;
+    }
+    let tooBroad = true;
+    try {
+      tooBroad = dir && (P.dirname(real2) === real2 || isUnderRoot(realHome, real2, platform));
+    } catch {
+    }
+    if (tooBroad) {
+      notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+      continue;
+    }
+    caPaths.push(real2);
+  }
+  for (const name of ["HTTPS_PROXY", "HTTP_PROXY"]) {
+    const value = envValue(env, name);
+    let userinfo = false;
+    try {
+      if (value) {
+        const u = new URL(value);
+        userinfo = u.username !== "" || u.password !== "";
+      }
+    } catch {
+    }
+    if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+  }
+  return { caPaths, notes };
+}
 function missingSandboxEnv(env, platform) {
   return platform === "win32" ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === void 0) : [];
 }
@@ -32782,6 +32836,13 @@ var init_sandbox2 = __esm({
       "ProgramW6432",
       "ProgramData",
       "CommonProgramFiles",
+      // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "NO_PROXY",
+      "NODE_EXTRA_CA_CERTS",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
       "NUMBER_OF_PROCESSORS",
       "PROCESSOR_ARCHITECTURE",
       "OS",
@@ -33161,7 +33222,7 @@ async function runSdkTier(input) {
       }
       const path15 = (0, import_path62.join)(input.home, `events-${name}.jsonl`);
       events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve42) => setTimeout(resolve42, 2));
+      if (entries.length > 0) await new Promise((resolve43) => setTimeout(resolve43, 2));
       const start = Date.now();
       const { wedged: stuck, ...run2 } = name === "chain" ? await input.runChain({
         bin,
@@ -37941,7 +38002,7 @@ function deleteWorkerBranchAt(repoRoot, branch, commit) {
 `);
       return;
     }
-    git(repoRoot, ["update-ref", "-d", ref, commit]);
+    git(repoRoot, ["update-ref", "--no-deref", "-d", ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
     const error2 = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);
@@ -38542,6 +38603,11 @@ function commitLaneWork(input) {
     if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
     if (hit.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit.join(", ")}`);
+    if (input.branch) {
+      const common = (0, import_node_path10.resolve)(input.repoRoot, runHostGit(input.repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS).trim());
+      const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+      if (problem) return refuse("escaped", `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+    }
     const tree = git3(["write-tree"]);
     if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
     if (tree === git3(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
@@ -38554,7 +38620,7 @@ function commitLaneWork(input) {
     if (input.branch) {
       const ref = `refs/heads/${input.branch}`;
       const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS);
+      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS);
       else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
     }
     return { ok: true, sha: sha2, files, notes };
@@ -38587,6 +38653,7 @@ var init_lane_commit = __esm({
     "use strict";
     import_node_fs9 = require("node:fs");
     import_node_path10 = require("node:path");
+    init_job();
     init_worktree_paths();
     init_merge2();
     init_git_worktree();
@@ -39532,6 +39599,7 @@ __export(job_exports, {
   filterDriverOverrides: () => filterDriverOverrides,
   hostGit: () => hostGit,
   hostGitHardeningArgs: () => hostGitHardeningArgs,
+  jobRefProblem: () => jobRefProblem,
   relativeHooksPathRule: () => relativeHooksPathRule,
   resolveStartRef: () => resolveStartRef,
   reviewProfileDenial: () => reviewProfileDenial,
@@ -39643,6 +39711,8 @@ function syncJobBranch(job, gitDirArgs) {
   const ref = `refs/heads/${wt.branch}`;
   const problem = jobRefProblem(job.commonGitDir, wt.repoRoot, ref);
   if (problem) return { problem };
+  const attached = git2(wt.path, [...gitDirArgs, "symbolic-ref", "-q", "HEAD"]);
+  if (attached) return { problem: `the worktree's HEAD is attached to ${attached}, not detached` };
   const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
   const current = git2(wt.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   if (!head || !current || head === current) return { moved: null };
@@ -39732,7 +39802,8 @@ function sharedGitStateSnapshot(commonGitDir) {
     for (const id of ids) {
       add(`worktrees/${id}`, false);
       if (out[`worktrees/${id}`] !== "dir") continue;
-      for (const name of ["config.worktree", "commondir", "gitdir", "HEAD"]) add(`worktrees/${id}/${name}`, false);
+      for (const name of ["config.worktree", "commondir", "gitdir"]) add(`worktrees/${id}/${name}`, false);
+      out[`worktrees/${id}/HEAD`] = worktreeHeadEntry((0, import_node_path12.join)(commonGitDir, "worktrees", id, "HEAD"));
     }
   }
   try {
@@ -39742,6 +39813,19 @@ function sharedGitStateSnapshot(commonGitDir) {
   }
   Object.assign(out, branchRefs(commonGitDir));
   return out;
+}
+function worktreeHeadEntry(path15) {
+  const kind = describeEntry(path15);
+  if (!kind.startsWith("file ")) return kind;
+  let text3;
+  try {
+    text3 = (0, import_node_fs11.readFileSync)(path15, "utf8");
+  } catch {
+    return "file unreadable";
+  }
+  const m = /^(?:([0-9a-f]{40}(?:[0-9a-f]{24})?)|ref: (refs\/\S+))\r?\n?$/.exec(text3);
+  if (!m) return kind;
+  return m[1] ? `head ${m[1]}` : `head ref: ${m[2]}`;
 }
 function branchRefs(commonGitDir) {
   const out = {};
@@ -39774,7 +39858,7 @@ function branchRefs(commonGitDir) {
       for (const name of names) walk(`${rel}/${name}`);
     } else if (kind.startsWith("file ")) {
       try {
-        out[rel] = `ref ${(0, import_node_fs11.readFileSync)(path15, "utf8").trim()}`;
+        out[rel] = `ref ${(0, import_node_fs11.readFileSync)(path15, "utf8").replace(/\r?\n$/, "")}`;
       } catch {
         out[rel] = "file unreadable";
       }
@@ -39785,12 +39869,19 @@ function branchRefs(commonGitDir) {
   walk("refs/heads");
   return out;
 }
-function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set()) {
+function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set(), owned = /* @__PURE__ */ new Set()) {
   return [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
     if (ignore.has(key)) return false;
     const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
     if (id !== void 0 && (before[`worktrees/${id}`] === void 0 || after[`worktrees/${id}`] === void 0)) return false;
-    return (before[key] ?? "absent") !== (after[key] ?? "absent");
+    const was = before[key];
+    const now = after[key];
+    if (!owned.has(key)) {
+      const plain = (v) => v === void 0 || PLAIN_REF.test(v);
+      if (key.startsWith(JOB_REF_PREFIX) && plain(was) && plain(now)) return false;
+      if (key === `worktrees/${id}/HEAD` && now?.startsWith("head ") && !now.startsWith("head ref: ")) return false;
+    }
+    return (was ?? "absent") !== (now ?? "absent");
   });
 }
 function relativeHooksPathRule(cwd, gitDirArgs = []) {
@@ -39831,7 +39922,7 @@ function defaultCopilotRunDeps(env = process.env) {
     killTree: (pid) => killProcessTree(pid, import_node_child_process4.spawnSync)
   };
 }
-var import_node_child_process4, import_node_crypto3, import_node_fs11, import_node_os4, import_node_path12, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process4, import_node_crypto3, import_node_fs11, import_node_os4, import_node_path12, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -39898,11 +39989,15 @@ var init_job = __esm({
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text3) => (text3 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    JOB_REF_PREFIX = `refs/heads/omc-team/${WORKTREE_TEAM}/`;
+    PLAIN_REF = /^ref [0-9a-f]{40}(?:[0-9a-f]{24})?$/;
     CopilotRunManager = class {
       constructor(deps) {
         this.deps = deps;
       }
       jobs = /* @__PURE__ */ new Map();
+      /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+      owned = /* @__PURE__ */ new Set();
       /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
       start(input, options = {}) {
         if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== "1") {
@@ -40063,7 +40158,9 @@ var init_job = __esm({
           if (j.worktreeLinks) liveWorktreeHeads.add(`worktrees/${(0, import_node_path12.basename)(j.worktreeLinks.adminDir)}/HEAD`);
         }
         if (worktree && worktreeLinks) {
-          liveWorktreeHeads.add(`worktrees/${(0, import_node_path12.basename)(worktreeLinks.adminDir)}/HEAD`);
+          const headKey = `worktrees/${(0, import_node_path12.basename)(worktreeLinks.adminDir)}/HEAD`;
+          liveWorktreeHeads.add(headKey);
+          this.owned.add(headKey).add(`refs/heads/${worktree.branch}`);
           this.expectJobRef(worktree.branch, baseCommit);
         }
         const jobDir = (0, import_node_path12.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
@@ -40103,6 +40200,7 @@ var init_job = __esm({
           extraProtected,
           sharedGitState,
           liveWorktreeHeads,
+          branchCommit: null,
           pid: void 0,
           pidIdentity: null,
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -40132,7 +40230,7 @@ var init_job = __esm({
         }).then((outcome) => {
           clearTimeout(timer);
           const gitDirArgs = jobGitDirArgs(job);
-          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads) : [];
+          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads, this.owned) : [];
           if (gitDirArgs === null) {
             const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
             job.error = job.error ? `${why}; ${job.error}` : why;
@@ -40146,13 +40244,14 @@ var init_job = __esm({
           } else {
             const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
             if ("problem" in sync) {
-              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} changed kind during the session (${sync.problem}); it was not moved and no host git ran in the worktree`;
+              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} or its worktree's HEAD changed kind during the session (${sync.problem}); the branch was not moved and no host git ran in the worktree`;
               job.error = job.error ? `${why}; ${job.error}` : why;
               job.stopReason ??= "sandbox-escaped";
               outcome = "failed";
             } else {
               if (job.worktree) {
                 if (sync.moved) this.expectJobRef(job.worktree.branch, sync.moved);
+                job.branchCommit = sync.moved ?? git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${job.worktree.branch}^{commit}`]);
                 job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
               }
               job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
@@ -40171,6 +40270,7 @@ var init_job = __esm({
           }
           job.endedAt = (/* @__PURE__ */ new Date()).toISOString();
           job.status = outcome;
+          this.releaseWorktreeHead(job);
         });
         return this.snapshot(job);
       }
@@ -40214,6 +40314,12 @@ var init_job = __esm({
         if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
         let tampered = null;
         if (!job.cleanedUp) {
+          const moved = this.branchMismatch(job);
+          if (moved) {
+            throw new CopilotRunError(
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${moved}. Do not merge that branch: inspect it, delete it yourself (git branch -D), then call cleanup again.`
+            );
+          }
           try {
             ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
           } catch (err) {
@@ -40237,6 +40343,32 @@ var init_job = __esm({
        * manager's own ref writes are no change and any other write to a job
        * branch (a lane retargeting another job's branch) is.
        */
+      /**
+       * Why a finished job's branch no longer holds the commit the job left it
+       * at (branchCommit), or null (also once it is gone). A lane of another
+       * process can repoint it to a plain commit that lane's own check does not
+       * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+       */
+      branchMismatch(job) {
+        if (!job.worktree || job.cleanedUp || !job.branchCommit) return null;
+        const ref = `refs/heads/${job.worktree.branch}`;
+        const problem = jobRefProblem(job.commonGitDir, job.worktree.repoRoot, ref);
+        if (problem) return `sandbox-escaped: the job's branch changed after the job ended (${problem})`;
+        const at = git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        if (at && at !== job.branchCommit) {
+          return `sandbox-escaped: the job's branch was moved after the job ended, to ${at.slice(0, 12)} (the job left it at ${job.branchCommit.slice(0, 12)})`;
+        }
+        return null;
+      }
+      /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+      releaseWorktreeHead(job) {
+        if (!job.worktreeLinks || !job.commonGitDir) return;
+        const key = `worktrees/${(0, import_node_path12.basename)(job.worktreeLinks.adminDir)}/HEAD`;
+        for (const other of this.jobs.values()) {
+          if (other === job || isTerminal2(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState) continue;
+          other.sharedGitState[key] = worktreeHeadEntry((0, import_node_path12.join)(job.commonGitDir, key));
+        }
+      }
       expectJobRef(branch, sha2) {
         const key = `refs/heads/${branch}`;
         for (const other of this.jobs.values()) {
@@ -40331,6 +40463,9 @@ var init_job = __esm({
             const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
             const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
             const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            const realHome = (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))();
+            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+            job.notes.push(...proxy.notes);
             return {
               worktree: (0, import_node_path12.resolve)(top),
               commonGitDir: commonRaw ? (0, import_node_path12.resolve)(commonRaw) : (0, import_node_path12.resolve)(top, ".git"),
@@ -40338,11 +40473,12 @@ var init_job = __esm({
               pluginRoot,
               jobHome: job.home,
               jobDir: job.jobDir,
-              realHome: (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))(),
+              realHome,
               platform: deps.platform,
               settings: job.sandboxSettings,
               hostCommits: job.hostCommits,
-              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+              extraReadonly: proxy.caPaths
             };
           },
           note: (text3) => {
@@ -40572,6 +40708,8 @@ var init_job = __esm({
           summary: `${formatAmount(job.usage.premiumRequests, "premiumRequests")}, ${formatAmount(Number(job.usage.credits.toFixed(3)), "credits")}`
         };
         const scrub = (text3) => scrubTokens(text3, job.secrets);
+        const moved = this.branchMismatch(job);
+        const notes = moved ? [...job.notes, `${moved}; do not merge the branch.`] : job.notes;
         return {
           jobId: job.id,
           status: job.status,
@@ -40595,7 +40733,7 @@ var init_job = __esm({
           ...job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...job.headCommit ? { headCommit: job.headCommit } : {} } } : {},
           ...job.changes ? { changes: job.changes } : {},
           ...job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {},
-          ...job.notes.length ? { notes: job.notes.map(scrub) } : {},
+          ...notes.length ? { notes: notes.map(scrub) } : {},
           eventsPath: job.eventsPath,
           ...job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {},
           ...job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}
@@ -54899,7 +55037,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve42) => setTimeout(resolve42, pollInterval));
+        await new Promise((resolve43) => setTimeout(resolve43, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -54916,7 +55054,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve42, reject2) => {
+    return new Promise((resolve43, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -54994,7 +55132,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve42(parseResult.data);
+            resolve43(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -55255,12 +55393,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve42, reject2) => {
+    return new Promise((resolve43, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve42, interval);
+      const timeoutId = setTimeout(resolve43, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -55989,12 +56127,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve42) => {
+    return new Promise((resolve43) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve42();
+        resolve43();
       } else {
-        this._stdout.once("drain", resolve42);
+        this._stdout.once("drain", resolve43);
       }
     });
   }

@@ -278,6 +278,14 @@ export declare function filterDriverOverrides(cwd: string, gitDirArgs?: readonly
  */
 export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[], ignoredUnderProtected?: boolean): ChangeSummary | null;
 /**
+ * Why the job's branch `ref` is not a plain sha ref, or null. A loose ref
+ * the file tools rewrote as `ref: refs/heads/main` makes rev-parse read
+ * main and a dereferencing update-ref move main; a link or junction on the
+ * way, or a non-regular file, points the ref elsewhere. A ref only in
+ * `packed-refs` is plain (packed refs hold no symrefs).
+ */
+export declare function jobRefProblem(commonGitDir: string | null, repoRoot: string, ref: string): string | null;
+/**
  * The common git dir's files that steer host git, keyed by path relative to
  * it: `config`, `config.worktree`, `commondir` and `gitdir` (git reads
  * `commondir` in any git dir, so writing one redirects the main checkout's
@@ -305,9 +313,19 @@ export declare function sharedGitStateSnapshot(commonGitDir: string): Record<str
  * to the common git dir. A `worktrees/<id>` entry another job added or removed
  * meanwhile is not a change; a kept entry that changed type, or whose
  * `config.worktree` appeared, changed or went, is. Keys in `ignore` (the
- * HEADs of job worktrees whose sessions ran meanwhile) are no change.
+ * HEADs of job worktrees whose sessions run meanwhile) are no change.
+ *
+ * Keys in `owned` (the job branches and worktree HEADs of the caller's
+ * manager, whose expected values it keeps) compare exactly. Other processes
+ * run their own jobs in the same repository (a second Copilot session, `omg
+ * factory run`), so outside `owned` a job branch that stays absent or a plain
+ * commit id, and another worktree's HEAD that ends detached, are no change;
+ * a symref, link, non-regular file or extra content in a job branch is, and
+ * so is a HEAD that came to point at a different ref. Residual: a lane can
+ * repoint another process's finished job branch to a different plain commit
+ * undetected here; that process's manager reports it (branchMismatch).
  */
-export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>, ignore?: ReadonlySet<string>): string[];
+export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>, ignore?: ReadonlySet<string>, owned?: ReadonlySet<string>): string[];
 /**
  * A relative `core.hooksPath` (any config level but the command line) as a
  * protected dir rule, or null, as git resolves it in `cwd` with `gitDirArgs`
@@ -320,6 +338,8 @@ export declare function defaultCopilotRunDeps(env?: NodeJS.ProcessEnv): CopilotR
 export declare class CopilotRunManager {
     private readonly deps;
     private readonly jobs;
+    /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+    private readonly owned;
     constructor(deps: CopilotRunDeps);
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input: CopilotRunStartInput, options?: CopilotRunStartOptions): CopilotRunSnapshot;
@@ -343,6 +363,15 @@ export declare class CopilotRunManager {
      * manager's own ref writes are no change and any other write to a job
      * branch (a lane retargeting another job's branch) is.
      */
+    /**
+     * Why a finished job's branch no longer holds the commit the job left it
+     * at (branchCommit), or null (also once it is gone). A lane of another
+     * process can repoint it to a plain commit that lane's own check does not
+     * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+     */
+    private branchMismatch;
+    /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+    private releaseWorktreeHead;
     private expectJobRef;
     private find;
     /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */

@@ -13787,7 +13787,7 @@ var init_sdk = __esm({
         const schOrFunc = root2.refs[ref];
         if (schOrFunc)
           return schOrFunc;
-        let _sch = resolve69.call(this, root2, ref);
+        let _sch = resolve70.call(this, root2, ref);
         if (_sch === void 0) {
           const schema = (_a = root2.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
           const { schemaId } = this.opts;
@@ -13814,7 +13814,7 @@ var init_sdk = __esm({
       function sameSchemaEnv(s1, s2) {
         return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
       }
-      function resolve69(root2, ref) {
+      function resolve70(root2, ref) {
         let sch;
         while (typeof (sch = this.refs[ref]) == "string")
           ref = sch;
@@ -14312,7 +14312,7 @@ var init_sdk = __esm({
         }
         return uri;
       }
-      function resolve69(baseURI, relativeURI, options) {
+      function resolve70(baseURI, relativeURI, options) {
         const schemelessOptions = Object.assign({ scheme: "null" }, options);
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
@@ -14545,7 +14545,7 @@ var init_sdk = __esm({
       var fastUri = {
         SCHEMES,
         normalize: normalize12,
-        resolve: resolve69,
+        resolve: resolve70,
         resolveComponents,
         equal,
         serialize,
@@ -17959,7 +17959,7 @@ var init_sdk = __esm({
           }
           return;
         }
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           const exitHandler = (code, signal) => {
             if (this.abortController.signal.aborted) {
               reject2(new AbortError("Operation aborted"));
@@ -17969,7 +17969,7 @@ var init_sdk = __esm({
             if (error2) {
               reject2(error2);
             } else {
-              resolve69();
+              resolve70();
             }
           };
           this.process.once("exit", exitHandler);
@@ -18015,17 +18015,17 @@ var init_sdk = __esm({
         if (this.hasError) {
           return Promise.reject(this.hasError);
         }
-        return new Promise((resolve69, reject2) => {
-          this.readResolve = resolve69;
+        return new Promise((resolve70, reject2) => {
+          this.readResolve = resolve70;
           this.readReject = reject2;
         });
       }
       enqueue(value) {
         if (this.readResolve) {
-          const resolve69 = this.readResolve;
+          const resolve70 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve69({ done: false, value });
+          resolve70({ done: false, value });
         } else {
           this.queue.push(value);
         }
@@ -18033,10 +18033,10 @@ var init_sdk = __esm({
       done() {
         this.isDone = true;
         if (this.readResolve) {
-          const resolve69 = this.readResolve;
+          const resolve70 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve69({ done: true, value: void 0 });
+          resolve70({ done: true, value: void 0 });
         }
       }
       error(error2) {
@@ -18369,10 +18369,10 @@ var init_sdk = __esm({
           type: "control_request",
           request
         };
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           this.pendingControlResponses.set(requestId, (response) => {
             if (response.subtype === "success") {
-              resolve69(response);
+              resolve70(response);
             } else {
               reject2(new Error(response.error));
               if (response.pending_permission_requests) {
@@ -18462,15 +18462,15 @@ var init_sdk = __esm({
           logForDebugging(`[Query.waitForFirstResult] Result already received, returning immediately`);
           return Promise.resolve();
         }
-        return new Promise((resolve69) => {
+        return new Promise((resolve70) => {
           if (this.abortController?.signal.aborted) {
-            resolve69();
+            resolve70();
             return;
           }
-          this.abortController?.signal.addEventListener("abort", () => resolve69(), {
+          this.abortController?.signal.addEventListener("abort", () => resolve70(), {
             once: true
           });
-          this.firstResultReceivedResolve = resolve69;
+          this.firstResultReceivedResolve = resolve70;
         });
       }
       handleHookCallbacks(callbackId, input, toolUseID, abortSignal) {
@@ -18521,13 +18521,13 @@ var init_sdk = __esm({
       handleMcpControlRequest(serverName, mcpRequest, transport) {
         const messageId = "id" in mcpRequest.message ? mcpRequest.message.id : null;
         const key = `${serverName}:${messageId}`;
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           const cleanup = () => {
             this.pendingMcpResponses.delete(key);
           };
           const resolveAndCleanup = (response) => {
             cleanup();
-            resolve69(response);
+            resolve70(response);
           };
           const rejectAndCleanup = (error2) => {
             cleanup();
@@ -26764,7 +26764,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               return;
             }
             const pollInterval = (_c = (_a = task2.pollInterval) !== null && _a !== void 0 ? _a : (_b = this._options) === null || _b === void 0 ? void 0 : _b.defaultTaskPollInterval) !== null && _c !== void 0 ? _c : 1e3;
-            await new Promise((resolve69) => setTimeout(resolve69, pollInterval));
+            await new Promise((resolve70) => setTimeout(resolve70, pollInterval));
             (_d = options === null || options === void 0 ? void 0 : options.signal) === null || _d === void 0 || _d.throwIfAborted();
           }
         } catch (error2) {
@@ -26776,7 +26776,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options !== null && options !== void 0 ? options : {};
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           var _a, _b, _c, _d, _e, _f, _g;
           const earlyReject = (error2) => {
             reject2(error2);
@@ -26857,7 +26857,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (!parseResult.success) {
                 reject2(parseResult.error);
               } else {
-                resolve69(parseResult.data);
+                resolve70(parseResult.data);
               }
             } catch (error2) {
               reject2(error2);
@@ -27054,12 +27054,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           }
         } catch (_d) {
         }
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           if (signal.aborted) {
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve69, interval);
+          const timeoutId = setTimeout(resolve70, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -27730,7 +27730,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         let task = createTaskResult.task;
         const pollInterval = (_a = task.pollInterval) !== null && _a !== void 0 ? _a : 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve69) => setTimeout(resolve69, pollInterval));
+          await new Promise((resolve70) => setTimeout(resolve70, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -33203,7 +33203,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process4.spawn)(command, args, {
@@ -33251,7 +33251,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve69();
+            resolve70();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -33510,13 +33510,13 @@ ${content2}`;
         const message2 = `Content-Length: ${Buffer.byteLength(content2)}\r
 \r
 ${content2}`;
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve69,
+            resolve: resolve70,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -33696,7 +33696,7 @@ ${content2}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve69) => setTimeout(resolve69, 100));
+        await new Promise((resolve70) => setTimeout(resolve70, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -33928,7 +33928,7 @@ ${content2}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve69, reject2) => {
+        return new Promise((resolve70, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -33947,7 +33947,7 @@ ${content2}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve69();
+                resolve70();
               }
             }
           };
@@ -33955,7 +33955,7 @@ ${content2}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve69();
+              resolve70();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -38508,7 +38508,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep(ms) {
-  return new Promise((resolve69) => setTimeout(resolve69, ms));
+  return new Promise((resolve70) => setTimeout(resolve70, ms));
 }
 var fs4, fsSync2, path5, os3, crypto4, import_child_process8, import_util5, execFileAsync2, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -38700,7 +38700,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve69, reject2) => {
+  return new Promise((resolve70, reject2) => {
     const id = (0, import_crypto6.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -38790,7 +38790,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve69(response.result);
+            resolve70(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -39309,7 +39309,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve69) => setTimeout(resolve69, ms));
+  return new Promise((resolve70) => setTimeout(resolve70, ms));
 }
 var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -47808,7 +47808,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve69) => setTimeout(resolve69, 25));
+        await new Promise((resolve70) => setTimeout(resolve70, 25));
         continue;
       }
       try {
@@ -47829,7 +47829,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve69) => setTimeout(resolve69, 25));
+        await new Promise((resolve70) => setTimeout(resolve70, 25));
       }
     }
     return await fn();
@@ -50015,7 +50015,7 @@ function withFileLockSync(lockPath2, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve69) => setTimeout(resolve69, ms));
+  return new Promise((resolve70) => setTimeout(resolve70, ms));
 }
 async function acquireFileLock(lockPath2, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -51059,7 +51059,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve69) {
+function mergeByKey(base, incoming, keyFn, resolve70) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -51068,7 +51068,7 @@ function mergeByKey(base, incoming, keyFn, resolve69) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve69(existing, item));
+      seen.set(key, resolve70(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -71439,24 +71439,24 @@ async function runSessionEndAction(context, _execute) {
     let settled = false;
     let exitCode = null;
     let settleChild = () => void 0;
-    const childExit = new Promise((resolve69) => {
+    const childExit = new Promise((resolve70) => {
       settleChild = (code2) => {
         if (settled) return;
         settled = true;
         exitCode = code2;
-        resolve69(code2);
+        resolve70(code2);
       };
       child.once("exit", settleChild);
       child.once("error", () => settleChild(null));
     });
     let deadlineTermination;
     let resolveTermination;
-    const terminationFinished = new Promise((resolve69) => {
-      resolveTermination = resolve69;
+    const terminationFinished = new Promise((resolve70) => {
+      resolveTermination = resolve70;
     });
     const terminate = async () => {
-      const postKillWait = new Promise((resolve69) => {
-        const timer = setTimeout(resolve69, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
+      const postKillWait = new Promise((resolve70) => {
+        const timer = setTimeout(resolve70, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
         timer.unref();
       });
       if (identity && child.pid) {
@@ -71470,7 +71470,7 @@ async function runSessionEndAction(context, _execute) {
       await Promise.race([childExit, postKillWait]);
     };
     if (!identity || !child.pid) {
-      await Promise.race([childExit, new Promise((resolve69) => setTimeout(resolve69, POST_KILL_SETTLE_MS))]);
+      await Promise.race([childExit, new Promise((resolve70) => setTimeout(resolve70, POST_KILL_SETTLE_MS))]);
       return { code: "runner-identity-unavailable", completed: false };
     }
     const timeout = setTimeout(() => {
@@ -71521,7 +71521,7 @@ async function runActionRunnerEntrypoint() {
       } catch {
       }
       if (armed) break;
-      await new Promise((resolve69) => setTimeout(resolve69, 10));
+      await new Promise((resolve70) => setTimeout(resolve70, 10));
     }
     if (Date.now() >= input.deadlineAt) throw new Error("runner-arm-deadline");
     const deadlineTimer = setTimeout(() => {
@@ -73746,7 +73746,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve69) => {
+    const result = await new Promise((resolve70) => {
       const req = (0, import_https.request)(
         telegramRequestOptions(Buffer.byteLength(body), config2.botToken),
         (res) => {
@@ -73762,9 +73762,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve69({ platform: "telegram", success: true, messageId });
+              resolve70({ platform: "telegram", success: true, messageId });
             } else {
-              resolve69({
+              resolve70({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -73774,11 +73774,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve69({ platform: "telegram", success: false, error: e.message });
+        resolve70({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve69({
+        resolve70({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -74069,9 +74069,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve69) => {
+      new Promise((resolve70) => {
         timer = setTimeout(
-          () => resolve69([
+          () => resolve70([
             {
               platform: "unknown",
               success: false,
@@ -77359,10 +77359,10 @@ async function runWithinDeadline(deadlineAt, run2) {
   const controller = new AbortController();
   let timer;
   try {
-    return await Promise.race([run2(controller.signal), new Promise((resolve69) => {
+    return await Promise.race([run2(controller.signal), new Promise((resolve70) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve69(void 0);
+        resolve70(void 0);
       }, remaining);
     })]);
   } finally {
@@ -80941,7 +80941,7 @@ async function writeAtomic3(path30, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error2.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error2;
-        await new Promise((resolve69) => setTimeout(resolve69, delay));
+        await new Promise((resolve70) => setTimeout(resolve70, delay));
       }
     }
   } finally {
@@ -81061,7 +81061,7 @@ async function withMailboxLock(teamName, workerName, cwd2, fn) {
   while (Date.now() < deadline) {
     const result = await withLock2(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve69) => setTimeout(resolve69, delayMs));
+    await new Promise((resolve70) => setTimeout(resolve70, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -81224,7 +81224,7 @@ async function teamCreateTask(teamName, task, cwd2) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve69) => setTimeout(resolve69, delayMs));
+    await new Promise((resolve70) => setTimeout(resolve70, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -81290,7 +81290,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd2) {
       return normalized;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve69) => setTimeout(resolve69, delayMs));
+    await new Promise((resolve70) => setTimeout(resolve70, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -83790,7 +83790,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto8.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep4(ms) {
-  return new Promise((resolve69) => setTimeout(resolve69, ms));
+  return new Promise((resolve70) => setTimeout(resolve70, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -85728,7 +85728,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== childPid)) return false;
-    await new Promise((resolve69) => setTimeout(resolve69, 25));
+    await new Promise((resolve70) => setTimeout(resolve70, 25));
   }
   return false;
 }
@@ -85891,7 +85891,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve69) => setTimeout(resolve69, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve70) => setTimeout(resolve70, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical4.recovery_id);
     }
@@ -89839,7 +89839,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve69) => setTimeout(resolve69, Math.floor(pollMs * jitter)));
+      await new Promise((resolve70) => setTimeout(resolve70, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -91443,7 +91443,7 @@ function deleteWorkerBranchAt(repoRoot3, branch, commit) {
 `);
       return;
     }
-    git(repoRoot3, ["update-ref", "-d", ref, commit]);
+    git(repoRoot3, ["update-ref", "--no-deref", "-d", ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
     const error2 = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);
@@ -93485,8 +93485,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve69) => {
-            const t = setTimeout(() => resolve69(false), remaining);
+          new Promise((resolve70) => {
+            const t = setTimeout(() => resolve70(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -94018,7 +94018,7 @@ async function waitForRecoveryGateRecord(path30, expected, timeoutMs, pollInterv
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve69) => setTimeout(resolve69, pollIntervalMs));
+    await new Promise((resolve70) => setTimeout(resolve70, pollIntervalMs));
   }
   return false;
 }
@@ -95345,7 +95345,13 @@ function buildSandboxConfig(profile, ctx, host) {
       return p;
     }
   };
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => {
+    try {
+      return P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform));
+    } catch {
+      return false;
+    }
+  });
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path26.dirname)(relocated.GIT_CONFIG_GLOBAL);
@@ -95572,6 +95578,54 @@ function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
 }
+function proxyCaEnv(env2, platform, realHome) {
+  const P = platform === "win32" ? import_node_path26.win32 : import_node_path26.posix;
+  const caPaths = [];
+  const notes = [];
+  const entries = [
+    ...["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((name) => ({ name, value: envValue(env2, name), dir: false })),
+    ...(envValue(env2, "SSL_CERT_DIR") ?? "").split(P.delimiter).map((value) => ({ name: "SSL_CERT_DIR", value, dir: true }))
+  ];
+  for (const { name, value, dir } of entries) {
+    if (!value || !P.isAbsolute(value)) continue;
+    let real2;
+    let isDir;
+    try {
+      real2 = import_node_fs21.realpathSync.native(value);
+      isDir = (0, import_node_fs21.statSync)(real2).isDirectory();
+    } catch (err) {
+      notes.push(`sandbox: ${name} ${value} does not resolve (${err.code ?? "error"}); it is not granted to the lane.`);
+      continue;
+    }
+    if (isDir !== dir) {
+      notes.push(`sandbox: ${name} ${value} is not a ${dir ? "directory" : "file"}; it is not granted to the lane.`);
+      continue;
+    }
+    let tooBroad = true;
+    try {
+      tooBroad = dir && (P.dirname(real2) === real2 || isUnderRoot(realHome, real2, platform));
+    } catch {
+    }
+    if (tooBroad) {
+      notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+      continue;
+    }
+    caPaths.push(real2);
+  }
+  for (const name of ["HTTPS_PROXY", "HTTP_PROXY"]) {
+    const value = envValue(env2, name);
+    let userinfo = false;
+    try {
+      if (value) {
+        const u = new URL(value);
+        userinfo = u.username !== "" || u.password !== "";
+      }
+    } catch {
+    }
+    if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+  }
+  return { caPaths, notes };
+}
 function missingSandboxEnv(env2, platform) {
   return platform === "win32" ? MXC_REQUIRED_ENV.filter((n) => envValue(env2, n) === void 0) : [];
 }
@@ -95672,6 +95726,13 @@ var init_sandbox2 = __esm({
       "ProgramW6432",
       "ProgramData",
       "CommonProgramFiles",
+      // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "NO_PROXY",
+      "NODE_EXTRA_CA_CERTS",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
       "NUMBER_OF_PROCESSORS",
       "PROCESSOR_ARCHITECTURE",
       "OS",
@@ -95729,7 +95790,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -95738,7 +95799,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve69({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve70({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -95751,7 +95812,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve69({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve70({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -96163,7 +96224,7 @@ async function runSdkTier(input) {
       }
       const path30 = (0, import_path119.join)(input.home, `events-${name}.jsonl`);
       events[name] = path30;
-      if (entries.length > 0) await new Promise((resolve69) => setTimeout(resolve69, 2));
+      if (entries.length > 0) await new Promise((resolve70) => setTimeout(resolve70, 2));
       const start = Date.now();
       const { wedged: stuck, ...run2 } = name === "chain" ? await input.runChain({
         bin,
@@ -97250,7 +97311,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve69) => setTimeout(resolve69, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve70) => setTimeout(resolve70, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd2, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -98199,14 +98260,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve69, reject2) => {
+  return new Promise((resolve70, reject2) => {
     if (signal?.aborted) {
       reject2(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve69();
+      resolve70();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -102580,7 +102641,7 @@ function createRemoteApprovalGate(options) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS3;
   const timeoutPolicy = options.timeoutPolicy ?? DEFAULT_TIMEOUT_POLICY;
   const now2 = options.now ?? (() => Date.now());
-  const sleep12 = options.sleep ?? ((ms) => new Promise((resolve69) => setTimeout(resolve69, ms)));
+  const sleep12 = options.sleep ?? ((ms) => new Promise((resolve70) => setTimeout(resolve70, ms)));
   return {
     async prompt(request) {
       const runDir = resolveRunDirHandle(options.runsRoot, options.runId);
@@ -103063,7 +103124,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path30 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve69, reject2) => {
+    const updates = await new Promise((resolve70, reject2) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -103080,7 +103141,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks2).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve69(body.result || []);
+                resolve70(body.result || []);
               } else {
                 reject2(new Error(`HTTP ${res.statusCode}`));
               }
@@ -103131,7 +103192,7 @@ async function pollTelegram(config2, state, rateLimiter) {
               text: `Approval recorded: ${decision}`,
               reply_to_message_id: msg.message_id
             });
-            await new Promise((resolve69) => {
+            await new Promise((resolve70) => {
               const confirmReq = (0, import_https2.request)(
                 {
                   hostname: "api.telegram.org",
@@ -103146,13 +103207,13 @@ async function pollTelegram(config2, state, rateLimiter) {
                 },
                 (res) => {
                   res.resume();
-                  resolve69();
+                  resolve70();
                 }
               );
-              confirmReq.on("error", () => resolve69());
+              confirmReq.on("error", () => resolve70());
               confirmReq.on("timeout", () => {
                 confirmReq.destroy();
-                resolve69();
+                resolve70();
               });
               confirmReq.write(confirmBody);
               confirmReq.end();
@@ -103189,7 +103250,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Claude Code session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve69) => {
+          await new Promise((resolve70) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -103204,13 +103265,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve69();
+                resolve70();
               }
             );
-            replyReq.on("error", () => resolve69());
+            replyReq.on("error", () => resolve70());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve69();
+              resolve70();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -103362,13 +103423,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve69) => setTimeout(resolve69, config2.pollIntervalMs));
+      await new Promise((resolve70) => setTimeout(resolve70, config2.pollIntervalMs));
     } catch (error2) {
       state.errors++;
       state.lastError = redactTokens(error2 instanceof Error ? error2.message : String(error2));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve69) => setTimeout(resolve69, config2.pollIntervalMs * 2));
+      await new Promise((resolve70) => setTimeout(resolve70, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -112640,7 +112701,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -112668,7 +112729,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed2 = JSON.parse(data);
               if (parsed2.access_token) {
-                resolve69({
+                resolve70({
                   accessToken: parsed2.access_token,
                   refreshToken: parsed2.refresh_token || refreshToken,
                   expiresAt: parsed2.expires_in ? Date.now() + parsed2.expires_in * 1e3 : parsed2.expires_at
@@ -112681,14 +112742,14 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve69(null);
+          resolve70(null);
         });
       }
     );
-    req.on("error", () => resolve69(null));
+    req.on("error", () => resolve70(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve69(null);
+      resolve70(null);
     });
     req.end(body);
   });
@@ -112701,7 +112762,7 @@ function buildUserAgent(clientVersion) {
 }
 function fetchUsageFromApi(accessToken, clientVersion) {
   const userAgent = buildUserAgent(clientVersion);
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -112723,27 +112784,27 @@ function fetchUsageFromApi(accessToken, clientVersion) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve69({ data: JSON.parse(data) });
+              resolve70({ data: JSON.parse(data) });
             } catch {
-              resolve69({ data: null });
+              resolve70({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve69({ data: null, rateLimited: true });
+            resolve70({ data: null, rateLimited: true });
           } else if (res.statusCode === 403) {
-            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve69);
+            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve70);
           } else {
-            resolve69({ data: null });
+            resolve70({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve69({ data: null }));
+    req.on("error", () => resolve70({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve69({ data: null });
+      resolve70({ data: null });
     });
     req.end();
   });
@@ -112786,7 +112847,7 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
     max_tokens: 1,
     messages: [{ role: "user", content: "." }]
   });
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -112807,34 +112868,34 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
         });
         res.on("end", () => {
           if (res.statusCode === 200) {
-            resolve69({ data: rateLimitHeadersToUsage(res.headers) });
+            resolve70({ data: rateLimitHeadersToUsage(res.headers) });
           } else {
-            resolve69({ data: null, rateLimited: res.statusCode === 429 });
+            resolve70({ data: null, rateLimited: res.statusCode === 429 });
           }
         });
       }
     );
-    req.on("error", () => resolve69({ data: null }));
+    req.on("error", () => resolve70({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve69({ data: null });
+      resolve70({ data: null });
     });
     req.write(body);
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     try {
@@ -112862,29 +112923,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve69({ data: JSON.parse(data) });
+                resolve70({ data: JSON.parse(data) });
               } catch {
-                resolve69({ data: null });
+                resolve70({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve69({ data: null, rateLimited: true });
+              resolve70({ data: null, rateLimited: true });
             } else {
-              resolve69({ data: null });
+              resolve70({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve69({ data: null }));
+      req.on("error", () => resolve70({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve69({ data: null });
+        resolve70({ data: null });
       });
       req.end();
     } catch {
-      resolve69({ data: null });
+      resolve70({ data: null });
     }
   });
 }
@@ -113150,16 +113211,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     try {
@@ -113186,29 +113247,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve69({ data: JSON.parse(data) });
+                resolve70({ data: JSON.parse(data) });
               } catch {
-                resolve69({ data: null });
+                resolve70({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve69({ data: null, rateLimited: true });
+              resolve70({ data: null, rateLimited: true });
             } else {
-              resolve69({ data: null });
+              resolve70({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve69({ data: null }));
+      req.on("error", () => resolve70({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve69({ data: null });
+        resolve70({ data: null });
       });
       req.end();
     } catch {
-      resolve69({ data: null });
+      resolve70({ data: null });
     }
   });
 }
@@ -113248,16 +113309,16 @@ function parseMinimaxResponse(response) {
   };
 }
 function fetchUsageFromKimi(apiKey) {
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve69({ data: null });
+      resolve70({ data: null });
       return;
     }
     try {
@@ -113268,7 +113329,7 @@ function fetchUsageFromKimi(apiKey) {
             `[usage-api] Refusing to send Kimi credentials to non-canonical host '${hostname6}'`
           );
         }
-        resolve69({ data: null });
+        resolve70({ data: null });
         return;
       }
       const req = import_https3.default.request(
@@ -113284,37 +113345,37 @@ function fetchUsageFromKimi(apiKey) {
         },
         (res) => {
           let data = "";
-          res.on("error", () => resolve69({ data: null }));
-          res.on("aborted", () => resolve69({ data: null }));
+          res.on("error", () => resolve70({ data: null }));
+          res.on("aborted", () => resolve70({ data: null }));
           res.on("data", (chunk) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve69({ data: JSON.parse(data) });
+                resolve70({ data: JSON.parse(data) });
               } catch {
-                resolve69({ data: null });
+                resolve70({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] Kimi API returned 429 (rate limited)`);
               }
-              resolve69({ data: null, rateLimited: true });
+              resolve70({ data: null, rateLimited: true });
             } else {
-              resolve69({ data: null });
+              resolve70({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve69({ data: null }));
+      req.on("error", () => resolve70({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve69({ data: null });
+        resolve70({ data: null });
       });
       req.end();
     } catch {
-      resolve69({ data: null });
+      resolve70({ data: null });
     }
   });
 }
@@ -114110,15 +114171,15 @@ var init_governor = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env2, deps = {}) {
   const exists = deps.existsSync ?? import_fs140.existsSync;
-  const resolve69 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve70 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list2 = deps.readdirSync ?? ((p) => (0, import_fs140.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve69(override);
+    const found = resolve70(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve69("copilot");
+  const onPath = resolve70("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env2.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -114639,14 +114700,14 @@ function startListener(config2, deps = {}) {
       }
     });
   });
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     server.listen(config2.port, host, () => {
       (0, import_fs142.mkdirSync)((0, import_path168.join)(pidFilePath(config2.cwd), ".."), { recursive: true });
       const addr = server.address();
       const portForLog = addr && typeof addr !== "string" ? addr.port : config2.port;
       const hostForLog = addr && typeof addr !== "string" ? addr.address : host;
       (0, import_fs142.writeFileSync)(pidFilePath(config2.cwd), JSON.stringify({ pid: process.pid, port: portForLog, host: hostForLog, startedAt }, null, 2));
-      resolve69(server);
+      resolve70(server);
     });
   });
 }
@@ -115309,6 +115370,11 @@ function commitLaneWork(input) {
     if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
     const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
     if (hit2.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}`);
+    if (input.branch) {
+      const common = (0, import_node_path32.resolve)(input.repoRoot, runHostGit(input.repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS3).trim());
+      const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+      if (problem) return refuse("escaped", `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+    }
     const tree = git6(["write-tree"]);
     if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
     if (tree === git6(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
@@ -115321,7 +115387,7 @@ function commitLaneWork(input) {
     if (input.branch) {
       const ref = `refs/heads/${input.branch}`;
       const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS3).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS3);
+      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS3);
       else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
     }
     return { ok: true, sha: sha2, files, notes };
@@ -115354,6 +115420,7 @@ var init_lane_commit = __esm({
     "use strict";
     import_node_fs25 = require("node:fs");
     import_node_path32 = require("node:path");
+    init_job();
     init_worktree_paths();
     init_merge2();
     init_git_worktree();
@@ -116286,6 +116353,7 @@ __export(job_exports, {
   filterDriverOverrides: () => filterDriverOverrides,
   hostGit: () => hostGit,
   hostGitHardeningArgs: () => hostGitHardeningArgs,
+  jobRefProblem: () => jobRefProblem,
   relativeHooksPathRule: () => relativeHooksPathRule,
   resolveStartRef: () => resolveStartRef,
   reviewProfileDenial: () => reviewProfileDenial,
@@ -116397,6 +116465,8 @@ function syncJobBranch(job, gitDirArgs) {
   const ref = `refs/heads/${wt.branch}`;
   const problem = jobRefProblem(job.commonGitDir, wt.repoRoot, ref);
   if (problem) return { problem };
+  const attached = git2(wt.path, [...gitDirArgs, "symbolic-ref", "-q", "HEAD"]);
+  if (attached) return { problem: `the worktree's HEAD is attached to ${attached}, not detached` };
   const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
   const current = git2(wt.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   if (!head || !current || head === current) return { moved: null };
@@ -116486,7 +116556,8 @@ function sharedGitStateSnapshot(commonGitDir) {
     for (const id of ids2) {
       add(`worktrees/${id}`, false);
       if (out[`worktrees/${id}`] !== "dir") continue;
-      for (const name of ["config.worktree", "commondir", "gitdir", "HEAD"]) add(`worktrees/${id}/${name}`, false);
+      for (const name of ["config.worktree", "commondir", "gitdir"]) add(`worktrees/${id}/${name}`, false);
+      out[`worktrees/${id}/HEAD`] = worktreeHeadEntry((0, import_node_path34.join)(commonGitDir, "worktrees", id, "HEAD"));
     }
   }
   try {
@@ -116496,6 +116567,19 @@ function sharedGitStateSnapshot(commonGitDir) {
   }
   Object.assign(out, branchRefs(commonGitDir));
   return out;
+}
+function worktreeHeadEntry(path30) {
+  const kind = describeEntry(path30);
+  if (!kind.startsWith("file ")) return kind;
+  let text4;
+  try {
+    text4 = (0, import_node_fs27.readFileSync)(path30, "utf8");
+  } catch {
+    return "file unreadable";
+  }
+  const m = /^(?:([0-9a-f]{40}(?:[0-9a-f]{24})?)|ref: (refs\/\S+))\r?\n?$/.exec(text4);
+  if (!m) return kind;
+  return m[1] ? `head ${m[1]}` : `head ref: ${m[2]}`;
 }
 function branchRefs(commonGitDir) {
   const out = {};
@@ -116528,7 +116612,7 @@ function branchRefs(commonGitDir) {
       for (const name of names) walk(`${rel}/${name}`);
     } else if (kind.startsWith("file ")) {
       try {
-        out[rel] = `ref ${(0, import_node_fs27.readFileSync)(path30, "utf8").trim()}`;
+        out[rel] = `ref ${(0, import_node_fs27.readFileSync)(path30, "utf8").replace(/\r?\n$/, "")}`;
       } catch {
         out[rel] = "file unreadable";
       }
@@ -116539,12 +116623,19 @@ function branchRefs(commonGitDir) {
   walk("refs/heads");
   return out;
 }
-function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set()) {
+function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set(), owned = /* @__PURE__ */ new Set()) {
   return [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
     if (ignore.has(key)) return false;
     const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
     if (id !== void 0 && (before[`worktrees/${id}`] === void 0 || after[`worktrees/${id}`] === void 0)) return false;
-    return (before[key] ?? "absent") !== (after[key] ?? "absent");
+    const was = before[key];
+    const now2 = after[key];
+    if (!owned.has(key)) {
+      const plain = (v) => v === void 0 || PLAIN_REF.test(v);
+      if (key.startsWith(JOB_REF_PREFIX) && plain(was) && plain(now2)) return false;
+      if (key === `worktrees/${id}/HEAD` && now2?.startsWith("head ") && !now2.startsWith("head ref: ")) return false;
+    }
+    return (was ?? "absent") !== (now2 ?? "absent");
   });
 }
 function relativeHooksPathRule(cwd2, gitDirArgs = []) {
@@ -116585,7 +116676,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process16.spawnSync)
   };
 }
-var import_node_child_process16, import_node_crypto15, import_node_fs27, import_node_os8, import_node_path34, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process16, import_node_crypto15, import_node_fs27, import_node_os8, import_node_path34, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -116652,11 +116743,15 @@ var init_job = __esm({
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text4) => (text4 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    JOB_REF_PREFIX = `refs/heads/omc-team/${WORKTREE_TEAM}/`;
+    PLAIN_REF = /^ref [0-9a-f]{40}(?:[0-9a-f]{24})?$/;
     CopilotRunManager = class {
       constructor(deps) {
         this.deps = deps;
       }
       jobs = /* @__PURE__ */ new Map();
+      /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+      owned = /* @__PURE__ */ new Set();
       /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
       start(input, options = {}) {
         if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== "1") {
@@ -116817,7 +116912,9 @@ var init_job = __esm({
           if (j.worktreeLinks) liveWorktreeHeads.add(`worktrees/${(0, import_node_path34.basename)(j.worktreeLinks.adminDir)}/HEAD`);
         }
         if (worktree && worktreeLinks) {
-          liveWorktreeHeads.add(`worktrees/${(0, import_node_path34.basename)(worktreeLinks.adminDir)}/HEAD`);
+          const headKey = `worktrees/${(0, import_node_path34.basename)(worktreeLinks.adminDir)}/HEAD`;
+          liveWorktreeHeads.add(headKey);
+          this.owned.add(headKey).add(`refs/heads/${worktree.branch}`);
           this.expectJobRef(worktree.branch, baseCommit);
         }
         const jobDir = (0, import_node_path34.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
@@ -116857,6 +116954,7 @@ var init_job = __esm({
           extraProtected,
           sharedGitState,
           liveWorktreeHeads,
+          branchCommit: null,
           pid: void 0,
           pidIdentity: null,
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -116886,7 +116984,7 @@ var init_job = __esm({
         }).then((outcome) => {
           clearTimeout(timer);
           const gitDirArgs = jobGitDirArgs(job);
-          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads) : [];
+          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads, this.owned) : [];
           if (gitDirArgs === null) {
             const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
             job.error = job.error ? `${why}; ${job.error}` : why;
@@ -116900,13 +116998,14 @@ var init_job = __esm({
           } else {
             const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
             if ("problem" in sync) {
-              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} changed kind during the session (${sync.problem}); it was not moved and no host git ran in the worktree`;
+              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} or its worktree's HEAD changed kind during the session (${sync.problem}); the branch was not moved and no host git ran in the worktree`;
               job.error = job.error ? `${why}; ${job.error}` : why;
               job.stopReason ??= "sandbox-escaped";
               outcome = "failed";
             } else {
               if (job.worktree) {
                 if (sync.moved) this.expectJobRef(job.worktree.branch, sync.moved);
+                job.branchCommit = sync.moved ?? git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${job.worktree.branch}^{commit}`]);
                 job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
               }
               job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
@@ -116925,6 +117024,7 @@ var init_job = __esm({
           }
           job.endedAt = (/* @__PURE__ */ new Date()).toISOString();
           job.status = outcome;
+          this.releaseWorktreeHead(job);
         });
         return this.snapshot(job);
       }
@@ -116968,6 +117068,12 @@ var init_job = __esm({
         if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
         let tampered = null;
         if (!job.cleanedUp) {
+          const moved = this.branchMismatch(job);
+          if (moved) {
+            throw new CopilotRunError(
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${moved}. Do not merge that branch: inspect it, delete it yourself (git branch -D), then call cleanup again.`
+            );
+          }
           try {
             ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
           } catch (err) {
@@ -116991,6 +117097,32 @@ var init_job = __esm({
        * manager's own ref writes are no change and any other write to a job
        * branch (a lane retargeting another job's branch) is.
        */
+      /**
+       * Why a finished job's branch no longer holds the commit the job left it
+       * at (branchCommit), or null (also once it is gone). A lane of another
+       * process can repoint it to a plain commit that lane's own check does not
+       * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+       */
+      branchMismatch(job) {
+        if (!job.worktree || job.cleanedUp || !job.branchCommit) return null;
+        const ref = `refs/heads/${job.worktree.branch}`;
+        const problem = jobRefProblem(job.commonGitDir, job.worktree.repoRoot, ref);
+        if (problem) return `sandbox-escaped: the job's branch changed after the job ended (${problem})`;
+        const at = git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        if (at && at !== job.branchCommit) {
+          return `sandbox-escaped: the job's branch was moved after the job ended, to ${at.slice(0, 12)} (the job left it at ${job.branchCommit.slice(0, 12)})`;
+        }
+        return null;
+      }
+      /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+      releaseWorktreeHead(job) {
+        if (!job.worktreeLinks || !job.commonGitDir) return;
+        const key = `worktrees/${(0, import_node_path34.basename)(job.worktreeLinks.adminDir)}/HEAD`;
+        for (const other of this.jobs.values()) {
+          if (other === job || isTerminal2(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState) continue;
+          other.sharedGitState[key] = worktreeHeadEntry((0, import_node_path34.join)(job.commonGitDir, key));
+        }
+      }
       expectJobRef(branch, sha2) {
         const key = `refs/heads/${branch}`;
         for (const other of this.jobs.values()) {
@@ -117085,6 +117217,9 @@ var init_job = __esm({
             const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
             const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
             const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            const realHome = (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))();
+            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+            job.notes.push(...proxy.notes);
             return {
               worktree: (0, import_node_path34.resolve)(top),
               commonGitDir: commonRaw ? (0, import_node_path34.resolve)(commonRaw) : (0, import_node_path34.resolve)(top, ".git"),
@@ -117092,11 +117227,12 @@ var init_job = __esm({
               pluginRoot,
               jobHome: job.home,
               jobDir: job.jobDir,
-              realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
+              realHome,
               platform: deps.platform,
               settings: job.sandboxSettings,
               hostCommits: job.hostCommits,
-              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+              extraReadonly: proxy.caPaths
             };
           },
           note: (text4) => {
@@ -117326,6 +117462,8 @@ var init_job = __esm({
           summary: `${formatAmount(job.usage.premiumRequests, "premiumRequests")}, ${formatAmount(Number(job.usage.credits.toFixed(3)), "credits")}`
         };
         const scrub = (text4) => scrubTokens(text4, job.secrets);
+        const moved = this.branchMismatch(job);
+        const notes = moved ? [...job.notes, `${moved}; do not merge the branch.`] : job.notes;
         return {
           jobId: job.id,
           status: job.status,
@@ -117349,7 +117487,7 @@ var init_job = __esm({
           ...job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...job.headCommit ? { headCommit: job.headCommit } : {} } } : {},
           ...job.changes ? { changes: job.changes } : {},
           ...job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {},
-          ...job.notes.length ? { notes: job.notes.map(scrub) } : {},
+          ...notes.length ? { notes: notes.map(scrub) } : {},
           eventsPath: job.eventsPath,
           ...job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {},
           ...job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}
@@ -128946,7 +129084,7 @@ function scrubWorkerCredentials(env2, emptyDir, cwd2) {
 }
 function readHostCredentials(stream, timeoutMs) {
   if (stream.isTTY) return Promise.resolve({});
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     let data = "";
     let done = false;
     const finish2 = () => {
@@ -128961,7 +129099,7 @@ function readHostCredentials(stream, timeoutMs) {
         for (const name of HOST_CREDENTIAL_ENV) if (typeof parsed2?.[name] === "string" && parsed2[name]) out[name] = parsed2[name];
       } catch {
       }
-      resolve69(out);
+      resolve70(out);
     };
     const onData = (chunk) => {
       data += chunk.toString();
@@ -134933,7 +135071,7 @@ function isCacheValid2(cache2) {
   return Date.now() - cache2.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve69, reject2) => {
+  return new Promise((resolve70, reject2) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process58.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -134971,7 +135109,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       if (!timedOut && escalationTimer) clearTimeout(escalationTimer);
       if (!timedOut) {
         if (code === 0) {
-          resolve69(stdout);
+          resolve70(stdout);
         } else {
           reject2(new Error(`Command exited with code ${code}`));
         }
@@ -143577,7 +143715,7 @@ async function runShadowObservation(hookType, legacyOutput, legacyDurationMs) {
       const dispatchResult = await Promise.race([
         dispatcher.dispatch(event, {}),
         new Promise(
-          (resolve69) => setTimeout(() => resolve69(null), SHADOW_OBSERVATION_BUDGET_MS)
+          (resolve70) => setTimeout(() => resolve70(null), SHADOW_OBSERVATION_BUDGET_MS)
         )
       ]);
       shadowDurationMs = performance.now() - started;
@@ -148726,7 +148864,7 @@ async function pollLoop2(config2) {
             log2("Claude usage profile became unavailable during quota check; discarding quota sample", config2);
           }
           writeDaemonState2(state, config2);
-          await new Promise((resolve69) => setTimeout(resolve69, config2.pollIntervalMs));
+          await new Promise((resolve70) => setTimeout(resolve70, config2.pollIntervalMs));
           continue;
         }
       }
@@ -148812,7 +148950,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve69) => setTimeout(resolve69, config2.pollIntervalMs));
+    await new Promise((resolve70) => setTimeout(resolve70, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -153752,7 +153890,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep11(ms) {
-  return new Promise((resolve69) => setTimeout(resolve69, ms));
+  return new Promise((resolve70) => setTimeout(resolve70, ms));
 }
 
 // src/cli/commands/ultragoal.ts
@@ -156921,7 +157059,7 @@ function terminateProcessTree(child, signal) {
   }
 }
 function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotencyKey) {
-  return new Promise((resolve69) => {
+  return new Promise((resolve70) => {
     let child;
     try {
       child = (0, import_node_child_process18.spawn)(command, {
@@ -156935,7 +157073,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
         ...process.platform === "win32" ? {} : { detached: true }
       });
     } catch (error2) {
-      resolve69({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
+      resolve70({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
       return;
     }
     let settled = false;
@@ -156950,7 +157088,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
       settled = true;
       if (timeoutTimer !== void 0) clearTimeout(timeoutTimer);
       if (escalationTimer !== void 0) clearTimeout(escalationTimer);
-      resolve69({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
+      resolve70({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
     };
     if (child.stdout) {
       child.stdout.setEncoding("utf8");
@@ -157103,8 +157241,8 @@ function createStdinApprovalGate(input) {
       return Promise.resolve(queued);
     }
     getInterface();
-    return new Promise((resolve69) => {
-      waitingReader = resolve69;
+    return new Promise((resolve70) => {
+      waitingReader = resolve70;
     });
   }
   return {
@@ -159045,7 +159183,7 @@ function gateExit(report2, timedOut = false) {
   return report2.verdict === "pending" || timedOut && report2.verdict === "flaky" ? EXIT_PENDING : 1;
 }
 var defaultShipDrive = {
-  sleep: (ms) => new Promise((resolve69) => setTimeout(resolve69, ms)),
+  sleep: (ms) => new Promise((resolve70) => setTimeout(resolve70, ms)),
   now: () => Date.now(),
   proc: defaultDriveProcess
 };
@@ -159507,7 +159645,7 @@ function releaseCommand(overrides = {}) {
           if (!json) console.error(line);
         }),
         confirm: overrides.confirm ?? ttyConfirm2,
-        sleep: overrides.sleep ?? ((ms) => new Promise((resolve69) => setTimeout(resolve69, ms))),
+        sleep: overrides.sleep ?? ((ms) => new Promise((resolve70) => setTimeout(resolve70, ms))),
         now: overrides.now ?? (() => Date.now())
       };
       const proc = overrides.driveProcess ?? defaultDriveProcess;
@@ -160342,7 +160480,7 @@ var UsageError3 = class extends Error {
 };
 var defaultDeps = {
   now: () => /* @__PURE__ */ new Date(),
-  sleep: (ms) => new Promise((resolve69) => setTimeout(resolve69, ms)),
+  sleep: (ms) => new Promise((resolve70) => setTimeout(resolve70, ms)),
   out: (line) => process.stdout.write(`${line}
 `),
   err: (line) => process.stderr.write(`${line}
@@ -160753,15 +160891,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve69) => {
+    await new Promise((resolve70) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve69();
+        resolve70();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve69();
+        resolve70();
       };
     });
   }

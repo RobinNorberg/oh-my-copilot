@@ -18667,7 +18667,7 @@ function deleteWorkerBranchAt(repoRoot, branch, commit) {
 `);
       return;
     }
-    git(repoRoot, ["update-ref", "-d", ref, commit]);
+    git(repoRoot, ["update-ref", "--no-deref", "-d", ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
     const error2 = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);
