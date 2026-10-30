@@ -14,7 +14,8 @@
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
- *   prompt's diff (no external diff driver, no textconv).
+ *   prompt's diff (no external diff driver, no textconv) and its standards
+ *   files (`ls-tree` of docs/standards/ at the base commit).
  * - Every engine git command runs hardened (hardenedGitExec): no hooks and no
  *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
  *   even if the tamper check missed it.

@@ -4,6 +4,9 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Two-axis factory review.** When the base commit of an `omg factory run` has `docs/standards/`, the review lane reviews on a spec axis (the diff against the plan) and a standards axis (the diff against the matching `docs/standards/` volume, read at the base). Each finding names its `axis`, a `blocker` or `major` on either axis fails the verdict, the PR comment gains an `Axis` column, and the fix lane sees each finding's axis. Without `docs/standards/` the review prompt is byte-identical to before.
 ### Fixed
 
 - **The listener no longer starts a billed session for a nonexistent
