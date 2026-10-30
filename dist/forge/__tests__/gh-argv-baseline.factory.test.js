@@ -54,7 +54,7 @@ const KEY = String(ISSUE);
 const REVIEW = (key) => [HEAD_STATE, HEAD_STATE, comment('pr', PR, key, 'review')];
 /** One gates-loop read on a fixed head (checks, runs, the head re-read), then the driver's own head and runs read. */
 const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
-/** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command. */
+/** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
 const MERGE_PARK = (key) => [MERGE_VIEW, CHECKS, runList('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 describe('gh argv baseline: factory engine (issue run)', () => {
     it('happy path to the merge park: intake, publish, review, prepare, gates, merge gate', async () => {
@@ -67,7 +67,7 @@ describe('gh argv baseline: factory engine (issue run)', () => {
             ...REVIEW(KEY),
             MERGE_VIEW, READY, MERGE_VIEW,
             ...GATES_GREEN,
-            ...MERGE_PARK(KEY), comment('issue', ISSUE, KEY, 'gate'),
+            ...MERGE_PARK(KEY), comment('issue', ISSUE, KEY, 'gate'), ISSUE_VIEW,
         ]);
     });
     it('a later run after the human merge reads the PR once and finishes merged', async () => {
@@ -75,7 +75,8 @@ describe('gh argv baseline: factory engine (issue run)', () => {
         h.gh.merged = true;
         const { out, calls } = await engine([]);
         expect(out.phase).toBe('merged');
-        expect(calls).toEqual([MERGE_VIEW]);
+        // The item read for its parent (none here), then the outcome comment.
+        expect(calls).toEqual([MERGE_VIEW, ISSUE_VIEW, comment('issue', ISSUE, KEY, 'outcome-7')]);
     });
     it('pending -> red -> ci-fix -> green: the failed job log is read for its test titles', async () => {
         h.gh.gates = [pendingGates(100), failedGates(100), greenGates(101)];
@@ -95,7 +96,7 @@ describe('gh argv baseline: factory engine (issue run)', () => {
             ...REVIEW(KEY),
             MERGE_VIEW, MERGE_VIEW,
             ...GATES_GREEN,
-            ...MERGE_PARK(KEY), comment('issue', ISSUE, KEY, 'gate'),
+            ...MERGE_PARK(KEY), comment('issue', ISSUE, KEY, 'gate'), ISSUE_VIEW,
         ]);
     });
     it('cancel during the review lane: one PR comment with the cancel body', async () => {
@@ -114,6 +115,7 @@ describe('gh argv baseline: factory engine (issue run)', () => {
             prList(BRANCH), prCreate(BRANCH, `Add greet() (#${ISSUE})`, KEY),
             HEAD_STATE,
             comment('pr', PR, KEY, 'cancel'),
+            ISSUE_VIEW, comment('issue', ISSUE, KEY, 'outcome-7'),
         ]);
     });
     it('no plan: the needs-plan gate posts one issue comment', async () => {
