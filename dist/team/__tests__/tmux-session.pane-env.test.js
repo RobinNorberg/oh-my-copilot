@@ -33,26 +33,26 @@ describe.skipIf(!posix || !strictProcessStartedAt)('split worker pane env-file-c
         processObservation: () => 'matching',
     };
     function writtenEnvFile() {
-        const writes = vi.mocked(writeFileSync).mock.calls.filter(([, body]) => typeof body === 'string' && body.includes('export OMC_4230_TOKEN='));
+        const writes = vi.mocked(writeFileSync).mock.calls.filter(([, body]) => typeof body === 'string' && body.includes('export GH_TOKEN='));
         expect(writes).toHaveLength(1);
         return String(writes[0][0]);
     }
     function expectEnvFileWritten() {
         const envFile = writtenEnvFile();
         expect(existsSync(envFile)).toBe(true);
-        expect(readFileSync(envFile, 'utf8')).toBe(`export OMC_4230_TOKEN='${SECRET}'\n`);
+        expect(readFileSync(envFile, 'utf8')).toBe(`export GH_TOKEN='${SECRET}'\n`);
     }
     beforeEach(() => {
         vi.mocked(writeFileSync).mockClear();
         vi.mocked(tmuxCmdAsync).mockReset();
         vi.mocked(resolveRuntimeCliPath).mockReset().mockReturnValue(process.execPath);
-        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'OMC_4230_TOKEN');
-        vi.stubEnv('OMC_4230_TOKEN', SECRET);
+        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'GH_TOKEN');
+        vi.stubEnv('GH_TOKEN', SECRET);
     });
     afterEach(() => {
         vi.unstubAllEnvs();
         for (const [path, body] of vi.mocked(writeFileSync).mock.calls) {
-            if (typeof body === 'string' && body.includes('export OMC_4230_TOKEN=')) {
+            if (typeof body === 'string' && body.includes('export GH_TOKEN=')) {
                 rmSync(dirname(String(path)), { recursive: true, force: true });
             }
         }
@@ -87,7 +87,7 @@ describe.skipIf(!posix || !strictProcessStartedAt)('split worker pane env-file-c
             throw new Error('guard runtime unavailable');
         });
         const result = await splitTeamWorkerPaneWithEvidence('%732', 'down', '/tmp', 'tmux', identity, dependencies);
-        expect(envContentsBeforeThrow).toBe(`export OMC_4230_TOKEN='${SECRET}'\n`);
+        expect(envContentsBeforeThrow).toBe(`export GH_TOKEN='${SECRET}'\n`);
         expect(resolveRuntimeCliPath).toHaveBeenCalledTimes(1);
         expect(tmuxCmdAsync).not.toHaveBeenCalled();
         expect(result).toMatchObject({
@@ -107,22 +107,22 @@ describe.skipIf(!posix)('worker pane env passthrough stays off the command line 
             rmSync(path, { recursive: true, force: true });
     });
     it('keeps passthrough values out of argv and delivers them through a private file', () => {
-        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'OMC_4230_TOKEN');
-        vi.stubEnv('OMC_4230_TOKEN', SECRET);
+        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'GH_TOKEN');
+        vi.stubEnv('GH_TOKEN', SECRET);
         const pane = workerPaneShellCommand();
         expect(pane.envFile).not.toBeNull();
         cleanup.push(dirname(pane.envFile));
         const command = pane.args.join(' ');
         expect(command).toContain('/usr/bin/env -i');
         expect(command).not.toContain(SECRET);
-        expect(command).not.toContain('OMC_4230_TOKEN');
+        expect(command).not.toContain('GH_TOKEN');
         expect(statSync(pane.envFile).mode & 0o777).toBe(0o600);
         expect(statSync(dirname(pane.envFile)).mode & 0o777).toBe(0o700);
-        expect(readFileSync(pane.envFile, 'utf8')).toBe(`export OMC_4230_TOKEN='${SECRET}'\n`);
+        expect(readFileSync(pane.envFile, 'utf8')).toBe(`export GH_TOKEN='${SECRET}'\n`);
     });
     it('the built pane command gives the shell the passthrough value, removes the file, and keeps the env -i baseline', () => {
-        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'OMC_4230_TOKEN');
-        vi.stubEnv('OMC_4230_TOKEN', `${SECRET} with 'quotes' and $dollar`);
+        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'GH_TOKEN');
+        vi.stubEnv('GH_TOKEN', `${SECRET} with 'quotes' and $dollar`);
         vi.stubEnv('OMC_4230_LEADER_ONLY', 'must-not-leak');
         const pane = workerPaneShellCommand();
         cleanup.push(dirname(pane.envFile));
@@ -130,7 +130,7 @@ describe.skipIf(!posix)('worker pane env passthrough stays off the command line 
         const run = spawnSync('/bin/sh', ['-c', pane.args.join(' ')], { encoding: 'utf8', env: process.env, input: 'env\n' });
         expect(run.status).toBe(0);
         const env = run.stdout.split('\n');
-        expect(env).toContain(`OMC_4230_TOKEN=${SECRET} with 'quotes' and $dollar`);
+        expect(env).toContain(`GH_TOKEN=${SECRET} with 'quotes' and $dollar`);
         expect(env.some(line => line.startsWith('OMC_4230_LEADER_ONLY='))).toBe(false);
         expect(env.some(line => line.startsWith('OMC_PANE_ENV_FILE='))).toBe(false);
         expect(existsSync(dirname(pane.envFile))).toBe(false);
