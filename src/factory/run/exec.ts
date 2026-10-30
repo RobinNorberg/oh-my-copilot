@@ -9,6 +9,12 @@
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
+ *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
+ *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
+ *   pinned to the configured repository, with a body file from the caller's
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
+ *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
@@ -21,8 +27,9 @@
  *   even if the tamper check missed it.
  */
 
-import { existsSync, readdirSync } from 'fs';
-import { isAbsolute } from 'path';
+import { closeSync, existsSync, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
@@ -46,7 +53,8 @@ const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$
 
 const isBranch = (s: string | undefined): s is string => typeof s === 'string' && BRANCH.test(s) && !s.includes('..') && !s.endsWith('/') && !s.endsWith('.lock');
 const isFile = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
-const isTitle = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
+/** One line of visible text: no control or format characters (tab, newline, NUL, bidi overrides such as RLO). */
+const isTitle = (s: string | undefined): s is string => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\p{Cc}\p{Cf}]/u.test(s);
 const same = (args: string[], shape: string[]) => args.length === shape.length && shape.every((v, i) => args[i] === v);
 /** A progress label of the factory family (factory forges design §7): `factory:<stage>`. */
 const FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
@@ -69,6 +77,123 @@ function isProgressLabelEdit(r: string[]): boolean {
     labels.push(r[i + 1]);
   }
   return true;
+}
+
+/**
+ * What `omg factory enqueue` may write (shipyard-factory design §3.3, PR 7a).
+ * Only a caller that sets it gets the tracker write shapes.
+ */
+export interface TrackerWriteContext {
+  /** The configured forge repository as gh's `--repo` value (ghRepoArg, src/forge/github/gh.ts); every write names exactly it. */
+  repo: string;
+  /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
+  bodyDir: string;
+  /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. */
+  labels: readonly string[];
+}
+
+/** shipyardKeySearch (src/forge/types.ts) for any spec. */
+const KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
+/** At most this many labels on one write (an intake label and a priority, plus the old priority removed). */
+const MAX_WRITE_LABELS = 4;
+
+const isWriteLabel = (s: string | undefined, ctx: TrackerWriteContext): boolean =>
+  typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+
+function isBodyFile(s: string | undefined, ctx: TrackerWriteContext): boolean {
+  if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir)) return false;
+  const rel = relative(resolve(ctx.bodyDir), resolve(s));
+  // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
+}
+
+/** The most characters a tracker write's body file may hold. */
+export const MAX_TRACKER_BODY_CHARS = 65536;
+
+/**
+ * The argv index of a passed tracker write's `--body-file` value (create 7,
+ * edit 8); undefined for every other shape. Call only after the guard passed.
+ */
+function trackerBodyFileArg(args: string[]): number | undefined {
+  if (args[0] !== 'issue') return undefined;
+  if (args[1] === 'create' && args[6] === '--body-file') return 7;
+  if (args[1] === 'edit' && args[3] === '--repo' && args[7] === '--body-file') return 8;
+  return undefined;
+}
+
+/**
+ * Read a tracker write's body file as the guard's own bytes: a regular file
+ * with one link (no symlink, junction or hardlink), the same file when opened
+ * as when checked, at most MAX_TRACKER_BODY_CHARS characters.
+ */
+function readTrackerBody(path: string, fail: (reason: string) => Error): Buffer {
+  let reason: string | undefined;
+  try {
+    const before = lstatSync(path, { bigint: true });
+    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n) {
+      reason = '--body-file must be a regular file with one link (no symlink, junction or hardlink)';
+    } else {
+      const fd = openSync(path, 'r');
+      try {
+        const opened = fstatSync(fd, { bigint: true });
+        if (!opened.isFile() || opened.nlink !== 1n || opened.dev !== before.dev || opened.ino !== before.ino) {
+          reason = '--body-file changed while it was checked';
+        } else if (opened.size > BigInt(MAX_TRACKER_BODY_CHARS * 4)) {
+          // UTF-8 spends at most 4 bytes per character: a larger file cannot fit.
+          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+        } else {
+          const raw = readFileSync(fd);
+          if (raw.toString('utf8').length <= MAX_TRACKER_BODY_CHARS) return raw;
+          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+        }
+      } finally {
+        closeSync(fd);
+      }
+    }
+  } catch (error) {
+    reason = `cannot read --body-file: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  throw fail(reason);
+}
+
+/** `<flag> <label>` pairs, the flags' runs in `order`, every label allowlisted and used once. */
+function isLabelPairs(r: string[], order: readonly string[], ctx: TrackerWriteContext): boolean {
+  if (r.length % 2 !== 0 || r.length / 2 > MAX_WRITE_LABELS) return false;
+  const seen: string[] = [];
+  let at = 0;
+  for (let i = 0; i < r.length; i += 2) {
+    const idx = order.indexOf(r[i]);
+    if (idx < at) return false;
+    at = idx;
+    if (!isWriteLabel(r[i + 1], ctx) || seen.includes(r[i + 1])) return false;
+    seen.push(r[i + 1]);
+  }
+  return true;
+}
+
+/**
+ * The enqueue write shapes, exact arity:
+ *   issue create --repo <repo> --title <t> --body-file <f> (--label <l>)*
+ *   issue edit <n> --repo <repo> --title <t> --body-file <f> (--add-label <l>)* (--remove-label <l>)*
+ *   issue list --repo <repo> --search "shipyard-key: <spec>/" in:body --state all --json number,body --limit <1..1000>
+ * null = not a write shape (the engine's shapes decide; they refuse all three).
+ */
+function trackerWriteGh(a: string[], ctx: TrackerWriteContext): boolean | null {
+  const [group, sub, ...r] = a;
+  if (group !== 'issue') return null;
+  if (sub === 'create') {
+    return r.length >= 6 && same(r.slice(0, 6), ['--repo', ctx.repo, '--title', r[3], '--body-file', r[5]])
+      && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ['--label'], ctx);
+  }
+  if (sub === 'edit' && r[1] === '--repo') {
+    return r.length >= 7 && NUMBER.test(r[0]) && same(r.slice(1, 7), ['--repo', ctx.repo, '--title', r[4], '--body-file', r[6]])
+      && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ['--add-label', '--remove-label'], ctx);
+  }
+  if (sub === 'list' && r[0] === '--repo') {
+    return same(r, ['--repo', ctx.repo, '--search', r[3], '--state', 'all', '--json', 'number,body', '--limit', r[9]])
+      && KEY_SEARCH.test(r[3]) && NUMBER.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1000;
+  }
+  return null;
 }
 
 function isFactoryBranch(name: string | undefined, protectedBranches: readonly string[]): name is string {
@@ -121,7 +246,9 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
   }
 }
 
-function factoryGh(a: string[]): boolean | null {
+function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
+  const write = writes ? trackerWriteGh(a, writes) : null;
+  if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -154,8 +281,9 @@ const adoRefusal = (cmd: string, args: string[]) => (reason: string) =>
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
  * which refuses them unless `ado` names the run's forge and az entry.
+ * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext): void {
+export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args));
     return;
@@ -164,7 +292,7 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
   const base = file.replace(/\.exe$/, '');
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === 'string');
-  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args) : null;
+  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args, writes) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     // Factory shapes take no environment except ship's trusted-read env on git.
@@ -183,13 +311,29 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
 
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
- * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
+ * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
+ * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
-export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined): Exec {
+export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined, writes: () => TrackerWriteContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
-    return exec(cmd, args, opts);
+    const ctx = writes();
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx);
+    const at = ctx && cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
+    if (at === undefined) return exec(cmd, args, opts);
+    // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
+    const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
+    const dir = mkdtempSync(join(tmpdir(), 'omg-gh-body-'));
+    try {
+      const owned = join(dir, 'body.md');
+      writeFileSync(owned, body, { mode: 0o600, flag: 'wx' });
+      const rewritten = [...args];
+      rewritten[at] = owned;
+      return exec(cmd, rewritten, opts);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   };
 }
 
