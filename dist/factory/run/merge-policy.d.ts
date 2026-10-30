@@ -27,7 +27,9 @@ export interface FactoryMergeDecision extends MergeDecision {
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
  * in the local object store (the trusted config load fetched and checked it).
  * With an Azure DevOps `forge` the gate read goes through it, its blocking
- * branch policies are reasons too, and the command is its head-pinned PATCH.
+ * branch policies are reasons too, a PR touching the Azure Pipelines
+ * definitions (ADO_PIPELINE_PATHS) needs the owner as PROTECTED_PATHS do, and
+ * the command is its head-pinned PATCH.
  */
 export declare function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>): FactoryMergeDecision;
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */

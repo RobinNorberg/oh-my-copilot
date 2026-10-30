@@ -51,11 +51,18 @@ const MAX_WALK_ENTRIES = 200_000;
 const MAX_WALK_DEPTH = 64;
 
 /**
+ * Where Azure Pipelines definitions conventionally live: the CI that gates an
+ * ADO PR. A lane may not change them (a red build could turn green), and on
+ * Azure DevOps a PR touching them needs the owner (merge-policy.ts).
+ */
+export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'azure-pipelines.yaml', '.azure-pipelines/', '.azuredevops/', '.pipelines/'];
+
+/**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
  * `.github/` covers `.github/copilot-instructions.md` and the workflows.
  */
-export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md'];
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
 
