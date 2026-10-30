@@ -119144,10 +119144,11 @@ function githubCi(exec3, cwd2) {
   return {
     listRuns: (o) => listRuns(exec3, { ...o, cwd: cwd2 }),
     runJobs: (runId) => viewRunJobs(exec3, runId, cwd2),
-    jobLog: (jobId) => jobLog(exec3, jobId, cwd2)
+    jobLog: (jobId) => jobLog(exec3, jobId, cwd2),
+    rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER3, HEX404, str4;
+var RUN_LIST_FIELDS, NUMBER3, HEX404, str4, githubRerunIntent;
 var init_ci = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
@@ -119156,6 +119157,7 @@ var init_ci = __esm({
     NUMBER3 = /^\d{1,20}$/;
     HEX404 = /^[0-9a-f]{40}$/;
     str4 = (v) => typeof v === "string" ? v : "";
+    githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
   }
 });
 
@@ -122505,10 +122507,10 @@ function classifyJob(input) {
   if (range.commits > 0) return { ...withHistory, class: "regression", reason: `environment unchanged; ${range.commits} commit(s) touch ${codeFiles} code file(s)` };
   return { ...withHistory, class: "intermittent", reason: "same environment and no code change since the green run" };
 }
-function classifyRun(input) {
+function classifyRun(input, ci = { rerunIntent: githubRerunIntent }) {
   const jobs = input.jobs.map(classifyJob);
   const cls = SEVERITY.find((c) => jobs.some((j) => j.class === c)) ?? "unknown";
-  const rerun = RERUN_CLASSES.includes(cls) ? { runId: input.firstRed.runId, command: `gh run rerun ${input.firstRed.runId} --failed`, issued: false } : void 0;
+  const rerun = RERUN_CLASSES.includes(cls) ? { runId: input.firstRed.runId, command: ci.rerunIntent(input.firstRed.runId), issued: false } : void 0;
   return {
     class: cls,
     signature: input.signature,
@@ -122525,6 +122527,7 @@ var SEVERITY, RERUN_CLASSES, LANE_CLASSES, testKey;
 var init_classify = __esm({
   "src/factory/heal/classify.ts"() {
     "use strict";
+    init_ci();
     init_logs();
     SEVERITY = ["regression", "regression-or-env", "env-change", "unknown", "intermittent", "known-flaky", "infra"];
     RERUN_CLASSES = ["infra", "known-flaky", "intermittent", "env-change"];
@@ -123088,14 +123091,15 @@ function changedEvidence(root2, sig8, hashes) {
     }
   }).map(([name]) => name);
 }
-function collectEvidence(exec3, root2, classification, ignoreJobs) {
+function collectEvidence(exec3, root2, classification, ignoreJobs, ci = githubCi) {
   const c = classification;
-  const red2 = viewRunJobs(exec3, c.firstRed.runId, root2).filter((j) => j.conclusion === "failure" && !ignoreJobs.includes(j.name)).map((job) => ({ job, log: jobLog(exec3, job.jobId, root2) }));
+  const forgeCi = ci(exec3, root2);
+  const red2 = forgeCi.runJobs(c.firstRed.runId).filter((j) => j.conclusion === "failure" && !ignoreJobs.includes(j.name)).map((job) => ({ job, log: forgeCi.jobLog(job.jobId) }));
   const green2 = [];
   if (c.lastGreen) {
     const names = new Set(red2.map((r) => r.job.name));
-    for (const j of viewRunJobs(exec3, c.lastGreen.runId, root2)) {
-      if (names.has(j.name) && j.conclusion === "success") green2.push({ name: j.name, log: jobLog(exec3, j.jobId, root2) });
+    for (const j of forgeCi.runJobs(c.lastGreen.runId)) {
+      if (names.has(j.name) && j.conclusion === "success") green2.push({ name: j.name, log: forgeCi.jobLog(j.jobId) });
     }
   }
   let commits = [];
@@ -123114,7 +123118,7 @@ var init_heal_evidence = __esm({
     import_path187 = require("path");
     init_atomic_write();
     init_gates();
-    init_history();
+    init_ci();
     init_logs();
     init_sanitize();
     init_state4();
@@ -123308,7 +123312,7 @@ async function runHeal(o, deps) {
   if (healExec("git", ["merge-base", "--is-ancestor", c.firstRed.sha, `refs/remotes/origin/${o.base}`], { cwd: o.root }).status !== 0) {
     throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not on origin/${o.base}; a debugger lane only starts at integration-branch code (fetch origin first)`);
   }
-  const bundle = buildEvidence2(collectEvidence(healExec, o.root, c, o.config.ignoreJobs));
+  const bundle = buildEvidence2(collectEvidence(healExec, o.root, c, o.config.ignoreJobs, deps.ci));
   const delimiter3 = (deps.delimiter ?? newDelimiter)();
   const prompt = debugPrompt(c, bundle, delimiter3);
   if (o.dryRun) {
@@ -123629,7 +123633,7 @@ var init_implement = __esm({
 function runJobs(ctx, runId) {
   let jobs = ctx.jobs.get(runId);
   if (!jobs) {
-    jobs = viewRunJobs(ctx.exec, runId, ctx.root);
+    jobs = ctx.ci.runJobs(runId);
     ctx.jobs.set(runId, jobs);
   }
   return jobs;
@@ -123637,7 +123641,7 @@ function runJobs(ctx, runId) {
 function parsed(ctx, job) {
   let p = ctx.logs.get(job.jobId);
   if (!p) {
-    p = parseJob(job, jobLog(ctx.exec, job.jobId, ctx.root), ctx.known);
+    p = parseJob(job, ctx.ci.jobLog(job.jobId), ctx.known);
     ctx.logs.set(job.jobId, p);
   }
   return p;
@@ -123687,7 +123691,7 @@ function classifyRed(ctx, red2, jobs, greens, allRuns, pushRuns) {
     ...lastGreen ? { lastGreen } : {},
     ...range ? { range } : {},
     jobs: inputs.map((i) => range ? { ...i, range } : i)
-  });
+  }, ctx.ci);
 }
 function loadKnownFlaky(exec3, root2, base, warn) {
   const file = ".github/known-flaky-tests.json";
@@ -123704,11 +123708,12 @@ function runHealScan(opts) {
 }
 function scanOnce(opts) {
   const exec3 = healGuardExec(opts.exec);
-  const ctx = { exec: exec3, root: opts.root, known: loadKnownFlaky(exec3, opts.root, opts.base, opts.warn), config: opts.config, jobs: /* @__PURE__ */ new Map(), logs: /* @__PURE__ */ new Map() };
+  const ci = (opts.ci ?? githubCi)(exec3, opts.root);
+  const ctx = { exec: exec3, root: opts.root, ci, known: loadKnownFlaky(exec3, opts.root, opts.base, opts.warn), config: opts.config, jobs: /* @__PURE__ */ new Map(), logs: /* @__PURE__ */ new Map() };
   const completed = (r) => r.status === "completed";
-  const pushRuns = listRuns(exec3, { workflow: HEAL_WORKFLOW, event: "push", branch: opts.base, limit: SCAN_LIMITS.runList, cwd: opts.root }).filter(completed);
+  const pushRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: "push", branch: opts.base, limit: SCAN_LIMITS.runList }).filter(completed);
   const since = opts.now.getTime() - SCAN_LIMITS.prWindowMs;
-  const prRuns = listRuns(exec3, { workflow: HEAL_WORKFLOW, event: "pull_request", limit: SCAN_LIMITS.runList, cwd: opts.root }).filter((r) => completed(r) && Date.parse(r.createdAt) >= since);
+  const prRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: "pull_request", limit: SCAN_LIMITS.runList }).filter((r) => completed(r) && Date.parse(r.createdAt) >= since);
   const allRuns = [...pushRuns, ...prRuns];
   const states = listHealStates(opts.root);
   const unrecorded = new Set(opts.dryRun ? [] : states.filter((s) => !readHealScanRecord(opts.ledgerDir, opts.root, s.sig8)).map((s) => s.sig8));
@@ -123885,7 +123890,7 @@ function healCommand(deps) {
     const root2 = healRoot(deps);
     const { config: config2, warnings } = deps.config(root2);
     for (const w of warnings) console.error(source_default.yellow(w));
-    const result = runHealScan({ exec: deps.exec, root: root2, base: deps.base(root2), config: config2, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(source_default.yellow(m)), ledgerDir: deps.ledgerDir });
+    const result = runHealScan({ exec: deps.exec, root: root2, base: deps.base(root2), config: config2, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(source_default.yellow(m)), ledgerDir: deps.ledgerDir, ...deps.ci ? { ci: deps.ci } : {} });
     if (o.json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     else {
       console.log(`${source_default.bold("factory heal scan")}  base=${result.base}${result.dryRun ? "  (dry run: no state written)" : ""}`);
@@ -123924,7 +123929,7 @@ function healCommand(deps) {
     for (const w of warnings) console.error(source_default.yellow(w));
     const outcome = await runHeal(
       { root: root2, base: deps.base(root2), sig8, config: config2, dryRun: Boolean(o.dryRun) },
-      { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.run }
+      { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.ci ? { ci: deps.ci } : {}, ...deps.run }
     );
     const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root2, sig8)) : null;
     const ciHeal = !o.dryRun && outcome.next === "heal-approve" && config2.autoImplement ? await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps)) : void 0;
@@ -123986,6 +123991,7 @@ var init_cli = __esm({
     init_file_lock();
     init_source();
     init_config4();
+    init_ci();
     init_classify();
     init_config6();
     init_history();

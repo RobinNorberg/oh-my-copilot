@@ -15,9 +15,10 @@ import { Command } from 'commander';
 import { withFileLockSync } from '../../lib/file-lock.js';
 import chalk from 'chalk';
 import { parseKnownFlaky } from '../../ship/config.js';
+import { githubCi } from '../../forge/github/ci.js';
 import { classifyRun } from './classify.js';
 import { HEAL_WORKFLOW } from './config.js';
-import { healGuardExec, jobLog, listRuns, shaRange, viewRunJobs } from './history.js';
+import { healGuardExec, shaRange } from './history.js';
 import { parseJob } from './logs.js';
 import { runSignature } from './signature.js';
 import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState } from './state.js';
@@ -39,7 +40,7 @@ class HealUsageError extends Error {
 function runJobs(ctx, runId) {
     let jobs = ctx.jobs.get(runId);
     if (!jobs) {
-        jobs = viewRunJobs(ctx.exec, runId, ctx.root);
+        jobs = ctx.ci.runJobs(runId);
         ctx.jobs.set(runId, jobs);
     }
     return jobs;
@@ -47,7 +48,7 @@ function runJobs(ctx, runId) {
 function parsed(ctx, job) {
     let p = ctx.logs.get(job.jobId);
     if (!p) {
-        p = parseJob(job, jobLog(ctx.exec, job.jobId, ctx.root), ctx.known);
+        p = parseJob(job, ctx.ci.jobLog(job.jobId), ctx.known);
         ctx.logs.set(job.jobId, p);
     }
     return p;
@@ -104,7 +105,7 @@ function classifyRed(ctx, red, jobs, greens, allRuns, pushRuns) {
         ...(lastGreen ? { lastGreen } : {}),
         ...(range ? { range } : {}),
         jobs: inputs.map((i) => (range ? { ...i, range } : i)),
-    });
+    }, ctx.ci);
 }
 function loadKnownFlaky(exec, root, base, warn) {
     const file = '.github/known-flaky-tests.json';
@@ -123,11 +124,12 @@ export function runHealScan(opts) {
 }
 function scanOnce(opts) {
     const exec = healGuardExec(opts.exec);
-    const ctx = { exec, root: opts.root, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
+    const ci = (opts.ci ?? githubCi)(exec, opts.root);
+    const ctx = { exec, root: opts.root, ci, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
     const completed = (r) => r.status === 'completed';
-    const pushRuns = listRuns(exec, { workflow: HEAL_WORKFLOW, event: 'push', branch: opts.base, limit: SCAN_LIMITS.runList, cwd: opts.root }).filter(completed);
+    const pushRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: 'push', branch: opts.base, limit: SCAN_LIMITS.runList }).filter(completed);
     const since = opts.now.getTime() - SCAN_LIMITS.prWindowMs;
-    const prRuns = listRuns(exec, { workflow: HEAL_WORKFLOW, event: 'pull_request', limit: SCAN_LIMITS.runList, cwd: opts.root })
+    const prRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: 'pull_request', limit: SCAN_LIMITS.runList })
         .filter((r) => completed(r) && Date.parse(r.createdAt) >= since);
     const allRuns = [...pushRuns, ...prRuns];
     const states = listHealStates(opts.root);
@@ -337,7 +339,7 @@ export function healCommand(deps) {
         const { config, warnings } = deps.config(root);
         for (const w of warnings)
             console.error(chalk.yellow(w));
-        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir });
+        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir, ...(deps.ci ? { ci: deps.ci } : {}) });
         if (o.json)
             console.log(JSON.stringify({ ok: true, ...result }, null, 2));
         else {
@@ -397,7 +399,7 @@ export function healCommand(deps) {
         const { config, warnings } = deps.config(root);
         for (const w of warnings)
             console.error(chalk.yellow(w));
-        const outcome = await runHeal({ root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) }, { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.run });
+        const outcome = await runHeal({ root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) }, { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...(deps.ci ? { ci: deps.ci } : {}), ...deps.run });
         const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root, sig8)) : null;
         // factory.heal.autoImplement (user config only): a valid diagnosis goes on into the ci-heal run (billed write lanes).
         const ciHeal = !o.dryRun && outcome.next === 'heal-approve' && config.autoImplement
