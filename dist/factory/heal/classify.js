@@ -6,6 +6,7 @@
  * sha green on one image version and red on another is env-change). The run
  * takes the most severe job class.
  */
+import { githubRerunIntent } from '../../forge/github/ci.js';
 import { ENV_FIELDS } from './logs.js';
 /** Most severe first: the run takes the first class any of its jobs has. */
 const SEVERITY = ['regression', 'regression-or-env', 'env-change', 'unknown', 'intermittent', 'known-flaky', 'infra'];
@@ -94,11 +95,12 @@ export function classifyJob(input) {
         return { ...withHistory, class: 'regression', reason: `environment unchanged; ${range.commits} commit(s) touch ${codeFiles} code file(s)` };
     return { ...withHistory, class: 'intermittent', reason: 'same environment and no code change since the green run' };
 }
-export function classifyRun(input) {
+/** `ci`: the forge whose rerun intent is recorded (default GitHub). */
+export function classifyRun(input, ci = { rerunIntent: githubRerunIntent }) {
     const jobs = input.jobs.map(classifyJob);
     const cls = SEVERITY.find((c) => jobs.some((j) => j.class === c)) ?? 'unknown';
     const rerun = RERUN_CLASSES.includes(cls)
-        ? { runId: input.firstRed.runId, command: `gh run rerun ${input.firstRed.runId} --failed`, issued: false }
+        ? { runId: input.firstRed.runId, command: ci.rerunIntent(input.firstRed.runId), issued: false }
         : undefined;
     return {
         class: cls,

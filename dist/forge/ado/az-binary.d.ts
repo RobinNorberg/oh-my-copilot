@@ -49,7 +49,8 @@ export declare class AzBinaryError extends Error {
  * Resolve the az entry point once. Windows: the first searchable PATH entry
  * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
  * next to `<dir>\..\Lib\site-packages\azure\cli` (checked through its
- * `__main__.py`, the module `-m azure.cli` runs). PATH entries and roots
+ * `__main__.py`, or `__main__.pyc` when the MSI ships only bytecode, the
+ * module `-m azure.cli` runs). PATH entries and roots
  * compare by real path, so an 8.3 short name or a junction cannot alias a
  * root, and the python.exe found must itself be outside the roots.
  */

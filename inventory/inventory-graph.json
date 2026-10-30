@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f1f0436e38c294cf2c1e6e277840704b37f7b1bd",
-    "sourceSha256": "8d3db634a4f8221df01de51ef228678225c80697497b22c777bbc25c22eb6904",
+    "head": "2c1385cee3f86ab853c693a20b50fadcc3d2c9da",
+    "sourceSha256": "cda9c8444fb75982358173a50169e1132686277a504492198c4764c05df0599c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f1f0436e38c294cf2c1e6e277840704b37f7b1bd",
-  "sourceSha256": "8d3db634a4f8221df01de51ef228678225c80697497b22c777bbc25c22eb6904",
+  "head": "2c1385cee3f86ab853c693a20b50fadcc3d2c9da",
+  "sourceSha256": "cda9c8444fb75982358173a50169e1132686277a504492198c4764c05df0599c",
   "counts": {
     "public": {
       "skills": 63,
@@ -75075,6 +75075,16 @@
       },
       {
         "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
@@ -75191,6 +75201,11 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -75321,11 +75336,6 @@
       {
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/heal/heal-evidence.ts",
-        "to": "src/factory/heal/history.ts",
         "kind": "type-imports"
       },
       {
@@ -75347,6 +75357,16 @@
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/heal-evidence.ts",
@@ -75587,6 +75607,11 @@
         "from": "src/factory/heal/run.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/run.ts",
@@ -79655,12 +79680,22 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -112821,11 +112856,11 @@
     ],
     "stats": {
       "nodeCount": 9604,
-      "edgeCount": 11247,
-      "importEdgeCount": 9264,
+      "edgeCount": 11254,
+      "importEdgeCount": 9268,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
-  "manifestSha256": "bde5e26d0e6e977d5402c42fc62036a3cae7bb48a8ddc81cefd7d3553acdf4c0"
+  "manifestSha256": "7c753a444d099942fe5275a43c4dd6afe338de14e9020e0d767c5a0cdf366d12"
 }

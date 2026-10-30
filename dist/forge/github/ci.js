@@ -56,11 +56,14 @@ export function viewRunJobs(exec, runId, cwd) {
 export function jobLog(exec, jobId, cwd) {
     return capLog(runGh(exec, ['run', 'view', '--job', jobId, '--log'], cwd));
 }
+/** The rerun heal records for a human; healGuardExec refuses it and omg never issues it. */
+export const githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
 export function githubCi(exec, cwd) {
     return {
         listRuns: (o) => listRuns(exec, { ...o, cwd }),
         runJobs: (runId) => viewRunJobs(exec, runId, cwd),
         jobLog: (jobId) => jobLog(exec, jobId, cwd),
+        rerunIntent: githubRerunIntent,
     };
 }
 //# sourceMappingURL=ci.js.map

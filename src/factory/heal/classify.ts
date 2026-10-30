@@ -7,6 +7,8 @@
  * takes the most severe job class.
  */
 
+import { githubRerunIntent } from '../../forge/github/ci.js';
+import type { ForgeCi } from '../../forge/types.js';
 import type { FailingTest } from '../../ship/gates.js';
 import { ENV_FIELDS, type JobEnv, type ParsedJob } from './logs.js';
 import type { ShaRange } from './history.js';
@@ -168,11 +170,12 @@ export interface ClassifyRunInput {
   jobs: readonly ClassifyJobInput[];
 }
 
-export function classifyRun(input: ClassifyRunInput): HealClassification {
+/** `ci`: the forge whose rerun intent is recorded (default GitHub). */
+export function classifyRun(input: ClassifyRunInput, ci: Pick<ForgeCi, 'rerunIntent'> = { rerunIntent: githubRerunIntent }): HealClassification {
   const jobs = input.jobs.map(classifyJob);
   const cls = SEVERITY.find((c) => jobs.some((j) => j.class === c)) ?? 'unknown';
   const rerun: RerunIntent | undefined = RERUN_CLASSES.includes(cls)
-    ? { runId: input.firstRed.runId, command: `gh run rerun ${input.firstRed.runId} --failed`, issued: false }
+    ? { runId: input.firstRed.runId, command: ci.rerunIntent(input.firstRed.runId), issued: false }
     : undefined;
   return {
     class: cls,

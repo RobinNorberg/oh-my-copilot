@@ -16,6 +16,9 @@ All notable changes to oh-my-copilot will be documented in this file.
   `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is set.
   In a mixed team, another provider's login is skipped for a worker rather
   than failing its start.
+### Fixed
+
+- Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
 
 # oh-my-copilot v5.18.1
 
