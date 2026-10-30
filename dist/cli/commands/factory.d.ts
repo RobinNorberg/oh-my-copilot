@@ -9,8 +9,8 @@
  *
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
- * the factory prerequisites. Default seeds the narrow starter loop; --no-narrow
- * seeds the full-pipeline widening template. Never overwrites without --force.
+ * the factory prerequisites. It seeds the narrow starter loop; --no-narrow is
+ * retired and refuses. Never overwrites without --force.
  *
  * Liveness: pid file at <omc root>/state/factory-listener.json (SessionStart
  * supervision reads it) plus a GET /status endpoint on the listening port.
@@ -56,15 +56,6 @@ export declare function factoryCommand(): Command;
  */
 export declare function buildRouteTableNarrow(): RouteTable;
 /**
- * Full-pipeline widening template: a documented example widening the starter
- * loop into the intent -> launch -> diagnose progression. Keys are
- * `outcome:reason` pairs (the listener's intake label event, or the ending
- * session's outcome + hook reason); values name the next stage/skill. This is
- * a starting point to edit per project — a missing route halts the chain, and
- * `skill: "stop"` declares a terminal stage.
- */
-export declare function buildRouteTableFull(): RouteTable;
-/**
  * Factory prerequisites, checked loudly before anything is written:
  * harbor needs the OMC state root (`.omg/state/`) and the shipyard layout
  * needs `docs/design/`.
@@ -78,8 +69,8 @@ export interface FactoryInitResult {
     message: string;
 }
 /**
- * `omg factoryinit`: seed `.omg/factory-routes.json` — narrow starter table
- * by default, full widening template with narrow:false. Refuses loudly when
+ * `omg factoryinit`: seed `.omg/factory-routes.json` with the narrow starter
+ * table. narrow:false (the retired full template) refuses. Refuses loudly when
  * prerequisites are missing and never overwrites an existing table without
  * force (the SessionEnd chain enqueuer reads that file as the single source
  * of truth).

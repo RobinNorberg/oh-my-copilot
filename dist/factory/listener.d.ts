@@ -4,19 +4,16 @@
  * Resident intake daemon: transport adapters (smee/cloudflared/direct) live
  * outside the OMC boundary — the daemon only receives already-unpacked
  * webhook events as POSTs. It verifies the HMAC signature, enforces the repo
- * whitelist, applies the intake label gate (tracker issues) or the completed
- * CI failure gate (check-suite webhooks), and routes through the shared
- * routing pure function (T1 seam). v1 processes events serially.
+ * whitelist, applies the intake label gate (tracker issues) and routes through
+ * the shared routing pure function (T1 seam). Check-suite webhooks are audited
+ * and discarded; red CI reaches the heal queue through workflow_run. v1
+ * processes events serially.
  */
 import { type Server } from 'http';
 import { type ChainDirective, type RouteTable } from '../hooks/session-end/routing.js';
 import { type SpawnContext } from '../hooks/session-end/spawn-next.js';
 export declare const INTAKE_LABEL = "intake";
 export declare const INTAKE_ROUTE_TABLE: RouteTable;
-/** CI check-suite failures feed the diagnose stage of the same chain. */
-export declare const CI_ROUTE_TABLE: RouteTable;
-/** A check-suite head_branch admitted into a diagnose prompt. */
-export declare const HEAD_BRANCH_PATTERN: RegExp;
 /** GitHub issue webhook payload subset the daemon needs. */
 export interface TrackerEvent {
     action?: string;
@@ -35,7 +32,7 @@ export interface TrackerEvent {
         }>;
     };
 }
-/** GitHub check-run webhook payload subset the daemon needs (CI failure intake). */
+/** GitHub check-run webhook payload subset the daemon needs (audited discard). */
 export interface CheckRunEvent {
     action?: string;
     check_suite?: {
@@ -96,14 +93,7 @@ export type RouteOutcome = {
 };
 /** Pure intake decision: whitelist -> label gate -> shared routing seam. */
 export declare function routeTrackerEvent(event: TrackerEvent, whitelist: ReadonlyArray<string>, table?: RouteTable): RouteOutcome;
-/**
- * Pure CI intake decision: whitelist -> completed/failure gate -> shared
- * routing seam. Same outcome shape as routeTrackerEvent so the listener
- * dispatches both webhook kinds uniformly.
- */
-export declare function routeCheckFailure(event: CheckRunEvent, whitelist: ReadonlyArray<string>, table?: RouteTable): RouteOutcome;
 export declare function buildIntentPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string;
-export declare function buildDiagnosePrompt(directive: ChainDirective, repo: string, branch?: string): string;
 export interface ListenerConfig {
     port: number;
     secret: string;
@@ -128,7 +118,11 @@ export interface EventResult {
 }
 /** Orchestrates one tracker event: audit rejections, discard noise, spawn routed sessions. */
 export declare function processEvent(event: TrackerEvent, config: ListenerConfig, deps?: ListenerDeps): EventResult;
-/** Orchestrates one CI check-suite event: same guardrail/ledger/AFK flow, no tracker. */
+/**
+ * One CI check-suite event. It never spawns a session: a failure is an
+ * audited discard, because heal owns CI through workflow_run (the retired
+ * route spawned a billed session for a `diagnose` skill that does not exist).
+ */
 export declare function processCheckFailureEvent(event: CheckRunEvent, config: ListenerConfig, deps?: ListenerDeps): EventResult;
 /**
  * One `workflow_run` event: enqueue the run id for the heal scan, nothing
