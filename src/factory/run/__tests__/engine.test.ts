@@ -14,6 +14,7 @@ import { factoryProgressFile } from '../progress.js';
 import {
   computeFactoryIntegrity,
   factoryOwnerPath,
+  factoryRepoOwnerPath,
   factoryStateDir,
   factoryStatePath,
   readFactoryState,
@@ -834,6 +835,30 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     const out = await runFactoryEngine(opts(lanes, { owner: { pid: 4242, hostname: 'test-host', isAlive: () => false } }));
     expect(out.gate?.name).toBe('needs-plan');
     expect(existsSync(factoryOwnerPath(h.root, ISSUE))).toBe(false);
+  });
+
+  it('a live engine of another run in the same repository refuses a second run before it touches anything; a dead one is taken over', async () => {
+    mkdirSync(factoryStateDir(h.root), { recursive: true });
+    const other = JSON.stringify({ pid: 99, hostname: 'test-host', startedAt: 'x', run: '8' });
+    writeFileSync(factoryRepoOwnerPath(h.root), other);
+    const lanes = new FakeLanes(h.root, []);
+    await expect(runFactoryEngine(opts(lanes, { owner: { pid: 4242, hostname: 'test-host', isAlive: () => true } })))
+      .rejects.toThrow(/another omg factory engine runs in this repository \(8, pid 99/);
+    expect(readFileSync(factoryRepoOwnerPath(h.root), 'utf8')).toBe(other);
+    expect(existsSync(factoryOwnerPath(h.root, ISSUE))).toBe(false);
+    expect(readFactoryState(h.root, ISSUE)).toBeNull();
+    h.gh.issue.body = 'no plan';
+    const out = await runFactoryEngine(opts(lanes, { owner: { pid: 4242, hostname: 'test-host', isAlive: () => false } }));
+    expect(out.gate?.name).toBe('needs-plan');
+    expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
+  });
+
+  it('a run whose own issue is owned by a live engine releases the repository lock it took', async () => {
+    mkdirSync(factoryStateDir(h.root), { recursive: true });
+    writeFileSync(factoryOwnerPath(h.root, ISSUE), JSON.stringify({ pid: 99, hostname: 'test-host', startedAt: 'x' }));
+    const lanes = new FakeLanes(h.root, []);
+    await expect(runFactoryEngine(opts(lanes, { owner: { pid: 4242, hostname: 'test-host', isAlive: () => true } }))).rejects.toThrow(/already running \(pid 99/);
+    expect(existsSync(factoryRepoOwnerPath(h.root))).toBe(false);
   });
 
   it('a hand-edited state is state-tampered: the edited copy is moved aside and the engine\'s own copy restored', async () => {

@@ -1059,15 +1059,23 @@ export class CopilotRunManager {
         }
         return null;
     }
-    /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+    /**
+     * A job that ended: its worktree HEAD stops moving, so the live jobs that
+     * ignored it compare it from its value now on. Only a detached HEAD (what
+     * the session leaves) becomes the new baseline; an attached or otherwise
+     * changed one keeps the old baseline, so the live jobs' check reports it.
+     */
     releaseWorktreeHead(job) {
         if (!job.worktreeLinks || !job.commonGitDir)
             return;
         const key = `worktrees/${basename(job.worktreeLinks.adminDir)}/HEAD`;
+        const entry = worktreeHeadEntry(join(job.commonGitDir, key));
+        const detached = /^head [0-9a-f]+$/.test(entry);
         for (const other of this.jobs.values()) {
             if (other === job || isTerminal(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState)
                 continue;
-            other.sharedGitState[key] = worktreeHeadEntry(join(job.commonGitDir, key));
+            if (detached)
+                other.sharedGitState[key] = entry;
         }
     }
     expectJobRef(branch, sha) {

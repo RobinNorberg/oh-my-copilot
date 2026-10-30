@@ -118718,13 +118718,20 @@ var init_job = __esm({
         }
         return null;
       }
-      /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+      /**
+       * A job that ended: its worktree HEAD stops moving, so the live jobs that
+       * ignored it compare it from its value now on. Only a detached HEAD (what
+       * the session leaves) becomes the new baseline; an attached or otherwise
+       * changed one keeps the old baseline, so the live jobs' check reports it.
+       */
       releaseWorktreeHead(job) {
         if (!job.worktreeLinks || !job.commonGitDir) return;
         const key = `worktrees/${(0, import_node_path34.basename)(job.worktreeLinks.adminDir)}/HEAD`;
+        const entry2 = worktreeHeadEntry((0, import_node_path34.join)(job.commonGitDir, key));
+        const detached = /^head [0-9a-f]+$/.test(entry2);
         for (const other of this.jobs.values()) {
           if (other === job || isTerminal2(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState) continue;
-          other.sharedGitState[key] = worktreeHeadEntry((0, import_node_path34.join)(job.commonGitDir, key));
+          if (detached) other.sharedGitState[key] = entry2;
         }
       }
       expectJobRef(branch, sha2) {
@@ -119396,6 +119403,9 @@ function factoryStatePath(root2, key) {
 function factoryOwnerPath(root2, key) {
   return (0, import_path177.join)(factoryStateDir3(root2), `run-${key}.owner`);
 }
+function factoryRepoOwnerPath(root2) {
+  return (0, import_path177.join)(factoryStateDir3(root2), "engine.owner");
+}
 function factoryCancelPath(root2, key) {
   return (0, import_path177.join)(factoryStateDir3(root2), `run-${key}.cancel`);
 }
@@ -119561,8 +119571,13 @@ function requestFactoryCancel(root2, key, now2) {
   return { ...current, cancelRequested: true };
 }
 function acquireFactoryOwner(root2, key, now2, deps = defaultOwnerDeps()) {
-  const path30 = factoryOwnerPath(root2, key);
-  ensureDirSync(factoryStateDir3(root2));
+  return claimOwner(factoryOwnerPath(root2, key), now2, deps, (prior) => `omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+}
+function acquireFactoryRepoOwner(root2, key, now2, deps = defaultOwnerDeps()) {
+  return claimOwner(factoryRepoOwnerPath(root2), now2, deps, (prior) => `another omg factory engine runs in this repository (${prior.run ?? "run unknown"}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per repository at a time, so start ${key} after it ends`, String(key));
+}
+function claimOwner(path30, now2, deps, busy, run2) {
+  ensureDirSync((0, import_path177.dirname)(path30));
   const tookOver = withFileLockSync(lockPathFor(path30), () => {
     let prior;
     if ((0, import_fs150.existsSync)(path30)) {
@@ -119572,10 +119587,10 @@ function acquireFactoryOwner(root2, key, now2, deps = defaultOwnerDeps()) {
         prior = void 0;
       }
       if (prior && (prior.hostname !== deps.hostname || prior.pid !== deps.pid && deps.isAlive(prior.pid))) {
-        throw new FactoryStateError(`omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+        throw new FactoryStateError(busy(prior));
       }
     }
-    (0, import_fs150.writeFileSync)(path30, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now2 })}
+    (0, import_fs150.writeFileSync)(path30, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now2, ...run2 ? { run: run2 } : {} })}
 `, "utf8");
     return prior;
   }, { timeoutMs: 5e3 });
@@ -122893,14 +122908,23 @@ async function runFactoryEngine(o) {
   const dir = o.ledgerDir ?? defaultLedgerDir();
   const ledger = EngineLedger.open(dir, o.root, key);
   const hooksDir = emptyHooksDir2(dir);
-  const owner = acquireFactoryOwner(o.root, key, new Date((o.now ?? Date.now)()).toISOString(), o.owner);
-  const ownerPath = factoryOwnerPath(o.root, key);
-  ledger.record(ownerPath, (0, import_fs161.existsSync)(ownerPath) ? (0, import_fs161.readFileSync)(ownerPath, "utf8") : null);
+  const now2 = new Date((o.now ?? Date.now)()).toISOString();
+  const repoOwner = acquireFactoryRepoOwner(o.root, key, now2, o.owner);
+  let owner;
+  try {
+    owner = acquireFactoryOwner(o.root, key, now2, o.owner);
+  } catch (error2) {
+    repoOwner.release();
+    throw error2;
+  }
+  const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
+  for (const path30 of ownerPaths) ledger.record(path30, (0, import_fs161.existsSync)(path30) ? (0, import_fs161.readFileSync)(path30, "utf8") : null);
   try {
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
-    ledger.record(ownerPath, null);
+    repoOwner.release();
+    for (const path30 of ownerPaths) ledger.record(path30, null);
   }
 }
 var import_fs161, import_path188, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CI_DETAIL_CHARS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, MAX_REVIEW_DIFF_CHARS, MAX_TITLE_CHARS, ADO_HEAD_LAG_POLLS, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, HEX405, WRITE_LANE_GIT_RULES, resumeCommand, subject, planLabel, untrustedText, HEAL_ACCEPTANCE, planSection, usageOf, capUsage, FactoryEngine;
@@ -122932,6 +122956,7 @@ var init_engine = __esm({
     init_forge_roots();
     init_process_utils();
     init_lane();
+    init_job();
     init_lane_commit();
     init_ledger2();
     init_progress2();
@@ -124004,6 +124029,12 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.discardCheckout();
         const path30 = checkoutPath(this.o.root, this.key);
         const branch = checkoutBranch(this.key);
+        const common = (0, import_path188.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
+        const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch}`);
+        if (refProblem) {
+          this.gate("lane-tampered", `the prepare checkout branch ${branch} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
+          return;
+        }
         let before;
         try {
           before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);

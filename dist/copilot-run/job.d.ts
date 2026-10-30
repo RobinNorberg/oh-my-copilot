@@ -370,7 +370,12 @@ export declare class CopilotRunManager {
      * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
      */
     private branchMismatch;
-    /** A job that ended: its worktree HEAD stops moving, so the live jobs that ignored it compare it from its value now on. */
+    /**
+     * A job that ended: its worktree HEAD stops moving, so the live jobs that
+     * ignored it compare it from its value now on. Only a detached HEAD (what
+     * the session leaves) becomes the new baseline; an attached or otherwise
+     * changed one keeps the old baseline, so the live jobs' check reports it.
+     */
     private releaseWorktreeHead;
     private expectJobRef;
     private find;

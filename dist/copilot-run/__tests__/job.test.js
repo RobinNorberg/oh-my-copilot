@@ -1033,6 +1033,19 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
         expect(bDone.status).toBe('failed');
         expect(bDone.error).toMatch(/^sandbox-escaped: the common git dir .*worktrees\/[^/]+\/HEAD/);
     });
+    it('a job that ended with an attached worktree HEAD does not make that HEAD the baseline of a job live alongside it', async () => {
+        const m = manager('hang');
+        const a = m.start({ prompt: 'implement', cwd: repo });
+        const b = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const aAdmin = readWorktreeGitLinks(a.worktree.path).adminDir;
+        writeFileSync(join(aAdmin, 'HEAD'), 'ref: refs/heads/main\n');
+        expect((await m.cancel(a.jobId)).status).toBe('failed');
+        expect(readFileSync(join(aAdmin, 'HEAD'), 'utf8')).toBe('ref: refs/heads/main\n');
+        const bDone = await m.cancel(b.jobId);
+        expect(bDone.status).toBe('failed');
+        expect(bDone.error).toMatch(/^sandbox-escaped: the common git dir .*worktrees\/[^/]+\/HEAD/);
+    });
     it('a job whose worktree HEAD was attached to a branch fails as sandbox-escaped and its branch does not move', async () => {
         const main = gitIn(repo, 'rev-parse', 'refs/heads/main');
         const m = manager('hang');

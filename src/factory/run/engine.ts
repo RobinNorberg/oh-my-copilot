@@ -91,6 +91,7 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { assertFactoryForgeOptions } from './forge-roots.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
+import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress, type FactoryProgress } from './progress.js';
@@ -99,10 +100,12 @@ import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, type IssueComment } from './plan-rules.js';
 import {
   acquireFactoryOwner,
+  acquireFactoryRepoOwner,
   createFactoryState,
   factoryCancelRequested,
   forgeResumeProblem,
   factoryOwnerPath,
+  factoryRepoOwnerPath,
   factoryStateDir,
   factoryStatePath,
   HEAL_APPROVE_GATE,
@@ -1632,6 +1635,13 @@ class FactoryEngine {
     this.discardCheckout();
     const path = checkoutPath(this.o.root, this.key);
     const branch = checkoutBranch(this.key);
+    // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
+    const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
+    const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch}`);
+    if (refProblem) {
+      this.gate('lane-tampered', `the prepare checkout branch ${branch} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
+      return;
+    }
     // prepare runs the PR's own code (tsc, eslint, vitest): the shared git state is compared around it like a lane's.
     let before: RepoSnapshot;
     try {
@@ -2303,13 +2313,23 @@ export async function runFactoryEngine(o: FactoryEngineOptions): Promise<Factory
   const dir = o.ledgerDir ?? defaultLedgerDir();
   const ledger = EngineLedger.open(dir, o.root, key);
   const hooksDir = emptyHooksDir(dir);
-  const owner = acquireFactoryOwner(o.root, key, new Date((o.now ?? Date.now)()).toISOString(), o.owner);
-  const ownerPath = factoryOwnerPath(o.root, key);
-  ledger.record(ownerPath, existsSync(ownerPath) ? readFileSync(ownerPath, 'utf8') : null);
+  const now = new Date((o.now ?? Date.now)()).toISOString();
+  // The repository lock first: a second engine refuses before it touches this run's files or git state.
+  const repoOwner = acquireFactoryRepoOwner(o.root, key, now, o.owner);
+  let owner: ReturnType<typeof acquireFactoryOwner>;
+  try {
+    owner = acquireFactoryOwner(o.root, key, now, o.owner);
+  } catch (error) {
+    repoOwner.release();
+    throw error;
+  }
+  const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
+  for (const path of ownerPaths) ledger.record(path, existsSync(path) ? readFileSync(path, 'utf8') : null);
   try {
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
-    ledger.record(ownerPath, null);
+    repoOwner.release();
+    for (const path of ownerPaths) ledger.record(path, null);
   }
 }
