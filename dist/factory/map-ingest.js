@@ -27,6 +27,16 @@ export function parseMapRef(raw, fallbackRepo) {
         return null;
     return { repo, number: Number(match[3]) };
 }
+function parentRepo(parent) {
+    const repository = parent?.repository;
+    if (repository?.nameWithOwner)
+        return repository.nameWithOwner;
+    const owner = typeof repository?.owner === 'string' ? repository.owner : repository?.owner?.login;
+    if (owner && repository?.name)
+        return `${owner}/${repository.name}`;
+    const fromUrl = /github\.com\/([^/\s]+)\/([^/\s]+)\/issues\//.exec(parent?.url ?? '');
+    return fromUrl ? `${fromUrl[1]}/${fromUrl[2]}` : null;
+}
 function normalizeView(view) {
     const labels = (view.labels ?? []).map((label) => (typeof label === 'string' ? label : label.name ?? '')).filter(Boolean);
     return {
@@ -36,6 +46,7 @@ function normalizeView(view) {
         assignees: view.assignees?.length ?? 0,
         body: view.body ?? '',
         nativeParent: view.parent?.number ?? null,
+        nativeParentRepo: parentRepo(view.parent),
         nativeBlockedBy: (view.blockedBy?.nodes ?? []).map((node) => node.number).filter((n) => typeof n === 'number'),
     };
 }
@@ -101,7 +112,7 @@ function safeJson(text, fallback) {
 }
 /** The plan a dry run prints and a real run acts on: the enumerator's verdict, classified. */
 export function planFromMap(ref, records) {
-    const frontier = enumerateFrontier(ref.number, records);
+    const frontier = enumerateFrontier(ref.number, records, ref.repo);
     const classify = (ticket) => ({
         number: ticket.number,
         gateClass: ticket.gateClass,
