@@ -337,8 +337,9 @@ describe('progress sync on Azure DevOps (factory forges design §7)', () => {
         expect(out.gate?.name, out.message).toBe('merge');
         expect(patches()).toHaveLength(2);
         const reads = ado.calls.filter((c) => c.route === 'wit.workItems.GET' || c.route === 'wit.workItems.PATCH').map((c) => c.route);
-        // intake's read, then read + PATCH (conflict) + re-read + PATCH.
-        expect(reads.slice(-4)).toEqual(['wit.workItems.GET', 'wit.workItems.PATCH', 'wit.workItems.GET', 'wit.workItems.PATCH']);
+        // intake's read, then read + PATCH (conflict) + re-read + PATCH (the merge park's outcome read follows).
+        const first = reads.indexOf('wit.workItems.PATCH');
+        expect(reads.slice(first - 1, first + 3)).toEqual(['wit.workItems.GET', 'wit.workItems.PATCH', 'wit.workItems.GET', 'wit.workItems.PATCH']);
         expect(readFactoryState(h.root, ISSUE).trackerStage).toBe('reviewing');
     });
     it('a conflict that persists after the one retry is a warning, never a blocked transition', async () => {

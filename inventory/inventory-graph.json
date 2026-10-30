@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0c9931653004f52110e33cd99ee524e597b6cf59",
-    "sourceSha256": "d3bbb2c915e11103cbce2d53fd52f876d5631087eb84bbe1cec0449de679ce66",
+    "head": "a41dd693424eb6dd2a2fc5198a5f8e68f0744b4e",
+    "sourceSha256": "e8c47291c5c3c6684f25a612e7c6da673ac6f7ca82f5b8dbe39d96d6d3dfe74a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0c9931653004f52110e33cd99ee524e597b6cf59",
-  "sourceSha256": "d3bbb2c915e11103cbce2d53fd52f876d5631087eb84bbe1cec0449de679ce66",
+  "head": "a41dd693424eb6dd2a2fc5198a5f8e68f0744b4e",
+  "sourceSha256": "e8c47291c5c3c6684f25a612e7c6da673ac6f7ca82f5b8dbe39d96d6d3dfe74a",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1909,
-      "total": 1933
+      "srcFiles": 1911,
+      "total": 1935
     },
     "generated": {
-      "distFiles": 7064,
+      "distFiles": 7072,
       "bridgeFiles": 9,
-      "total": 7073
+      "total": 7081
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3147,6 +3147,10 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.outcome.test.d.ts",
+      "dist/factory/run/__tests__/engine.outcome.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.outcome.test.js",
+      "dist/factory/run/__tests__/engine.outcome.test.js.map",
       "dist/factory/run/__tests__/engine.progress.test.d.ts",
       "dist/factory/run/__tests__/engine.progress.test.d.ts.map",
       "dist/factory/run/__tests__/engine.progress.test.js",
@@ -3235,6 +3239,10 @@
       "dist/factory/run/merge-policy.d.ts.map",
       "dist/factory/run/merge-policy.js",
       "dist/factory/run/merge-policy.js.map",
+      "dist/factory/run/outcome.d.ts",
+      "dist/factory/run/outcome.d.ts.map",
+      "dist/factory/run/outcome.js",
+      "dist/factory/run/outcome.js.map",
       "dist/factory/run/plan-rules.d.ts",
       "dist/factory/run/plan-rules.d.ts.map",
       "dist/factory/run/plan-rules.js",
@@ -20560,6 +20568,26 @@
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.progress.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.progress.test.d.ts"
@@ -20998,6 +21026,26 @@
         "id": "dist/factory/run/merge-policy.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/merge-policy.js.map"
+      },
+      {
+        "id": "dist/factory/run/outcome.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.d.ts"
+      },
+      {
+        "id": "dist/factory/run/outcome.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/outcome.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.js"
+      },
+      {
+        "id": "dist/factory/run/outcome.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.js.map"
       },
       {
         "id": "dist/factory/run/plan-rules.d.ts",
@@ -50235,6 +50283,11 @@
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.outcome.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.progress.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.progress.test.ts"
@@ -50343,6 +50396,11 @@
         "id": "src/factory/run/merge-policy.ts",
         "kind": "src",
         "path": "src/factory/run/merge-policy.ts"
+      },
+      {
+        "id": "src/factory/run/outcome.ts",
+        "kind": "src",
+        "path": "src/factory/run/outcome.ts"
       },
       {
         "id": "src/factory/run/plan-rules.ts",
@@ -77067,6 +77125,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -77903,6 +78021,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/plan-rules.ts",
         "kind": "exports"
       },
@@ -78334,6 +78462,21 @@
       {
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -114513,12 +114656,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9723,
-      "edgeCount": 11449,
-      "importEdgeCount": 9421,
+      "nodeCount": 9733,
+      "edgeCount": 11466,
+      "importEdgeCount": 9431,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "4a273b53ad689801660d3dffb2452934cf9426848fd7a9ba6862f844a25b4143",
-  "manifestSha256": "7508ccf2dc3511ba7e857808248e6e7d530c651118195b69bb6a760e21d5293f"
+  "inventorySha256": "fdde596adc3bf3e66acfec11c709d13809a5d7f96e5a66e3775bcb07a4f60d68",
+  "manifestSha256": "850bdadddf2ebb2a3c2d760945fbbe044f608d82b4c5baba272fa9f408732233"
 }
