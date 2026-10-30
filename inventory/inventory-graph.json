@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8d6d7340a5f85c100b2d872164359cc1124977df",
-    "sourceSha256": "d59947321f2ffc73f171b71a0a1b1920cbcadd0d657605c1eca3143c116106de",
+    "head": "a730ab051919f2cbc5a3cdd3cb88998d6335686a",
+    "sourceSha256": "7c7816ab2c2b7c09a23c3178bc60dfe24207cc5c2bce30977173b8b2107baa9d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8d6d7340a5f85c100b2d872164359cc1124977df",
-  "sourceSha256": "d59947321f2ffc73f171b71a0a1b1920cbcadd0d657605c1eca3143c116106de",
+  "head": "a730ab051919f2cbc5a3cdd3cb88998d6335686a",
+  "sourceSha256": "7c7816ab2c2b7c09a23c3178bc60dfe24207cc5c2bce30977173b8b2107baa9d",
   "counts": {
     "public": {
       "skills": 63,
@@ -8660,6 +8660,11 @@
         "path": ".claude-plugin/plugin.json"
       },
       {
+        "id": ".claude/settings.local.json",
+        "kind": "other",
+        "path": ".claude/settings.local.json"
+      },
+      {
         "id": ".clawhip/project.json",
         "kind": "other",
         "path": ".clawhip/project.json"
@@ -8883,6 +8888,11 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
+      },
+      {
+        "id": ".omg/projection-manifest.json",
+        "kind": "other",
+        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -114458,12 +114468,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9714,
+      "nodeCount": 9716,
       "edgeCount": 11447,
       "importEdgeCount": 9419,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "7d51b686bf3ef52a3146f666685664e4fee393808edae598819e5f50848b3d0c",
-  "manifestSha256": "99923e820f2a17a2732f3efff25adf2d5a2f8046736b0cfe30a5daed94b565ba"
+  "inventorySha256": "375a9007f0bf02288b9cedf8fd0b07206bcd3cfbd7ca96e9c98db85bf740fb44",
+  "manifestSha256": "e214c36b96a2aa909dea6317657c25828a7bce0e0e9145993a7d7b0bbf23fcfa"
 }

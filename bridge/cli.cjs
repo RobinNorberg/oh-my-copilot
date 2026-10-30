@@ -122596,7 +122596,7 @@ var init_forge = __esm({
 function parseReviewOutput(finalText, expectedSha, twoAxis = false) {
   const invalid = (reason) => ({ kind: "invalid", reason });
   if (typeof finalText !== "string" || !finalText.trim()) return invalid("the review lane left no final message");
-  const blocks = [...finalText.matchAll(FENCE)];
+  const blocks = [...finalText.matchAll(FENCE2)];
   if (blocks.length === 0) return invalid("no fenced json verdict block");
   if (blocks.length > 1) return invalid(`${blocks.length} fenced json blocks; the contract is exactly one`);
   const fences = [...finalText.matchAll(ANY_JSON_FENCE)].length;
@@ -122662,14 +122662,14 @@ function reviewComment(review, reviewer) {
   return `${lines4.join("\n")}
 `;
 }
-var MAX_REVIEW_NOTES, SEVERITIES, AXES, FENCE, ANY_JSON_FENCE;
+var MAX_REVIEW_NOTES, SEVERITIES, AXES, FENCE2, ANY_JSON_FENCE;
 var init_review_output = __esm({
   "src/factory/run/review-output.ts"() {
     "use strict";
     MAX_REVIEW_NOTES = 500;
     SEVERITIES = ["blocker", "major", "minor", "nit"];
     AXES = ["spec", "standards"];
-    FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
+    FENCE2 = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
     ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
   }
 });
@@ -122691,7 +122691,7 @@ function citationProblem(citation, bundle) {
 function parseDiagnosisOutput(finalText, bundle) {
   const invalid = (reason) => ({ kind: "invalid", reason });
   if (typeof finalText !== "string" || !finalText.trim()) return invalid("the debugger lane left no final message");
-  const blocks = [...finalText.matchAll(FENCE)];
+  const blocks = [...finalText.matchAll(FENCE2)];
   if (blocks.length === 0) return invalid("no fenced json diagnosis block");
   if (blocks.length > 1) return invalid(`${blocks.length} fenced json blocks; the contract is exactly one`);
   const fences = [...finalText.matchAll(ANY_JSON_FENCE)].length;
@@ -152423,7 +152423,44 @@ function parseBlocked(body) {
   const hasContent = raw.trim().length > 0;
   return { blockers, malformed: hasContent && blockers.length === 0 };
 }
-function ticketType(labels) {
+var BODY_TYPES = {
+  research: "research",
+  loft: "prototype",
+  prototype: "prototype",
+  grilling: "grilling",
+  task: "task"
+};
+var TYPE_LINE = /^[^\S\r\n]*(?:[-*][^\S\r\n]+)?\**Type\**[^\S\r\n]*[:：]\**[^\S\r\n]*`?([A-Za-z]+)`?(?![\w-])/i;
+var FENCE = /^[^\S\r\n]*(?:```|~~~)/;
+function stricter(a, b, labels) {
+  return gateClassFor(a, labels) === "auto" && gateClassFor(b, labels) === "human" ? b : a;
+}
+function bodyTypeFor(key) {
+  return Object.hasOwn(BODY_TYPES, key) ? BODY_TYPES[key] : void 0;
+}
+function bodyType(body, labels) {
+  let found = null;
+  let fenced2 = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (FENCE.test(line)) {
+      fenced2 = !fenced2;
+      continue;
+    }
+    if (fenced2 || /^\s*>/.test(line)) continue;
+    const type = bodyTypeFor(TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? "");
+    if (type) found = found ? stricter(found, type, labels) : type;
+  }
+  return found;
+}
+function ticketType(labels, body, trusted) {
+  const fromBody = bodyType(body, labels);
+  const fromLabel = labelType(labels);
+  if (fromBody && fromLabel) return stricter(fromBody, fromLabel, labels);
+  if (fromLabel) return fromLabel;
+  if (!fromBody) return "other";
+  return trusted ? fromBody : stricter(fromBody, "other", labels);
+}
+function labelType(labels) {
   for (const label2 of labels) {
     switch (label2) {
       case "wayfinder:research":
@@ -152438,18 +152475,19 @@ function ticketType(labels) {
         break;
     }
   }
-  return "other";
+  return null;
 }
 function gateClassFor(type, labels) {
   if (type === "research") return "auto";
   if (type === "task") return labels.includes(WAYFINDER_TASK_AFK_LABEL) ? "auto" : "human";
   return "human";
 }
-function enumerateFrontier(mapNumber, records2) {
+function enumerateFrontier(mapNumber, records2, mapRepo) {
+  const nativeChild = (record3) => record3.nativeParent === mapNumber && (mapRepo === void 0 || record3.nativeParentRepo?.toLowerCase() === mapRepo.toLowerCase());
   const stateByNumber = /* @__PURE__ */ new Map();
   for (const record3 of records2) stateByNumber.set(record3.number, record3.state);
   const children = records2.filter(
-    (record3) => record3.nativeParent === mapNumber || bodyParentRefs(record3.body).includes(mapNumber)
+    (record3) => nativeChild(record3) || bodyParentRefs(record3.body).includes(mapNumber)
   );
   const malformedEdges = [];
   const auto = [];
@@ -152461,7 +152499,7 @@ function enumerateFrontier(mapNumber, records2) {
     const blockers = [...record3.nativeBlockedBy ?? [], ...parsed2.blockers];
     const blocked2 = blockers.some((blocker) => (stateByNumber.get(blocker) ?? "OPEN") !== "CLOSED");
     if (blocked2) continue;
-    const type = ticketType(record3.labels);
+    const type = ticketType(record3.labels, record3.body, nativeChild(record3));
     const ticket = {
       number: record3.number,
       type,
@@ -152495,6 +152533,14 @@ function parseMapRef(raw, fallbackRepo) {
   if (!repo) return null;
   return { repo, number: Number(match[3]) };
 }
+function parentRepo(parent) {
+  const repository = parent?.repository;
+  if (repository?.nameWithOwner) return repository.nameWithOwner;
+  const owner = typeof repository?.owner === "string" ? repository.owner : repository?.owner?.login;
+  if (owner && repository?.name) return `${owner}/${repository.name}`;
+  const fromUrl = /github\.com\/([^/\s]+)\/([^/\s]+)\/issues\//.exec(parent?.url ?? "");
+  return fromUrl ? `${fromUrl[1]}/${fromUrl[2]}` : null;
+}
 function normalizeView(view) {
   const labels = (view.labels ?? []).map((label2) => typeof label2 === "string" ? label2 : label2.name ?? "").filter(Boolean);
   return {
@@ -152504,6 +152550,7 @@ function normalizeView(view) {
     assignees: view.assignees?.length ?? 0,
     body: view.body ?? "",
     nativeParent: view.parent?.number ?? null,
+    nativeParentRepo: parentRepo(view.parent),
     nativeBlockedBy: (view.blockedBy?.nodes ?? []).map((node) => node.number).filter((n) => typeof n === "number")
   };
 }
@@ -152551,7 +152598,7 @@ function safeJson(text4, fallback) {
   }
 }
 function planFromMap(ref, records2) {
-  const frontier = enumerateFrontier(ref.number, records2);
+  const frontier = enumerateFrontier(ref.number, records2, ref.repo);
   const classify = (ticket) => ({
     number: ticket.number,
     gateClass: ticket.gateClass,
