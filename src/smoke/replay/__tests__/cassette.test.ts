@@ -367,3 +367,38 @@ describe('review fixes round 5 (#349): the structural backstop', () => {
     expect(gateFiles(eventsFile(new Redactor().redactEvents(partialResults())))).toEqual([]);
   });
 });
+
+describe('review fixes round 6 (#349): no false refusals from unrelated adjacent text', () => {
+  const eventsFile = (events: unknown[]) => new Map([['events/s1.jsonl', events.map((e) => `${JSON.stringify(e)}\n`).join('')]]);
+  const line = (res: unknown) => new Map([[INTERACTIONS_FILE, `${JSON.stringify({ stream: 's1', seq: 1, res })}\n`]]);
+
+  it('does not read the next event as the value of a prompt ending one event', () => {
+    expect(gateFiles(eventsFile([
+      { type: 'tool.execution_complete', data: { toolCallId: 't1', success: true, result: { content: 'Connecting...\nEnter password:' } } },
+      { type: 'assistant.turn_end', data: { turnId: '1' } },
+    ]))).toEqual([]);
+    expect(gateFiles(eventsFile([
+      { type: 'assistant.message', data: { messageId: 'm1', content: 'Then add GH_TOKEN=' } },
+      { type: 'assistant.message', data: { messageId: 'm2', content: 'Done. Next step...' } },
+    ]))).toEqual([]);
+  });
+  it('passes deltas cut right after a secret name', () => {
+    for (const parts of [['password:', " 'abc'"], ['API_TOKEN=', '\n']]) {
+      const events = parts.map((deltaContent, i) => ({ type: 'assistant.message_delta', id: `e${i}`, data: { messageId: 'm1', deltaContent } }));
+      expect(gateFiles(eventsFile(new Redactor().redactEvents(events)))).toEqual([]);
+    }
+  });
+  it('does not glue one SSE event to the next', () => {
+    const chunks = ['export GH_', 'TOKEN=', '\ncurl'].map((delta) => `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_1', output_index: 0, content_index: 0, delta })}\n\n`);
+    expect(gateFiles(line(new Redactor().redactResponse({ status: 200, headers: {}, kind: 'sse', chunks })))).toEqual([]);
+  });
+  it('cuts SSE events on CR-only and CRLF line ends', () => {
+    for (const eol of ['\r', '\r\n']) {
+      const chunks = [GHP.slice(0, 20), GHP.slice(20)].map((content) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}${eol}${eol}`);
+      expect(gateFiles(line({ status: 200, headers: {}, kind: 'sse', chunks })).map((h) => h.rule)).toContain('github-token');
+      const res = new Redactor().redactResponse({ status: 200, headers: {}, kind: 'sse', chunks });
+      expect(JSON.stringify(res)).not.toContain(GHP.slice(20));
+      expect(gateFiles(line(res))).toEqual([]);
+    }
+  });
+});

@@ -380,28 +380,37 @@ function decodedStrings(value: unknown, out: string[], depth = 0): void {
 
 /**
  * The structural backstop: what a field split over several events forms,
- * whatever the field is called. Joins (with "", so any cut is undone) the
- * string leaves of all events in order, and of each leaf path (`data.partialOutput`)
- * across events, also per event type and per `data.*Id` value (toolCallId,
- * messageId, ...), so interleaved streams come apart. A join across unrelated
- * fields can only cause a false refusal, never a leak.
+ * whatever the field is called. Events are grouped into streams by event
+ * type plus their ids (`data.*Id`: toolCallId, messageId, ...; Responses API
+ * `item_id`/`*_index`), and each leaf path (`data.partialOutput`) of a stream
+ * joins its values in order with "", so any cut is undone while interleaved
+ * streams stay apart. Text of different events, ids or fields is never glued
+ * together: `password:` closing one message does not read the next event's
+ * type as its value. For a shape the Redactor reassembles, the join is the
+ * text it redacted, so redacted output passes and only an unredacted split
+ * refuses. Linear in the events' leaves.
+ *
+ * Accepted residuals (neither redacted nor refused): index-less tool_calls
+ * interleaved chunk by chunk (their pieces alternate in one path),
+ * base64-encoded secrets, double %-encoding (`%253A`), and the legacy
+ * `Documents and Settings` home dir.
  */
 function structuralJoins(events: readonly unknown[]): string[] {
-  const all: string[] = [];
   const groups = new Map<string, string[]>();
-  const push = (key: string, leaf: string) => {
-    const group = groups.get(key);
-    if (group) group.push(leaf);
-    else groups.set(key, [leaf]);
-  };
   for (const event of events) {
-    const type = isRecord(event) && typeof event.type === 'string' ? event.type : '';
-    const data = isRecord(event) && isRecord(event.data) ? event.data : {};
-    const ids = Object.entries(data).filter(([k, v]) => /Id$/.test(k) && typeof v === 'string').map(([k, v]) => `${k}=${v as string}`);
+    const top = isRecord(event) ? event : {};
+    const data = isRecord(top.data) ? top.data : {};
+    const ids = [
+      ...Object.entries(data).filter(([k]) => /Id$/.test(k)),
+      ...Object.entries(top).filter(([k]) => /_(?:id|index)$/.test(k)),
+    ].filter(([, v]) => typeof v === 'string' || typeof v === 'number').map(([k, v]) => `${k}=${String(v)}`);
+    const stream = [typeof top.type === 'string' ? top.type : '', ...ids].join('\0');
     const visit = (value: unknown, path: string) => {
       if (typeof value === 'string') {
-        all.push(value);
-        for (const scope of ['', type, ...ids, ...ids.map((id) => `${type}\0${id}`)]) push(`${scope}\0${path}`, value);
+        const key = `${stream}\0\0${path}`;
+        const group = groups.get(key);
+        if (group) group.push(value);
+        else groups.set(key, [value]);
       } else if (Array.isArray(value)) {
         value.forEach((v, i) => visit(v, `${path}[${i}]`));
       } else if (isRecord(value)) {
@@ -410,26 +419,26 @@ function structuralJoins(events: readonly unknown[]): string[] {
     };
     visit(event, '');
   }
-  const out = new Set([all.join('')]);
-  for (const group of groups.values()) if (group.length > 1) out.add(group.join(''));
-  return [...out];
+  // A field whose every value is the same (an event type, a model name) is no split.
+  return [...groups.values()].filter((group) => group.some((v) => v !== group[0])).map((group) => group.join(''));
 }
 
 /**
  * The texts only a whole streamed response shows (an interaction's `res`):
- * an SSE response's chunks joined, each streamed field joined from its
- * deltas (SSE events or WebSocket messages), and the {@link structuralJoins}
- * of its events, so a secret split across chunks is found. Keyed on the
- * shape, not on `res.kind`: a mislabeled response is scanned too.
+ * an SSE response's chunks joined and cut into its events, each streamed
+ * field joined from its deltas (SSE events or WebSocket messages), and the
+ * {@link structuralJoins} of its events, so a secret split across chunks is
+ * found. Keyed on the shape, not on `res.kind`: a mislabeled response is
+ * scanned too.
  */
 function streamTexts(value: unknown): string[] {
   const res = isRecord(value) ? value.res : undefined;
   if (!isRecord(res)) return [];
   if (Array.isArray(res.chunks)) {
-    const raw = res.chunks.filter((c): c is string => typeof c === 'string').join('');
-    const blocks = sseBlocks(raw);
-    // A payload that is not JSON joins as its raw text.
-    return [raw, ...reassembledDeltas(blocks.map(sseData)), ...structuralJoins(blocks.map((b) => sseData(b) ?? sseDataText(b)))];
+    const blocks = sseBlocks(res.chunks.filter((c): c is string => typeof c === 'string').join(''));
+    // Each event block on its own: one event's end glued to the next one's start is no text the model sent
+    // (`TOKEN="}` + `event: ...` read as a quoted value). A payload that is not JSON joins as its raw text.
+    return [...blocks, ...reassembledDeltas(blocks.map(sseData)), ...structuralJoins(blocks.map((b) => sseData(b) ?? sseDataText(b)))];
   }
   if (Array.isArray(res.messages)) {
     const messages = res.messages.filter((m): m is { data: string } => isRecord(m) && typeof m.data === 'string');

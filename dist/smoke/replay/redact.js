@@ -250,13 +250,15 @@ function parseJson(text) {
         return undefined;
     }
 }
+// SSE lines end in CRLF, LF or a lone CR (a CR before an LF is not one of its own).
+const SSE_EOL = /\r\n|\r(?!\n)|\n/;
 /** The event blocks of an SSE stream, without the blank line ending each. Pass the chunks joined: a chunk boundary may fall anywhere. */
 export function sseBlocks(text) {
-    return text.split(/\r?\n\r?\n/).filter((block) => block.trim() !== '');
+    return text.split(/(?:\r\n|\r(?!\n)|\n){2}/).filter((block) => block.trim() !== '');
 }
 /** The raw `data:` payload of one SSE block (its `data:` lines joined). */
 export function sseDataText(block) {
-    return block.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).replace(/^ /, '')).join('\n');
+    return block.split(SSE_EOL).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).replace(/^ /, '')).join('\n');
 }
 /** The parsed `data:` payload of one SSE block (undefined when it is not JSON, e.g. `[DONE]`). */
 export function sseData(block) {
@@ -265,7 +267,7 @@ export function sseData(block) {
 }
 /** The block with its `data:` lines replaced by one line holding `value`. */
 function withSseData(block, value) {
-    const lines = block.split(/\r?\n/);
+    const lines = block.split(SSE_EOL);
     const at = lines.findIndex((l) => l.startsWith('data:'));
     return lines.flatMap((l, i) => (!l.startsWith('data:') ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : [])).join('\n');
 }
