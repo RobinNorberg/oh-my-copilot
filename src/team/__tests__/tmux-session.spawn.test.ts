@@ -655,6 +655,19 @@ describe('spawnWorkerInPane', () => {
     })).rejects.toThrow('worker_start_tmux_server_identity_missing');
     expect(mockedCalls.tmuxArgs).toEqual([]);
   });
+
+  it.each(['copilot', 'claude'] as const)('refuses an unsupervised %s pane launch without mutating the pane', async provider => {
+    await expect(spawnWorkerInPane('cmux:workspace-1', 'cmux-worker-1', {
+      teamName: 'safe-team',
+      workerName: 'worker-1',
+      envVars: { OMC_TEAM_NAME: 'safe-team' },
+      launchBinary: provider,
+      provider,
+      cwd: '/tmp',
+    })).rejects.toThrow(`worker_launch_attempt_missing:${provider}`);
+    expect(mockedCalls.tmuxArgs).toEqual([]);
+    expect(mockedCalls.cmuxArgs).toEqual([]);
+  });
 });
 
 describe('sendToWorker cmux trust guards', () => {
