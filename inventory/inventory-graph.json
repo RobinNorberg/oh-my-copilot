@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-    "sourceSha256": "cbd16c51dd430c40701da6e7eee70c9e130a6aaaf8f37bae1da8520de10e9217",
+    "head": "cda61782f081433d1f3f2d20918ee47c952268d9",
+    "sourceSha256": "886d442d6a6632fbc8391e9b7aa7334f7a04c238316a2f805af7d040e519e980",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-  "sourceSha256": "cbd16c51dd430c40701da6e7eee70c9e130a6aaaf8f37bae1da8520de10e9217",
+  "head": "cda61782f081433d1f3f2d20918ee47c952268d9",
+  "sourceSha256": "886d442d6a6632fbc8391e9b7aa7334f7a04c238316a2f805af7d040e519e980",
   "counts": {
     "public": {
       "skills": 63,
@@ -952,6 +952,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/spikes/request-handler-probe.mjs",
       "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
@@ -45996,6 +45997,11 @@
         "path": "scripts/smoke-multirepo.mjs"
       },
       {
+        "id": "scripts/spikes/request-handler-probe.mjs",
+        "kind": "script",
+        "path": "scripts/spikes/request-handler-probe.mjs"
+      },
+      {
         "id": "scripts/stale-run-reporter.mjs",
         "kind": "script",
         "path": "scripts/stale-run-reporter.mjs"
@@ -59389,6 +59395,31 @@
       },
       {
         "from": "scripts/smoke-multirepo.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -112814,12 +112845,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9603,
-      "edgeCount": 11247,
-      "importEdgeCount": 9262,
+      "nodeCount": 9604,
+      "edgeCount": 11252,
+      "importEdgeCount": 9267,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "34e394b574adf9c13be39c1a1dc069a428d2559cf0cedda90eb43484048d67ab",
-  "manifestSha256": "0856dc9a49f6f29baee5a8029bde3955ab76d10e91f5d4b2018d85e6e1726094"
+  "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
+  "manifestSha256": "9cfca9e743e272ece37ed246947f7d053b422f94db9329afc0301d1fa2a87875"
 }
