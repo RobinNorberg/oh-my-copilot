@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b1d84dea8826d548685b2fdc946bf2daa75f5d00",
-    "sourceSha256": "3487eb83d0588569d0d15a8c1fbd8e903c297d12c01f5dd38a014aaf0dc5b9c7",
+    "head": "462e44dedc20bade0496c07afe212db1da3aa22f",
+    "sourceSha256": "1d3bcc48786653610f69ef7ced571e65a412146e0916064ed4c113a2212a09f5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b1d84dea8826d548685b2fdc946bf2daa75f5d00",
-  "sourceSha256": "3487eb83d0588569d0d15a8c1fbd8e903c297d12c01f5dd38a014aaf0dc5b9c7",
+  "head": "462e44dedc20bade0496c07afe212db1da3aa22f",
+  "sourceSha256": "1d3bcc48786653610f69ef7ced571e65a412146e0916064ed4c113a2212a09f5",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1883,
-      "total": 1907
+      "srcFiles": 1884,
+      "total": 1908
     },
     "generated": {
       "distFiles": 6992,
@@ -829,7 +829,10 @@
       "tests/fixtures/prompt-projection/transaction-backup-rollback.json"
     ],
     "scriptFiles": [
+      "scripts/ado-acceptance.mjs",
+      "scripts/ado-capture.mjs",
       "scripts/ado-fixture-diff.mjs",
+      "scripts/ado-fixture-import.mjs",
       "scripts/audit-multirepo-e2e.mjs",
       "scripts/budget-guard.mjs",
       "scripts/build-bridge-entry.mjs",
@@ -874,6 +877,7 @@
       "scripts/keyword-detector.mjs",
       "scripts/lib/agent-model-config.mjs",
       "scripts/lib/atomic-write.mjs",
+      "scripts/lib/backlog-to-workitems.mjs",
       "scripts/lib/bounded-git-timeout.mjs",
       "scripts/lib/cache-occupancy.mjs",
       "scripts/lib/child-session.cjs",
@@ -45454,9 +45458,24 @@
         "path": "research/hephaestus-vs-deep-executor-comparison.md"
       },
       {
+        "id": "scripts/ado-acceptance.mjs",
+        "kind": "script",
+        "path": "scripts/ado-acceptance.mjs"
+      },
+      {
+        "id": "scripts/ado-capture.mjs",
+        "kind": "script",
+        "path": "scripts/ado-capture.mjs"
+      },
+      {
         "id": "scripts/ado-fixture-diff.mjs",
         "kind": "script",
         "path": "scripts/ado-fixture-diff.mjs"
+      },
+      {
+        "id": "scripts/ado-fixture-import.mjs",
+        "kind": "script",
+        "path": "scripts/ado-fixture-import.mjs"
       },
       {
         "id": "scripts/audit-multirepo-e2e.mjs",
@@ -45677,6 +45696,11 @@
         "id": "scripts/lib/atomic-write.mjs",
         "kind": "script",
         "path": "scripts/lib/atomic-write.mjs"
+      },
+      {
+        "id": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "script",
+        "path": "scripts/lib/backlog-to-workitems.mjs"
       },
       {
         "id": "scripts/lib/bounded-git-timeout.mjs",
@@ -50467,6 +50491,11 @@
         "id": "src/forge/__tests__/recording-exec.ts",
         "kind": "src",
         "path": "src/forge/__tests__/recording-exec.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/acceptance-scripts.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/adapter.test.ts",
@@ -57111,6 +57140,61 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/ado-fixture-diff.mjs",
         "to": "dist/forge/ado/record.js",
         "kind": "imports"
@@ -57127,6 +57211,31 @@
       },
       {
         "from": "scripts/ado-fixture-diff.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "dist/forge/ado/redact.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "dist/forge/ado/routes.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -79979,6 +80088,61 @@
         "from": "src/forge/__tests__/recording-exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-acceptance.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-capture.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-fixture-import.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
       },
       {
         "from": "src/forge/ado/__tests__/adapter.test.ts",
@@ -113032,12 +113196,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9619,
-      "edgeCount": 11272,
-      "importEdgeCount": 9279,
+      "nodeCount": 9624,
+      "edgeCount": 11299,
+      "importEdgeCount": 9306,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "eb5fb0ecc1b995379418ad032a6e47152ef7884edbef506d37d06f7ef7b2f4a3",
-  "manifestSha256": "7e93c1f9a4d95dd48286ded32d5759ffdd059a8f769759798d56e5116e0e7ca8"
+  "inventorySha256": "95db577df8ae3475e66941f6520ce064c8285e87738bea211dd4599249778376",
+  "manifestSha256": "2f038e69cfc51ce94ed068a4095bd5e925658a08461f5384a934f25799860538"
 }
