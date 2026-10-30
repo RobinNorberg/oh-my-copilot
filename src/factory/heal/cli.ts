@@ -17,10 +17,11 @@ import { withFileLockSync } from '../../lib/file-lock.js';
 import chalk from 'chalk';
 import { parseKnownFlaky, type KnownFlakyTest } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
-import type { ForgeKind } from '../../forge/types.js';
+import { githubCi } from '../../forge/github/ci.js';
+import type { ForgeCi, ForgeKind } from '../../forge/types.js';
 import { classifyRun, type ClassifyJobInput, type HealClassification, type HistoryEntry, type JobSample } from './classify.js';
 import { HEAL_WORKFLOW, type HealConfig } from './config.js';
-import { healGuardExec, jobLog, listRuns, shaRange, viewRunJobs, type HealJob, type HealRun } from './history.js';
+import { healGuardExec, shaRange, type HealJob, type HealRun } from './history.js';
 import { parseJob, type ParsedJob } from './logs.js';
 import { runSignature } from './signature.js';
 import { foldSignature, healStateDir, listHealStates, pruneWebhookQueue, readDailyCounters, readHealState, readWebhookQueue, SIG8, writeHealState, type HealSignatureState } from './state.js';
@@ -61,6 +62,8 @@ export interface HealDeps {
   engine?: HealEngineDeps['engine'];
   /** The origin's forge kind (originForgeKind); heal reads GitHub Actions only, so Azure DevOps is refused. Omitted = GitHub. */
   forgeKind?: (root: string) => ForgeKind;
+  /** Builds the forge's CI reads over the heal-guarded exec (heal scan, heal run evidence). Omitted = GitHub Actions. */
+  ci?: (exec: Exec, root: string) => ForgeCi;
 }
 
 export interface ScanEntry {
@@ -89,6 +92,7 @@ class HealUsageError extends Error {}
 interface Ctx {
   exec: Exec;
   root: string;
+  ci: ForgeCi;
   known: readonly KnownFlakyTest[];
   config: HealConfig;
   jobs: Map<string, HealJob[]>;
@@ -97,13 +101,13 @@ interface Ctx {
 
 function runJobs(ctx: Ctx, runId: string): HealJob[] {
   let jobs = ctx.jobs.get(runId);
-  if (!jobs) { jobs = viewRunJobs(ctx.exec, runId, ctx.root); ctx.jobs.set(runId, jobs); }
+  if (!jobs) { jobs = ctx.ci.runJobs(runId); ctx.jobs.set(runId, jobs); }
   return jobs;
 }
 
 function parsed(ctx: Ctx, job: HealJob): ParsedJob {
   let p = ctx.logs.get(job.jobId);
-  if (!p) { p = parseJob(job, jobLog(ctx.exec, job.jobId, ctx.root), ctx.known); ctx.logs.set(job.jobId, p); }
+  if (!p) { p = parseJob(job, ctx.ci.jobLog(job.jobId), ctx.known); ctx.logs.set(job.jobId, p); }
   return p;
 }
 
@@ -158,7 +162,7 @@ function classifyRed(ctx: Ctx, red: HealRun, jobs: ParsedJob[], greens: readonly
     ...(lastGreen ? { lastGreen } : {}),
     ...(range ? { range } : {}),
     jobs: inputs.map((i) => (range ? { ...i, range } : i)),
-  });
+  }, ctx.ci);
 }
 
 function loadKnownFlaky(exec: Exec, root: string, base: string, warn: (m: string) => void): KnownFlakyTest[] {
@@ -168,8 +172,11 @@ function loadKnownFlaky(exec: Exec, root: string, base: string, warn: (m: string
   return parseKnownFlaky(r.stdout, `origin/${base}:${file}`);
 }
 
-/** `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept. */
-type ScanOpts = { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void; ledgerDir: string; lockTimeoutMs?: number };
+/**
+ * `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept.
+ * `ci`: builds the forge's CI reads over the heal-guarded exec (default GitHub Actions).
+ */
+type ScanOpts = { exec: Exec; root: string; base: string; config: HealConfig; now: Date; dryRun: boolean; warn: (m: string) => void; ledgerDir: string; lockTimeoutMs?: number; ci?: (exec: Exec, root: string) => ForgeCi };
 
 /** One writing scan at a time: the read-fold-write of heal state is held under a lock file. */
 export function runHealScan(opts: ScanOpts): ScanResult {
@@ -179,11 +186,12 @@ export function runHealScan(opts: ScanOpts): ScanResult {
 
 function scanOnce(opts: ScanOpts): ScanResult {
   const exec = healGuardExec(opts.exec);
-  const ctx: Ctx = { exec, root: opts.root, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
+  const ci = (opts.ci ?? githubCi)(exec, opts.root);
+  const ctx: Ctx = { exec, root: opts.root, ci, known: loadKnownFlaky(exec, opts.root, opts.base, opts.warn), config: opts.config, jobs: new Map(), logs: new Map() };
   const completed = (r: HealRun) => r.status === 'completed';
-  const pushRuns = listRuns(exec, { workflow: HEAL_WORKFLOW, event: 'push', branch: opts.base, limit: SCAN_LIMITS.runList, cwd: opts.root }).filter(completed);
+  const pushRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: 'push', branch: opts.base, limit: SCAN_LIMITS.runList }).filter(completed);
   const since = opts.now.getTime() - SCAN_LIMITS.prWindowMs;
-  const prRuns = listRuns(exec, { workflow: HEAL_WORKFLOW, event: 'pull_request', limit: SCAN_LIMITS.runList, cwd: opts.root })
+  const prRuns = ci.listRuns({ workflow: HEAL_WORKFLOW, event: 'pull_request', limit: SCAN_LIMITS.runList })
     .filter((r) => completed(r) && Date.parse(r.createdAt) >= since);
   const allRuns = [...pushRuns, ...prRuns];
   const states = listHealStates(opts.root);
@@ -379,7 +387,7 @@ export function healCommand(deps: HealDeps): Command {
         const root = healRoot(deps);
         const { config, warnings } = deps.config(root);
         for (const w of warnings) console.error(chalk.yellow(w));
-        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir });
+        const result = runHealScan({ exec: deps.exec, root, base: deps.base(root), config, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(chalk.yellow(m)), ledgerDir: deps.ledgerDir, ...(deps.ci ? { ci: deps.ci } : {}) });
         if (o.json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
         else {
           console.log(`${chalk.bold('factory heal scan')}  base=${result.base}${result.dryRun ? '  (dry run: no state written)' : ''}`);
@@ -431,7 +439,7 @@ export function healCommand(deps: HealDeps): Command {
         for (const w of warnings) console.error(chalk.yellow(w));
         const outcome = await runHeal(
           { root, base: deps.base(root), sig8, config, dryRun: Boolean(o.dryRun) },
-          { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.run },
+          { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...(deps.ci ? { ci: deps.ci } : {}), ...deps.run },
         );
         const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root, sig8)!) : null;
         // factory.heal.autoImplement (user config only): a valid diagnosis goes on into the ci-heal run (billed write lanes).

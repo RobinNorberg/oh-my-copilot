@@ -299,7 +299,7 @@ export async function runHeal(o, deps) {
     if (healExec('git', ['merge-base', '--is-ancestor', c.firstRed.sha, `refs/remotes/origin/${o.base}`], { cwd: o.root }).status !== 0) {
         throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not on origin/${o.base}; a debugger lane only starts at integration-branch code (fetch origin first)`);
     }
-    const bundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs));
+    const bundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs, deps.ci));
     const delimiter = (deps.delimiter ?? newDelimiter)();
     const prompt = debugPrompt(c, bundle, delimiter);
     if (o.dryRun) {

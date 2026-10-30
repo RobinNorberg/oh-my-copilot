@@ -32401,7 +32401,13 @@ function buildSandboxConfig(profile, ctx, host) {
       return p;
     }
   };
-  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => {
+    try {
+      return P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform));
+    } catch {
+      return false;
+    }
+  });
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path7.dirname)(relocated.GIT_CONFIG_GLOBAL);
@@ -32589,10 +32595,40 @@ function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
 }
-function proxyCaEnv(env, platform) {
+function proxyCaEnv(env, platform, realHome) {
   const P = platform === "win32" ? import_node_path7.win32 : import_node_path7.posix;
-  const caDirs = ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((n) => envValue(env, n)).filter((v) => v !== void 0 && P.isAbsolute(v)).map((v) => P.dirname(v));
+  const caPaths = [];
   const notes = [];
+  const entries = [
+    ...["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((name) => ({ name, value: envValue(env, name), dir: false })),
+    ...(envValue(env, "SSL_CERT_DIR") ?? "").split(P.delimiter).map((value) => ({ name: "SSL_CERT_DIR", value, dir: true }))
+  ];
+  for (const { name, value, dir } of entries) {
+    if (!value || !P.isAbsolute(value)) continue;
+    let real2;
+    let isDir;
+    try {
+      real2 = import_node_fs6.realpathSync.native(value);
+      isDir = (0, import_node_fs6.statSync)(real2).isDirectory();
+    } catch (err) {
+      notes.push(`sandbox: ${name} ${value} does not resolve (${err.code ?? "error"}); it is not granted to the lane.`);
+      continue;
+    }
+    if (isDir !== dir) {
+      notes.push(`sandbox: ${name} ${value} is not a ${dir ? "directory" : "file"}; it is not granted to the lane.`);
+      continue;
+    }
+    let tooBroad = true;
+    try {
+      tooBroad = dir && (P.dirname(real2) === real2 || isUnderRoot(realHome, real2, platform));
+    } catch {
+    }
+    if (tooBroad) {
+      notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+      continue;
+    }
+    caPaths.push(real2);
+  }
   for (const name of ["HTTPS_PROXY", "HTTP_PROXY"]) {
     const value = envValue(env, name);
     let userinfo = false;
@@ -32605,7 +32641,7 @@ function proxyCaEnv(env, platform) {
     }
     if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
   }
-  return { caDirs, notes };
+  return { caPaths, notes };
 }
 function missingSandboxEnv(env, platform) {
   return platform === "win32" ? MXC_REQUIRED_ENV.filter((n) => envValue(env, n) === void 0) : [];
@@ -38578,6 +38614,148 @@ var init_shell_allowlist = __esm({
   }
 });
 
+// src/copilot-run/timeout.ts
+function withTimeout3(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject2) => {
+      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+var errText3;
+var init_timeout = __esm({
+  "src/copilot-run/timeout.ts"() {
+    "use strict";
+    errText3 = (err) => err instanceof Error ? err.message : String(err);
+  }
+});
+
+// src/copilot-run/sandbox-session.ts
+function sandboxBypassDenial(req) {
+  return req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : null;
+}
+var SessionSandboxController;
+var init_sandbox_session = __esm({
+  "src/copilot-run/sandbox-session.ts"() {
+    "use strict";
+    init_copilot_sdk_driver();
+    init_timeout();
+    init_sandbox2();
+    SessionSandboxController = class {
+      constructor(opts) {
+        this.opts = opts;
+      }
+      /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
+      state = null;
+      toolNames = /* @__PURE__ */ new Map();
+      /** Whether createSession takes `config` (else confirm applies it via options.update). */
+      atCreate(loaded2, config2) {
+        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      }
+      /**
+       * Probe the host and set `state` (§5). Returns the config to apply when
+       * the host supports the sandbox (the mode stays the unconfirmed one until
+       * confirm), else null with the final mode: `detect-only` when the sandbox
+       * is switched off, otherwise the fail-closed mode.
+       */
+      async decide(client, loaded2) {
+        const { opts } = this;
+        let cliVersion = "unknown";
+        try {
+          const status = await withTimeout3(client.getStatus(), opts.rpcTimeoutMs, "getStatus()");
+          if (typeof status.version === "string") cliVersion = status.version;
+        } catch {
+        }
+        const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {} });
+        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
+        const { settings, profile } = opts;
+        const off = !settings.enabled ? "sandbox.enabled is false" : opts.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
+        if (off) {
+          if (profile === "review") {
+            this.state = { ...base, mode: "read-only-no-shell", reason: off };
+            opts.note(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
+          } else {
+            this.state = { ...base, mode: "detect-only", reason: off };
+            opts.note(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+          }
+          return null;
+        }
+        const fallback = (reason) => {
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason };
+          if (this.state.mode === "detect-only") opts.note(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+          if (this.state.mode === "read-only-no-shell") opts.note(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
+        };
+        if (!host.supported) {
+          fallback(host.reason ?? "the host does not support the sandbox");
+          return null;
+        }
+        try {
+          const config2 = buildSandboxConfig(profile, opts.policyContext(), host);
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason: "not confirmed yet" };
+          return config2;
+        } catch (err) {
+          fallback(errText3(err));
+          return null;
+        }
+      }
+      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      async confirm(session, config2, atCreate) {
+        const { opts } = this;
+        const sbx = this.state;
+        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        if (!why) {
+          sbx.applied = atCreate ? "create" : "options.update";
+          const enf = await readEnforcement(session, opts.rpcTimeoutMs);
+          if (typeof enf === "string") why = enf;
+          else {
+            sbx.enforcement = enf;
+            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
+          }
+        }
+        if (!why) {
+          sbx.mode = "enforced";
+          delete sbx.reason;
+          return;
+        }
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") {
+          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+          try {
+            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+          } catch {
+          }
+        }
+      }
+      /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
+      toolStarted(data) {
+        if (typeof data.toolCallId === "string" && typeof data.toolName === "string") this.toolNames.set(data.toolCallId, data.toolName);
+      }
+      /**
+       * `tool.execution_complete` data: the attestation (§5). A shell call must
+       * report sandboxed: true. A call of an unknown tool must not report false,
+       * and in an enforced session it must report true (a missing field is an
+       * escape). Counts every escape; returns the `sandbox-escaped:` error when
+       * the session must stop (any mode but detect-only), else null.
+       */
+      toolCompleted(data) {
+        const id = String(data.toolCallId ?? "");
+        const name = this.toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
+        this.toolNames.delete(id);
+        const sbx = this.state;
+        const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+        if (!sbx || !escaped) return null;
+        sbx.unsandboxedCalls += 1;
+        if (sbx.mode === "detect-only") return null;
+        return `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
+      }
+    };
+  }
+});
+
 // src/copilot-run/job.ts
 var job_exports = {};
 __export(job_exports, {
@@ -38632,15 +38810,6 @@ function resolveStartRef(repoRoot, ref) {
     throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} does not resolve to a commit in ${repoRoot}.`);
   }
   return sha2;
-}
-function withTimeout3(promise, ms, label) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
-    })
-  ]).finally(() => clearTimeout(timer));
 }
 function settleWithin(promise, ms) {
   let timer;
@@ -38733,7 +38902,7 @@ function defaultCopilotRunDeps(env = process.env) {
     killTree: (pid) => killProcessTree(pid, import_node_child_process4.spawnSync)
   };
 }
-var import_node_child_process4, import_node_crypto3, import_node_fs10, import_node_os4, import_node_path11, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, errText3, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process4, import_node_crypto3, import_node_fs10, import_node_os4, import_node_path11, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -38760,6 +38929,8 @@ var init_job = __esm({
     init_config_dir();
     init_names2();
     init_sandbox2();
+    init_sandbox_session();
+    init_timeout();
     DEFAULT_TIMEOUT_MS = 15 * 6e4;
     MAX_TIMEOUT_MS = 60 * 6e4;
     DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -38793,7 +38964,6 @@ var init_job = __esm({
     sleep5 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    errText3 = (err) => err instanceof Error ? err.message : String(err);
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text3) => (text3 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -39157,8 +39327,41 @@ var init_job = __esm({
           platform: deps.platform
         };
         const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+          profile: job.profile,
+          settings: job.sandboxSettings,
+          env: deps.env,
+          platform: deps.platform,
+          rpcTimeoutMs: RPC_TIMEOUT_MS2,
+          ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+          policyContext: () => {
+            const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
+            const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+            const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            const realHome = (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))();
+            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+            job.notes.push(...proxy.notes);
+            return {
+              worktree: (0, import_node_path11.resolve)(top),
+              commonGitDir: commonRaw ? (0, import_node_path11.resolve)(commonRaw) : (0, import_node_path11.resolve)(top, ".git"),
+              ...gitDirRaw ? { gitDir: (0, import_node_path11.resolve)(gitDirRaw) } : {},
+              pluginRoot,
+              jobHome: job.home,
+              jobDir: job.jobDir,
+              realHome,
+              platform: deps.platform,
+              settings: job.sandboxSettings,
+              hostCommits: job.hostCommits,
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+              extraReadonly: proxy.caPaths
+            };
+          },
+          note: (text3) => {
+            job.notes.push(text3);
+          }
+        });
         const onPermissionRequest = (req) => {
-          let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : decideSdkPermission(req, policy);
+          let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
           if (decision.approve && req.kind === "write") {
             const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
             const rel = raw ? relativeInside((0, import_node_path11.isAbsolute)(raw) ? raw : (0, import_node_path11.resolve)(job.workCwd, raw), protectedRoot) : null;
@@ -39197,7 +39400,6 @@ var init_job = __esm({
         const shutdown = new Promise((r) => {
           onShutdown = r;
         });
-        const toolNames = /* @__PURE__ */ new Map();
         let eventsFd = null;
         const onEvent = (event) => {
           if (eventsFd !== null) {
@@ -39210,20 +39412,13 @@ var init_job = __esm({
           const data = event.data ?? {};
           switch (event.type) {
             case "tool.execution_start":
-              if (typeof data.toolCallId === "string" && typeof data.toolName === "string") toolNames.set(data.toolCallId, data.toolName);
+              sandbox.toolStarted(data);
               break;
             case "tool.execution_complete": {
-              const id = String(data.toolCallId ?? "");
-              const name = toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
-              toolNames.delete(id);
-              const sbx = job.sandbox;
-              const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-              if (sbx && escaped) {
-                sbx.unsandboxedCalls += 1;
-                if (sbx.mode !== "detect-only" && !job.stopReason) {
-                  job.error = `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-                  job.requestStop("sandbox-escaped");
-                }
+              const escaped = sandbox.toolCompleted(data);
+              if (escaped && !job.stopReason) {
+                job.error = escaped;
+                job.requestStop("sandbox-escaped");
               }
               break;
             }
@@ -39285,10 +39480,11 @@ var init_job = __esm({
             });
             await Promise.race([reading, job.stopped]);
           }
-          const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded2, pluginRoot);
+          const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded2);
+          job.sandbox = sandbox.state;
           const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused()) {
-            const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
             const shell = sandboxConfig !== null;
             session = await withTimeout3(client.createSession({
               onPermissionRequest,
@@ -39304,7 +39500,7 @@ var init_job = __esm({
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
             job.sessionId = session.sessionId;
-            if (sandboxConfig) await this.confirmSandbox(job, session, sandboxConfig, atCreate);
+            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
@@ -39378,100 +39574,6 @@ var init_job = __esm({
           }
         }
         return outcome;
-      }
-      /**
-       * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-       * when the host supports the sandbox (the mode stays the unconfirmed one
-       * until confirmSandbox), else null with the final mode: `detect-only` when
-       * the sandbox is switched off, otherwise the fail-closed mode.
-       */
-      async decideSandbox(job, client, loaded2, pluginRoot) {
-        const { deps } = this;
-        let cliVersion = "unknown";
-        try {
-          const status = await withTimeout3(client.getStatus(), RPC_TIMEOUT_MS2, "getStatus()");
-          if (typeof status.version === "string") cliVersion = status.version;
-        } catch {
-        }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS2, { platform: deps.platform, ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {} });
-        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
-        const settings = job.sandboxSettings;
-        const off = !settings.enabled ? "sandbox.enabled is false" : deps.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-          if (job.profile === "review") {
-            job.sandbox = { ...base, mode: "read-only-no-shell", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-          } else {
-            job.sandbox = { ...base, mode: "detect-only", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-          }
-          return null;
-        }
-        const fallback = (reason) => {
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
-          if (job.sandbox.mode === "detect-only") job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-          if (job.sandbox.mode === "read-only-no-shell") job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-          fallback(host.reason ?? "the host does not support the sandbox");
-          return null;
-        }
-        const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
-        const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-        const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
-        try {
-          const commonGitDir = commonRaw ? (0, import_node_path11.resolve)(commonRaw) : (0, import_node_path11.resolve)(top, ".git");
-          const proxy = proxyCaEnv(deps.env, deps.platform);
-          const config2 = buildSandboxConfig(job.profile, {
-            worktree: (0, import_node_path11.resolve)(top),
-            commonGitDir,
-            ...gitDirRaw ? { gitDir: (0, import_node_path11.resolve)(gitDirRaw) } : {},
-            pluginRoot,
-            jobHome: job.home,
-            jobDir: job.jobDir,
-            realHome: (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))(),
-            platform: deps.platform,
-            settings,
-            hostCommits: job.hostCommits,
-            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-            extraReadonly: proxy.caDirs
-          }, host);
-          job.notes.push(...proxy.notes);
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: "not confirmed yet" };
-          return config2;
-        } catch (err) {
-          fallback(errText3(err));
-          return null;
-        }
-      }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-      async confirmSandbox(job, session, config2, atCreate) {
-        const sbx = job.sandbox;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, RPC_TIMEOUT_MS2);
-        if (!why) {
-          sbx.applied = atCreate ? "create" : "options.update";
-          const enf = await readEnforcement(session, RPC_TIMEOUT_MS2);
-          if (typeof enf === "string") why = enf;
-          else {
-            sbx.enforcement = enf;
-            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
-          }
-        }
-        if (!why) {
-          sbx.mode = "enforced";
-          delete sbx.reason;
-          return;
-        }
-        sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === "read-only-no-shell") {
-          job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-          try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS2, "options.update()");
-          } catch {
-          }
-        }
       }
       snapshot(job) {
         const usage = {
@@ -40996,7 +41098,7 @@ function resolveAzEntry(deps) {
   }
   const python = import_path81.win32.resolve(import_path81.win32.dirname(azCmd), "..", "python.exe");
   const cliPackage = import_path81.win32.resolve(import_path81.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !deps.isFile(import_path81.win32.join(cliPackage, "__main__.py"))) {
+  if (!deps.isFile(python) || !(deps.isFile(import_path81.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path81.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
@@ -41937,10 +42039,11 @@ function githubCi(exec, cwd) {
   return {
     listRuns: (o) => listRuns(exec, { ...o, cwd }),
     runJobs: (runId) => viewRunJobs(exec, runId, cwd),
-    jobLog: (jobId) => jobLog(exec, jobId, cwd)
+    jobLog: (jobId) => jobLog(exec, jobId, cwd),
+    rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER3, HEX403, str4;
+var RUN_LIST_FIELDS, NUMBER3, HEX403, str4, githubRerunIntent;
 var init_ci = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
@@ -41949,6 +42052,7 @@ var init_ci = __esm({
     NUMBER3 = /^\d{1,20}$/;
     HEX403 = /^[0-9a-f]{40}$/;
     str4 = (v) => typeof v === "string" ? v : "";
+    githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
   }
 });
 
@@ -45100,6 +45204,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
 var init_classify = __esm({
   "src/factory/heal/classify.ts"() {
     "use strict";
+    init_ci();
     init_logs();
   }
 });
@@ -45189,7 +45294,7 @@ var init_heal_evidence = __esm({
     import_path92 = require("path");
     init_atomic_write();
     init_gates();
-    init_history();
+    init_ci();
     init_logs();
     init_sanitize();
     init_state3();
@@ -45256,6 +45361,7 @@ var init_cli = __esm({
     init_esm();
     init_file_lock();
     init_config2();
+    init_ci();
     init_classify();
     init_config4();
     init_history();

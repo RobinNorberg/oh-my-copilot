@@ -206,7 +206,15 @@ export function buildSandboxConfig(profile, ctx, host) {
     catch {
         return p;
     } };
-    const tools = [...(ctx.toolPaths ?? []), ...(ctx.extraReadonly ?? [])].filter((p) => P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+    // A path that does not resolve (a dangling link) is dropped rather than failing the whole config.
+    const tools = [...(ctx.toolPaths ?? []), ...(ctx.extraReadonly ?? [])].filter((p) => {
+        try {
+            return P.dirname(P.resolve(real(p))) !== P.resolve(real(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform));
+        }
+        catch {
+            return false;
+        }
+    });
     // Of the job home only the relocated temp and profile dirs: the runtime reads config.json, its session
     // state, policies and logs from the rest, and loads code from the package cache (relocatedProfileEnv).
     // The lane's global git config is read-only.
@@ -519,15 +527,48 @@ export const SESSION_ENV_ALLOWLIST = [
     'LOCALAPPDATA',
 ];
 /**
- * The CA bundle dirs (NODE_EXTRA_CA_CERTS, SSL_CERT_FILE) to grant sandboxed node and git read-only, and a note
- * when a proxy URL carries userinfo: the shells inherit the runtime env, so they see it, and it is not stripped
- * because the runtime needs it.
+ * The CA paths to grant sandboxed node and git read-only, and notes: the bundle file itself of NODE_EXTRA_CA_CERTS
+ * and SSL_CERT_FILE (never its dir, which may be ~/Downloads), and each SSL_CERT_DIR entry unless it is a filesystem
+ * root or holds the real home. An entry that does not resolve (missing, a dangling link) is dropped with a note
+ * rather than failing the whole sandbox config. A proxy URL with userinfo is noted too: the shells inherit the
+ * runtime env, so they see it, and it is not stripped because the runtime needs it.
  */
-export function proxyCaEnv(env, platform) {
+export function proxyCaEnv(env, platform, realHome) {
     const P = platform === 'win32' ? win32 : posix;
-    const caDirs = ['NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE']
-        .map((n) => envValue(env, n)).filter((v) => v !== undefined && P.isAbsolute(v)).map((v) => P.dirname(v));
+    const caPaths = [];
     const notes = [];
+    const entries = [
+        ...['NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE'].map((name) => ({ name, value: envValue(env, name), dir: false })),
+        ...(envValue(env, 'SSL_CERT_DIR') ?? '').split(P.delimiter).map((value) => ({ name: 'SSL_CERT_DIR', value, dir: true })),
+    ];
+    for (const { name, value, dir } of entries) {
+        if (!value || !P.isAbsolute(value))
+            continue;
+        let real;
+        let isDir;
+        try {
+            real = realpathSync.native(value);
+            isDir = statSync(real).isDirectory();
+        }
+        catch (err) {
+            notes.push(`sandbox: ${name} ${value} does not resolve (${err.code ?? 'error'}); it is not granted to the lane.`);
+            continue;
+        }
+        if (isDir !== dir) {
+            notes.push(`sandbox: ${name} ${value} is not a ${dir ? 'directory' : 'file'}; it is not granted to the lane.`);
+            continue;
+        }
+        let tooBroad = true;
+        try {
+            tooBroad = dir && (P.dirname(real) === real || isUnderRoot(realHome, real, platform));
+        }
+        catch { /* unresolvable: refuse */ }
+        if (tooBroad) {
+            notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+            continue;
+        }
+        caPaths.push(real);
+    }
     for (const name of ['HTTPS_PROXY', 'HTTP_PROXY']) {
         const value = envValue(env, name);
         let userinfo = false;
@@ -541,7 +582,7 @@ export function proxyCaEnv(env, platform) {
         if (userinfo)
             notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
     }
-    return { caDirs, notes };
+    return { caPaths, notes };
 }
 /**
  * The variables the Windows sandbox (MXC) needs to launch any process,

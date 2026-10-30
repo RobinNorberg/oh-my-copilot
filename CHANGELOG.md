@@ -6,7 +6,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
-- Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The dir of a `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE` bundle is granted read-only (never a root or a dir holding the home). A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
+- Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` bundle files themselves (not their dirs) and each `SSL_CERT_DIR` entry are granted read-only; a cert dir that is a root or holds the home is not granted, and a CA path that does not resolve is dropped, both with a note, instead of failing the sandbox config. A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
+
+### Fixed
+
+- Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
 
 # oh-my-copilot v5.18.1
 
