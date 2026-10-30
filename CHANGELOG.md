@@ -8,6 +8,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` bundle files themselves (not their dirs) and each `SSL_CERT_DIR` entry are granted read-only; a cert dir that is a root or holds the home is not granted, and a CA path that does not resolve is dropped, both with a note, instead of failing the sandbox config. A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
 
+### Security
+
+- **Pane team workers no longer pass credentials through
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH`.** A credential-named variable in the list
+  (an AWS secret, `NPM_TOKEN`, `SSH_AUTH_SOCK` and the like) fails the worker
+  start with `worker_launch_env_passthrough_credential`, reported by the
+  leader before the pane runs anything. Only the provider's own login passes:
+  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` for copilot;
+  `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` for claude, and `AWS_*` /
+  `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is set.
+  In a mixed team, another provider's login is skipped for a worker rather
+  than failing its start.
 ### Fixed
 
 - Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".

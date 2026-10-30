@@ -37371,6 +37371,7 @@ var init_worker_launch_ack = __esm({
     init_atomic_write();
     init_file_lock();
     init_host_load_gate();
+    init_copilot_session_env();
     WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV = "OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED";
     WORKER_LAUNCH_INTERNAL_ENV_KEYS = /* @__PURE__ */ new Set([
       "OMC_WORKER_LAUNCH_SPEC",
