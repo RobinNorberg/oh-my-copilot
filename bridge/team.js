@@ -1833,7 +1833,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve20) => setTimeout(resolve20, 25));
+        await new Promise((resolve21) => setTimeout(resolve21, 25));
         continue;
       }
       try {
@@ -1854,7 +1854,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve20) => setTimeout(resolve20, 25));
+        await new Promise((resolve21) => setTimeout(resolve21, 25));
       }
     }
     return await fn();
@@ -4114,7 +4114,7 @@ async function writeAtomic3(path5, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
-        await new Promise((resolve20) => setTimeout(resolve20, delay));
+        await new Promise((resolve21) => setTimeout(resolve21, delay));
       }
     }
   } finally {
@@ -4234,7 +4234,7 @@ async function withMailboxLock(teamName, workerName, cwd, fn) {
   while (Date.now() < deadline) {
     const result = await withLock(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve20) => setTimeout(resolve20, delayMs));
+    await new Promise((resolve21) => setTimeout(resolve21, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -4397,7 +4397,7 @@ async function teamCreateTask(teamName, task, cwd) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve20) => setTimeout(resolve20, delayMs));
+    await new Promise((resolve21) => setTimeout(resolve21, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -4463,7 +4463,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd) {
       return normalized;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve20) => setTimeout(resolve20, delayMs));
+    await new Promise((resolve21) => setTimeout(resolve21, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -5092,7 +5092,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve20) => setTimeout(resolve20, Math.floor(pollMs * jitter)));
+      await new Promise((resolve21) => setTimeout(resolve21, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -8538,9 +8538,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative13 = flavor.relative(prefix, resolvedPath);
-    if (relative13 === "") return true;
-    return !relative13.startsWith("..") && !flavor.isAbsolute(relative13);
+    const relative14 = flavor.relative(prefix, resolvedPath);
+    if (relative14 === "") return true;
+    return !relative14.startsWith("..") && !flavor.isAbsolute(relative14);
   });
 }
 function assertBinaryName(binary) {
@@ -10100,7 +10100,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve20) => setTimeout(resolve20, ms));
+  return new Promise((resolve21) => setTimeout(resolve21, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -10237,7 +10237,7 @@ function canon(p, platform = process.platform) {
   const out = resolve9(p).split(sep4).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS;
+var FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, PLUGIN_NAME, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS, NO_CASSETTE_SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -10398,6 +10398,7 @@ var init_copilot_sdk_scenarios = __esm({
         permit: denyAll
       }
     };
+    NO_CASSETTE_SCENARIOS = ["chain", ...CLI_SCENARIOS];
   }
 });
 
@@ -10442,6 +10443,9 @@ function isPluginRoot(dir) {
   } catch {
     return false;
   }
+}
+function isReplayEnv(env) {
+  return env[CASSETTE_ENV.mode] === "replay";
 }
 function cassetteRuntimeEnv(env, mode) {
   const out = {};
@@ -10511,7 +10515,11 @@ var init_copilot_session_env = __esm({
       dir: "OMG_COPILOT_CASSETTE",
       mode: "OMG_COPILOT_CASSETTE_MODE",
       scenario: "OMG_COPILOT_CASSETTE_SCENARIO",
-      state: "OMG_COPILOT_CASSETTE_STATE"
+      state: "OMG_COPILOT_CASSETTE_STATE",
+      /** `strict` or `tolerant` (default): the replay match mode (`--replay-strict`). */
+      match: "OMG_COPILOT_CASSETTE_MATCH",
+      /** JSON `{ PROJECT, HOME, ROOT, REMOTE, TMP }`: the smoke's dirs, turned into path placeholders. */
+      dirs: "OMG_COPILOT_CASSETTE_DIRS"
     };
     HMAC_KEY_ENV = "COPILOT_HMAC_KEY";
     REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";
@@ -10572,7 +10580,7 @@ function canonicalAuthorityDigest(input) {
   return createHash7("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve20) => setTimeout(resolve20, ms));
+  return new Promise((resolve21) => setTimeout(resolve21, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -12510,7 +12518,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== childPid)) return false;
-    await new Promise((resolve20) => setTimeout(resolve20, 25));
+    await new Promise((resolve21) => setTimeout(resolve21, 25));
   }
   return false;
 }
@@ -12673,7 +12681,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve20) => setTimeout(resolve20, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve21) => setTimeout(resolve21, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical.recovery_id);
     }
@@ -17110,7 +17118,7 @@ function hostSpawnEnv(env) {
 }
 function hostCredentialHandoff(env) {
   const out = {};
-  for (const [key, value] of Object.entries(env)) {
+  for (const [key, value] of isReplayEnv(env) ? [] : Object.entries(env)) {
     const upper = key.toUpperCase();
     if (HOST_CREDENTIAL_ENV.includes(upper) && value && !(upper in out)) out[upper] = value;
   }
@@ -19731,8 +19739,8 @@ async function startMergeOrchestrator(config) {
   let persisted = { lastShas: {} };
   if (existsSync35(persistedPath)) {
     try {
-      const { readFileSync: readFileSync32 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync32(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync33 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync33(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -20114,8 +20122,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve20) => {
-            const t = setTimeout(() => resolve20(false), remaining);
+          new Promise((resolve21) => {
+            const t = setTimeout(() => resolve21(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -20177,8 +20185,8 @@ async function recoverFromRestart(config) {
   let persistedShasLoaded = 0;
   if (existsSync35(persistedPath)) {
     try {
-      const { readFileSync: readFileSync32 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync32(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync33 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync33(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -20380,7 +20388,7 @@ async function waitForRecoveryGateRecord(path5, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve20) => setTimeout(resolve20, pollIntervalMs));
+    await new Promise((resolve21) => setTimeout(resolve21, pollIntervalMs));
   }
   return false;
 }
@@ -21895,9 +21903,9 @@ var init_normalize = __esm({
 });
 
 // src/smoke/replay/handler.ts
-import { existsSync as existsSync39 } from "fs";
+import { existsSync as existsSync39, mkdirSync as mkdirSync11, writeFileSync as writeFileSync10 } from "fs";
 import { homedir as homedir7, hostname, tmpdir as tmpdir6, userInfo as userInfo2 } from "os";
-import { join as join48, resolve as resolve16 } from "path";
+import { dirname as dirname35, join as join48, resolve as resolve16 } from "path";
 function readCassetteConfig(env) {
   const mode = env[CASSETTE_ENV.mode];
   const dir = env[CASSETTE_ENV.dir];
@@ -21912,7 +21920,36 @@ function readCassetteConfig(env) {
   if (mode === "record" && /[\\/]fixtures[\\/]cassettes(?:[\\/]|$)/i.test(resolve16(dir))) {
     throw new CassetteConfigError(`refusing to record into the fixtures dir ${dir}; record elsewhere and import`);
   }
-  return { mode, dir: resolve16(dir), stateDir: resolve16(state), scenario: env[CASSETTE_ENV.scenario] || void 0 };
+  const match = env[CASSETTE_ENV.match];
+  if (match && match !== "strict" && match !== "tolerant") {
+    throw new CassetteConfigError(`${CASSETTE_ENV.match} must be "strict" or "tolerant", got ${JSON.stringify(match)}`);
+  }
+  const dirs = env[CASSETTE_ENV.dirs];
+  return {
+    mode,
+    dir: resolve16(dir),
+    stateDir: resolve16(state),
+    scenario: env[CASSETTE_ENV.scenario] || void 0,
+    ...match ? { matchMode: match } : {},
+    ...dirs ? { dirs: parseCassetteDirs(dirs) } : {}
+  };
+}
+function parseCassetteDirs(raw) {
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    value = null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new CassetteConfigError(`${CASSETTE_ENV.dirs} must be a JSON object`);
+  const dirs = {};
+  for (const [key, dir] of Object.entries(value)) {
+    if (!PATH_PLACEHOLDERS.includes(key) || typeof dir !== "string" || !dir) {
+      throw new CassetteConfigError(`${CASSETTE_ENV.dirs}: ${JSON.stringify(key)} is not a path placeholder with a dir`);
+    }
+    dirs[key] = dir;
+  }
+  return dirs;
 }
 function requestShape(body) {
   if (!isRecord5(body)) return null;
@@ -22059,16 +22096,17 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve20;
+  let resolve21;
   const promise = new Promise((r) => {
-    resolve20 = r;
+    resolve21 = r;
   });
-  return { promise, resolve: resolve20 };
+  return { promise, resolve: resolve21 };
 }
-function createRecordingHandler(Base, recorder) {
+function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
     async sendRequest(request, ctx) {
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.clone().text();
+      const recorder = typeof recorderOf === "function" ? recorderOf() : recorderOf;
       const pending = recorder.begin(request.method, body, ctx);
       let response;
       try {
@@ -22085,10 +22123,12 @@ function createRecordingHandler(Base, recorder) {
   }
   return new RecordingHandler();
 }
-function createReplayHandler(Base, replayer) {
+function createReplayHandler(Base, replayerOf) {
   class ReplayHandler extends Base {
     async sendRequest(request, ctx) {
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.text();
+      const replayer = typeof replayerOf === "function" ? replayerOf() : replayerOf;
+      if (!replayer) return missResponse("omg replay: cassette miss (no cassette scenario selected for this client)");
       return replayer.respond(request.method, body, ctx);
     }
     async openWebSocket() {
@@ -22105,23 +22145,35 @@ function loadReplayCassette(config) {
   }
   return cassette;
 }
+function announceRecording(config) {
+  if (announced.has(config.stateDir)) return;
+  announced.add(config.stateDir);
+  process.stderr.write(
+    `omg cassette: RECORD mode (${CASSETTE_ENV.mode}=record) in pid ${process.pid}: Copilot model requests are billed and recorded under ${config.stateDir}; unset ${CASSETTE_ENV.mode} if this is unexpected
+`
+  );
+}
 function withCassette(loaded2, env = process.env, options = {}) {
-  const config = readCassetteConfig(env);
-  if (!config) return loaded2;
+  const found = readCassetteConfig(env);
+  if (!found) return loaded2;
+  const config = found;
   const HandlerBase = loaded2.module.CopilotRequestHandler;
-  const { mode, stateDir, scenario } = config;
+  const { mode } = config;
   if (typeof HandlerBase !== "function") throw new CassetteConfigError(REQUEST_HANDLER_MISSING);
   const Base = HandlerBase;
-  const dirs = { TMP: tmpdir6(), USERHOME: homedir7(), ...options.dirs };
-  let replayer = null;
-  if (mode === "replay") {
-    const key = JSON.stringify([config.dir, stateDir, scenario, options.matchMode, dirs]);
-    replayer = replayers.get(key) ?? new CassetteReplayer(loadReplayCassette(config), stateDir, options.matchMode ?? "tolerant", dirs);
+  const dirs = { TMP: tmpdir6(), USERHOME: homedir7(), ...config.dirs, ...options.dirs };
+  const matchMode = options.matchMode ?? config.matchMode ?? "tolerant";
+  if (mode === "record") announceRecording(config);
+  const replayerFor = (scenario, stateDir) => {
+    if (!scenario && !existsSync39(join48(config.dir, MANIFEST_FILE))) return null;
+    const key = JSON.stringify([config.dir, stateDir, scenario, matchMode, dirs]);
+    const replayer = replayers.get(key) ?? new CassetteReplayer(loadReplayCassette({ ...config, scenario, stateDir }), stateDir, matchMode, dirs);
     replayers.set(key, replayer);
-  }
-  const replaying = replayer;
+    return replayer;
+  };
+  const initialReplayer = mode === "replay" ? replayerFor(config.scenario, config.stateDir) : null;
   const Client = loaded2.module.CopilotClient;
-  const newRecorder = () => new CassetteRecorder({
+  const newRecorder = (scenario, stateDir) => new CassetteRecorder({
     stateDir,
     scenario,
     sdkVersion: loaded2.version,
@@ -22129,18 +22181,41 @@ function withCassette(loaded2, env = process.env, options = {}) {
     identity: { user: userInfo2().username, host: hostname() }
   });
   class CassetteClient extends Client {
+    cassette = mode;
+    cassetteSlot;
     constructor(opts) {
-      const recorder = replaying ? null : newRecorder();
-      const requestHandler = recorder ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, replaying);
-      super({ ...opts, requestHandler, ...replaying ? { useLoggedInUser: false } : {} });
-      if (recorder) {
+      const slot = { scenario: config.scenario, stateDir: config.stateDir, replayer: initialReplayer };
+      const recorders = /* @__PURE__ */ new Map();
+      const recorder = () => {
+        const existing = recorders.get(slot.stateDir);
+        if (existing) return existing;
+        const created = newRecorder(slot.scenario, slot.stateDir);
+        recorders.set(slot.stateDir, created);
+        return created;
+      };
+      const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, () => slot.replayer);
+      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
+      this.cassetteSlot = slot;
+      if (mode === "record") {
         const stop = this.stop.bind(this);
         this.stop = async () => {
           const errors = await stop();
-          try {
-            await recorder.finish(join48(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`));
-          } catch (err) {
-            errors.push(err instanceof Error ? err : new Error(String(err)));
+          const finished = [...recorders];
+          recorders.clear();
+          for (const [stateDir, rec] of finished) {
+            const part = join48(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+            try {
+              await rec.finish(part);
+            } catch (err) {
+              const error = err instanceof Error ? err : new Error(String(err));
+              errors.push(error);
+              try {
+                mkdirSync11(dirname35(part), { recursive: true });
+                writeFileSync10(`${part}${RECORD_FAILED_SUFFIX}`, `${error.message}
+`);
+              } catch {
+              }
+            }
           }
           return errors;
         };
@@ -22154,6 +22229,12 @@ function withCassette(loaded2, env = process.env, options = {}) {
         };
       }
     }
+    setCassetteScenario(scenario, stateDir) {
+      const slot = this.cassetteSlot;
+      const dir = resolve16(stateDir);
+      const replayer = mode === "replay" ? replayerFor(scenario, dir) : null;
+      Object.assign(slot, { scenario, stateDir: dir, replayer });
+    }
   }
   const Connection = loaded2.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection), {
@@ -22161,10 +22242,11 @@ function withCassette(loaded2, env = process.env, options = {}) {
   });
   return {
     ...loaded2,
+    cassette: mode,
     module: { ...loaded2.module, CopilotClient: CassetteClient, RuntimeConnection }
   };
 }
-var REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, CassetteConfigError, isRecord5, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts;
+var REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, RECORD_FAILED_SUFFIX, CassetteConfigError, isRecord5, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts, announced;
 var init_handler = __esm({
   "src/smoke/replay/handler.ts"() {
     "use strict";
@@ -22176,6 +22258,7 @@ var init_handler = __esm({
     init_redact();
     REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
     RECORD_PARTS_DIR = "parts";
+    RECORD_FAILED_SUFFIX = ".failed";
     CassetteConfigError = class extends Error {
       name = "CassetteConfigError";
     };
@@ -22340,16 +22423,30 @@ var init_handler = __esm({
     };
     replayers = /* @__PURE__ */ new Map();
     recordParts = 0;
+    announced = /* @__PURE__ */ new Set();
+  }
+});
+
+// src/smoke/replay/run.ts
+import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, statSync as statSync7 } from "fs";
+import { join as join49, relative as relative12, resolve as resolve17 } from "path";
+var init_run = __esm({
+  "src/smoke/replay/run.ts"() {
+    "use strict";
+    init_copilot_session_env();
+    init_cassette();
+    init_handler();
+    init_matcher();
   }
 });
 
 // src/smoke/copilot-sdk-driver.ts
 import { spawnSync as nodeSpawnSync } from "child_process";
 import { randomBytes as randomBytes2, randomUUID as randomUUID17 } from "crypto";
-import { existsSync as existsSync40, mkdirSync as mkdirSync11, readdirSync as readdirSync16, readFileSync as readFileSync28, realpathSync as realpathSync10, rmSync as rmSync5, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync41, mkdirSync as mkdirSync12, readdirSync as readdirSync17, readFileSync as readFileSync29, realpathSync as realpathSync10, rmSync as rmSync5, writeFileSync as writeFileSync11 } from "fs";
 import { createRequire as createRequire2 } from "module";
 import { userInfo as userInfo3 } from "os";
-import { dirname as dirname35, isAbsolute as isAbsolute13, join as join49, relative as relative12, resolve as resolve17 } from "path";
+import { dirname as dirname36, isAbsolute as isAbsolute13, join as join50, relative as relative13, resolve as resolve18 } from "path";
 import { pathToFileURL as pathToFileURL2 } from "url";
 function isSdkModule(mod) {
   const m = mod;
@@ -22357,17 +22454,17 @@ function isSdkModule(mod) {
 }
 function readPkg(dir) {
   try {
-    return JSON.parse(readFileSync28(join49(dir, "package.json"), "utf-8"));
+    return JSON.parse(readFileSync29(join50(dir, "package.json"), "utf-8"));
   } catch {
     return null;
   }
 }
 function versionAbove(file) {
-  let dir = dirname35(file);
+  let dir = dirname36(file);
   for (let i = 0; i < 6; i++) {
     const pkg = readPkg(dir);
     if (pkg?.name === SDK_PACKAGE) return pkg.version ?? null;
-    const parent = dirname35(dir);
+    const parent = dirname36(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -22389,7 +22486,7 @@ function nodeResolvedVersion() {
   return null;
 }
 function globalModuleRoots(env, platform = process.platform) {
-  return platform === "win32" && env.APPDATA ? [join49(env.APPDATA, "npm", "node_modules")] : [];
+  return platform === "win32" && env.APPDATA ? [join50(env.APPDATA, "npm", "node_modules")] : [];
 }
 function satisfiesSdkRange(version) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version ?? "").trim());
@@ -22404,10 +22501,10 @@ function insideDir(dir, file) {
     try {
       return realpathSync10.native(p);
     } catch {
-      return resolve17(p);
+      return resolve18(p);
     }
   };
-  const rel = relative12(real(dir), real(resolve17(dir, file)));
+  const rel = relative13(real(dir), real(resolve18(dir, file)));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute13(rel);
 }
 function exportPath(target, condition) {
@@ -22430,13 +22527,13 @@ async function importFromDir(dir) {
   if (!insideDir(dir, esmEntry) || !insideDir(dir, cjsEntry)) return null;
   let mod;
   try {
-    mod = await import(pathToFileURL2(resolve17(dir, esmEntry)).href);
+    mod = await import(pathToFileURL2(resolve18(dir, esmEntry)).href);
   } catch {
-    mod = createRequire2(join49(dir, "package.json"))(resolve17(dir, cjsEntry));
+    mod = createRequire2(join50(dir, "package.json"))(resolve18(dir, cjsEntry));
   }
   return isSdkModule(mod) ? { module: mod, version: pkg.version ?? null, from: dir } : null;
 }
-function resolveShimTarget(shim, read = (p) => readFileSync28(p, "utf-8"), exists = existsSync40) {
+function resolveShimTarget(shim, read = (p) => readFileSync29(p, "utf-8"), exists = existsSync41) {
   let text2;
   try {
     text2 = read(shim);
@@ -22452,7 +22549,7 @@ function resolveShimTarget(shim, read = (p) => readFileSync28(p, "utf-8"), exist
   for (const re of patterns) {
     const m = re.exec(text2);
     if (!m) continue;
-    const target = resolve17(dirname35(shim), m[1].replace(/\\/g, "/"));
+    const target = resolve18(dirname36(shim), m[1].replace(/\\/g, "/"));
     if (exists(target)) return target;
   }
   return null;
@@ -22472,8 +22569,8 @@ async function findCopilotSdk(env, spawnSync7) {
   const tryRoot = async (root) => {
     if (!root || tried.has(root)) return null;
     tried.add(root);
-    const dir = join49(root, ...SDK_PACKAGE.split("/"));
-    if (!existsSync40(join49(dir, "package.json"))) return null;
+    const dir = join50(root, ...SDK_PACKAGE.split("/"));
+    if (!existsSync41(join50(dir, "package.json"))) return null;
     try {
       return await importFromDir(dir);
     } catch {
@@ -22495,6 +22592,7 @@ var init_copilot_sdk_driver = __esm({
     init_copilot_sdk_scenarios();
     init_process_utils2();
     init_handler();
+    init_run();
     SDK_MIN_VERSION = "1.0.16";
   }
 });
@@ -22539,8 +22637,8 @@ __export(runtime_v2_exports, {
   waitForStartupEvidenceBudget: () => waitForStartupEvidenceBudget,
   writeWatchdogFailedMarker: () => writeWatchdogFailedMarker
 });
-import { join as join50, resolve as resolve18 } from "path";
-import { existsSync as existsSync41 } from "fs";
+import { join as join51, resolve as resolve19 } from "path";
+import { existsSync as existsSync42 } from "fs";
 import { link as link4, lstat as lstat6, mkdir as mkdir16, open as open5, readdir as readdir6, readFile as readFile16, rm as rm9, unlink as unlink7, writeFile as writeFile11 } from "fs/promises";
 import { performance } from "perf_hooks";
 import { execFileSync as execFileSync8 } from "node:child_process";
@@ -22607,7 +22705,7 @@ async function recoverDeadWorkerV2(teamName, cwd, { workerName, requestId = rand
   try {
     const requestReservationPath = absPath(cwd, TeamPaths.recoveryRequestPending(requestId));
     const existing = readRecoveryRequestReservation(cwd, requestId);
-    if (!existing && existsSync41(requestReservationPath)) {
+    if (!existing && existsSync42(requestReservationPath)) {
       throw new Error("invalid_persisted_state");
     }
     if (existing) {
@@ -23150,7 +23248,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve20) => setTimeout(resolve20, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve21) => setTimeout(resolve21, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -23723,7 +23821,7 @@ async function recordRecoveryPaneRollbackFailure(input, recoveryId, pending, rea
   const recordedAt = Date.now();
   const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, pending.paneAttemptId, recordedAt));
   const candidate = `${path5}.candidate.${process.pid}.${randomUUID18()}`;
-  await mkdir16(join50(path5, ".."), { recursive: true });
+  await mkdir16(join51(path5, ".."), { recursive: true });
   const handle = await open5(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify({
@@ -23753,7 +23851,7 @@ async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAtt
   const recordedAt = Date.now();
   const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, paneAttemptId, recordedAt));
   const candidate = `${path5}.candidate.${process.pid}.${randomUUID18()}`;
-  await mkdir16(join50(path5, ".."), { recursive: true });
+  await mkdir16(join51(path5, ".."), { recursive: true });
   const handle = await open5(candidate, "wx", 384);
   const boundedSplit = split ? {
     ...split,
@@ -24079,7 +24177,7 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
     adoption_token: randomUUID18(),
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
-  await mkdir16(join50(path5, ".."), { recursive: true });
+  await mkdir16(join51(path5, ".."), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${randomUUID18()}`;
   const candidateHandle = await open5(candidate, "wx", 384);
   try {
@@ -24099,14 +24197,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve20, reject) => {
+  return new Promise((resolve21, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve20();
+      resolve21();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -25083,7 +25181,7 @@ async function executeRecoverDeadWorkerV2Owner(input) {
           launch_nonce: pending.startupContext.attempt.nonce,
           written_at: (/* @__PURE__ */ new Date()).toISOString()
         };
-        await mkdir16(join50(pending.gate.activatePath, ".."), { recursive: true });
+        await mkdir16(join51(pending.gate.activatePath, ".."), { recursive: true });
         await writeFile11(pending.gate.activatePath, JSON.stringify(record), "utf8");
         const adoptedReady = await waitForRecoveryGateRecord(`${pending.gate.readyPath}.adoption-ready`, record, 3e4);
         return adoptedReady && await isWorkerLaunchAttemptCurrent(pending.startupContext.attempt) ? { ok: true } : { ok: false, error: "worker_activation_failed" };
@@ -25210,7 +25308,7 @@ ${recoveryContract}` : ""}`;
         let providerLive = false;
         try {
           const launchedRecord = JSON.parse(await readFile16(launchedPath, "utf8"));
-          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !existsSync41(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
+          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !existsSync42(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
             launchedRecord.provider_pid,
             launchedRecord.provider_start_identity,
             Date.now() + 1e3
@@ -25290,7 +25388,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
   const recordedAt = (/* @__PURE__ */ new Date()).toISOString();
   const writeFailureMarker = async (extra = {}) => {
     await mkdir16(teamRoot, { recursive: true });
-    await writeFile11(join50(teamRoot, "startup-failure.json"), JSON.stringify({
+    await writeFile11(join51(teamRoot, "startup-failure.json"), JSON.stringify({
       reason: "startup_failed_before_config_persisted",
       error: errorMessage,
       recorded_at: recordedAt,
@@ -25321,7 +25419,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
       }
     }
     await rm9(teamRoot, { recursive: true, force: true });
-    if (existsSync41(teamRoot)) {
+    if (existsSync42(teamRoot)) {
       await writeFailureMarker({ rollback_error: "startup_state_removal_unverified" });
       return false;
     }
@@ -25345,7 +25443,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
 async function writeStartedStartupRollbackEvidence(args) {
   const teamRoot = absPath(args.cwd, TeamPaths.root(args.teamName));
   await mkdir16(teamRoot, { recursive: true });
-  await writeFile11(join50(teamRoot, "startup-failure.json"), JSON.stringify({
+  await writeFile11(join51(teamRoot, "startup-failure.json"), JSON.stringify({
     reason: args.markerReason ?? "startup_rollback_cleanup_incomplete",
     error: args.cause instanceof Error ? args.cause.message : String(args.cause),
     rollback_error: args.reason,
@@ -25529,7 +25627,7 @@ async function startTeamV2(config) {
   }
   const instance = createTeamInstanceBinding({
     teamName: sanitized,
-    cwd: resolve18(config.cwd),
+    cwd: resolve19(config.cwd),
     ...config.instanceId !== void 0 ? { instanceId: config.instanceId } : {}
   });
   const leaderCwd = instance.cwd;
@@ -25691,7 +25789,7 @@ async function startTeamV2(config) {
     try {
       const pendingConfig = buildTeamInstancePendingConfig(instance);
       const pendingConfigPath = absPath(leaderCwd, TeamPaths.config(sanitized));
-      await mkdir16(join50(pendingConfigPath, ".."), { recursive: true });
+      await mkdir16(join51(pendingConfigPath, ".."), { recursive: true });
       await writeFile11(pendingConfigPath, JSON.stringify(pendingConfig, null, 2), "utf-8");
     } catch (error) {
       if (!await rollbackBeforeConfig(error)) throw startupCleanupIncompleteError(error);
@@ -25702,7 +25800,7 @@ async function startTeamV2(config) {
     try {
       await mkdir16(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
       await mkdir16(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-      await mkdir16(join50(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
+      await mkdir16(join51(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
       for (let i = 0; i < config.tasks.length; i++) {
         const taskId = String(i + 1);
         const task = config.tasks[i];
@@ -26184,7 +26282,7 @@ async function writeWatchdogFailedMarker(teamName, cwd, reason) {
     writtenBy: "runtime-v2"
   };
   const root = absPath(cwd, TeamPaths.root(sanitizeTeamName(teamName)));
-  const markerPath = join50(root, "watchdog-failed.json");
+  const markerPath = join51(root, "watchdog-failed.json");
   await mkdir16(root, { recursive: true });
   await writeFile12(markerPath, JSON.stringify(marker, null, 2), "utf-8");
 }
@@ -26337,7 +26435,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename7 } = await import("fs/promises");
-  const { renameSync: renameSync6, readFileSync: readFileSync32, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync6, readFileSync: readFileSync33, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -26418,7 +26516,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
               return;
             }
           }
-          const raw = readFileSync32(outputFile, "utf-8");
+          const raw = readFileSync33(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync6(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -27150,7 +27248,7 @@ async function cleanupStaleReservations(teamName, cwd) {
         cwd,
         TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
       );
-      if (!existsSync41(reservationPath2)) return;
+      if (!existsSync42(reservationPath2)) return;
       const contentStr = await readFile16(reservationPath2, "utf-8");
       const reservation = JSON.parse(contentStr);
       if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
@@ -27177,7 +27275,7 @@ async function cleanupAbandonedTeamState(teamName, cwd) {
       cwd,
       TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
     );
-    if (existsSync41(reservationPath2)) {
+    if (existsSync42(reservationPath2)) {
       try {
         const contentStr = await readFile16(reservationPath2, "utf-8");
         const reservation = JSON.parse(contentStr);
@@ -27193,7 +27291,7 @@ async function cleanupAbandonedTeamState(teamName, cwd) {
       }
     }
     const teamRoot = teamStateRoot(cwd, sanitized);
-    if (existsSync41(teamRoot)) {
+    if (existsSync42(teamRoot)) {
       try {
         await rm9(teamRoot, { recursive: true, force: true });
       } catch (error) {
@@ -27429,7 +27527,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || existsSync41(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || existsSync42(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write("[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n");
       return { outcome: "preserved", reason: "config_missing_cleanup_evidence", workers: [] };
     }
@@ -27798,8 +27896,8 @@ async function resumeTeamV2(teamName, cwd) {
   };
 }
 async function findActiveTeamsV2(cwd) {
-  const root = join50(getOmcRoot(cwd), "state", "team");
-  if (!existsSync41(root)) return [];
+  const root = join51(getOmcRoot(cwd), "state", "team");
+  if (!existsSync42(root)) return [];
   const entries = await readdir6(root, { withFileTypes: true });
   const active = [];
   for (const e of entries) {
@@ -27969,15 +28067,15 @@ var init_runtime_v2 = __esm({
 import { randomUUID as randomUUID19 } from "crypto";
 import { spawn as spawn3 } from "child_process";
 import {
-  existsSync as existsSync44,
-  mkdirSync as mkdirSync12,
-  readFileSync as readFileSync31,
+  existsSync as existsSync45,
+  mkdirSync as mkdirSync13,
+  readFileSync as readFileSync32,
   renameSync as renameSync5,
   unlinkSync as unlinkSync10,
-  writeFileSync as writeFileSync11
+  writeFileSync as writeFileSync12
 } from "fs";
 import { readFile as readFile18 } from "fs/promises";
-import { dirname as dirname37, join as join54, resolve as resolve19 } from "path";
+import { dirname as dirname38, join as join55, resolve as resolve20 } from "path";
 import { fileURLToPath as fileURLToPath7 } from "url";
 
 // src/team/api-interop.ts
@@ -27997,8 +28095,8 @@ init_recovery_request_store();
 init_git_worktree();
 init_swallowed_error();
 init_types();
-import { existsSync as existsSync42, readFileSync as readFileSync29 } from "node:fs";
-import { dirname as dirname36, join as join51, resolve as resolvePath } from "node:path";
+import { existsSync as existsSync43, readFileSync as readFileSync30 } from "node:fs";
+import { dirname as dirname37, join as join52, resolve as resolvePath } from "node:path";
 var TEAM_UPDATE_TASK_MUTABLE_FIELDS = /* @__PURE__ */ new Set(["subject", "description", "blocked_by", "requires_code_change", "delegation"]);
 var TEAM_UPDATE_TASK_REQUEST_FIELDS = /* @__PURE__ */ new Set(["team_name", "task_id", "workingDirectory", ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
 var RECOVER_WORKER_REQUEST_FIELDS = /* @__PURE__ */ new Set(["team_name", "worker", "request_id", "timeout_ms"]);
@@ -28153,8 +28251,8 @@ function parseTaskDelegationPlan(value) {
 }
 function teamStateExists(teamName, candidateCwd) {
   if (!TEAM_NAME_SAFE_PATTERN.test(teamName)) return false;
-  const teamRoot = join51(getOmcRoot(candidateCwd), "state", "team", teamName);
-  return existsSync42(join51(teamRoot, "config.json")) || existsSync42(join51(teamRoot, "tasks")) || existsSync42(teamRoot);
+  const teamRoot = join52(getOmcRoot(candidateCwd), "state", "team", teamName);
+  return existsSync43(join52(teamRoot, "config.json")) || existsSync43(join52(teamRoot, "tasks")) || existsSync43(teamRoot);
 }
 function parseTeamWorkerEnv(raw) {
   if (typeof raw !== "string" || raw.trim() === "") return null;
@@ -28216,9 +28314,9 @@ async function executeTeamCleanupViaRuntime(teamName, cwd, options = {}) {
   if (shutdown.outcome !== "cleaned") throw new Error(`team_shutdown_${shutdown.outcome}:${shutdown.reason}`);
 }
 function readTeamStateLocationMetadata(path5) {
-  if (!existsSync42(path5)) return null;
+  if (!existsSync43(path5)) return null;
   try {
-    const parsed = JSON.parse(readFileSync29(path5, "utf8"));
+    const parsed = JSON.parse(readFileSync30(path5, "utf8"));
     return {
       leaderCwd: typeof parsed.leader_cwd === "string" && parsed.leader_cwd.trim() !== "" ? parsed.leader_cwd.trim() : null,
       teamStateRoot: typeof parsed.team_state_root === "string" && parsed.team_state_root.trim() !== "" ? parsed.team_state_root.trim() : null
@@ -28235,7 +28333,7 @@ function stateRootToWorkingDirectory(stateRoot2) {
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
       if (workspaceRoot && workspaceRoot !== "/") return workspaceRoot;
-      return dirname36(dirname36(dirname36(dirname36(absolute))));
+      return dirname37(dirname37(dirname37(dirname37(absolute))));
     }
   }
   for (const marker of ["/.omg/state", "/.omx/state"]) {
@@ -28243,10 +28341,10 @@ function stateRootToWorkingDirectory(stateRoot2) {
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
       if (workspaceRoot && workspaceRoot !== "/") return workspaceRoot;
-      return dirname36(dirname36(absolute));
+      return dirname37(dirname37(absolute));
     }
   }
-  return dirname36(dirname36(absolute));
+  return dirname37(dirname37(absolute));
 }
 function teamStateRootsMatch(teamName, leaderCwd, advertisedRoot, discoveredRoot, discoveredCwd) {
   const expectedCanonicalRoot = resolvePath(canonicalTeamStateRoot(leaderCwd, teamName));
@@ -28256,8 +28354,8 @@ function teamStateRootsMatch(teamName, leaderCwd, advertisedRoot, discoveredRoot
   return matchesExpectedRoot(advertisedRoot, leaderCwd) && matchesExpectedRoot(discoveredRoot, discoveredCwd);
 }
 function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd) {
-  const teamRoot = join51(getOmcRoot(candidateCwd), "state", "team", teamName);
-  if (!existsSync42(teamRoot)) return null;
+  const teamRoot = join52(getOmcRoot(candidateCwd), "state", "team", teamName);
+  if (!existsSync43(teamRoot)) return null;
   const resolveValidatedLeaderCwd = (path5) => {
     const metadata = readTeamStateLocationMetadata(path5);
     if (!metadata?.leaderCwd || !metadata.teamStateRoot) return null;
@@ -28269,9 +28367,9 @@ function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd) {
     }
   };
   const metadataPaths = [
-    join51(teamRoot, "config.json"),
-    join51(teamRoot, "manifest.json"),
-    join51(teamRoot, "manifest.v2.json")
+    join52(teamRoot, "config.json"),
+    join52(teamRoot, "manifest.json"),
+    join52(teamRoot, "manifest.v2.json")
   ];
   for (const metadataPath of metadataPaths) {
     const leaderCwd = resolveValidatedLeaderCwd(metadataPath);
@@ -28289,7 +28387,7 @@ function resolveTeamWorkingDirectory(teamName, preferredCwd) {
       normalizedTeamName,
       leaderCwd,
       envTeamStateRoot,
-      join51(getOmcRoot(leaderCwd), "state", "team", normalizedTeamName),
+      join52(getOmcRoot(leaderCwd), "state", "team", normalizedTeamName),
       leaderCwd
     )) {
       return canonicalTeamCwd(leaderCwd);
@@ -28310,7 +28408,7 @@ function resolveTeamWorkingDirectory(teamName, preferredCwd) {
       if (teamStateExists(normalizedTeamName, cursor)) {
         return resolveTeamWorkingDirectoryFromMetadata(normalizedTeamName, cursor) ?? cursor;
       }
-      const parent = dirname36(cursor);
+      const parent = dirname37(cursor);
       if (!parent || parent === cursor) break;
       cursor = parent;
     }
@@ -29038,7 +29136,7 @@ init_tmux_session();
 init_state_paths();
 init_types();
 import { readFile as readFile17 } from "fs/promises";
-import { join as join52 } from "path";
+import { join as join53 } from "path";
 function stateRoot(cwd, teamName) {
   validateTeamName2(teamName);
   return teamStateRoot(cwd, teamName);
@@ -29051,7 +29149,7 @@ async function readJsonSafe3(filePath) {
   }
 }
 function taskPath(root, taskId) {
-  return join52(root, "tasks", `${normalizeTaskFileStem(taskId)}.json`);
+  return join53(root, "tasks", `${normalizeTaskFileStem(taskId)}.json`);
 }
 async function readTask(root, taskId) {
   return readJsonSafe3(taskPath(root, taskId));
@@ -29064,9 +29162,9 @@ async function monitorTeam(teamName, cwd, workerPaneIds) {
   const taskCounts = { pending: 0, inProgress: 0, completed: 0, failed: 0 };
   try {
     const { readdir: readdir7 } = await import("fs/promises");
-    const taskFiles = await readdir7(join52(root, "tasks"));
+    const taskFiles = await readdir7(join53(root, "tasks"));
     for (const f of taskFiles.filter((f2) => f2.endsWith(".json"))) {
-      const task = await readJsonSafe3(join52(root, "tasks", f));
+      const task = await readJsonSafe3(join53(root, "tasks", f));
       if (task?.status === "pending") taskCounts.pending++;
       else if (task?.status === "in_progress") taskCounts.inProgress++;
       else if (task?.status === "completed") taskCounts.completed++;
@@ -29082,7 +29180,7 @@ async function monitorTeam(teamName, cwd, workerPaneIds) {
     const wName = `worker-${i + 1}`;
     const paneId = workerPaneIds[i];
     const alive = await isWorkerAlive(paneId);
-    const heartbeatPath = join52(root, "workers", wName, "heartbeat.json");
+    const heartbeatPath = join53(root, "workers", wName, "heartbeat.json");
     const heartbeat = await readJsonSafe3(heartbeatPath);
     let stalled = false;
     if (heartbeat?.updatedAt) {
@@ -29124,7 +29222,7 @@ async function monitorTeam(teamName, cwd, workerPaneIds) {
 }
 async function resumeTeam(teamName, cwd) {
   const root = stateRoot(cwd, teamName);
-  const configData = await readJsonSafe3(join52(root, "config.json"));
+  const configData = await readJsonSafe3(join53(root, "config.json"));
   if (!configData || !isValidTeamInstanceId(configData.instance_id)) return null;
   const sName = configData.tmuxSession;
   const leaderPaneId = configData.leaderPaneId;
@@ -29219,8 +29317,8 @@ init_paths();
 
 // src/planning/artifacts.ts
 init_worktree_paths();
-import { readdirSync as readdirSync17, readFileSync as readFileSync30, existsSync as existsSync43 } from "fs";
-import { join as join53 } from "path";
+import { readdirSync as readdirSync18, readFileSync as readFileSync31, existsSync as existsSync44 } from "fs";
+import { join as join54 } from "path";
 
 // src/planning/artifact-names.ts
 import { basename as basename19 } from "path";
@@ -29320,7 +29418,7 @@ function selectLatestPlanningArtifactPath(paths) {
 // src/planning/artifacts.ts
 function readFileSafe(path5) {
   try {
-    return readFileSync30(path5, "utf-8");
+    return readFileSync31(path5, "utf-8");
   } catch {
     return null;
   }
@@ -29347,7 +29445,7 @@ function hasRequiredSections(markdown, headings) {
   );
 }
 function getPlansDirCandidates(cwd) {
-  return [join53(getOmcRoot(cwd), "plans"), join53(cwd, ".omx", "plans")];
+  return [join54(getOmcRoot(cwd), "plans"), join54(cwd, ".omx", "plans")];
 }
 function sortArtifactPathsDescending(paths) {
   return [...paths].sort((a, b) => comparePlanningArtifactPaths(b, a));
@@ -29374,19 +29472,19 @@ function readPlanningArtifacts(cwd) {
   const prdPaths = [];
   const testSpecPaths = [];
   for (const plansDir of getPlansDirCandidates(cwd)) {
-    if (!existsSync43(plansDir)) {
+    if (!existsSync44(plansDir)) {
       continue;
     }
     try {
-      entries = readdirSync17(plansDir);
+      entries = readdirSync18(plansDir);
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (entry.startsWith("prd-") && entry.endsWith(".md")) {
-        prdPaths.push(join53(plansDir, entry));
+        prdPaths.push(join54(plansDir, entry));
       } else if (entry.startsWith("test-spec-") && entry.endsWith(".md")) {
-        testSpecPaths.push(join53(plansDir, entry));
+        testSpecPaths.push(join54(plansDir, entry));
       }
     }
   }
@@ -29561,22 +29659,22 @@ function resolveRuntimeCliPath2(env = process.env) {
   if (env.OMC_RUNTIME_CLI_PATH) {
     return env.OMC_RUNTIME_CLI_PATH;
   }
-  const moduleDir = dirname37(fileURLToPath7(import.meta.url));
-  return join54(moduleDir, "../../bridge/runtime-cli.cjs");
+  const moduleDir = dirname38(fileURLToPath7(import.meta.url));
+  return join55(moduleDir, "../../bridge/runtime-cli.cjs");
 }
 function ensureJobsDir(jobsDir) {
-  if (!existsSync44(jobsDir)) {
-    mkdirSync12(jobsDir, { recursive: true });
+  if (!existsSync45(jobsDir)) {
+    mkdirSync13(jobsDir, { recursive: true });
   }
 }
 function jobPath(jobsDir, jobId) {
-  return join54(jobsDir, `${jobId}.json`);
+  return join55(jobsDir, `${jobId}.json`);
 }
 function resultArtifactPath(jobsDir, jobId) {
-  return join54(jobsDir, `${jobId}-result.json`);
+  return join55(jobsDir, `${jobId}-result.json`);
 }
 function panesArtifactPath(jobsDir, jobId) {
-  return join54(jobsDir, `${jobId}-panes.json`);
+  return join55(jobsDir, `${jobId}-panes.json`);
 }
 function validateJobId(jobId) {
   if (!JOB_ID_PATTERN.test(jobId)) {
@@ -29641,7 +29739,7 @@ async function readPaneArtifact(jobsDir, jobId, instanceId) {
 function resultArtifactIdentityError(jobsDir, jobId, instanceId) {
   let raw;
   try {
-    raw = readFileSync31(resultArtifactPath(jobsDir, jobId), "utf-8");
+    raw = readFileSync32(resultArtifactPath(jobsDir, jobId), "utf-8");
   } catch (error) {
     if (error.code === "ENOENT") return null;
     return `cleanup_result_evidence_unreadable:${error instanceof Error ? error.message : String(error)}`;
@@ -29655,7 +29753,7 @@ function resultArtifactIdentityError(jobsDir, jobId, instanceId) {
 function readJobFromDisk(jobId, jobsDir) {
   let content;
   try {
-    content = readFileSync31(jobPath(jobsDir, jobId), "utf-8");
+    content = readFileSync32(jobPath(jobsDir, jobId), "utf-8");
   } catch (error) {
     const code = error.code;
     if (code === "ENOENT") return { kind: "missing" };
@@ -29679,14 +29777,14 @@ function formatJobReadError(jobId, result) {
   }
 }
 function jobLockPath(jobsDir, jobId) {
-  return join54(jobsDir, `.${jobId}.lock`);
+  return join55(jobsDir, `.${jobId}.lock`);
 }
 function writeJobToDiskUnlocked(jobId, job, jobsDir) {
   ensureJobsDir(jobsDir);
   const targetPath = jobPath(jobsDir, jobId);
   const tempPath = `${targetPath}.tmp.${process.pid}.${randomUUID19()}`;
   try {
-    writeFileSync11(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    writeFileSync12(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
     renameSync5(tempPath, targetPath);
   } finally {
     try {
@@ -29811,7 +29909,7 @@ function generateJobId(now = Date.now()) {
 }
 function convergeWithResultArtifact(jobId, job, jobsDir) {
   try {
-    const artifactRaw = readFileSync31(resultArtifactPath(jobsDir, jobId), "utf-8");
+    const artifactRaw = readFileSync32(resultArtifactPath(jobsDir, jobId), "utf-8");
     const artifactParsed = parseJsonSafe(artifactRaw);
     if (!artifactParsed) throw new Error("result_artifact_parse_failed");
     if (artifactParsed.status !== "completed" && artifactParsed.status !== "failed") {
@@ -29885,7 +29983,7 @@ async function startTeamJob(input) {
   if (typeof input.cwd !== "string" || input.cwd.trim().length === 0) {
     throw new Error("cwd must be a non-empty path");
   }
-  const cwd = resolve19(input.cwd);
+  const cwd = resolve20(input.cwd);
   await assertTeamSpawnAllowed(cwd);
   if (!Array.isArray(input.agentTypes) || input.agentTypes.length === 0) {
     throw new Error("agentTypes must be a non-empty array");
@@ -30017,7 +30115,7 @@ async function waitForTeamJob(jobId, options = {}) {
     if (status2.status !== "running") {
       return status2;
     }
-    await new Promise((resolve20) => setTimeout(resolve20, delayMs));
+    await new Promise((resolve21) => setTimeout(resolve21, delayMs));
     delayMs = Math.min(Math.floor(delayMs * 1.5), 2e3);
   }
   const status = await getTeamJobStatus(jobId);

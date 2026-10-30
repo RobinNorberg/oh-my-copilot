@@ -27,9 +27,10 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, gitForWindowsShell, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
 import { excerpt } from './copilot-session-eval.js';
-import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
 import { withCassette } from './replay/handler.js';
+import { cassetteEnv, finalizeRecording, hasCassette, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, } from './replay/run.js';
 /**
  * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
  * than 1.0.16, which takes it only through `rpc.options.update`): its source
@@ -391,6 +392,23 @@ function remoteRefs(spawnSync, remoteDir, env) {
     const res = spawnSync('git', ['--git-dir', remoteDir, 'for-each-ref'], { env, encoding: 'utf8', timeout: 30_000, windowsHide: true });
     return res.status === 0 ? String(res.stdout ?? '') : null;
 }
+/**
+ * The smoke dirs a scenario's cassette turns into placeholders. The factory
+ * scenarios work in their own repository beside the sandbox project
+ * (copilot-factory-run-scenario.ts); TMP is the run's temp parent, so every
+ * path under it is stable across runs.
+ */
+export function scenarioPlaceholderDirs(input, name) {
+    const parent = dirname(input.projectDir);
+    const factory = name !== undefined && isFactoryRunScenario(name);
+    return {
+        PROJECT: factory ? join(parent, name, 'repo') : input.projectDir,
+        REMOTE: factory ? join(parent, name, 'remote.git') : input.remoteDir,
+        HOME: input.home,
+        ROOT: input.root,
+        TMP: parent,
+    };
+}
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export function runtimeCreditCap(maxCredits) {
     return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
@@ -448,6 +466,7 @@ export async function runSdkTier(input) {
     const entries = [];
     const isAlive = input.isAlive ?? pidAlive;
     const killTree = input.killTree ?? ((pid) => killProcessTree(pid, input.spawnSync));
+    const tape = input.cassette;
     let pid;
     let wedged = false;
     try {
@@ -484,6 +503,24 @@ export async function runSdkTier(input) {
                 entries.push({ name, skip: stopReason });
                 continue;
             }
+            // Each scenario records into, or replays from, its own cassette state; a missing cassette never falls through to live.
+            let env = input.env;
+            if (tape) {
+                if (tape.mode === 'replay' && !hasCassette(tape, name)) {
+                    entries.push({ name, skip: `no cassette for ${platformTag()}/${name}` });
+                    continue;
+                }
+                env = cassetteEnv(input.env, tape, scenarioPlaceholderDirs(input, name), name);
+                try {
+                    client.setCassetteScenario?.(name, scenarioStateDir(tape, name));
+                }
+                catch (err) {
+                    entries.push({ name, skip: `cassette: ${excerpt(errText(err), 300)}` });
+                    continue;
+                }
+                if (tape.mode === 'record')
+                    process.stderr.write(`omg smoke: recording ${name} to ${scenarioCassetteDir(tape, name)}\n`);
+            }
             const path = join(input.home, `events-${name}.jsonl`);
             events[name] = path;
             // Log lines are attributed to scenarios by millisecond timestamp
@@ -498,7 +535,7 @@ export async function runSdkTier(input) {
                 ? await input.runChain({
                     bin,
                     root: input.root,
-                    env: input.env,
+                    env,
                     projectDir: input.projectDir,
                     home: input.home,
                     timeoutMs: input.timeoutMs,
@@ -512,7 +549,7 @@ export async function runSdkTier(input) {
                     ? await input.runTeam({
                         root: input.root,
                         bin: input.bin,
-                        env: input.env,
+                        env,
                         projectDir: input.projectDir,
                         home: input.home,
                         timeoutMs: input.timeoutMs,
@@ -520,6 +557,8 @@ export async function runSdkTier(input) {
                         budget: input.maxCredits - total.credits,
                         eventsPath: path,
                         spawnSync: input.spawnSync,
+                        // A cassette is recorded on, and replayed with, one pinned model.
+                        ...(tape && choice.model ? { model: choice.model } : {}),
                     })
                     // The CLI scenarios drive headless `copilot` sessions, not this client's session.
                     : isCliScenario(name)
@@ -527,7 +566,7 @@ export async function runSdkTier(input) {
                             name,
                             bin,
                             root: input.root,
-                            env: input.env,
+                            env,
                             projectDir: input.projectDir,
                             home: input.home,
                             timeoutMs: input.timeoutMs,
@@ -542,7 +581,7 @@ export async function runSdkTier(input) {
                                 name,
                                 bin,
                                 root: input.root,
-                                env: input.env,
+                                env,
                                 projectDir: input.projectDir,
                                 home: input.home,
                                 timeoutMs: input.timeoutMs,
@@ -558,7 +597,7 @@ export async function runSdkTier(input) {
                                 ? await input.runSandbox({
                                     bin,
                                     root: input.root,
-                                    env: input.env,
+                                    env,
                                     projectDir: input.projectDir,
                                     home: input.home,
                                     timeoutMs: input.timeoutMs,
@@ -608,15 +647,46 @@ export async function runSdkTier(input) {
     const logText = readAllLogs(logDir);
     const ran = entries.filter((e) => 'run' in e);
     const slices = logText === null ? [] : sliceLogByTime(logText, ran.map((e) => e.start));
+    const replay = {};
     for (const entry of entries) {
         if ('skip' in entry) {
             checks.push(...skippedScenarioChecks(entry.name, entry.skip));
+            if (tape)
+                checks.push(tape.mode === 'replay' ? evaluateReplay(entry.name, entry.skip, tape.strict) : { id: `scn.${entry.name}.record`, ok: false, detail: entry.skip });
             continue;
         }
         const logSlice = logText === null ? null : slices[ran.indexOf(entry)];
-        checks.push(...evaluateScenario({ ...entry.run, logText: logSlice }).checks);
+        const own = evaluateScenario({ ...entry.run, logText: logSlice }).checks;
+        checks.push(...own);
+        // After client.stop(): every client of the scenario (team hosts, lanes included) has written its part or its log.
+        if (tape?.mode === 'replay') {
+            const outcome = replayOutcome(tape, entry.name);
+            const check = evaluateReplay(entry.name, outcome, tape.strict);
+            checks.push(check);
+            if (typeof outcome !== 'string')
+                replay[entry.name] = { ok: check.ok, misses: outcome.misses.length, drift: outcome.drift.length };
+        }
+        else if (tape) {
+            // A recording of a failed run would only replay the failure.
+            const failed = own.filter((c) => !c.ok).map((c) => c.id);
+            checks.push(failed.length > 0
+                ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(', ')}); its parts stay in ${scenarioStateDir(tape, entry.name)} until the run's temp dir is removed` }
+                : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run) }));
+        }
     }
-    return { checks, sdk: sdkInfo, cost: total, events };
+    return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}) };
+}
+/** `scn.<name>.record`: the scenario's parts merged and written as one cassette (gate passed). */
+function recordCheck(run, name, meta) {
+    const id = `scn.${name}.record`;
+    try {
+        const cost = { credits: Number(meta.cost.credits.toFixed(3)), premiumRequests: meta.cost.premiumRequests };
+        const written = finalizeRecording(run, name, { ...(meta.model ? { model: meta.model } : {}), maxCredits: meta.maxCredits, cost });
+        return { id, ok: true, detail: `${written.interactions} interaction(s) in ${written.streams} stream(s) written to ${written.dir}` };
+    }
+    catch (err) {
+        return { id, ok: false, detail: `not written: ${excerpt(errText(err), 600)}` };
+    }
 }
 async function staticChecks(client, input, loaded, bin) {
     let session;
@@ -629,6 +699,8 @@ async function staticChecks(client, input, loaded, bin) {
                 workingDirectory: input.projectDir,
                 disabledMcpServers: ['github-mcp-server'],
                 excludedTools: [hostSmokeToolName(input.mcpServer)],
+                // A replay client creates no session without a pinned model (no model call follows).
+                ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
             }), RPC_TIMEOUT_MS, 'createSession()');
         }
         catch (err) {
@@ -774,6 +846,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
             workingDirectory: input.projectDir,
             disabledMcpServers: ['github-mcp-server'],
             excludedTools: [],
+            ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
         }), RPC_TIMEOUT_MS, 'canary createSession()');
         const shell = session.rpc.shell;
         if (typeof shell?.executeUserRequested !== 'function')

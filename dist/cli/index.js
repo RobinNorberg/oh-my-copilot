@@ -23,7 +23,7 @@ import { waitCommand, waitStatusCommand, waitDaemonCommand, waitDetectCommand } 
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { ralphCommand } from './commands/ralph.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
-import { smokeCopilotCommand } from './commands/smoke.js';
+import { smokeCassetteImportCommand, smokeCassetteVerifyCommand, smokeCopilotCommand } from './commands/smoke.js';
 import { hooksCommand } from './commands/hooks.js';
 import { budgetCommand } from './commands/budget.js';
 import { capabilitiesCheckCommand, capabilitiesLockCommand } from './commands/capabilities.js';
@@ -1225,6 +1225,10 @@ smokeCmd
     .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
     .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); filetools, chain, team, factory-run, factory-run-fix and sandbox-lane (opt-in, never in all) check the file-tool hooks, run a real two-link factory chain, a real 2-worker sdk team and omg factory run with real lanes up to the human merge gate (factory-run-fix adds one fix round), and run review, write and canary lanes in the OS sandbox; continuation, prompt-context, events and ultragoal (opt-in, headless copilot sessions) check Stop-hook continuations, UserPromptSubmit context, postToolUseFailure/permissionRequest/preCompact and the ultragoal tool gate')
     .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
+    .option('--record <dir>', 'Tier 2: record every model request of the scenarios into <dir>/<platform>-<arch>/<scenario>/ (billed; needs --model; refused under CI and for copilot -p scenarios), then gate and replay the new cassettes')
+    .option('--record-overwrite', 'With --record: replace an existing cassette')
+    .option('--replay <dir>', 'Tier 2: answer every model request from <dir>/<platform>-<arch>/<scenario>/ (free, no credentials; pins the recorded model; copilot -p scenarios refused)')
+    .option('--replay-strict', 'With --replay: a drifted request (delta, tool list or model) misses instead of being served')
     .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
     .addHelpText('after', `
 Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary or
@@ -1247,10 +1251,34 @@ Examples:
                                                 shutdown (1 prompt per worker, billed in AI credits)
   $ omg smoke copilot --tier 2 --scenario continuation,prompt-context,events
                                                 Live hook-event checks in headless copilot sessions
-                                                (~1.4 AI credits measured: 0.31 + 0.29 + 0.76)`)
+                                                (~1.4 AI credits measured: 0.31 + 0.29 + 0.76)
+  $ omg smoke copilot --tier 2 --scenario smoke,factory-run --model <id> --record ~/omg-cassettes
+                                                Record cassettes (billed), then gate and replay them
+  $ omg smoke copilot --tier 2 --scenario factory-run --replay src/smoke/__tests__/fixtures/cassettes
+                                                Replay recorded cassettes (free)`)
     .action(async (options) => {
     const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);
+});
+const cassetteCmd = smokeCmd
+    .command('cassette')
+    .description('Recorded Copilot model traffic for `omg smoke copilot --replay`');
+cassetteCmd
+    .command('verify <dir>')
+    .description('Redaction gate over every cassette under <dir> (a failure marks it REDACTION-FAILED), then replay the cassettes of this platform (free) and record selfVerify in their manifests')
+    .option('--gate-only', 'Run the redaction gate only, no replay')
+    .option('--plugin-root <dir>', 'Plugin directory for the replay (default: this omg package root)')
+    .option('--timeout <ms>', 'Per-scenario replay timeout (default 120000)')
+    .action(async (dir, options) => {
+    process.exit(await smokeCassetteVerifyCommand(dir, options));
+});
+cassetteCmd
+    .command('import <dir>')
+    .description('Copy every cassette under <dir> (an extracted capture) into <to>/<platform>-<arch>/<scenario>/ after the redaction gate and a format check; all or nothing, nothing committed')
+    .option('--to <dir>', 'Destination root (default: src/smoke/__tests__/fixtures/cassettes)')
+    .option('--overwrite', 'Replace existing cassettes')
+    .action((dir, options) => {
+    process.exit(smokeCassetteImportCommand(dir, options));
 });
 // Copilot hook diagnostics (`omg hooks doctor`).
 hooksCommand(program);

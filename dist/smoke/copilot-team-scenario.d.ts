@@ -43,14 +43,16 @@ export interface TeamScenarioInput {
     budget: number;
     eventsPath: string;
     spawnSync: SpawnSyncFn;
+    /** The model every sdk worker runs on (`OMC_TEAM_SDK_MODEL`); unset: team.sdk.model, else runtime auto. A cassette pins it. */
+    model?: string;
     /** Test seams. */
     spawn?: SpawnFn;
     pollMs?: number;
     isAlive?: (pid: number) => boolean;
     now?: () => number;
 }
-/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap. */
-export declare function teamLeaderEnv(base: NodeJS.ProcessEnv, bin: string, budget: number): NodeJS.ProcessEnv;
+/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap, the worker model when pinned. */
+export declare function teamLeaderEnv(base: NodeJS.ProcessEnv, bin: string, budget: number, model?: string): NodeJS.ProcessEnv;
 /** The last stdout line that parses as a JSON object. */
 export declare function lastJsonObject(stdout: string): Record<string, unknown> | null;
 /** `[omg team] sdk workers launched: N in X ms` from the start command's stderr. */

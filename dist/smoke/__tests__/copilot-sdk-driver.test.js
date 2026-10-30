@@ -3,13 +3,16 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { PassThrough } from 'stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseJsonl } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
-import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, satisfiesSdkRange, sandboxCanaryCommand, sandboxCanaryLaunched, } from '../copilot-sdk-driver.js';
+import { collectFiletools, globalModuleRoots, prepareFiletools, importFromDir, resolveShimTarget, runSdkTier, runtimeCreditCap, scenarioPlaceholderDirs, satisfiesSdkRange, sandboxCanaryCommand, sandboxCanaryLaunched, } from '../copilot-sdk-driver.js';
 import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_STATIC_IDS } from '../copilot-sdk-scenarios.js';
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
+import { readCassette } from '../replay/cassette.js';
+import { withCassette } from '../replay/handler.js';
+import { cassetteEnv, platformTag } from '../replay/run.js';
 const FIXTURES = join(__dirname, 'fixtures');
 const fixtureEvents = (name) => parseJsonl(readFileSync(join(FIXTURES, `tier2-${name}-events.jsonl`), 'utf-8')).events;
 const LOG = readFileSync(join(FIXTURES, 'tier2-hooks-debug-excerpt.log'), 'utf-8');
@@ -49,10 +52,12 @@ function scenarioOf(prompt) {
 function fakeSdk(opts = {}) {
     const rec = { ops: [], sessions: [], permissions: [] };
     let n = 0;
+    let clientOptions;
     const sentAt = {};
     class FakeClient {
         cliProcess = opts.pid ? { pid: opts.pid } : null;
         constructor(options) {
+            clientOptions = options;
             rec.clientOptions = options;
             rec.connection = options.connection;
         }
@@ -93,6 +98,14 @@ function fakeSdk(opts = {}) {
                     for (const kind of ['read', 'shell', 'write']) {
                         const decision = await config.onPermissionRequest({ kind, fullCommandText: 'git push --force origin main' }, { sessionId: id });
                         rec.permissions.push({ scenario, kind, decision: decision.kind });
+                    }
+                    // What the runtime does with a cassette client: every model request goes through its request handler.
+                    const handler = clientOptions.requestHandler;
+                    for (let i = 0; handler && i < (opts.requests ?? 1); i++) {
+                        const url = 'https://api.githubcopilot.com/chat/completions';
+                        const messages = [{ role: 'user', content: prompt }, ...Array.from({ length: i }, (_, k) => ({ role: 'user', content: `step ${k + 1}` }))];
+                        const request = new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.model, messages }) });
+                        await (await handler.sendRequest(request, { sessionId: id, transport: 'http', url, headers: {} })).text();
                     }
                     sentAt[scenario] = new Date().toISOString();
                     if (opts.hang?.includes(scenario))
@@ -670,6 +683,58 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
         const result = await runSdkTier(input(fresh.loaded, { scenarios: ['smoke'], bin: bad, platform: 'win32' }));
         expect(byId(result.checks)['sdk.runtime'].detail).toMatch(/is a shell shim whose \.js\/\.exe target could not be resolved; pass --copilot-bin/);
         expect(fresh.rec.ops).toEqual([]);
+    });
+});
+describe('runSdkTier with a cassette (fake SDK, fake upstream)', () => {
+    const answer = { id: 'c1', choices: [{ index: 0, message: { role: 'assistant', content: 'SMOKE_OK' }, finish_reason: 'stop' }] };
+    /** The fake SDK plus a request-handler base whose default "forwards" to a spy (the record upstream). */
+    function cassetteSdk(requests) {
+        const { loaded } = fakeSdk({ requests });
+        const upstream = vi.fn(async () => new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } }));
+        class Base {
+            async sendRequest() { return upstream(); }
+            async openWebSocket() { throw new Error('no ws'); }
+        }
+        loaded.module.CopilotRequestHandler = Base;
+        return { loaded, upstream };
+    }
+    async function runWith(run, requests, scenarios = ['smoke']) {
+        const { loaded, upstream } = cassetteSdk(requests);
+        const base = input(null);
+        const env = cassetteEnv(base.env, run, scenarioPlaceholderDirs(base));
+        const result = await runSdkTier(input(null, { scenarios, model: 'gpt-5-mini', env, cassette: run, loadSdk: async () => withCassette(loaded, env) }));
+        return { result, upstream, check: (id) => result.checks.find((c) => c.id === id) };
+    }
+    it('records a scenario, then replays it free; the replay check fails on a miss and on an unconsumed stream', async () => {
+        const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        const root = join(parent, 'cassettes');
+        const record = { mode: 'record', root, stateRoot: join(parent, 'state-record'), strict: false, overwrite: false };
+        const recorded = await runWith(record, 2);
+        expect(recorded.upstream).toHaveBeenCalledTimes(2);
+        expect(recorded.result.checks.filter((c) => !c.ok)).toEqual([]);
+        expect(recorded.check('scn.smoke.record')?.detail).toMatch(/2 interaction\(s\) in 1 stream\(s\) written to/);
+        expect(write.mock.calls.map((c) => String(c[0])).join('')).toContain(`omg smoke: recording smoke to ${join(root, platformTag(), 'smoke')}`);
+        write.mockRestore();
+        const cassette = readCassette(join(root, platformTag(), 'smoke'));
+        expect(cassette.manifest).toMatchObject({ scenario: 'smoke', model: 'gpt-5-mini', maxCredits: 30 });
+        const replay = (name) => ({ mode: 'replay', root, stateRoot: join(parent, `state-${name}`), strict: false, overwrite: false });
+        const served = await runWith(replay('full'), 2);
+        expect(served.upstream).not.toHaveBeenCalled();
+        expect(served.result.checks.filter((c) => !c.ok)).toEqual([]);
+        expect(served.check('scn.smoke.replay')).toMatchObject({ ok: true, detail: expect.stringMatching(/served all 1 recorded stream\(s\), 0 misses/) });
+        expect(served.result.replay).toEqual({ smoke: { ok: true, misses: 0, drift: 0 } });
+        const extra = await runWith(replay('extra'), 3);
+        expect(extra.upstream).not.toHaveBeenCalled();
+        expect(extra.check('scn.smoke.replay')).toMatchObject({ ok: false, detail: expect.stringMatching(/1 miss\(es\)/), evidence: expect.stringContaining('stream exhausted') });
+        const short = await runWith(replay('short'), 1);
+        expect(short.check('scn.smoke.replay')).toMatchObject({ ok: false, detail: expect.stringMatching(/not fully consumed: s1-root/) });
+    });
+    it('a scenario without a cassette is skipped and fails its replay check, never run live', async () => {
+        const run = { mode: 'replay', root: join(parent, 'empty'), stateRoot: join(parent, 'state-empty'), strict: false, overwrite: false };
+        const { result, upstream, check } = await runWith(run, 1);
+        expect(upstream).not.toHaveBeenCalled();
+        expect(check('scn.smoke.replay')).toEqual({ id: 'scn.smoke.replay', ok: false, detail: `no cassette for ${platformTag()}/smoke` });
+        expect(result.checks.find((c) => c.id === 'scn.smoke.reply')?.detail).toBe(`no cassette for ${platformTag()}/smoke`);
     });
 });
 describe('SDK loading', () => {

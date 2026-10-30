@@ -10,8 +10,9 @@
  * - record: a pass-through tap. Each request is forwarded by the SDK's own
  *   default, the response is teed, redacted (redact.ts) and kept in memory;
  *   `client.stop()` writes the recording through {@link writeCassette}, which
- *   gates it and writes nothing if a secret survived. One part per client,
- *   under `<state>/parts/`; the smoke merges the parts (PR 4).
+ *   gates it and writes nothing if a secret survived. One part per client and scenario,
+ *   under `<state>/parts/` (`<pid>-<n>.failed` when it could not be written);
+ *   the smoke merges them (replay/run.ts).
  * - replay: never forwards. The handler class overrides both SDK hooks without
  *   calling `super` and holds no upstream: every request is answered from the
  *   cassette through {@link ReplayMatcher}, a miss with HTTP 418.
@@ -19,18 +20,20 @@
  * WebSocket transport is refused in both modes (recordings set
  * `COPILOT_CLI_DISABLE_WEBSOCKET_RESPONSES=1`).
  */
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { homedir, hostname, tmpdir, userInfo } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { getRuntimePackageVersion } from '../../lib/version.js';
 import { CASSETTE_ENV, cassetteRuntimeEnv } from '../copilot-session-env.js';
 import { CASSETTE_FORMAT, CASSETTE_VERSION, GLOBAL_STREAM, MANIFEST_FILE, readCassette, writeCassette, } from './cassette.js';
 import { liveKey, MISS_STATUS, ReplayMatcher, StreamPositions } from './matcher.js';
 import { diskDelta, digest, normalize, normalizedDigest, truncateUtf8 } from './normalize.js';
-import { buildDenySet, filterRequestHeaders, REDACTION_RULES_VERSION, Redactor, restorePlaceholders, sseBlocks, sseData, } from './redact.js';
+import { buildDenySet, filterRequestHeaders, PATH_PLACEHOLDERS, REDACTION_RULES_VERSION, Redactor, restorePlaceholders, sseBlocks, sseData, } from './redact.js';
 export const REQUEST_HANDLER_MISSING = 'replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)';
 /** Per-client recordings, `<state>/parts/<pid>-<n>`, merged by the smoke. */
 export const RECORD_PARTS_DIR = 'parts';
+/** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */
+export const RECORD_FAILED_SUFFIX = '.failed';
 export class CassetteConfigError extends Error {
     name = 'CassetteConfigError';
 }
@@ -58,7 +61,38 @@ export function readCassetteConfig(env) {
     if (mode === 'record' && /[\\/]fixtures[\\/]cassettes(?:[\\/]|$)/i.test(resolve(dir))) {
         throw new CassetteConfigError(`refusing to record into the fixtures dir ${dir}; record elsewhere and import`);
     }
-    return { mode, dir: resolve(dir), stateDir: resolve(state), scenario: env[CASSETTE_ENV.scenario] || undefined };
+    const match = env[CASSETTE_ENV.match];
+    if (match && match !== 'strict' && match !== 'tolerant') {
+        throw new CassetteConfigError(`${CASSETTE_ENV.match} must be "strict" or "tolerant", got ${JSON.stringify(match)}`);
+    }
+    const dirs = env[CASSETTE_ENV.dirs];
+    return {
+        mode,
+        dir: resolve(dir),
+        stateDir: resolve(state),
+        scenario: env[CASSETTE_ENV.scenario] || undefined,
+        ...(match ? { matchMode: match } : {}),
+        ...(dirs ? { dirs: parseCassetteDirs(dirs) } : {}),
+    };
+}
+function parseCassetteDirs(raw) {
+    let value;
+    try {
+        value = JSON.parse(raw);
+    }
+    catch {
+        value = null;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw new CassetteConfigError(`${CASSETTE_ENV.dirs} must be a JSON object`);
+    const dirs = {};
+    for (const [key, dir] of Object.entries(value)) {
+        if (!PATH_PLACEHOLDERS.includes(key) || typeof dir !== 'string' || !dir) {
+            throw new CassetteConfigError(`${CASSETTE_ENV.dirs}: ${JSON.stringify(key)} is not a path placeholder with a dir`);
+        }
+        dirs[key] = dir;
+    }
+    return dirs;
 }
 // ---------------------------------------------------------------------------
 // Request analysis (shared by both sides, so digests agree)
@@ -433,10 +467,12 @@ export class CassetteRecorder {
     }
 }
 /** A recording handler: forwards through the SDK's default (`super`), taps the response. */
-export function createRecordingHandler(Base, recorder) {
+export function createRecordingHandler(Base, recorderOf) {
     class RecordingHandler extends Base {
         async sendRequest(request, ctx) {
             const body = request.method === 'GET' || request.method === 'HEAD' ? '' : await request.clone().text();
+            // Resolved per request: a client that runs several scenarios records each into its own state dir.
+            const recorder = typeof recorderOf === 'function' ? recorderOf() : recorderOf;
             const pending = recorder.begin(request.method, body, ctx);
             let response;
             try {
@@ -477,10 +513,14 @@ export class CassetteReplayer {
  * through it; both hooks are overridden without `super`, and nothing in the
  * class can reach an upstream (section 8.1).
  */
-export function createReplayHandler(Base, replayer) {
+export function createReplayHandler(Base, replayerOf) {
     class ReplayHandler extends Base {
         async sendRequest(request, ctx) {
             const body = request.method === 'GET' || request.method === 'HEAD' ? '' : await request.text();
+            const replayer = typeof replayerOf === 'function' ? replayerOf() : replayerOf;
+            // A client with no scenario selected (the smoke's static checks) has no cassette to answer from.
+            if (!replayer)
+                return missResponse('omg replay: cassette miss (no cassette scenario selected for this client)');
             return replayer.respond(request.method, body, ctx);
         }
         async openWebSocket() {
@@ -500,31 +540,49 @@ export function loadReplayCassette(config) {
 }
 const replayers = new Map();
 let recordParts = 0;
+const announced = new Set();
+/** The cassette env is inherited by nested omg runs: say so on stderr whenever a process records. */
+function announceRecording(config) {
+    if (announced.has(config.stateDir))
+        return;
+    announced.add(config.stateDir);
+    process.stderr.write(`omg cassette: RECORD mode (${CASSETTE_ENV.mode}=record) in pid ${process.pid}: Copilot model requests are billed `
+        + `and recorded under ${config.stateDir}; unset ${CASSETTE_ENV.mode} if this is unexpected\n`);
+}
 /**
  * The SDK with a client that records or replays every model request, per the
  * cassette env; `loaded` unchanged when that env is unset. Throws (never a
  * plain client) when the env is invalid, the cassette cannot be read, or the
- * SDK has no `CopilotRequestHandler`.
+ * SDK has no `CopilotRequestHandler`. The returned SDK and its clients carry
+ * the mode as `cassette`.
  */
 export function withCassette(loaded, env = process.env, options = {}) {
-    const config = readCassetteConfig(env);
-    if (!config)
+    const found = readCassetteConfig(env);
+    if (!found)
         return loaded;
+    const config = found;
     const HandlerBase = loaded.module.CopilotRequestHandler;
-    const { mode, stateDir, scenario } = config;
+    const { mode } = config;
     if (typeof HandlerBase !== 'function')
         throw new CassetteConfigError(REQUEST_HANDLER_MISSING);
     const Base = HandlerBase;
-    const dirs = { TMP: tmpdir(), USERHOME: homedir(), ...options.dirs };
-    let replayer = null;
-    if (mode === 'replay') {
-        const key = JSON.stringify([config.dir, stateDir, scenario, options.matchMode, dirs]);
-        replayer = replayers.get(key) ?? new CassetteReplayer(loadReplayCassette(config), stateDir, options.matchMode ?? 'tolerant', dirs);
+    const dirs = { TMP: tmpdir(), USERHOME: homedir(), ...config.dirs, ...options.dirs };
+    const matchMode = options.matchMode ?? config.matchMode ?? 'tolerant';
+    if (mode === 'record')
+        announceRecording(config);
+    const replayerFor = (scenario, stateDir) => {
+        // Without a scenario only a dir that is itself a cassette can answer.
+        if (!scenario && !existsSync(join(config.dir, MANIFEST_FILE)))
+            return null;
+        const key = JSON.stringify([config.dir, stateDir, scenario, matchMode, dirs]);
+        const replayer = replayers.get(key) ?? new CassetteReplayer(loadReplayCassette({ ...config, scenario, stateDir }), stateDir, matchMode, dirs);
         replayers.set(key, replayer);
-    }
-    const replaying = replayer;
+        return replayer;
+    };
+    // Up front: a cassette that cannot be read fails the SDK load, not a request.
+    const initialReplayer = mode === 'replay' ? replayerFor(config.scenario, config.stateDir) : null;
     const Client = loaded.module.CopilotClient;
-    const newRecorder = () => new CassetteRecorder({
+    const newRecorder = (scenario, stateDir) => new CassetteRecorder({
         stateDir,
         scenario,
         sdkVersion: loaded.version,
@@ -532,19 +590,44 @@ export function withCassette(loaded, env = process.env, options = {}) {
         identity: { user: userInfo().username, host: hostname() },
     });
     class CassetteClient extends Client {
+        cassette = mode;
+        cassetteSlot;
         constructor(opts) {
-            const recorder = replaying ? null : newRecorder();
-            const requestHandler = recorder ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, replaying);
-            super({ ...opts, requestHandler, ...(replaying ? { useLoggedInUser: false } : {}) });
-            if (recorder) {
+            const slot = { scenario: config.scenario, stateDir: config.stateDir, replayer: initialReplayer };
+            // One recorder per scenario state dir, created on the scenario's first request.
+            const recorders = new Map();
+            const recorder = () => {
+                const existing = recorders.get(slot.stateDir);
+                if (existing)
+                    return existing;
+                const created = newRecorder(slot.scenario, slot.stateDir);
+                recorders.set(slot.stateDir, created);
+                return created;
+            };
+            const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, () => slot.replayer);
+            super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false } : {}) });
+            this.cassetteSlot = slot;
+            if (mode === 'record') {
                 const stop = this.stop.bind(this);
                 this.stop = async () => {
                     const errors = await stop();
-                    try {
-                        await recorder.finish(join(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`));
-                    }
-                    catch (err) {
-                        errors.push(err instanceof Error ? err : new Error(String(err)));
+                    const finished = [...recorders];
+                    recorders.clear();
+                    for (const [stateDir, rec] of finished) {
+                        const part = join(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+                        try {
+                            await rec.finish(part);
+                        }
+                        catch (err) {
+                            const error = err instanceof Error ? err : new Error(String(err));
+                            errors.push(error);
+                            // Callers discard stop()'s errors: the marker makes the smoke's merge refuse instead of missing a part silently.
+                            try {
+                                mkdirSync(dirname(part), { recursive: true });
+                                writeFileSync(`${part}${RECORD_FAILED_SUFFIX}`, `${error.message}\n`);
+                            }
+                            catch { /* the error is still returned */ }
+                        }
                     }
                     return errors;
                 };
@@ -561,6 +644,12 @@ export function withCassette(loaded, env = process.env, options = {}) {
                 };
             }
         }
+        setCassetteScenario(scenario, stateDir) {
+            const slot = this.cassetteSlot;
+            const dir = resolve(stateDir);
+            const replayer = mode === 'replay' ? replayerFor(scenario, dir) : null;
+            Object.assign(slot, { scenario, stateDir: dir, replayer });
+        }
     }
     const Connection = loaded.module.RuntimeConnection;
     const RuntimeConnection = Object.assign(Object.create(Connection), {
@@ -568,6 +657,7 @@ export function withCassette(loaded, env = process.env, options = {}) {
     });
     return {
         ...loaded,
+        cassette: mode,
         module: { ...loaded.module, CopilotClient: CassetteClient, RuntimeConnection },
     };
 }

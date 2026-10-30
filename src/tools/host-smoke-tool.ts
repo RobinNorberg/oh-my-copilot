@@ -11,13 +11,15 @@
  * - `pluginRoot` must be the package root this server runs from (compared by
  *   realpath) unless OMC_SMOKE_ALLOW_ANY_ROOT=1;
  * - tier 1 (a live, billed session) and tier 2 with any scenario need
- *   OMC_SMOKE_ALLOW_LIVE=1; tier 2 with `scenarios: []` is free and ungated.
+ *   OMC_SMOKE_ALLOW_LIVE=1; tier 2 with `scenarios: []` is free and ungated, and so is
+ *   tier 2 with `replay` (every model request answered from recorded cassettes, no
+ *   credentials). Recording is CLI-only (`omg smoke copilot --record`).
  *
  * The smoke library is loaded lazily so listing tools never pays its import cost.
  */
 
 import { realpathSync } from 'fs';
-import { resolve } from 'path';
+import { join, resolve, sep } from 'path';
 import { z } from 'zod';
 import { TOOL_CATEGORIES } from '../constants/names.js';
 import type { ToolDefinition } from './types.js';
@@ -78,6 +80,14 @@ const hostSmokeSchema = {
     .boolean()
     .optional()
     .describe('Tier 1 only: ask for one delegation to oh-my-copilot:architect to exercise subagent.selected.'),
+  replay: z
+    .string()
+    .optional()
+    .describe('Tier 2 only: replay the scenarios from recorded cassettes under this dir (<dir>/<platform>-<arch>/<scenario>/). Free and credential-free, so OMC_SMOKE_ALLOW_LIVE is not needed; pins the recorded model; copilot -p scenarios (chain, continuation, prompt-context, events, ultragoal) are refused.'),
+  replayStrict: z
+    .boolean()
+    .optional()
+    .describe('With replay: a drifted request misses instead of being served.'),
 };
 
 function canonical(p: string): string {
@@ -111,7 +121,8 @@ export const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema> = {
         ? undefined
         : [...new Set(args.scenarios.flatMap((s) => (s === 'all' ? [...SCENARIO_NAMES] : [s])))];
       // Tier 2 without `scenarios` runs the library default (smoke, guardrail): live.
-      const live = tier === 1 || (tier === 2 && (scenarios === undefined || scenarios.length > 0));
+      // A replay answers every model request from the cassette, credential-free: it is not live.
+      const live = args.replay === undefined && (tier === 1 || (tier === 2 && (scenarios === undefined || scenarios.length > 0)));
       if (live && process.env[SMOKE_ALLOW_LIVE_ENV] !== '1') {
         return errorResult(
           `host_smoke: tier ${tier}${tier === 2 ? ' with scenarios' : ''} runs live, billed Copilot sessions and is disabled for MCP callers. `
@@ -129,6 +140,18 @@ export const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema> = {
           );
         }
       }
+      // A cassette's tool calls run for real, so an ungated replay may only use the package's own reviewed fixtures.
+      if (args.replay !== undefined && process.env[SMOKE_ALLOW_LIVE_ENV] !== '1') {
+        const packageRoot = resolvePackageRoot();
+        const fixtures = packageRoot ? canonical(join(packageRoot, 'src', 'smoke', '__tests__', 'fixtures', 'cassettes')) : null;
+        const replayDir = canonical(args.replay);
+        if (!fixtures || (replayDir !== fixtures && !replayDir.startsWith(fixtures + sep))) {
+          return errorResult(
+            `host_smoke: replay ${JSON.stringify(args.replay)} is outside this package's cassette fixtures (${fixtures ?? 'unresolved'}). `
+            + `Set ${SMOKE_ALLOW_LIVE_ENV}=1 to replay other cassettes.`,
+          );
+        }
+      }
       const opts = {
         tier,
         ...(args.pluginRoot !== undefined ? { pluginRoot: args.pluginRoot } : {}),
@@ -138,6 +161,8 @@ export const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema> = {
         ...(args.keepHome !== undefined ? { keepHome: args.keepHome } : {}),
         ...(args.delegate !== undefined ? { delegate: args.delegate } : {}),
         ...(scenarios !== undefined ? { scenarios } : {}),
+        ...(args.replay !== undefined ? { replay: args.replay } : {}),
+        ...(args.replayStrict !== undefined ? { replayStrict: args.replayStrict } : {}),
       };
       const report = await runCopilotSmoke(opts);
       return {

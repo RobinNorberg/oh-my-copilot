@@ -20,13 +20,15 @@ import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { parseCopilotVersion, resolveCopilotBinary } from './copilot-binary.js';
 import { EVIDENCE_MAX, evaluateAdapterErrors, evaluateEventsLog, evaluateHooks, evaluateMcpLoaded, evaluatePluginsLoaded, evaluateSessionExit, evaluateStateWritten, evaluateSubagent, excerpt, parseJsonl, REQUIRED_HOOK_TYPES, TOOL_HOOK_TYPES, } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup } from './process-utils.js';
-import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier } from './copilot-sdk-driver.js';
+import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, scenarioPlaceholderDirs } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
 import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
 import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
-import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO } from './copilot-sdk-scenarios.js';
+import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, NO_CASSETTE_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO } from './copilot-sdk-scenarios.js';
+import { readCassetteConfig } from './replay/handler.js';
+import { cassetteEnv, recordTargetRefusal, replayModel } from './replay/run.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, } from './copilot-session-env.js';
 export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
@@ -516,6 +518,75 @@ export function liveRunRefusal(tier, scenarios, deps, env = process.env) {
     }
     return LIVE_RUN_REFUSED_DETAIL;
 }
+/**
+ * Why the `record`/`replay` options are refused, or null (design sections 2,
+ * 6 and 8.5): both at once; a flag without its mode; outside tier 2 or with
+ * no scenario; a `copilot -p` scenario (no request handler to record or
+ * replay through); recording under CI or without a pinned model.
+ */
+export function cassetteOptionsError(opts, env = process.env) {
+    const { record, replay } = opts;
+    if (opts.recordOverwrite && record === undefined)
+        return '--record-overwrite needs --record';
+    if (opts.replayStrict && replay === undefined)
+        return '--replay-strict needs --replay';
+    if (record === undefined && replay === undefined)
+        return null;
+    if (record !== undefined && replay !== undefined)
+        return '--record and --replay cannot be combined';
+    const mode = record !== undefined ? 'record' : 'replay';
+    if (!(record ?? replay)?.trim())
+        return `--${mode} needs a directory`;
+    if (opts.tier !== 2)
+        return `--${mode} needs --tier 2 (tier 1 runs copilot -p, which has no replay seam)`;
+    const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
+    if (scenarios.length === 0)
+        return `--${mode} needs at least one scenario (--sdk-static makes no model call)`;
+    const noSeam = scenarios.filter((s) => NO_CASSETTE_SCENARIOS.includes(s));
+    if (noSeam.length > 0)
+        return `${mode}: scenario ${noSeam.join(', ')} runs copilot -p, which has no replay seam`;
+    if (record !== undefined && env.CI && env.CI !== 'false')
+        return 'recording a cassette is refused under CI';
+    if (record !== undefined && !opts.model)
+        return '--record needs --model <id>: a cassette is replayed on the model it was recorded with';
+    return null;
+}
+/**
+ * The run's cassette settings, checked before anything is spent: the env
+ * itself (mode, a record dir outside the fixtures), no cassette that would be
+ * overwritten, and for replay the model every selected cassette pins (it
+ * becomes the run's model; a different --model is refused).
+ */
+function prepareCassetteRun(opts, env) {
+    const refusal = cassetteOptionsError(opts, env);
+    if (refusal)
+        throw new Error(refusal);
+    if (opts.record === undefined && opts.replay === undefined)
+        return undefined;
+    const run = {
+        mode: opts.record !== undefined ? 'record' : 'replay',
+        root: resolve((opts.record ?? opts.replay)),
+        // Replaced by the per-run temp dir in runTier2; the checks below do not touch state.
+        stateRoot: '',
+        strict: !!opts.replayStrict,
+        overwrite: !!opts.recordOverwrite,
+    };
+    readCassetteConfig(cassetteEnv(env, { ...run, stateRoot: tmpdir() }, {}));
+    const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
+    if (run.mode === 'record') {
+        const taken = scenarios.map((s) => recordTargetRefusal(run, s)).filter((r) => r !== null);
+        if (taken.length > 0)
+            throw new Error(taken.join('\n'));
+    }
+    else {
+        const model = replayModel(run, scenarios);
+        if (opts.model && model && opts.model !== model)
+            throw new Error(`--model ${opts.model} differs from the cassettes' recorded model ${model}; replay pins the recorded one (drop --model)`);
+        if (model)
+            opts.model = model;
+    }
+    return run;
+}
 export async function runCopilotSmoke(input = {}) {
     const started = Date.now();
     const env = input.env ?? process.env;
@@ -528,6 +599,7 @@ export async function runCopilotSmoke(input = {}) {
     const unknown = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
     if (unknown.length)
         throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${KNOWN_SCENARIOS.join(', ')})`);
+    const cassette = prepareCassetteRun(opts, env);
     const refusal = liveRunRefusal(tier, opts.scenarios, deps);
     if (refusal) {
         return {
@@ -549,6 +621,7 @@ export async function runCopilotSmoke(input = {}) {
         spawnSyncFn: deps.spawnSync ?? spawnSync,
         deps,
         timeoutMs: tier === 0 ? (opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS) : DEFAULT_TIER0_TIMEOUT_MS,
+        ...(cassette ? { cassette } : {}),
     };
     const checks = [];
     const artifacts = {};
@@ -639,6 +712,7 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
         ...(skipped ? { skipped } : {}),
         ...(tier2?.sdk ? { sdk: tier2.sdk } : {}),
         ...(tier2?.cost ? { cost: tier2.cost } : {}),
+        ...(tier2?.replay ? { replay: tier2.replay } : {}),
     };
 }
 // ---------------------------------------------------------------------------
@@ -656,10 +730,15 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     cleanup.push(parent);
     const home = join(parent, 'home');
     const projectDir = join(parent, 'project');
+    const remoteDir = join(parent, 'remote.git');
     mkdirSync(home);
     artifacts.copilotHome = home;
-    const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
-    const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
+    const run = ctx.cassette ? { ...ctx.cassette, stateRoot: join(parent, 'cassette-state') } : undefined;
+    // Replay copies no login into the home (design section 8.2): nothing outside the cassette can authenticate.
+    const identity = run?.mode === 'replay' ? {} : loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
+    // The cassette env goes in before buildSessionEnv, which drops every credential in replay.
+    const base = run ? cassetteEnv(ctx.env, run, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
+    const env = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
     env.OMC_GIT_GUARDRAILS = '1';
     writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
     let agentFiles = [];
@@ -674,14 +753,14 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         packageVersion,
         home,
         projectDir,
-        remoteDir: join(parent, 'remote.git'),
+        remoteDir,
         env,
         scenarios,
         model: opts.model,
         timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
         maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
         keepHome: !!opts.keepHome,
-        loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
+        loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
         loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
         spawnSync: ctx.spawnSyncFn,
         skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
@@ -692,6 +771,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         runCli: ctx.deps.runCli ?? runCliScenario,
         runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
         runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+        ...(run ? { cassette: run } : {}),
     });
     if (Object.keys(result.events).length)
         artifacts.events = result.events;
