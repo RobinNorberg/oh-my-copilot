@@ -109,6 +109,23 @@ describe('enumerateFrontier — body Type line', () => {
         expect(frontier.auto.map((t) => t.number)).toEqual([100, 102, 104]);
         expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[101, 'prototype']]);
     });
+    it('ignores Object.prototype keys as body types', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(120, 'Type: constructor\n\nq', native),
+            child(121, 'Type: __proto__\n\nq', native),
+            child(122, 'Type: toString\n\nq', native),
+        ]);
+        expect(frontier.auto).toEqual([]);
+        expect(frontier.human.map((t) => t.number)).toEqual([120, 121, 122]);
+    });
+    it('trusts a native parent only when its repo matches the map repo', () => {
+        const records = [
+            ticket({ number: 130, nativeParent: MAP, nativeParentRepo: 'o/r', labels: ['wayfinder:research'] }),
+            ticket({ number: 131, nativeParent: MAP, nativeParentRepo: 'o/other', labels: ['wayfinder:research'] }),
+            ticket({ number: 132, nativeParent: MAP, nativeParentRepo: null, labels: ['wayfinder:research'] }),
+        ];
+        expect(enumerateFrontier(MAP, records, 'O/R').auto.map((t) => t.number)).toEqual([130]);
+    });
     it('never lets an untrusted body type grant auto on a label-free ticket', () => {
         const frontier = enumerateFrontier(MAP, [
             child(110, 'Type: research\n\nq'),

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "33f0b56ad6de21189b116fa6e70d07749bdbd47c",
-    "sourceSha256": "15eb85e75c2e755ac463dd6faf2f73b99b91613e0fa47a926652470a62a62172",
+    "head": "7ee0325ec6cda6e2b6ee02a91a1aa89848e8f3ca",
+    "sourceSha256": "40fa225f1d06fcdb8b2b60f4f0ac11ad32fdc72f59c94ee3fa9bc86786e02972",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "33f0b56ad6de21189b116fa6e70d07749bdbd47c",
-  "sourceSha256": "15eb85e75c2e755ac463dd6faf2f73b99b91613e0fa47a926652470a62a62172",
+  "head": "7ee0325ec6cda6e2b6ee02a91a1aa89848e8f3ca",
+  "sourceSha256": "40fa225f1d06fcdb8b2b60f4f0ac11ad32fdc72f59c94ee3fa9bc86786e02972",
   "counts": {
     "public": {
       "skills": 63,
@@ -37,14 +37,14 @@
       "total": 7073
     },
     "prompt": {
-      "promptLikeFiles": 65
+      "promptLikeFiles": 64
     },
     "skills": 63,
     "commands": 21,
     "hookFiles": 346,
     "workflows": 9,
     "agentDefinitions": 18,
-    "promptLikeFiles": 65
+    "promptLikeFiles": 64
   },
   "public": {
     "skills": [
@@ -762,7 +762,6 @@
       "templates/hooks/workflow-drift-guard.mjs"
     ],
     "promptSources": [
-      ".clawhip/state/prompt-submit.json",
       ".github/CLAUDE.md",
       "CLAUDE.md",
       "benchmarks/code-reviewer/prompts/quality-reviewer.md",
@@ -8419,7 +8418,6 @@
       ".github/workflows/upstream-drift.yml"
     ],
     "promptSources": [
-      ".clawhip/state/prompt-submit.json",
       ".github/CLAUDE.md",
       "CLAUDE.md",
       "benchmarks/code-reviewer/prompts/quality-reviewer.md",
@@ -8660,14 +8658,9 @@
         "path": ".claude-plugin/plugin.json"
       },
       {
-        "id": ".clawhip/project.json",
+        "id": ".claude/settings.local.json",
         "kind": "other",
-        "path": ".clawhip/project.json"
-      },
-      {
-        "id": ".clawhip/state/prompt-submit.json",
-        "kind": "prompt",
-        "path": ".clawhip/state/prompt-submit.json"
+        "path": ".claude/settings.local.json"
       },
       {
         "id": ".codex",
@@ -8883,26 +8876,6 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
-      },
-      {
-        "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
-        "kind": "other",
-        "path": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md"
-      },
-      {
-        "id": ".omx/plans/source-overall-cleanup/first-safe-cleanup-batch.md",
-        "kind": "other",
-        "path": ".omx/plans/source-overall-cleanup/first-safe-cleanup-batch.md"
-      },
-      {
-        "id": ".omx/plans/source-overall-cleanup/generated-artifact-policy.md",
-        "kind": "other",
-        "path": ".omx/plans/source-overall-cleanup/generated-artifact-policy.md"
-      },
-      {
-        "id": ".omx/plans/source-overall-cleanup/ownership-matrix.md",
-        "kind": "other",
-        "path": ".omx/plans/source-overall-cleanup/ownership-matrix.md"
       },
       {
         "id": "AGENTS.md",
@@ -45600,6 +45573,11 @@
         "path": "node:timers"
       },
       {
+        "id": "external:node:tty",
+        "kind": "external",
+        "path": "node:tty"
+      },
+      {
         "id": "external:node:url",
         "kind": "external",
         "path": "node:url"
@@ -57509,6 +57487,666 @@
       {
         "from": "bin/oh-my-copilot.js",
         "to": "bridge/cli.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/claude-md-coordinator.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/claude-md-coordinator.cjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/claude-md-coordinator.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/claude-md-coordinator.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:@ast-grep/napi",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:better-sqlite3",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:http",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:https",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:jsonc-parser",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:net",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:tty",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:perf_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:readline",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:readline/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:tls",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/cli.cjs",
+        "to": "external:util",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:@ast-grep/napi",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:http",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:net",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:readline",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:readline/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/mcp-server.cjs",
+        "to": "external:util",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:node:zlib",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:perf_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/runtime-cli.cjs",
+        "to": "external:util",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:node:string_decoder",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-bridge.cjs",
+        "to": "external:util",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team-mcp.cjs",
+        "to": "external:util",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:perf_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "bridge/team.js",
+        "to": "external:util",
         "kind": "imports"
       },
       {
@@ -114463,12 +115101,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9714,
-      "edgeCount": 11448,
-      "importEdgeCount": 9420,
+      "nodeCount": 9710,
+      "edgeCount": 11580,
+      "importEdgeCount": 9552,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "7d51b686bf3ef52a3146f666685664e4fee393808edae598819e5f50848b3d0c",
-  "manifestSha256": "f7bf7777098e977a4d62f8de61cea005bb3aaeaf3aaeec582b794e5dcae6489d"
+  "inventorySha256": "9f934bb7d83c93cecea6d0d252996794b22eb342db7a86fd76086aa190aa7524",
+  "manifestSha256": "6d697623717587a9db460192a5be8f53bcfc55f6bc0c77ac88130eed5983c61d"
 }

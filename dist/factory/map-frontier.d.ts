@@ -41,6 +41,8 @@ export interface TicketRecord {
     title?: string;
     /** Native parent issue number, when the tracker relation is set. */
     nativeParent?: number | null;
+    /** `owner/name` of the native parent, when the tracker read carried it. */
+    nativeParentRepo?: string | null;
     /** Native blocker issue numbers, when the tracker relation is set. */
     nativeBlockedBy?: number[];
 }
@@ -74,5 +76,5 @@ export declare function gateClassFor(type: WayfinderTicketType, labels: string[]
  * blocker whose state is unknown counts as OPEN (safe: blocked pending
  * verification).
  */
-export declare function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[]): Frontier;
+export declare function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[], mapRepo?: string): Frontier;
 //# sourceMappingURL=map-frontier.d.ts.map

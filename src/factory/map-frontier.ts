@@ -44,6 +44,8 @@ export interface TicketRecord {
   title?: string;
   /** Native parent issue number, when the tracker relation is set. */
   nativeParent?: number | null;
+  /** `owner/name` of the native parent, when the tracker read carried it. */
+  nativeParentRepo?: string | null;
   /** Native blocker issue numbers, when the tracker relation is set. */
   nativeBlockedBy?: number[];
 }
@@ -152,13 +154,17 @@ function stricter(a: WayfinderTicketType, b: WayfinderTicketType, labels: string
  * loft is the navigator's name for prototype. Fenced code and quoted lines are
  * skipped; disagreeing Type lines resolve to the most restrictive.
  */
+function bodyTypeFor(key: string): WayfinderTicketType | undefined {
+  return Object.hasOwn(BODY_TYPES, key) ? BODY_TYPES[key] : undefined;
+}
+
 function bodyType(body: string, labels: string[]): WayfinderTicketType | null {
   let found: WayfinderTicketType | null = null;
   let fenced = false;
   for (const line of body.split(/\r?\n/)) {
     if (FENCE.test(line)) { fenced = !fenced; continue; }
     if (fenced || /^\s*>/.test(line)) continue;
-    const type = BODY_TYPES[TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? ''];
+    const type = bodyTypeFor(TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? '');
     if (type) found = found ? stricter(found, type, labels) : type;
   }
   return found;
@@ -207,12 +213,16 @@ export function gateClassFor(type: WayfinderTicketType, labels: string[]): GateC
  * blocker whose state is unknown counts as OPEN (safe: blocked pending
  * verification).
  */
-export function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[]): Frontier {
+export function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[], mapRepo?: string): Frontier {
+  // With a known map repo, a native parent counts only when its repo was read and matches.
+  const nativeChild = (record: TicketRecord): boolean =>
+    record.nativeParent === mapNumber &&
+    (mapRepo === undefined || record.nativeParentRepo?.toLowerCase() === mapRepo.toLowerCase());
   const stateByNumber = new Map<number, TicketState>();
   for (const record of records) stateByNumber.set(record.number, record.state);
 
   const children = records.filter(
-    (record) => record.nativeParent === mapNumber || bodyParentRefs(record.body).includes(mapNumber),
+    (record) => nativeChild(record) || bodyParentRefs(record.body).includes(mapNumber),
   );
 
   const malformedEdges: number[] = [];
@@ -228,7 +238,7 @@ export function enumerateFrontier(mapNumber: number, records: readonly TicketRec
     const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? 'OPEN') !== 'CLOSED');
     if (blocked) continue;
 
-    const type = ticketType(record.labels, record.body, record.nativeParent === mapNumber);
+    const type = ticketType(record.labels, record.body, nativeChild(record));
     const ticket: FrontierTicket = {
       number: record.number,
       type,

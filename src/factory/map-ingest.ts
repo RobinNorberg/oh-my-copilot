@@ -48,8 +48,21 @@ interface GhIssueView {
   labels?: Array<{ name?: string } | string>;
   assignees?: unknown[];
   body?: string;
-  parent?: { number?: number } | null;
+  parent?: {
+    number?: number;
+    url?: string;
+    repository?: { nameWithOwner?: string; name?: string; owner?: { login?: string } | string } | null;
+  } | null;
   blockedBy?: { nodes?: Array<{ number?: number; state?: string }> } | null;
+}
+
+function parentRepo(parent: GhIssueView['parent']): string | null {
+  const repository = parent?.repository;
+  if (repository?.nameWithOwner) return repository.nameWithOwner;
+  const owner = typeof repository?.owner === 'string' ? repository.owner : repository?.owner?.login;
+  if (owner && repository?.name) return `${owner}/${repository.name}`;
+  const fromUrl = /github\.com\/([^/\s]+)\/([^/\s]+)\/issues\//.exec(parent?.url ?? '');
+  return fromUrl ? `${fromUrl[1]}/${fromUrl[2]}` : null;
 }
 
 function normalizeView(view: GhIssueView): TicketRecord {
@@ -61,6 +74,7 @@ function normalizeView(view: GhIssueView): TicketRecord {
     assignees: view.assignees?.length ?? 0,
     body: view.body ?? '',
     nativeParent: view.parent?.number ?? null,
+    nativeParentRepo: parentRepo(view.parent),
     nativeBlockedBy: (view.blockedBy?.nodes ?? []).map((node) => node.number).filter((n): n is number => typeof n === 'number'),
   };
 }
@@ -140,7 +154,7 @@ export interface MapPlan {
 
 /** The plan a dry run prints and a real run acts on: the enumerator's verdict, classified. */
 export function planFromMap(ref: MapRef, records: readonly TicketRecord[]): MapPlan {
-  const frontier = enumerateFrontier(ref.number, records);
+  const frontier = enumerateFrontier(ref.number, records, ref.repo);
   const classify = (ticket: FrontierTicket): PlannedTicket => ({
     number: ticket.number,
     gateClass: ticket.gateClass,

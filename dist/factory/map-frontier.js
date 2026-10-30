@@ -98,6 +98,9 @@ function stricter(a, b, labels) {
  * loft is the navigator's name for prototype. Fenced code and quoted lines are
  * skipped; disagreeing Type lines resolve to the most restrictive.
  */
+function bodyTypeFor(key) {
+    return Object.hasOwn(BODY_TYPES, key) ? BODY_TYPES[key] : undefined;
+}
 function bodyType(body, labels) {
     let found = null;
     let fenced = false;
@@ -108,7 +111,7 @@ function bodyType(body, labels) {
         }
         if (fenced || /^\s*>/.test(line))
             continue;
-        const type = BODY_TYPES[TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? ''];
+        const type = bodyTypeFor(TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? '');
         if (type)
             found = found ? stricter(found, type, labels) : type;
     }
@@ -158,11 +161,14 @@ export function gateClassFor(type, labels) {
  * blocker whose state is unknown counts as OPEN (safe: blocked pending
  * verification).
  */
-export function enumerateFrontier(mapNumber, records) {
+export function enumerateFrontier(mapNumber, records, mapRepo) {
+    // With a known map repo, a native parent counts only when its repo was read and matches.
+    const nativeChild = (record) => record.nativeParent === mapNumber &&
+        (mapRepo === undefined || record.nativeParentRepo?.toLowerCase() === mapRepo.toLowerCase());
     const stateByNumber = new Map();
     for (const record of records)
         stateByNumber.set(record.number, record.state);
-    const children = records.filter((record) => record.nativeParent === mapNumber || bodyParentRefs(record.body).includes(mapNumber));
+    const children = records.filter((record) => nativeChild(record) || bodyParentRefs(record.body).includes(mapNumber));
     const malformedEdges = [];
     const auto = [];
     const human = [];
@@ -176,7 +182,7 @@ export function enumerateFrontier(mapNumber, records) {
         const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? 'OPEN') !== 'CLOSED');
         if (blocked)
             continue;
-        const type = ticketType(record.labels, record.body, record.nativeParent === mapNumber);
+        const type = ticketType(record.labels, record.body, nativeChild(record));
         const ticket = {
             number: record.number,
             type,

@@ -152450,6 +152450,9 @@ var FENCE = /^[^\S\r\n]*(?:```|~~~)/;
 function stricter(a, b, labels) {
   return gateClassFor(a, labels) === "auto" && gateClassFor(b, labels) === "human" ? b : a;
 }
+function bodyTypeFor(key) {
+  return Object.hasOwn(BODY_TYPES, key) ? BODY_TYPES[key] : void 0;
+}
 function bodyType(body, labels) {
   let found = null;
   let fenced2 = false;
@@ -152459,7 +152462,7 @@ function bodyType(body, labels) {
       continue;
     }
     if (fenced2 || /^\s*>/.test(line)) continue;
-    const type = BODY_TYPES[TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? ""];
+    const type = bodyTypeFor(TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? "");
     if (type) found = found ? stricter(found, type, labels) : type;
   }
   return found;
@@ -152494,11 +152497,12 @@ function gateClassFor(type, labels) {
   if (type === "task") return labels.includes(WAYFINDER_TASK_AFK_LABEL) ? "auto" : "human";
   return "human";
 }
-function enumerateFrontier(mapNumber, records2) {
+function enumerateFrontier(mapNumber, records2, mapRepo) {
+  const nativeChild = (record3) => record3.nativeParent === mapNumber && (mapRepo === void 0 || record3.nativeParentRepo?.toLowerCase() === mapRepo.toLowerCase());
   const stateByNumber = /* @__PURE__ */ new Map();
   for (const record3 of records2) stateByNumber.set(record3.number, record3.state);
   const children = records2.filter(
-    (record3) => record3.nativeParent === mapNumber || bodyParentRefs(record3.body).includes(mapNumber)
+    (record3) => nativeChild(record3) || bodyParentRefs(record3.body).includes(mapNumber)
   );
   const malformedEdges = [];
   const auto = [];
@@ -152510,7 +152514,7 @@ function enumerateFrontier(mapNumber, records2) {
     const blockers = [...record3.nativeBlockedBy ?? [], ...parsed2.blockers];
     const blocked2 = blockers.some((blocker) => (stateByNumber.get(blocker) ?? "OPEN") !== "CLOSED");
     if (blocked2) continue;
-    const type = ticketType(record3.labels, record3.body, record3.nativeParent === mapNumber);
+    const type = ticketType(record3.labels, record3.body, nativeChild(record3));
     const ticket = {
       number: record3.number,
       type,
@@ -152544,6 +152548,14 @@ function parseMapRef(raw, fallbackRepo) {
   if (!repo) return null;
   return { repo, number: Number(match[3]) };
 }
+function parentRepo(parent) {
+  const repository = parent?.repository;
+  if (repository?.nameWithOwner) return repository.nameWithOwner;
+  const owner = typeof repository?.owner === "string" ? repository.owner : repository?.owner?.login;
+  if (owner && repository?.name) return `${owner}/${repository.name}`;
+  const fromUrl = /github\.com\/([^/\s]+)\/([^/\s]+)\/issues\//.exec(parent?.url ?? "");
+  return fromUrl ? `${fromUrl[1]}/${fromUrl[2]}` : null;
+}
 function normalizeView(view) {
   const labels = (view.labels ?? []).map((label2) => typeof label2 === "string" ? label2 : label2.name ?? "").filter(Boolean);
   return {
@@ -152553,6 +152565,7 @@ function normalizeView(view) {
     assignees: view.assignees?.length ?? 0,
     body: view.body ?? "",
     nativeParent: view.parent?.number ?? null,
+    nativeParentRepo: parentRepo(view.parent),
     nativeBlockedBy: (view.blockedBy?.nodes ?? []).map((node) => node.number).filter((n) => typeof n === "number")
   };
 }
@@ -152600,7 +152613,7 @@ function safeJson(text4, fallback) {
   }
 }
 function planFromMap(ref, records2) {
-  const frontier = enumerateFrontier(ref.number, records2);
+  const frontier = enumerateFrontier(ref.number, records2, ref.repo);
   const classify = (ticket) => ({
     number: ticket.number,
     gateClass: ticket.gateClass,
