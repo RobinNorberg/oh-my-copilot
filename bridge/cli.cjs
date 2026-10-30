@@ -95291,7 +95291,13 @@ function buildSandboxConfig(profile, ctx, host) {
       return p;
     }
   };
-  const tools = (ctx.toolPaths ?? []).filter((p) => P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform)));
+  const tools = [...ctx.toolPaths ?? [], ...ctx.extraReadonly ?? []].filter((p) => {
+    try {
+      return P.dirname(P.resolve(real2(p))) !== P.resolve(real2(p)) && ![ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform));
+    } catch {
+      return false;
+    }
+  });
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path26.dirname)(relocated.GIT_CONFIG_GLOBAL);
@@ -95479,6 +95485,54 @@ function unconfirmedMode(profile, settings) {
   if (profile === "review") return settings.reviewUnsandboxed === "refuse" ? "refused" : "read-only-no-shell";
   return settings.writeUnsandboxed === "detect-only" ? "detect-only" : "refused";
 }
+function proxyCaEnv(env2, platform, realHome) {
+  const P = platform === "win32" ? import_node_path26.win32 : import_node_path26.posix;
+  const caPaths = [];
+  const notes = [];
+  const entries = [
+    ...["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"].map((name) => ({ name, value: envValue(env2, name), dir: false })),
+    ...(envValue(env2, "SSL_CERT_DIR") ?? "").split(P.delimiter).map((value) => ({ name: "SSL_CERT_DIR", value, dir: true }))
+  ];
+  for (const { name, value, dir } of entries) {
+    if (!value || !P.isAbsolute(value)) continue;
+    let real2;
+    let isDir;
+    try {
+      real2 = import_node_fs21.realpathSync.native(value);
+      isDir = (0, import_node_fs21.statSync)(real2).isDirectory();
+    } catch (err) {
+      notes.push(`sandbox: ${name} ${value} does not resolve (${err.code ?? "error"}); it is not granted to the lane.`);
+      continue;
+    }
+    if (isDir !== dir) {
+      notes.push(`sandbox: ${name} ${value} is not a ${dir ? "directory" : "file"}; it is not granted to the lane.`);
+      continue;
+    }
+    let tooBroad = true;
+    try {
+      tooBroad = dir && (P.dirname(real2) === real2 || isUnderRoot(realHome, real2, platform));
+    } catch {
+    }
+    if (tooBroad) {
+      notes.push(`sandbox: ${name} ${value} is a filesystem root or holds the home; it is not granted to the lane.`);
+      continue;
+    }
+    caPaths.push(real2);
+  }
+  for (const name of ["HTTPS_PROXY", "HTTP_PROXY"]) {
+    const value = envValue(env2, name);
+    let userinfo = false;
+    try {
+      if (value) {
+        const u = new URL(value);
+        userinfo = u.username !== "" || u.password !== "";
+      }
+    } catch {
+    }
+    if (userinfo) notes.push(`sandbox: ${name} carries credentials; the lane shell inherits it. With writeNetwork "none" the shell cannot use it.`);
+  }
+  return { caPaths, notes };
+}
 function missingSandboxEnv(env2, platform) {
   return platform === "win32" ? MXC_REQUIRED_ENV.filter((n) => envValue(env2, n) === void 0) : [];
 }
@@ -95579,6 +95633,13 @@ var init_sandbox2 = __esm({
       "ProgramW6432",
       "ProgramData",
       "CommonProgramFiles",
+      // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "NO_PROXY",
+      "NODE_EXTRA_CA_CERTS",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
       "NUMBER_OF_PROCESSORS",
       "PROCESSOR_ARCHITECTURE",
       "OS",
@@ -116032,6 +116093,9 @@ var init_job = __esm({
             const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
             const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
             const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            const realHome = (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))();
+            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+            job.notes.push(...proxy.notes);
             return {
               worktree: (0, import_node_path33.resolve)(top),
               commonGitDir: commonRaw ? (0, import_node_path33.resolve)(commonRaw) : (0, import_node_path33.resolve)(top, ".git"),
@@ -116039,11 +116103,12 @@ var init_job = __esm({
               pluginRoot,
               jobHome: job.home,
               jobDir: job.jobDir,
-              realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
+              realHome,
               platform: deps.platform,
               settings: job.sandboxSettings,
               hostCommits: job.hostCommits,
-              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+              extraReadonly: proxy.caPaths
             };
           },
           note: (text4) => {

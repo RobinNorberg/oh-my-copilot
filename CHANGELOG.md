@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` bundle files themselves (not their dirs) and each `SSL_CERT_DIR` entry are granted read-only; a cert dir that is a root or holds the home is not granted, and a CA path that does not resolve is dropped, both with a note, instead of failing the sandbox config. A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
+
 ### Fixed
 
 - **`omg factory check` works on Azure DevOps.** The command built its az
