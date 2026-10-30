@@ -20493,7 +20493,7 @@ var init_routes = __esm({
         method: "GET",
         apiVersion: STABLE,
         routeParams: ["project", "repositoryId", "pullRequestId"],
-        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "searchCriteria.targetRefName", "$top"]
       }),
       route({
         id: "git.pullRequests.POST",

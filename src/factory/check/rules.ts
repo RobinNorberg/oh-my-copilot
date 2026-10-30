@@ -12,8 +12,10 @@
  * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
  * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
  * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
+ * | a PR from factory/issue-<n> merged into the base             | blocked    | merged                     |
  * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
- * | a dependsOn item is still open                               | blocked    | depends-on:#n,...          |
+ * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
+ * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
  * | open children, ADO type Epic/Feature, or GitHub label epic   | blocked    | needs-split                |
  * | no trusted omg-plan: line, no AC heading, empty ADO AC field | needs-plan | no-plan                    |
  * | omg-plan: path not repo-relative, or missing/empty on base   | needs-plan | plan-missing               |
@@ -47,12 +49,16 @@ export interface RuleVerdict {
 
 /** What the rules read beyond the item itself; score.ts builds it from the forge and the repository. */
 export interface RuleLookups {
-  /** Whether another item (a dependency or child, or a PR) is open; an unreadable one counts as open. */
+  /** Whether another item (a child, or a PR) is open; an unreadable one counts as open. */
   isOpen(id: number): boolean;
+  /** Whether a dependency is done: closed, its factory PR merged into the base, or its run merged; an unreadable one is not. */
+  isSatisfied(id: number): boolean;
   /** The persisted factory run of the item, if any. */
   runState(id: number): { phase: FactoryPhase; gate?: { name: string } } | null;
   /** The open PR number on the item's factory branch, if any (fork PRs included, as the engine's pr-exists gate). */
   openPr(branch: string): number | undefined;
+  /** The PR from the item's factory branch merged into the base, if any. */
+  mergedPr(branch: string): number | undefined;
   /** Whether origin has the item's factory branch. */
   remoteBranch(branch: string): boolean;
   /** The file at the verified base commit; null when it does not exist there (or the base is unavailable). */
@@ -116,10 +122,13 @@ export function evaluateItem(item: ForgeItem, kind: ForgeKind, config: RuleConfi
   const branch = factoryBranch(item.id);
   const pr = look.openPr(branch);
   if (pr !== undefined) return hit('blocked', 'pr-exists', `open PR #${pr} already uses ${branch}`);
+  // The item stays open when its factory PR merged into a base other than the default branch; never re-run it.
+  const merged = look.mergedPr(branch);
+  if (merged !== undefined) return hit('blocked', 'merged', `PR #${merged} from ${branch} already merged into the base`);
   if (look.remoteBranch(branch)) return hit('blocked', 'branch-exists', `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
 
-  const deps = item.dependsOn.filter((d) => look.isOpen(d));
-  if (deps.length > 0) return hit('blocked', `depends-on:${ids(deps)}`, `depends on open item${deps.length > 1 ? 's' : ''} ${ids(deps)}`);
+  const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
+  if (deps.length > 0) return hit('blocked', `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? 's' : ''} ${ids(deps)} (open, no merged factory PR)`);
 
   const children = item.children.filter((c) => look.isOpen(c));
   if (children.length > 0) return hit('blocked', 'needs-split', `has open children ${ids(children)}`);

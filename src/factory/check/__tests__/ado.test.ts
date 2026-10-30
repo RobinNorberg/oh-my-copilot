@@ -64,10 +64,15 @@ function adoForge(exec: Exec): Forge {
     const r = invoke(exec, 'git', 'pullRequests', ['project=Web', 'repositoryId=web-app'], [`searchCriteria.sourceRefName=refs/heads/${branch}`, 'searchCriteria.status=active']) as { value: Array<{ pullRequestId: number }> };
     return r.value[0]?.pullRequestId;
   };
+  const findMergedPrForBranch = (branch: string, base: string): number | undefined => {
+    const query = [`searchCriteria.sourceRefName=refs/heads/${branch}`, 'searchCriteria.status=completed', `searchCriteria.targetRefName=refs/heads/${base}`];
+    const r = invoke(exec, 'git', 'pullRequests', ['project=Web', 'repositoryId=web-app'], query) as { value: Array<{ pullRequestId: number }> };
+    return r.value[0]?.pullRequestId;
+  };
   return {
     kind: 'azure-devops',
     tracker: { viewItem, queryItems: () => [], comment: () => ({ ok: false, stderr: '' }), setProgress: () => ({ ok: false, detail: '' }), addMarker: () => ({ ok: false, stderr: '' }) },
-    reviews: { findOpenPrForBranch },
+    reviews: { findOpenPrForBranch, findMergedPrForBranch },
   } as unknown as Forge;
 }
 
@@ -77,6 +82,7 @@ const env: CheckEnv = {
   remoteBranch: () => false,
   readPlan: () => null,
   planBase: 'origin/main (not available)',
+  base: 'main',
 };
 
 describe('omg factory check on Azure DevOps fixtures', () => {
@@ -96,6 +102,14 @@ describe('omg factory check on Azure DevOps fixtures', () => {
     expect(results.find((r) => r.id === 50)!.detail).toBe('open PR #17 already uses factory/issue-50');
     // Every call is a GET.
     expect(exec.calls.every((c) => c.cmd === 'az' && !c.args.includes('--http-method'))).toBe(true);
+  });
+
+  it('a predecessor still Active whose factory PR completed into the base satisfies the dependency', () => {
+    const merged = variant(loadAdoFixtures(DIR), 'git.pullRequests.GET.issue-45-merged.json', (s) => ({ ...s, value: [{ pullRequestId: 31, status: 'completed' }], count: 1 }));
+    const exec = adoFixtureExec(merged);
+    const [r44] = checkItems(adoForge(exec), [44], env);
+    expect(r44).toMatchObject({ id: 44, bucket: 'runnable', reasons: [] });
+    expect(exec.calls.some((c) => c.args.includes('searchCriteria.targetRefName=refs/heads/main'))).toBe(true);
   });
 
   it('checkGuardExec refuses an az write without a confirmed mark before it reaches the exec', () => {

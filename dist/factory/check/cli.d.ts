@@ -1,12 +1,14 @@
 /**
- * `omg factory check [<id>...] [--source <spec>] [--limit n] [--json] [--mark [--yes]]`
+ * `omg factory check [<id>... | --parent <spec> | --source <spec>] [--limit n] [--json] [--mark [--yes]]`
  * (factory forges design §5): bucket intake items as runnable, needs-plan
- * or blocked. Read-only unless `--mark`, which adds `factory.intake.marker`
+ * or blocked; `--parent` checks a spec's children (shipyard ↔ factory
+ * design §3.1). Read-only unless `--mark`, which adds `factory.intake.marker`
  * (a GitHub label or an ADO tag) to the runnable items only, after a TTY
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * open-PR lookup on `factory/issue-<n>`, a dependency's merged factory PR
+ * into the base, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
  * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
  * runGuardedAdo (fail closed without an ADO guard context), and while not
@@ -61,6 +63,8 @@ export interface FactoryCheckDeps {
 }
 export interface FactoryCheckOptions {
     ids: string[];
+    /** A spec item: check its children (ForgeItem.children) instead of ids or the intake source. */
+    parent?: string;
     source?: string;
     limit?: number;
     json?: boolean;

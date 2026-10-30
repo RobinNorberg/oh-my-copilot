@@ -69,7 +69,7 @@ export const ADO_ROUTES = Object.freeze([
     // Pull requests.
     route({
         id: 'git.pullRequests.GET', area: 'git', resource: 'pullRequests', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'repositoryId', 'pullRequestId'],
-        queryParams: ['searchCriteria.sourceRefName', 'searchCriteria.status', '$top'],
+        queryParams: ['searchCriteria.sourceRefName', 'searchCriteria.status', 'searchCriteria.targetRefName', '$top'],
     }),
     route({
         id: 'git.pullRequests.POST', area: 'git', resource: 'pullRequests', method: 'POST', apiVersion: STABLE, routeParams: ['project', 'repositoryId'], queryParams: [],

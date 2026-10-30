@@ -1,0 +1,7 @@
+{
+  "provenance": "synthetic: no completed pull request from factory/issue-42 into main",
+  "route": "git.pullRequests.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app" },
+  "queryParameters": { "searchCriteria.sourceRefName": "refs/heads/factory/issue-42", "searchCriteria.status": "completed", "searchCriteria.targetRefName": "refs/heads/main" },
+  "stdout": { "value": [], "count": 0 }
+}
