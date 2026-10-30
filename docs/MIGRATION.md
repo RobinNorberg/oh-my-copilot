@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Shipyard and Factory Chain Routes](#unreleased-shipyard-and-factory-chain-routes)
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
 - [Unreleased: HUD Host Detection and Copilot Defaults](#unreleased-hud-host-detection-and-copilot-defaults)
@@ -35,6 +36,31 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Shipyard and Factory Chain Routes
+
+Applies to projects with a `.omg/factory-routes.json`, especially one seeded by the retired `omg factory init --no-narrow` template. The SessionEnd chain is frozen: shipyard skills decide what to build with a human captain, and `omg factory run` delivers it.
+
+**What changed.**
+
+- The chain refuses a route to a skill that needs a live captain (`launch`, `ask-navigator`, `loft`, `drydock`) or that is retired (`diagnose`). The link's SessionEnd records `route-retired:<skill>`, writes a stop marker with the same reason, and spawns nothing. `Diagnose`, ` launch ` or `oh-my-copilot:launch` count as the same skill.
+- A route to `intent` still spawns, after a `route-deprecated:intent` decision.
+- `omg factory status` is renamed `omg factory chain status`. The old name still works.
+
+**Who must act.**
+
+- **A table from the old full template.** Run `omg factory init --check` to see each route's status and replacement. Run `omg factory init --migrate` (add `--yes` in a script or CI) to rewrite it. It writes `.omg/factory-routes.json.bak-<UTC timestamp>` first.
+
+  | Old route | Replacement |
+  |---|---|
+  | `success:intake` → `intent` | `success:intake` → `harbor` |
+  | `success:intent` → `launch` | none: run `/oh-my-copilot:launch` with the accepted intent |
+  | `success:launch` → `diagnose`, `failed:ci` → `diagnose` | none: `omg factory heal scan` |
+
+- **An unmigrated table.** Nothing breaks silently: the chain halts at the first refused route, and `omg factory chain status` shows `route-retired:<skill>` as the decision and the stop reason.
+- **Scripts that call `omg factory status`.** No change needed. Prefer `omg factory chain status` in new scripts.
 
 ---
 

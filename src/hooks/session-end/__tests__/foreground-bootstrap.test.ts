@@ -75,7 +75,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
     writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
     mkdirSync(join(dir, '.omg'), { recursive: true });
     writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-      'success:*': { stage: 'review', skill: 'code-review' },
+      'success:*': { stage: 'review', skill: 'omc-review' },
     }), 'utf8');
 
     const result = await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-a'));
@@ -105,7 +105,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
     writeLedger(dir, 'sess-c', { intentId: 'intent-c' });
     mkdirSync(join(dir, '.omg'), { recursive: true });
     writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-      'success:*': { stage: 'review', skill: 'code-review' },
+      'success:*': { stage: 'review', skill: 'omc-review' },
     }), 'utf8');
     vi.mocked(prepareCoreManifest).mockReturnValueOnce(null as never);
 
@@ -123,7 +123,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
     writeLedger(dir, 'sess-d', { intentId: 'intent-d' });
     mkdirSync(join(dir, '.omg'), { recursive: true });
     writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-      'success:*': { stage: 'review', skill: 'code-review' },
+      'success:*': { stage: 'review', skill: 'omc-review' },
     }), 'utf8');
     vi.mocked(spawnSessionEndWorker).mockReturnValueOnce(false);
 

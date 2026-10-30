@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideNextStage, gradeGate, normalizeRouteTable, MAX_VERIFY_COMMANDS } from '../routing.js';
+import { canonicalChainSkill, chainSkillStatus, decideNextStage, gradeGate, normalizeRouteTable, MAX_VERIFY_COMMANDS } from '../routing.js';
 const table = {
     'success:harbor-passed': { stage: 'pr', skill: 'pr' },
     'success:*': { stage: 'next', skill: 'default-next' },
@@ -130,6 +130,41 @@ describe('gradeGate diff-first', () => {
         const facts = { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true, diffAttached: true };
         const v = gradeGate('spec-approve', facts);
         expect(v.kind).toBe('auto-pass');
+    });
+});
+describe('chainSkillStatus', () => {
+    it.each([
+        ['diagnose', 'retired'],
+        ['launch', 'captain'],
+        ['ask-navigator', 'captain'],
+        ['loft', 'captain'],
+        ['drydock', 'captain'],
+        ['intent', 'deprecated'],
+        ['harbor', 'ok'],
+        ['spec', 'ok'],
+        ['stop', 'ok'],
+    ])('classifies %s as %s', (skill, status) => {
+        expect(chainSkillStatus(skill)).toBe(status);
+    });
+    it.each([
+        ['Diagnose', 'retired'],
+        ['LAUNCH', 'captain'],
+        ['  diagnose\t', 'retired'],
+        ['\nlaunch ', 'captain'],
+        ['/diagnose', 'retired'],
+        ['oh-my-copilot:launch', 'captain'],
+        ['/OH-MY-COPILOT:Diagnose', 'retired'],
+        [' Intent ', 'deprecated'],
+    ])('sees through case, whitespace, slash and plugin-prefix variants (%j -> %s)', (skill, status) => {
+        expect(chainSkillStatus(skill)).toBe(status);
+    });
+    it('canonicalizes to the bare lower-case skill name', () => {
+        expect(canonicalChainSkill(' /oh-my-copilot:Launch ')).toBe('launch');
+        expect(canonicalChainSkill('')).toBe('');
+    });
+    it('does not refuse names that merely contain a refused name', () => {
+        expect(chainSkillStatus('launch-review')).toBe('ok');
+        expect(chainSkillStatus('prediagnose')).toBe('ok');
     });
 });
 //# sourceMappingURL=routing.test.js.map

@@ -2,8 +2,9 @@ import { type ChainOutcome, type RouteTable } from './routing.js';
 export interface SpawnNextTracker {
     repo: string;
     issue: number;
-    nextLabel: string;
-    failedLabel: string;
+    /** Absent for a harbor link: harbor owns the issue's labels. */
+    nextLabel?: string;
+    failedLabel?: string;
 }
 /** How a finished session hands the chain to the next stage. Supplied by the enqueuer in the action payload under `chain`. */
 export interface SpawnNextChain {
@@ -126,6 +127,23 @@ export declare function factoryLinkArgv(prompt: string, sessionId: string, verif
 linkCwd?: string): string[];
 /** Shared label charset (stage/skill/labels): safe for paths and argv. */
 export declare const LABEL_PATTERN: RegExp;
+export type ChainSkillResolution = {
+    ok: true;
+    slash: string;
+} | {
+    ok: false;
+    hint?: string;
+};
+/**
+ * Resolve a route's skill by its registered (frontmatter) name: a bundled
+ * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
+ * A bundled directory name that registers under another name (`plan` →
+ * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
+ * `slash` is the form the link's host resolves: Copilot CLI registers plugin
+ * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
+ * the bare `/<name>`.
+ */
+export declare function resolveChainSkill(cwd: string, name: string): ChainSkillResolution;
 /**
  * The chain rides a detached manifest job: every field that lands in a
  * spawned argv or a filesystem path is validated here. An invalid chain is a

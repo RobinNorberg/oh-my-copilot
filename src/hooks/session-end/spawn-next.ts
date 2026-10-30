@@ -2,17 +2,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
-import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
+import { canonicalChainSkill, chainSkillStatus, decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
 import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
+import { getSkillsDir } from '../../features/builtin-skills/skills.js';
+import { parseFrontmatter } from '../../utils/frontmatter.js';
 
 export interface SpawnNextTracker {
   repo: string;
   issue: number;
-  nextLabel: string;
-  failedLabel: string;
+  /** Absent for a harbor link: harbor owns the issue's labels. */
+  nextLabel?: string;
+  failedLabel?: string;
 }
 
 /** How a finished session hands the chain to the next stage. Supplied by the enqueuer in the action payload under `chain`. */
@@ -284,6 +287,56 @@ const REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 export const LABEL_PATTERN = /^[\w.-]+$/;
 
 /**
+ * Spawnable chain skill names: the bundled-skill charset. No dots, case or
+ * prefixes, so a dot-trimming or case-folding filesystem cannot map an
+ * unlisted name (`launch.`) onto a refused skill's directory.
+ */
+const CHAIN_SKILL_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** A skill's registered name: its SKILL.md frontmatter `name`, else its directory name. */
+function registeredSkillName(skillDir: string): string | undefined {
+  try {
+    const name = parseFrontmatter(fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8')).metadata.name?.trim();
+    return name || path.basename(skillDir);
+  } catch {
+    return undefined;
+  }
+}
+
+function skillRegisteredIn(dir: string, name: string): boolean {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  return entries.some((entry) => registeredSkillName(path.join(dir, entry)) === name);
+}
+
+export type ChainSkillResolution = { ok: true; slash: string } | { ok: false; hint?: string };
+
+/**
+ * Resolve a route's skill by its registered (frontmatter) name: a bundled
+ * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
+ * A bundled directory name that registers under another name (`plan` →
+ * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
+ * `slash` is the form the link's host resolves: Copilot CLI registers plugin
+ * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
+ * the bare `/<name>`.
+ */
+export function resolveChainSkill(cwd: string, name: string): ChainSkillResolution {
+  if (!CHAIN_SKILL_NAME.test(name)) return { ok: false };
+  if (skillRegisteredIn(getSkillsDir(), name)) {
+    return { ok: true, slash: getHostCliType() === 'copilot' ? `/oh-my-copilot:${name}` : `/${name}` };
+  }
+  if ([path.join(cwd, '.copilot', 'skills'), path.join(getOmcRoot(cwd), 'skills'), path.join(cwd, '.agents', 'skills')].some((dir) => skillRegisteredIn(dir, name))) {
+    return { ok: true, slash: `/${name}` };
+  }
+  const registered = registeredSkillName(path.join(getSkillsDir(), name));
+  return registered && registered !== name ? { ok: false, hint: `did you mean ${registered}` } : { ok: false };
+}
+
+/**
  * The chain rides a detached manifest job: every field that lands in a
  * spawned argv or a filesystem path is validated here. An invalid chain is a
  * hard reject (manifest failure), not a partial spawn.
@@ -296,7 +349,9 @@ export function validateChainFields(chain: SpawnNextChain): void {
   const tracker = chain.tracker;
   if (tracker) {
     if (!REPO_PATTERN.test(tracker.repo)) throw new Error(`invalid tracker repo: ${tracker.repo}`);
-    if (!LABEL_PATTERN.test(tracker.nextLabel) || !LABEL_PATTERN.test(tracker.failedLabel)) {
+    if (!Number.isSafeInteger(tracker.issue) || tracker.issue <= 0) throw new Error(`invalid tracker issue: ${String(tracker.issue)}`);
+    const labelOk = (label: unknown): boolean => label === undefined || (typeof label === 'string' && LABEL_PATTERN.test(label));
+    if (!labelOk(tracker.nextLabel) || !labelOk(tracker.failedLabel)) {
       throw new Error(`invalid tracker label: ${tracker.nextLabel}/${tracker.failedLabel}`);
     }
   }
@@ -375,10 +430,22 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: s
   validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
+  // Single choke point before any spawn: a manifest job queued before the
+  // enqueuer refused these routes, or a replayed closeout, lands here too.
+  const skillStatus = chainSkillStatus(directive.skill);
+  if (skillStatus === 'captain' || skillStatus === 'retired') {
+    throw new Error(`route-retired:${canonicalChainSkill(directive.skill)}: the chain never spawns a ${skillStatus} skill`);
+  }
+  if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
+    throw new Error(`invalid stage/skill: ${directive.stage}/${directive.skill}`);
+  }
+  if (directive.skill === 'stop') throw new Error(`terminal route: ${directive.stage} spawns no link`);
+  const skill = resolveChainSkill(linkCwd, directive.skill);
+  if (!skill.ok) throw new Error(`route-unknown:${directive.skill}${skill.hint ? ` (${skill.hint})` : ''}`);
   const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker
     ? [
-        ['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
+        ...(chain.tracker.nextLabel ? [['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)]] : []),
         ['gh', ...issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`)],
       ]
     : [];
@@ -386,7 +453,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: s
   return {
     directive,
     handoffPath,
-    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
+    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`${skill.slash} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
     nextSessionId,
     trackerCommands,
   };
@@ -425,7 +492,7 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
     try { fs.unlinkSync(ledgerPath); } catch { /* never written */ }
     if (chain.tracker) {
       spawnFn('gh', issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, spawnNextAlertComment(chain)));
-      spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
+      if (chain.tracker.failedLabel) spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
     }
     throw error;
   }

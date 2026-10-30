@@ -13,10 +13,10 @@
  */
 import * as fs from 'fs';
 import { join } from 'path';
-import { decideNextStage, gradeGate, normalizeRouteTable } from './routing.js';
+import { canonicalChainSkill, chainSkillStatus, decideNextStage, gradeGate, normalizeRouteTable } from './routing.js';
 import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
 import { verifyCheckEvidence } from './check-evidence.js';
-import { CHAIN_LINK_ENV, stageVisitCap, validateChainFields, LABEL_PATTERN } from './spawn-next.js';
+import { CHAIN_LINK_ENV, resolveChainSkill, stageVisitCap, validateChainFields, LABEL_PATTERN } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 /**
  * Explicit success allowlist, fail-closed for anything else. Headless sessions
@@ -390,6 +390,15 @@ function decideChainLink(directory, ledger, ctx) {
             writeHaltMarker(directory, intentId, `session-end:${reason}`);
         return null;
     }
+    // Fail closed before anything else reads the directive: a route to a
+    // captain or retired skill halts the chain, whatever the outcome or gate.
+    const skillStatus = chainSkillStatus(directive.skill);
+    if (skillStatus === 'captain' || skillStatus === 'retired') {
+        const refusal = `route-retired:${canonicalChainSkill(directive.skill)}`;
+        record(refusal, { stage: directive.stage, skill: directive.skill, refused: skillStatus });
+        writeHaltMarker(directory, intentId, refusal);
+        return null;
+    }
     if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
         record('invalid-ledger', { error: `invalid stage/skill: ${directive.stage}/${directive.skill}` });
         if (outcome === 'failed')
@@ -401,6 +410,14 @@ function decideChainLink(directory, ledger, ctx) {
     if (directive.skill === 'stop') {
         record('chain-terminal', { stage: directive.stage });
         writeHaltMarker(directory, intentId, `terminal:${directive.stage}`);
+        return null;
+    }
+    // Allowlist after the denylist: only a bundled or project skill spawns.
+    const resolved = resolveChainSkill(directory, directive.skill);
+    if (!resolved.ok) {
+        const refusal = `route-unknown:${directive.skill}`;
+        record(refusal, { stage: directive.stage, skill: directive.skill, ...(resolved.hint ? { hint: resolved.hint } : {}) });
+        writeHaltMarker(directory, intentId, refusal);
         return null;
     }
     // Loop cap: this route already visited the next stage too many times
@@ -450,6 +467,9 @@ function decideChainLink(directory, ledger, ctx) {
         validateChainFields(chain);
         // ponytail: the serial window closes here, before the worker actually
         // spawns the next link; v1 accepts the small race, same as the listener.
+        if (skillStatus === 'deprecated') {
+            record(`route-deprecated:${canonicalChainSkill(directive.skill)}`, { stage: directive.stage, skill: directive.skill });
+        }
         record('enqueued', { stage: directive.stage, skill: directive.skill });
         return chain;
     }

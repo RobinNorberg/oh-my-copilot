@@ -18,7 +18,8 @@ import { issueAddLabelArgv, issueCommentBodyArgv } from '../forge/github/chain-t
 import { defaultSpawnFn } from '../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 export const DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1000;
-export const HARBOR_NEED_INFO_LABEL = 'harbor:need-info';
+/** A stall needs the maintainer; `harbor:need-info` would read as "waiting on the reporter". */
+export const HARBOR_FOR_MAINTAINER_LABEL = 'harbor:for-maintainer';
 /** Ledgers are only ever named after a spawned uuid session id. */
 const LEDGER_FILE_PATTERN = /^chain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/i;
 /** Closeout decisions that advanced the chain or left a stop marker (chain-enqueuer writeHaltMarker). */
@@ -27,7 +28,7 @@ function closedAsHandled(decision, outcome) {
     if (typeof decision !== 'string')
         return false;
     // no-route halts with a stop marker only on a failed outcome.
-    return HANDLED_DECISIONS.has(decision) || (decision === 'no-route' && outcome === 'failed');
+    return HANDLED_DECISIONS.has(decision) || decision.startsWith('route-retired:') || decision.startsWith('route-unknown:') || (decision === 'no-route' && outcome === 'failed');
 }
 /** Session ids the enqueuer already advanced ('enqueued' decision records). */
 function enqueuedSessions(factoryDir) {
@@ -130,12 +131,12 @@ export function stallAlertComment(stall) {
     const minutes = Math.max(1, Math.round(stall.stalledForMs / 60_000));
     return `链已停住：${stall.stage} 环会话 ${stall.session} 已 ${minutes} 分钟未推进（预写 ledger 未被接管），需人工检查。`;
 }
-/** One-shot alert for a stalled link: tracker issue gets the harbor:need-info label + comment, otherwise audit trail. */
+/** One-shot alert for a stalled link: tracker issue gets the harbor:for-maintainer label + comment, otherwise audit trail. */
 export function flagStall(stall, deps) {
     const tracker = stall.tracker;
     if (tracker) {
         const spawner = deps.spawner ?? defaultSpawnFn;
-        spawner('gh', issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_NEED_INFO_LABEL));
+        spawner('gh', issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_FOR_MAINTAINER_LABEL));
         spawner('gh', issueCommentBodyArgv(tracker.repo, tracker.issue, stallAlertComment(stall)));
         return;
     }
