@@ -6,14 +6,14 @@
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
     "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-    "sourceSha256": "bfca3670f009ee8302f31b0d0407bbd9e6d54a8b72de31255acf35958abc9b8f",
+    "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
   "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-  "sourceSha256": "bfca3670f009ee8302f31b0d0407bbd9e6d54a8b72de31255acf35958abc9b8f",
+  "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
   "counts": {
     "public": {
       "skills": 63,
@@ -952,6 +952,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/spikes/request-handler-probe.mjs",
       "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
@@ -45996,6 +45997,11 @@
         "path": "scripts/smoke-multirepo.mjs"
       },
       {
+        "id": "scripts/spikes/request-handler-probe.mjs",
+        "kind": "script",
+        "path": "scripts/spikes/request-handler-probe.mjs"
+      },
+      {
         "id": "scripts/stale-run-reporter.mjs",
         "kind": "script",
         "path": "scripts/stale-run-reporter.mjs"
@@ -59389,6 +59395,31 @@
       },
       {
         "from": "scripts/smoke-multirepo.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -108244,11 +108275,6 @@
       },
       {
         "from": "src/team/worker-launch-ack.ts",
-        "to": "src/smoke/copilot-session-env.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/worker-launch-ack.ts",
         "to": "src/team/model-contract.ts",
         "kind": "type-imports"
       },
@@ -112784,12 +112810,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9603,
-      "edgeCount": 11241,
-      "importEdgeCount": 9259,
+      "nodeCount": 9604,
+      "edgeCount": 11245,
+      "importEdgeCount": 9263,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "34e394b574adf9c13be39c1a1dc069a428d2559cf0cedda90eb43484048d67ab",
-  "manifestSha256": "651af24cad31a8f62eb8ca9779e8792b057d1f99acb181f5aec5373fbbb83499"
+  "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
+  "manifestSha256": "539e4b97aadc3b29d500545f6083ec26832a38dea5f4d8d65650aac06eb0d785"
 }
