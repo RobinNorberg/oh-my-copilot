@@ -59788,13 +59788,13 @@ function configureInstallerSettings(baseSettings, context) {
     } else {
       statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath);
     }
-    const needsMigration = typeof settings.statusLine === "string" && isOmcStatusLine(settings.statusLine);
-    if (!settings.statusLine || needsMigration) {
+    const needsMigration2 = typeof settings.statusLine === "string" && isOmcStatusLine(settings.statusLine);
+    if (!settings.statusLine || needsMigration2) {
       settings.statusLine = {
         type: "command",
         command: statusLineCommand
       };
-      context.log(needsMigration ? "  Migrated statusLine from legacy string to object format" : "  Configured statusLine");
+      context.log(needsMigration2 ? "  Migrated statusLine from legacy string to object format" : "  Configured statusLine");
     } else if (context.options.force && isOmcStatusLine(settings.statusLine)) {
       settings.statusLine = {
         type: "command",
@@ -77443,6 +77443,17 @@ function normalizeRouteTable(input) {
 function decideNextStage(outcome, reason, table) {
   return table[`${outcome}:${reason}`] ?? table[`${outcome}:*`] ?? null;
 }
+function canonicalChainSkill(skill) {
+  const bare = skill.trim().toLowerCase().replace(/^\/+/, "");
+  return bare.slice(bare.lastIndexOf(":") + 1).trim();
+}
+function chainSkillStatus(skill) {
+  const name = canonicalChainSkill(skill);
+  if (RETIRED_SKILLS.has(name)) return "retired";
+  if (CAPTAIN_SKILLS.has(name)) return "captain";
+  if (DEPRECATED_SKILLS.has(name)) return "deprecated";
+  return "ok";
+}
 function gradeGate(gate, facts) {
   if (gate === "intent-accept") return { kind: "human", criterion: "\u4FDD\u7559\u4EBA\u95F8\uFF1A\u4EF7\u503C\u5224\u65AD + \u6D88\u8017\u4E0B\u6E38\u6574\u6761\u94FE\uFF0Cv1 \u65E0\u81EA\u52A8\u901A\u9053" };
   if (gate === "review-approve") {
@@ -77455,13 +77466,16 @@ function gradeGate(gate, facts) {
   if (!facts.mechanicalChecksPassed) return { kind: "human", criterion: "\u673A\u68B0\u9A8C\u8BC1\u9879\u672A\u5168\u90E8\u901A\u8FC7" };
   return { kind: "auto-pass", signerFact: "\u5206\u7EA7\u5224\u636E\u5747\u672A\u89E6\u53D1\uFF0C\u673A\u68B0\u9A8C\u8BC1\u9879\u5168\u90E8\u901A\u8FC7\uFF0C\u81EA\u52A8\u8FC7" };
 }
-var VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMANDS, MAX_VERIFY_COMMAND_LENGTH, CRITERIA;
+var VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMANDS, MAX_VERIFY_COMMAND_LENGTH, CAPTAIN_SKILLS, RETIRED_SKILLS, DEPRECATED_SKILLS, CRITERIA;
 var init_routing = __esm({
   "src/hooks/session-end/routing.ts"() {
     "use strict";
     VERIFY_COMMAND_PATTERN = /^[A-Za-z][A-Za-z0-9 _.:/=%@-]*$/;
     MAX_VERIFY_COMMANDS = 10;
     MAX_VERIFY_COMMAND_LENGTH = 120;
+    CAPTAIN_SKILLS = /* @__PURE__ */ new Set(["launch", "ask-navigator", "loft", "drydock"]);
+    RETIRED_SKILLS = /* @__PURE__ */ new Set(["diagnose"]);
+    DEPRECATED_SKILLS = /* @__PURE__ */ new Set(["intent"]);
     CRITERIA = [
       ["irreversibleOrExternal", "\u5224\u636E\u4E00\uFF1A\u4E0D\u53EF\u9006\u6216\u5916\u90E8\u53EF\u89C1"],
       ["precedentSetting", "\u5224\u636E\u4E8C\uFF1A\u5148\u4F8B\u6027"],
@@ -78235,6 +78249,13 @@ function decideChainLink(directory, ledger, ctx) {
     if (outcome === "failed") writeHaltMarker(directory, intentId, `session-end:${reason}`);
     return null;
   }
+  const skillStatus = chainSkillStatus(directive.skill);
+  if (skillStatus === "captain" || skillStatus === "retired") {
+    const refusal = `route-retired:${canonicalChainSkill(directive.skill)}`;
+    record3(refusal, { stage: directive.stage, skill: directive.skill, refused: skillStatus });
+    writeHaltMarker(directory, intentId, refusal);
+    return null;
+  }
   if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
     record3("invalid-ledger", { error: `invalid stage/skill: ${directive.stage}/${directive.skill}` });
     if (outcome === "failed") writeHaltMarker(directory, intentId, `invalid-ledger:${reason}`);
@@ -78282,6 +78303,9 @@ function decideChainLink(directory, ledger, ctx) {
       ...stageVisitCap(ledger.maxStageVisits) !== void 0 ? { maxStageVisits: stageVisitCap(ledger.maxStageVisits) } : {}
     };
     validateChainFields(chain);
+    if (skillStatus === "deprecated") {
+      record3(`route-deprecated:${canonicalChainSkill(directive.skill)}`, { stage: directive.stage, skill: directive.skill });
+    }
     record3("enqueued", { stage: directive.stage, skill: directive.skill });
     return chain;
   } catch (error2) {
@@ -102670,7 +102694,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename9 } = await import("fs/promises");
-  const { renameSync: renameSync22, readFileSync: readFileSync175, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync23, readFileSync: readFileSync175, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -102743,7 +102767,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync22(processingOutputFile, stalePath);
+                renameSync23(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -102753,7 +102777,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
           }
           const raw = readFileSync175(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync22(outputFile, processingOutputFile);
+          renameSync23(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
@@ -116399,7 +116423,7 @@ var init_integer_option = __esm({
 // src/factory/watchdog.ts
 function closedAsHandled(decision, outcome) {
   if (typeof decision !== "string") return false;
-  return HANDLED_DECISIONS.has(decision) || decision === "no-route" && outcome === "failed";
+  return HANDLED_DECISIONS.has(decision) || decision.startsWith("route-retired:") || decision === "no-route" && outcome === "failed";
 }
 function enqueuedSessions(factoryDir) {
   const advanced = /* @__PURE__ */ new Set();
@@ -128611,23 +128635,27 @@ function factoryCommand() {
       process.on("SIGTERM", stop);
     });
   });
-  cmd.command("init").description("Seed the project route table .omg/factory-routes.json (the chain-routing source of truth) and validate factory prerequisites").option("--no-narrow", "retired: the full-pipeline template (intake -> intent -> launch -> diagnose) now refuses").option("--cwd <dir>", "project directory to seed (defaults to the working directory)", process.cwd()).option("--force", "replace an existing route table (read it first \u2014 it is the routing source of truth)", false).action((options) => {
-    const result = runFactoryInit({ narrow: options.narrow, cwd: options.cwd, force: options.force });
+  cmd.command("init").description("Seed the project route table .omg/factory-routes.json (the chain-routing source of truth) and validate factory prerequisites").option("--no-narrow", "retired: the full-pipeline template (intake -> intent -> launch -> diagnose) now refuses").option("--cwd <dir>", "project directory to seed (defaults to the working directory)", process.cwd()).option("--force", "replace an existing route table (read it first \u2014 it is the routing source of truth)", false).option("--check", "print every route of the existing table with its status and replacement (read-only; exit 1 when a route needs --migrate)").option("--migrate", "rewrite an old table to the narrow one: captain/retired routes removed, intake -> harbor; writes a .bak first").option("--yes", "confirm --migrate without a prompt (required without an interactive terminal)").action(async (options) => {
+    let result;
+    if (options.check && options.migrate) result = { exitCode: 2, message: "factory init: --check and --migrate are mutually exclusive" };
+    else if (options.check) result = checkFactoryRoutes(options.cwd);
+    else if (options.migrate) {
+      result = await migrateFactoryRoutes({ cwd: options.cwd, yes: options.yes, isTTY: Boolean(process.stdin.isTTY), confirm: ttyConfirm });
+    } else result = runFactoryInit({ narrow: options.narrow, cwd: options.cwd, force: options.force });
     if (result.exitCode === 0) {
-      console.log(source_default.green(result.message));
+      console.log(options.check ? result.message : source_default.green(result.message));
     } else {
-      console.error(source_default.red(result.message));
+      console.error(options.check ? result.message : source_default.red(result.message));
       process.exitCode = result.exitCode;
     }
   });
-  cmd.command("status").description("Summarize this project's chain decisions, stop markers, and stalled links (read-only)").option("--json", "Output as JSON").action((options) => {
+  const chainStatus = (options) => {
     const status = readChainStatus(process.cwd());
-    if (options.json) {
-      console.log(JSON.stringify(status, null, 2));
-      return;
-    }
-    console.log(renderChainStatus(status));
-  });
+    console.log(options.json ? JSON.stringify(status, null, 2) : renderChainStatus(status));
+  };
+  const chain = cmd.command("chain").description("Legacy SessionEnd chain (frozen: single intake -> harbor hop)");
+  chain.command("status").description("Summarize this project's chain decisions, stop markers, and stalled links (read-only)").option("--json", "Output as JSON").action(chainStatus);
+  cmd.command("status").description("Alias of omg factory chain status (legacy chain audit, read-only)").option("--json", "Output as JSON").action(chainStatus);
   return cmd;
 }
 function buildRouteTableNarrow() {
@@ -128675,6 +128703,114 @@ function runFactoryInit(options = {}) {
     message: `factory init wrote ${routesPath} (narrow starter table): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
   };
 }
+function readRawRoutes(routesPath) {
+  if (!(0, import_fs170.existsSync)(routesPath)) return null;
+  const raw = (0, import_fs170.readFileSync)(routesPath, "utf8");
+  try {
+    const parsed2 = JSON.parse(raw);
+    if (parsed2 && typeof parsed2 === "object" && !Array.isArray(parsed2)) return { ok: true, raw, table: parsed2 };
+  } catch {
+  }
+  return { ok: false, message: `${routesPath} is not a JSON object; fix it by hand or re-run omg factory init --force` };
+}
+function skillExists(cwd2, name) {
+  return [getSkillsDir(), (0, import_path197.join)(cwd2, ".copilot", "skills"), (0, import_path197.join)(getOmcRoot(cwd2), "skills"), (0, import_path197.join)(cwd2, ".agents", "skills")].some((dir) => (0, import_fs170.existsSync)((0, import_path197.join)(dir, name, "SKILL.md")));
+}
+function classifyRoute(cwd2, key, value) {
+  const entry2 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const stage = typeof entry2.stage === "string" ? entry2.stage : "";
+  const skill = typeof entry2.skill === "string" ? entry2.skill : "";
+  const row = (status2, replacement) => ({ key, stage, skill, status: status2, replacement });
+  if (!key.includes(":") || typeof entry2.stage !== "string" || typeof entry2.skill !== "string") {
+    return row("invalid", "ignored by the chain: not an outcome:reason route with a stage and a skill");
+  }
+  const name = canonicalChainSkill(skill);
+  const status = chainSkillStatus(skill);
+  if (status === "retired") return row(status, "none: omg factory heal scan handles CI failures");
+  if (status === "captain") {
+    return row(status, name === "launch" ? "none: run /oh-my-copilot:launch with the accepted intent" : `none: run /oh-my-copilot:${name} in a session (it needs a live captain)`);
+  }
+  if (!LABEL_PATTERN.test(stage) || !LABEL_PATTERN.test(skill)) return row("invalid", "ignored by the chain: stage or skill has characters outside [A-Za-z0-9_.-]");
+  if (name === "stop") return row("terminal", "");
+  if (status === "deprecated") {
+    return row(status, key === "success:intake" ? "success:intake -> harbor" : "still spawns; tracker intake belongs to harbor");
+  }
+  return skillExists(cwd2, name) ? row("ok", "") : row("unknown", "no bundled or project skill of this name");
+}
+function renderRouteRows(rows) {
+  const cells = [["route", "skill", "status", "replacement"], ...rows.map((r) => [r.key, r.skill, r.status, r.replacement])];
+  const widths = [0, 1, 2].map((i) => Math.max(...cells.map((c) => c[i].length)));
+  return cells.map((c) => c.map((cell, i) => i < 3 ? cell.padEnd(widths[i]) : cell).join("  ").trimEnd()).join("\n");
+}
+function needsMigration(row) {
+  return row.status === "captain" || row.status === "retired" || row.status === "deprecated" && row.key === "success:intake";
+}
+function checkFactoryRoutes(cwd2 = process.cwd()) {
+  const root2 = (0, import_path197.resolve)(cwd2);
+  const routesPath = (0, import_path197.join)(getOmcRoot(root2), "factory-routes.json");
+  const read = readRawRoutes(routesPath);
+  if (!read) return { exitCode: 0, rows: [], message: `no route table at ${routesPath}; nothing to check` };
+  if (!read.ok) return { exitCode: 1, rows: [], message: `factory init --check: ${read.message}` };
+  const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root2, key, value));
+  const due = rows.filter(needsMigration);
+  const summary = due.some((r) => r.status === "captain" || r.status === "retired") ? `${due.length} route(s) need migration: captain and retired routes halt the chain (route-retired:<skill>). Run omg factory init --migrate.` : due.length > 0 ? `${due.length} route(s) can be migrated (omg factory init --migrate).` : "no route needs migration.";
+  return {
+    exitCode: rows.some((r) => r.status === "captain" || r.status === "retired") ? 1 : 0,
+    rows,
+    message: `${routesPath}
+${rows.length > 0 ? renderRouteRows(rows) : "(empty table)"}
+${summary}`
+  };
+}
+async function migrateFactoryRoutes(options = {}) {
+  const root2 = (0, import_path197.resolve)(options.cwd ?? process.cwd());
+  const routesPath = (0, import_path197.join)(getOmcRoot(root2), "factory-routes.json");
+  const read = readRawRoutes(routesPath);
+  if (!read) return { exitCode: 0, message: `no route table at ${routesPath}; nothing to migrate` };
+  if (!read.ok) return { exitCode: 1, message: `factory init --migrate refused: ${read.message}` };
+  const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root2, key, value));
+  const due = rows.filter(needsMigration);
+  if (due.length === 0) return { exitCode: 0, message: `${routesPath}: nothing to migrate` };
+  const plan = due.map((r) => `  ${r.key} -> ${r.skill}: ${r.status === "deprecated" ? "becomes success:intake -> harbor" : "removed"}`).join("\n");
+  if (!options.yes) {
+    if (!options.isTTY || !options.confirm) {
+      return { exitCode: 2, message: `factory init --migrate needs --yes without an interactive terminal. It would rewrite ${routesPath}:
+${plan}` };
+    }
+    if (!await options.confirm(`Rewrite ${routesPath}?
+${plan}
+A backup is written first.`)) {
+      return { exitCode: 1, message: "factory init --migrate cancelled; nothing written" };
+    }
+  }
+  const migrated = {};
+  for (const [key, value] of Object.entries(read.table)) {
+    const row = rows.find((r) => r.key === key);
+    if (!needsMigration(row)) migrated[key] = value;
+    else if (row.status === "deprecated") migrated[key] = { ...value, stage: "harbor", skill: "harbor" };
+  }
+  const stamp = (options.now ?? /* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z").replace(/:/g, "-");
+  const backupPath = `${routesPath}.bak-${stamp}`;
+  try {
+    (0, import_fs170.writeFileSync)(backupPath, read.raw, { encoding: "utf8", flag: "wx" });
+  } catch (error2) {
+    return { exitCode: 1, message: `factory init --migrate refused: cannot write the backup ${backupPath} (${error2.message}); nothing changed` };
+  }
+  const tmp = `${routesPath}.${process.pid}.tmp`;
+  try {
+    (0, import_fs170.writeFileSync)(tmp, `${JSON.stringify(migrated, null, 2)}
+`, "utf8");
+    (0, import_fs170.renameSync)(tmp, routesPath);
+  } catch (error2) {
+    try {
+      (0, import_fs170.unlinkSync)(tmp);
+    } catch {
+    }
+    return { exitCode: 1, message: `factory init --migrate failed: cannot write ${routesPath} (${error2.message}); the backup is ${backupPath}` };
+  }
+  return { exitCode: 0, message: `factory init --migrate rewrote ${routesPath} (backup: ${backupPath}):
+${plan}` };
+}
 var import_fs170, import_path197, defaultFactoryRunDeps, FactoryUsageError, NO_LANES;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
@@ -128686,6 +128822,9 @@ var init_factory = __esm({
     import_path197 = require("path");
     init_listener();
     init_status();
+    init_routing();
+    init_spawn_next();
+    init_skills();
     init_worktree_paths();
     init_project_config_path();
     init_job();

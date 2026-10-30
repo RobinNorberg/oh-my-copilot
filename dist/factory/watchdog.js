@@ -27,7 +27,7 @@ function closedAsHandled(decision, outcome) {
     if (typeof decision !== 'string')
         return false;
     // no-route halts with a stop marker only on a failed outcome.
-    return HANDLED_DECISIONS.has(decision) || (decision === 'no-route' && outcome === 'failed');
+    return HANDLED_DECISIONS.has(decision) || decision.startsWith('route-retired:') || (decision === 'no-route' && outcome === 'failed');
 }
 /** Session ids the enqueuer already advanced ('enqueued' decision records). */
 function enqueuedSessions(factoryDir) {

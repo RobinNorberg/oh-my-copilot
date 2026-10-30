@@ -353,7 +353,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     it('corrects a closed ledger when the enqueued chain could not be handed to the worker', () => {
         const dir = tempDir();
         writeLedger(dir, LINK, copilotLedger());
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         const chain = planChainEnqueue(dir, HOST, 'complete', env(LINK));
         recordChainHandoffFailure(dir, chain, 'worker-spawn-failed');
         expect(readChainLedger(dir, LINK)).toMatchObject({ decision: 'worker-spawn-failed', closedAt: expect.any(String) });
@@ -362,7 +362,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     it('enqueues a Copilot link by its chain-link id and closes the ledger with the host session', () => {
         const dir = tempDir();
         writeLedger(dir, LINK, copilotLedger());
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         const chain = planChainEnqueue(dir, HOST, 'complete', env(LINK));
         expect(chain).toMatchObject({ sessionId: LINK, intentId: 'intent-c', outcome: 'success', reason: 'complete' });
         expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', sessionId: LINK, hostSessionId: HOST, host: 'copilot' });
@@ -379,7 +379,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     it('consumes a link once: a replayed SessionEnd of the same host session gets the same chain back', () => {
         const dir = tempDir();
         writeLedger(dir, LINK, copilotLedger());
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         const first = planChainEnqueue(dir, HOST, 'complete', env(LINK));
         expect(first).not.toBeNull();
         // Whichever hook's manifest wins still carries the chain; one job per host session spawns it once.
@@ -391,7 +391,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     it('never replays a chain whose hand-off failed, or a non-enqueued closeout', () => {
         const dir = tempDir();
         writeLedger(dir, LINK, copilotLedger());
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         const chain = planChainEnqueue(dir, HOST, 'complete', env(LINK));
         recordChainHandoffFailure(dir, chain, 'enqueued-failed', { error: 'boom' });
         expect(readChainLedger(dir, LINK)).not.toHaveProperty('enqueuedChain');
@@ -402,7 +402,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     it('a concurrent duplicate SessionEnd waits for the deciding one and gives up without deciding twice', () => {
         const dir = tempDir();
         writeLedger(dir, LINK, copilotLedger());
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         // Another SessionEnd holds the decision claim and never closes (bounded wait).
         writeFileSync(join(factoryStateDir(dir), `chain-${LINK}.json.claim`), '');
         expect(planChainEnqueue(dir, HOST, 'complete', env(LINK))).toBeNull();
@@ -416,7 +416,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
         writeLedger(dir, LINK, copilotLedger());
         const NESTED = '9a9a9a9a-1111-4222-8333-444444444444';
         expect(resolveChainLink(dir, NESTED, env(LINK))).toEqual({ linkId: NESTED, source: 'session', rejected: 'ledger bound to another session' });
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         expect(planChainEnqueue(dir, NESTED, 'complete', env(LINK))).toBeNull();
         expect(readChainLedger(dir, LINK)?.closedAt).toBeUndefined();
     });
@@ -428,7 +428,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     });
     it('does not let OMC_CHAIN_LINK inject a chain: no trusted ledger, no enqueue', () => {
         const dir = tempDir();
-        writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+        writeProjectRoutes(dir, { 'success:*': { stage: 'review', skill: 'review' } });
         expect(planChainEnqueue(dir, HOST, 'complete', env(LINK))).toBeNull();
         expect(readDecisions(dir)).toEqual([expect.objectContaining({ decision: 'chain-link-rejected', error: 'no ledger' })]);
     });
@@ -475,6 +475,96 @@ describe('bindChainLink (SessionStart)', () => {
         writeLedger(dir, LINK, ledger);
         expect(bindChainLink(dir, PARENT, e)).toBe(result);
         expect(readChainLedger(dir, LINK)?.boundSessionId).toBeUndefined();
+    });
+});
+describe('planChainEnqueue — captain and retired skills fail closed', () => {
+    function refusedChain(table, reason = 'prompt_input_exit', ledger = {}) {
+        const dir = tempDir();
+        writeLedger(dir, 'sess-a', { intentId: 'intent-a', ...ledger });
+        writeProjectRoutes(dir, table);
+        return { dir, chain: planChainEnqueue(dir, 'sess-a', reason) };
+    }
+    it.each([
+        ['diagnose', 'diagnose'],
+        ['launch', 'launch'],
+        ['ask-navigator', 'ask-navigator'],
+        ['loft', 'loft'],
+        ['drydock', 'drydock'],
+    ])('halts a route to %s with route-retired and spawns nothing', (skill, name) => {
+        const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill } });
+        expect(chain).toBeNull();
+        const decisions = readDecisions(dir);
+        expect(decisions.at(-1)).toMatchObject({ decision: `route-retired:${name}`, stage: 'next', skill });
+        expect(decisions.some((d) => d.decision === 'enqueued')).toBe(false);
+        expect(readChainStopMarker('intent-a', factoryStateDir(dir))).toMatchObject({ reason: `route-retired:${name}` });
+        expect(readChainLedger(dir, 'sess-a')).toMatchObject({ decision: `route-retired:${name}`, closedAt: expect.any(String) });
+        expect(readChainLedger(dir, 'sess-a')).not.toHaveProperty('enqueuedChain');
+    });
+    it('halts the old template routes success:launch -> diagnose and failed:ci -> diagnose', () => {
+        const old = {
+            'success:intake': { stage: 'intent', skill: 'intent' },
+            'success:intent': { stage: 'launch', skill: 'launch' },
+            'success:launch': { stage: 'diagnose', skill: 'diagnose' },
+            'failed:ci': { stage: 'diagnose', skill: 'diagnose' },
+        };
+        const failed = refusedChain(old, 'ci');
+        expect(failed.chain).toBeNull();
+        expect(readDecisions(failed.dir).at(-1)).toMatchObject({ decision: 'route-retired:diagnose', outcome: 'failed' });
+        expect(readChainStopMarker('intent-a', factoryStateDir(failed.dir))).toMatchObject({ reason: 'route-retired:diagnose' });
+        // The success side, keyed on a reason a finished link really reports.
+        const launch = refusedChain({ ...old, 'success:complete': { stage: 'launch', skill: 'launch' } }, 'complete');
+        expect(launch.chain).toBeNull();
+        expect(readDecisions(launch.dir).at(-1)).toMatchObject({ decision: 'route-retired:launch', outcome: 'success' });
+    });
+    it.each([
+        'Diagnose', 'LAUNCH', ' diagnose', 'launch\t', '/diagnose', 'oh-my-copilot:launch', '/oh-my-copilot:Diagnose', ' Drydock\n',
+    ])('refuses the case/whitespace/prefix variant %j by its canonical name', (skill) => {
+        const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill } });
+        expect(chain).toBeNull();
+        const decision = String(readDecisions(dir).at(-1)?.decision);
+        expect(decision).toMatch(/^route-retired:(diagnose|launch|drydock)$/);
+        expect(readChainStopMarker('intent-a', factoryStateDir(dir))?.reason).toBe(decision);
+    });
+    it('refuses even when the gate would auto-pass and before any chain slot is taken', () => {
+        const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill: 'launch' } }, 'prompt_input_exit', { gate: 'harbor-review', gateFacts: { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: false } });
+        expect(chain).toBeNull();
+        expect(readDecisions(dir).map((d) => d.decision)).toEqual(['route-retired:launch']);
+    });
+    it('refuses a retired skill carried by the ledger route table when the project table is absent', () => {
+        const dir = tempDir();
+        writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'next', skill: 'diagnose' } } });
+        expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
+        expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'route-retired:diagnose' });
+    });
+    it('refuses a hand-edited table that hides a retired skill behind a valid-looking stage', () => {
+        const { dir, chain } = refusedChain({
+            success: { stage: 'ignored', skill: 'spec' },
+            'success:*': { stage: 'review', skill: 'Launch ', verify: ['npm test'] },
+            'failed:*': 'diagnose',
+        });
+        expect(chain).toBeNull();
+        expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'route-retired:launch' });
+    });
+    it('spawns nothing for a route with a missing or empty skill', () => {
+        const missing = refusedChain({ 'success:*': { stage: 'next' } });
+        expect(missing.chain).toBeNull();
+        expect(readDecisions(missing.dir).at(-1)).toMatchObject({ decision: 'no-route' });
+        const empty = refusedChain({ 'success:*': { stage: 'next', skill: '   ' } });
+        expect(empty.chain).toBeNull();
+        expect(readDecisions(empty.dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
+    });
+    it('still enqueues an unknown skill name (the runtime refuses by name; init --check flags unknown skills)', () => {
+        const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill: 'launch-review' } });
+        expect(chain).not.toBeNull();
+        expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', skill: 'launch-review' });
+    });
+    it('enqueues a deprecated intent route with a route-deprecated:intent note', () => {
+        const { dir, chain } = refusedChain({ 'success:*': { stage: 'intent', skill: 'intent' } });
+        expect(chain).toMatchObject({ intentId: 'intent-a', sessionId: 'sess-a' });
+        const decisions = readDecisions(dir).map((d) => d.decision);
+        expect(decisions).toEqual(['route-deprecated:intent', 'enqueued']);
+        expect(readChainLedger(dir, 'sess-a')).toMatchObject({ decision: 'enqueued' });
+        expect(readChainStopMarker('intent-a', factoryStateDir(dir))).toBeNull();
     });
 });
 //# sourceMappingURL=chain-enqueuer.test.js.map

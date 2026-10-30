@@ -17,7 +17,7 @@ import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { integerOption } from '../utils/integer-option.js';
 
-async function ttyConfirm(question: string): Promise<boolean> {
+export async function ttyConfirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());

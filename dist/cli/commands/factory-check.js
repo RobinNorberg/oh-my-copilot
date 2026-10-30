@@ -15,7 +15,7 @@ import { userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { integerOption } from '../utils/integer-option.js';
-async function ttyConfirm(question) {
+export async function ttyConfirm(question) {
     const rl = createInterface({ input: process.stdin, output: process.stderr });
     try {
         return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());

@@ -15,11 +15,32 @@ All notable changes to oh-my-copilot will be documented in this file.
   listener (run `omg factory heal scan` manually). `omg factory init
   --no-narrow`, whose full template routed `success:launch` to the same
   missing skill, now refuses (exit 1, nothing written) and points at
-  `omg factory run <issue>`. The default narrow table is unchanged. Interim: an existing
-  `.omg/factory-routes.json` created with the old full template still routes
-  `success:intent` to `launch` and `success:launch` to `diagnose` until the
-  follow-up adds `omg factory init --check/--migrate`; re-run `omg factory init
-  --force` (narrow) to drop them.
+  `omg factory run <issue>`. The default narrow table is unchanged. An existing
+  `.omg/factory-routes.json` created with the old full template no longer
+  spawns those links: the chain refuses them (next entry), and
+  `omg factory init --migrate` removes them.
+- **The SessionEnd chain refuses routes to captain and retired skills.** A
+  route to `launch`, `ask-navigator`, `loft` or `drydock` (human checkpoints)
+  or to `diagnose` (retired) halts the chain with decision and stop marker
+  `route-retired:<skill>` and spawns nothing, whatever the gate says. Case,
+  whitespace, a leading `/` and a `plugin:` prefix do not get past it. A
+  route to `intent` still spawns but records `route-deprecated:intent`. The
+  watchdog treats a `route-retired:*` closeout as halted, not stalled.
+
+### Added
+
+- **`omg factory init --check` and `--migrate`.** `--check` prints every
+  route of `.omg/factory-routes.json` with its status and replacement
+  (read-only; exit 1 when a route would halt the chain). `--migrate` writes
+  `factory-routes.json.bak-<UTC timestamp>` first, then drops the captain and
+  retired routes and turns `success:intake` → `intent` into → `harbor`; it
+  asks on a terminal and needs `--yes` without one.
+
+### Changed
+
+- **`omg factory status` is now `omg factory chain status`.** The old name
+  stays as an alias, so scripts keep working; it no longer reads like
+  `omg factory run status <issue>`.
 
 # oh-my-copilot v5.18.2
 

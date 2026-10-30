@@ -10,14 +10,17 @@
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
  * the factory prerequisites. It seeds the narrow starter loop; --no-narrow is
- * retired and refuses. Never overwrites without --force.
+ * retired and refuses. Never overwrites without --force. `--check` audits an
+ * existing table; `--migrate` rewrites an old one (backup first).
+ *
+ * `omg factory chain status` (alias `omg factory status`) — the chain audit.
  *
  * Liveness: pid file at <omc root>/state/factory-listener.json (SessionStart
  * supervision reads it) plus a GET /status endpoint on the listening port.
  */
 import { Command } from 'commander';
 import { type ChainStatus } from '../../factory/status.js';
-import { type RouteTable } from '../../hooks/session-end/routing.js';
+import { type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/routing.js';
 import { type LoadedFactoryRunLimits } from '../../factory/run/budget.js';
 import type { LoadedForgeConfig } from '../../forge/config.js';
 import { type LaneBackend } from '../../factory/run/lane.js';
@@ -80,4 +83,39 @@ export declare function runFactoryInit(options?: {
     cwd?: string;
     force?: boolean;
 }): FactoryInitResult;
+/**
+ * One route of `.omg/factory-routes.json` as `init --check` sees it. `captain`
+ * and `retired` routes halt the chain at runtime (`route-retired:<skill>`);
+ * `invalid` entries are ignored by the enqueuer.
+ */
+export interface RouteCheckRow {
+    key: string;
+    stage: string;
+    skill: string;
+    status: ChainSkillStatus | 'terminal' | 'unknown' | 'invalid';
+    replacement: string;
+}
+export interface RouteCheckResult extends FactoryInitResult {
+    rows: RouteCheckRow[];
+}
+/**
+ * `omg factory init --check`: classify every route of the project table
+ * (read-only). Exit 1 when a route halts at runtime (captain or retired
+ * skill) or the table is malformed, so `--migrate` is due; else 0.
+ */
+export declare function checkFactoryRoutes(cwd?: string): RouteCheckResult;
+/**
+ * `omg factory init --migrate`: back the table up to
+ * `factory-routes.json.bak-<timestamp>` (never overwriting a backup), then
+ * drop the captain/retired routes and turn `success:intake -> intent` into
+ * `-> harbor`. Every other entry stays byte-for-byte. Asks on a TTY; needs
+ * `--yes` otherwise.
+ */
+export declare function migrateFactoryRoutes(options?: {
+    cwd?: string;
+    yes?: boolean;
+    isTTY?: boolean;
+    confirm?: (question: string) => Promise<boolean>;
+    now?: Date;
+}): Promise<FactoryInitResult>;
 //# sourceMappingURL=factory.d.ts.map

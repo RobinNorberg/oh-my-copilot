@@ -48345,6 +48345,9 @@ var init_factory = __esm({
     import_path103 = require("path");
     init_listener();
     init_status();
+    init_routing();
+    init_spawn_next();
+    init_skills();
     init_worktree_paths();
     init_project_config_path();
     init_job();
