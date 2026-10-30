@@ -29,6 +29,7 @@ import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SA
 import { excerpt } from './copilot-session-eval.js';
 import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
+import { withCassette } from './replay/handler.js';
 /**
  * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
  * than 1.0.16, which takes it only through `rpc.options.update`): its source
@@ -199,8 +200,16 @@ export function resolveShimTarget(shim, read = (p) => readFileSync(p, 'utf-8'), 
     }
     return null;
 }
-/** See the module comment for the resolution order. */
+/**
+ * See the module comment for the resolution order. Every hit goes through
+ * {@link withCassette}, so every client of the codebase records or replays
+ * when the cassette env is set (and loading throws when it cannot).
+ */
 export async function loadCopilotSdk(env = process.env, spawnSync = nodeSpawnSync) {
+    const found = await findCopilotSdk(env, spawnSync);
+    return found ? withCassette(found, env) : null;
+}
+async function findCopilotSdk(env, spawnSync) {
     const spec = SDK_PACKAGE; // a variable keeps tsc from resolving the optional peer at build time
     try {
         const mod = await import(spec);
