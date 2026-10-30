@@ -115348,7 +115348,7 @@ function conflictFixStart(repoRoot3, head, base, message2) {
   if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
   return { sha: sha2, conflicted: [...new Set(conflicted)] };
 }
-var import_node_fs25, import_node_path32, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS3, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
+var import_node_fs25, import_node_path32, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS3, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
 var init_lane_commit = __esm({
   "src/factory/run/lane-commit.ts"() {
     "use strict";
@@ -115364,7 +115364,8 @@ var init_lane_commit = __esm({
     RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
     MAX_WALK_ENTRIES = 2e5;
     MAX_WALK_DEPTH = 64;
-    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".husky/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
+    ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
+    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".husky/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md", ...ADO_PIPELINE_PATHS];
     errText3 = (err) => err instanceof Error ? err.message : String(err);
     CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
     TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
@@ -116393,13 +116394,42 @@ function jobGitDirArgs(job) {
 }
 function syncJobBranch(job, gitDirArgs) {
   const wt = job.worktree;
-  const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
   const ref = `refs/heads/${wt.branch}`;
+  const problem = jobRefProblem(job.commonGitDir, wt.repoRoot, ref);
+  if (problem) return { problem };
+  const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
   const current = git2(wt.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
-  if (!head || !current || head === current) return;
-  if (git2(wt.repoRoot, ["update-ref", "-m", "copilot_run: the session's commits", ref, head, current]) === null) {
+  if (!head || !current || head === current) return { moved: null };
+  if (git2(wt.repoRoot, ["update-ref", "--no-deref", "-m", "copilot_run: the session's commits", ref, head, current]) === null) {
     job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
+    return { moved: null };
   }
+  return { moved: head };
+}
+function jobRefProblem(commonGitDir, repoRoot3, ref) {
+  if (!commonGitDir) return `the common git dir of ${ref} is unknown`;
+  let path30 = commonGitDir;
+  for (const seg of ref.split("/")) {
+    path30 = (0, import_node_path34.join)(path30, seg);
+    let st;
+    try {
+      st = (0, import_node_fs27.lstatSync)(path30);
+    } catch {
+      return null;
+    }
+    if (st.isSymbolicLink()) return `${ref} runs through a link (${path30})`;
+  }
+  const kind = describeEntry(path30);
+  if (!kind.startsWith("file ")) return `${ref} is not a regular file (${kind})`;
+  let text4 = "";
+  try {
+    text4 = (0, import_node_fs27.readFileSync)(path30, "utf8");
+  } catch {
+    return `${ref} is unreadable`;
+  }
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?\r?\n?$/.test(text4)) return `${ref} does not hold a plain commit id (${JSON.stringify(text4.trim().slice(0, 80))})`;
+  if (git2(repoRoot3, ["symbolic-ref", "-q", ref])) return `${ref} is a symbolic ref`;
+  return null;
 }
 function describeEntry(path30) {
   let st;
@@ -116456,7 +116486,7 @@ function sharedGitStateSnapshot(commonGitDir) {
     for (const id of ids2) {
       add(`worktrees/${id}`, false);
       if (out[`worktrees/${id}`] !== "dir") continue;
-      for (const name of ["config.worktree", "commondir", "gitdir"]) add(`worktrees/${id}/${name}`, false);
+      for (const name of ["config.worktree", "commondir", "gitdir", "HEAD"]) add(`worktrees/${id}/${name}`, false);
     }
   }
   try {
@@ -116480,13 +116510,12 @@ function branchRefs(commonGitDir) {
     }
     for (const line of text4.split(/\r?\n/)) {
       const m = /^([0-9a-f]{40,64}) (refs\/heads\/\S+)$/.exec(line.trim());
-      if (m && !m[2].startsWith(JOB_BRANCH_REFS)) out[m[2]] = `ref ${m[1]}`;
+      if (m) out[m[2]] = `ref ${m[1]}`;
     }
   } else if (packedKind !== "absent") {
     out["packed-refs"] = packedKind;
   }
   const walk = (rel) => {
-    if (`${rel}/`.startsWith(JOB_BRANCH_REFS)) return;
     const path30 = (0, import_node_path34.join)(commonGitDir, rel);
     const kind = describeEntry(path30);
     if (kind === "dir") {
@@ -116510,8 +116539,9 @@ function branchRefs(commonGitDir) {
   walk("refs/heads");
   return out;
 }
-function sharedGitStateChanges(before, after) {
+function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set()) {
   return [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
+    if (ignore.has(key)) return false;
     const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
     if (id !== void 0 && (before[`worktrees/${id}`] === void 0 || after[`worktrees/${id}`] === void 0)) return false;
     return (before[key] ?? "absent") !== (after[key] ?? "absent");
@@ -116555,7 +116585,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process16.spawnSync)
   };
 }
-var import_node_child_process16, import_node_crypto15, import_node_fs27, import_node_os8, import_node_path34, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal2, git2, lines, JOB_BRANCH_REFS, CopilotRunManager;
+var import_node_child_process16, import_node_crypto15, import_node_fs27, import_node_os8, import_node_path34, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal2, git2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -116622,7 +116652,6 @@ var init_job = __esm({
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text4) => (text4 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    JOB_BRANCH_REFS = `refs/heads/${(0, import_node_path34.dirname)(getBranchName(WORKTREE_TEAM, "job"))}/`;
     CopilotRunManager = class {
       constructor(deps) {
         this.deps = deps;
@@ -116783,6 +116812,14 @@ var init_job = __esm({
         if (hooksRule) extraProtected.push(hooksRule);
         if (options.sandboxScope === "factory") extraProtected.push(...LANE_PROTECTED_PATHS);
         const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
+        const liveWorktreeHeads = /* @__PURE__ */ new Set();
+        for (const j of [...this.jobs.values()].filter((other) => !isTerminal2(other.status))) {
+          if (j.worktreeLinks) liveWorktreeHeads.add(`worktrees/${(0, import_node_path34.basename)(j.worktreeLinks.adminDir)}/HEAD`);
+        }
+        if (worktree && worktreeLinks) {
+          liveWorktreeHeads.add(`worktrees/${(0, import_node_path34.basename)(worktreeLinks.adminDir)}/HEAD`);
+          this.expectJobRef(worktree.branch, baseCommit);
+        }
         const jobDir = (0, import_node_path34.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
         let requestStop = () => {
         };
@@ -116819,6 +116856,7 @@ var init_job = __esm({
           commonGitDir,
           extraProtected,
           sharedGitState,
+          liveWorktreeHeads,
           pid: void 0,
           pidIdentity: null,
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -116848,7 +116886,7 @@ var init_job = __esm({
         }).then((outcome) => {
           clearTimeout(timer);
           const gitDirArgs = jobGitDirArgs(job);
-          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir)) : [];
+          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads) : [];
           if (gitDirArgs === null) {
             const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
             job.error = job.error ? `${why}; ${job.error}` : why;
@@ -116860,13 +116898,25 @@ var init_job = __esm({
             job.stopReason ??= "sandbox-escaped";
             outcome = "failed";
           } else {
-            if (job.worktree) {
-              syncJobBranch(job, gitDirArgs);
-              job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+            const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
+            if ("problem" in sync) {
+              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} changed kind during the session (${sync.problem}); it was not moved and no host git ran in the worktree`;
+              job.error = job.error ? `${why}; ${job.error}` : why;
+              job.stopReason ??= "sandbox-escaped";
+              outcome = "failed";
+            } else {
+              if (job.worktree) {
+                if (sync.moved) this.expectJobRef(job.worktree.branch, sync.moved);
+                job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+              }
+              job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
             }
-            job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
             const nested = job.changes?.newGitlinks ?? [];
-            if (job.worktree && nested.length > 0) {
+            if (job.worktree && outcome !== "failed" && !job.changes) {
+              const why = "the change summary could not be read in the job worktree (git failed), so its protected paths were not checked";
+              job.error = job.error ? `${why}; ${job.error}` : why;
+              outcome = "failed";
+            } else if (job.worktree && nested.length > 0) {
               const why = `sandbox-escaped: the session added nested repositories as gitlinks (${nested.slice(0, 5).join(", ")}); host git does not enter them, so their content was not inspected`;
               job.error = job.error ? `${why}; ${job.error}` : why;
               job.stopReason ??= "sandbox-escaped";
@@ -116930,9 +116980,24 @@ var init_job = __esm({
             (0, import_node_fs27.rmSync)(job.jobDir, { recursive: true, force: true });
           } catch {
           }
+          if (job.commonGitDir && branchRefs(job.commonGitDir)[`refs/heads/${job.worktree.branch}`] === void 0) this.expectJobRef(job.worktree.branch, null);
         }
         if (tampered) return { ...this.snapshot(job), cleanup: `sandbox-escaped: ${tampered}` };
         return { ...this.snapshot(job), cleanup: `removed worktree ${job.worktree.path} and branch ${job.worktree.branch}` };
+      }
+      /**
+       * A job branch this manager created, moved or deleted (null): the value
+       * every live job's common git dir snapshot expects from now on, so the
+       * manager's own ref writes are no change and any other write to a job
+       * branch (a lane retargeting another job's branch) is.
+       */
+      expectJobRef(branch, sha2) {
+        const key = `refs/heads/${branch}`;
+        for (const other of this.jobs.values()) {
+          if (isTerminal2(other.status) || !other.sharedGitState) continue;
+          if (sha2) other.sharedGitState[key] = `ref ${sha2}`;
+          else delete other.sharedGitState[key];
+        }
       }
       find(jobId) {
         if (typeof jobId !== "string" || !JOB_ID.test(jobId)) throw new CopilotRunError(`Invalid jobId ${JSON.stringify(jobId)}.`);
@@ -118636,217 +118701,6 @@ var init_gates_driver = __esm({
     MAX_FAILING_TITLES = 50;
     GatesCancelled = class extends Error {
     };
-  }
-});
-
-// src/factory/run/lane-commit.ts
-function engineGitEnv(extra = {}) {
-  const env2 = { ...process.env };
-  for (const key of Object.keys(env2)) {
-    if (/^GIT_(?:INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|AUTHOR_|COMMITTER_)/i.test(key)) delete env2[key];
-  }
-  return {
-    ...env2,
-    GIT_AUTHOR_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_AUTHOR_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    GIT_COMMITTER_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    ...extra
-  };
-}
-function dropTrailers(body) {
-  let lines4 = body.split("\n").filter((l) => !ANY_LINE_TRAILER.test(l));
-  for (; ; ) {
-    while (lines4.length > 0 && !lines4[lines4.length - 1].trim()) lines4.pop();
-    let start = lines4.length;
-    while (start > 0 && lines4[start - 1].trim()) start--;
-    const kept = [];
-    let dropping = false;
-    for (const l of lines4.slice(start)) {
-      dropping = TRAILER.test(l) || dropping && /^\s/.test(l);
-      if (!dropping) kept.push(l);
-    }
-    if (kept.length === lines4.length - start) return lines4.join("\n");
-    lines4 = [...lines4.slice(0, start), ...kept];
-  }
-}
-function laneCommitMessage(title, body) {
-  const unskip = (t) => {
-    let prev;
-    do {
-      prev = t;
-      t = t.replace(CI_SKIP, "");
-    } while (t !== prev);
-    return t;
-  };
-  const clean = (t) => unskip(t.replace(/\r\n?/g, "\n").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => c === "\n" ? c : " "));
-  const text4 = `${clean(title).replace(/\n/g, " ").trim()}
-
-${dropTrailers(clean(body ?? "")).trim()}`.trim();
-  return text4.length > MAX_MESSAGE_CHARS ? `${text4.slice(0, MAX_MESSAGE_CHARS)}
-...` : text4;
-}
-function linkEscape(worktree, ignored) {
-  let entries = 0;
-  const walk = (dir, rel, depth) => {
-    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
-    for (const d of (0, import_node_fs27.readdirSync)(dir, { withFileTypes: true })) {
-      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
-      const path30 = rel ? `${rel}/${d.name}` : d.name;
-      if (d.isFile() || d.name === ".git" || ignored.has(path30)) continue;
-      const abs = (0, import_node_path34.join)(dir, d.name);
-      const st = (0, import_node_fs27.lstatSync)(abs);
-      if (st.isSymbolicLink()) {
-        let toDir = false;
-        try {
-          toDir = (0, import_node_fs27.statSync)(abs).isDirectory();
-        } catch {
-        }
-        if (process.platform === "win32" || toDir) return `the lane left a link at ${path30} (a symlink or junction); host git could read through it outside the worktree`;
-      } else if (st.isDirectory()) {
-        const hit2 = walk(abs, path30, depth + 1);
-        if (hit2) return hit2;
-      }
-    }
-    return null;
-  };
-  return walk(worktree, "", 0);
-}
-function outsideWorktree(worktree, files) {
-  const root2 = import_node_fs27.realpathSync.native(worktree);
-  return files.filter((f) => {
-    let dir;
-    try {
-      dir = import_node_fs27.realpathSync.native((0, import_node_path34.dirname)((0, import_node_path34.join)(worktree, f)));
-    } catch (err) {
-      const code = err.code;
-      return code !== "ENOENT" && code !== "ENOTDIR";
-    }
-    const r = (0, import_node_path34.relative)(root2, dir);
-    return r === ".." || r.startsWith(`..${import_node_path34.sep}`) || (0, import_node_path34.isAbsolute)(r);
-  });
-}
-function entriesOfMode(out, from, mode) {
-  const set = /* @__PURE__ */ new Set();
-  for (const entry2 of out.split("\0")) {
-    if (!entry2.startsWith(`${mode} `)) continue;
-    const tab = entry2.indexOf("	");
-    const fields = entry2.slice(0, tab).split(" ");
-    set.add(`${from === "index" ? fields[1] : fields[2]}	${entry2.slice(tab + 1)}`);
-  }
-  return set;
-}
-function commitLaneWork(input) {
-  try {
-    if (!HEX.test(input.start) || input.parents.length === 0 || !input.parents.every((p) => HEX.test(p))) {
-      return { ok: false, refusal: "error", reason: "the start and parent commits must be full shas" };
-    }
-    const dirs = worktreeGitDirArgs(input.worktree);
-    const git6 = (args, env2) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS4, env2).trim();
-    const head = git6(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-    if (head !== input.start) {
-      return { ok: false, refusal: "moved", reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || "(none)"} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
-    }
-    const ignored = new Set(git6(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
-    const link6 = linkEscape(input.worktree, ignored);
-    if (link6) return { ok: false, refusal: "escaped", reason: link6 };
-    const isIgnored = (p) => p.split("/").some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join("/")));
-    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
-    git6(["add", "-A", "--", ".", ...excludes], engineGitEnv());
-    const refuse = (refusal, reason) => {
-      try {
-        git6(["read-tree", input.start]);
-      } catch (err) {
-        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText4(err)}` };
-      }
-      return { ok: false, refusal, reason };
-    };
-    const index = git6(["ls-files", "-z", "--stage"]);
-    const startTree = git6(["ls-tree", "-r", "-z", "--full-tree", input.start]);
-    const changedOfMode = (mode) => {
-      const known = entriesOfMode(startTree, "tree", mode);
-      return [...entriesOfMode(index, "index", mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf("	") + 1));
-    };
-    const nested = changedOfMode("160000");
-    if (nested.length > 0) {
-      return refuse("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
-    }
-    const symlinks = changedOfMode("120000");
-    if (symlinks.length > 0) return refuse("escaped", `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(", ")}`);
-    const files = git6(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", input.start, "--"]).split("\0").filter(Boolean);
-    const outside = outsideWorktree(input.worktree, files);
-    if (outside.length > 0) return refuse("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
-    const hardLinked = files.filter((f) => {
-      try {
-        return (0, import_node_fs27.lstatSync)((0, import_node_path34.join)(input.worktree, f)).nlink > 1;
-      } catch {
-        return false;
-      }
-    });
-    if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
-    const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
-    if (hit2.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}`);
-    const tree = git6(["write-tree"]);
-    if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
-    if (tree === git6(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
-      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
-    }
-    const sha2 = git6(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
-    if (!HEX.test(sha2)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}` };
-    const notes = [];
-    git6(["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", "HEAD", sha2, input.start]);
-    if (input.branch) {
-      const ref = `refs/heads/${input.branch}`;
-      const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS4).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS4);
-      else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
-    }
-    return { ok: true, sha: sha2, files, notes };
-  } catch (err) {
-    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText4(err)}` };
-  }
-}
-function conflictFixStart(repoRoot3, head, base, message2) {
-  const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS4).trim();
-  const emptyTree = EMPTY_TREE[format];
-  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
-  const env2 = engineGitEnv({ GIT_ATTR_SOURCE: emptyTree });
-  let out;
-  try {
-    out = runHostGit(repoRoot3, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", head, base], GIT_TIMEOUT_MS4, env2);
-  } catch (err) {
-    const e = err;
-    if (e.status !== 1 || typeof e.stdout !== "string") throw err;
-    out = e.stdout;
-  }
-  const [tree, ...conflicted] = out.split("\0").filter(Boolean);
-  if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
-  const sha2 = runHostGit(repoRoot3, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message2, tree], GIT_TIMEOUT_MS4, env2).trim();
-  if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
-  return { sha: sha2, conflicted: [...new Set(conflicted)] };
-}
-var import_node_fs27, import_node_path34, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS4, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText4, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
-var init_lane_commit = __esm({
-  "src/factory/run/lane-commit.ts"() {
-    "use strict";
-    import_node_fs27 = require("node:fs");
-    import_node_path34 = require("node:path");
-    init_worktree_paths();
-    init_merge2();
-    init_git_worktree();
-    ENGINE_COMMIT_IDENTITY = Object.freeze({ name: "omg factory", email: "omg-factory@oh-my-copilot.invalid" });
-    GIT_TIMEOUT_MS4 = 6e4;
-    MAX_MESSAGE_CHARS = 4e3;
-    HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-    RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
-    MAX_WALK_ENTRIES = 2e5;
-    MAX_WALK_DEPTH = 64;
-    ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
-    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md", ...ADO_PIPELINE_PATHS];
-    errText4 = (err) => err instanceof Error ? err.message : String(err);
-    CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
-    TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
-    ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
   }
 });
 
@@ -122071,7 +121925,11 @@ ${item.acceptance}
         if (result.sandbox?.mode === "detect-only") {
           this.o.warn?.(`omg factory run: ${lane.kind} lane ${lane.id} ran without an OS sandbox (writeUnsandboxed "detect-only"${result.sandbox.reason ? `: ${result.sandbox.reason}` : ""})`);
         }
-        const hit2 = result.changes?.protectedChanges ?? [];
+        if (!result.changes) {
+          this.gate("protected-paths", `lane ${lane.id} reported no change summary, so its protected paths were not checked; nothing was pushed`);
+          return;
+        }
+        const hit2 = result.changes.protectedChanges;
         if (hit2.length > 0) {
           this.gate("protected-paths", `lane ${lane.id} changed merge-rule paths: ${hit2.join(", ")}; nothing was pushed`);
           return;

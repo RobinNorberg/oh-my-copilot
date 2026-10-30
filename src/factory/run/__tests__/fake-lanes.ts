@@ -37,6 +37,8 @@ export interface LaneOutcome {
   /** wait() throws LaneLostError (the job vanished with its process). */
   lost?: boolean;
   sandbox?: CopilotRunSandboxState;
+  /** The result carries no change summary (git could not tell). */
+  noChanges?: boolean;
 }
 
 export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void;
@@ -96,7 +98,7 @@ export class FakeLanes implements LaneBackend {
       headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
       baseSha: job.ctx.baseSha,
       worktree: job.ctx.worktree,
-      changes: terminal ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
+      changes: terminal && !o.noChanges ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
       finalText: o.finalText ?? null,
       logsUrl: null,
       usage: { premiumRequests: terminal ? 1 : 0, credits: terminal ? (o.credits ?? 5) : 0, source: 'measured', detail: '' },

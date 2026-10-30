@@ -283,10 +283,11 @@ export declare function summarizeChanges(cwd: string, base: string | null, extra
  * `commondir` in any git dir, so writing one redirects the main checkout's
  * git to a config and hooks of the writer's choosing), `HEAD`, `hooks/` and
  * `info/` (recursive), per `worktrees/<id>` its type, `config.worktree`,
- * `commondir` and `gitdir`, every submodule git dir under `modules/`
- * (config, hooks, info, alternates: the factory's moduleEntries), and the
- * branches (`refs/heads/*`, loose or packed) outside the copilot-run job
- * namespace, whose branches concurrent jobs create and move. The sandbox
+ * `commondir`, `gitdir` and `HEAD` (another checkout's branch), every
+ * submodule git dir under `modules/` (config, hooks, info, alternates: the
+ * factory's moduleEntries), and the branches (`refs/heads/*`, loose or
+ * packed), the job branches included: the manager updates every live job's
+ * snapshot when it creates, moves or deletes one (expectJobRef). The sandbox
  * keeps them read-only to the shell, but the built-in file tools write
  * unsandboxed, and a path approved under the worktree can be swapped for a
  * link into the git dir between the approval and the write. Taken before the
@@ -303,9 +304,10 @@ export declare function sharedGitStateSnapshot(commonGitDir: string): Record<str
  * What changed between two sharedGitStateSnapshot results, as paths relative
  * to the common git dir. A `worktrees/<id>` entry another job added or removed
  * meanwhile is not a change; a kept entry that changed type, or whose
- * `config.worktree` appeared, changed or went, is.
+ * `config.worktree` appeared, changed or went, is. Keys in `ignore` (the
+ * HEADs of job worktrees whose sessions ran meanwhile) are no change.
  */
-export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): string[];
+export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>, ignore?: ReadonlySet<string>): string[];
 /**
  * A relative `core.hooksPath` (any config level but the command line) as a
  * protected dir rule, or null, as git resolves it in `cwd` with `gitDirArgs`
@@ -335,6 +337,13 @@ export declare class CopilotRunManager {
     cleanup(jobId: string): CopilotRunSnapshot & {
         cleanup: string;
     };
+    /**
+     * A job branch this manager created, moved or deleted (null): the value
+     * every live job's common git dir snapshot expects from now on, so the
+     * manager's own ref writes are no change and any other write to a job
+     * branch (a lane retargeting another job's branch) is.
+     */
+    private expectJobRef;
     private find;
     /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
     private recordBudget;

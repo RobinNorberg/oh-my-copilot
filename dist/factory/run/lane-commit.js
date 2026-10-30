@@ -54,9 +54,12 @@ export const ADO_PIPELINE_PATHS = ['azure-pipelines.yml', 'azure-pipelines.yaml'
 /**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
- * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows;
+ * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
+ * tasks other agents and editors run from a checkout, `.husky/` the git hooks
+ * husky installs.
  */
-export const LANE_PROTECTED_PATHS = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
+export const LANE_PROTECTED_PATHS = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
 const errText = (err) => (err instanceof Error ? err.message : String(err));
 /** The engine's env with the commit identity fixed, and no variable that redirects the index or object store. */
 function engineGitEnv(extra = {}) {

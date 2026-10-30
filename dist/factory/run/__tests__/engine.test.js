@@ -173,6 +173,14 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(remoteHead(h)).toBeNull();
         expect(h.calls.some((c) => c.startsWith('git push'))).toBe(false);
     });
+    it('a completed write lane without a change summary parks at protected-paths and commits nothing', async () => {
+        const { done } = run([(ctx) => { commitFile('.github/workflows/ci.yml', 'on: push\n')(ctx); return { noChanges: true }; }]);
+        const out = await done;
+        expect(out.gate?.name).toBe('protected-paths');
+        expect(out.gate?.reason).toMatch(/no change summary/);
+        expect(remoteHead(h)).toBeNull();
+        expect(h.calls.some((c) => c.startsWith('git push'))).toBe(false);
+    });
     it.each([
         ['refused', 0, 'sandbox-unavailable: MXC is not available', 'sandbox-unavailable'],
         ['enforced', 1, 'sandbox-escaped: powershell call c1 ran outside the sandbox', 'sandbox-escaped'],

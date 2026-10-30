@@ -1283,7 +1283,12 @@ class FactoryEngine {
     if (result.sandbox?.mode === 'detect-only') {
       this.o.warn?.(`omg factory run: ${lane.kind} lane ${lane.id} ran without an OS sandbox (writeUnsandboxed "detect-only"${result.sandbox.reason ? `: ${result.sandbox.reason}` : ''})`);
     }
-    const hit = result.changes?.protectedChanges ?? [];
+    if (!result.changes) {
+      // No change summary means the protected paths went unchecked, not that none changed.
+      this.gate('protected-paths', `lane ${lane.id} reported no change summary, so its protected paths were not checked; nothing was pushed`);
+      return;
+    }
+    const hit = result.changes.protectedChanges;
     if (hit.length > 0) {
       this.gate('protected-paths', `lane ${lane.id} changed merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
       return;
