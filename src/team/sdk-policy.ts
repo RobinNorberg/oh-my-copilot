@@ -7,7 +7,7 @@
  */
 
 import { lstatSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 
 /** The subset of the SDK PermissionRequest the policy reads (SDK 1.0.16). */
@@ -181,6 +181,40 @@ function existingWriteTargetDenial(p: string): string | null {
 }
 
 /**
+ * Why a link on the way from its root to `p` is refused, or null: each
+ * existing segment below the root (as given, else its realpath) is lstat'ed,
+ * and a symlink or junction must resolve under one of `roots`; a dangling one
+ * is refused. {@link canon} judges the same through realpath; this names the
+ * planted link. Approval cannot close the window between it and the write
+ * (a link swapped in after), which the copilot_run job's common git dir
+ * snapshot covers.
+ */
+export function linkSegmentDenial(p: string, roots: readonly string[], platform: NodeJS.Platform = process.platform): string | null {
+  const abs = resolve(p);
+  for (const root of roots) {
+    let base = resolve(root);
+    let rel = relative(base, abs);
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      try { base = realpathSync.native(root); } catch { continue; }
+      rel = relative(base, abs);
+      if (rel.startsWith('..') || isAbsolute(rel)) continue;
+    }
+    let cur = base;
+    for (const seg of rel.split(/[\\/]+/).filter(Boolean)) {
+      cur = join(cur, seg);
+      let st;
+      try { st = lstatSync(cur); } catch { return null; }
+      if (!st.isSymbolicLink()) continue;
+      let real: string;
+      try { real = realpathSync.native(cur); } catch { return `write through a dangling link ${cur}`; }
+      if (!roots.some((r) => isUnderRoot(real, r, platform))) return `write through a link ${cur} that resolves outside the worktree and team state (${real})`;
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
  * True when `p` names a git dir or gitfile, or an NTFS alternate data stream:
  * a segment that, case-folded with trailing dots and spaces stripped (Win32
  * drops them), is `.git` or an 8.3 short name `git~<n>`, or any `:` past a
@@ -280,6 +314,8 @@ export function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyCon
         const disagree = pathFieldsDisagree(paths, platform);
         if (disagree) return { approve: false, reason: `write ${disagree}: ${path}` };
         for (const q of paths) {
+          const link = linkSegmentDenial(q, [ctx.cwd, ctx.stateRoot], platform);
+          if (link) return { approve: false, reason: link };
           if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
             return { approve: false, reason: `write outside worktree and team state: ${q}` };
           }

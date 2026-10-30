@@ -102,6 +102,24 @@ describe('sdk permission policy', () => {
             rmSync(outside, { recursive: true, force: true });
         }
     });
+    // Each segment is lstat'ed: the reason names the planted link, a dangling one is refused even as the leaf.
+    it('names a link segment that resolves outside and refuses a dangling one, and allows a link that stays inside', () => {
+        const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+        try {
+            mkdirSync(join(worktree, 'src', 'real'), { recursive: true });
+            symlinkSync(outside, join(worktree, 'src', 'd'), 'junction');
+            expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'd', 'config') }, ctx()))
+                .toMatchObject({ approve: false, reason: expect.stringMatching(/^write through a link .*src.d that resolves outside/) });
+            symlinkSync(join(outside, 'gone'), join(worktree, 'src', 'dangling'), 'junction');
+            expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'dangling') }, ctx()))
+                .toMatchObject({ approve: false, reason: expect.stringMatching(/dangling link/) });
+            symlinkSync(join(worktree, 'src', 'real'), join(worktree, 'src', 'inside'), 'junction');
+            expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'inside', 'new.txt') }, ctx()).approve).toBe(true);
+        }
+        finally {
+            rmSync(outside, { recursive: true, force: true });
+        }
+    });
     // `resolve` would collapse `l/../x` to `x`; the kernel climbs from the target of the link `l`.
     it('refuses a read or write path with a .. segment', () => {
         for (const p of [`${worktree}/l/../x.txt`, `${worktree}\\l\\..\\x.txt`, 'l/../x.txt']) {

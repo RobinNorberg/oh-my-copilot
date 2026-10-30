@@ -41,13 +41,14 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, win32 } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { LANE_PROTECTED_PATHS } from '../factory/run/lane-commit.js';
 import { openAppendExclusive } from '../lib/append-no-follow.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentity } from '../platform/process-utils.js';
@@ -390,8 +391,10 @@ interface Job {
   worktreeLinks: WorktreeGitLinks | null;
   /** The repository's common git dir (resolved from the repository root at creation). */
   commonGitDir: string | null;
-  /** Configured merge-rule paths beyond PROTECTED_PATHS (ship.knownFlakyFile). */
+  /** Paths beyond PROTECTED_PATHS: ship.knownFlakyFile, a relative core.hooksPath, and LANE_PROTECTED_PATHS for a factory lane. */
   extraProtected: string[];
+  /** The common git dir's host-git-steering files before the session (sharedGitStateSnapshot); null without a worktree. */
+  sharedGitState: Record<string, string> | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
   pid: number | undefined;
   /** The runtime's start identity once read (null: not read or unknown). */
@@ -553,6 +556,83 @@ function syncJobBranch(job: Job, gitDirArgs: readonly string[]): void {
   }
 }
 
+/** Type and content of one path, never through a link: `absent`, `link <target>`, `dir`, `other` or `file <x|-> <sha256>`. */
+function describeEntry(path: string): string {
+  let st;
+  try { st = lstatSync(path); } catch { return 'absent'; }
+  if (st.isSymbolicLink()) {
+    let target = '?';
+    try { target = readlinkSync(path); } catch { /* unreadable link */ }
+    return `link ${target}`;
+  }
+  if (st.isDirectory()) return 'dir';
+  if (!st.isFile()) return 'other';
+  try {
+    return `file ${st.mode & 0o111 ? 'x' : '-'} ${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
+  } catch {
+    return 'file unreadable';
+  }
+}
+
+/**
+ * The common git dir's files that steer host git, keyed by path relative to
+ * it: `config`, `config.worktree`, `hooks/` and `info/` (recursive), and per
+ * `worktrees/<id>` its type and `config.worktree`. The sandbox keeps them
+ * read-only to the shell, but the built-in file tools write unsandboxed, and
+ * a path approved under the worktree can be swapped for a link into the git
+ * dir between the approval and the write. Taken before the session and
+ * compared after it (sharedGitStateChanges).
+ */
+export function sharedGitStateSnapshot(commonGitDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (rel: string, recurse: boolean) => {
+    const kind = describeEntry(join(commonGitDir, rel));
+    out[rel] = kind;
+    if (kind !== 'dir' || !recurse) return;
+    let names: string[] = [];
+    try { names = readdirSync(join(commonGitDir, rel)).sort(); } catch { out[rel] = 'dir unreadable'; }
+    for (const name of names) add(`${rel}/${name}`, true);
+  };
+  add('config', false);
+  add('config.worktree', false);
+  add('hooks', true);
+  add('info', true);
+  add('worktrees', false);
+  if (out.worktrees === 'dir') {
+    let ids: string[] = [];
+    try { ids = readdirSync(join(commonGitDir, 'worktrees')).sort(); } catch { out.worktrees = 'dir unreadable'; }
+    for (const id of ids) {
+      add(`worktrees/${id}`, false);
+      if (out[`worktrees/${id}`] === 'dir') add(`worktrees/${id}/config.worktree`, false);
+    }
+  }
+  return out;
+}
+
+/**
+ * What changed between two sharedGitStateSnapshot results, as paths relative
+ * to the common git dir. A `worktrees/<id>` entry another job added or removed
+ * meanwhile is not a change; a kept entry that changed type, or whose
+ * `config.worktree` appeared, changed or went, is.
+ */
+export function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): string[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
+    const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
+    if (id !== undefined && (before[`worktrees/${id}`] === undefined || after[`worktrees/${id}`] === undefined)) return false;
+    return (before[key] ?? 'absent') !== (after[key] ?? 'absent');
+  });
+}
+
+/** A relative `core.hooksPath` (any config level but the command line) as a protected dir rule, or null. */
+function relativeHooksPathRule(repo: string): string | null {
+  const values = lines(git(repo, ['config', '--show-scope', '--get-all', 'core.hooksPath']))
+    .filter((l) => !l.startsWith('command\t')).map((l) => l.slice(l.indexOf('\t') + 1).trim());
+  const value = values[values.length - 1];
+  if (!value || value.startsWith('~') || isAbsolute(value) || win32.isAbsolute(value)) return null;
+  const segments = value.replace(/\\/g, '/').split('/').filter((seg) => seg && seg !== '.');
+  return segments.length > 0 && !segments.includes('..') ? `${segments.join('/')}/` : null;
+}
+
 /** The repository-relative path when `path` lies in `root`, else null. */
 function relativeInside(path: string, root: string): string | null {
   const rel = relative(resolve(root), resolve(path));
@@ -712,6 +792,12 @@ export class CopilotRunManager {
 
     let extraProtected: string[] = [];
     try { extraProtected = configuredProtectedPaths(ledgerCwd); } catch { /* the defaults still apply */ }
+    // Unhardened git in the worktree (the runtime's, a plugin hook's) runs the hooks a relative core.hooksPath names there.
+    const hooksRule = repoRoot ? relativeHooksPathRule(ledgerCwd) : null;
+    if (hooksRule) extraProtected.push(hooksRule);
+    // A factory lane may not write what lane-commit refuses to commit, so its file tools cannot plant it in the live worktree.
+    if (options.sandboxScope === 'factory') extraProtected.push(...LANE_PROTECTED_PATHS);
+    const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
 
     const jobDir = join(getOmcRoot(ledgerCwd), 'state', 'copilot-run', id);
     let requestStop: Job['requestStop'] = () => {};
@@ -742,6 +828,7 @@ export class CopilotRunManager {
       worktreeLinks,
       commonGitDir,
       extraProtected,
+      sharedGitState,
       pid: undefined,
       pidIdentity: null,
       startedAt: new Date().toISOString(),
@@ -771,9 +858,16 @@ export class CopilotRunManager {
       .then((outcome) => {
         clearTimeout(timer);
         const gitDirArgs = jobGitDirArgs(job);
+        const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir)) : [];
         if (gitDirArgs === null) {
           // A redirected .git, gitdir or commondir points host git at a git dir the session controls; a changed config.worktree plants config in it.
           const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it';
+          job.error = job.error ? `${why}; ${job.error}` : why;
+          job.stopReason ??= 'sandbox-escaped';
+          outcome = 'failed';
+        } else if (gitStateChanged.length > 0) {
+          // A file-tool write swapped into the git dir, or anything else outside the sandbox: host git would read it.
+          const why = `sandbox-escaped: the common git dir ${job.commonGitDir} changed during the session (${gitStateChanged.slice(0, 5).join(', ')}); the job's branch was not moved and no host git ran in the worktree`;
           job.error = job.error ? `${why}; ${job.error}` : why;
           job.stopReason ??= 'sandbox-escaped';
           outcome = 'failed';

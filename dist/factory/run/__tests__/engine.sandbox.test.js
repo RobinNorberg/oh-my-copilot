@@ -337,7 +337,7 @@ describe('commitLaneWork', () => {
         }
     });
     it('refuses the lane-protected paths (agent instructions, hooks, skills, CI) and resets the index', () => {
-        for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.claude/settings.json', '.vscode/tasks.json', '.mcp.json', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
+        for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.claude/settings.json', '.vscode/tasks.json', '.mcp.json', '.husky/pre-commit', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
             const { worktree, start, branch } = laneTree(`cr-p-${path.replace(/[^a-z]/gi, '')}`);
             // The harness repository ignores .omg/: a repository that commits its skills does not.
             writeFileSync(join(worktree, '.gitignore'), '');

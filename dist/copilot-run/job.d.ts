@@ -272,6 +272,23 @@ export declare function filterDriverOverrides(cwd: string, gitDirArgs?: readonly
  * the diff, so the summary is null).
  */
 export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[]): ChangeSummary | null;
+/**
+ * The common git dir's files that steer host git, keyed by path relative to
+ * it: `config`, `config.worktree`, `hooks/` and `info/` (recursive), and per
+ * `worktrees/<id>` its type and `config.worktree`. The sandbox keeps them
+ * read-only to the shell, but the built-in file tools write unsandboxed, and
+ * a path approved under the worktree can be swapped for a link into the git
+ * dir between the approval and the write. Taken before the session and
+ * compared after it (sharedGitStateChanges).
+ */
+export declare function sharedGitStateSnapshot(commonGitDir: string): Record<string, string>;
+/**
+ * What changed between two sharedGitStateSnapshot results, as paths relative
+ * to the common git dir. A `worktrees/<id>` entry another job added or removed
+ * meanwhile is not a change; a kept entry that changed type, or whose
+ * `config.worktree` appeared, changed or went, is.
+ */
+export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): string[];
 export declare function defaultCopilotRunDeps(env?: NodeJS.ProcessEnv): CopilotRunDeps;
 export declare class CopilotRunManager {
     private readonly deps;

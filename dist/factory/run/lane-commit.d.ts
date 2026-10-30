@@ -39,7 +39,8 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
  * `.github/` covers `.github/copilot-instructions.md` and the workflows;
  * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
- * tasks other agents and editors run from a checkout.
+ * tasks other agents and editors run from a checkout, `.husky/` the git hooks
+ * husky installs.
  */
 export declare const LANE_PROTECTED_PATHS: readonly string[];
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
