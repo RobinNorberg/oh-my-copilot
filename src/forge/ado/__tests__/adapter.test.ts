@@ -40,6 +40,7 @@ describe('ADO adapter, design §6 rows', () => {
       size: 3,
       dependsOn: [40],
       children: [43],
+      parent: 30,
       repoUrl: REPO.url,
     });
     expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItemTypeStates.GET', 'wit.comments.GET']);
@@ -137,6 +138,20 @@ describe('ADO adapter, design §6 rows', () => {
     const { forge, calls } = adoWorld();
     expect(forge.reviews.findOpenPrForBranch('factory/issue-42')).toBe(17);
     expect(calls[0].args).toEqual(expect.arrayContaining(['searchCriteria.sourceRefName=refs/heads/factory/issue-42', 'searchCriteria.status=active']));
+  });
+
+  it('find merged PR for branch: completed PRs from refs/heads/<branch> into refs/heads/<base>, a GET through the guard', () => {
+    const { forge, calls, routes } = adoWorld();
+    expect(forge.reviews.findMergedPrForBranch('factory/issue-40', 'main')).toBe(12);
+    expect(calls[0].args).toEqual(expect.arrayContaining(['searchCriteria.sourceRefName=refs/heads/factory/issue-40', 'searchCriteria.status=completed', 'searchCriteria.targetRefName=refs/heads/main']));
+    expect(routes()).toEqual(['git.pullRequests.GET']);
+    // Another base is another call (no fixture here: the fixture Exec throws on an undescribed call).
+    expect(() => forge.reviews.findMergedPrForBranch('factory/issue-40', 'dev')).toThrow(/no fixture/);
+  });
+
+  it('a work item without a Hierarchy-Reverse link has no parent', () => {
+    const fixtures = variant(loadAdoFixtures(), 'wit.workItems.GET.42.json', (s) => ({ ...s, relations: [] }));
+    expect('parent' in adoWorld({ fixtures }).forge.tracker.viewItem(42)).toBe(false);
   });
 
   it('create draft PR + link item: isDraft true, description from the body file', () => {

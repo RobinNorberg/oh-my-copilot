@@ -10,9 +10,14 @@
  * (no verdict recorded): no block, two blocks (a quoted block could be the
  * PR's), text after the block, a wrong sha, bad fields. An approve carrying a
  * blocker or major finding counts as changes-requested (fail closed).
+ *
+ * Two-axis review (the base has docs/standards/): every finding also names
+ * its `"axis": "spec" | "standards"`, so a blocker or major on either axis
+ * fails the verdict. A single-axis review ignores `axis`.
  */
 export const MAX_REVIEW_NOTES = 500;
 const SEVERITIES = ['blocker', 'major', 'minor', 'nit'];
+const AXES = ['spec', 'standards'];
 /**
  * A verdict block: an opening line of exactly ```json and a closing line of
  * exactly ```, both at the start of a line. A block quoted from the diff
@@ -23,7 +28,8 @@ const SEVERITIES = ['blocker', 'major', 'minor', 'nit'];
 export const FENCE = /^```json[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```[^\S\r\n]*$/gm;
 /** Any line opening a json fence, quoted, indented or longer: counted so a pasted copy cannot hide. */
 export const ANY_JSON_FENCE = /^[^\S\r\n]*(?:>[^\S\r\n]*)*`{3,}json\b/gm;
-export function parseReviewOutput(finalText, expectedSha) {
+/** `twoAxis`: every finding must name its axis. */
+export function parseReviewOutput(finalText, expectedSha, twoAxis = false) {
     const invalid = (reason) => ({ kind: 'invalid', reason });
     if (typeof finalText !== 'string' || !finalText.trim())
         return invalid('the review lane left no final message');
@@ -67,8 +73,11 @@ export function parseReviewOutput(finalText, expectedSha) {
             return invalid(`findings[${i}].file must be a string`);
         if (x.line !== undefined && !(Number.isInteger(x.line) && x.line > 0))
             return invalid(`findings[${i}].line must be a positive integer`);
+        if (twoAxis && !AXES.includes(x.axis))
+            return invalid(`findings[${i}].axis is not one of ${AXES.join(', ')}`);
         findings.push({
             severity: x.severity,
+            ...(twoAxis ? { axis: x.axis } : {}),
             summary: x.summary.slice(0, 500),
             ...(typeof x.file === 'string' ? { file: x.file.slice(0, 300) } : {}),
             ...(typeof x.line === 'number' ? { line: x.line } : {}),
@@ -99,10 +108,11 @@ export function reviewComment(review, reviewer) {
     if (review.downgraded)
         lines.push('', 'The reviewer approved with a blocker or major finding; the engine counts that as changes requested.');
     if (review.findings.length > 0) {
-        lines.push('', '| Severity | Where | Finding |', '|---|---|---|');
+        const axis = review.findings.some((f) => f.axis);
+        lines.push('', axis ? '| Severity | Axis | Where | Finding |' : '| Severity | Where | Finding |', axis ? '|---|---|---|---|' : '|---|---|---|');
         for (const f of review.findings) {
             const where = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
-            lines.push(`| ${f.severity} | ${where} | ${f.summary.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} |`);
+            lines.push(`| ${f.severity} |${axis ? ` ${f.axis ?? ''} |` : ''} ${where} | ${f.summary.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} |`);
         }
     }
     if (review.notes)

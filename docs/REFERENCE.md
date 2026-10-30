@@ -1060,7 +1060,8 @@ Merge is always human. There is no `factory.merge` key and no auto mode, and the
 - **Fresh context.** Each review is a new session in its own worktree at the head, on `copilot_run`'s `review` profile, which cannot write files or commit.
 - **Contract.** The lane's final message must end with exactly one fenced `json` block: `verdict` (`approve` or `request-changes`), `sha` (the 40-hex head), `findings` (each with `severity` `blocker`, `major`, `minor` or `nit`, a `summary`, and optional `file` and `line`) and optional `notes` of at most 500 characters.
 - **Fail closed.** No block, two blocks, text after the block, a wrong sha, bad fields, an edited worktree or a moved PR head make the review `invalid`, and no verdict is recorded. An `approve` with a `blocker` or `major` finding counts as `request-changes`.
-- **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff.
+- **Posting.** The engine posts the findings as one PR comment, so the merge gate sees filtered findings next to the diff. A two-axis review adds an `Axis` column.
+- **Two-axis review.** When the base commit has `docs/standards/`, the review runs on two axes, reported separately and never ranked against each other. The `spec` axis checks the diff against the plan: missing or partial requirements, behavior nobody asked for, and requirements that look implemented but look wrong. The `standards` axis checks the diff against the matching `docs/standards/` volume. The prompt lists the volumes, and the lane reads them at the base commit (`git show <base>:<path>`), not from the head that the diff may change. Every finding must carry `axis` (`spec` or `standards`); a missing or unknown axis makes the review `invalid`. A `blocker` or `major` on either axis fails the verdict, and the fix lane sees each finding's axis. The engine lists the standards at the base, never at the reviewed head, so a PR cannot switch the second axis on or off. Without `docs/standards/` on the base, the prompt is the single-axis one and `axis` is ignored.
 
 ##### Configuration
 
@@ -1252,6 +1253,7 @@ omg smoke copilot --tier 2 --scenario sandbox-lane      # review, write and cana
 
 ```bash
 omg factory check [<id>...] [--json]           # the given ids, or the items of factory.intake.source
+omg factory check --parent <spec> [--json]     # the spec's children (GitHub `- [ ] #n` task list | ADO child links)
 omg factory check --source label:factory       # label:<name> | milestone:<name> | wiql-query:<guid> |
                                                # board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>
 omg factory check --limit 20                   # read at most 20 items from the source (1..200; default factory.intake.limit)
@@ -1267,8 +1269,9 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | `run-finished:<phase>` | blocked | A factory run for the item is merged, cancelled or failed. The engine never restarts one. |
 | `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. |
 | `pr-exists` | blocked | An open PR already uses `factory/issue-<n>`. A PR from a fork counts too, because the engine's `pr-exists` gate counts it. |
+| `merged` | blocked | A PR from `factory/issue-<n>` was already merged into the base. The item stays open when the base is not the default branch, so it is not run again. |
 | `branch-exists` | blocked | `origin/factory/issue-<n>` exists without an open PR (`git ls-remote`). The engine would stop at `head-moved-externally`. |
-| `depends-on:#n,…` | blocked | An item it depends on is still open. A dependency that is a PR counts as resolved once it is merged or closed. |
+| `depends-on:#n,…` | blocked | An item it depends on is unfinished. A dependency is satisfied when it is closed, when a PR from its `factory/issue-<n>` branch was merged into the base (`ship.base`), or when its factory run is `merged`. The merged PR counts because `Closes #n` does not close the issue when the base is not the default branch. A dependency that is a GitHub PR counts as resolved once it is merged; a PR closed without merging does not. On Azure DevOps a work item that cannot be read is never looked up as a PR, because work items and PRs number separately there. A dependency that cannot be read stays unsatisfied. |
 | `needs-split` | blocked | It has open children, is an ADO Epic or Feature, or has the GitHub label `epic`. |
 | `no-plan` | needs-plan | There is no trusted `omg-plan:` line, no `Acceptance criteria` heading, and no ADO Acceptance Criteria. |
 | `plan-missing` | needs-plan | The `omg-plan:` path is not repo-relative, or is missing or empty on `origin/<base>`. |
@@ -1282,13 +1285,15 @@ Results are sorted by bucket, then by priority, then by id. Priority is the ADO 
 
 `--mark` touches only runnable items that do not already carry the marker (GitHub label, ADO tag; default `factory-ready`). The marker is compared without regard to case. On GitHub the label must already exist: when it is missing, the check exits `5` and tells you to run `omg factory setup`, because check never creates labels. It asks before writing. Without a terminal, or with `--json`, it needs `--yes`. The guard allows the label write only after you confirm.
 
-`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }`. Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
+`--parent <spec>` checks the children of a spec item instead of ids or the intake source: on GitHub the issues in the spec body's task list (`- [ ] #n`), on Azure DevOps the work items linked as children. It cannot be combined with ids, `--source` or `--limit`. A child names its spec with a `Part of #<spec>` line on GitHub or a parent link on Azure DevOps; the adapters read that as the item's parent.
+
+`--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 
 | Exit code | Meaning |
 |---|---|
 | `0` | The check ran (whatever the buckets), including a `--mark` you declined |
 | `1` | An item is `read-failed`, a marker write failed, or the setup itself failed (for example the label list) |
-| `2` | A usage error: a bad id, `--source` or limit; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
+| `2` | A usage error: a bad id, `--parent`, `--source` or limit; `--parent` with ids, `--source` or `--limit`; no ids and no intake source; or `--mark` without `--yes` when there is no terminal or with `--json` |
 | `5` | Incompatible: the forge config does not match the origin remote, the remote is neither GitHub nor Azure DevOps, this build has no adapter for the forge, or the `--mark` label does not exist |
 
 #### `omg factory heal` (experimental)

@@ -11,7 +11,7 @@ import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../chec
 import { jobLog, listRuns, viewRunJobs } from '../ci.js';
 import { GhCommandError, ghJson, ghRun } from '../gh.js';
 import { ghMergeCommand } from '../merge.js';
-import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHead, ghPrHeadState, ghPrView, ghRepoView, ghViewPr, MERGE_VIEW_FIELDS, PR_VIEW_FIELDS, } from '../reviews.js';
+import { ghCommentPr, ghCreateDraftPr, ghFindMergedPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHead, ghPrHeadState, ghPrView, ghRepoView, ghViewPr, MERGE_VIEW_FIELDS, PR_VIEW_FIELDS, } from '../reviews.js';
 import { ghIssueComment, ghIssueJson, ghIssueView, ghQueryItems, ghSetProgress, ghViewItem, ISSUE_FIELDS } from '../tracker.js';
 const CWD = 'C:/repo';
 const SHA = 'a'.repeat(40);
@@ -103,6 +103,15 @@ describe('GitHub forge argv parity: reviews', () => {
             ['gh', ['pr', 'view', '7', '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url'], { cwd: CWD }],
         ]);
     });
+    it('the merged-PR lookup is the one new read: pr list --head --base --state merged', () => {
+        const r = recorder((a) => ok(JSON.stringify(a.includes('factory/issue-3') ? [{ number: 21 }] : [])));
+        expect(ghFindMergedPr(r.exec, 'factory/issue-3', 'dev', CWD)).toBe(21);
+        expect(ghFindMergedPr(r.exec, 'factory/issue-4', 'dev', CWD)).toBeUndefined();
+        expect(r.calls).toStrictEqual([
+            ['gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', 'dev', '--state', 'merged', '--json', 'number'], { cwd: CWD }],
+            ['gh', ['pr', 'list', '--head', 'factory/issue-4', '--base', 'dev', '--state', 'merged', '--json', 'number'], { cwd: CWD }],
+        ]);
+    });
     it('engine-step failures keep the engine messages', () => {
         const failing = recorder(() => fail('HTTP 502\nmore', 1)).exec;
         expect(() => ghRun(failing, ['pr', 'ready', '7'], CWD)).toThrow(new GhCommandError('gh pr ready 7 failed (exit 1): HTTP 502'));
@@ -142,6 +151,13 @@ describe('GitHub forge argv parity: tracker', () => {
             ['gh', ['issue', 'list', '--milestone', 'v5.18', '--state', 'open', '--json', 'number', '--limit', '10'], { cwd: CWD }],
             ['gh', ['issue', 'edit', '7', '--add-label', 'factory:building', '--remove-label', 'factory:queued'], { cwd: CWD }],
         ]);
+    });
+    it('viewItem reads the parent from the first `Part of #n` line', () => {
+        const body = 'intro\nPart of #41\npart of #42\nDepends on #3\n';
+        const r = recorder(() => ok(JSON.stringify({ ...ISSUE, body })));
+        expect(ghViewItem(r.exec, 7, CWD)).toMatchObject({ parent: 41, dependsOn: [3] });
+        expect(r.calls).toStrictEqual([['gh', ['issue', 'view', '7', '--json', ISSUE_FIELDS], { cwd: CWD }]]);
+        expect('parent' in ghViewItem(recorder(() => ok(JSON.stringify(ISSUE))).exec, 7, CWD)).toBe(false);
     });
     it('a refused label write is ok: false, never a throw', () => {
         const refusing = () => { throw new Error('refused by the guard'); };
