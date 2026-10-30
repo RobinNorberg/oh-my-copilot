@@ -255,4 +255,103 @@ describe('review fixes (#349)', () => {
         expect(new Redactor().redact(`a ${pgp} b`)).toBe('a <redacted:private-key> b');
     });
 });
+describe('review fixes round 3 (#349)', () => {
+    const chat = (field) => (part) => `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: field === 'content' ? { content: part } : { tool_calls: [{ index: 0, function: { arguments: part } }] } }],
+    })}\n\n`;
+    const responses = (type) => (part) => `event: ${type}\ndata: ${JSON.stringify({ type, item_id: 'it_1', output_index: 0, content_index: 0, delta: part })}\n\n`;
+    const split = (text, cuts) => [0, ...cuts].map((at, i, all) => text.slice(at, all[i + 1]));
+    const deltasOf = (chunks) => chunks.map((c) => {
+        const data = JSON.parse(/^data: (.*)$/m.exec(c)[1]);
+        return (data.delta ?? data.choices[0].delta.content ?? data.choices[0].delta.tool_calls?.[0].function.arguments ?? '');
+    }).join('');
+    const PATH_ARGS = JSON.stringify({ path: 'C:\\Users\\norbe\\proj\\a.ts' });
+    const PASSWORD_TEXT = 'set password=hunter2hunter2 now';
+    it.each([
+        ['chat tool-call arguments, path over 3 chunks', chat('arguments'), PATH_ARGS, [14, 22], 'norbe'],
+        ['chat content, password over 2 chunks', chat('content'), PASSWORD_TEXT, [19], 'hunter2hunter2'],
+        ['responses function_call_arguments, path over 3 chunks', responses('response.function_call_arguments.delta'), PATH_ARGS, [14, 22], 'norbe'],
+        ['responses output_text, password over 2 chunks', responses('response.output_text.delta'), PASSWORD_TEXT, [19], 'hunter2hunter2'],
+    ])('redactResponse redacts a secret split across SSE deltas: %s', (_name, frame, text, cuts, secret) => {
+        const chunks = split(text, cuts).map(frame);
+        expect(chunks.some((c) => c.includes(secret))).toBe(false);
+        const out = new Redactor().redactResponse({ status: 200, headers: { 'content-type': 'text/event-stream', authorization: 'x' }, kind: 'sse', chunks });
+        if (out.kind !== 'sse')
+            throw new Error('kind changed');
+        expect(out.headers).toEqual({ 'content-type': 'text/event-stream' });
+        const joined = deltasOf(out.chunks);
+        expect(joined).not.toContain(secret.slice(0, 5));
+        expect(scanForSecrets(joined)).toEqual([]);
+        expect(joined).toMatch(/\$\{USERHOME\}\/proj\/a\.ts|password=<redacted:generic>/);
+        for (const chunk of out.chunks)
+            expect(chunk).toMatch(/\n\n$/);
+    });
+    it('redactResponse leaves an unaffected stream chunked as it was', () => {
+        const chunks = ['hel', 'lo ', 'world'].map(chat('content'));
+        const out = new Redactor().redactResponse({ status: 200, headers: {}, kind: 'sse', chunks });
+        expect(out).toEqual({ status: 200, headers: {}, kind: 'sse', chunks });
+    });
+    it('redactResponse redacts a secret split across WebSocket messages', () => {
+        const messages = split(PASSWORD_TEXT, [19]).map((part) => ({
+            dir: 'in', data: JSON.stringify({ type: 'response.output_text.delta', item_id: 'm', output_index: 0, content_index: 0, delta: part }),
+        }));
+        const out = new Redactor().redactResponse({ status: 101, headers: {}, kind: 'ws', messages });
+        if (out.kind !== 'ws')
+            throw new Error('kind changed');
+        expect(out.messages.map((m) => JSON.parse(m.data).delta).join('')).toBe('set password=<redacted:generic> now');
+    });
+    it.each([
+        '{"clientSecret":"abcdefgh12345"}',
+        '{"accessToken":"abcdefgh12345"}',
+        '{"refreshToken":"abcdefgh12345"}',
+        'authToken=abcdefgh12345',
+        '{"privateKey":"abcdefgh12345"}',
+        'pwd=abcdefgh12345',
+        'passphrase=abcdefgh12345',
+    ])('generic rule for camelCase and other names: %s', (text) => {
+        expect(new Redactor().redact(text)).toContain('<redacted:generic>');
+        expect(scanForSecrets(text).map((h) => h.rule)).toEqual(['generic']);
+    });
+    it.each([
+        ['mixed separators', 'C:\\Users/norbe/proj', '${USERHOME}/proj'],
+        ['forward then back', 'C:/Users\\norbe\\proj', '${USERHOME}\\proj'],
+        ['percent-encoded file URI', 'file:///c%3A/Users/norbe/proj/a.ts', 'file:///${USERHOME}/proj/a.ts'],
+        ['percent-encoded backslashes', 'C%3A%5CUsers%5Cnorbe%5Cproj', '${USERHOME}/proj'],
+    ])('user-home path: %s', (_name, text, redacted) => {
+        expect(scanForSecrets(text).map((h) => h.rule)).toEqual(['path.USERHOME']);
+        expect(new Redactor().redact(text)).toBe(redacted);
+    });
+    it.each([
+        ['openai-key', `sk-proj-${'a1B2c3D4e5'.repeat(4)}`],
+        ['openai-key', `sk-${'a1B2c3D4e5'.repeat(4)}`],
+        ['slack-token', `xoxb-${'1234567890'}-${'abcdefghijkl'}`],
+        ['slack-token', `xoxp-${'1234567890'}-${'abcdefghijkl'}`],
+        ['npm-token', `npm_${'a1B2c3D4e5'.repeat(4)}`],
+        ['github-token', `gho_${'A1b2C3d4E5'.repeat(4)}`],
+        ['github-token', `ghu_${'A1b2C3d4E5'.repeat(4)}`],
+        ['github-token', `ghs_${'A1b2C3d4E5'.repeat(4)}`],
+        ['aws-key', `ASIA${'ABCDEFGHIJ234567'}`],
+    ])('token rule %s', (rule, token) => {
+        expect(new Redactor().redact(`x ${token} y`)).toBe(`x <redacted:${rule}> y`);
+        expect(scanForSecrets(token).map((h) => h.rule)).toEqual([rule]);
+    });
+    it.each([
+        'Bearer of bad news',
+        'token_count: 12345678',
+        'secret_version: v2.0.1-beta',
+        '{"token_count":"12345678"}',
+        'password_policy: minLength8',
+        'see icon@2x.png',
+    ])('leaves %s alone', (text) => {
+        expect(new Redactor().redact(text)).toBe(text);
+        expect(scanForSecrets(text)).toEqual([]);
+    });
+    it('a real bearer token is still redacted', () => {
+        expect(new Redactor().redact('Authorization: Bearer abc123def456ghi')).toBe('Authorization: <redacted:bearer>');
+    });
+    it('SSH_AUTH_SOCK and public keys stay out of the deny set', () => {
+        const set = buildDenySet({ env: { SSH_AUTH_SOCK: '/tmp/ssh-agent.sock', PUBLIC_KEY: 'notsecretbutlong', SIGNING_PUBLIC_KEY: 'notsecretbutlong2', PRIVATE_KEY: 'reallysecretvalue' } });
+        expect(set).toEqual(new Set(['reallysecretvalue']));
+    });
+});
 //# sourceMappingURL=redact.test.js.map

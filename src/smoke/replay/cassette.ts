@@ -23,8 +23,12 @@ import { join, relative } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import {
   isAllowedResponseHeader,
+  reassembledDeltas,
   REQUEST_HEADER_ALLOW,
   scanForSecrets,
+  sseBlocks,
+  sseData,
+  wsData,
   type RedactionIdentity,
   type SecretHit,
 } from './redact.js';
@@ -374,10 +378,30 @@ function decodedStrings(value: unknown, out: string[], depth = 0): void {
 }
 
 /**
+ * The texts only a whole streamed response shows (an interaction's `res`):
+ * an SSE response's chunks joined, and each streamed field joined from its
+ * deltas (SSE events or WebSocket messages), so a secret split across chunks
+ * is found. Keyed on the shape, not on `res.kind`: a mislabeled response is scanned too.
+ */
+function streamTexts(value: unknown): string[] {
+  const res = isRecord(value) ? value.res : undefined;
+  if (!isRecord(res)) return [];
+  if (Array.isArray(res.chunks)) {
+    const raw = res.chunks.filter((c): c is string => typeof c === 'string').join('');
+    return [raw, ...reassembledDeltas(sseBlocks(raw).map(sseData))];
+  }
+  if (Array.isArray(res.messages)) {
+    return reassembledDeltas(wsData(res.messages.filter((m): m is { data: string } => isRecord(m) && typeof m.data === 'string')));
+  }
+  return [];
+}
+
+/**
  * The gate over in-memory file contents (relative path -> text). Scans the
  * serialized text, then every decoded string level of each JSON document
- * (a .json file, or a .jsonl line), so a secret is found however deeply
- * escaped it sits. A decoded hit repeating a text hit is reported once.
+ * (a .json file, or a .jsonl line) and of each reassembled stream, so a
+ * secret is found however deeply escaped it sits or however it was split.
+ * A decoded hit repeating a text hit is reported once.
  */
 export function gateFiles(files: ReadonlyMap<string, string>, options: GateOptions = {}): GateHit[] {
   const scan = { denyLiterals: [...options.denyLiterals ?? []], identity: options.identity };
@@ -397,6 +421,7 @@ export function gateFiles(files: ReadonlyMap<string, string>, options: GateOptio
       try { value = JSON.parse(doc); } catch { continue; }
       const strings: string[] = [];
       decodedStrings(value, strings);
+      for (const text of streamTexts(value)) decodedStrings(text, strings);
       for (const s of strings) {
         for (const hit of scanForSecrets(s, scan)) {
           const key = `\0${hit.rule}\0${hit.masked}`;

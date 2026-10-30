@@ -12,6 +12,7 @@
  * (tool-call `arguments`), so literals and paths are matched in their plain,
  * once- and twice-JSON-escaped spellings.
  */
+import type { CassetteResponse } from './cassette.js';
 /** Bumped whenever a rule changes what is redacted (recorded as `manifest.redaction.rules`). */
 export declare const REDACTION_RULES_VERSION = 1;
 /** Rule 1: request headers kept on disk (lower case). Everything else, `authorization` first, is dropped. */
@@ -68,6 +69,20 @@ export declare function filterRequestHeaders(headers: Record<string, string>): R
 export declare function isAllowedResponseHeader(key: string): boolean;
 /** Rule 2: keep only allowlisted response headers, lower-cased. */
 export declare function filterResponseHeaders(headers: Record<string, string>): Record<string, string>;
+/** The event blocks of an SSE stream, without the blank line ending each. Pass the chunks joined: a chunk boundary may fall anywhere. */
+export declare function sseBlocks(text: string): string[];
+/** The parsed `data:` payload of one SSE block (undefined when it is not JSON, e.g. `[DONE]`). */
+export declare function sseData(block: string): unknown;
+/**
+ * The joined text of every streamed field split over two or more deltas. The
+ * gate scans these: a secret split across SSE chunks or WebSocket messages
+ * only shows once its deltas are joined.
+ */
+export declare function reassembledDeltas(events: readonly unknown[]): string[];
+/** Each WebSocket message's parsed JSON (undefined when it is not JSON). */
+export declare function wsData(messages: readonly {
+    data: string;
+}[]): unknown[];
 /**
  * Turn the machine's dirs into `${NAME}` placeholders (rule 6). Used by the
  * recorder through {@link Redactor} and by the replay side before digesting a
@@ -98,6 +113,18 @@ export declare class Redactor {
     constructor(options?: RedactorOptions);
     private count;
     redact(text: string): string;
+    /**
+     * Redact one response for disk: rule 2 on the headers, then the body. A
+     * streamed text field split over several SSE events or WebSocket messages
+     * is redacted as its joined text; when that changes it, the whole redacted
+     * text goes into the field's first delta and its later deltas become empty,
+     * so every event stays valid and the stream still joins to the redacted
+     * text. SSE chunks are re-cut one per event (a recorded chunk boundary can
+     * fall inside an event); replay serves the one stored response either way.
+     */
+    redactResponse(res: CassetteResponse): CassetteResponse;
+    /** Redact each split streamed field as its joined text, in place; returns the numbers of the events it rewrote. */
+    private redactDeltas;
     /** Redact every string (values and keys) in a JSON-shaped value. */
     redactValue<T>(value: T): T;
 }

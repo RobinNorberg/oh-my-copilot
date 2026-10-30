@@ -20,7 +20,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
-import { isAllowedResponseHeader, REQUEST_HEADER_ALLOW, scanForSecrets, } from './redact.js';
+import { isAllowedResponseHeader, reassembledDeltas, REQUEST_HEADER_ALLOW, scanForSecrets, sseBlocks, sseData, wsData, } from './redact.js';
 export const CASSETTE_FORMAT = 'omg-copilot-cassette';
 export const CASSETTE_VERSION = 1;
 export const MANIFEST_FILE = 'manifest.json';
@@ -304,10 +304,30 @@ function decodedStrings(value, out, depth = 0) {
     }
 }
 /**
+ * The texts only a whole streamed response shows (an interaction's `res`):
+ * an SSE response's chunks joined, and each streamed field joined from its
+ * deltas (SSE events or WebSocket messages), so a secret split across chunks
+ * is found. Keyed on the shape, not on `res.kind`: a mislabeled response is scanned too.
+ */
+function streamTexts(value) {
+    const res = isRecord(value) ? value.res : undefined;
+    if (!isRecord(res))
+        return [];
+    if (Array.isArray(res.chunks)) {
+        const raw = res.chunks.filter((c) => typeof c === 'string').join('');
+        return [raw, ...reassembledDeltas(sseBlocks(raw).map(sseData))];
+    }
+    if (Array.isArray(res.messages)) {
+        return reassembledDeltas(wsData(res.messages.filter((m) => isRecord(m) && typeof m.data === 'string')));
+    }
+    return [];
+}
+/**
  * The gate over in-memory file contents (relative path -> text). Scans the
  * serialized text, then every decoded string level of each JSON document
- * (a .json file, or a .jsonl line), so a secret is found however deeply
- * escaped it sits. A decoded hit repeating a text hit is reported once.
+ * (a .json file, or a .jsonl line) and of each reassembled stream, so a
+ * secret is found however deeply escaped it sits or however it was split.
+ * A decoded hit repeating a text hit is reported once.
  */
 export function gateFiles(files, options = {}) {
     const scan = { denyLiterals: [...options.denyLiterals ?? []], identity: options.identity };
@@ -332,6 +352,8 @@ export function gateFiles(files, options = {}) {
             }
             const strings = [];
             decodedStrings(value, strings);
+            for (const text of streamTexts(value))
+                decodedStrings(text, strings);
             for (const s of strings) {
                 for (const hit of scanForSecrets(s, scan)) {
                     const key = `\0${hit.rule}\0${hit.masked}`;

@@ -171,8 +171,9 @@ export interface GateOptions {
 /**
  * The gate over in-memory file contents (relative path -> text). Scans the
  * serialized text, then every decoded string level of each JSON document
- * (a .json file, or a .jsonl line), so a secret is found however deeply
- * escaped it sits. A decoded hit repeating a text hit is reported once.
+ * (a .json file, or a .jsonl line) and of each reassembled stream, so a
+ * secret is found however deeply escaped it sits or however it was split.
+ * A decoded hit repeating a text hit is reported once.
  */
 export declare function gateFiles(files: ReadonlyMap<string, string>, options?: GateOptions): GateHit[];
 export interface WriteCassetteOptions extends GateOptions {

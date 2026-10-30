@@ -9,6 +9,7 @@ import {
   CassetteFormatError,
   CassetteGateError,
   findCassetteDirs,
+  gateFiles,
   INTERACTIONS_FILE,
   MANIFEST_FILE,
   readCassette,
@@ -264,5 +265,45 @@ describe('review fixes (#349)', () => {
     expect(() => writeCassette(dir, sample(), { overwrite: true })).toThrow(/events\/s2.jsonl/);
     unlinkSync(join(dir, 'events', 's2.jsonl'));
     expect(() => writeCassette(dir, sample(), { overwrite: true })).not.toThrow();
+  });
+});
+
+describe('review fixes round 3 (#349): the gate reassembles streams', () => {
+  const PATH_ARGS = JSON.stringify({ path: 'C:\\Users\\norbe\\proj\\a.ts' });
+  const PASSWORD_TEXT = 'set password=hunter2hunter2 now';
+  const split = (text: string, cuts: readonly number[]) => [0, ...cuts].map((at, i, all) => text.slice(at, all[i + 1]));
+  const line = (res: unknown) => new Map([[INTERACTIONS_FILE, `${JSON.stringify({ stream: 's1', seq: 1, res })}\n`]]);
+  const chatArgs = (part: string) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: part } }] } }] })}\n\n`;
+  const chatContent = (part: string) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: part } }] })}\n\n`;
+  const responses = (type: string) => (part: string) =>
+    `event: ${type}\ndata: ${JSON.stringify({ type, item_id: 'it_1', output_index: 0, content_index: 0, delta: part })}\n\n`;
+
+  it.each([
+    ['chat arguments, path over 3', chatArgs, PATH_ARGS, [14, 22], 'path.USERHOME'],
+    ['chat content, password over 2', chatContent, PASSWORD_TEXT, [19], 'generic'],
+    ['responses arguments, path over 3', responses('response.function_call_arguments.delta'), PATH_ARGS, [14, 22], 'path.USERHOME'],
+    ['responses output_text, password over 2', responses('response.output_text.delta'), PASSWORD_TEXT, [19], 'generic'],
+  ] as const)('finds a secret split across SSE chunks: %s', (_name, frame, text, cuts, rule) => {
+    const chunks = split(text, cuts).map(frame);
+    expect(gateFiles(line({ status: 200, headers: {}, kind: 'sse', chunks })).map((h) => h.rule)).toContain(rule);
+  });
+  it('finds a secret split mid-line across raw SSE chunks', () => {
+    const event = chatContent(PASSWORD_TEXT);
+    const at = event.indexOf('hunter2') + 3;
+    const hits = gateFiles(line({ status: 200, headers: {}, kind: 'sse', chunks: [event.slice(0, at), event.slice(at)] }));
+    expect(hits.map((h) => h.rule)).toContain('generic');
+  });
+  it('finds a secret split across WebSocket messages', () => {
+    const messages = split(PASSWORD_TEXT, [19]).map((delta) => ({ dir: 'in', data: JSON.stringify({ type: 'response.output_text.delta', item_id: 'm', delta }) }));
+    expect(gateFiles(line({ status: 101, headers: {}, kind: 'ws', messages })).map((h) => h.rule)).toContain('generic');
+  });
+  it('passes the stream once the Redactor rewrote it', () => {
+    const chunks = split(PATH_ARGS, [14, 22]).map(chatArgs);
+    const res = new Redactor().redactResponse({ status: 200, headers: {}, kind: 'sse', chunks });
+    expect(gateFiles(line(res))).toEqual([]);
+  });
+  it('reassembles chunks whatever res.kind says', () => {
+    const chunks = split(PASSWORD_TEXT, [19]).map(chatContent);
+    expect(gateFiles(line({ chunks })).map((h) => h.rule)).toContain('generic');
   });
 });

@@ -14,6 +14,7 @@
  */
 
 import { isCredentialEnvKey } from '../copilot-session-env.js';
+import type { CassetteResponse } from './cassette.js';
 
 /** Bumped whenever a rule changes what is redacted (recorded as `manifest.redaction.rules`). */
 export const REDACTION_RULES_VERSION = 1;
@@ -72,10 +73,15 @@ interface PatternRule {
 
 // Placeholders this module writes; the generic rule must not flag its own output.
 const PLACEHOLDER_VALUE = String.raw`(?!<(?:secret|redacted:[\w.-]+)>)`;
-// A secret-bearing name, possibly ending a longer identifier (`client_secret`, `AWS_SECRET_ACCESS_KEY`).
-const SECRET_NAME = String.raw`(?:api[_-]?key|secret|password|passwd|token)(?:_[A-Za-z0-9]+)*`;
+// A name suffix that holds a count, a version or a setting rather than a secret (`token_count`, `password_policy`).
+const NOT_SECRET_SUFFIX = String.raw`(?!_(?:count|version|policy|length|len|limit|type|size|id|name|file|path|url|endpoint|expires?|expiry|ttl)(?![A-Za-z0-9]))`;
+// A secret-bearing name, possibly ending a longer identifier: `client_secret`, camelCase `clientSecret`,
+// `AWS_SECRET_ACCESS_KEY`. The prefix is lazy, so the rules' lookbehind still anchors the name at a word start.
+const SECRET_NAME = String.raw`[A-Za-z0-9]*?(?:api[_-]?key|private[_-]?key|secret|password|passwd|passphrase|pwd|token)${NOT_SECRET_SUFFIX}(?:_[A-Za-z0-9]+)*`;
 const UNQUOTED_CHAR = String.raw`[^\s"'\x60\\,;&|<>(){}\[\]]`;
 const UNQUOTED_VALUE = `${UNQUOTED_CHAR}{8,}`;
+// A plain number or a version string is never a secret value (`token_count: 12345678`, `v2.0.1-beta`).
+const PLAIN_VALUE = String.raw`(?!(?:\d+|v?\d+(?:\.\d+)+(?:[-+][A-Za-z0-9.]+)?)(?!${UNQUOTED_CHAR}))`;
 
 /**
  * Rule 4 token patterns, plus the private-key block. Each match is replaced
@@ -89,33 +95,39 @@ const TOKEN_RULES: readonly PatternRule[] = [
   { name: 'github-pat', pattern: /\bgithub_pat_[A-Za-z0-9_]{40,}/g },
   { name: 'capi-token', pattern: /\btid=[^;\s"\\]+;exp=\d+[^"\s\\]*/g },
   { name: 'jwt', pattern: /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g },
-  { name: 'bearer', pattern: /\bBearer\s+(?!<redacted:)[^\s"'\\]+/gi },
-  { name: 'aws-key', pattern: /\bAKIA[0-9A-Z]{16}\b/g },
+  // A token-shaped value (8+ token characters), so "Bearer of bad news" stays.
+  { name: 'bearer', pattern: /\bBearer\s+[\w.~+/=-]{8,}/gi },
+  { name: 'aws-key', pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  // Needs a digit, so prose like "sk-learn-is-a-fine-library" stays.
+  { name: 'openai-key', pattern: /\bsk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}/g },
+  { name: 'slack-token', pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/g },
+  { name: 'npm-token', pattern: /\bnpm_[A-Za-z0-9]{36,}/g },
   // Needs a digit or base64 symbol, so "Basic instructions" stays.
   { name: 'basic-auth', pattern: /(\bBasic\s+)(?=[A-Za-z0-9+/]*[0-9+/=])[A-Za-z0-9+/]{12,}={0,2}/gi },
   {
     name: 'generic',
     // The name may end a longer identifier (`client_secret`, `AWS_SECRET_ACCESS_KEY`) and quotes may be escaped any
     // number of times; the value never takes the backslashes of its closing quote, so escaped JSON stays valid.
-    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}(?:\\*["'])?\s*[:=]\s*\\*["'])${PLACEHOLDER_VALUE}(?:[^"'\\]|\\+(?![\\"'])){8,}`, 'gi'),
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}(?:\\*["'])?\s*[:=]\s*\\*["'])${PLACEHOLDER_VALUE}${PLAIN_VALUE}(?:[^"'\\]|\\+(?![\\"'])){8,}`, 'gi'),
   },
   // Unquoted values: env files and `--flag=value` (`=`), YAML (`name: value`, which must hold a digit or symbol so
   // prose like "password: requirements" stays) and `--flag value`. A `$VAR` reference or a placeholder is not a value.
   {
     name: 'generic',
-    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}[ \t]*=[ \t]*)(?![<$])${UNQUOTED_VALUE}`, 'gi'),
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}[ \t]*=[ \t]*)(?![<$])${PLAIN_VALUE}${UNQUOTED_VALUE}`, 'gi'),
   },
   {
     name: 'generic',
-    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}:[ \t]*)(?![<$])(?=${UNQUOTED_CHAR}*[0-9+/=_])${UNQUOTED_VALUE}`, 'gi'),
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}:[ \t]*)(?![<$])${PLAIN_VALUE}(?=${UNQUOTED_CHAR}*[0-9+/=_])${UNQUOTED_VALUE}`, 'gi'),
   },
   {
     name: 'generic',
-    pattern: new RegExp(String.raw`((?<![\w-])--(?:[A-Za-z0-9]+-)*${SECRET_NAME}[ \t]+)(?![<$-])${UNQUOTED_VALUE}`, 'gi'),
+    pattern: new RegExp(String.raw`((?<![\w-])--(?:[A-Za-z0-9]+-)*${SECRET_NAME}[ \t]+)(?![<$-])${PLAIN_VALUE}${UNQUOTED_VALUE}`, 'gi'),
   },
 ];
 
-const EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
+// `icon@2x.png` is a retina asset name, not an address.
+const EMAIL = /\b[A-Za-z0-9._%+-]+@(?![0-9]+x\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
 // Reserved names (RFC 2606/6761) carry no identity: the smoke's own git identity is omg-smoke@example.invalid.
 const RESERVED_EMAIL = /@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|example|invalid|test|localhost)$/i;
 // `git@github.com:owner/repo` is a transport, not a person.
@@ -127,15 +139,18 @@ const TRANSPORT_EMAIL = /^git@/i;
  * The home segment must not be a placeholder this module wrote.
  */
 const USER_HOME_PATHS: readonly RegExp[] = [
-  // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a separator.
-  // `\` doubles per JSON level, so any run of backslashes is a separator.
-  /\b[A-Za-z]:(\\+|\/)Users\1(?!<user>)[^\\/\s"'<>|:*?]+(?:(?:\1|\/)[^\\/\s"'<>|:*?]+)*/gi,
+  // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
+  // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
+  // spelling (`C:\Users/name`), so the user name never survives a mixed path.
+  /\b[A-Za-z]:(\\+|\/)Users(?:\1|\\+|\/)(?!<user>)[^\\/\s"'<>|:*?]+(?:(?:\1|\/)[^\\/\s"'<>|:*?]+)*/gi,
+  // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`).
+  /\b[A-Za-z]%3A(?:%5C|%2F|\/)Users(?:%5C|%2F|\/)(?!<user>)(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+(?:(?:%5C|%2F|\/)(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+)*/gi,
   // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
   /(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)[^/\s"'\\<>|:*?]+(?:\/[^/\s"'\\<>|:*?]+)*/g,
 ];
 /** Length of the `<root>/Users/<name>` head of a {@link USER_HOME_PATHS} match. */
 function userHomeHeadLength(match: string): number {
-  return /^(?:[A-Za-z]:(\\+|\/)Users\1|\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/)[^\\/]+/i.exec(match)?.[0].length ?? match.length;
+  return /^(?:[A-Za-z]:(\\+|\/)Users(?:\1|\\+|\/)[^\\/]+|[A-Za-z]%3A(?:%5C|%2F|\/)Users(?:%5C|%2F|\/)(?:[^\\/%]|%(?!5C|2F)[0-9A-F]{2})+|\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/[^\\/]+)/i.exec(match)?.[0].length ?? match.length;
 }
 
 // One path segment character (no separators, quotes, whitespace or reserved Windows characters).
@@ -165,8 +180,11 @@ const GIT_CONFIG_PLAIN_ENV = /^GIT_CONFIG_(?:GLOBAL|SYSTEM|NOSYSTEM|COUNT|KEY_\d
 // GIT_CONFIG_VALUE_<n> is a secret only when GIT_CONFIG_KEY_<n> is credential-bearing (http.extraheader).
 const GIT_CONFIG_SECRET_KEY = /extraheader|password|token|secret|auth|cookie/i;
 
+// Named like credentials but never secret: the agent socket path and public keys.
+const PLAIN_KEY_ENV = /^SSH_AUTH_SOCK$|PUBLIC_KEY$/i;
+
 function isDenyEnvKey(key: string, env: NodeJS.ProcessEnv): boolean {
-  if (GIT_CONFIG_PLAIN_ENV.test(key)) return false;
+  if (GIT_CONFIG_PLAIN_ENV.test(key) || PLAIN_KEY_ENV.test(key)) return false;
   const value = /^GIT_CONFIG_VALUE_(\d+)$/i.exec(key);
   if (value) {
     const configKey = env[`GIT_CONFIG_KEY_${value[1]}`];
@@ -223,6 +241,85 @@ export function filterResponseHeaders(headers: Record<string, string>): Record<s
   return out;
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+function parseJson(text: string): unknown {
+  try { return JSON.parse(text); } catch { return undefined; }
+}
+
+/** The event blocks of an SSE stream, without the blank line ending each. Pass the chunks joined: a chunk boundary may fall anywhere. */
+export function sseBlocks(text: string): string[] {
+  return text.split(/\r?\n\r?\n/).filter((block) => block.trim() !== '');
+}
+
+/** The parsed `data:` payload of one SSE block (undefined when it is not JSON, e.g. `[DONE]`). */
+export function sseData(block: string): unknown {
+  const data = block.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).replace(/^ /, '')).join('\n');
+  return data ? parseJson(data) : undefined;
+}
+
+/** The block with its `data:` lines replaced by one line holding `value`. */
+function withSseData(block: string, value: unknown): string {
+  const lines = block.split(/\r?\n/);
+  const at = lines.findIndex((l) => l.startsWith('data:'));
+  return lines.flatMap((l, i) => (!l.startsWith('data:') ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : [])).join('\n');
+}
+
+/** One delta of a streamed text field: `holder[field]` in parsed event number `event`. */
+interface DeltaSlot { event: number; holder: Record<string, unknown>; field: string }
+
+/**
+ * The streamed text fields of a response's parsed events (SSE payloads or
+ * WebSocket messages), each as its deltas in order: Chat Completions
+ * `choices[i].delta.<field>` and `choices[i].delta.tool_calls[j].function.arguments`,
+ * and every Responses API `*.delta` event (`response.output_text.delta`,
+ * `response.function_call_arguments.delta`, ...) per item and part.
+ */
+function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
+  const streams = new Map<string, DeltaSlot[]>();
+  const add = (key: string, event: number, holder: Record<string, unknown>, field: string) => {
+    if (typeof holder[field] !== 'string') return;
+    const slots = streams.get(key) ?? [];
+    slots.push({ event, holder, field });
+    streams.set(key, slots);
+  };
+  events.forEach((value, event) => {
+    if (!isRecord(value)) return;
+    if (Array.isArray(value.choices)) {
+      value.choices.forEach((choice: unknown, i) => {
+        if (!isRecord(choice) || !isRecord(choice.delta)) return;
+        const delta = choice.delta;
+        const key = `choice:${choice.index ?? i}`;
+        for (const field of Object.keys(delta)) if (field !== 'role') add(`${key}:${field}`, event, delta, field);
+        if (!Array.isArray(delta.tool_calls)) return;
+        delta.tool_calls.forEach((call: unknown, j) => {
+          if (isRecord(call) && isRecord(call.function)) add(`${key}:tool:${call.index ?? j}`, event, call.function, 'arguments');
+        });
+      });
+    }
+    if (typeof value.type === 'string' && value.type.endsWith('.delta')) {
+      add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(':'), event, value, 'delta');
+    }
+  });
+  return [...streams.values()];
+}
+
+const joinDeltas = (slots: readonly DeltaSlot[]) => slots.map((s) => s.holder[s.field] as string).join('');
+
+/**
+ * The joined text of every streamed field split over two or more deltas. The
+ * gate scans these: a secret split across SSE chunks or WebSocket messages
+ * only shows once its deltas are joined.
+ */
+export function reassembledDeltas(events: readonly unknown[]): string[] {
+  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+}
+
+/** Each WebSocket message's parsed JSON (undefined when it is not JSON). */
+export function wsData(messages: readonly { data: string }[]): unknown[] {
+  return messages.map((m) => parseJson(m.data));
+}
+
 interface PathMatcher {
   name: PathPlaceholder;
   pattern: RegExp;
@@ -264,7 +361,7 @@ function pathMatchers(dirs: PlaceholderDirs): PathMatcher[] {
 
 /** `${NAME}` plus the matched tail, separators normalized to `/`. */
 function placeholderPath(name: string, match: string, headLength: number): string {
-  return `\${${name}}${match.slice(headLength).replace(/\\+|\//g, '/')}`;
+  return `\${${name}}${match.slice(headLength).replace(/\\+|\/|%5C|%2F/gi, '/')}`;
 }
 
 /**
@@ -364,6 +461,47 @@ export class Redactor {
     out = replaceIdentity(out, this.identity.user, '<user>', this.count, 'user');
     out = replaceIdentity(out, this.identity.host, '<host>', this.count, 'host');
     return out;
+  }
+
+  /**
+   * Redact one response for disk: rule 2 on the headers, then the body. A
+   * streamed text field split over several SSE events or WebSocket messages
+   * is redacted as its joined text; when that changes it, the whole redacted
+   * text goes into the field's first delta and its later deltas become empty,
+   * so every event stays valid and the stream still joins to the redacted
+   * text. SSE chunks are re-cut one per event (a recorded chunk boundary can
+   * fall inside an event); replay serves the one stored response either way.
+   */
+  redactResponse(res: CassetteResponse): CassetteResponse {
+    const headers = this.redactValue(filterResponseHeaders(res.headers));
+    switch (res.kind) {
+      case 'sse': {
+        const blocks = sseBlocks(res.chunks.join(''));
+        const events = blocks.map(sseData);
+        const changed = this.redactDeltas(events);
+        return { ...res, headers, chunks: blocks.map((b, i) => `${this.redact(changed.has(i) ? withSseData(b, events[i]) : b)}\n\n`) };
+      }
+      case 'ws': {
+        const events = wsData(res.messages);
+        const changed = this.redactDeltas(events);
+        return { ...res, headers, messages: res.messages.map((m, i) => ({ dir: m.dir, data: this.redact(changed.has(i) ? JSON.stringify(events[i]) : m.data) })) };
+      }
+      case 'json': return { ...res, headers, body: this.redactValue(res.body) };
+      case 'text': return { ...res, headers, body: this.redact(res.body) };
+    }
+  }
+
+  /** Redact each split streamed field as its joined text, in place; returns the numbers of the events it rewrote. */
+  private redactDeltas(events: unknown[]): Set<number> {
+    const changed = new Set<number>();
+    for (const slots of deltaStreams(events)) {
+      if (slots.length < 2) continue;
+      const joined = joinDeltas(slots);
+      const redacted = this.redact(joined);
+      if (redacted === joined) continue;
+      slots.forEach((s, i) => { s.holder[s.field] = i === 0 ? redacted : ''; changed.add(s.event); });
+    }
+    return changed;
   }
 
   /** Redact every string (values and keys) in a JSON-shaped value. */
