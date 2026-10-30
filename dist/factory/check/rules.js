@@ -12,6 +12,7 @@
  * | a merged, cancelled or failed factory run state exists       | blocked    | run-finished:<phase>       |
  * | any other factory run state exists                           | blocked    | run-active:<phase>[/<gate>]|
  * | an open PR on factory/issue-<n> (a fork's too, as the engine)| blocked    | pr-exists                  |
+ * | a PR from factory/issue-<n> merged into the base             | blocked    | merged                     |
  * | origin/factory/issue-<n> exists without an open PR           | blocked    | branch-exists              |
  * | a dependsOn item is unsatisfied (open, no merged factory PR  | blocked    | depends-on:#n,...          |
  * | into the base, no merged run state; score.ts isSatisfied)    |            |                            |
@@ -76,6 +77,10 @@ export function evaluateItem(item, kind, config, look) {
     const pr = look.openPr(branch);
     if (pr !== undefined)
         return hit('blocked', 'pr-exists', `open PR #${pr} already uses ${branch}`);
+    // The item stays open when its factory PR merged into a base other than the default branch; never re-run it.
+    const merged = look.mergedPr(branch);
+    if (merged !== undefined)
+        return hit('blocked', 'merged', `PR #${merged} from ${branch} already merged into the base`);
     if (look.remoteBranch(branch))
         return hit('blocked', 'branch-exists', `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
     const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));

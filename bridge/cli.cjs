@@ -126805,6 +126805,8 @@ function evaluateItem(item, kind, config2, look) {
   const branch = factoryBranch(item.id);
   const pr = look.openPr(branch);
   if (pr !== void 0) return hit("blocked", "pr-exists", `open PR #${pr} already uses ${branch}`);
+  const merged = look.mergedPr(branch);
+  if (merged !== void 0) return hit("blocked", "merged", `PR #${merged} from ${branch} already merged into the base`);
   if (look.remoteBranch(branch)) return hit("blocked", "branch-exists", `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
   const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
   if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
@@ -126862,6 +126864,7 @@ function isOpen(forge, id) {
   try {
     return forge.tracker.viewItem(id).open;
   } catch {
+    if (forge.kind === "azure-devops") return true;
     try {
       return forge.reviews.viewPr(id).state === "OPEN";
     } catch {
@@ -126875,8 +126878,9 @@ function isSatisfied(forge, id, base, runState) {
   try {
     item = forge.tracker.viewItem(id);
   } catch {
+    if (forge.kind === "azure-devops") return false;
     try {
-      return forge.reviews.viewPr(id).state !== "OPEN";
+      return forge.reviews.viewPr(id).state === "MERGED";
     } catch {
       return false;
     }
@@ -126901,6 +126905,7 @@ function checkItem(forge, id, env2) {
     isSatisfied: (dep) => isSatisfied(forge, dep, env2.base, env2.runState),
     runState: env2.runState,
     openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
+    mergedPr: (branch) => forge.reviews.findMergedPrForBranch(branch, env2.base),
     remoteBranch: env2.remoteBranch,
     readPlan: env2.readPlan,
     planBase: env2.planBase
@@ -127112,6 +127117,7 @@ async function runFactoryCheck(o, deps) {
   const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
   if (parent !== void 0 && ids2.length > 0) throw new CheckUsageError("--parent takes no item ids: it checks the spec's children");
   if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
+  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent checks every child of the spec");
   const warnings = [];
   let marker;
   let exec3 = checkGuardExec(deps.exec, () => marker);

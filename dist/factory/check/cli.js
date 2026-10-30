@@ -258,6 +258,8 @@ export async function runFactoryCheck(o, deps) {
         throw new CheckUsageError('--parent takes no item ids: it checks the spec\'s children');
     if (parent !== undefined && o.source !== undefined)
         throw new CheckUsageError('--parent and --source are exclusive');
+    if (parent !== undefined && o.limit !== undefined)
+        throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
     const warnings = [];
     let marker;
     // The git reads before the forge config is known; az runs only through forgeReadExec below.

@@ -97,7 +97,18 @@ const ROWS = [
         world: { items: [item(1)], branches: ['factory/issue-1'] },
         bucket: 'blocked', reasons: ['branch-exists'], detail: 'origin/factory/issue-1 exists without an open PR; the engine would stop at head-moved-externally',
     },
-    { rule: 'a dependency that is a merged or closed PR is satisfied', world: { items: [item(1, { dependsOn: [150, 151] })], prStates: { 150: 'MERGED', 151: 'CLOSED' } }, bucket: 'runnable', reasons: [] },
+    {
+        rule: "merged (the item's own factory PR merged into the base while the item stays open)",
+        world: { items: [item(1)], merged: { 'factory/issue-1 -> dev': 90 } },
+        bucket: 'blocked', reasons: ['merged'], detail: 'PR #90 from factory/issue-1 already merged into the base',
+    },
+    { rule: 'a dependency that is a merged PR is satisfied', world: { items: [item(1, { dependsOn: [150] })], prStates: { 150: 'MERGED' } }, bucket: 'runnable', reasons: [] },
+    { rule: 'a dependency that is a PR closed without merging blocks', world: { items: [item(1, { dependsOn: [150, 151] })], prStates: { 150: 'MERGED', 151: 'CLOSED' } }, bucket: 'blocked', reasons: ['depends-on:#151'] },
+    {
+        rule: 'on ADO a failed work-item read never falls back to the PR with that number',
+        world: { kind: 'azure-devops', items: [item(1, { type: 'User Story', dependsOn: [150] })], prStates: { 150: 'MERGED' } },
+        bucket: 'blocked', reasons: ['depends-on:#150'],
+    },
     { rule: 'a dependency that is an open PR blocks', world: { items: [item(1, { dependsOn: [150, 152] })], prStates: { 150: 'MERGED', 152: 'OPEN' } }, bucket: 'blocked', reasons: ['depends-on:#152'] },
     {
         rule: 'read-failed (the item read fails)',

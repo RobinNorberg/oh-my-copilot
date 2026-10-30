@@ -48,9 +48,11 @@ export declare function compareResults(a: CheckResult, b: CheckResult): number;
  * A dependency is satisfied when its factory run merged, the item is closed,
  * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
  * base other than the default branch, `Closes #n` never closes the issue
- * (shipyard ↔ factory design §3.5). A dependency that is a PR is satisfied
- * once it is not open; anything unreadable is unsatisfied. Check and the
- * engine share this rule.
+ * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
+ * satisfied once merged (closed unmerged is not); on ADO a failed work-item
+ * read never falls back to the PR with that number (separate id namespaces).
+ * Anything unreadable is unsatisfied. The engine will share this rule from
+ * PR 5 (shipyard ↔ factory design §9).
  */
 export declare function isSatisfied(forge: Forge, id: number, base: string, runState: CheckEnv['runState']): boolean;
 /**

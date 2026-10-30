@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "341b6f2a8ada3a7df49383ce56b2cf9ff322563c",
-    "sourceSha256": "8581e192299a3039fcc74e06467ff7a45720d2c5d8ef1c7aef3e6637456d971f",
+    "head": "115fa2536134755d20bc69a07dfd8d8b6dadc6f7",
+    "sourceSha256": "424d59a0db668428d593fcd390e750deee28f021ce2231ea6c5f63e8106df3a3",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "341b6f2a8ada3a7df49383ce56b2cf9ff322563c",
-  "sourceSha256": "8581e192299a3039fcc74e06467ff7a45720d2c5d8ef1c7aef3e6637456d971f",
+  "head": "115fa2536134755d20bc69a07dfd8d8b6dadc6f7",
+  "sourceSha256": "424d59a0db668428d593fcd390e750deee28f021ce2231ea6c5f63e8106df3a3",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1902,
-      "total": 1926
+      "srcFiles": 1909,
+      "total": 1933
     },
     "generated": {
       "distFiles": 7064,
@@ -49970,9 +49970,19 @@
         "path": "src/factory/check/__tests__/cli.test.ts"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json",
@@ -49980,9 +49990,24 @@
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49.json",
@@ -51018,6 +51043,16 @@
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.PATCH.ready.json",
@@ -114468,12 +114503,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9714,
+      "nodeCount": 9721,
       "edgeCount": 11449,
       "importEdgeCount": 9421,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "7d51b686bf3ef52a3146f666685664e4fee393808edae598819e5f50848b3d0c",
-  "manifestSha256": "34540b6b30b749cb88467f8755e764403f1aeb4b03956297213a19fb11b87664"
+  "inventorySha256": "ad63db9cbdafe1f8d74bdb50d26a03759f817e0b6fbd01caa91698539ba5c1b1",
+  "manifestSha256": "ed1e1518f7e71fcb4f9d3b78ad9d28104b8e92b9a6c31a3f77fcbaf46aefc95f"
 }

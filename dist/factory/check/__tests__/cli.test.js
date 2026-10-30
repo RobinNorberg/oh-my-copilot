@@ -119,6 +119,8 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
             ...[1, 2, 3, 4, 5].flatMap((n) => [
                 `gh ${fields.replace('%', String(n))} cwd=${root}`,
                 `gh ["pr","list","--head","factory/issue-${n}","--json","number,state,headRefOid,url"] cwd=${root}`,
+                // The item's own factory PR merged into the base (#3 stops at its open PR).
+                ...(n === 3 ? [] : [`gh ["pr","list","--head","factory/issue-${n}","--base","dev","--state","merged","--json","number"] cwd=${root}`]),
             ]),
         ]);
     });
@@ -233,6 +235,7 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
             const exec = scripted(root, SPEC);
             await expect(run(exec, { parent: '10', ids: ['11'] })).rejects.toThrow(/--parent takes no item ids/);
             await expect(run(exec, { parent: '10', source: 'label:factory' })).rejects.toThrow(/--parent and --source/);
+            await expect(run(exec, { parent: '10', limit: 5 })).rejects.toThrow(/--limit applies to an intake source/);
             await expect(run(exec, { parent: 'x' })).rejects.toThrow(/positive number/);
         });
     });
