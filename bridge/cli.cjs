@@ -43132,10 +43132,10 @@ Use one of these equivalent surfaces from the lead session:
 omg team ${agentSpec} "<implementation task from ${planPath}>"
 \`\`\`
 
-Or from Claude Code slash commands:
+Or via the \`team\` skill from a Copilot CLI session:
 
 \`\`\`text
-/omc-teams ${agentSpec} "<implementation task from ${planPath}>"
+/oh-my-copilot:team ${agentSpec} "<implementation task from ${planPath}>"
 \`\`\`
 
 Requested worker types: ${requested}. CLI workers may receive their assigned team roles, including reviewer-style roles. The roles \`critic\`, \`code-reviewer\`, \`security-reviewer\`, and \`test-engineer\` use the structured verdict-output contract, with the team leader owning the terminal task transition. Final approval remains a lead-session responsibility.${cursorGuidance}`;
@@ -43175,7 +43175,7 @@ Read the implementation plan at: \`${planPath}\`
 
 ${teamRuntimeGuidance}
 
-${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`/omc-teams\` using the requested agent types.
+${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`/oh-my-copilot:team\` using the requested agent types.
 2. **Decompose executor-style implementation tasks** from the implementation plan and pass them to CLI workers.
 3. **Monitor tmux/team output** and integrate completed implementation changes.
 4. **Keep review/critic/security/verdict work native**; do not assign those roles to Cursor/CLI workers.
@@ -58345,7 +58345,7 @@ var init_keyword_detector = __esm({
       "cursor",
       "antigravity"
     ];
-    RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
+    RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:|omg:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
     CANONICAL_WORKFLOW_SLASH_SKILLS = [
       "autopilot",
       "ralph",
@@ -58363,7 +58363,7 @@ var init_keyword_detector = __esm({
       ralplan: "ralplan"
     };
     WORKFLOW_SLASH_PATTERN = new RegExp(
-      "^\\s*/(?:oh-my-copilot:|omc:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
+      "^\\s*/(?:oh-my-copilot:|omc:|omg:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
       "i"
     );
     PASTED_MAGIC_KEYWORD_HEADER_PATTERN = /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
@@ -137787,7 +137787,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
   } catch (error2) {
     const isInstallError = error2 instanceof Error && (error2.message.includes("ENOENT") || error2.message.includes("MODULE_NOT_FOUND") || error2.message.includes("Cannot find module"));
     if (isInstallError) {
-      console.log("[OMC] run /omc-setup to install properly");
+      console.log("[OMC] run /oh-my-copilot:omc-setup to install properly");
     } else {
       console.log("[OMC] HUD error - check stderr");
       console.error(
@@ -142369,8 +142369,8 @@ function isWarningOptedOut() {
 function normalizeWorkflowInput(raw) {
   if (typeof raw !== "string") return "";
   let s = raw.trim().toLowerCase();
-  s = s.replace(/^\/(?:oh-my-copilot:|omc:)?/i, "");
-  s = s.replace(/^omc:/i, "");
+  s = s.replace(/^\/(?:oh-my-copilot:|omc:|omg:)?/i, "");
+  s = s.replace(/^(?:omc|omg):/i, "");
   s = s.replace(/^oh-my-copilot:/i, "");
   s = s.replace(/[?!.,;:]+$/g, "");
   s = s.trim();

@@ -56,7 +56,7 @@ copilot plugin install oh-my-copilot@omc
 npm i -g oh-my-copilot@latest
 
 # Step 2: Setup
-/omc-setup        # inside a session
+/oh-my-copilot:omc-setup  # inside a session
 omg setup         # or from your terminal
 
 # Step 3: Build something
@@ -137,8 +137,8 @@ power users.
 | `ultrathink`               | analysis      | Deep reasoning mode                             | `ultrathink about this architecture`           |
 | `tdd`, `test first`        | analysis      | TDD workflow enforcement                        | `tdd: implement password validation`           |
 | `deslop`, `anti-slop`      | analysis      | AI code slop cleanup (opt-in review lane)       | `deslop the auth module`                       |
-| `/omc-gh-*` skills         | github        | Setup, triage, PR review, auto-review, projects | `/omc-gh-triage`                               |
-| `/omc-ado-*` skills        | devops        | Azure DevOps setup, sprint, triage, PR review   | `/omc-ado-sprint`                              |
+| `/omc-gh-*` skills         | github        | Setup, triage, PR review, auto-review, projects | `/oh-my-copilot:omc-gh-triage`  |
+| `/omc-ado-*` skills        | devops        | Azure DevOps setup, sprint, triage, PR review   | `/oh-my-copilot:omc-ado-sprint` |
 | `/hud`                     | utility       | Configure status line display                   | `/hud setup`                                   |
 | `/remember`                | utility       | Save reusable project knowledge                 | `/remember this pattern`                       |
 | `/wiki`                    | utility       | Persistent markdown knowledge base              | `/wiki add auth architecture notes`            |

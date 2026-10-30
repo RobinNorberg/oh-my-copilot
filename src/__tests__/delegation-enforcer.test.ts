@@ -527,7 +527,7 @@ describe('delegation-enforcer', () => {
     });
 
     it('guides namespaced bundled skills to the canonical Skill invocation (issue #3667 P2)', () => {
-      for (const skillType of ['oh-my-copilot:plan', 'omc:plan']) {
+      for (const skillType of ['oh-my-copilot:plan', 'omc:plan', 'omg:plan']) {
         expect(() => getModelForAgent(skillType)).toThrow(
           'Skill(skill="oh-my-copilot:omc-plan")',
         );

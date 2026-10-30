@@ -202,7 +202,7 @@ function resolveBundledSkillPrimary(
   const foldedInput = agentType.toLowerCase();
   const stripped = foldedInput.startsWith('oh-my-copilot:')
     ? foldedInput.slice('oh-my-copilot:'.length)
-    : foldedInput.startsWith('omc:')
+    : foldedInput.startsWith('omc:') || foldedInput.startsWith('omg:')
       ? foldedInput.slice('omc:'.length)
       : foldedInput;
   const skills = createBuiltinSkills();
@@ -215,7 +215,7 @@ function resolveBundledSkillPrimary(
   // (e.g. Claude Code's built-in `Plan` vs the skills/plan dir registering
   // omc-plan) are never mistaken for skills (issue #3667 P1, JS/TS parity).
   const wasNamespaced = typeof originalSubagentType === 'string'
-    && /^(?:oh-my-copilot|omc):/i.test(originalSubagentType.trim());
+    && /^(?:oh-my-copilot|omc|omg):/i.test(originalSubagentType.trim());
   if (!wasNamespaced) {
     return null;
   }

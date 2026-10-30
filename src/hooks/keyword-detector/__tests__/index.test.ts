@@ -2753,6 +2753,10 @@ This article argues that fake popularity signals damage trust in open source.`;
       const result = detectKeywordsWithType('/omc:ralph fix auth');
       expect(result.find((r) => r.type === 'ralph')).toBeDefined();
     });
+    it('/omg:ralph fix auth detects ralph', () => {
+      const result = detectKeywordsWithType('/omg:ralph fix auth');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
 
     it('/oh-my-copilot:ralph fix auth detects ralph', () => {
       const result = detectKeywordsWithType('/oh-my-copilot:ralph fix auth');
