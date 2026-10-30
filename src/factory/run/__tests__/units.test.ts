@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec } from '../exec.js';
+import { ghRepoArg } from '../../../forge/github/gh.js';
+import { shipyardKeySearch } from '../../../forge/types.js';
+import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
 import { EngineLedger, LedgerError } from '../ledger.js';
 import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
@@ -277,6 +279,229 @@ describe('factory command guard', () => {
     expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_NO_REPLACE_OBJECTS: '1' })).not.toThrow();
     expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_DIR: '/x' })).toThrow(FactorySafetyError);
     expect(() => assertFactoryCommand('gh', ['pr', 'list', '--head', 'factory/issue-7', '--json', 'number'], [], { GIT_NO_REPLACE_OBJECTS: '1' })).toThrow(FactorySafetyError);
+  });
+});
+
+describe('tracker write shapes (omg factory enqueue only)', () => {
+  const bodyDir = join(tmpdir(), 'omg-enqueue-bodies');
+  const body = join(bodyDir, 'ticket-1.md');
+  const ctx: TrackerWriteContext = { repo: 'github.com/o/r', bodyDir, labels: ['factory', 'priority:p1', 'priority:p2'] };
+  const ok = (args: string[], env?: Record<string, string>) => expect(() => assertFactoryCommand('gh', args, ['dev'], env, undefined, ctx)).not.toThrow();
+  const refused = (args: string[]) => expect(() => assertFactoryCommand('gh', args, ['dev'], undefined, undefined, ctx)).toThrow(FactorySafetyError);
+  const CREATE = ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body-file', body];
+  const EDIT = ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body-file', body];
+  const SEARCH = ['issue', 'list', '--repo', 'github.com/o/r', '--search', shipyardKeySearch(412), '--state', 'all', '--json', 'number,body', '--limit', '1000'];
+
+  it('accepts the three shapes with the context', () => {
+    ok(CREATE);
+    ok([...CREATE, '--label', 'factory', '--label', 'priority:p1']);
+    ok(EDIT);
+    ok([...EDIT, '--add-label', 'priority:p1', '--remove-label', 'priority:p2']);
+    ok([...EDIT, '--remove-label', 'priority:p2']);
+    ok(SEARCH);
+    expect(ghRepoArg({ host: 'github.com', owner: 'o', name: 'r' })).toBe('github.com/o/r');
+    expect(shipyardKeySearch(412)).toBe('"shipyard-key: 412/" in:body');
+  });
+
+  it('refuses all three without the context (the engine and check never write items)', () => {
+    for (const args of [CREATE, EDIT, SEARCH]) expect(() => assertFactoryCommand('gh', args, ['dev'])).toThrow(FactorySafetyError);
+  });
+
+  it.each<[string, string[]]>([
+    ['create: an extra trailing flag', [...CREATE, '--web']],
+    ['create: an extra trailing value', [...CREATE, '--label']],
+    ['create: reordered flags', ['issue', 'create', '--title', 'Refresh tokens', '--repo', 'github.com/o/r', '--body-file', body]],
+    ['create: inline --body', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body', 'x']],
+    ['create: another repository', ['issue', 'create', '--repo', 'github.com/evil/r', '--title', 'T', '--body-file', body]],
+    ['create: no --repo', ['issue', 'create', '--title', 'T', '--body-file', body]],
+    ['create: -R instead of --repo', ['issue', 'create', '-R', 'github.com/o/r', '--title', 'T', '--body-file', body]],
+    ['create: an option-shaped title', ['issue', 'create', '--repo', 'github.com/o/r', '--title', '--web', '--body-file', body]],
+    ['create: a multi-line title', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'a\nb', '--body-file', body]],
+    ['create: a body file outside the body dir', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(tmpdir(), 'other.md')]],
+    ['create: a body file in a subdirectory', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(bodyDir, 'sub', 'b.md')]],
+    ['create: a body file escaping the dir', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(bodyDir, '..', 'b.md')]],
+    ['create: a relative body file', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', 'b.md']],
+    ['create: a label off the allowlist', [...CREATE, '--label', 'bug']],
+    ['create: a comma label list', [...CREATE, '--label', 'factory,priority:p1']],
+    ['create: a duplicate label', [...CREATE, '--label', 'factory', '--label', 'factory']],
+    ['create: --assignee', [...CREATE, '--assignee', 'x']],
+    ['create: --milestone', [...CREATE, '--milestone', 'x']],
+    ['edit: --add-label after --remove-label', [...EDIT, '--remove-label', 'priority:p2', '--add-label', 'priority:p1']],
+    ['edit: --body inline', ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'T', '--body', 'x']],
+    ['edit: no title', ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--body-file', body]],
+    ['edit: a non-numeric issue', ['issue', 'edit', 'o/r#12', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', body]],
+    ['edit: another repository', ['issue', 'edit', '12', '--repo', 'github.com/o/x', '--title', 'T', '--body-file', body]],
+    ['edit: an extra trailing flag', [...EDIT, '--add-assignee', 'x']],
+    ['edit: a label off the allowlist', [...EDIT, '--add-label', 'harbor:accepted']],
+    ['edit: --remove-milestone', [...EDIT, '--remove-milestone']],
+    ['search: --state open', SEARCH.map((a) => (a === 'all' ? 'open' : a))],
+    ['search: another query', SEARCH.map((a) => (a === shipyardKeySearch(412) ? 'is:open author:x' : a))],
+    ['search: a query with a key', SEARCH.map((a) => (a === shipyardKeySearch(412) ? '"shipyard-key: 412/x" in:body' : a))],
+    ['search: more fields', SEARCH.map((a) => (a === 'number,body' ? 'number,body,author' : a))],
+    ['search: limit 0', SEARCH.map((a, i) => (i === SEARCH.length - 1 ? '0' : a))],
+    ['search: limit 1001', SEARCH.map((a, i) => (i === SEARCH.length - 1 ? '1001' : a))],
+    ['search: an extra trailing flag', [...SEARCH, '--web']],
+    ['search: reordered', ['issue', 'list', '--search', shipyardKeySearch(412), '--repo', 'github.com/o/r', '--state', 'all', '--json', 'number,body', '--limit', '1000']],
+    ['gh api', ['api', 'repos/o/r/issues', '-X', 'POST']],
+    ['gh api graphql', ['api', 'graphql', '-f', 'query=mutation{}']],
+    ['gh search issues', ['search', 'issues', 'shipyard-key', '--repo', 'o/r']],
+    ['gh issue close', ['issue', 'close', '12']],
+    ['gh issue close with --repo', ['issue', 'close', '12', '--repo', 'github.com/o/r']],
+    ['gh issue delete', ['issue', 'delete', '12', '--yes']],
+    ['gh issue transfer', ['issue', 'transfer', '12', 'o/other']],
+    ['gh issue lock', ['issue', 'lock', '12']],
+    ['gh issue reopen', ['issue', 'reopen', '12']],
+    ['gh pr merge', ['pr', 'merge', '42', '--admin', '--merge', '--match-head-commit', SHA]],
+  ])('refuses %s', (_name, args) => refused(args));
+
+  it('refuses a factory:* label even when the caller allowlisted it, and any environment', () => {
+    const loose: TrackerWriteContext = { ...ctx, labels: ['factory:done'] };
+    expect(() => assertFactoryCommand('gh', [...CREATE, '--label', 'factory:done'], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+    expect(() => assertFactoryCommand('gh', CREATE, [], { GH_REPO: 'evil/r' }, undefined, ctx)).toThrow(FactorySafetyError);
+  });
+
+  it('factoryGuardExec passes the shapes only while the context is set', () => {
+    let writes: TrackerWriteContext | undefined;
+    const exec = factoryGuardExec(() => ({ status: 0, stdout: '', stderr: '' }), () => [], () => undefined, () => writes);
+    expect(() => exec('gh', CREATE)).toThrow(FactorySafetyError);
+    writes = ctx;
+    mkdirSync(bodyDir, { recursive: true });
+    writeFileSync(body, 'Body\n');
+    try {
+      expect(exec('gh', CREATE).status).toBe(0);
+    } finally {
+      rmSync(bodyDir, { recursive: true, force: true });
+    }
+    expect(() => exec('gh', ['api', 'repos/o/r'])).toThrow(FactorySafetyError);
+  });
+
+  it.each<[string, string]>([
+    ['a tab', 'a\tb'],
+    ['a carriage return', 'a\rb'],
+    ['a bidi override (RLO)', 'fix ‮gnp.exe'],
+    ['a zero-width space', 'a​b'],
+    ['a leading dash', '-x'],
+  ])('refuses a title with %s', (_name, title) => {
+    refused(CREATE.map((a) => (a === 'Refresh tokens' ? title : a)));
+  });
+
+  it('refuses an NTFS alternate data stream as the body file', () => {
+    refused(CREATE.map((a) => (a === body ? `${body}:s` : a)));
+    refused(CREATE.map((a) => (a === body ? join(bodyDir, 'b.md::$DATA') : a)));
+  });
+
+  it('refuses a harbor:* label even when the caller allowlisted it, in any case', () => {
+    for (const label of ['harbor:accepted', 'Harbor:Accepted', 'HARBOR:x']) {
+      const loose: TrackerWriteContext = { ...ctx, labels: [label] };
+      expect(() => assertFactoryCommand('gh', [...CREATE, '--label', label], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+      expect(() => assertFactoryCommand('gh', [...EDIT, '--remove-label', label], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+    }
+  });
+});
+
+describe('tracker write body file (factoryGuardExec owns a copy)', () => {
+  let dir: string;
+  let bodies: string;
+  let ctx: TrackerWriteContext;
+  const create = (file: string) => ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', file];
+  const edit = (file: string) => ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', file];
+  /** A guarded exec whose fake gh records the argv and the body file's content at run time. */
+  const guarded = () => {
+    const runs: { args: string[]; body: string }[] = [];
+    const exec = factoryGuardExec((_cmd, args) => {
+      runs.push({ args, body: readFileSync(args[args.indexOf('--body-file') + 1], 'utf8') });
+      return { status: 0, stdout: '', stderr: '' };
+    }, () => [], () => undefined, () => ctx);
+    return { exec, runs };
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'omg-body-guard-'));
+    bodies = join(dir, 'bodies');
+    mkdirSync(bodies);
+    ctx = { repo: 'github.com/o/r', bodyDir: bodies, labels: ['factory'] };
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([['create', create], ['edit', edit]] as const)('%s runs gh with a guard-owned copy, removed afterwards', (_name, shape) => {
+    const file = join(bodies, 'b.md');
+    writeFileSync(file, 'Body ✓\n');
+    const { exec, runs } = guarded();
+    expect(exec('gh', shape(file)).status).toBe(0);
+    expect(runs).toHaveLength(1);
+    const copy = runs[0].args[runs[0].args.indexOf('--body-file') + 1];
+    expect(copy).not.toBe(file);
+    expect(copy).toMatch(/omg-gh-body-/);
+    expect(runs[0].args).toEqual(shape(copy));
+    expect(runs[0].body).toBe('Body ✓\n');
+    expect(existsSync(copy)).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('Body ✓\n');
+  });
+
+  it('accepts exactly 65536 characters and refuses one more', () => {
+    const file = join(bodies, 'b.md');
+    writeFileSync(file, 'é'.repeat(65536));
+    const { exec, runs } = guarded();
+    expect(exec('gh', create(file)).status).toBe(0);
+    writeFileSync(file, 'x'.repeat(65537));
+    expect(() => exec('gh', create(file))).toThrow(/longer than 65536 characters/);
+    writeFileSync(file, 'x'.repeat(65536 * 4 + 1));
+    expect(() => exec('gh', create(file))).toThrow(/longer than 65536 characters/);
+    expect(runs).toHaveLength(1);
+  });
+
+  it('refuses a missing body file', () => {
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'none.md')))).toThrow(/cannot read --body-file/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a directory as the body file', () => {
+    mkdirSync(join(bodies, 'd.md'));
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'd.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a hardlinked body file', () => {
+    const outside = join(dir, 'secret.txt');
+    writeFileSync(outside, 'secret');
+    linkSync(outside, join(bodies, 'b.md'));
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'b.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a symlinked body file', (t) => {
+    const outside = join(dir, 'secret.txt');
+    writeFileSync(outside, 'secret');
+    try {
+      symlinkSync(outside, join(bodies, 'b.md'), 'file');
+    } catch {
+      t.skip(); // Windows without the symlink privilege
+    }
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'b.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a body file behind a junction', () => {
+    const outside = join(dir, 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'secret.txt'), 'secret');
+    // A junction (Windows) or a directory symlink (POSIX) named like a body file.
+    symlinkSync(outside, join(bodies, 'j.md'), 'junction');
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'j.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('commands other than the tracker writes run with their argv unchanged', () => {
+    const seen: string[][] = [];
+    const exec = factoryGuardExec((_cmd, args) => (seen.push(args), { status: 0, stdout: '', stderr: '' }), () => [], () => undefined, () => ctx);
+    const comment = ['issue', 'comment', '12', '--body-file', join(bodies, 'none.md')];
+    exec('gh', comment);
+    expect(seen).toEqual([comment]);
   });
 });
 

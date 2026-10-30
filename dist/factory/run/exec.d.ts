@@ -10,6 +10,12 @@
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
+ *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
+ *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
+ *   pinned to the configured repository, with a body file from the caller's
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
+ *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
@@ -30,17 +36,34 @@ export declare class FactorySafetyError extends ShipSafetyError {
 }
 export declare const FOR_EACH_REF_FORMAT = "--format=%(refname) %(objectname)";
 /**
+ * What `omg factory enqueue` may write (shipyard-factory design §3.3, PR 7a).
+ * Only a caller that sets it gets the tracker write shapes.
+ */
+export interface TrackerWriteContext {
+    /** The configured forge repository as gh's `--repo` value (ghRepoArg, src/forge/github/gh.ts); every write names exactly it. */
+    repo: string;
+    /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
+    bodyDir: string;
+    /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. */
+    labels: readonly string[];
+}
+/** The most characters a tracker write's body file may hold. */
+export declare const MAX_TRACKER_BODY_CHARS = 65536;
+/**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
  * which refuses them unless `ado` names the run's forge and az entry.
+ * `writes` (enqueue only) adds the tracker write shapes.
  */
-export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext): void;
+export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
- * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
+ * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
+ * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
-export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined): Exec;
+export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined): Exec;
 /** Prepended to every hardened git command, after the guard checked the plain shape. */
 export declare function gitHardeningArgs(hooksDir: string): string[];
 /**

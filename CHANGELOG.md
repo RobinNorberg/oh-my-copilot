@@ -27,6 +27,15 @@ All notable changes to oh-my-copilot will be documented in this file.
   in `omg factory check` order (priority, then id) among the spec's children
   or the intake source. A run parked at `blocked-by` is resumed once its
   dependencies are satisfied; nothing runnable exits 0 with the bucket counts.
+- **GitHub tracker writes for the planned `omg factory enqueue`**: create an
+  issue, edit its title, body and labels, and find issues by their
+  `shipyard-key: <spec>/<key>` footer. The factory guard allows them only
+  with enqueue's write context, each as one exact shape: `gh issue create`,
+  `gh issue edit` and `gh issue list --search`, pinned to the configured
+  repository with `--repo`, bodies only through `--body-file` from the
+  caller's own directory, and labels from an allowlist (never `factory:*`).
+  `gh api` stays refused, and nothing closes, deletes, transfers or locks an
+  issue. `omg factory run` and `omg factory check` still refuse all three.
 
 ### Changed
 

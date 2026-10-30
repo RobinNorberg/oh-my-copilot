@@ -132,7 +132,40 @@ export interface ForgeTracker {
         ok: boolean;
         stderr: string;
     };
+    /**
+     * `omg factory enqueue` only (shipyard-factory design §3.4); GitHub for now.
+     * Every item whose body has a `shipyard-key: <spec>/<key>` line, with that
+     * key. Trust and parent are not checked here: the caller compares
+     * `item.authorTrusted` and `item.parent` itself. Throws on a failed read.
+     */
+    findByKey?(spec: number): Array<{
+        key: string;
+        item: ForgeItem;
+    }>;
+    /** `omg factory enqueue` only: a new item from a body file the caller wrote; its id. Throws on failure. */
+    createItem?(draft: ForgeItemDraft): number;
+    /** `omg factory enqueue` only: replace title and body, add/remove labels. Never closes, deletes, transfers or locks. Throws on failure. */
+    updateItem?(id: number, update: ForgeItemUpdate): void;
 }
+/** A new tracker item; the body (AC, edge lines, `shipyard-key:` footer) is rendered by the caller into `bodyFile`. */
+export interface ForgeItemDraft {
+    title: string;
+    bodyFile: string;
+    /** GitHub labels; each must be on the writer's allowlist. */
+    labels: string[];
+}
+export interface ForgeItemUpdate {
+    title: string;
+    bodyFile: string;
+    addLabels: string[];
+    removeLabels: string[];
+}
+/** The idempotency footer line enqueue renders (design §3.3). */
+export declare const shipyardKeyLine: (spec: number, key: string) => string;
+/** The one GitHub search findByKey runs: the `shipyard-key: <spec>/` footer phrase in issue bodies. */
+export declare const shipyardKeySearch: (spec: number) => string;
+/** The `shipyard-key:` footer lines of a body: `[spec, key]` per line, in order. The key is a C3 slug `[a-z0-9-]{3,60}`. */
+export declare function shipyardKeys(body: string): Array<[number, string]>;
 export interface ForgeReviews {
     findOpenPrForBranch(branch: string): number | undefined;
     /** A merged PR from `branch` into `base`, if any (a satisfied dependency: base may not be the default branch, so `Closes #n` never fired). */
