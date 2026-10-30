@@ -117790,7 +117790,10 @@ function factoryGh(a, writes) {
       return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch2(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
     }
     if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
-    if (sub === "list") return r.length === 4 && r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
+    if (sub === "list") {
+      if (r.length === 4) return r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
+      return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch2(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
+    }
     if (sub === "ready") return r.length === 1 && NUMBER2.test(r[0]);
     if (sub === "merge") return false;
     return null;
@@ -122687,7 +122690,7 @@ function ghViewItem(exec3, issue2, cwd2) {
     comments: comments2.map((c) => ({ body: str5(c?.body), author: login(c?.author), trusted: commentTrusted(c ?? {}) })),
     labels,
     ...size ? { size: Number(size) } : {},
-    dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
+    dependsOn: ghDependsOn(body),
     children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
     ...parent ? { parent: Number(parent) } : {},
     repoUrl: m[1]
@@ -122772,7 +122775,7 @@ function githubTracker(exec3, cwd2, config2) {
     updateItem: (id, update) => ghUpdateItem(exec3, config2.repo, id, update, cwd2)
   };
 }
-var ISSUE_FIELDS, str5, login, refs, KEY_SEARCH_LIMIT, sameUrl;
+var ISSUE_FIELDS, str5, login, refs, ghDependsOn, KEY_SEARCH_LIMIT, sameUrl;
 var init_tracker2 = __esm({
   "src/forge/github/tracker.ts"() {
     "use strict";
@@ -122783,6 +122786,7 @@ var init_tracker2 = __esm({
     str5 = (v) => typeof v === "string" ? v : "";
     login = (author) => str5(author?.login);
     refs = (body, re) => [...new Set([...body.matchAll(re)].map((m) => Number(m[1])))];
+    ghDependsOn = (body) => refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim);
     KEY_SEARCH_LIMIT = 1e3;
     sameUrl = (a, b) => a.toLowerCase() === b.toLowerCase();
   }
@@ -122832,6 +122836,192 @@ var init_forge = __esm({
       // (slots kept on separate lines for the PR 2 / PR 5 edits)
       "azure-devops": (exec3, cwd2, config2, options) => createAzureDevOpsForge(exec3, cwd2, config2, options)
     };
+  }
+});
+
+// src/factory/check/rules.ts
+function acceptanceSection(body) {
+  const m = ACCEPTANCE.exec(body);
+  if (!m) return "";
+  const lines4 = body.slice(m.index).split(/\r?\n/).slice(1);
+  const end = lines4.findIndex((l) => HEADING.test(l));
+  return (end < 0 ? lines4 : lines4.slice(0, end)).join("\n");
+}
+function acceptanceItems(text4) {
+  return text4.split(/\r?\n/).map((l) => LIST_ITEM.exec(l)?.[1]?.trim()).filter((s) => Boolean(s));
+}
+function evaluateItem(item, kind, config2, look) {
+  if (!item.open) return hit("blocked", "closed", `the item is ${item.rawState || "closed"}`);
+  if (kind === "azure-devops") {
+    const types = config2.intake.itemTypes.map((t) => t.toLowerCase());
+    if (!item.type || !types.includes(item.type.toLowerCase())) {
+      return hit("blocked", "wrong-type", `work item type ${JSON.stringify(item.type ?? "")} is not in factory.intake.itemTypes (${config2.intake.itemTypes.join(", ")})`);
+    }
+  }
+  const run2 = look.runState(item.id);
+  if (run2 && TERMINAL_FACTORY_PHASES.includes(run2.phase)) {
+    return hit("blocked", `run-finished:${run2.phase}`, `the factory run is ${run2.phase} and is not restarted; see omg factory run status ${item.id}`);
+  }
+  const parkedOnDeps = run2?.phase === "intake" && run2.gate?.name === "blocked-by";
+  if (run2 && !parkedOnDeps) {
+    const at = run2.gate ? `${run2.phase}/${run2.gate.name}` : run2.phase;
+    return hit("blocked", `run-active:${at}`, `a factory run is active (${at}); see omg factory run status ${item.id}`);
+  }
+  const branch = factoryBranch(item.id);
+  const pr = look.openPr(branch);
+  if (pr !== void 0) return hit("blocked", "pr-exists", `open PR #${pr} already uses ${branch}`);
+  const merged = look.mergedPr(branch);
+  if (merged !== void 0) return hit("blocked", "merged", `PR #${merged} from ${branch} already merged into the base`);
+  if (look.remoteBranch(branch)) return hit("blocked", "branch-exists", `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
+  if (item.dependsOn.includes(item.id)) return hit("blocked", "blocked-by:self", `#${item.id} depends on itself; remove the Depends on / Blocked by line naming it`);
+  const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
+  if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
+  const children = item.children.filter((c) => look.isOpen(c));
+  if (children.length > 0) return hit("blocked", "needs-split", `has open children ${ids(children)}`);
+  if (kind === "azure-devops" && item.type && SPLIT_TYPES.has(item.type.toLowerCase())) return hit("blocked", "needs-split", `work item type ${item.type} needs splitting`);
+  if (kind === "github" && item.labels.some((l) => l.toLowerCase() === "epic")) return hit("blocked", "needs-split", "labelled epic");
+  const link6 = findPlanLink(item.body, item.comments, item.authorTrusted);
+  const adoAc = item.acceptance?.trim() ? item.acceptance : void 0;
+  const planSource = link6 ? "omg-plan" : adoAc ? "ado-acceptance" : hasAcceptanceCriteria(item.body) ? "issue-body" : void 0;
+  if (!planSource) return hit("needs-plan", "no-plan", 'no trusted omg-plan: line and no "Acceptance criteria"');
+  if (link6) {
+    if (!isRepoPath(link6)) return hit("needs-plan", "plan-missing", `omg-plan ${JSON.stringify(link6)} is not a repo-relative path`);
+    const text4 = look.readPlan(link6);
+    if (text4 === null || !text4.trim()) return hit("needs-plan", "plan-missing", `omg-plan ${link6} is missing or empty on ${look.planBase}`);
+  }
+  const acItems = link6 ? [] : acceptanceItems(adoAc ?? acceptanceSection(item.body));
+  if (!link6 && acItems.length === 0) return hit("needs-plan", "ac-not-testable", "the Acceptance criteria have no list or checkbox items");
+  const { maxAcceptanceItems, maxSize, maxBodyChars } = config2.check;
+  if (acItems.length > maxAcceptanceItems) return hit("blocked", "too-big", `${acItems.length} acceptance items (max ${maxAcceptanceItems})`);
+  if (item.size !== void 0 && item.size > maxSize) return hit("blocked", "too-big", `size ${item.size} (max ${maxSize})`);
+  if (item.body.length > maxBodyChars) return hit("blocked", "too-big", `body is ${item.body.length} characters (max ${maxBodyChars})`);
+  if (acItems.length > 0 && acItems.every(isVague)) return hit("needs-plan", "ac-vague", "every acceptance item is vague and names no path, command, number or code");
+  const detail = link6 ? `plan: omg-plan ${link6}` : `plan: ${acItems.length} acceptance item${acItems.length > 1 ? "s" : ""} (${planSource})`;
+  return { bucket: "runnable", reasons: [], detail, planSource };
+}
+var SPLIT_TYPES, HEADING, LIST_ITEM, VAGUE, CONCRETE, isVague, ids, hit;
+var init_rules = __esm({
+  "src/factory/check/rules.ts"() {
+    "use strict";
+    init_config4();
+    init_plan_rules();
+    init_state6();
+    SPLIT_TYPES = /* @__PURE__ */ new Set(["epic", "feature"]);
+    HEADING = /^[^\S\r\n]*#{1,6}[^\S\r\n]/;
+    LIST_ITEM = /^[^\S\r\n]*(?:[-*+]|\d+[.)])[^\S\r\n]+(?:\[[ xX]\][^\S\r\n]+)?(\S.*)$/;
+    VAGUE = /\b(should work|as needed|etc\.?|tbd|nice|improve|better|clean ?up)\b/i;
+    CONCRETE = /`[^`\r\n]+`|[\w.-]*\/[\w.-]+|\b[\w-]+\.[a-z][a-z0-9]{0,4}\b|\d/i;
+    isVague = (acItem) => VAGUE.test(acItem) && !CONCRETE.test(acItem);
+    ids = (list2) => list2.map((n) => `#${n}`).join(",");
+    hit = (bucket, reason, detail) => ({ bucket, reasons: [reason], detail });
+  }
+});
+
+// src/factory/check/score.ts
+function itemPriority(item) {
+  if (item.priority !== void 0 && Number.isInteger(item.priority) && item.priority > 0) return item.priority;
+  const label2 = item.labels.map((l) => /^priority:p([0-3])$/i.exec(l)?.[1]).find((p) => p !== void 0);
+  return label2 === void 0 ? null : Number(label2) + 1;
+}
+function compareResults(a, b) {
+  return BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket) || (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER) || a.id - b.id;
+}
+function isOpen(forge, id) {
+  try {
+    return forge.tracker.viewItem(id).open;
+  } catch {
+    if (forge.kind === "azure-devops") return true;
+    try {
+      return forge.reviews.viewPr(id).state === "OPEN";
+    } catch {
+      return true;
+    }
+  }
+}
+function isSatisfied(forge, id, base, runState) {
+  if (runState(id)?.phase === "merged") return true;
+  const unreadable = (error2) => {
+    if (error2 instanceof FactorySafetyError) throw error2;
+    return false;
+  };
+  let item;
+  try {
+    item = forge.tracker.viewItem(id);
+  } catch (error2) {
+    if (forge.kind === "azure-devops") return unreadable(error2);
+    try {
+      return forge.reviews.viewPr(id).state === "MERGED";
+    } catch (prError) {
+      return unreadable(error2 instanceof FactorySafetyError ? error2 : prError);
+    }
+  }
+  if (!item.open) return true;
+  try {
+    return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
+  } catch (error2) {
+    return unreadable(error2);
+  }
+}
+function checkItem(forge, id, env2) {
+  let item;
+  try {
+    item = forge.tracker.viewItem(id);
+  } catch (error2) {
+    if (forge.kind === "github" && NOT_AN_ISSUE.test(messageOf(error2))) return failed(id, "wrong-type", `#${id} is not an issue (a pull request?)`);
+    return failed(id, "read-failed", `#${id} could not be read: ${messageOf(error2)}`);
+  }
+  const look = {
+    isOpen: (other) => isOpen(forge, other),
+    isSatisfied: (dep) => isSatisfied(forge, dep, env2.base, env2.runState),
+    runState: env2.runState,
+    openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
+    mergedPr: (branch) => forge.reviews.findMergedPrForBranch(branch, env2.base),
+    remoteBranch: env2.remoteBranch,
+    readPlan: env2.readPlan,
+    planBase: env2.planBase
+  };
+  let v;
+  try {
+    v = evaluateItem(item, forge.kind, env2.config, look);
+  } catch (error2) {
+    if (error2 instanceof FactorySafetyError) throw error2;
+    return { ...failed(id, "read-failed", `#${id} could not be checked: ${messageOf(error2)}`), title: plainText(item.title), url: plainText(item.url), priority: itemPriority(item) };
+  }
+  return {
+    id: item.id,
+    title: plainText(item.title),
+    url: plainText(item.url),
+    bucket: v.bucket,
+    reasons: v.reasons,
+    detail: plainText(v.detail),
+    priority: itemPriority(item),
+    planSource: v.planSource ?? null
+  };
+}
+function checkItems(forge, ids2, env2) {
+  return [...new Set(ids2)].map((id) => checkItem(forge, id, env2)).sort(compareResults);
+}
+function factoryCheckPreview(env2) {
+  return (forge, ids2) => checkItems(forge, ids2, env2).map((r) => ({
+    id: r.id,
+    title: r.title,
+    url: r.url,
+    readiness: r.reasons.length > 0 ? `${r.bucket}: ${r.reasons[0]}` : r.bucket
+  }));
+}
+var BUCKET_ORDER, plainText, NOT_AN_ISSUE, messageOf, failed;
+var init_score = __esm({
+  "src/factory/check/score.ts"() {
+    "use strict";
+    init_string_width();
+    init_exec2();
+    init_state6();
+    init_rules();
+    BUCKET_ORDER = ["runnable", "needs-plan", "blocked"];
+    plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
+    NOT_AN_ISSUE = /returned no issue url/;
+    messageOf = (error2) => error2 instanceof Error ? error2.message : String(error2);
+    failed = (id, reason, detail) => ({ id, title: "", url: "", bucket: "blocked", reasons: [reason], detail: plainText(detail), priority: null, planSource: null });
   }
 });
 
@@ -123791,6 +123981,7 @@ var init_engine = __esm({
     init_gh();
     init_reviews();
     init_tracker2();
+    init_score();
     init_outcome();
     init_prepare();
     init_state5();
@@ -124453,6 +124644,35 @@ var init_engine = __esm({
         this.gate("pr-exists", `open PR #${open9[0].number} already uses ${this.state.branch} and this run did not create it; close it or adopt it by hand`);
         return true;
       }
+      /**
+       * The blocked-by intake gate (shipyard ↔ factory design §3.5): a dependency
+       * that is not satisfied (check's isSatisfied: closed, its factory PR merged
+       * into the base, or its run merged; unreadable is unsatisfied) parks the
+       * run at blocked-by. A rerun re-reads the item and its dependencies, so it
+       * proceeds once they merged. True when it parked.
+       */
+      blockedBy(dependsOn, repoUrl) {
+        if (dependsOn.length === 0) return false;
+        if (dependsOn.includes(this.o.issue)) {
+          this.save((s) => ({ ...s, repoUrl }));
+          this.gate("blocked-by", `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+          return true;
+        }
+        const forge = this.forge ?? { kind: "github", tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
+        const runState = (id) => {
+          try {
+            return readFactoryState(this.o.root, id);
+          } catch {
+            return null;
+          }
+        };
+        const open9 = dependsOn.filter((d) => !isSatisfied(forge, d, this.state.base, runState));
+        if (open9.length === 0) return false;
+        const ids2 = open9.map((d) => `#${d}`).join(", ");
+        this.save((s) => ({ ...s, repoUrl }));
+        this.gate("blocked-by", `depends on unfinished item${open9.length > 1 ? "s" : ""} ${ids2} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open9.length > 1 ? "they merge" : "it merges"}`);
+        return true;
+      }
       /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
       healIntake() {
         const v = this.gh(ghRepoView);
@@ -124509,6 +124729,7 @@ ${item.acceptance}
 ` : item.body;
         const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
         if (this.foreignPr(item.repoUrl)) return;
+        if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
         this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...planLink ? { planLink } : {} }, "plan", `work item ${item.url}`, this.iso()));
       }
       async intake() {
@@ -124526,6 +124747,7 @@ ${item.acceptance}
         const body = typeof v.body === "string" ? v.body : "";
         const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
         if (this.foreignPr(m[1])) return;
+        if (this.blockedBy(ghDependsOn(body), m[1])) return;
         this.save((s) => moveTo({ ...s, repoUrl: m[1], issueTitle: typeof v.title === "string" ? v.title : "", issueBody: body, ...planLink ? { planLink } : {} }, "plan", `issue ${url}`, this.iso()));
       }
       async plan() {
@@ -127084,184 +127306,6 @@ var init_cli = __esm({
   }
 });
 
-// src/factory/check/rules.ts
-function acceptanceSection(body) {
-  const m = ACCEPTANCE.exec(body);
-  if (!m) return "";
-  const lines4 = body.slice(m.index).split(/\r?\n/).slice(1);
-  const end = lines4.findIndex((l) => HEADING.test(l));
-  return (end < 0 ? lines4 : lines4.slice(0, end)).join("\n");
-}
-function acceptanceItems(text4) {
-  return text4.split(/\r?\n/).map((l) => LIST_ITEM.exec(l)?.[1]?.trim()).filter((s) => Boolean(s));
-}
-function evaluateItem(item, kind, config2, look) {
-  if (!item.open) return hit("blocked", "closed", `the item is ${item.rawState || "closed"}`);
-  if (kind === "azure-devops") {
-    const types = config2.intake.itemTypes.map((t) => t.toLowerCase());
-    if (!item.type || !types.includes(item.type.toLowerCase())) {
-      return hit("blocked", "wrong-type", `work item type ${JSON.stringify(item.type ?? "")} is not in factory.intake.itemTypes (${config2.intake.itemTypes.join(", ")})`);
-    }
-  }
-  const run2 = look.runState(item.id);
-  if (run2 && TERMINAL_FACTORY_PHASES.includes(run2.phase)) {
-    return hit("blocked", `run-finished:${run2.phase}`, `the factory run is ${run2.phase} and is not restarted; see omg factory run status ${item.id}`);
-  }
-  if (run2) {
-    const at = run2.gate ? `${run2.phase}/${run2.gate.name}` : run2.phase;
-    return hit("blocked", `run-active:${at}`, `a factory run is active (${at}); see omg factory run status ${item.id}`);
-  }
-  const branch = factoryBranch(item.id);
-  const pr = look.openPr(branch);
-  if (pr !== void 0) return hit("blocked", "pr-exists", `open PR #${pr} already uses ${branch}`);
-  const merged = look.mergedPr(branch);
-  if (merged !== void 0) return hit("blocked", "merged", `PR #${merged} from ${branch} already merged into the base`);
-  if (look.remoteBranch(branch)) return hit("blocked", "branch-exists", `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
-  const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
-  if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
-  const children = item.children.filter((c) => look.isOpen(c));
-  if (children.length > 0) return hit("blocked", "needs-split", `has open children ${ids(children)}`);
-  if (kind === "azure-devops" && item.type && SPLIT_TYPES.has(item.type.toLowerCase())) return hit("blocked", "needs-split", `work item type ${item.type} needs splitting`);
-  if (kind === "github" && item.labels.some((l) => l.toLowerCase() === "epic")) return hit("blocked", "needs-split", "labelled epic");
-  const link6 = findPlanLink(item.body, item.comments, item.authorTrusted);
-  const adoAc = item.acceptance?.trim() ? item.acceptance : void 0;
-  const planSource = link6 ? "omg-plan" : adoAc ? "ado-acceptance" : hasAcceptanceCriteria(item.body) ? "issue-body" : void 0;
-  if (!planSource) return hit("needs-plan", "no-plan", 'no trusted omg-plan: line and no "Acceptance criteria"');
-  if (link6) {
-    if (!isRepoPath(link6)) return hit("needs-plan", "plan-missing", `omg-plan ${JSON.stringify(link6)} is not a repo-relative path`);
-    const text4 = look.readPlan(link6);
-    if (text4 === null || !text4.trim()) return hit("needs-plan", "plan-missing", `omg-plan ${link6} is missing or empty on ${look.planBase}`);
-  }
-  const acItems = link6 ? [] : acceptanceItems(adoAc ?? acceptanceSection(item.body));
-  if (!link6 && acItems.length === 0) return hit("needs-plan", "ac-not-testable", "the Acceptance criteria have no list or checkbox items");
-  const { maxAcceptanceItems, maxSize, maxBodyChars } = config2.check;
-  if (acItems.length > maxAcceptanceItems) return hit("blocked", "too-big", `${acItems.length} acceptance items (max ${maxAcceptanceItems})`);
-  if (item.size !== void 0 && item.size > maxSize) return hit("blocked", "too-big", `size ${item.size} (max ${maxSize})`);
-  if (item.body.length > maxBodyChars) return hit("blocked", "too-big", `body is ${item.body.length} characters (max ${maxBodyChars})`);
-  if (acItems.length > 0 && acItems.every(isVague)) return hit("needs-plan", "ac-vague", "every acceptance item is vague and names no path, command, number or code");
-  const detail = link6 ? `plan: omg-plan ${link6}` : `plan: ${acItems.length} acceptance item${acItems.length > 1 ? "s" : ""} (${planSource})`;
-  return { bucket: "runnable", reasons: [], detail, planSource };
-}
-var SPLIT_TYPES, HEADING, LIST_ITEM, VAGUE, CONCRETE, isVague, ids, hit;
-var init_rules = __esm({
-  "src/factory/check/rules.ts"() {
-    "use strict";
-    init_config4();
-    init_plan_rules();
-    init_state6();
-    SPLIT_TYPES = /* @__PURE__ */ new Set(["epic", "feature"]);
-    HEADING = /^[^\S\r\n]*#{1,6}[^\S\r\n]/;
-    LIST_ITEM = /^[^\S\r\n]*(?:[-*+]|\d+[.)])[^\S\r\n]+(?:\[[ xX]\][^\S\r\n]+)?(\S.*)$/;
-    VAGUE = /\b(should work|as needed|etc\.?|tbd|nice|improve|better|clean ?up)\b/i;
-    CONCRETE = /`[^`\r\n]+`|[\w.-]*\/[\w.-]+|\b[\w-]+\.[a-z][a-z0-9]{0,4}\b|\d/i;
-    isVague = (acItem) => VAGUE.test(acItem) && !CONCRETE.test(acItem);
-    ids = (list2) => list2.map((n) => `#${n}`).join(",");
-    hit = (bucket, reason, detail) => ({ bucket, reasons: [reason], detail });
-  }
-});
-
-// src/factory/check/score.ts
-function itemPriority(item) {
-  if (item.priority !== void 0 && Number.isInteger(item.priority) && item.priority > 0) return item.priority;
-  const label2 = item.labels.map((l) => /^priority:p([0-3])$/i.exec(l)?.[1]).find((p) => p !== void 0);
-  return label2 === void 0 ? null : Number(label2) + 1;
-}
-function compareResults(a, b) {
-  return BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket) || (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER) || a.id - b.id;
-}
-function isOpen(forge, id) {
-  try {
-    return forge.tracker.viewItem(id).open;
-  } catch {
-    if (forge.kind === "azure-devops") return true;
-    try {
-      return forge.reviews.viewPr(id).state === "OPEN";
-    } catch {
-      return true;
-    }
-  }
-}
-function isSatisfied(forge, id, base, runState) {
-  if (runState(id)?.phase === "merged") return true;
-  let item;
-  try {
-    item = forge.tracker.viewItem(id);
-  } catch {
-    if (forge.kind === "azure-devops") return false;
-    try {
-      return forge.reviews.viewPr(id).state === "MERGED";
-    } catch {
-      return false;
-    }
-  }
-  if (!item.open) return true;
-  try {
-    return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
-  } catch {
-    return false;
-  }
-}
-function checkItem(forge, id, env2) {
-  let item;
-  try {
-    item = forge.tracker.viewItem(id);
-  } catch (error2) {
-    if (forge.kind === "github" && NOT_AN_ISSUE.test(messageOf(error2))) return failed(id, "wrong-type", `#${id} is not an issue (a pull request?)`);
-    return failed(id, "read-failed", `#${id} could not be read: ${messageOf(error2)}`);
-  }
-  const look = {
-    isOpen: (other) => isOpen(forge, other),
-    isSatisfied: (dep) => isSatisfied(forge, dep, env2.base, env2.runState),
-    runState: env2.runState,
-    openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
-    mergedPr: (branch) => forge.reviews.findMergedPrForBranch(branch, env2.base),
-    remoteBranch: env2.remoteBranch,
-    readPlan: env2.readPlan,
-    planBase: env2.planBase
-  };
-  let v;
-  try {
-    v = evaluateItem(item, forge.kind, env2.config, look);
-  } catch (error2) {
-    return { ...failed(id, "read-failed", `#${id} could not be checked: ${messageOf(error2)}`), title: plainText(item.title), url: plainText(item.url), priority: itemPriority(item) };
-  }
-  return {
-    id: item.id,
-    title: plainText(item.title),
-    url: plainText(item.url),
-    bucket: v.bucket,
-    reasons: v.reasons,
-    detail: plainText(v.detail),
-    priority: itemPriority(item),
-    planSource: v.planSource ?? null
-  };
-}
-function checkItems(forge, ids2, env2) {
-  return [...new Set(ids2)].map((id) => checkItem(forge, id, env2)).sort(compareResults);
-}
-function factoryCheckPreview(env2) {
-  return (forge, ids2) => checkItems(forge, ids2, env2).map((r) => ({
-    id: r.id,
-    title: r.title,
-    url: r.url,
-    readiness: r.reasons.length > 0 ? `${r.bucket}: ${r.reasons[0]}` : r.bucket
-  }));
-}
-var BUCKET_ORDER, plainText, NOT_AN_ISSUE, messageOf, failed;
-var init_score = __esm({
-  "src/factory/check/score.ts"() {
-    "use strict";
-    init_string_width();
-    init_state6();
-    init_rules();
-    BUCKET_ORDER = ["runnable", "needs-plan", "blocked"];
-    plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
-    NOT_AN_ISSUE = /returned no issue url/;
-    messageOf = (error2) => error2 instanceof Error ? error2.message : String(error2);
-    failed = (id, reason, detail) => ({ id, title: "", url: "", bucket: "blocked", reasons: [reason], detail: plainText(detail), priority: null, planSource: null });
-  }
-});
-
 // src/factory/check/cli.ts
 function checkGh(a, marker) {
   const [group, sub, ...r] = a;
@@ -128870,9 +128914,21 @@ function renderFactoryRunState(state) {
   for (const h of state.history.slice(-5)) lines4.push(source_default.gray(`  ${h.at} ${h.from ?? "-"} -> ${h.to}: ${h.note}`));
   return lines4.join("\n");
 }
-function printOutcome2(json, outcome) {
+function pickNext(deps, root2, base, loaded2, parent) {
+  const { config: config2 } = loaded2;
+  const source = config2.intake.source;
+  if (parent === void 0 && !source) throw new FactoryUsageError("--next needs --parent <spec> or factory.intake.source");
+  const read = forgeReadExec(deps.exec, config2, root2);
+  const forge = createForge(read.exec, root2, config2, read.options);
+  const warnings = [];
+  const baseSha = fetchBase(read.exec, root2, base, warnings);
+  const ids2 = parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
+  const items = checkItems(forge, ids2, checkEnvFor(read.exec, root2, config2, base, baseSha));
+  return { next: items.find((r) => r.bucket === "runnable") ?? null, items, warnings };
+}
+function printOutcome2(json, outcome, next) {
   if (json) {
-    console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...outcome }, null, 2));
+    console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...next !== void 0 ? { next } : {}, ...outcome }, null, 2));
     return;
   }
   if (outcome.state) console.log(renderFactoryRunState(outcome.state));
@@ -128882,14 +128938,38 @@ function printOutcome2(json, outcome) {
 function factoryRunCommand(deps = defaultFactoryRunDeps) {
   const exec3 = factoryGuardExec(deps.exec);
   const run2 = new Command("run");
-  run2.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "GitHub issue or Azure DevOps work item number").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
-    const issue2 = parseIssue(issueRaw);
+  run2.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "GitHub issue or Azure DevOps work item number").option("--next", "Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable").option("--parent <spec>", "With --next: pick among the children of this spec item instead of factory.intake.source").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
+    if (o.next && issueRaw !== void 0) throw new FactoryUsageError("--next takes no issue: it picks the next runnable item");
+    if (o.parent !== void 0 && !o.next) throw new FactoryUsageError("--parent applies to --next");
+    let parent;
+    try {
+      parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+    } catch (error2) {
+      throw new FactoryUsageError(error2 instanceof Error ? error2.message : String(error2));
+    }
     const root2 = factoryRoot(exec3);
     const { limits, warnings } = deps.limits(root2);
     for (const w of warnings) console.error(source_default.yellow(w));
     const base = deps.base(root2);
     const loaded2 = deps.forge?.(root2, base);
     for (const w of loaded2?.warnings ?? []) console.error(source_default.yellow(w));
+    let issue2;
+    let picked;
+    if (o.next) {
+      if (!loaded2) throw new FactoryUsageError("--next needs the forge config (omg factory setup)");
+      const { next, items, warnings: pickWarnings } = pickNext(deps, root2, base, loaded2, parent);
+      for (const w of pickWarnings) console.error(source_default.yellow(plainText(w)));
+      const counts = bucketCounts(items);
+      if (!next) {
+        if (o.json) console.log(JSON.stringify({ ok: true, next: null, message: "nothing runnable", counts }, null, 2));
+        else console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(", ")})`);
+        return 0;
+      }
+      issue2 = picked = next.id;
+      if (!o.json) console.log(source_default.cyan(`next runnable: #${next.id} ${next.title}`));
+    } else {
+      issue2 = parseIssue(issueRaw);
+    }
     const forge = loaded2 ? { config: loaded2.config, options: factoryForgeOptions(root2) } : void 0;
     let signals = 0;
     const onSignal = () => {
@@ -128916,7 +128996,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
         interrupted: () => signals > 0,
         warn: (m) => console.error(source_default.yellow(m))
       });
-      printOutcome2(Boolean(o.json), outcome);
+      printOutcome2(Boolean(o.json), outcome, picked);
       return outcome.exitCode;
     } finally {
       process.off("SIGINT", onSignal);
@@ -129189,7 +129269,7 @@ A backup is written first.`)) {
   return { exitCode: 0, message: `factory init --migrate rewrote ${routesPath} (backup: ${backupPath}):
 ${plan}` };
 }
-var import_fs170, import_path197, defaultFactoryRunDeps, FactoryUsageError, NO_LANES;
+var import_fs170, import_path197, defaultFactoryRunDeps, FactoryUsageError, NO_LANES, bucketCounts;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
     "use strict";
@@ -129221,6 +129301,9 @@ var init_factory = __esm({
     init_ledger2();
     init_detect();
     init_factory_setup();
+    init_cli2();
+    init_score();
+    init_forge();
     defaultFactoryRunDeps = {
       exec: defaultExec,
       // `omg factory run` without --dry-run is itself the opt-in to live, billed lanes.
@@ -129241,6 +129324,7 @@ var init_factory = __esm({
       wait: () => Promise.reject(new Error("omg factory run --dry-run starts no lanes")),
       cancel: () => Promise.reject(new Error("omg factory run --dry-run starts no lanes"))
     };
+    bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
   }
 });
 

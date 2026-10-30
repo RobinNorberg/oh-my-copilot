@@ -43,6 +43,8 @@ class AdoModel {
   lag?: { sha: string; reads: number };
   /** Work item PATCHes answered with a rev conflict before one succeeds. */
   revConflicts = 0;
+  /** The recorded item's predecessor #40 (Dependency-Reverse): dropped (none), open, or open with its factory PR completed into dev. */
+  predecessor: 'none' | 'open' | 'merged' = 'none';
 
   constructor(private readonly h: Harness) {}
 
@@ -83,6 +85,7 @@ class AdoModel {
     const ok = (v: unknown): ExecResult => ({ status: 0, stdout: JSON.stringify(v), stderr: '' });
     switch (inv.route.id) {
       case 'wit.workItems.GET': {
+        if (rp.id === '40' && this.predecessor !== 'none') return ok({ ...fixture('wit.workItems.GET.42.json'), id: 40, relations: [] });
         if (rp.id !== String(ISSUE)) break;
         const item = fixture('wit.workItems.GET.42.json');
         item.id = ISSUE;
@@ -90,6 +93,7 @@ class AdoModel {
         item.fields['System.Description'] = '<div>A greeting helper.</div>';
         item.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] = '<ul><li>greet() returns hi</li></ul>';
         item._links.html.href = `https://dev.azure.com/contoso/Web/_workitems/edit/${ISSUE}`;
+        if (this.predecessor === 'none') item.relations = item.relations.filter((r: { rel: string }) => r.rel !== 'System.LinkTypes.Dependency-Reverse');
         return ok(item);
       }
       case 'wit.workItems.PATCH':
@@ -110,6 +114,10 @@ class AdoModel {
       case 'wit.comments.POST':
         return ok({ id: 60 + this.calls.length, text: body.text });
       case 'git.pullRequests.GET':
+        if (qp['searchCriteria.status'] === 'completed') {
+          const done = this.predecessor === 'merged' && qp['searchCriteria.sourceRefName'] === 'refs/heads/factory/issue-40' && qp['searchCriteria.targetRefName'] === 'refs/heads/dev';
+          return ok({ value: done ? [{ pullRequestId: 90, status: 'completed' }] : [], count: done ? 1 : 0 });
+        }
         if (qp['searchCriteria.sourceRefName']) return ok({ value: this.prCreated ? [{ pullRequestId: PR_ID, status: 'active' }] : [], count: this.prCreated ? 1 : 0 });
         if (rp.pullRequestId === String(PR_ID) && this.prCreated) return ok(this.pr());
         break;
@@ -302,6 +310,20 @@ describe('omg factory run on Azure DevOps (fake ADO, real git)', () => {
     await expect(run(happy(), { forge: forgeInput({ options: { untrustedRoots: [h.root] } }) })).rejects.toThrow(/missing: /);
     await expect(run(happy(), { dryRun: true, forge: forgeInput({ options: { untrustedRoots: [] } }) })).rejects.toThrow(/must list every untrusted root/);
     expect(readFactoryState(h.root, ISSUE)).toBeNull();
+  });
+
+  it('blocked-by: an open predecessor (Dependency-Reverse) parks the run; a rerun proceeds once its factory PR completed into dev', async () => {
+    ado.predecessor = 'open';
+    const first = await run([]);
+    expect(first.gate?.name).toBe('blocked-by');
+    expect(first.gate?.reason).toContain('#40');
+    expect(ado.calls.some((c) => c.route === 'git.pullRequests.POST')).toBe(false);
+
+    ado.predecessor = 'merged';
+    const out = await run(happy());
+    expect(out.exitCode, out.message).toBe(0);
+    expect(out.gate?.name).toBe('merge');
+    expectNoMerge();
   });
 
   it('a resume on another forge than the run started on is refused (forgeKind)', async () => {

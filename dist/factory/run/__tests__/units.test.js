@@ -236,6 +236,14 @@ describe('factory command guard', () => {
         refused('git', ['merge', '--abort', '--quiet']);
         refused('gh', ['pr', 'ready', '42', '--undo']);
     });
+    it('allows the blocked-by gate\'s merged-PR lookup in its exact shape only (read-only)', () => {
+        ok('gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', 'dev', '--state', 'merged', '--json', 'number']);
+        refused('gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', 'dev', '--state', 'merged', '--json', 'number', '--limit', '1']);
+        refused('gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', 'dev', '--state', 'all', '--json', 'number']);
+        refused('gh', ['pr', 'list', '--head', 'feat/x', '--base', 'dev', '--state', 'merged', '--json', 'number']);
+        refused('gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', '--web', '--state', 'merged', '--json', 'number']);
+        refused('gh', ['pr', 'list', '--head', 'factory/issue-3', '--base', 'dev', '--state', 'merged', '--json', 'number,body']);
+    });
     it('allows only the trusted-read env, and only on git', () => {
         expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_NO_REPLACE_OBJECTS: '1' })).not.toThrow();
         expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_DIR: '/x' })).toThrow(FactorySafetyError);

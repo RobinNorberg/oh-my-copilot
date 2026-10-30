@@ -213,7 +213,7 @@ function requireLabel(exec: Exec, root: string, marker: string, repo: string): v
 }
 
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
-function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null {
+export function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null {
   const fetched = git(exec, root, ['fetch', 'origin', base]);
   if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
   const sha = git(exec, root, ['rev-parse', '--verify', `refs/remotes/origin/${base}`]);

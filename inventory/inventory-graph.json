@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e12bb506304d63cfbe53cde167d1e145100a7430",
-    "sourceSha256": "77d6bbcef1813a4710b78ce385fb6d357ece93bab30d44bb1440188040350dec",
+    "head": "eddf4fb8f119b962f01ae44849448b5d22eb3e08",
+    "sourceSha256": "936ae6c270846238efd487d8baee49e260f2dc1f7f8a682d4f46009b08045772",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e12bb506304d63cfbe53cde167d1e145100a7430",
-  "sourceSha256": "77d6bbcef1813a4710b78ce385fb6d357ece93bab30d44bb1440188040350dec",
+  "head": "eddf4fb8f119b962f01ae44849448b5d22eb3e08",
+  "sourceSha256": "936ae6c270846238efd487d8baee49e260f2dc1f7f8a682d4f46009b08045772",
   "counts": {
     "public": {
       "skills": 63,
@@ -71895,6 +71895,16 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -71925,7 +71935,17 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/forge/config.ts",
         "kind": "imports"
       },
       {
@@ -72910,6 +72930,21 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/factory/heal/cli.ts",
         "kind": "imports"
       },
@@ -73007,6 +73042,11 @@
         "from": "src/cli/commands/factory.ts",
         "to": "src/forge/config.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -75600,6 +75640,11 @@
       },
       {
         "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
         "to": "src/forge/config.ts",
         "kind": "imports"
       },
@@ -75737,6 +75782,11 @@
         "from": "src/factory/check/score.ts",
         "to": "src/factory/check/rules.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/check/score.ts",
@@ -78012,6 +78062,16 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -114791,11 +114851,11 @@
     ],
     "stats": {
       "nodeCount": 9738,
-      "edgeCount": 11487,
-      "importEdgeCount": 9448,
+      "edgeCount": 11499,
+      "importEdgeCount": 9458,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "5fff3c8d4dab0481099e89bd7b63cbefecc82bfebb3a09c2049aede4c8e0a555",
-  "manifestSha256": "058a54be0d03953c36b22bf9b24ad135eaa432da57970ec04b43ba2840d9223e"
+  "manifestSha256": "0242f28bdb3fbb21c2987b7372f92a2beba237c132f23016cd37c6bac128b3c8"
 }

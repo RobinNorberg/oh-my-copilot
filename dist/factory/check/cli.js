@@ -183,7 +183,7 @@ function requireLabel(exec, root, marker, repo) {
         throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
-function fetchBase(exec, root, base, warnings) {
+export function fetchBase(exec, root, base, warnings) {
     const fetched = git(exec, root, ['fetch', 'origin', base]);
     if (!fetched.ok)
         warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
