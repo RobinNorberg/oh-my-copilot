@@ -511,6 +511,33 @@ export declare const RUNTIME_MIN_MAX_CREDITS = 30;
 export declare const CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
 /** A scenario's checks all failed with one detail (not started). */
 export declare function skippedScenarioChecks(name: Scenario, detail: string): SmokeCheck[];
+/**
+ * Scenarios that drive `copilot -p` (no SDK client, so no request handler to
+ * record or replay through; design section 2): refused by name under
+ * `--record` and `--replay`.
+ */
+export declare const NO_CASSETTE_SCENARIOS: readonly Scenario[];
+/** What a replay served for one scenario (replay/run.ts `replayOutcome`). */
+export interface ReplayOutcomeLike {
+    streams: number;
+    misses: ReadonlyArray<{
+        stream: string;
+        seq: number;
+        reason: string;
+    }>;
+    drift: ReadonlyArray<{
+        kind: string;
+    }>;
+    unclaimed: readonly string[];
+    unconsumed: readonly string[];
+}
+/**
+ * `scn.<name>.replay` (design section 7.1): no miss, every recorded stream
+ * claimed and fully consumed; drift is reported, and fails only a strict run.
+ * A string outcome (no cassette, an unreadable one, a scenario not run) fails
+ * with that text.
+ */
+export declare function evaluateReplay(name: Scenario, outcome: ReplayOutcomeLike | string, strict: boolean): SmokeCheck;
 /** An RPC result or the error message it failed with. */
 export type Rpc<T = unknown> = {
     ok: true;

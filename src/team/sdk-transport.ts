@@ -21,7 +21,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { dirname, join } from 'node:path';
 
 import { killProcessTree, isProcessAlive, isProcessIdentityLive } from '../platform/process-utils.js';
-import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
+import { isCredentialEnvKey, isReplayEnv } from '../smoke/copilot-session-env.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import {
   awaitWorkerLaunchAcknowledgement,
@@ -213,10 +213,13 @@ export function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !isCredentialEnvKey(key)));
 }
 
-/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+/**
+ * The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`; none in a
+ * cassette replay, whose hosts run credential-free (replay design section 8.2).
+ */
 export function hostCredentialHandoff(env: NodeJS.ProcessEnv): string {
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
+  for (const [key, value] of isReplayEnv(env) ? [] : Object.entries(env)) {
     const upper = key.toUpperCase();
     if ((HOST_CREDENTIAL_ENV as readonly string[]).includes(upper) && value && !(upper in out)) out[upper] = value;
   }

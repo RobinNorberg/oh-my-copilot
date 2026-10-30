@@ -3101,6 +3101,7 @@ var SCENARIOS = {
     permit: denyAll
   }
 };
+var NO_CASSETTE_SCENARIOS = ["chain", ...CLI_SCENARIOS];
 function canon(p, platform = process.platform) {
   const out = (0, import_path24.resolve)(p).split(import_path24.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;

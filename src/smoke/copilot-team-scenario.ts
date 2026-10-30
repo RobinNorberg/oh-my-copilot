@@ -56,6 +56,8 @@ export interface TeamScenarioInput {
   budget: number;
   eventsPath: string;
   spawnSync: SpawnSyncFn;
+  /** The model every sdk worker runs on (`OMC_TEAM_SDK_MODEL`); unset: team.sdk.model, else runtime auto. A cassette pins it. */
+  model?: string;
   /** Test seams. */
   spawn?: SpawnFn;
   pollMs?: number;
@@ -73,8 +75,8 @@ function pathKey(env: NodeJS.ProcessEnv): string {
   return Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
 }
 
-/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap. */
-export function teamLeaderEnv(base: NodeJS.ProcessEnv, bin: string, budget: number): NodeJS.ProcessEnv {
+/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap, the worker model when pinned. */
+export function teamLeaderEnv(base: NodeJS.ProcessEnv, bin: string, budget: number, model?: string): NodeJS.ProcessEnv {
   const key = pathKey(base);
   const env: NodeJS.ProcessEnv = {
     ...base,
@@ -83,6 +85,7 @@ export function teamLeaderEnv(base: NodeJS.ProcessEnv, bin: string, budget: numb
     OMC_RUNTIME_V2: '1',
     OMC_TEAM_WORKTREE_MODE: 'detached',
     OMC_TEAM_SDK_MAX_CREDITS: String(Math.max(1, Math.floor(budget / 2))),
+    ...(model ? { OMC_TEAM_SDK_MODEL: model } : {}),
   };
   // A measurement knob for the launch path (1 = serial), passed through when set.
   if (process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY) env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY = process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
@@ -211,7 +214,7 @@ export async function runTeamScenario(input: TeamScenarioInput): Promise<Omit<Sc
   const budgetMs = Math.max(input.timeoutMs, TEAM_BUDGET_MS);
   const started = now();
   const deadline = started + budgetMs;
-  const env = teamLeaderEnv(input.env, input.bin, input.budget);
+  const env = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
   const cli = join(input.root, 'bridge', 'cli.cjs');
   const spawnFn = input.spawn ?? nodeSpawn;
   const omg = (args: string[], timeoutMs: number): Promise<RunResult> =>
@@ -219,7 +222,7 @@ export async function runTeamScenario(input: TeamScenarioInput): Promise<Omit<Sc
   const base = {
     name: 'team' as const,
     timeoutMs: budgetMs,
-    model: 'sdk workers (team.sdk.model, else runtime auto)',
+    model: input.model ? `sdk workers on ${input.model}` : 'sdk workers (team.sdk.model, else runtime auto)',
     maxCredits: input.maxCredits,
     budget: input.budget,
     capped: false,

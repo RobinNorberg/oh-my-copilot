@@ -36,13 +36,15 @@ import {
   type SmokeCheck,
 } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
-import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
+import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, scenarioPlaceholderDirs, type LoadSdkFn, type SdkTierResult } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
 import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
 import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
-import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, NO_CASSETTE_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { readCassetteConfig } from './replay/handler.js';
+import { cassetteEnv, recordTargetRefusal, replayModel, type CassetteRun } from './replay/run.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 
 export {
@@ -100,6 +102,17 @@ export interface SmokeOptions {
   delegate?: boolean;
   /** Tier 2 scenarios (default {@link DEFAULT_SCENARIOS}); [] = SDK static checks only, zero model calls. */
   scenarios?: Scenario[];
+  /**
+   * Tier 2: record every model request of the scenarios into
+   * `<record>/<platform>-<arch>/<scenario>/` (billed; needs {@link SmokeOptions.model}).
+   */
+  record?: string;
+  /** With `record`: replace an existing cassette. */
+  recordOverwrite?: boolean;
+  /** Tier 2: answer every model request from `<replay>/<platform>-<arch>/<scenario>/` (free, credential-free). */
+  replay?: string;
+  /** With `replay`: a drifted request misses instead of being served. */
+  replayStrict?: boolean;
   env?: NodeJS.ProcessEnv;
   /** Test seams; defaults are the real implementations. */
   deps?: SmokeDeps;
@@ -137,6 +150,8 @@ export interface SmokeReport {
   sdk?: { version: string | null; runtimeVersion: string | null; protocolVersion: number | null; model?: string };
   /** Tier 2: summed over the scenarios (AI credits = nano-AIU / 1e9). */
   cost?: ScenarioCost;
+  /** Tier 2 with `replay`: per scenario, what `scn.<name>.replay` found. */
+  replay?: SdkTierResult['replay'];
 }
 
 /**
@@ -260,6 +275,8 @@ interface Ctx {
   spawnSyncFn: SpawnSyncFn;
   deps: SmokeDeps;
   timeoutMs: number;
+  /** `--record`/`--replay` (stateRoot set per tier 2 run). */
+  cassette?: CassetteRun;
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +657,64 @@ export function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | undefine
   return LIVE_RUN_REFUSED_DETAIL;
 }
 
+/**
+ * Why the `record`/`replay` options are refused, or null (design sections 2,
+ * 6 and 8.5): both at once; a flag without its mode; outside tier 2 or with
+ * no scenario; a `copilot -p` scenario (no request handler to record or
+ * replay through); recording under CI or without a pinned model.
+ */
+export function cassetteOptionsError(
+  opts: Pick<Partial<SmokeOptions>, 'tier' | 'scenarios' | 'model' | 'record' | 'recordOverwrite' | 'replay' | 'replayStrict'>,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const { record, replay } = opts;
+  if (opts.recordOverwrite && record === undefined) return '--record-overwrite needs --record';
+  if (opts.replayStrict && replay === undefined) return '--replay-strict needs --replay';
+  if (record === undefined && replay === undefined) return null;
+  if (record !== undefined && replay !== undefined) return '--record and --replay cannot be combined';
+  const mode = record !== undefined ? 'record' : 'replay';
+  if (!(record ?? replay)?.trim()) return `--${mode} needs a directory`;
+  if (opts.tier !== 2) return `--${mode} needs --tier 2 (tier 1 runs copilot -p, which has no replay seam)`;
+  const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
+  if (scenarios.length === 0) return `--${mode} needs at least one scenario (--sdk-static makes no model call)`;
+  const noSeam = scenarios.filter((s) => NO_CASSETTE_SCENARIOS.includes(s));
+  if (noSeam.length > 0) return `${mode}: scenario ${noSeam.join(', ')} runs copilot -p, which has no replay seam`;
+  if (record !== undefined && env.CI && env.CI !== 'false') return 'recording a cassette is refused under CI';
+  if (record !== undefined && !opts.model) return '--record needs --model <id>: a cassette is replayed on the model it was recorded with';
+  return null;
+}
+
+/**
+ * The run's cassette settings, checked before anything is spent: the env
+ * itself (mode, a record dir outside the fixtures), no cassette that would be
+ * overwritten, and for replay the model every selected cassette pins (it
+ * becomes the run's model; a different --model is refused).
+ */
+function prepareCassetteRun(opts: SmokeOptions, env: NodeJS.ProcessEnv): CassetteRun | undefined {
+  const refusal = cassetteOptionsError(opts, env);
+  if (refusal) throw new Error(refusal);
+  if (opts.record === undefined && opts.replay === undefined) return undefined;
+  const run: CassetteRun = {
+    mode: opts.record !== undefined ? 'record' : 'replay',
+    root: resolve((opts.record ?? opts.replay) as string),
+    // Replaced by the per-run temp dir in runTier2; the checks below do not touch state.
+    stateRoot: '',
+    strict: !!opts.replayStrict,
+    overwrite: !!opts.recordOverwrite,
+  };
+  readCassetteConfig(cassetteEnv(env, { ...run, stateRoot: tmpdir() }, {}));
+  const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
+  if (run.mode === 'record') {
+    const taken = scenarios.map((s) => recordTargetRefusal(run, s)).filter((r): r is string => r !== null);
+    if (taken.length > 0) throw new Error(taken.join('\n'));
+  } else {
+    const model = replayModel(run, scenarios);
+    if (opts.model && model && opts.model !== model) throw new Error(`--model ${opts.model} differs from the cassettes' recorded model ${model}; replay pins the recorded one (drop --model)`);
+    if (model) opts.model = model;
+  }
+  return run;
+}
+
 export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promise<SmokeReport> {
   const started = Date.now();
   const env = input.env ?? process.env;
@@ -651,6 +726,7 @@ export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promis
   if (opts.prompt !== undefined && /\0/.test(opts.prompt)) throw new Error('smoke prompt must not contain NUL');
   const unknown = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
   if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${KNOWN_SCENARIOS.join(', ')})`);
+  const cassette = prepareCassetteRun(opts, env);
 
   const refusal = liveRunRefusal(tier, opts.scenarios, deps);
   if (refusal) {
@@ -674,6 +750,7 @@ export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promis
     spawnSyncFn: deps.spawnSync ?? spawnSync,
     deps,
     timeoutMs: tier === 0 ? (opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS) : DEFAULT_TIER0_TIMEOUT_MS,
+    ...(cassette ? { cassette } : {}),
   };
 
   const checks: SmokeCheck[] = [];
@@ -772,6 +849,7 @@ async function runChecks(
     ...(skipped ? { skipped } : {}),
     ...(tier2?.sdk ? { sdk: tier2.sdk } : {}),
     ...(tier2?.cost ? { cost: tier2.cost } : {}),
+    ...(tier2?.replay ? { replay: tier2.replay } : {}),
   };
 }
 
@@ -800,10 +878,15 @@ async function runTier2(
   cleanup.push(parent);
   const home = join(parent, 'home');
   const projectDir = join(parent, 'project');
+  const remoteDir = join(parent, 'remote.git');
   mkdirSync(home);
   artifacts.copilotHome = home;
-  const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
-  const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
+  const run = ctx.cassette ? { ...ctx.cassette, stateRoot: join(parent, 'cassette-state') } : undefined;
+  // Replay copies no login into the home (design section 8.2): nothing outside the cassette can authenticate.
+  const identity = run?.mode === 'replay' ? {} : loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
+  // The cassette env goes in before buildSessionEnv, which drops every credential in replay.
+  const base = run ? cassetteEnv(ctx.env, run, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
+  const env = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
   env.OMC_GIT_GUARDRAILS = '1';
   writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
 
@@ -816,14 +899,14 @@ async function runTier2(
     packageVersion,
     home,
     projectDir,
-    remoteDir: join(parent, 'remote.git'),
+    remoteDir,
     env,
     scenarios,
     model: opts.model,
     timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
     maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
     keepHome: !!opts.keepHome,
-    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
+    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
     loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
     spawnSync: ctx.spawnSyncFn,
     skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
@@ -834,6 +917,7 @@ async function runTier2(
     runCli: ctx.deps.runCli ?? runCliScenario,
     runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
     runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+    ...(run ? { cassette: run } : {}),
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));

@@ -154,6 +154,10 @@ export const CASSETTE_ENV = {
     mode: 'OMG_COPILOT_CASSETTE_MODE',
     scenario: 'OMG_COPILOT_CASSETTE_SCENARIO',
     state: 'OMG_COPILOT_CASSETTE_STATE',
+    /** `strict` or `tolerant` (default): the replay match mode (`--replay-strict`). */
+    match: 'OMG_COPILOT_CASSETTE_MATCH',
+    /** JSON `{ PROJECT, HOME, ROOT, REMOTE, TMP }`: the smoke's dirs, turned into path placeholders. */
+    dirs: 'OMG_COPILOT_CASSETTE_DIRS',
 };
 /** Signs CAPI requests; not credential-named, so replay drops it by name and sets {@link REPLAY_HMAC_KEY}. */
 const HMAC_KEY_ENV = 'COPILOT_HMAC_KEY';

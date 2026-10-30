@@ -299,6 +299,7 @@ describe('env scrub', () => {
   const base = {
     PATH: '/bin', GH_TOKEN: 'ghp_x', COPILOT_GITHUB_TOKEN: 'tok', COPILOT_HMAC_KEY: 'hmac',
     [CASSETTE_ENV.dir]: '/c', [CASSETTE_ENV.scenario]: 'team', [CASSETTE_ENV.state]: '/s',
+    [CASSETTE_ENV.match]: 'strict', [CASSETTE_ENV.dirs]: '{"PROJECT":"/p"}',
   };
 
   it('buildSessionEnv drops credentials in replay and keeps the cassette vars', () => {

@@ -1251,6 +1251,47 @@ export function skippedScenarioChecks(name: Scenario, detail: string): SmokeChec
   return scenarioCheckIds(name).map((id) => ({ id, ok: false, detail }));
 }
 
+/**
+ * Scenarios that drive `copilot -p` (no SDK client, so no request handler to
+ * record or replay through; design section 2): refused by name under
+ * `--record` and `--replay`.
+ */
+export const NO_CASSETTE_SCENARIOS: readonly Scenario[] = ['chain', ...CLI_SCENARIOS];
+
+/** What a replay served for one scenario (replay/run.ts `replayOutcome`). */
+export interface ReplayOutcomeLike {
+  streams: number;
+  misses: ReadonlyArray<{ stream: string; seq: number; reason: string }>;
+  drift: ReadonlyArray<{ kind: string }>;
+  unclaimed: readonly string[];
+  unconsumed: readonly string[];
+}
+
+/**
+ * `scn.<name>.replay` (design section 7.1): no miss, every recorded stream
+ * claimed and fully consumed; drift is reported, and fails only a strict run.
+ * A string outcome (no cassette, an unreadable one, a scenario not run) fails
+ * with that text.
+ */
+export function evaluateReplay(name: Scenario, outcome: ReplayOutcomeLike | string, strict: boolean): SmokeCheck {
+  const id = `scn.${name}.replay`;
+  if (typeof outcome === 'string') return { id, ok: false, detail: outcome };
+  const kinds = [...new Set(outcome.drift.map((d) => d.kind))];
+  const drift = `drift ${outcome.drift.length}${kinds.length ? ` (${kinds.join(', ')})` : ''}`;
+  const problems = [
+    ...(outcome.misses.length ? [`${outcome.misses.length} miss(es)`] : []),
+    ...(outcome.unclaimed.length ? [`recorded stream(s) never claimed: ${outcome.unclaimed.join(', ')}`] : []),
+    ...(outcome.unconsumed.length ? [`stream(s) not fully consumed: ${outcome.unconsumed.join(', ')}`] : []),
+    ...(strict && outcome.drift.length ? ['drift in a strict replay'] : []),
+  ];
+  return {
+    id,
+    ok: problems.length === 0,
+    detail: problems.length === 0 ? `served all ${outcome.streams} recorded stream(s), 0 misses, ${drift}` : `${problems.join('; ')}; ${drift}`,
+    ...(outcome.misses.length ? { evidence: excerpt(outcome.misses.slice(0, 5).map((m) => `${m.stream}/${m.seq}: ${m.reason}`).join('\n')) } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Static checks (zero model calls)
 // ---------------------------------------------------------------------------

@@ -79,6 +79,8 @@ export interface CassetteManifest {
   redaction: { rules: number; hits: Record<string, number> };
   streams: CassetteStream[];
   selfVerify?: { ok: boolean; misses: number; drift: number };
+  /** The scenarios of the recording run, in the order they ran (replay keeps it: one runtime caches global GETs across them). */
+  runOrder?: string[];
 }
 
 export interface CassetteRequest {
