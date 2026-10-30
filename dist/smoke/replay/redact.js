@@ -39,7 +39,7 @@ const PLACEHOLDER_VALUE = String.raw `(?!<(?:secret|redacted:[\w.-]+)>)`;
  * escaped) stays valid JSON.
  */
 const TOKEN_RULES = [
-    { name: 'private-key', pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g },
+    { name: 'private-key', pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|$)/g },
     { name: 'github-token', pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}/g },
     { name: 'github-pat', pattern: /\bgithub_pat_[A-Za-z0-9_]{40,}/g },
     { name: 'capi-token', pattern: /\btid=[^;\s"\\]+;exp=\d+[^"\s\\]*/g },
@@ -48,7 +48,9 @@ const TOKEN_RULES = [
     { name: 'aws-key', pattern: /\bAKIA[0-9A-Z]{16}\b/g },
     {
         name: 'generic',
-        pattern: new RegExp(String.raw `(\b(?:api[_-]?key|secret|password)(?:\\?["'])?\s*[:=]\s*\\?["'])${PLACEHOLDER_VALUE}(?:\\[^"']|[^"'\\]){8,}`, 'gi'),
+        // The name may end a longer identifier (`client_secret`, `AWS_SECRET_ACCESS_KEY`) and quotes may be escaped any
+        // number of times; the value never takes the backslashes of its closing quote, so escaped JSON stays valid.
+        pattern: new RegExp(String.raw `((?<![A-Za-z0-9])(?:api[_-]?key|secret|password|token)(?:_[A-Za-z0-9]+)*(?:\\*["'])?\s*[:=]\s*\\*["'])${PLACEHOLDER_VALUE}(?:[^"'\\]|\\+(?![\\"'])){8,}`, 'gi'),
     },
 ];
 const EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
@@ -63,12 +65,14 @@ const TRANSPORT_EMAIL = /^git@/i;
  */
 const USER_HOME_PATHS = [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a separator.
-    /\b[A-Za-z]:(\\{1,4}|\/)Users\1(?!<user>)[^\\/\s"'<>|:*?]+(?:(?:\1|\/)[^\\/\s"'<>|:*?]+)*/gi,
-    /(?<![\w.$}-])\/(?:home|Users)\/(?!<user>)[^/\s"'\\<>|:*?]+(?:\/[^/\s"'\\<>|:*?]+)*/g,
+    // `\` doubles per JSON level, so any run of backslashes is a separator.
+    /\b[A-Za-z]:(\\+|\/)Users\1(?!<user>)[^\\/\s"'<>|:*?]+(?:(?:\1|\/)[^\\/\s"'<>|:*?]+)*/gi,
+    // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
+    /(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)[^/\s"'\\<>|:*?]+(?:\/[^/\s"'\\<>|:*?]+)*/g,
 ];
 /** Length of the `<root>/Users/<name>` head of a {@link USER_HOME_PATHS} match. */
 function userHomeHeadLength(match) {
-    return /^(?:[A-Za-z]:(\\{1,4}|\/)Users\1|\/(?:home|Users)\/)[^\\/]+/i.exec(match)?.[0].length ?? match.length;
+    return /^(?:[A-Za-z]:(\\+|\/)Users\1|\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/)[^\\/]+/i.exec(match)?.[0].length ?? match.length;
 }
 // One path segment character (no separators, quotes, whitespace or reserved Windows characters).
 const SEGMENT_CHAR = String.raw `[^\\/\s"'<>|:*?]`;
@@ -86,11 +90,27 @@ function mask(value) {
 function isWindowsPath(dir) {
     return /^[A-Za-z]:[\\/]/.test(dir) || dir.startsWith('\\\\');
 }
+// Key material the session env helper does not name (COPILOT_HMAC_KEY signs CAPI requests).
+const KEY_ENV = /HMAC|_KEY$/i;
+// Git config env that names files, counts or setting names, never secrets.
+const GIT_CONFIG_PLAIN_ENV = /^GIT_CONFIG_(?:GLOBAL|SYSTEM|NOSYSTEM|COUNT|KEY_\d+)$/i;
+// GIT_CONFIG_VALUE_<n> is a secret only when GIT_CONFIG_KEY_<n> is credential-bearing (http.extraheader).
+const GIT_CONFIG_SECRET_KEY = /extraheader|password|token|secret|auth|cookie/i;
+function isDenyEnvKey(key, env) {
+    if (GIT_CONFIG_PLAIN_ENV.test(key))
+        return false;
+    const value = /^GIT_CONFIG_VALUE_(\d+)$/i.exec(key);
+    if (value) {
+        const configKey = env[`GIT_CONFIG_KEY_${value[1]}`];
+        return configKey === undefined || GIT_CONFIG_SECRET_KEY.test(configKey);
+    }
+    return isCredentialEnvKey(key) || KEY_ENV.test(key);
+}
 /**
  * Rule 3's deny set: the bearer part of every Authorization value the handler
  * saw, every credential-named env value of at least
- * {@link MIN_DENY_LITERAL_LENGTH} characters, and the sdk host's stdin
- * credentials. Memory only.
+ * {@link MIN_DENY_LITERAL_LENGTH} characters (a git config value only when its
+ * key is credential-bearing), and the sdk host's stdin credentials. Memory only.
  */
 export function buildDenySet(sources) {
     const out = new Set();
@@ -99,8 +119,9 @@ export function buildDenySet(sources) {
         if (v && v.length >= MIN_DENY_LITERAL_LENGTH)
             out.add(v);
     };
-    for (const [key, value] of Object.entries(sources.env ?? {}))
-        if (isCredentialEnvKey(key))
+    const env = sources.env ?? {};
+    for (const [key, value] of Object.entries(env))
+        if (isDenyEnvKey(key, env))
             add(value);
     for (const auth of sources.authorizations ?? []) {
         add(auth);

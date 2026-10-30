@@ -53,4 +53,12 @@ export function truncateUtf8(text, maxBytes = DELTA_MAX_BYTES) {
         end--;
     return bytes.subarray(0, end).toString('utf8') + marker;
 }
+/**
+ * The stored `delta` of a request: redact, then normalize, then truncate.
+ * Redacting first means the cut can never leave part of a token below the
+ * length its pattern needs.
+ */
+export function diskDelta(text, redactor, maxBytes = DELTA_MAX_BYTES) {
+    return truncateUtf8(normalize(redactor.redact(text)), maxBytes);
+}
 //# sourceMappingURL=normalize.js.map

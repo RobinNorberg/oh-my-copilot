@@ -49,6 +49,8 @@ export function formatGateHits(hits) {
 }
 const RESPONSE_KINDS = ['sse', 'json', 'text', 'ws'];
 const SAFE_ID = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,128}$/;
+/** The only files a cassette dir may hold (relative, `/`-separated). */
+const CASSETTE_FILE = /^(?:manifest\.json|interactions\.jsonl|report\.json|events\/[A-Za-z0-9._-]{1,128}\.jsonl)$/;
 const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const isStringMap = (v) => isRecord(v) && Object.values(v).every((x) => typeof x === 'string');
 const isCount = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
@@ -263,16 +265,92 @@ function lineOf(text, index) {
         line++;
     return line;
 }
-/** The gate over in-memory file contents (relative path -> text). */
+// Bounds the decoding recursion; real cassettes nest three JSON string levels.
+const MAX_DECODE_DEPTH = 8;
+/** The JSON values a string embeds: the whole string when it is JSON, and each SSE `data:` payload. */
+function embeddedJson(text) {
+    const candidates = [text];
+    for (const m of text.matchAll(/^data: ?(.*)$/gm))
+        candidates.push(m[1]);
+    const out = [];
+    for (const candidate of candidates) {
+        const t = candidate.trim();
+        if (!/^[[{"]/.test(t))
+            continue;
+        try {
+            out.push(JSON.parse(t));
+        }
+        catch { /* not JSON */ }
+    }
+    return out;
+}
+/** Every string (keys too) a parsed value holds, plus the strings of every JSON value decoded from them. */
+function decodedStrings(value, out, depth = 0) {
+    if (typeof value === 'string') {
+        out.push(value);
+        if (depth < MAX_DECODE_DEPTH)
+            for (const inner of embeddedJson(value))
+                decodedStrings(inner, out, depth + 1);
+    }
+    else if (Array.isArray(value)) {
+        for (const v of value)
+            decodedStrings(v, out, depth);
+    }
+    else if (isRecord(value)) {
+        for (const [k, v] of Object.entries(value)) {
+            decodedStrings(k, out, depth);
+            decodedStrings(v, out, depth);
+        }
+    }
+}
+/**
+ * The gate over in-memory file contents (relative path -> text). Scans the
+ * serialized text, then every decoded string level of each JSON document
+ * (a .json file, or a .jsonl line), so a secret is found however deeply
+ * escaped it sits. A decoded hit repeating a text hit is reported once.
+ */
 export function gateFiles(files, options = {}) {
-    const literals = [...options.denyLiterals ?? []];
+    const scan = { denyLiterals: [...options.denyLiterals ?? []], identity: options.identity };
     const hits = [];
     for (const [file, text] of files) {
-        for (const hit of scanForSecrets(text, { denyLiterals: literals, identity: options.identity })) {
-            hits.push({ ...hit, file, line: lineOf(text, hit.index) });
+        const seen = new Set();
+        for (const hit of scanForSecrets(text, scan)) {
+            const line = lineOf(text, hit.index);
+            seen.add(`${line}\0${hit.rule}\0${hit.masked}`);
+            hits.push({ ...hit, file, line });
+        }
+        // .jsonl: one document per line; .json: the whole file (line 0, the decoded value has no line of its own).
+        const documents = file.endsWith('.jsonl') ? text.split('\n').map((t, i) => [t, i + 1])
+            : file.endsWith('.json') ? [[text, 0]] : [];
+        for (const [doc, line] of documents) {
+            let value;
+            try {
+                value = JSON.parse(doc);
+            }
+            catch {
+                continue;
+            }
+            const strings = [];
+            decodedStrings(value, strings);
+            for (const s of strings) {
+                for (const hit of scanForSecrets(s, scan)) {
+                    const key = `\0${hit.rule}\0${hit.masked}`;
+                    if (seen.has(`${line}${key}`) || (line === 0 && [...seen].some((k) => k.endsWith(key))))
+                        continue;
+                    seen.add(`${line}${key}`);
+                    hits.push({ ...hit, index: 0, file, line });
+                }
+            }
         }
     }
     return hits;
+}
+/** Files under `root`, relative and `/`-separated. A symlink counts as a file and is not followed. */
+function relativeFiles(root, current = root) {
+    return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(current, entry.name);
+        return entry.isDirectory() ? relativeFiles(root, path) : [relative(root, path).split('\\').join('/')];
+    });
 }
 /**
  * Validate, gate, then write a cassette. Fail closed: if the gate finds
@@ -289,6 +367,10 @@ export function writeCassette(dir, cassette, options = {}) {
     if (existsSync(join(dir, REDACTION_FAILED_MARKER))) {
         throw new CassetteFormatError(`${dir}: holds a ${REDACTION_FAILED_MARKER} marker; remove it after fixing the cassette`);
     }
+    // A file the new recording does not replace would be stale (an old stream's events) and mixed into the cassette.
+    const stale = existsSync(dir) ? relativeFiles(dir).filter((rel) => !files.has(rel)) : [];
+    if (stale.length > 0)
+        throw new CassetteFormatError(`${dir}: holds file(s) this recording does not replace: ${stale.join(', ')}; remove them first`);
     const written = [];
     for (const [rel, content] of files) {
         const path = join(dir, ...rel.split('/'));
@@ -300,8 +382,8 @@ export function writeCassette(dir, cassette, options = {}) {
 }
 /**
  * The gate over a cassette directory on disk (`omg smoke cassette verify`):
- * every file must parse, the cassette must validate, no symlink, no
- * `--record-full` sidecar, no header outside the allowlists, and no secret
+ * only the cassette's own files, each BOM-less UTF-8 that parses, the
+ * cassette must validate, no symlink, no `--record-full` sidecar, no header outside the allowlists, and no secret
  * pattern (plus the deny set when given). On failure it deletes nothing and
  * writes {@link REDACTION_FAILED_MARKER} listing the masked hits, unless
  * `writeMarker` is false.
@@ -331,7 +413,22 @@ export function verifyCassetteDir(dir, options = {}) {
                 walk(path);
                 continue;
             }
-            const text = readFileSync(path, 'utf-8');
+            if (!CASSETTE_FILE.test(rel)) {
+                problem(rel, 'file.unexpected', 'not a cassette file');
+                continue;
+            }
+            // The gate's patterns only see UTF-8: refuse a BOM, NUL bytes (UTF-16/32) and invalid sequences.
+            const bytes = readFileSync(path);
+            let text;
+            try {
+                if (bytes.includes(0) || /^(?:\xef\xbb\xbf|\xff\xfe|\xfe\xff)/.test(bytes.subarray(0, 3).toString('latin1')))
+                    throw new Error('BOM or NUL bytes');
+                text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            }
+            catch (err) {
+                problem(rel, 'file.encoding', `not BOM-less UTF-8 (${err.message.slice(0, 60)})`);
+                continue;
+            }
             files.set(rel, text);
             try {
                 if (rel.endsWith('.jsonl'))

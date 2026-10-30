@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'crypto';
-import { substitutePaths, type PlaceholderDirs } from './redact.js';
+import { substitutePaths, type PlaceholderDirs, type Redactor } from './redact.js';
 
 export const NORMALIZER_VERSION = 1;
 /** The stored `delta` is cut at this many UTF-8 bytes. */
@@ -61,4 +61,13 @@ export function truncateUtf8(text: string, maxBytes: number = DELTA_MAX_BYTES): 
   // Back off continuation bytes (10xxxxxx) so the cut lands on a character boundary.
   while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
   return bytes.subarray(0, end).toString('utf8') + marker;
+}
+
+/**
+ * The stored `delta` of a request: redact, then normalize, then truncate.
+ * Redacting first means the cut can never leave part of a token below the
+ * length its pattern needs.
+ */
+export function diskDelta(text: string, redactor: Redactor, maxBytes: number = DELTA_MAX_BYTES): string {
+  return truncateUtf8(normalize(redactor.redact(text)), maxBytes);
 }

@@ -93,7 +93,7 @@ export interface CassetteRequest {
     toolNamesDigest?: string;
     /** Tool-call ids of the previous recorded response that this request must answer. */
     expectsToolResults?: string[];
-    /** Redacted, normalized delta, cut at DELTA_MAX_BYTES (drift reports only). */
+    /** `diskDelta()` of the new messages: redacted, normalized, cut at DELTA_MAX_BYTES (drift reports only). */
     delta?: string;
 }
 export interface CassetteWsMessage {
@@ -142,7 +142,7 @@ export declare class CassetteFormatError extends Error {
 export interface GateHit extends SecretHit {
     /** Path relative to the cassette dir, `/`-separated. */
     file: string;
-    /** 1-based line of the hit (0 for a file-level problem). */
+    /** 1-based line of the hit (0 for a file-level problem, or a hit only a decoded level of a .json file shows). */
     line: number;
 }
 export declare class CassetteGateError extends Error {
@@ -168,10 +168,15 @@ export interface GateOptions {
     /** Identity strings to look for (record time only). */
     identity?: RedactionIdentity;
 }
-/** The gate over in-memory file contents (relative path -> text). */
+/**
+ * The gate over in-memory file contents (relative path -> text). Scans the
+ * serialized text, then every decoded string level of each JSON document
+ * (a .json file, or a .jsonl line), so a secret is found however deeply
+ * escaped it sits. A decoded hit repeating a text hit is reported once.
+ */
 export declare function gateFiles(files: ReadonlyMap<string, string>, options?: GateOptions): GateHit[];
 export interface WriteCassetteOptions extends GateOptions {
-    /** Allow writing into a non-empty directory (files this write produces are replaced). */
+    /** Allow writing into a non-empty directory whose files this write all replaces (any other file is refused). */
     overwrite?: boolean;
 }
 /**
@@ -187,8 +192,8 @@ export interface VerifyResult {
 }
 /**
  * The gate over a cassette directory on disk (`omg smoke cassette verify`):
- * every file must parse, the cassette must validate, no symlink, no
- * `--record-full` sidecar, no header outside the allowlists, and no secret
+ * only the cassette's own files, each BOM-less UTF-8 that parses, the
+ * cassette must validate, no symlink, no `--record-full` sidecar, no header outside the allowlists, and no secret
  * pattern (plus the deny set when given). On failure it deletes nothing and
  * writes {@link REDACTION_FAILED_MARKER} listing the masked hits, unless
  * `writeMarker` is false.

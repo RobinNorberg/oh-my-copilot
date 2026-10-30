@@ -202,4 +202,60 @@ describe('findCassetteDirs', () => {
         expect(findCassetteDirs(dir)).toEqual([join(dir, 'linux-x64', 'factory-run'), join(dir, 'linux-x64', 'team')]);
     });
 });
+describe('review fixes (#349)', () => {
+    // A tool call's arguments inside an SSE chunk inside interactions.jsonl: three JSON string levels deep on disk.
+    const toolCallChunk = (args, raw) => {
+        const payload = JSON.stringify({ choices: [{ delta: { tool_calls: [{ function: { name: 'edit', arguments: JSON.stringify(args) } }] } }] });
+        return `data: ${raw ? raw(payload) : payload}\n\n`;
+    };
+    const withChunk = (chunk) => {
+        const cassette = sample();
+        cassette.interactions[0].res = { status: 200, headers: {}, kind: 'sse', chunks: [chunk] };
+        return cassette;
+    };
+    it('the gate decodes SSE payloads and nested JSON: path, password and token in tool-call arguments', () => {
+        const cassette = withChunk(toolCallChunk({ path: 'C:\\Users\\norbe\\proj\\a.ts', password: 'hunter2hunter2' }));
+        let error;
+        try {
+            writeCassette(join(dir, 'c'), cassette);
+        }
+        catch (err) {
+            error = err;
+        }
+        expect(error).toBeInstanceOf(CassetteGateError);
+        expect(error.hits.map((h) => h.rule)).toEqual(expect.arrayContaining(['path.USERHOME', 'generic']));
+        expect(existsSync(join(dir, 'c'))).toBe(false);
+    });
+    it('the gate finds a deny literal with quotes and backslashes three levels deep', () => {
+        const literal = 'pa"ss\\word-123456';
+        const cassette = withChunk(toolCallChunk({ cmd: `login ${literal}` }));
+        expect(() => writeCassette(dir, cassette, { denyLiterals: [literal] })).toThrow(/interactions.jsonl:1: secret \*\*\*\*/);
+    });
+    it('the gate finds a token spelled with \\u escapes in an SSE payload', () => {
+        const cassette = withChunk(toolCallChunk({ env: `GH_TOKEN=${GHP}` }, (json) => json.replace(/ghp_/g, '\\u0067hp_')));
+        expect(() => writeCassette(dir, cassette)).toThrow(/github-token/);
+    });
+    it('verify rejects files outside the allowlist and non-UTF-8 encodings', () => {
+        writeCassette(dir, sample());
+        writeFileSync(join(dir, 'notes.txt'), 'hello');
+        writeFileSync(join(dir, 'events', 's1.jsonl'), Buffer.from(`${JSON.stringify({ t: GHP })}\n`, 'utf16le'));
+        const hits = verifyCassetteDir(dir, { writeMarker: false }).hits;
+        expect(hits).toEqual(expect.arrayContaining([
+            expect.objectContaining({ file: 'notes.txt', rule: 'file.unexpected' }),
+            expect.objectContaining({ file: 'events/s1.jsonl', rule: 'file.encoding' }),
+        ]));
+        writeFileSync(join(dir, 'events', 's1.jsonl'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{}\n')]));
+        expect(verifyCassetteDir(dir, { writeMarker: false }).hits).toEqual(expect.arrayContaining([
+            expect.objectContaining({ file: 'events/s1.jsonl', rule: 'file.encoding' }),
+        ]));
+    });
+    it('overwrite refuses a dir holding files the new recording would not replace', () => {
+        const first = sample();
+        first.events = { s1: [], s2: [] };
+        writeCassette(dir, first);
+        expect(() => writeCassette(dir, sample(), { overwrite: true })).toThrow(/events\/s2.jsonl/);
+        unlinkSync(join(dir, 'events', 's2.jsonl'));
+        expect(() => writeCassette(dir, sample(), { overwrite: true })).not.toThrow();
+    });
+});
 //# sourceMappingURL=cassette.test.js.map

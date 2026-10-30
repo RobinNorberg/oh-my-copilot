@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { DELTA_MAX_BYTES, digest, normalize, normalizedDigest, truncateUtf8 } from '../normalize.js';
+import { DELTA_MAX_BYTES, diskDelta, digest, normalize, normalizedDigest, truncateUtf8 } from '../normalize.js';
+import { Redactor } from '../redact.js';
 
 describe('normalize', () => {
   it('masks run-specific tokens', () => {
@@ -37,5 +38,19 @@ describe('truncateUtf8', () => {
     expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(DELTA_MAX_BYTES);
     expect(out.endsWith('…[truncated]')).toBe(true);
     expect(out).not.toContain('�');
+  });
+});
+
+describe('diskDelta', () => {
+  it('redacts before truncating, so a token straddling the cut never reaches disk in part', () => {
+    const token = `ghp_${'A1b2C3d4E5'.repeat(4)}`;
+    const text = `${'x'.repeat(DELTA_MAX_BYTES - 30)} ${token} tail`;
+    const out = diskDelta(text, new Redactor());
+    expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(DELTA_MAX_BYTES);
+    expect(out).not.toContain('ghp_');
+    expect(out).not.toContain(token.slice(4, 14));
+  });
+  it('normalizes the redacted text', () => {
+    expect(diskDelta('pid 42 at /tmp/p/a.ts', new Redactor({ dirs: { PROJECT: '/tmp/p' } }))).toBe('pid <n> at ${PROJECT}/a.ts');
   });
 });

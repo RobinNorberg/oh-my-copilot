@@ -201,3 +201,53 @@ describe('scanForSecrets (the gate)', () => {
     expect(scanForSecrets(out, { denyLiterals: ['deny-literal-1'], identity: { user: 'norbe' } })).toEqual([]);
   });
 });
+
+describe('review fixes (#349)', () => {
+  it('COPILOT_HMAC_KEY and *_KEY env values join the deny set', () => {
+    const set = buildDenySet({ env: { COPILOT_HMAC_KEY: 'realhmackeyvalue123', SOME_SIGNING_KEY: 'signingkey-0987654' } });
+    expect(set).toEqual(new Set(['realhmackeyvalue123', 'signingkey-0987654']));
+  });
+  it('non-secret git config env stays out of the deny set; credential-bearing values stay in', () => {
+    const set = buildDenySet({
+      env: {
+        GIT_CONFIG_COUNT: '2', GIT_CONFIG_GLOBAL: '/home/runner/.gitconfig-smoke',
+        GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '!gh auth git-credential',
+        GIT_CONFIG_KEY_1: 'http.extraheader', GIT_CONFIG_VALUE_1: 'AUTHORIZATION: basic c2VjcmV0dmFsdWU=',
+      },
+    });
+    expect(set).toEqual(new Set(['AUTHORIZATION: basic c2VjcmV0dmFsdWU=']));
+  });
+  it('Git Bash and WSL user-home paths', () => {
+    const r = new Redactor();
+    expect(r.redact('cd /c/Users/norbe/proj && ls /mnt/c/Users/norbe/proj/a.ts'))
+      .toBe('cd ${USERHOME}/proj && ls ${USERHOME}/proj/a.ts');
+    expect(scanForSecrets('ls /mnt/c/Users/norbe/proj').map((h) => h.rule)).toEqual(['path.USERHOME']);
+  });
+  it('Windows home paths at any escape depth', () => {
+    let text = 'C:\\Users\\norbe\\proj\\a.ts';
+    for (let i = 0; i < 3; i++) text = JSON.stringify({ v: text });
+    expect(scanForSecrets(text).map((h) => h.rule)).toEqual(['path.USERHOME']);
+    expect(new Redactor().redact(text)).not.toContain('norbe');
+  });
+  it.each([
+    '{"client_secret":"abcdefgh12345"}',
+    'db_password="hunter2hunter2"',
+    'AWS_SECRET_ACCESS_KEY="abcd1234abcd1234"',
+    '{"access_token":"abcdefghijklmn"}',
+  ])('generic rule inside longer names: %s', (text) => {
+    const out = new Redactor().redact(text);
+    expect(out).toContain('<redacted:generic>');
+    expect(scanForSecrets(text).map((h) => h.rule)).toEqual(['generic']);
+  });
+  it('generic rule at escape depth 3 keeps the JSON valid', () => {
+    let text = JSON.stringify({ password: 'hunter2hunter2' });
+    for (let i = 0; i < 2; i++) text = JSON.stringify({ v: text });
+    const out = new Redactor().redact(text);
+    expect(out).not.toContain('hunter2');
+    expect(JSON.parse(JSON.parse(JSON.parse(out).v).v)).toEqual({ password: '<redacted:generic>' });
+  });
+  it('PGP private key blocks', () => {
+    const pgp = `-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOY${'x'.repeat(20)}\n-----END PGP PRIVATE KEY BLOCK-----`;
+    expect(new Redactor().redact(`a ${pgp} b`)).toBe('a <redacted:private-key> b');
+  });
+});

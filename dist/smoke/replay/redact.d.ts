@@ -55,8 +55,8 @@ export interface SecretHit {
 /**
  * Rule 3's deny set: the bearer part of every Authorization value the handler
  * saw, every credential-named env value of at least
- * {@link MIN_DENY_LITERAL_LENGTH} characters, and the sdk host's stdin
- * credentials. Memory only.
+ * {@link MIN_DENY_LITERAL_LENGTH} characters (a git config value only when its
+ * key is credential-bearing), and the sdk host's stdin credentials. Memory only.
  */
 export declare function buildDenySet(sources: {
     env?: NodeJS.ProcessEnv;
