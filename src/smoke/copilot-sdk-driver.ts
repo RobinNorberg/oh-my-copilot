@@ -80,6 +80,7 @@ import {
   type SdkSandboxProbe,
 } from './copilot-sdk-scenarios.js';
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
+import { withCassette, type CopilotRequestHandlerCtor } from './replay/handler.js';
 // Type-only: the team bundle reaches this driver (runtime-v2, sdk-host), and the
 // chain scenario pulls in the factory CLI (commander). The smoke entry injects
 // the runners as `runChain`, `runTeam` and `runFactory` (the factory engine).
@@ -172,11 +173,17 @@ export interface SdkClientOptions {
   connection: unknown;
   baseDirectory: string;
   workingDirectory: string;
+  /** Set by withCassette (replay/handler.ts) only: routes every model request through the cassette handler. */
+  requestHandler?: unknown;
+  /** Set by withCassette in replay: never use the machine's stored login. */
+  useLoggedInUser?: boolean;
 }
 
 export interface CopilotSdkModule {
   CopilotClient: new (opts: SdkClientOptions) => SdkClientLike;
   RuntimeConnection: { forStdio(opts: { path?: string; args?: string[]; env?: NodeJS.ProcessEnv }): unknown };
+  /** `CopilotRequestHandler` (experimental, SDK >= 1.0.16); record/replay needs it. */
+  CopilotRequestHandler?: CopilotRequestHandlerCtor;
 }
 
 export interface LoadedSdk {
@@ -320,8 +327,17 @@ export function resolveShimTarget(
   return null;
 }
 
-/** See the module comment for the resolution order. */
+/**
+ * See the module comment for the resolution order. Every hit goes through
+ * {@link withCassette}, so every client of the codebase records or replays
+ * when the cassette env is set (and loading throws when it cannot).
+ */
 export async function loadCopilotSdk(env: NodeJS.ProcessEnv = process.env, spawnSync: SpawnSyncFn = nodeSpawnSync): Promise<LoadedSdk | null> {
+  const found = await findCopilotSdk(env, spawnSync);
+  return found ? withCassette(found, env) : null;
+}
+
+async function findCopilotSdk(env: NodeJS.ProcessEnv, spawnSync: SpawnSyncFn): Promise<LoadedSdk | null> {
   const spec = SDK_PACKAGE; // a variable keeps tsc from resolving the optional peer at build time
   try {
     const mod = await import(spec) as unknown;

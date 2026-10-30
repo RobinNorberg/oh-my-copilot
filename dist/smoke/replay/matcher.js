@@ -34,15 +34,77 @@ const SESSIONS_DIR = 'sessions';
 const MISSES_FILE = 'misses.jsonl';
 const DRIFT_FILE = 'drift.jsonl';
 const SERVED_FILE = 'served.jsonl';
+/**
+ * Positions of live streams: the session ordinal (the order in which sessions
+ * first issued a request, allocated across every process of the run) and the
+ * agent path (`root`, `root/2`). The recorder (handler.ts) and the matcher both
+ * track through this class, so a recorded position means the same on replay.
+ */
+export class StreamPositions {
+    stateDir;
+    sessionOrdinals = new Map();
+    agentPaths = new Map();
+    childCounts = new Map();
+    constructor(stateDir) {
+        this.stateDir = stateDir;
+        mkdirSync(join(stateDir, SESSIONS_DIR), { recursive: true });
+    }
+    /** Records the session ordinal and agent path of the request's live stream. */
+    track(req) {
+        let ordinal = this.sessionOrdinals.get(req.sessionId);
+        if (ordinal === undefined) {
+            ordinal = this.allocateOrdinal(req.sessionId);
+            this.sessionOrdinals.set(req.sessionId, ordinal);
+        }
+        const key = liveKey(req.sessionId, req.agentId);
+        const known = this.agentPaths.get(key);
+        if (known)
+            return { ordinal, path: known };
+        let path = 'root';
+        if (req.parentAgentId !== undefined) {
+            const parentKey = liveKey(req.sessionId, req.parentAgentId);
+            const n = (this.childCounts.get(parentKey) ?? 0) + 1;
+            this.childCounts.set(parentKey, n);
+            path = `${this.agentPaths.get(parentKey) ?? 'root'}/${n}`;
+        }
+        this.agentPaths.set(key, path);
+        return { ordinal, path };
+    }
+    /**
+     * Next free session ordinal across every process of the run: the first n for
+     * which `<state>/sessions/<n>` can be created exclusively, so a recorded
+     * `session` means the same thing for a team whose sessions live in several
+     * sdk hosts.
+     */
+    allocateOrdinal(sessionId) {
+        const dir = join(this.stateDir, SESSIONS_DIR);
+        for (let n = readdirSync(dir).length + 1;; n += 1) {
+            let fd;
+            try {
+                fd = openAppendExclusive(join(dir, String(n)));
+            }
+            catch (err) {
+                if (err.code === 'EEXIST')
+                    continue;
+                throw err;
+            }
+            try {
+                writeSync(fd, `${JSON.stringify({ pid: process.pid, sessionId })}\n`);
+            }
+            finally {
+                closeSync(fd);
+            }
+            return n;
+        }
+    }
+}
 export class ReplayMatcher {
     cassette;
     stateDir;
     mode;
     byStream = new Map();
     bound = new Map();
-    sessionOrdinals = new Map();
-    agentPaths = new Map();
-    childCounts = new Map();
+    positions;
     globalCursors = new Map();
     constructor(opts) {
         this.cassette = opts.cassette;
@@ -56,7 +118,7 @@ export class ReplayMatcher {
         for (const list of this.byStream.values())
             list.sort((a, b) => a.seq - b.seq);
         mkdirSync(join(this.stateDir, CLAIMS_DIR), { recursive: true });
-        mkdirSync(join(this.stateDir, SESSIONS_DIR), { recursive: true });
+        this.positions = new StreamPositions(this.stateDir);
         // Created up front: on Windows two processes creating a log at the same
         // moment makes appendFileNoFollow refuse the loser's first line.
         for (const file of [MISSES_FILE, DRIFT_FILE, SERVED_FILE]) {
@@ -83,11 +145,11 @@ export class ReplayMatcher {
         if (req.promptDigest === undefined)
             return this.matchGlobal(req);
         const key = liveKey(req.sessionId, req.agentId);
-        const path = this.trackAgent(req);
+        const { ordinal, path } = this.positions.track(req);
         let bound = this.bound.get(key);
         const drift = [];
         if (!bound) {
-            const bind = this.bind(req, path);
+            const bind = this.bind(req, ordinal, path);
             if ('reason' in bind)
                 return this.miss(req, '-', 0, bind.reason);
             bound = bind.bound;
@@ -151,7 +213,7 @@ export class ReplayMatcher {
         this.globalCursors.set(key, cursor + 1);
         return { kind: 'hit', stream: GLOBAL_STREAM, seq: it.seq, interaction: it, drift };
     }
-    bind(req, path) {
+    bind(req, ordinal, path) {
         const streams = this.cassette.manifest.streams;
         const byPrompt = streams.filter((s) => s.promptDigest === req.promptDigest);
         for (const s of byPrompt) {
@@ -161,7 +223,6 @@ export class ReplayMatcher {
         if (this.mode === 'strict') {
             return { reason: byPrompt.length > 0 ? `every stream with promptDigest ${req.promptDigest} is claimed` : `no stream with promptDigest ${req.promptDigest}` };
         }
-        const ordinal = this.sessionOrdinals.get(req.sessionId);
         const byPosition = streams.filter((s) => s.session === ordinal && s.agent === path);
         for (const s of byPosition) {
             if (this.claim(s, req))
@@ -190,51 +251,6 @@ export class ReplayMatcher {
             closeSync(fd);
         }
         return true;
-    }
-    /** Records the session ordinal and agent path of the request's live stream; returns the agent path. */
-    trackAgent(req) {
-        if (!this.sessionOrdinals.has(req.sessionId))
-            this.sessionOrdinals.set(req.sessionId, this.allocateOrdinal(req.sessionId));
-        const key = liveKey(req.sessionId, req.agentId);
-        const known = this.agentPaths.get(key);
-        if (known)
-            return known;
-        let path = 'root';
-        if (req.parentAgentId !== undefined) {
-            const parentKey = liveKey(req.sessionId, req.parentAgentId);
-            const n = (this.childCounts.get(parentKey) ?? 0) + 1;
-            this.childCounts.set(parentKey, n);
-            path = `${this.agentPaths.get(parentKey) ?? 'root'}/${n}`;
-        }
-        this.agentPaths.set(key, path);
-        return path;
-    }
-    /**
-     * Next free session ordinal across every process of the run: the first n for
-     * which `<state>/sessions/<n>` can be created exclusively. The recorder must
-     * allocate ordinals the same way, so a recorded `session` means the same
-     * thing for a team whose sessions live in several sdk hosts.
-     */
-    allocateOrdinal(sessionId) {
-        const dir = join(this.stateDir, SESSIONS_DIR);
-        for (let n = readdirSync(dir).length + 1;; n += 1) {
-            let fd;
-            try {
-                fd = openAppendExclusive(join(dir, String(n)));
-            }
-            catch (err) {
-                if (err.code === 'EEXIST')
-                    continue;
-                throw err;
-            }
-            try {
-                writeSync(fd, `${JSON.stringify({ pid: process.pid, sessionId })}\n`);
-            }
-            finally {
-                closeSync(fd);
-            }
-            return n;
-        }
     }
     miss(req, stream, seq, reason, drift = []) {
         const entry = { stream, seq, reason, method: req.method, path: req.path };
@@ -298,7 +314,7 @@ export function diffExcerpt(recorded, live) {
     const half = EXCERPT_CHARS / 2;
     return `@${i} recorded: ${JSON.stringify(recorded.slice(start, start + half))} live: ${JSON.stringify(live.slice(start, start + half))}`;
 }
-function liveKey(sessionId, agentId) {
+export function liveKey(sessionId, agentId) {
     return `${sessionId}\u0000${agentId ?? ''}`;
 }
 function readJsonl(file) {

@@ -871,9 +871,11 @@ export class CopilotRunManager {
   private async run(job: Job): Promise<CopilotRunStatus> {
     const { deps } = this;
     mkdirSync(job.home, { recursive: true });
-    const loaded = await deps.loadSdk().catch(() => null);
+    // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
+    let loadError: string | undefined;
+    const loaded = await deps.loadSdk().catch((err: unknown) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });
     if (!loaded) {
-      job.error = '@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)';
+      job.error = loadError ?? '@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)';
       return 'failed';
     }
     const found = deps.resolveBin();

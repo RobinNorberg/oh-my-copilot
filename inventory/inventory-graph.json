@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "db97eea40d6da62dd501fce67189bfbf37b759c9",
-    "sourceSha256": "76add21141ac32d36bc3a0d273c26c2fc36b4bcf4cb593b89dc76fefdaea52f7",
+    "head": "5614b9b54afb802b39db63176aceb7337dcd7c7d",
+    "sourceSha256": "028b4443449d4937ad9c991bb6345872deabdd99498a3275e9e40e0867bd5085",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "db97eea40d6da62dd501fce67189bfbf37b759c9",
-  "sourceSha256": "76add21141ac32d36bc3a0d273c26c2fc36b4bcf4cb593b89dc76fefdaea52f7",
+  "head": "5614b9b54afb802b39db63176aceb7337dcd7c7d",
+  "sourceSha256": "028b4443449d4937ad9c991bb6345872deabdd99498a3275e9e40e0867bd5085",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1897,
-      "total": 1921
+      "srcFiles": 1899,
+      "total": 1923
     },
     "generated": {
-      "distFiles": 7044,
+      "distFiles": 7052,
       "bridgeFiles": 9,
-      "total": 7053
+      "total": 7061
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6625,6 +6625,10 @@
       "dist/smoke/replay/__tests__/cassette.test.d.ts.map",
       "dist/smoke/replay/__tests__/cassette.test.js",
       "dist/smoke/replay/__tests__/cassette.test.js.map",
+      "dist/smoke/replay/__tests__/handler.test.d.ts",
+      "dist/smoke/replay/__tests__/handler.test.d.ts.map",
+      "dist/smoke/replay/__tests__/handler.test.js",
+      "dist/smoke/replay/__tests__/handler.test.js.map",
       "dist/smoke/replay/__tests__/matcher.test.d.ts",
       "dist/smoke/replay/__tests__/matcher.test.d.ts.map",
       "dist/smoke/replay/__tests__/matcher.test.js",
@@ -6641,6 +6645,10 @@
       "dist/smoke/replay/cassette.d.ts.map",
       "dist/smoke/replay/cassette.js",
       "dist/smoke/replay/cassette.js.map",
+      "dist/smoke/replay/handler.d.ts",
+      "dist/smoke/replay/handler.d.ts.map",
+      "dist/smoke/replay/handler.js",
+      "dist/smoke/replay/handler.js.map",
       "dist/smoke/replay/matcher.d.ts",
       "dist/smoke/replay/matcher.d.ts.map",
       "dist/smoke/replay/matcher.js",
@@ -37920,6 +37928,26 @@
         "path": "dist/smoke/replay/__tests__/cassette.test.js.map"
       },
       {
+        "id": "dist/smoke/replay/__tests__/handler.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.js.map"
+      },
+      {
         "id": "dist/smoke/replay/__tests__/matcher.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/replay/__tests__/matcher.test.d.ts"
@@ -37998,6 +38026,26 @@
         "id": "dist/smoke/replay/cassette.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/replay/cassette.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/handler.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/handler.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/handler.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.js"
+      },
+      {
+        "id": "dist/smoke/replay/handler.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.js.map"
       },
       {
         "id": "dist/smoke/replay/matcher.d.ts",
@@ -54810,6 +54858,11 @@
         "path": "src/smoke/replay/__tests__/cassette.test.ts"
       },
       {
+        "id": "src/smoke/replay/__tests__/handler.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/handler.test.ts"
+      },
+      {
         "id": "src/smoke/replay/__tests__/matcher.test.ts",
         "kind": "src",
         "path": "src/smoke/replay/__tests__/matcher.test.ts"
@@ -54828,6 +54881,11 @@
         "id": "src/smoke/replay/cassette.ts",
         "kind": "src",
         "path": "src/smoke/replay/cassette.ts"
+      },
+      {
+        "id": "src/smoke/replay/handler.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/handler.ts"
       },
       {
         "id": "src/smoke/replay/matcher.ts",
@@ -100497,6 +100555,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -100802,6 +100870,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/team/sdk-host.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/smoke/replay/__tests__/matcher.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -100888,6 +101016,71 @@
       },
       {
         "from": "src/smoke/replay/cassette.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/lib/version.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/normalize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
         "to": "src/smoke/replay/redact.ts",
         "kind": "type-imports"
       },
@@ -108328,6 +108521,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
@@ -113938,12 +114136,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9689,
-      "edgeCount": 11372,
-      "importEdgeCount": 9365,
+      "nodeCount": 9699,
+      "edgeCount": 11400,
+      "importEdgeCount": 9385,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "583a7323aeace8e5c1a210523c8bc5d27c04b59fceea03970a02126c97a17af2",
-  "manifestSha256": "990cccc48705e6d3149644be223b76acc9b117553e45be8f682737608f550c5e"
+  "inventorySha256": "8e7ac93a2ed46788aaa113ece17c2c4fc6ecb474f24a23e9c69a937f424d5f62",
+  "manifestSha256": "5104ba78076c583d08578d3074d24ce5d7882bcea8908537452a32d2344ff869"
 }
