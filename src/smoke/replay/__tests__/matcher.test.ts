@@ -332,7 +332,9 @@ describe('ReplayMatcher: miss log', () => {
     mkdirSync(join(dir, 'served.jsonl'));
     const m = matcher('strict', dir);
     const r = m.match(live(1));
-    expect(r).toMatchObject({ kind: 'miss', status: MISS_STATUS, reason: 'replay state: served.jsonl is not a regular file' });
+    // Windows refuses the non-file itself; Linux surfaces EISDIR from the open. Either way it is a miss.
+    expect(r).toMatchObject({ kind: 'miss', status: MISS_STATUS });
+    expect((r as { reason: string }).reason).toMatch(/^replay state: (served\.jsonl is not a regular file|EISDIR\b.*served\.jsonl)/);
     // The failed append did not consume the interaction.
     rmSync(join(dir, 'served.jsonl'), { recursive: true });
     expect(m.match(live(1))).toMatchObject({ kind: 'hit', seq: 1 });
