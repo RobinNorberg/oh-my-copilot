@@ -28,12 +28,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
-> **What's new:** see the [changelog](CHANGELOG.md) and the
-> [releases page](https://github.com/RobinNorberg/oh-my-copilot/releases).
-> **v5.0.0** rebased the fork onto upstream oh-my-claudecode v5 and renamed the
-> CLI to **`omg`**. Runtime state moved to `.omg/` and configuration to
-> `.copilot/omg.jsonc`. Upgrading? Read the
-> [Migration Guide](docs/MIGRATION.md).
+> **What's new:** see the [changelog](CHANGELOG.md) and the [releases page](https://github.com/RobinNorberg/oh-my-copilot/releases).
 
 ## Quick Start
 
@@ -83,6 +78,21 @@ If you're uncertain about requirements, have a vague idea, or want to micromanag
 
 The deep interview uses Socratic questioning to clarify your thinking before any code is written.
 
+### The core loop: plan → execute → review → verify
+
+This loop covers most work. Each step is a separate pass, so the reviewer never
+grades its own code.
+
+| Step       | Invocation                  | Example                                                           |
+| ---------- | --------------------------- | ----------------------------------------------------------------- |
+| 1. Plan    | `/oh-my-copilot:omc-plan`   | `/oh-my-copilot:omc-plan add rate limiting to the public API`     |
+| 2. Execute | `/oh-my-copilot:execute`    | `/oh-my-copilot:execute implement the approved rate-limit plan`   |
+| 3. Review  | `/oh-my-copilot:omc-review` | `/oh-my-copilot:omc-review src/api/`                              |
+| 4. Verify  | `/oh-my-copilot:verify`     | `/oh-my-copilot:verify requests over the limit get a 429`         |
+
+Plan and review carry an `omc-` prefix: bare `/review` is Copilot CLI's own
+command, not OMC's.
+
 ---
 
 ## Key Features
@@ -101,24 +111,10 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 ## Using the Skills
 
-Skills run inside a Copilot CLI session as `/oh-my-copilot:<skill>`. The short
-prefixes `/omc:<skill>` and `/omg:<skill>` route to the same skills. Natural
-language works too: describe the task and OMC picks the workflow.
-
-### Start here: plan → execute → review → verify
-
-This loop covers most work. Each step is a separate pass, so the reviewer never
-grades its own code.
-
-| Step       | Invocation                  | Example                                                           |
-| ---------- | --------------------------- | ----------------------------------------------------------------- |
-| 1. Plan    | `/oh-my-copilot:omc-plan`   | `/oh-my-copilot:omc-plan add rate limiting to the public API`     |
-| 2. Execute | `/oh-my-copilot:execute`    | `/oh-my-copilot:execute implement the approved rate-limit plan`   |
-| 3. Review  | `/oh-my-copilot:omc-review` | `/oh-my-copilot:omc-review src/api/`                              |
-| 4. Verify  | `/oh-my-copilot:verify`     | `/oh-my-copilot:verify requests over the limit get a 429`         |
-
-Plan and review carry an `omc-` prefix: bare `/review` is Copilot CLI's own
-command, not OMC's.
+Skills run inside a Copilot CLI session as `/oh-my-copilot:<skill>`. That is
+the only form Copilot CLI registers: `/omc:…` or a bare `/plan` gets Copilot's
+"Unknown command" reply and never reaches OMC. Natural language works too:
+describe the task and OMC picks the workflow.
 
 ### All skills by purpose
 
@@ -130,9 +126,6 @@ command, not OMC's.
 | `/oh-my-copilot:ralplan`          | a plan needs planner/architect/critic consensus before a big run |
 | `/oh-my-copilot:research`         | you need a sourced answer to an open question                 |
 | `/oh-my-copilot:external-context` | you need parallel lookups in external documentation           |
-| `/oh-my-copilot:ask-navigator`    | the destination is unclear and you want a map of decisions first |
-| `/oh-my-copilot:loft`             | a design question needs a throwaway prototype to settle       |
-| `/oh-my-copilot:map`              | you know the job but not which skill owns it                  |
 
 **Building**
 
@@ -163,20 +156,13 @@ command, not OMC's.
 | `/oh-my-copilot:ralph`            | a task must keep going until a reviewer verifies it complete     |
 | `/oh-my-copilot:ultragoal`        | the work spans several ordered goals and sessions                |
 | `/oh-my-copilot:autoresearch`     | one mission should improve under a strict evaluator and a time limit |
-| `/oh-my-copilot:ralph-experiment` | you want hypothesis-driven experiments with git checkpoints      |
-| `/oh-my-copilot:self-improve`     | you want tournament-style evolutionary improvement of code       |
 
-**Teams, pipelines and delivery**
+**Teams and delivery**
 
 | Invocation              | Use it when…                                                                                   |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:team`   | N agents should split a task on a shared task list: `/oh-my-copilot:team 3:executor fix all TypeScript errors` |
 | `/oh-my-copilot:ask`    | you want a second opinion from claude, codex, gemini, antigravity, grok, cursor or muse        |
-| `/oh-my-copilot:graph`  | a pipeline should run as a declarative DAG with crash recovery                                 |
-| `/oh-my-copilot:launch` | a mission should go through spec → tickets → governed execution                                |
-| `/oh-my-copilot:harbor` | incoming issues and PRs need their claims verified before you decide                           |
-| `/oh-my-copilot:intent` | a support or ops problem report must become a requirements brief                               |
-| `/oh-my-copilot:drydock`| a repo needs the shared shipyard harness (`--check` audits drift)                              |
 
 For headless runs from the terminal, see `omg team`, `omg factory` and
 `omg ship` under [Terminal CLI](#terminal-cli).
@@ -200,7 +186,6 @@ For headless runs from the terminal, see `omg team`, `omg factory` and
 | `/oh-my-copilot:hud`                     | you want to change the status line                                   |
 | `/oh-my-copilot:configure-notifications` | you want Telegram, Discord or Slack alerts                           |
 | `/oh-my-copilot:cancel`                  | you need to stop an active mode (ralph, autopilot, team, ultragoal)  |
-| `/oh-my-copilot:refit`                   | you want a retrospective across past sessions with proposed fixes    |
 | `/oh-my-copilot:skill`                   | you want to list, add, edit or remove local skills                   |
 | `/oh-my-copilot:skillify`                | a workflow from this session should become a reusable skill          |
 | `/oh-my-copilot:release`                 | you release your own repo (OMC's own releases use maintainer-only `omg release`) |
@@ -215,9 +200,48 @@ For headless runs from the terminal, see `omg team`, `omg factory` and
 | `/oh-my-copilot:project-session-manager`  | each issue or PR should get its own worktree (alias `psm`)     |
 | `/oh-my-copilot:session-flow`             | a long session lost the thread and you need a map of it        |
 | `/oh-my-copilot:diagram`                  | an explanation needs the smallest visual: tree, Mermaid or diff |
-| `/oh-my-copilot:minimal-code-discipline`  | you want the shortest correct diff, reuse first                |
-| `/oh-my-copilot:minimal-prose-discipline` | you want terse, filler-free replies                            |
-| `/oh-my-copilot:agent-doc-discipline`     | you write docs that agents will read                           |
+
+<details>
+<summary><b>Shipyard (governed delivery)</b></summary>
+
+These assume a repo set up with `/oh-my-copilot:drydock`.
+
+| Invocation                     | Use it when…                                                         |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `/oh-my-copilot:drydock`       | a repo needs the shared shipyard harness (`--check` audits drift)    |
+| `/oh-my-copilot:launch`        | a mission should go through spec → tickets → governed execution      |
+| `/oh-my-copilot:harbor`        | incoming issues and PRs need their claims verified before you decide |
+| `/oh-my-copilot:intent`        | a support or ops problem report must become a requirements brief     |
+| `/oh-my-copilot:ask-navigator` | the destination is unclear and you want a map of decisions first     |
+| `/oh-my-copilot:loft`          | a design question needs a throwaway prototype to settle              |
+| `/oh-my-copilot:map`           | you know the job but not which skill owns it                         |
+| `/oh-my-copilot:refit`         | you want a retrospective across past sessions with proposed fixes    |
+
+</details>
+
+<details>
+<summary><b>Writing disciplines (loaded by other skills)</b></summary>
+
+Other skills load these; invoke one directly to apply it to your own work.
+
+| Invocation                                | Use it when…                                    |
+| ----------------------------------------- | ----------------------------------------------- |
+| `/oh-my-copilot:minimal-code-discipline`  | you want the shortest correct diff, reuse first |
+| `/oh-my-copilot:minimal-prose-discipline` | you want terse, filler-free replies             |
+| `/oh-my-copilot:agent-doc-discipline`     | you write docs that agents will read            |
+
+</details>
+
+<details>
+<summary><b>Advanced loops</b></summary>
+
+| Invocation                        | Use it when…                                                   |
+| --------------------------------- | -------------------------------------------------------------- |
+| `/oh-my-copilot:graph`            | a pipeline should run as a declarative DAG with crash recovery |
+| `/oh-my-copilot:ralph-experiment` | you want hypothesis-driven experiments with git checkpoints    |
+| `/oh-my-copilot:self-improve`     | you want tournament-style evolutionary improvement of code     |
+
+</details>
 
 The [Full Reference](docs/REFERENCE.md#skills-63-total) lists every skill with
 its arguments.
@@ -239,6 +263,7 @@ Type these in a normal prompt; no slash needed.
 | `ultrathink`, `think hard`                   | extended reasoning |
 | `deepsearch`, `search the codebase`          | codebase search    |
 | `deep-analyze`                               | analysis mode      |
+| `wiki`                                       | wiki               |
 | `cancelomc`, `stopomc`                       | cancel             |
 
 **Notes:**
@@ -259,7 +284,7 @@ The `omg` binary covers setup and the headless workflows:
 | `omg setup`, `omg update`, `omg doctor`                  | install, update and diagnose OMC                                     |
 | `omg team 3:copilot "fix failing tests"`                 | run a team of workers: headless SDK workers in a Copilot CLI session, tmux panes elsewhere |
 | `omg ask codex "identify architecture risks"`            | ask another AI CLI and save the answer as an artifact                |
-| `omg factory setup` / `check` / `run <issue>`            | configure the software factory, bucket intake items, drive one issue to a merge-ready PR <!-- verify: factory setup/check are on dev but not yet in a published release (5.18.1) --> |
+| `omg factory setup` / `check` / `run <issue>`            | configure the software factory, bucket intake items, drive one issue to a merge-ready PR |
 | `omg ship status <pr>`                                   | show a ship run's review verdicts and gate state                     |
 | `omg smoke copilot`                                      | load-check the plugin in a real Copilot CLI                          |
 | `omg budget`                                             | show the AI Credits ledger                                           |
