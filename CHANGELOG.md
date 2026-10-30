@@ -4,6 +4,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Listener intake goes to harbor, not intent.** An issue labeled `intake`
+  now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
+  prompt) instead of an intent session with a Chinese prompt, and the default
+  narrow route table (`omg factory init`) is `success:intake` → `harbor`. The
+  listener no longer writes the `needs-review` / `failed` labels, which are
+  outside harbor's label set. A stalled chain link is flagged with
+  `harbor:for-maintainer` instead of `harbor:need-info` ("waiting on the
+  reporter"). `omg factory init` now requires the yard faces `CLAUDE.md` and
+  `GLOSSARY.md` (from `/oh-my-copilot:drydock`) instead of `docs/design/`.
+
 ### Added
 
 - **`omg factory check --parent <spec>`** checks a spec's children (the
@@ -49,6 +61,7 @@ All notable changes to oh-my-copilot will be documented in this file.
   `success:intent` to `launch` and `success:launch` to `diagnose` until the
   follow-up adds `omg factory init --check/--migrate`; re-run `omg factory init
   --force` (narrow) to drop them.
+- **`omg ralph from-map` now reads the navigator's ticket types.** `map-frontier` took types only from `wayfinder:<type>` labels, but `ask-navigator` writes them in the issue body (`Type: research`), so every navigator ticket was human-gated. A body `Type: <type>` line is now read (`loft` counts as `prototype`, human-gated) and labels still work; when label and body disagree the more restrictive type wins, and a body type alone grants auto only on a native sub-issue of the map.
 
 # oh-my-copilot v5.18.2
 

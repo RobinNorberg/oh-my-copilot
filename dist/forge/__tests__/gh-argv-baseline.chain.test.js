@@ -103,7 +103,7 @@ describe('gh argv baseline: src/factory/watchdog.ts flagStall', () => {
         const calls = [];
         flagStall(stall, { cwd: os.tmpdir(), spawner: (cmd, args) => { calls.push(callLine(cmd, args, undefined)); } });
         expect(calls).toEqual([
-            'gh ["issue","edit","12","--repo","acme/widget","--add-label","harbor:need-info"]',
+            'gh ["issue","edit","12","--repo","acme/widget","--add-label","harbor:for-maintainer"]',
             'gh ["issue","comment","12","--repo","acme/widget","--body","链已停住：intent 环会话 sess-1 已 45 分钟未推进（预写 ledger 未被接管），需人工检查。"]',
         ]);
     });

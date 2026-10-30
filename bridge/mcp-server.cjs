@@ -38920,7 +38920,7 @@ var init_listener = __esm({
     init_worktree_paths();
     init_file_lock();
     init_state3();
-    INTAKE_ROUTE_TABLE = { "success:intake": { stage: "intent", skill: "intent" } };
+    INTAKE_ROUTE_TABLE = { "success:intake": { stage: "harbor", skill: "harbor" } };
     MAX_BODY_BYTES2 = 1024 * 1024;
   }
 });
@@ -48427,7 +48427,9 @@ function buildRouteTableNarrow() {
 function validateFactoryPrerequisites(cwd) {
   const missing = [];
   if (!(0, import_fs87.existsSync)((0, import_path103.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
-  if (!(0, import_fs87.existsSync)((0, import_path103.join)(cwd, "docs", "design"))) missing.push("docs/design/");
+  for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
+    if (!(0, import_fs87.existsSync)((0, import_path103.join)(cwd, face))) missing.push(face);
+  }
   return { ok: missing.length === 0, missing };
 }
 function runFactoryInit(options = {}) {
@@ -48443,7 +48445,7 @@ function runFactoryInit(options = {}) {
   if (!prerequisites.ok) {
     return {
       exitCode: 1,
-      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`
+      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`
     };
   }
   if ((0, import_fs87.existsSync)(routesPath) && !options.force) {
@@ -48502,7 +48504,10 @@ var init_factory = __esm({
 function prepareChainProject(projectDir) {
   try {
     (0, import_fs88.mkdirSync)((0, import_path104.join)(getOmcRoot(projectDir), "state"), { recursive: true });
-    (0, import_fs88.mkdirSync)((0, import_path104.join)(projectDir, "docs", "design"), { recursive: true });
+    for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
+      if (!(0, import_fs88.existsSync)((0, import_path104.join)(projectDir, face))) (0, import_fs88.writeFileSync)((0, import_path104.join)(projectDir, face), `# ${face}
+`, "utf8");
+    }
   } catch (err) {
     return `factory layout: ${err.message}`;
   }
