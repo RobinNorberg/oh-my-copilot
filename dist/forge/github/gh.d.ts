@@ -9,6 +9,12 @@ import type { Exec } from '../../ship/exec.js';
 export declare class GhCommandError extends Error {
     constructor(message: string);
 }
+/** gh's `--repo` value for a forge repository: `HOST/OWNER/NAME`. */
+export declare const ghRepoArg: (repo: {
+    host: string;
+    owner: string;
+    name: string;
+}) => string;
 /** `gh <args>` in `cwd`; stdout, or GhCommandError naming the command and its first stderr line. */
 export declare function ghRun(exec: Exec, args: string[], cwd: string): string;
 /** ghRun, parsed as JSON (unvalidated: the caller checks the fields). */

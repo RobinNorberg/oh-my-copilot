@@ -7097,7 +7097,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve45.call(this, root, ref);
+      let _sch = resolve46.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7124,7 +7124,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve45(root, ref) {
+    function resolve46(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7755,55 +7755,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve45(baseURI, relativeURI, options) {
+    function resolve46(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse13(baseURI, schemelessOptions), parse13(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative29, options, skipNormalization) {
+    function resolveComponent(base, relative30, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative29 = parse13(serialize(relative29, options), options);
+        relative30 = parse13(serialize(relative30, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative29.scheme) {
-        target.scheme = relative29.scheme;
-        target.userinfo = relative29.userinfo;
-        target.host = relative29.host;
-        target.port = relative29.port;
-        target.path = removeDotSegments(relative29.path || "");
-        target.query = relative29.query;
+      if (!options.tolerant && relative30.scheme) {
+        target.scheme = relative30.scheme;
+        target.userinfo = relative30.userinfo;
+        target.host = relative30.host;
+        target.port = relative30.port;
+        target.path = removeDotSegments(relative30.path || "");
+        target.query = relative30.query;
       } else {
-        if (relative29.userinfo !== void 0 || relative29.host !== void 0 || relative29.port !== void 0) {
-          target.userinfo = relative29.userinfo;
-          target.host = relative29.host;
-          target.port = relative29.port;
-          target.path = removeDotSegments(relative29.path || "");
-          target.query = relative29.query;
+        if (relative30.userinfo !== void 0 || relative30.host !== void 0 || relative30.port !== void 0) {
+          target.userinfo = relative30.userinfo;
+          target.host = relative30.host;
+          target.port = relative30.port;
+          target.path = removeDotSegments(relative30.path || "");
+          target.query = relative30.query;
         } else {
-          if (!relative29.path) {
+          if (!relative30.path) {
             target.path = base.path;
-            if (relative29.query !== void 0) {
-              target.query = relative29.query;
+            if (relative30.query !== void 0) {
+              target.query = relative30.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative29.path[0] === "/") {
-              target.path = removeDotSegments(relative29.path);
+            if (relative30.path[0] === "/") {
+              target.path = removeDotSegments(relative30.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative29.path;
+                target.path = "/" + relative30.path;
               } else if (!base.path) {
-                target.path = relative29.path;
+                target.path = relative30.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative29.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative30.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative29.query;
+            target.query = relative30.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7811,7 +7811,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative29.fragment;
+      target.fragment = relative30.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8013,7 +8013,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize9,
-      resolve: resolve45,
+      resolve: resolve46,
       resolveComponent,
       equal,
       serialize,
@@ -12720,7 +12720,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve45) => setTimeout(resolve45, ms));
+  return new Promise((resolve46) => setTimeout(resolve46, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13419,7 +13419,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve45, reject2) => {
+        return new Promise((resolve46, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13467,7 +13467,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve45();
+            resolve46();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13726,13 +13726,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve45, reject2) => {
+        return new Promise((resolve46, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve45,
+            resolve: resolve46,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -13912,7 +13912,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve45) => setTimeout(resolve45, 100));
+        await new Promise((resolve46) => setTimeout(resolve46, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -14144,7 +14144,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve45, reject2) => {
+        return new Promise((resolve46, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -14163,7 +14163,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve45();
+                resolve46();
               }
             }
           };
@@ -14171,7 +14171,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve45();
+              resolve46();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -17547,7 +17547,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve45) => setTimeout(resolve45, ms));
+  return new Promise((resolve46) => setTimeout(resolve46, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17739,7 +17739,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve45, reject2) => {
+  return new Promise((resolve46, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17829,7 +17829,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve45(response.result);
+            resolve46(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -21364,7 +21364,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve45) => setTimeout(resolve45, 25));
+        await new Promise((resolve46) => setTimeout(resolve46, 25));
         continue;
       }
       try {
@@ -21385,7 +21385,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve45) => setTimeout(resolve45, 25));
+        await new Promise((resolve46) => setTimeout(resolve46, 25));
       }
     }
     return await fn();
@@ -23561,7 +23561,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve45) => setTimeout(resolve45, ms));
+  return new Promise((resolve46) => setTimeout(resolve46, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -24605,7 +24605,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve45) {
+function mergeByKey(base, incoming, keyFn, resolve46) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -24614,7 +24614,7 @@ function mergeByKey(base, incoming, keyFn, resolve45) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve45(existing, item));
+      seen.set(key, resolve46(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -29236,15 +29236,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? import_fs44.existsSync;
-  const resolve45 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve46 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs44.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve45(override);
+    const found = resolve46(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve45("copilot");
+  const onPath = resolve46("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29567,7 +29567,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve45) => {
+  return new Promise((resolve46) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29576,7 +29576,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve45({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve46({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29589,7 +29589,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve45({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve46({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -34309,11 +34309,11 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve45;
+  let resolve46;
   const promise = new Promise((r) => {
-    resolve45 = r;
+    resolve46 = r;
   });
-  return { promise, resolve: resolve45 };
+  return { promise, resolve: resolve46 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -35217,7 +35217,7 @@ async function runSdkTier(input) {
       }
       const path15 = (0, import_path67.join)(input.home, `events-${name}.jsonl`);
       events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve45) => setTimeout(resolve45, 2));
+      if (entries.length > 0) await new Promise((resolve46) => setTimeout(resolve46, 2));
       const start = Date.now();
       const { wedged: stuck, ...run2 } = name === "chain" ? await input.runChain({
         bin,
@@ -40721,6 +40721,38 @@ function isProgressLabelEdit(r) {
   }
   return true;
 }
+function isBodyFile(s, ctx) {
+  if (!isFile2(s) || !(0, import_path81.isAbsolute)(s) || !(0, import_path81.isAbsolute)(ctx.bodyDir)) return false;
+  const rel = (0, import_path81.relative)((0, import_path81.resolve)(ctx.bodyDir), (0, import_path81.resolve)(s));
+  return rel.length > 0 && !rel.startsWith("..") && !(0, import_path81.isAbsolute)(rel) && !/[\\/]/.test(rel);
+}
+function isLabelPairs(r, order, ctx) {
+  if (r.length % 2 !== 0 || r.length / 2 > MAX_WRITE_LABELS) return false;
+  const seen = [];
+  let at = 0;
+  for (let i = 0; i < r.length; i += 2) {
+    const idx = order.indexOf(r[i]);
+    if (idx < at) return false;
+    at = idx;
+    if (!isWriteLabel(r[i + 1], ctx) || seen.includes(r[i + 1])) return false;
+    seen.push(r[i + 1]);
+  }
+  return true;
+}
+function trackerWriteGh(a, ctx) {
+  const [group, sub, ...r] = a;
+  if (group !== "issue") return null;
+  if (sub === "create") {
+    return r.length >= 6 && same2(r.slice(0, 6), ["--repo", ctx.repo, "--title", r[3], "--body-file", r[5]]) && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ["--label"], ctx);
+  }
+  if (sub === "edit" && r[1] === "--repo") {
+    return r.length >= 7 && NUMBER2.test(r[0]) && same2(r.slice(1, 7), ["--repo", ctx.repo, "--title", r[4], "--body-file", r[6]]) && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ["--add-label", "--remove-label"], ctx);
+  }
+  if (sub === "list" && r[0] === "--repo") {
+    return same2(r, ["--repo", ctx.repo, "--search", r[3], "--state", "all", "--json", "number,body", "--limit", r[9]]) && KEY_SEARCH.test(r[3]) && NUMBER2.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1e3;
+  }
+  return null;
+}
 function isFactoryBranch(name, protectedBranches) {
   return isBranch2(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length && !protectedBranches.some((b) => b.toLowerCase() === name.toLowerCase());
 }
@@ -40762,7 +40794,9 @@ function factoryGit(a, protectedBranches) {
       return null;
   }
 }
-function factoryGh(a) {
+function factoryGh(a, writes) {
+  const write = writes ? trackerWriteGh(a, writes) : null;
+  if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === "issue") {
     if (sub === "view") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
@@ -40783,7 +40817,7 @@ function factoryGh(a) {
   if (group === "repo") return sub === "view" && same2(r, ["--json", "url"]);
   return null;
 }
-function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
+function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes) {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env, ado, "factory", adoRefusal(cmd, args));
     return;
@@ -40792,7 +40826,7 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
   const base = file.replace(/\.exe$/, "");
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === "string");
-  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches) : base === "gh" ? factoryGh(args) : null;
+  const verdict = !strings ? false : base === "git" ? factoryGit(args, protectedBranches) : base === "gh" ? factoryGh(args, writes) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(" ")}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     const trusted = JSON.stringify(Object.entries(TRUSTED_READ_ENV));
@@ -40807,10 +40841,10 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
     throw new FactorySafetyError(error2 instanceof Error ? error2.message.replace(/^omg ship refuses/, "omg factory run refuses") : String(error2));
   }
 }
-function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0) {
+function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0, writes = () => void 0) {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), "factory", adoRefusal(cmd, args));
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, writes());
     return exec(cmd, args, opts);
   };
 }
@@ -40827,7 +40861,7 @@ function hardenedGitExec(exec, hooksDir) {
     return exec(cmd, [...gitHardeningArgs(hooksDir), ...args], opts);
   };
 }
-var import_fs65, import_path81, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH2, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, adoRefusal;
+var import_fs65, import_path81, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH2, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, adoRefusal;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
@@ -40853,6 +40887,9 @@ var init_exec2 = __esm({
     isTitle = (s) => typeof s === "string" && s.length > 0 && s.length <= 256 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
     same2 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
+    KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
+    MAX_WRITE_LABELS = 4;
+    isWriteLabel = (s, ctx) => typeof s === "string" && ctx.labels.includes(s) && !s.toLowerCase().startsWith("factory:") && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
     adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, "/").split("/").pop()} ${args.join(" ")}\`: ${reason}`);
   }
 });
@@ -42968,11 +43005,15 @@ var init_ledger2 = __esm({
 });
 
 // src/forge/types.ts
-var PROGRESS_STAGES;
+function shipyardKeys(body) {
+  return [...body.matchAll(/^shipyard-key: (\d+)\/([a-z0-9-]{3,60})\r?$/gm)].map((m) => [Number(m[1]), m[2]]);
+}
+var PROGRESS_STAGES, shipyardKeySearch;
 var init_types10 = __esm({
   "src/forge/types.ts"() {
     "use strict";
     PROGRESS_STAGES = ["queued", "building", "reviewing", "verifying", "ready-to-merge", "done", "blocked", "cancelled"];
+    shipyardKeySearch = (spec) => `"shipyard-key: ${spec}/" in:body`;
   }
 });
 
@@ -43809,7 +43850,7 @@ function ghJson(exec, args, cwd) {
     throw new GhCommandError(`gh ${args.join(" ")} returned no JSON`);
   }
 }
-var GhCommandError;
+var GhCommandError, ghRepoArg;
 var init_gh = __esm({
   "src/forge/github/gh.ts"() {
     "use strict";
@@ -43819,6 +43860,7 @@ var init_gh = __esm({
         this.name = "GhCommandError";
       }
     };
+    ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
   }
 });
 
@@ -45228,25 +45270,71 @@ function ghSetProgress(exec, issue2, stage, mapping, stages, cwd) {
   const res = editLabels(exec, issue2, ["--add-label", mapping.label, ...others.flatMap((l) => ["--remove-label", l])], cwd);
   return { ok: res.ok, detail: res.ok ? `label ${mapping.label}` : res.stderr.trim() };
 }
+function ghFindByKey(exec, repo, spec, cwd) {
+  const args = ["issue", "list", "--repo", ghRepoArg(repo), "--search", shipyardKeySearch(spec), "--state", "all", "--json", "number,body", "--limit", String(KEY_SEARCH_LIMIT)];
+  const list = ghJson(exec, args, cwd);
+  if (!Array.isArray(list)) throw new GhCommandError("gh issue list returned no JSON array");
+  const keyOf = (body) => {
+    const keys = shipyardKeys(body).filter(([s]) => s === spec);
+    return keys.length === 1 ? keys[0][1] : void 0;
+  };
+  const found = [];
+  for (const e of list) {
+    const n = e?.number;
+    const key = keyOf(str5(e?.body));
+    if (typeof n !== "number" || !key) continue;
+    const item = ghViewItem(exec, n, cwd);
+    if (keyOf(item.body) === key && sameUrl(item.repoUrl, repo.url)) found.push({ key, item });
+  }
+  return found;
+}
+function ghCreateItem(exec, repo, draft, cwd) {
+  const args = ["issue", "create", "--repo", ghRepoArg(repo), "--title", draft.title, "--body-file", draft.bodyFile, ...draft.labels.flatMap((l) => ["--label", l])];
+  const url = ghRun(exec, args, cwd).trim().split("\n").pop().trim();
+  const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
+  if (!m || !sameUrl(m[1], repo.url)) throw new GhCommandError(`gh issue create printed no issue url of ${repo.url}`);
+  return Number(m[2]);
+}
+function ghUpdateItem(exec, repo, id, update, cwd) {
+  ghRun(exec, [
+    "issue",
+    "edit",
+    String(id),
+    "--repo",
+    ghRepoArg(repo),
+    "--title",
+    update.title,
+    "--body-file",
+    update.bodyFile,
+    ...update.addLabels.flatMap((l) => ["--add-label", l]),
+    ...update.removeLabels.flatMap((l) => ["--remove-label", l])
+  ], cwd);
+}
 function githubTracker(exec, cwd, config2) {
   return {
     viewItem: (id) => ghViewItem(exec, id, cwd),
     queryItems: (source, limit) => ghQueryItems(exec, source, limit, cwd),
     comment: (id, bodyFile) => ghIssueComment(exec, id, bodyFile, cwd),
     setProgress: (id, stage, mapping) => ghSetProgress(exec, id, stage, mapping, config2.progress.stages, cwd),
-    addMarker: (id, marker) => editLabels(exec, id, ["--add-label", marker], cwd)
+    addMarker: (id, marker) => editLabels(exec, id, ["--add-label", marker], cwd),
+    findByKey: (spec) => ghFindByKey(exec, config2.repo, spec, cwd),
+    createItem: (draft) => ghCreateItem(exec, config2.repo, draft, cwd),
+    updateItem: (id, update) => ghUpdateItem(exec, config2.repo, id, update, cwd)
   };
 }
-var ISSUE_FIELDS, str5, login, refs;
+var ISSUE_FIELDS, str5, login, refs, KEY_SEARCH_LIMIT, sameUrl;
 var init_tracker2 = __esm({
   "src/forge/github/tracker.ts"() {
     "use strict";
     init_plan_rules();
+    init_types10();
     init_gh();
     ISSUE_FIELDS = "title,body,labels,state,url,author,comments";
     str5 = (v) => typeof v === "string" ? v : "";
     login = (author) => str5(author?.login);
     refs = (body, re) => [...new Set([...body.matchAll(re)].map((m) => Number(m[1])))];
+    KEY_SEARCH_LIMIT = 1e3;
+    sameUrl = (a, b) => a.toLowerCase() === b.toLowerCase();
   }
 });
 
@@ -57196,7 +57284,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve45) => setTimeout(resolve45, pollInterval));
+        await new Promise((resolve46) => setTimeout(resolve46, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -57213,7 +57301,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve45, reject2) => {
+    return new Promise((resolve46, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -57291,7 +57379,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve45(parseResult.data);
+            resolve46(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -57552,12 +57640,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve45, reject2) => {
+    return new Promise((resolve46, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve45, interval);
+      const timeoutId = setTimeout(resolve46, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -58286,12 +58374,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve45) => {
+    return new Promise((resolve46) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve45();
+        resolve46();
       } else {
-        this._stdout.once("drain", resolve45);
+        this._stdout.once("drain", resolve46);
       }
     });
   }

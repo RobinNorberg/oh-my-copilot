@@ -9,6 +9,12 @@
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
+ *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
+ *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
+ *   pinned to the configured repository, with a body file from the caller's
+ *   own directory and labels from its allowlist. Never close, delete,
+ *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
@@ -22,7 +28,7 @@
  */
 
 import { existsSync, readdirSync } from 'fs';
-import { isAbsolute } from 'path';
+import { isAbsolute, relative, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
@@ -69,6 +75,73 @@ function isProgressLabelEdit(r: string[]): boolean {
     labels.push(r[i + 1]);
   }
   return true;
+}
+
+/**
+ * What `omg factory enqueue` may write (shipyard-factory design §3.3, PR 7a).
+ * Only a caller that sets it gets the tracker write shapes.
+ */
+export interface TrackerWriteContext {
+  /** The configured forge repository as gh's `--repo` value (ghRepoArg, src/forge/github/gh.ts); every write names exactly it. */
+  repo: string;
+  /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
+  bodyDir: string;
+  /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` never passes. */
+  labels: readonly string[];
+}
+
+/** shipyardKeySearch (src/forge/types.ts) for any spec. */
+const KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
+/** At most this many labels on one write (an intake label and a priority, plus the old priority removed). */
+const MAX_WRITE_LABELS = 4;
+
+const isWriteLabel = (s: string | undefined, ctx: TrackerWriteContext): boolean =>
+  typeof s === 'string' && ctx.labels.includes(s) && !s.toLowerCase().startsWith('factory:') && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+
+function isBodyFile(s: string | undefined, ctx: TrackerWriteContext): boolean {
+  if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir)) return false;
+  const rel = relative(resolve(ctx.bodyDir), resolve(s));
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/]/.test(rel);
+}
+
+/** `<flag> <label>` pairs, the flags' runs in `order`, every label allowlisted and used once. */
+function isLabelPairs(r: string[], order: readonly string[], ctx: TrackerWriteContext): boolean {
+  if (r.length % 2 !== 0 || r.length / 2 > MAX_WRITE_LABELS) return false;
+  const seen: string[] = [];
+  let at = 0;
+  for (let i = 0; i < r.length; i += 2) {
+    const idx = order.indexOf(r[i]);
+    if (idx < at) return false;
+    at = idx;
+    if (!isWriteLabel(r[i + 1], ctx) || seen.includes(r[i + 1])) return false;
+    seen.push(r[i + 1]);
+  }
+  return true;
+}
+
+/**
+ * The enqueue write shapes, exact arity:
+ *   issue create --repo <repo> --title <t> --body-file <f> (--label <l>)*
+ *   issue edit <n> --repo <repo> --title <t> --body-file <f> (--add-label <l>)* (--remove-label <l>)*
+ *   issue list --repo <repo> --search "shipyard-key: <spec>/" in:body --state all --json number,body --limit <1..1000>
+ * null = not a write shape (the engine's shapes decide; they refuse all three).
+ */
+function trackerWriteGh(a: string[], ctx: TrackerWriteContext): boolean | null {
+  const [group, sub, ...r] = a;
+  if (group !== 'issue') return null;
+  if (sub === 'create') {
+    return r.length >= 6 && same(r.slice(0, 6), ['--repo', ctx.repo, '--title', r[3], '--body-file', r[5]])
+      && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ['--label'], ctx);
+  }
+  if (sub === 'edit' && r[1] === '--repo') {
+    return r.length >= 7 && NUMBER.test(r[0]) && same(r.slice(1, 7), ['--repo', ctx.repo, '--title', r[4], '--body-file', r[6]])
+      && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ['--add-label', '--remove-label'], ctx);
+  }
+  if (sub === 'list' && r[0] === '--repo') {
+    return same(r, ['--repo', ctx.repo, '--search', r[3], '--state', 'all', '--json', 'number,body', '--limit', r[9]])
+      && KEY_SEARCH.test(r[3]) && NUMBER.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1000;
+  }
+  return null;
 }
 
 function isFactoryBranch(name: string | undefined, protectedBranches: readonly string[]): name is string {
@@ -121,7 +194,9 @@ function factoryGit(a: string[], protectedBranches: readonly string[]): boolean 
   }
 }
 
-function factoryGh(a: string[]): boolean | null {
+function factoryGh(a: string[], writes?: TrackerWriteContext): boolean | null {
+  const write = writes ? trackerWriteGh(a, writes) : null;
+  if (write !== null) return write;
   const [group, sub, ...r] = a;
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -154,8 +229,9 @@ const adoRefusal = (cmd: string, args: string[]) => (reason: string) =>
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
  * which refuses them unless `ado` names the run's forge and az entry.
+ * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext): void {
+export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void {
   if (isAdoCommand(cmd)) {
     checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args));
     return;
@@ -164,7 +240,7 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
   const base = file.replace(/\.exe$/, '');
   const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
   const strings = args.every((x) => typeof x === 'string');
-  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args) : null;
+  const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args, writes) : null;
   if (verdict === false) throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
   if (verdict === true) {
     // Factory shapes take no environment except ship's trusted-read env on git.
@@ -184,11 +260,12 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
  * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
-export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined): Exec {
+export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined, writes: () => TrackerWriteContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, writes());
     return exec(cmd, args, opts);
   };
 }

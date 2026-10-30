@@ -11,6 +11,15 @@ All notable changes to oh-my-copilot will be documented in this file.
   readiness. The `--json` shape is unchanged (`schemaVersion` 1).
 - **Forge items carry their parent**: a GitHub `Part of #n` line, or an Azure
   DevOps parent link (`Hierarchy-Reverse`).
+- **GitHub tracker writes for the planned `omg factory enqueue`**: create an
+  issue, edit its title, body and labels, and find issues by their
+  `shipyard-key: <spec>/<key>` footer. The factory guard allows them only
+  with enqueue's write context, each as one exact shape: `gh issue create`,
+  `gh issue edit` and `gh issue list --search`, pinned to the configured
+  repository with `--repo`, bodies only through `--body-file` from the
+  caller's own directory, and labels from an allowlist (never `factory:*`).
+  `gh api` stays refused, and nothing closes, deletes, transfers or locks an
+  issue. `omg factory run` and `omg factory check` still refuse all three.
 
 ### Changed
 

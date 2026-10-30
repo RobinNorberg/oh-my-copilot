@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
-import { assertFactoryCommand, FactorySafetyError, hardenedGitExec } from '../exec.js';
+import { ghRepoArg } from '../../../forge/github/gh.js';
+import { shipyardKeySearch } from '../../../forge/types.js';
+import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec } from '../exec.js';
 import { EngineLedger, LedgerError } from '../ledger.js';
 import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
@@ -238,6 +240,89 @@ describe('factory command guard', () => {
         expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_NO_REPLACE_OBJECTS: '1' })).not.toThrow();
         expect(() => assertFactoryCommand('git', ['for-each-ref', '--format=%(refname) %(objectname)'], [], { GIT_DIR: '/x' })).toThrow(FactorySafetyError);
         expect(() => assertFactoryCommand('gh', ['pr', 'list', '--head', 'factory/issue-7', '--json', 'number'], [], { GIT_NO_REPLACE_OBJECTS: '1' })).toThrow(FactorySafetyError);
+    });
+});
+describe('tracker write shapes (omg factory enqueue only)', () => {
+    const bodyDir = join(tmpdir(), 'omg-enqueue-bodies');
+    const body = join(bodyDir, 'ticket-1.md');
+    const ctx = { repo: 'github.com/o/r', bodyDir, labels: ['factory', 'priority:p1', 'priority:p2'] };
+    const ok = (args, env) => expect(() => assertFactoryCommand('gh', args, ['dev'], env, undefined, ctx)).not.toThrow();
+    const refused = (args) => expect(() => assertFactoryCommand('gh', args, ['dev'], undefined, undefined, ctx)).toThrow(FactorySafetyError);
+    const CREATE = ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body-file', body];
+    const EDIT = ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body-file', body];
+    const SEARCH = ['issue', 'list', '--repo', 'github.com/o/r', '--search', shipyardKeySearch(412), '--state', 'all', '--json', 'number,body', '--limit', '1000'];
+    it('accepts the three shapes with the context', () => {
+        ok(CREATE);
+        ok([...CREATE, '--label', 'factory', '--label', 'priority:p1']);
+        ok(EDIT);
+        ok([...EDIT, '--add-label', 'priority:p1', '--remove-label', 'priority:p2']);
+        ok([...EDIT, '--remove-label', 'priority:p2']);
+        ok(SEARCH);
+        expect(ghRepoArg({ host: 'github.com', owner: 'o', name: 'r' })).toBe('github.com/o/r');
+        expect(shipyardKeySearch(412)).toBe('"shipyard-key: 412/" in:body');
+    });
+    it('refuses all three without the context (the engine and check never write items)', () => {
+        for (const args of [CREATE, EDIT, SEARCH])
+            expect(() => assertFactoryCommand('gh', args, ['dev'])).toThrow(FactorySafetyError);
+    });
+    it.each([
+        ['create: an extra trailing flag', [...CREATE, '--web']],
+        ['create: an extra trailing value', [...CREATE, '--label']],
+        ['create: reordered flags', ['issue', 'create', '--title', 'Refresh tokens', '--repo', 'github.com/o/r', '--body-file', body]],
+        ['create: inline --body', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'Refresh tokens', '--body', 'x']],
+        ['create: another repository', ['issue', 'create', '--repo', 'github.com/evil/r', '--title', 'T', '--body-file', body]],
+        ['create: no --repo', ['issue', 'create', '--title', 'T', '--body-file', body]],
+        ['create: -R instead of --repo', ['issue', 'create', '-R', 'github.com/o/r', '--title', 'T', '--body-file', body]],
+        ['create: an option-shaped title', ['issue', 'create', '--repo', 'github.com/o/r', '--title', '--web', '--body-file', body]],
+        ['create: a multi-line title', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'a\nb', '--body-file', body]],
+        ['create: a body file outside the body dir', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(tmpdir(), 'other.md')]],
+        ['create: a body file in a subdirectory', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(bodyDir, 'sub', 'b.md')]],
+        ['create: a body file escaping the dir', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', join(bodyDir, '..', 'b.md')]],
+        ['create: a relative body file', ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', 'b.md']],
+        ['create: a label off the allowlist', [...CREATE, '--label', 'bug']],
+        ['create: a comma label list', [...CREATE, '--label', 'factory,priority:p1']],
+        ['create: a duplicate label', [...CREATE, '--label', 'factory', '--label', 'factory']],
+        ['create: --assignee', [...CREATE, '--assignee', 'x']],
+        ['create: --milestone', [...CREATE, '--milestone', 'x']],
+        ['edit: --add-label after --remove-label', [...EDIT, '--remove-label', 'priority:p2', '--add-label', 'priority:p1']],
+        ['edit: --body inline', ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'T', '--body', 'x']],
+        ['edit: no title', ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--body-file', body]],
+        ['edit: a non-numeric issue', ['issue', 'edit', 'o/r#12', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', body]],
+        ['edit: another repository', ['issue', 'edit', '12', '--repo', 'github.com/o/x', '--title', 'T', '--body-file', body]],
+        ['edit: an extra trailing flag', [...EDIT, '--add-assignee', 'x']],
+        ['edit: a label off the allowlist', [...EDIT, '--add-label', 'harbor:accepted']],
+        ['edit: --remove-milestone', [...EDIT, '--remove-milestone']],
+        ['search: --state open', SEARCH.map((a) => (a === 'all' ? 'open' : a))],
+        ['search: another query', SEARCH.map((a) => (a === shipyardKeySearch(412) ? 'is:open author:x' : a))],
+        ['search: a query with a key', SEARCH.map((a) => (a === shipyardKeySearch(412) ? '"shipyard-key: 412/x" in:body' : a))],
+        ['search: more fields', SEARCH.map((a) => (a === 'number,body' ? 'number,body,author' : a))],
+        ['search: limit 0', SEARCH.map((a, i) => (i === SEARCH.length - 1 ? '0' : a))],
+        ['search: limit 1001', SEARCH.map((a, i) => (i === SEARCH.length - 1 ? '1001' : a))],
+        ['search: an extra trailing flag', [...SEARCH, '--web']],
+        ['search: reordered', ['issue', 'list', '--search', shipyardKeySearch(412), '--repo', 'github.com/o/r', '--state', 'all', '--json', 'number,body', '--limit', '1000']],
+        ['gh api', ['api', 'repos/o/r/issues', '-X', 'POST']],
+        ['gh api graphql', ['api', 'graphql', '-f', 'query=mutation{}']],
+        ['gh search issues', ['search', 'issues', 'shipyard-key', '--repo', 'o/r']],
+        ['gh issue close', ['issue', 'close', '12']],
+        ['gh issue close with --repo', ['issue', 'close', '12', '--repo', 'github.com/o/r']],
+        ['gh issue delete', ['issue', 'delete', '12', '--yes']],
+        ['gh issue transfer', ['issue', 'transfer', '12', 'o/other']],
+        ['gh issue lock', ['issue', 'lock', '12']],
+        ['gh issue reopen', ['issue', 'reopen', '12']],
+        ['gh pr merge', ['pr', 'merge', '42', '--admin', '--merge', '--match-head-commit', SHA]],
+    ])('refuses %s', (_name, args) => refused(args));
+    it('refuses a factory:* label even when the caller allowlisted it, and any environment', () => {
+        const loose = { ...ctx, labels: ['factory:done'] };
+        expect(() => assertFactoryCommand('gh', [...CREATE, '--label', 'factory:done'], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+        expect(() => assertFactoryCommand('gh', CREATE, [], { GH_REPO: 'evil/r' }, undefined, ctx)).toThrow(FactorySafetyError);
+    });
+    it('factoryGuardExec passes the shapes only while the context is set', () => {
+        let writes;
+        const exec = factoryGuardExec(() => ({ status: 0, stdout: '', stderr: '' }), () => [], () => undefined, () => writes);
+        expect(() => exec('gh', CREATE)).toThrow(FactorySafetyError);
+        writes = ctx;
+        expect(exec('gh', CREATE).status).toBe(0);
+        expect(() => exec('gh', ['api', 'repos/o/r'])).toThrow(FactorySafetyError);
     });
 });
 describe('per-run limits (no governor)', () => {

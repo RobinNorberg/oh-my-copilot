@@ -1274,6 +1274,20 @@ Results are sorted by bucket, then by priority, then by id. Priority is the ADO 
 
 `--parent <spec>` checks the children of a spec item instead of ids or the intake source: on GitHub the issues in the spec body's task list (`- [ ] #n`), on Azure DevOps the work items linked as children. It cannot be combined with ids, `--source` or `--limit`. A child names its spec with a `Part of #<spec>` line on GitHub or a parent link on Azure DevOps; the adapters read that as the item's parent.
 
+**Tracker writes (for the planned `omg factory enqueue`).** The GitHub tracker can create items, edit them and find them by their `shipyard-key: <spec>/<key>` footer line. No command uses these writes yet. The factory guard allows them only when the caller passes the enqueue write context; `omg factory run` and `omg factory check` never do, so for them all three shapes stay refused. Each write is one exact shape:
+
+```bash
+gh issue create --repo <host>/<owner>/<name> --title <title> --body-file <file> [--label <l>]...
+gh issue edit <n> --repo <host>/<owner>/<name> --title <title> --body-file <file> [--add-label <l>]... [--remove-label <l>]...
+gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:body' --state all --json number,body --limit <1..1000>
+```
+
+- `--repo` must be the configured forge repository. Any other repository, `-R`, or a missing `--repo` is refused.
+- The body is passed only through `--body-file`, never inline. The file must sit directly in the directory the caller writes bodies to.
+- Labels come from the caller's allowlist (the intake label and `priority:p0`…`priority:p3`), each label once, at most four per write. A `factory:*` label is always refused. On an edit, every `--add-label` comes before every `--remove-label`.
+- Extra flags, reordered flags and a different `--state`, `--json` or search are refused. `gh api`, `gh search`, and `gh issue close|delete|transfer|lock|reopen` stay refused. Nothing touches pull requests or merges.
+- A search hit counts only when its body has exactly one key line for that spec, and the same key is still there when the issue is read again with `gh issue view`. Trust and parent are left to the caller.
+
 `--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 
 | Exit code | Meaning |
