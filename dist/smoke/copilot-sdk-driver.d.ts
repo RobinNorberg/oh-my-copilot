@@ -21,6 +21,7 @@
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
+import { type CopilotRequestHandlerCtor } from './replay/handler.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runCliScenario } from './copilot-cli-scenarios.js';
 import type { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
@@ -135,6 +136,10 @@ export interface SdkClientOptions {
     connection: unknown;
     baseDirectory: string;
     workingDirectory: string;
+    /** Set by withCassette (replay/handler.ts) only: routes every model request through the cassette handler. */
+    requestHandler?: unknown;
+    /** Set by withCassette in replay: never use the machine's stored login. */
+    useLoggedInUser?: boolean;
 }
 export interface CopilotSdkModule {
     CopilotClient: new (opts: SdkClientOptions) => SdkClientLike;
@@ -145,6 +150,8 @@ export interface CopilotSdkModule {
             env?: NodeJS.ProcessEnv;
         }): unknown;
     };
+    /** `CopilotRequestHandler` (experimental, SDK >= 1.0.16); record/replay needs it. */
+    CopilotRequestHandler?: CopilotRequestHandlerCtor;
 }
 export interface LoadedSdk {
     module: CopilotSdkModule;
@@ -176,7 +183,11 @@ export declare function importFromDir(dir: string): Promise<LoadedSdk | null>;
  * Null when the shim cannot be read or names no existing target.
  */
 export declare function resolveShimTarget(shim: string, read?: (p: string) => string, exists?: (p: string) => boolean): string | null;
-/** See the module comment for the resolution order. */
+/**
+ * See the module comment for the resolution order. Every hit goes through
+ * {@link withCassette}, so every client of the codebase records or replays
+ * when the cassette env is set (and loading throws when it cannot).
+ */
 export declare function loadCopilotSdk(env?: NodeJS.ProcessEnv, spawnSync?: SpawnSyncFn): Promise<LoadedSdk | null>;
 export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
 /** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */

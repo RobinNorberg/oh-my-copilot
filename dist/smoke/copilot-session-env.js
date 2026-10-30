@@ -144,11 +144,54 @@ function isPluginRoot(dir) {
         return false;
     }
 }
-/** Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. */
+/**
+ * Cassette env (design .omc/plans/2026-10-29-copilot-replay-design.md,
+ * section 8). `OMG_*`, so the `OMC_*` strip above and every credential scrub
+ * keep them, and child processes (team sdk hosts) inherit them.
+ */
+export const CASSETTE_ENV = {
+    dir: 'OMG_COPILOT_CASSETTE',
+    mode: 'OMG_COPILOT_CASSETTE_MODE',
+    scenario: 'OMG_COPILOT_CASSETTE_SCENARIO',
+    state: 'OMG_COPILOT_CASSETTE_STATE',
+};
+/** Signs CAPI requests; not credential-named, so replay drops it by name and sets {@link REPLAY_HMAC_KEY}. */
+const HMAC_KEY_ENV = 'COPILOT_HMAC_KEY';
+/** A dummy HMAC key: without one the runtime never sends a model request, so the replay handler would never see it. */
+export const REPLAY_HMAC_KEY = 'omg-replay-dummy-hmac-key';
+export function isReplayEnv(env) {
+    return env[CASSETTE_ENV.mode] === 'replay';
+}
+/**
+ * The runtime env of a cassette client: in replay every credential
+ * ({@link isCredentialEnvKey}) and the HMAC key go and the dummy key is set, so
+ * a request that bypassed the handler can neither authenticate nor bill. Both
+ * modes disable WebSocket responses (recordings are HTTP only).
+ */
+export function cassetteRuntimeEnv(env, mode) {
+    const out = {};
+    for (const [key, value] of Object.entries(env)) {
+        if (mode === 'replay' && (isCredentialEnvKey(key) || key.toUpperCase() === HMAC_KEY_ENV))
+            continue;
+        out[key] = value;
+    }
+    if (mode === 'replay')
+        out[HMAC_KEY_ENV] = REPLAY_HMAC_KEY;
+    out.COPILOT_CLI_DISABLE_WEBSOCKET_RESPONSES = '1';
+    return out;
+}
+/**
+ * Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. In replay
+ * ({@link isReplayEnv}) every credential and the HMAC key are dropped too; the
+ * cassette vars stay.
+ */
 export function buildSessionEnv(base, home, opts = {}) {
     const env = {};
+    const replay = isReplayEnv(base);
     for (const [key, value] of Object.entries(base)) {
         if (isStrippedEnvKey(key))
+            continue;
+        if (replay && (isCredentialEnvKey(key) || key.toUpperCase() === HMAC_KEY_ENV))
             continue;
         if (opts.hasLogin && LOGIN_SHADOWING_TOKENS.includes(key.toUpperCase()))
             continue;
