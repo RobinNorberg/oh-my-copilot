@@ -101,7 +101,7 @@ export declare const defaultResolveAz: (root: string) => AzEntry;
  * The read-only check guard for a resolved forge, and the options to build
  * the forge on it. On Azure DevOps the az entry is resolved once: the guard
  * gets the forge repo and that entry (adoGuardContext), and the adapter
- * spawns the same entry. GitHub needs neither. `omg factory board` reuses it.
+ * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
 export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined): {
     exec: Exec;

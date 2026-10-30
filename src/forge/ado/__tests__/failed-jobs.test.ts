@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { failingTestTitles } from '../../../factory/run/gates-driver.js';
 import { DEFAULT_SHIP_CONFIG } from '../../../ship/config.js';
 import type { Exec } from '../../../ship/exec.js';
-import { evaluateGates } from '../../../ship/gates.js';
+import { evaluateGates, logBlockers } from '../../../ship/gates.js';
 import { ADO_FIXTURE_DIR, loadAdoFixtures, parseAdoFixture } from './fixtures.js';
 import { adoWorld, HEAD, variant } from './world.js';
 
@@ -60,5 +60,47 @@ describe('ADO failed build checks carry the failed job', () => {
     const unreadable = { ...attempts, exitCode: 1, stdout: '', stderr: 'ERROR: TF400898: An internal error occurred' };
     expect(redWorld(unreadable).forge.checks.checks(17, HEAD).find((c) => c.name === 'CI')).toMatchObject({ state: 'FAILURE' });
     expect(redWorld(unreadable).forge.checks.checks(17, HEAD).find((c) => c.name === 'CI')).not.toHaveProperty('jobId');
+  });
+});
+
+describe('ADO known-flaky attribution reads one job and its steps', () => {
+  it('a build with more than one failed job has no jobId, so one known-flaky log cannot excuse the other job', () => {
+    const twoFailed = {
+      ...attempts,
+      stdout: {
+        records: [
+          { id: '7e570002-0000-4000-8000-000000000002', type: 'Job', name: 'Test', identifier: 'Build.Test', result: 'failed', log: { id: 7 } },
+          { id: 'e2e00002-0000-4000-8000-000000000002', type: 'Job', name: 'E2E', identifier: 'Build.E2E', result: 'failed', log: { id: 8 } },
+        ],
+      },
+    };
+    const { forge } = redWorld(twoFailed);
+    expect(forge.checks.checks(17, HEAD).find((c) => c.name === 'CI')).not.toHaveProperty('jobId');
+    const report = evaluateGates(noExec, 17, DEFAULT_SHIP_CONFIG, [{ file: 'src/report.test.ts', title: 'exports CSV' }], '/repo', HEAD, forge);
+    expect(report.verdict).toBe('failed');
+  });
+
+  it('an ##[error] in another step of an Azure Pipelines log is a blocker; one beside the FAIL line is not', () => {
+    const testStep = [
+      '\uFEFF2026-10-28T11:10:00.0000000Z ##[section]Starting: Run tests',
+      '2026-10-28T11:12:00.0000000Z FAIL src/report.test.ts > exports CSV',
+      '2026-10-28T11:12:01.0000000Z ##[error]Process completed with exit code 1.',
+      '2026-10-28T11:12:02.0000000Z ##[section]Finishing: Run tests',
+    ];
+    expect(logBlockers(testStep.join('\n'))).toEqual([]);
+    const otherStep = [
+      ...testStep,
+      '2026-10-28T11:12:03.0000000Z ##[section]Starting: Publish coverage',
+      '2026-10-28T11:12:04.0000000Z ##[error]No coverage files found.',
+    ];
+    expect(logBlockers(otherStep.join('\n'))).toEqual(['step "Publish coverage" failed without a failing test']);
+  });
+
+  it('the known-flaky suggestion on ADO points at the build, not at gh run rerun', () => {
+    const { forge } = redWorld();
+    const report = evaluateGates(noExec, 17, DEFAULT_SHIP_CONFIG, [{ file: 'src/report.test.ts', title: 'exports CSV' }], '/repo', HEAD, forge);
+    const hint = report.suggestions.find((s) => s.includes('known-flaky'));
+    expect(hint).toMatch(/-> re-queue build 101 from the pull request's checks \(https:\/\/dev\.azure\.com\/.+buildId=101\)$/);
+    expect(report.suggestions.join('\n')).not.toContain('gh run rerun');
   });
 });

@@ -15,13 +15,20 @@ All notable changes to oh-my-copilot will be documented in this file.
   could change `azure-pipelines.yml` (or `.azure-pipelines/`, `.azuredevops/`,
   `.pipelines/`), the CI that gates its own PR, and turn a red build green.
   These paths are now lane-protected, and on Azure DevOps a PR touching them
-  needs the owner. `omg ship`'s protected paths are unchanged.
+  needs the owner. The paths are protected for lanes on GitHub repositories
+  too (intended: a repository may run both CIs). `omg ship`'s protected
+  paths are unchanged.
 - **Failing tests and known-flaky entries apply to Azure DevOps builds.** A
   failed blocking build check now names its failed job (the newest attempt),
   and Azure Pipelines log timestamps are stripped before parsing. The ci-fix
   lane gets the failing test titles, known-flaky entries apply, and heal
   signatures name the failing tests instead of collapsing every failure into
-  the step's `##[error]` line.
+  the step's `##[error]` line. A build with more than one failed job names
+  none (one job's known-flaky log never excuses another's real failure), an
+  `##[error]` in another step of an Azure Pipelines log (split on
+  `##[section]Starting:`) still blocks the known-flaky verdict, and the
+  known-flaky suggestion on Azure DevOps points at the build to re-queue
+  instead of `gh run rerun`.
 
 # oh-my-copilot v5.18.1
 

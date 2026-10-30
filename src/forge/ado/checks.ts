@@ -153,9 +153,10 @@ function buildPolicyState(e: Evaluation, counted: ReadonlySet<number>): string {
 
 /**
  * The failed job of build `buildId` as a jobLog id (`<buildId>:<record id>`):
- * the first Job record in timeline order whose newest attempt (per
- * `identifier`) failed. Undefined when none failed or the timeline cannot be
- * read; the check stays a failure either way.
+ * the one Job record whose newest attempt (per `identifier`) failed.
+ * Undefined when none or more than one failed (one job's known-flaky log must
+ * not excuse another job's real failure) or the timeline cannot be read; the
+ * check stays a failure either way.
  */
 function failedJobId(ctx: AdoContext, buildId: number): string | undefined {
   try {
@@ -168,8 +169,8 @@ function failedJobId(ctx: AdoContext, buildId: number): string | undefined {
       const seen = newest.get(key);
       if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1)) newest.set(key, r);
     }
-    const failed = [...newest.values()].find((r) => r.result === 'failed');
-    return failed ? `${buildId}:${str(failed.id)}` : undefined;
+    const failed = [...newest.values()].filter((r) => r.result === 'failed');
+    return failed.length === 1 ? `${buildId}:${str(failed[0].id)}` : undefined;
   } catch {
     return undefined;
   }

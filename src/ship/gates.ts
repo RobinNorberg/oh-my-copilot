@@ -14,7 +14,7 @@
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
 import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
-import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
+import type { ForgeChecks, ForgeKind, ForgeReviews } from '../forge/types.js';
 
 /**
  * The forge reads of a gate evaluation (factory forges design §2): the PR
@@ -25,6 +25,8 @@ import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
 export interface GateForge {
   checks: ForgeChecks;
   reviews: Pick<ForgeReviews, 'prHead'>;
+  /** Picks the rerun hint in flaky suggestions; omitted = GitHub. */
+  kind?: ForgeKind;
 }
 
 export const CHECK_FIELDS = 'name,state,bucket,link,workflow,event,startedAt,completedAt';
@@ -265,20 +267,27 @@ export function isKnownFlaky(test: FailingTest, known: readonly KnownFlakyTest[]
 const UNHANDLED = /\bUnhandled (?:Errors?|Rejections?)\b/;
 const FAILED_SUITES = /\bFailed Suites \d+/;
 const STEP_ERROR = /##\[error\]/;
+/** An Azure Pipelines job log has no step column: each step opens with this marker. */
+const ADO_STEP_START = /^##\[section\]Starting: (.*)$/;
 
 /**
  * Evidence in a job log that the job did not fail only because of its failing
  * tests: vitest unhandled errors, failed suites (collection errors), or an
  * `##[error]` in a step that printed no FAIL line (a non-test step failed).
+ * The step is the GitHub log's second tab column, or on an Azure Pipelines
+ * log the last `##[section]Starting:` marker.
  */
 export function logBlockers(log: string): string[] {
   const blockers = new Set<string>();
   const testSteps = new Set<string>();
   const errorSteps = new Set<string>();
+  let adoStep = '';
   for (const rawLine of log.split(/\r?\n/)) {
-    const step = rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : '';
     const plain = rawLine.replace(ANSI, '');
-    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, '') : plain.replace(ADO_LOG_PREFIX, '');
+    const github = GH_LOG_PREFIX.test(plain);
+    const line = github ? plain.replace(GH_LOG_PREFIX, '') : plain.replace(ADO_LOG_PREFIX, '');
+    if (!github) adoStep = ADO_STEP_START.exec(line)?.[1].trim() ?? adoStep;
+    const step = rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : adoStep;
     if (UNHANDLED.test(line)) blockers.add('vitest reported unhandled errors');
     if (FAILED_SUITES.test(line)) blockers.add('vitest reported failed suites (collection errors)');
     if (FAIL_LINE.test(line)) testSteps.add(step);
@@ -312,7 +321,7 @@ const analysisKey = (jobId: string | undefined, name: string) => (jobId ? `job:$
  * required check is a known-flaky failure (matched by job id); a run is
  * rerunnable only when all its required jobs are finished.
  */
-export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]): GateReport {
+export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind): GateReport {
   const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
   const failedChecks = report.checks.filter((c) => c.class === 'failed');
   const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
@@ -323,7 +332,12 @@ export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]
   const suggestions = [...report.suggestions];
   for (const a of analyses) {
     if (a.knownFlaky) {
-      suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join('; ')}) -> gh run rerun ${a.runId ?? '<run-id>'} --failed`);
+      // ADO: a build is requeued through its PR policy evaluation, from the PR's checks or the build page.
+      const link = report.checks.find((c) => c.jobId === a.jobId)?.link;
+      const rerun = kind === 'azure-devops'
+        ? `re-queue build ${a.runId ?? '<build-id>'} from the pull request's checks${link ? ` (${link})` : ''}`
+        : `gh run rerun ${a.runId ?? '<run-id>'} --failed`;
+      suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join('; ')}) -> ${rerun}`);
     } else if (a.blockers.length > 0) {
       suggestions.push(`${a.check}: not flaky: ${a.blockers.join('; ')}`);
     } else if (a.failingTests.length > 0) {
@@ -380,7 +394,7 @@ export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known:
     const log = forge ? forge.checks.jobLog(check.jobId) : ghJobLog(exec, check.jobId, cwd);
     analyses.push(analyzeFailedLog(check.name, check.runId, log.ok ? log.text : '', known, check.jobId));
   }
-  return applyFlakyAnalysis(report, analyses);
+  return applyFlakyAnalysis(report, analyses, forge?.kind);
 }
 
 export interface WatchOptions {

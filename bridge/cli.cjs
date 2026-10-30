@@ -117318,10 +117318,13 @@ function logBlockers(log3) {
   const blockers = /* @__PURE__ */ new Set();
   const testSteps = /* @__PURE__ */ new Set();
   const errorSteps = /* @__PURE__ */ new Set();
+  let adoStep = "";
   for (const rawLine of log3.split(/\r?\n/)) {
-    const step = rawLine.split("	").length >= 3 ? rawLine.split("	")[1] : "";
     const plain = rawLine.replace(ANSI, "");
-    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, "") : plain.replace(ADO_LOG_PREFIX, "");
+    const github = GH_LOG_PREFIX.test(plain);
+    const line = github ? plain.replace(GH_LOG_PREFIX, "") : plain.replace(ADO_LOG_PREFIX, "");
+    if (!github) adoStep = ADO_STEP_START.exec(line)?.[1].trim() ?? adoStep;
+    const step = rawLine.split("	").length >= 3 ? rawLine.split("	")[1] : adoStep;
     if (UNHANDLED.test(line)) blockers.add("vitest reported unhandled errors");
     if (FAILED_SUITES.test(line)) blockers.add("vitest reported failed suites (collection errors)");
     if (FAIL_LINE.test(line)) testSteps.add(step);
@@ -117346,7 +117349,7 @@ function analyzeFailedLog(check2, runId, log3, known, jobId) {
     knownFlaky: failingTests.length > 0 && unknown2.length === 0 && blockers.length === 0
   };
 }
-function applyFlakyAnalysis(report2, analyses) {
+function applyFlakyAnalysis(report2, analyses, kind) {
   const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
   const failedChecks = report2.checks.filter((c) => c.class === "failed");
   const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
@@ -117355,7 +117358,9 @@ function applyFlakyAnalysis(report2, analyses) {
   const suggestions = [...report2.suggestions];
   for (const a of analyses) {
     if (a.knownFlaky) {
-      suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join("; ")}) -> gh run rerun ${a.runId ?? "<run-id>"} --failed`);
+      const link6 = report2.checks.find((c) => c.jobId === a.jobId)?.link;
+      const rerun = kind === "azure-devops" ? `re-queue build ${a.runId ?? "<build-id>"} from the pull request's checks${link6 ? ` (${link6})` : ""}` : `gh run rerun ${a.runId ?? "<run-id>"} --failed`;
+      suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join("; ")}) -> ${rerun}`);
     } else if (a.blockers.length > 0) {
       suggestions.push(`${a.check}: not flaky: ${a.blockers.join("; ")}`);
     } else if (a.failingTests.length > 0) {
@@ -117400,7 +117405,7 @@ function evaluateGates(exec3, pr, config2, known, cwd2, headSha, forge) {
     const log3 = forge ? forge.checks.jobLog(check2.jobId) : ghJobLog(exec3, check2.jobId, cwd2);
     analyses.push(analyzeFailedLog(check2.name, check2.runId, log3.ok ? log3.text : "", known, check2.jobId));
   }
-  return applyFlakyAnalysis(report2, analyses);
+  return applyFlakyAnalysis(report2, analyses, forge?.kind);
 }
 async function watchGates(opts) {
   const { config: config2 } = opts;
@@ -117442,7 +117447,7 @@ async function watchGates(opts) {
     await opts.sleep(Math.min(config2.pollIntervalSeconds * 1e3, Math.max(0, deadline - opts.now())));
   }
 }
-var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, ADO_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, analysisKey;
+var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, ADO_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, ADO_STEP_START, analysisKey;
 var init_gates = __esm({
   "src/ship/gates.ts"() {
     "use strict";
@@ -117467,6 +117472,7 @@ var init_gates = __esm({
     UNHANDLED = /\bUnhandled (?:Errors?|Rejections?)\b/;
     FAILED_SUITES = /\bFailed Suites \d+/;
     STEP_ERROR = /##\[error\]/;
+    ADO_STEP_START = /^##\[section\]Starting: (.*)$/;
     analysisKey = (jobId, name) => jobId ? `job:${jobId}` : `name:${name}`;
   }
 });
@@ -118338,8 +118344,8 @@ function failedJobId(ctx, buildId) {
       const seen = newest.get(key);
       if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1)) newest.set(key, r);
     }
-    const failed3 = [...newest.values()].find((r) => r.result === "failed");
-    return failed3 ? `${buildId}:${str3(failed3.id)}` : void 0;
+    const failed3 = [...newest.values()].filter((r) => r.result === "failed");
+    return failed3.length === 1 ? `${buildId}:${str3(failed3[0].id)}` : void 0;
   } catch {
     return void 0;
   }
