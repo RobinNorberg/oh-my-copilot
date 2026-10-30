@@ -43,6 +43,8 @@ export function ghIssueComment(exec: Exec, issue: number, bodyFile: string, cwd:
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const login = (author: unknown): string => str((author as { login?: unknown } | null | undefined)?.login);
 const refs = (body: string, re: RegExp): number[] => [...new Set([...body.matchAll(re)].map((m) => Number(m[1])))];
+/** ForgeItem.dependsOn of an issue body: its `Depends on #n` / `Blocked by #n` lines (the engine's blocked-by gate reads it too). */
+export const ghDependsOn = (body: string): number[] => refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim);
 
 /** `gh issue view` as a ForgeItem; throws GhCommandError when it is not the issue asked for. */
 export function ghViewItem(exec: Exec, issue: number, cwd: string): ForgeItem {
@@ -66,7 +68,7 @@ export function ghViewItem(exec: Exec, issue: number, cwd: string): ForgeItem {
     comments: comments.map((c) => ({ body: str(c?.body), author: login(c?.author), trusted: commentTrusted(c ?? {}) })),
     labels,
     ...(size ? { size: Number(size) } : {}),
-    dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
+    dependsOn: ghDependsOn(body),
     children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
     ...(parent ? { parent: Number(parent) } : {}),
     repoUrl: m[1],

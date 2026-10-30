@@ -220,6 +220,61 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(lanes.started).toHaveLength(0);
   });
 
+  describe('blocked-by intake gate (shipyard ↔ factory design §3.5)', () => {
+    const DEP = 3;
+    const MERGED_LOOKUP = `gh pr list --head factory/issue-${DEP} --base dev --state merged --json number`;
+    /** #3: open unless closed; its factory PR into dev merged when `merged`. */
+    const dep = { state: 'OPEN', merged: false };
+    const depExec = (): FactoryEngineOptions['exec'] => (cmd, args, o) => {
+      const key = `${cmd} ${args.join(' ')}`;
+      if (key.startsWith(`gh issue view ${DEP} --json`)) {
+        h.calls.push(key);
+        return { status: 0, stdout: JSON.stringify({ title: 'A', body: '', state: dep.state, labels: [], comments: [], url: `https://github.com/o/r/issues/${DEP}` }), stderr: '' };
+      }
+      if (key === MERGED_LOOKUP) {
+        h.calls.push(key);
+        return { status: 0, stdout: JSON.stringify(dep.merged ? [{ number: 90 }] : []), stderr: '' };
+      }
+      return h.exec(cmd, args, o);
+    };
+
+    beforeEach(() => {
+      dep.state = 'OPEN';
+      dep.merged = false;
+      h.gh.issue.body = `Blocked by #${DEP}\n\n## Acceptance criteria\n\n- greet() returns hi\n`;
+    });
+
+    it('B with an open A parks at blocked-by naming A, without a lane; a rerun proceeds once A\'s factory PR merged (A still open)', async () => {
+      const first = await run([], { exec: depExec() }).done;
+      expect(first.exitCode).toBe(EXIT_AWAITING_HUMAN);
+      expect(first.gate?.name).toBe('blocked-by');
+      expect(first.gate?.reason).toContain(`#${DEP}`);
+      expect(first.phase).toBe('intake');
+      expect(h.calls).toContain(MERGED_LOOKUP);
+      expect(h.calls.some((c) => c.startsWith('gh pr create'))).toBe(false);
+      expect(readFactoryState(h.root, ISSUE)).toMatchObject({ phase: 'intake', gate: { name: 'blocked-by' } });
+
+      // Still unsatisfied: the rerun parks again, still no lane.
+      const again = await run([], { exec: depExec() }).done;
+      expect(again.gate?.name).toBe('blocked-by');
+
+      dep.merged = true;
+      const { lanes, done } = run([commitFile('a.ts'), review('approve')], { exec: depExec() });
+      const out = await done;
+      expect(out.exitCode, out.message).toBe(0);
+      expect(out.gate?.name).toBe('merge');
+      expect(lanes.started).toHaveLength(2);
+    });
+
+    it('a closed dependency is satisfied: the run starts at once', async () => {
+      dep.state = 'CLOSED';
+      const out = await run([commitFile('a.ts'), review('approve')], { exec: depExec() }).done;
+      expect(out.exitCode, out.message).toBe(0);
+      expect(out.gate?.name).toBe('merge');
+      expect(h.calls).not.toContain(MERGED_LOOKUP);
+    });
+  });
+
   it('an omg-plan link (optional) is read from the base branch with its blob sha', async () => {
     h.gh.issue.body = 'see plan';
     h.gh.issue.comments = [{ body: 'omg-plan: docs/plan.md', authorAssociation: 'MEMBER' }];

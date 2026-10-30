@@ -8,7 +8,7 @@
  */
 
 import { stripAnsi } from '../../utils/string-width.js';
-import type { Forge, ForgeItem, ResolvedForgeConfig } from '../../forge/types.js';
+import type { Forge, ForgeItem, ForgeReviews, ForgeTracker, ResolvedForgeConfig } from '../../forge/types.js';
 import { factoryBranch, type FactoryPhase } from '../run/state.js';
 import { evaluateItem, type CheckBucket, type PlanSource, type RuleLookups, type RuleVerdict } from './rules.js';
 
@@ -81,6 +81,13 @@ function isOpen(forge: Forge, id: number): boolean {
   }
 }
 
+/** The forge reads isSatisfied makes (the engine builds them from the gh calls on GitHub). */
+export interface DependencyForge {
+  kind: Forge['kind'];
+  tracker: Pick<ForgeTracker, 'viewItem'>;
+  reviews: Pick<ForgeReviews, 'viewPr' | 'findMergedPrForBranch'>;
+}
+
 /**
  * A dependency is satisfied when its factory run merged, the item is closed,
  * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
@@ -88,10 +95,10 @@ function isOpen(forge: Forge, id: number): boolean {
  * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
  * satisfied once merged (closed unmerged is not); on ADO a failed work-item
  * read never falls back to the PR with that number (separate id namespaces).
- * Anything unreadable is unsatisfied. The engine will share this rule from
- * PR 5 (shipyard ↔ factory design §9).
+ * Anything unreadable is unsatisfied. The engine's blocked-by intake gate
+ * shares this rule (engine.ts), so check and run cannot drift.
  */
-export function isSatisfied(forge: Forge, id: number, base: string, runState: CheckEnv['runState']): boolean {
+export function isSatisfied(forge: DependencyForge, id: number, base: string, runState: CheckEnv['runState']): boolean {
   if (runState(id)?.phase === 'merged') return true;
   let item: ForgeItem;
   try {

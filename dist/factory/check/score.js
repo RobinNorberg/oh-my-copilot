@@ -55,8 +55,8 @@ function isOpen(forge, id) {
  * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
  * satisfied once merged (closed unmerged is not); on ADO a failed work-item
  * read never falls back to the PR with that number (separate id namespaces).
- * Anything unreadable is unsatisfied. The engine will share this rule from
- * PR 5 (shipyard ↔ factory design §9).
+ * Anything unreadable is unsatisfied. The engine's blocked-by intake gate
+ * shares this rule (engine.ts), so check and run cannot drift.
  */
 export function isSatisfied(forge, id, base, runState) {
     if (runState(id)?.phase === 'merged')
