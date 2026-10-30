@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { parseFailingTests } from '../../ship/gates.js';
-import { jobLog, viewRunJobs } from './history.js';
+import { githubCi } from '../../forge/github/ci.js';
 import { cleanLine, ENV_FIELDS } from './logs.js';
 import { capBytes, MAX_EVIDENCE_LINE_CHARS, sanitizeJson, sanitizeLines } from './sanitize.js';
 import { healStateDir } from './state.js';
@@ -230,18 +230,20 @@ export function changedEvidence(root, sig8, hashes) {
 /**
  * Re-read the red run's failed jobs and logs (and the green run's same-named
  * jobs) through the heal exec guard, plus the commit subjects of the range.
+ * `ci` builds the forge's CI reads over that guarded exec (default GitHub).
  */
-export function collectEvidence(exec, root, classification, ignoreJobs) {
+export function collectEvidence(exec, root, classification, ignoreJobs, ci = githubCi) {
     const c = classification;
-    const red = viewRunJobs(exec, c.firstRed.runId, root)
+    const forgeCi = ci(exec, root);
+    const red = forgeCi.runJobs(c.firstRed.runId)
         .filter((j) => j.conclusion === 'failure' && !ignoreJobs.includes(j.name))
-        .map((job) => ({ job, log: jobLog(exec, job.jobId, root) }));
+        .map((job) => ({ job, log: forgeCi.jobLog(job.jobId) }));
     const green = [];
     if (c.lastGreen) {
         const names = new Set(red.map((r) => r.job.name));
-        for (const j of viewRunJobs(exec, c.lastGreen.runId, root)) {
+        for (const j of forgeCi.runJobs(c.lastGreen.runId)) {
             if (names.has(j.name) && j.conclusion === 'success')
-                green.push({ name: j.name, log: jobLog(exec, j.jobId, root) });
+                green.push({ name: j.name, log: forgeCi.jobLog(j.jobId) });
         }
     }
     let commits = [];

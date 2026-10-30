@@ -213,6 +213,8 @@ export interface ForgeCi {
     }): HealRun[];
     runJobs(runId: string): HealJob[];
     jobLog(jobId: string): string;
+    /** The rerun a HUMAN may issue; recorded as heal intent, never run by omg. */
+    rerunIntent(runId: string): string;
 }
 export interface ForgeCapabilities {
     heal: boolean;

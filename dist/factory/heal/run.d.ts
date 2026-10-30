@@ -21,6 +21,7 @@
  * The class and classification come only from the scan-time record there; an
  * open heal run reuses the subject it was sealed with.
  */
+import type { ForgeCi } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 import type { LaneBackend } from '../run/lane.js';
 import { type HealClass, type HealClassification } from './classify.js';
@@ -50,6 +51,8 @@ export interface HealRunDeps {
     env?: NodeJS.ProcessEnv;
     /** Where the unconfined-lane warning goes (default console.error). */
     warn?: (message: string) => void;
+    /** Builds the forge's CI reads over the heal-guarded exec for the evidence (default GitHub Actions). */
+    ci?: (exec: Exec, root: string) => ForgeCi;
 }
 /**
  * The owner's opt-in to a debugger lane without OS confinement. The lane's

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0acedef1e8f5866983af31b35e04da1acb3ffe7a",
-    "sourceSha256": "0283e04e03b14ddbac2a3517c6397573d8a783cb012407d39198d8b84a77d897",
+    "head": "980a60d8d5ba225d25531c2e09b9795685e5f339",
+    "sourceSha256": "1e25660b72fd7a7c39d39f482ab8b9bc59aacb3ba97abc0cc31a12ff0f6d17da",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0acedef1e8f5866983af31b35e04da1acb3ffe7a",
-  "sourceSha256": "0283e04e03b14ddbac2a3517c6397573d8a783cb012407d39198d8b84a77d897",
+  "head": "980a60d8d5ba225d25531c2e09b9795685e5f339",
+  "sourceSha256": "1e25660b72fd7a7c39d39f482ab8b9bc59aacb3ba97abc0cc31a12ff0f6d17da",
   "counts": {
     "public": {
       "skills": 63,
@@ -75133,6 +75133,16 @@
       },
       {
         "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
@@ -75249,6 +75259,11 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -75379,11 +75394,6 @@
       {
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/heal/heal-evidence.ts",
-        "to": "src/factory/heal/history.ts",
         "kind": "type-imports"
       },
       {
@@ -75405,6 +75415,16 @@
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/heal-evidence.ts",
@@ -75645,6 +75665,11 @@
         "from": "src/factory/heal/run.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/run.ts",
@@ -79713,12 +79738,22 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -112924,11 +112959,11 @@
     ],
     "stats": {
       "nodeCount": 9614,
-      "edgeCount": 11256,
-      "importEdgeCount": 9273,
+      "edgeCount": 11263,
+      "importEdgeCount": 9277,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "b29ec3edacd69c4da4c949080168ef39a31dfe98222866d64ec03d0f0d6e378e",
-  "manifestSha256": "d297aae974e17d9e6870ce975017e050898edb85532fcc28d38dd74cec437979"
+  "manifestSha256": "a35e9fa35af5d57777f5041d1edd33b46be09cd5c2d4b6b16c604129fd966e5c"
 }
