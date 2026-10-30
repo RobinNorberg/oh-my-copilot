@@ -12,7 +12,7 @@
  */
 import { Command } from 'commander';
 import type { Exec } from '../../ship/exec.js';
-import type { ForgeKind } from '../../forge/types.js';
+import type { ForgeCi, ForgeKind } from '../../forge/types.js';
 import { type HealConfig } from './config.js';
 import { type HealSignatureState } from './state.js';
 import type { LaneBackend } from '../run/lane.js';
@@ -51,6 +51,8 @@ export interface HealDeps {
     engine?: HealEngineDeps['engine'];
     /** The origin's forge kind (originForgeKind); heal reads GitHub Actions only, so Azure DevOps is refused. Omitted = GitHub. */
     forgeKind?: (root: string) => ForgeKind;
+    /** Builds the forge's CI reads over the heal-guarded exec (heal scan, heal run evidence). Omitted = GitHub Actions. */
+    ci?: (exec: Exec, root: string) => ForgeCi;
 }
 export interface ScanEntry {
     runId: string;
@@ -71,7 +73,10 @@ export interface ScanResult {
     /** Webhook-queued runs still waiting (not in the listed window yet). */
     queued: number;
 }
-/** `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept. */
+/**
+ * `ledgerDir`: the out-of-repository heal ledger directory, where the scan-time class and classification are kept.
+ * `ci`: builds the forge's CI reads over the heal-guarded exec (default GitHub Actions).
+ */
 type ScanOpts = {
     exec: Exec;
     root: string;
@@ -82,6 +87,7 @@ type ScanOpts = {
     warn: (m: string) => void;
     ledgerDir: string;
     lockTimeoutMs?: number;
+    ci?: (exec: Exec, root: string) => ForgeCi;
 };
 /** One writing scan at a time: the read-fold-write of heal state is held under a lock file. */
 export declare function runHealScan(opts: ScanOpts): ScanResult;
