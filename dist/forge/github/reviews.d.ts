@@ -33,6 +33,8 @@ export declare function ghOpenPrs(exec: Exec, branch: string, cwd: string): Arra
 }>;
 /** The first open PR's number on `branch`, if gh reports one. */
 export declare function ghFindOpenPr(exec: Exec, branch: string, cwd: string): number | undefined;
+/** `gh pr list --head <branch> --base <base> --state merged --json number`: the first merged PR's number, if any. */
+export declare function ghFindMergedPr(exec: Exec, branch: string, base: string, cwd: string): number | undefined;
 /** `gh pr create --draft`; the new PR's number from the url gh prints. */
 export declare function ghCreateDraftPr(exec: Exec, o: {
     base: string;

@@ -7,6 +7,7 @@
  * through `forge.tracker`; the open-PR lookup goes through `forge.reviews`.
  */
 import { stripAnsi } from '../../utils/string-width.js';
+import { factoryBranch } from '../run/state.js';
 import { evaluateItem } from './rules.js';
 export const BUCKET_ORDER = ['runnable', 'needs-plan', 'blocked'];
 /** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
@@ -27,18 +28,60 @@ export function compareResults(a, b) {
 const NOT_AN_ISSUE = /returned no issue url/;
 const messageOf = (error) => (error instanceof Error ? error.message : String(error));
 const failed = (id, reason, detail) => ({ id, title: '', url: '', bucket: 'blocked', reasons: [reason], detail: plainText(detail), priority: null, planSource: null });
-/** An item, else a PR (a dependency may be one): open unless the forge says it is closed or merged; unreadable counts as open. */
+/**
+ * An item, else (GitHub) a PR: open unless the forge says it is closed or
+ * merged; unreadable counts as open. ADO work items and PRs are separate id
+ * namespaces, so there a failed item read never falls back to the PR.
+ */
 function isOpen(forge, id) {
     try {
         return forge.tracker.viewItem(id).open;
     }
     catch {
+        if (forge.kind === 'azure-devops')
+            return true;
         try {
             return forge.reviews.viewPr(id).state === 'OPEN';
         }
         catch {
             return true;
         }
+    }
+}
+/**
+ * A dependency is satisfied when its factory run merged, the item is closed,
+ * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
+ * base other than the default branch, `Closes #n` never closes the issue
+ * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
+ * satisfied once merged (closed unmerged is not); on ADO a failed work-item
+ * read never falls back to the PR with that number (separate id namespaces).
+ * Anything unreadable is unsatisfied. The engine will share this rule from
+ * PR 5 (shipyard ↔ factory design §9).
+ */
+export function isSatisfied(forge, id, base, runState) {
+    if (runState(id)?.phase === 'merged')
+        return true;
+    let item;
+    try {
+        item = forge.tracker.viewItem(id);
+    }
+    catch {
+        if (forge.kind === 'azure-devops')
+            return false;
+        try {
+            return forge.reviews.viewPr(id).state === 'MERGED';
+        }
+        catch {
+            return false;
+        }
+    }
+    if (!item.open)
+        return true;
+    try {
+        return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== undefined;
+    }
+    catch {
+        return false;
     }
 }
 /**
@@ -58,8 +101,10 @@ export function checkItem(forge, id, env) {
     }
     const look = {
         isOpen: (other) => isOpen(forge, other),
+        isSatisfied: (dep) => isSatisfied(forge, dep, env.base, env.runState),
         runState: env.runState,
         openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
+        mergedPr: (branch) => forge.reviews.findMergedPrForBranch(branch, env.base),
         remoteBranch: env.remoteBranch,
         readPlan: env.readPlan,
         planBase: env.planBase,

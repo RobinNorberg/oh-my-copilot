@@ -1,0 +1,20 @@
+{
+  "provenance": "synthetic: completed (merged) PR search by source and target branch, shaped like the git/pullRequests GET docs sample",
+  "route": "git.pullRequests.GET",
+  "routeParameters": { "project": "Web", "repositoryId": "web-app" },
+  "queryParameters": { "searchCriteria.sourceRefName": "refs/heads/factory/issue-40", "searchCriteria.status": "completed", "searchCriteria.targetRefName": "refs/heads/main" },
+  "stdout": {
+    "value": [
+      {
+        "repository": { "id": "3411ebc1-d5aa-464f-9615-0b527bc66719", "name": "web-app", "project": { "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c", "name": "Web" } },
+        "pullRequestId": 12,
+        "status": "completed",
+        "sourceRefName": "refs/heads/factory/issue-40",
+        "targetRefName": "refs/heads/main",
+        "isDraft": false,
+        "url": "https://dev.azure.com/contoso/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/12"
+      }
+    ],
+    "count": 1
+  }
+}

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a730ab051919f2cbc5a3cdd3cb88998d6335686a",
-    "sourceSha256": "7c7816ab2c2b7c09a23c3178bc60dfe24207cc5c2bce30977173b8b2107baa9d",
+    "head": "dcdecd04e0dee5fabf6f5c82dd797a09e9d6c01b",
+    "sourceSha256": "ab39ac084149197203fe694f5eacf97859222038a4117437c42091f773e9b5c7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a730ab051919f2cbc5a3cdd3cb88998d6335686a",
-  "sourceSha256": "7c7816ab2c2b7c09a23c3178bc60dfe24207cc5c2bce30977173b8b2107baa9d",
+  "head": "dcdecd04e0dee5fabf6f5c82dd797a09e9d6c01b",
+  "sourceSha256": "ab39ac084149197203fe694f5eacf97859222038a4117437c42091f773e9b5c7",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1902,
-      "total": 1926
+      "srcFiles": 1909,
+      "total": 1933
     },
     "generated": {
       "distFiles": 7064,
@@ -49980,9 +49980,19 @@
         "path": "src/factory/check/__tests__/cli.test.ts"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json",
@@ -49990,9 +50000,24 @@
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49.json",
@@ -51028,6 +51053,16 @@
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.PATCH.ready.json",
@@ -75605,6 +75640,11 @@
         "from": "src/factory/check/score.ts",
         "to": "src/factory/check/rules.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/check/score.ts",
@@ -114468,12 +114508,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9716,
-      "edgeCount": 11447,
-      "importEdgeCount": 9419,
+      "nodeCount": 9723,
+      "edgeCount": 11448,
+      "importEdgeCount": 9420,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "375a9007f0bf02288b9cedf8fd0b07206bcd3cfbd7ca96e9c98db85bf740fb44",
-  "manifestSha256": "e214c36b96a2aa909dea6317657c25828a7bce0e0e9145993a7d7b0bbf23fcfa"
+  "inventorySha256": "4a273b53ad689801660d3dffb2452934cf9426848fd7a9ba6862f844a25b4143",
+  "manifestSha256": "39d6b214ddedaf74ffda12b3642b3985d42e287a459fcc60dc03fb354f44a866"
 }

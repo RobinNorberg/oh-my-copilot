@@ -15,6 +15,7 @@ import { areaTagWiql, boardColumnWiql, KANBAN_COLUMN_FIELD, QUERY_ID } from './w
 const CLOSED_CATEGORIES = new Set(['completed', 'removed']);
 const DEPENDS_ON = 'System.LinkTypes.Dependency-Reverse';
 const CHILD = 'System.LinkTypes.Hierarchy-Forward';
+const PARENT = 'System.LinkTypes.Hierarchy-Reverse';
 /** A rev conflict on PATCH: HTTP 412 / TF26071 ("changed by someone else"), VS403351 (test op failed). */
 const REV_CONFLICT = /\b412\b|TF26071|VS403351|test operation/i;
 
@@ -101,6 +102,7 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeT
       const state = str(f['System.State']) ?? '';
       const category = type && state ? stateCategory(ctx, type, state) : undefined;
       const acceptance = adoHtmlToText(f['Microsoft.VSTS.Common.AcceptanceCriteria']);
+      const [parent] = linkedIds(item.relations, PARENT);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${id}`,
@@ -119,6 +121,7 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeT
         size: num(f['Microsoft.VSTS.Scheduling.StoryPoints']) ?? num(f['Microsoft.VSTS.Scheduling.Effort']),
         dependsOn: linkedIds(item.relations, DEPENDS_ON),
         children: linkedIds(item.relations, CHILD),
+        ...(parent !== undefined ? { parent } : {}),
         repoUrl: ctx.repo.url,
       };
     },
