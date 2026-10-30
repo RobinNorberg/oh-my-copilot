@@ -14317,49 +14317,49 @@ var init_sdk = __esm({
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
       }
-      function resolveComponents(base, relative38, options, skipNormalization) {
+      function resolveComponents(base, relative37, options, skipNormalization) {
         const target = {};
         if (!skipNormalization) {
           base = parse62(serialize(base, options), options);
-          relative38 = parse62(serialize(relative38, options), options);
+          relative37 = parse62(serialize(relative37, options), options);
         }
         options = options || {};
-        if (!options.tolerant && relative38.scheme) {
-          target.scheme = relative38.scheme;
-          target.userinfo = relative38.userinfo;
-          target.host = relative38.host;
-          target.port = relative38.port;
-          target.path = removeDotSegments(relative38.path || "");
-          target.query = relative38.query;
+        if (!options.tolerant && relative37.scheme) {
+          target.scheme = relative37.scheme;
+          target.userinfo = relative37.userinfo;
+          target.host = relative37.host;
+          target.port = relative37.port;
+          target.path = removeDotSegments(relative37.path || "");
+          target.query = relative37.query;
         } else {
-          if (relative38.userinfo !== void 0 || relative38.host !== void 0 || relative38.port !== void 0) {
-            target.userinfo = relative38.userinfo;
-            target.host = relative38.host;
-            target.port = relative38.port;
-            target.path = removeDotSegments(relative38.path || "");
-            target.query = relative38.query;
+          if (relative37.userinfo !== void 0 || relative37.host !== void 0 || relative37.port !== void 0) {
+            target.userinfo = relative37.userinfo;
+            target.host = relative37.host;
+            target.port = relative37.port;
+            target.path = removeDotSegments(relative37.path || "");
+            target.query = relative37.query;
           } else {
-            if (!relative38.path) {
+            if (!relative37.path) {
               target.path = base.path;
-              if (relative38.query !== void 0) {
-                target.query = relative38.query;
+              if (relative37.query !== void 0) {
+                target.query = relative37.query;
               } else {
                 target.query = base.query;
               }
             } else {
-              if (relative38.path.charAt(0) === "/") {
-                target.path = removeDotSegments(relative38.path);
+              if (relative37.path.charAt(0) === "/") {
+                target.path = removeDotSegments(relative37.path);
               } else {
                 if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                  target.path = "/" + relative38.path;
+                  target.path = "/" + relative37.path;
                 } else if (!base.path) {
-                  target.path = relative38.path;
+                  target.path = relative37.path;
                 } else {
-                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative38.path;
+                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative37.path;
                 }
                 target.path = removeDotSegments(target.path);
               }
-              target.query = relative38.query;
+              target.query = relative37.query;
             }
             target.userinfo = base.userinfo;
             target.host = base.host;
@@ -14367,7 +14367,7 @@ var init_sdk = __esm({
           }
           target.scheme = base.scheme;
         }
-        target.fragment = relative38.fragment;
+        target.fragment = relative37.fragment;
         return target;
       }
       function equal(uriA, uriB, options) {
@@ -58800,9 +58800,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative38 = flavor.relative(prefix, resolvedPath);
-    if (relative38 === "") return true;
-    return !relative38.startsWith("..") && !flavor.isAbsolute(relative38);
+    const relative37 = flavor.relative(prefix, resolvedPath);
+    if (relative37 === "") return true;
+    return !relative37.startsWith("..") && !flavor.isAbsolute(relative37);
   });
 }
 function assertBinaryName(binary) {
@@ -59244,8 +59244,9 @@ var init_model_contract = __esm({
       "OMC_GROK_DEFAULT_MODEL",
       "OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL",
       "OMC_ANTIGRAVITY_DEFAULT_MODEL",
-      // tmux panes inherit the tmux server env; pin Copilot workers to the
-      // leader's config home (login, plugins, deniedUrls) and model.
+      // The provider env is an allowlist (buildProviderEnvironment), not the
+      // tmux server env; carry the leader's config home (login, plugins,
+      // deniedUrls) and model so pane Copilot workers share them.
       "COPILOT_HOME",
       "COPILOT_MODEL"
     ];
@@ -82158,6 +82159,1588 @@ var init_host_load_gate = __esm({
   }
 });
 
+// src/copilot-run/names.ts
+var COPILOT_RUN_ALLOW_ENV, COPILOT_RUN_TOOL_NAMES;
+var init_names2 = __esm({
+  "src/copilot-run/names.ts"() {
+    "use strict";
+    COPILOT_RUN_ALLOW_ENV = "OMG_COPILOT_RUN_ALLOW";
+    COPILOT_RUN_TOOL_NAMES = [
+      "copilot_run_start",
+      "copilot_run_status",
+      "copilot_run_wait",
+      "copilot_run_cancel",
+      "copilot_run_cleanup"
+    ];
+  }
+});
+
+// src/smoke/copilot-session-eval.ts
+function excerpt(text4, max = EVIDENCE_MAX) {
+  if (!text4) return "";
+  const flat = text4.replace(/\r/g, "").trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 3)}...`;
+}
+function parseJsonl(text4) {
+  const events = [];
+  let bad = 0;
+  let badSample;
+  for (const line of text4.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed2 = JSON.parse(trimmed);
+      if (parsed2 && typeof parsed2 === "object" && !Array.isArray(parsed2)) events.push(parsed2);
+      else {
+        bad++;
+        badSample ??= trimmed;
+      }
+    } catch {
+      bad++;
+      badSample ??= trimmed;
+    }
+  }
+  return { events, bad, badSample };
+}
+function str(value) {
+  return typeof value === "string" ? value : "";
+}
+function assistantText2(events) {
+  return events.filter((e) => typeof e.type === "string" && e.type.startsWith("assistant.message")).map((e) => str(e.data?.content) || str(e.data?.deltaContent) || str(e.data?.text)).join("");
+}
+function evaluateSessionExit(input) {
+  const { events } = parseJsonl(input.stdout);
+  const answer = events.length > 0 ? assistantText2(events) : input.stdout;
+  const source = events.length > 0 ? `${events.length} JSONL events` : "raw stdout";
+  const sawToken = answer.includes(SMOKE_TOKEN);
+  if (input.timedOut) {
+    return { id: "session.exit", ok: false, detail: `timed out after ${input.timeoutMs} ms (process tree killed)`, evidence: excerpt(input.stderr || input.stdout) };
+  }
+  if (input.error) {
+    return { id: "session.exit", ok: false, detail: `spawn failed: ${input.error}` };
+  }
+  const ok2 = input.exitCode === 0 && sawToken;
+  const modelHint = /from --model flag is not available/.test(input.stderr) ? "; the CLI rejected --model, omit it to let the CLI auto-pick" : "";
+  return {
+    id: "session.exit",
+    ok: ok2,
+    detail: ok2 ? `exit 0, assistant replied ${SMOKE_TOKEN} (${source})` : `exit ${input.exitCode}, ${sawToken ? "token present" : `${SMOKE_TOKEN} missing from assistant output`} (${source})${modelHint}`,
+    ...ok2 ? {} : { evidence: excerpt(input.stderr.trim() || answer || input.stdout.slice(-EVIDENCE_MAX)) }
+  };
+}
+function evaluateEventsLog(eventsPath, text4) {
+  if (text4 === null) {
+    return { check: { id: "session.events", ok: false, detail: `missing ${eventsPath}` }, events: [] };
+  }
+  const { events, bad, badSample } = parseJsonl(text4);
+  const ok2 = events.length > 0 && bad === 0;
+  return {
+    check: {
+      id: "session.events",
+      ok: ok2,
+      detail: `${events.length} events parsed, ${bad} unparseable line(s)`,
+      ...ok2 ? {} : { evidence: excerpt(badSample ?? text4) }
+    },
+    events
+  };
+}
+function collectHookRuns(events) {
+  const runs = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const keysOf = (e) => {
+    const d = e.data ?? {};
+    return [str(d.hookInvocationId), str(d.invocationId), str(d.hookId)].filter(Boolean);
+  };
+  for (const e of events) {
+    if (e.type === "hook.start") {
+      const run2 = { hookType: str(e.data?.hookType), ended: false, success: null };
+      runs.push(run2);
+      for (const key of keysOf(e)) byKey.set(key, run2);
+      if (e.id) byKey.set(`id:${e.id}`, run2);
+    } else if (e.type === "hook.end") {
+      const d = e.data ?? {};
+      let run2 = keysOf(e).map((k) => byKey.get(k)).find(Boolean) ?? (e.parentId ? byKey.get(`id:${e.parentId}`) : void 0);
+      const hookType = str(d.hookType) || run2?.hookType || "";
+      if (!run2 || hookType && run2.hookType && run2.hookType !== hookType || run2.ended) {
+        run2 = runs.find((r) => !r.ended && r.hookType === hookType);
+      }
+      if (!run2) {
+        run2 = { hookType, ended: false, success: null };
+        runs.push(run2);
+      }
+      run2.ended = true;
+      run2.success = typeof d.success === "boolean" ? d.success : d.error ? false : null;
+      const err = d.error;
+      if (err) run2.error = typeof err === "string" ? err : JSON.stringify(err);
+    }
+  }
+  return runs;
+}
+function evaluateHooks(events) {
+  const runs = collectHookRuns(events);
+  const toolUsed = events.some((e) => e.type === "tool.execution_start");
+  const checks = [];
+  const check2 = (hookType, optional2) => {
+    const mine = runs.filter((r) => r.hookType === hookType);
+    const id = `hooks.${hookType}`;
+    if (mine.length === 0) {
+      if (optional2 && !toolUsed) return { id, ok: true, detail: "n/a (no tool use)" };
+      return { id, ok: false, detail: `no hook.start/hook.end with hookType ${hookType}` };
+    }
+    const ended = mine.filter((r) => r.ended);
+    const failed3 = ended.filter((r) => r.success !== true);
+    const ok2 = ended.length > 0 && failed3.length === 0;
+    return {
+      id,
+      ok: ok2,
+      detail: `${mine.length} start(s), ${ended.length} end(s), ${failed3.length} without success:true`,
+      ...ok2 ? {} : {
+        evidence: excerpt(failed3.map((r) => r.error ?? `success=${String(r.success)}`).join(" | ") || "hook.end missing")
+      }
+    };
+  };
+  for (const t of REQUIRED_HOOK_TYPES) checks.push(check2(t, false));
+  for (const t of TOOL_HOOK_TYPES) checks.push(check2(t, true));
+  return checks;
+}
+function evaluateAdapterErrors(sources) {
+  const id = "hooks.adapter_errors";
+  const hits = [];
+  const scanned = [];
+  for (const { name, text: text4 } of sources) {
+    if (!text4) continue;
+    scanned.push(name);
+    for (const line of text4.split(/\r?\n/)) {
+      if (!line.includes("[omg-hook]")) continue;
+      if (BENIGN_ADAPTER_NOTES.some((re) => re.test(line))) continue;
+      hits.push(`${name}: ${line.trim()}`);
+    }
+  }
+  if (hits.length === 0) {
+    return { id, ok: true, detail: `no [omg-hook] error lines in ${scanned.join(", ") || "any captured stream"}` };
+  }
+  return { id, ok: false, detail: `${hits.length} [omg-hook] error line(s): a hook failed`, evidence: excerpt(hits.join("\n")) };
+}
+function parsePluginsLoaded(line) {
+  const rest = line.slice(line.indexOf("Plugins loaded:") + "Plugins loaded:".length).trim();
+  try {
+    const parsed2 = JSON.parse(rest);
+    if (Array.isArray(parsed2)) return parsed2.filter((n) => typeof n === "string");
+  } catch {
+  }
+  return [...rest.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+function evaluatePluginsLoaded(logText) {
+  const id = "plugins.loaded";
+  if (logText === null) return { id, ok: false, detail: "no debug log found under <home>/logs" };
+  const loadedLine = logText.split(/\r?\n/).find((l) => l.includes("Plugins loaded:"));
+  const activationLine = logText.split(/\r?\n/).find((l) => /Plugin activation \[agents\]/.test(l));
+  const listed2 = !!loadedLine && parsePluginsLoaded(loadedLine).includes(PLUGIN_NAME);
+  const activated = !!activationLine && /loaded=([1-9]\d*)/.test(activationLine);
+  const ok2 = listed2 && activated;
+  return {
+    id,
+    ok: ok2,
+    detail: ok2 ? `Plugins loaded lists ${PLUGIN_NAME}; agents activation loaded>=1` : `${listed2 ? "" : `"Plugins loaded:" without ${PLUGIN_NAME}; `}${activated ? "" : 'no "Plugin activation [agents]" with loaded>=1'}`.trim(),
+    evidence: excerpt([loadedLine, activationLine].filter(Boolean).join("\n")) || void 0
+  };
+}
+function evaluateMcpLoaded(events, logText, serverNames) {
+  const id = "mcp.server_loaded";
+  const loaded2 = events.filter((e) => e.type === "session.mcp_servers_loaded");
+  const mentionsOurs = (value) => {
+    const json = JSON.stringify(value ?? "");
+    return serverNames.some((n) => json.includes(`"${n}"`));
+  };
+  const ours = loaded2.find((e) => mentionsOurs(e.data));
+  if (ours) {
+    return { id, ok: true, detail: `session.mcp_servers_loaded lists ${serverNames.join(", ")} (events)`, evidence: excerpt(JSON.stringify(ours.data)) };
+  }
+  const statusChange = events.find((e) => e.type === "session.mcp_server_status_changed" && serverNames.includes(str(e.data?.serverName)) && str(e.data?.status) === "connected");
+  if (statusChange) {
+    return { id, ok: true, detail: `session.mcp_server_status_changed ${str(statusChange.data?.serverName)}=connected (events)`, evidence: excerpt(JSON.stringify(statusChange.data)) };
+  }
+  const tagLine = logText?.split(/\r?\n/).find((l) => l.includes(MCP_STDERR_TAG) && serverNames.some((n) => l.includes(`"server_name":"${n}"`) || l.includes(`server_name: ${n}`) || l.includes(`"serverName":"${n}"`))) ?? logText?.split(/\r?\n/).find((l) => l.includes(MCP_STDERR_TAG));
+  if (tagLine) {
+    return { id, ok: true, detail: "debug log shows the plugin MCP server stderr tag", evidence: excerpt(tagLine) };
+  }
+  return {
+    id,
+    ok: false,
+    detail: `no session.mcp_servers_loaded/status event naming ${serverNames.join(", ")} and no "${MCP_STDERR_TAG}" in the debug log`,
+    evidence: excerpt(loaded2.map((e) => JSON.stringify(e.data)).join("\n")) || void 0
+  };
+}
+function walkFiles(root2, limit = 500) {
+  const out = [];
+  const stack = [root2];
+  while (stack.length && out.length < limit) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = (0, import_fs87.readdirSync)(dir);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      const full = (0, import_path106.join)(dir, name);
+      try {
+        if ((0, import_fs87.statSync)(full).isDirectory()) stack.push(full);
+        else out.push(full);
+      } catch {
+      }
+    }
+  }
+  return out;
+}
+function evaluateStateWritten(projectDir) {
+  const id = "state.written";
+  const omgRoot = (0, import_path106.join)(projectDir, ".omg");
+  if (!(0, import_fs87.existsSync)(omgRoot)) return { id, ok: false, detail: `${omgRoot} was not created by the hooks` };
+  const files = walkFiles(omgRoot).map((f) => (0, import_path106.relative)(projectDir, f).replace(/\\/g, "/"));
+  const marker = files.find((f) => f.endsWith(`/${SESSION_STARTED_MARKER}`) && f.includes("state/sessions/"));
+  if (marker) return { id, ok: true, detail: `SessionStart wrote ${marker}`, evidence: excerpt(files.join("\n")) };
+  return {
+    id,
+    ok: false,
+    detail: files.length ? `.omg/ has ${files.length} file(s) but no state/sessions/*/${SESSION_STARTED_MARKER}` : ".omg/ exists but is empty",
+    evidence: excerpt(files.join("\n")) || void 0
+  };
+}
+function evaluateSubagent(events, agentName) {
+  const id = "subagent.selected";
+  const named = (type) => events.find((e) => e.type === type && str(e.data?.agentName) === agentName);
+  const hit2 = named("subagent.selected") ?? named("subagent.started");
+  if (hit2) return { id, ok: true, detail: `${hit2.type} ${agentName}`, evidence: excerpt(JSON.stringify(hit2.data)) };
+  const any = events.filter((e) => typeof e.type === "string" && e.type.startsWith("subagent."));
+  return {
+    id,
+    ok: false,
+    detail: `no subagent.selected/started for ${agentName}`,
+    evidence: excerpt(any.map((e) => `${e.type} ${JSON.stringify(e.data)}`).join("\n")) || void 0
+  };
+}
+var import_fs87, import_path106, EVIDENCE_MAX, SMOKE_TOKEN, REQUIRED_HOOK_TYPES, TOOL_HOOK_TYPES, BENIGN_ADAPTER_NOTES, PLUGIN_NAME, MCP_STDERR_TAG, SESSION_STARTED_MARKER;
+var init_copilot_session_eval = __esm({
+  "src/smoke/copilot-session-eval.ts"() {
+    "use strict";
+    import_fs87 = require("fs");
+    import_path106 = require("path");
+    EVIDENCE_MAX = 400;
+    SMOKE_TOKEN = "SMOKE_OK";
+    REQUIRED_HOOK_TYPES = ["sessionStart", "userPromptSubmitted", "agentStop", "sessionEnd"];
+    TOOL_HOOK_TYPES = ["preToolUse", "postToolUse"];
+    BENIGN_ADAPTER_NOTES = [/continue:false overrides decision:block/, /dropped hookSpecificOutput\.updatedInput/];
+    PLUGIN_NAME = "oh-my-copilot";
+    MCP_STDERR_TAG = "OMC Tools MCP Server running on stdio";
+    SESSION_STARTED_MARKER = "session-started.json";
+  }
+});
+
+// src/smoke/copilot-sdk-scenarios.ts
+function hostSmokeToolName(mcpServer) {
+  return `${mcpServer}-host_smoke`;
+}
+function samePathKey(p, platform) {
+  let out = (0, import_path107.resolve)(p);
+  try {
+    out = import_fs88.realpathSync.native(out);
+  } catch {
+  }
+  return canon(out, platform);
+}
+function isUnder(p, root2, platform) {
+  const child = samePathKey(p, platform);
+  const parent = samePathKey(root2, platform);
+  return child === parent || child.startsWith(`${parent.replace(/\/$/, "")}/`);
+}
+function requestCwd(req) {
+  for (const key of ["cwd", "workingDirectory", "resolvedWorkingDirectory"]) {
+    if (typeof req[key] === "string" && req[key]) return req[key];
+  }
+  return void 0;
+}
+function permitGuardrailPush(req, ctx) {
+  if (req.kind !== "shell" || !GUARDRAIL_COMMAND.test(String(req.fullCommandText ?? ""))) return false;
+  const cwd2 = requestCwd(req);
+  const platform = ctx.platform ?? process.platform;
+  return cwd2 === void 0 || samePathKey(cwd2, platform) === samePathKey(ctx.projectDir, platform);
+}
+function permitScopedRead(req, ctx) {
+  if (req.kind !== "read") return false;
+  if (typeof req.path !== "string" || !req.path) return true;
+  const platform = ctx.platform ?? process.platform;
+  return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
+}
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder((0, import_path107.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+}
+function continuationReason(nonce) {
+  return `[OMG-SMOKE-CONT ${nonce}] Stop hook continuation. Reply with exactly ${continuationToken(nonce)} and nothing else. Do not call tools.`;
+}
+function continuationToken(nonce) {
+  return `CONTINUED_${nonce}`;
+}
+function promptContextLine(nonce) {
+  return `${PROMPT_CONTEXT_PREFIX} ${nonce}`;
+}
+function hookEnds(events, hookType) {
+  return events.filter((e) => e.type === "hook.end" && e.data?.hookType === hookType);
+}
+function userMessages(events) {
+  return events.filter((e) => e.type === "user.message").map((e) => str2(e.data?.content));
+}
+function noCliEvidence(name, count3, run2) {
+  return scenarioCheckIds(name).slice(0, count3).map((id) => ({ id, ok: false, detail: run2.error ? `no CLI evidence: ${excerpt(run2.error, 200)}` : "no CLI evidence collected" }));
+}
+function evaluateContinuation(run2) {
+  const cli = run2.cli;
+  if (!cli) return noCliEvidence("continuation", 4, run2);
+  const reason = continuationReason(cli.nonce);
+  const token = continuationToken(cli.nonce);
+  const stopStarts = run2.events.filter((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
+  const blockIdx = run2.events.findIndex((e) => e.type === "hook.end" && e.data?.hookType === "agentStop" && isRecord6(e.data?.output) && e.data.output.decision === "block" && str2(e.data.output.reason).includes(cli.nonce));
+  const after = blockIdx === -1 ? [] : run2.events.slice(blockIdx + 1);
+  const injected = userMessages(after).some((m) => m.includes(reason));
+  const nextStop = after.find((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
+  const nextInput = isRecord6(nextStop?.data?.input) ? nextStop.data.input : {};
+  const activeOk = nextInput.stop_hook_active === true;
+  const text4 = assistantText2(after);
+  const echoed = text4.includes(token);
+  return [
+    {
+      id: "scn.continuation.blocked",
+      ok: blockIdx !== -1,
+      detail: blockIdx !== -1 ? "agentStop hook.end carried the stub decision:block with its reason" : `no agentStop block with the stub reason (${stopStarts.length} agentStop run(s))`,
+      ...blockIdx !== -1 ? {} : { evidence: excerpt(JSON.stringify(hookEnds(run2.events, "agentStop").map((e) => e.data?.output))) }
+    },
+    {
+      id: "scn.continuation.reason_injected",
+      ok: injected,
+      detail: injected ? "the block reason arrived as the next user.message" : "no user.message with the block reason after the block",
+      ...injected ? {} : { evidence: excerpt(userMessages(run2.events).join("\n")) }
+    },
+    {
+      id: "scn.continuation.stop_hook_active",
+      ok: activeOk,
+      detail: !nextStop ? "no agentStop after the continuation" : `next agentStop input stop_hook_active=${JSON.stringify(nextInput.stop_hook_active)}`
+    },
+    {
+      id: "scn.continuation.echo",
+      ok: echoed,
+      detail: echoed ? `the continuation turn replied ${token}` : `${token} missing from the continuation turn`,
+      ...echoed ? {} : { evidence: excerpt(text4 || assistantText2(run2.events)) }
+    }
+  ];
+}
+function evaluatePromptContext(run2) {
+  const cli = run2.cli;
+  if (!cli) return noCliEvidence("prompt-context", 2, run2);
+  const line = promptContextLine(cli.nonce);
+  const ends = hookEnds(run2.events, "userPromptSubmitted");
+  const accepted = ends.some((e) => isRecord6(e.data?.output) && str2(e.data.output.additionalContext).includes(line));
+  const text4 = assistantText2(run2.events);
+  const echoed = text4.includes(cli.nonce);
+  return [
+    {
+      id: "scn.prompt-context.accepted",
+      ok: accepted,
+      detail: accepted ? "userPromptSubmitted hook.end output carried the stub additionalContext" : "stub additionalContext missing from every userPromptSubmitted hook.end output",
+      ...accepted ? {} : { evidence: excerpt(JSON.stringify(ends.map((e) => e.data?.output))) }
+    },
+    {
+      id: "scn.prompt-context.reached_model",
+      ok: echoed,
+      // docs-audit #4: the current docs say config-file userPromptSubmitted output is dropped.
+      detail: echoed ? "the model echoed the additionalContext nonce" : "the model did not echo the nonce: UserPromptSubmit additionalContext did not reach it (keyword and skill injection are lost on this CLI; consider userPromptTransformed)",
+      ...echoed ? {} : { evidence: excerpt(text4) }
+    }
+  ];
+}
+function evaluateEvents(run2) {
+  const compacted = run2.events.some((e) => e.type === "session.compaction_start");
+  const pre = hookCheck("scn.events.pre_compact", run2.events, ["preCompact"]);
+  return [
+    hookCheck("scn.events.post_tool_use_failure", run2.events, ["postToolUseFailure"]),
+    hookCheck("scn.events.permission_request", run2.events, ["permissionRequest"]),
+    {
+      ...pre,
+      ok: pre.ok && compacted,
+      detail: `${pre.detail}; session.compaction_start ${compacted ? "seen" : "missing"} after ${COMPACT_PROMPT}`
+    }
+  ];
+}
+function evaluateUltragoal(run2) {
+  const cli = run2.cli;
+  if (!cli) return noCliEvidence("ultragoal", 2, run2);
+  const seed = cli.seed;
+  const done = run2.events.filter((e) => e.type === "tool.execution_complete");
+  const denied = done.filter((e) => ULTRAGOAL_DENY.test(JSON.stringify(e.data?.error ?? "")));
+  const succeeded = done.filter((e) => e.data?.success === true);
+  const allowed = denied.length === 0 && succeeded.length > 0;
+  return [
+    {
+      id: "scn.ultragoal.seeded",
+      ok: !!seed?.ok,
+      detail: seed ? seed.detail : "no seed ran",
+      ...seed?.ok || !seed?.state ? {} : { evidence: excerpt(JSON.stringify(seed.state)) }
+    },
+    {
+      id: "scn.ultragoal.tools_allowed",
+      ok: allowed,
+      detail: allowed ? `${succeeded.length} tool call(s) ran, none denied by the ultragoal gate` : denied.length ? `${denied.length} of ${done.length} tool call(s) denied by the ultragoal gate` : "no tool call completed",
+      ...denied.length ? { evidence: excerpt(str2(isRecord6(denied[0].data?.error) ? denied[0].data.error.message : "")) } : {}
+    }
+  ];
+}
+function evaluateTeam(run2) {
+  const team = run2.team;
+  if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run2.error ? `no team evidence: ${excerpt(run2.error, 200)}` : "no team evidence collected" }));
+  const status = team.status;
+  const transport = str2(status?.transport);
+  const sdkWorkers2 = Array.isArray(status?.workers?.sdk) ? status.workers.sdk : [];
+  const statusTasks = status?.tasks ?? {};
+  const startedOk = team.start.code === 0 && team.start.ok === true && transport === "sdk";
+  const owners = team.tasks.map((t) => t.owner).filter((o) => !!o).sort();
+  const completedOk = team.tasks.length === 2 && team.tasks.every((t) => t.status === "completed") && JSON.stringify(owners) === JSON.stringify(TEAM_WORKERS);
+  const expected = team.tasks.map((t) => ({ owner: t.owner, file: TEAM_FILES.find((f) => t.subject.includes(f)) }));
+  const commitFor = (worker) => team.commits.find((c) => c.worker === worker);
+  const committedOk = expected.length === 2 && expected.every(({ owner, file }) => !!file && !!commitFor(owner)?.files.includes(file));
+  const statusOk = status?.ok === true && transport === "sdk" && sdkWorkers2.length === 2 && sdkWorkers2.every((w) => num2(w.host_pid) > 0 && typeof w.session_id === "string" && w.session_id !== "" && w.provider === "alive") && num2(statusTasks.total) === 2 && num2(statusTasks.completed) === 2;
+  const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
+  const withWork = team.commits.filter((c) => c.subjects.length > 0);
+  const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === "merged" || c.survived === "preserved");
+  const durationOk = team.durationMs <= team.budgetMs;
+  const creditsOk = team.cost.credits > 0 && team.cost.credits <= TEAM_MAX_CREDITS;
+  const launch = team.start.launchMs === null ? "" : `, sdk hosts launched in ${team.start.launchMs} ms`;
+  return [
+    {
+      id: "scn.team.started",
+      ok: startedOk,
+      detail: startedOk ? `omg team started ${team.teamName} on the sdk transport (default, no --transport) in ${team.start.ms} ms${launch}` : `start exit ${String(team.start.code)}, ok ${String(team.start.ok)}, transport ${transport || "unknown"}`,
+      ...startedOk ? {} : { evidence: excerpt(team.start.stderr) }
+    },
+    {
+      id: "scn.team.completed",
+      ok: completedOk,
+      detail: completedOk ? "both tasks completed through omg team api, one per worker" : `tasks: ${team.tasks.map((t) => `${t.id}:${t.status}@${t.owner ?? "none"}`).join(", ") || "none listed"}`
+    },
+    {
+      id: "scn.team.committed",
+      ok: committedOk,
+      detail: committedOk ? expected.map(({ owner, file }) => `${owner} committed ${file} ("${commitFor(owner).subjects[0] ?? ""}")`).join("; ") : team.commits.map((c) => `${c.worker}: ${c.files.join(",") || "no new files"} in ${c.worktree ?? "no worktree"}`).join("; ") || "no worktree commits found"
+    },
+    {
+      id: "scn.team.status",
+      ok: statusOk,
+      detail: statusOk ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed` : `status --json: ok ${String(status?.ok)}, transport ${transport || "unknown"}, ${sdkWorkers2.length} sdk worker(s), tasks ${num2(statusTasks.completed)}/${num2(statusTasks.total)}`,
+      ...statusOk || !status ? {} : { evidence: excerpt(JSON.stringify(status)) }
+    },
+    {
+      id: "scn.team.shutdown",
+      ok: shutdownOk,
+      detail: shutdownOk ? `clean shutdown in ${team.shutdown.ms} ms: no host or runtime left, reservation released, team state disposed` : !team.shutdown ? "shutdown never ran" : `shutdown exit ${String(team.shutdown.code)}${team.shutdown.forced ? " (forced after a timeout)" : ""}; orphans ${team.orphans.join(",") || "none"}; reservations left ${team.reservationsLeft.length}; state ${team.stateLeft ? "left" : "disposed"}`,
+      // The end of the output names the preserved workers and the reason; the start is banners.
+      ...shutdownOk || !team.shutdown ? {} : { evidence: excerpt(`${team.shutdown.stdout}
+${team.shutdown.stderr}`.trim().slice(-480)) }
+    },
+    {
+      id: "scn.team.retained",
+      ok: retainedOk,
+      detail: withWork.length === 0 ? "no worker commits to check" : withWork.map((c) => `${c.worker} ${(c.head ?? "no head").slice(0, 8)} ${c.survived ?? "unchecked"}`).join("; ")
+    },
+    {
+      id: "scn.team.duration",
+      ok: durationOk,
+      detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`
+    },
+    {
+      id: "scn.team.credits",
+      ok: creditsOk,
+      detail: `${Number(team.cost.credits.toFixed(3))} AI credits (legacy ${team.cost.premiumRequests} premium request(s)) over ${team.cost.source} (max ${TEAM_MAX_CREDITS} credits)`
+    }
+  ];
+}
+function chainCost(chain) {
+  let premiumRequests = 0;
+  let credits = 0;
+  for (const s of chain.sessions) {
+    const c = scenarioCost(s.events ?? []);
+    premiumRequests += c.premiumRequests;
+    credits += c.credits;
+  }
+  const found = chain.sessions.filter((s) => s.events !== null).length;
+  return { premiumRequests, credits, source: `${found}/${chain.sessions.length} link session(s) events.jsonl` };
+}
+function evaluateChain(run2) {
+  const chain = run2.chain;
+  if (!chain) return scenarioCheckIds("chain").slice(0, 5).map((id) => ({ id, ok: false, detail: "no chain evidence collected" }));
+  const link1 = chain.ledgers.find((l) => l.file === chain.firstLink);
+  const children = chain.ledgers.filter((l) => ledgerStr(l, "parentLink") === chain.firstLink);
+  const link22 = children[0];
+  const link1Host = ledgerStr(link1, "hostSessionId");
+  const link2Id = link22?.file ?? "";
+  const link2Host = ledgerStr(link22, "hostSessionId");
+  const decisionFor = (linkId) => chain.decisions.filter((d) => d.sessionId === linkId && d.decision !== "chain-link-rejected").at(-1);
+  const rejected = chain.decisions.filter((d) => d.decision === "chain-link-rejected");
+  const open9 = chain.ledgers.filter((l) => !ledgerStr(l, "closedAt"));
+  const cost = chainCost(chain);
+  const stopReason = str2(chain.stopped?.reason);
+  const ledgerEvidence = excerpt(JSON.stringify({ ledgers: chain.ledgers, decisions: chain.decisions, stopped: chain.stopped }));
+  const link1Ok = !!link1 && !!link1Host && link1Host !== chain.firstLink && ledgerStr(link1, "decision") === "enqueued";
+  const spawnedOk = children.length === 1 && ledgerStr(link22, "host") === "copilot" && ledgerStr(link22, "stage") === CHAIN_LINK2_STAGE;
+  const inheritedOk = spawnedOk && !!link2Host && link2Host !== link2Id && link2Host !== link1Host && str2(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
+  const closedOk = chain.ledgers.length === 2 && open9.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
+  const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
+  const creditsOk = sessionsFound && cost.credits <= CHAIN_MAX_CREDITS;
+  return [
+    {
+      id: "scn.chain.link1",
+      ok: link1Ok,
+      detail: link1Ok ? `link 1 ${chain.firstLink} closed by host session ${link1Host} via OMC_CHAIN_LINK, decision enqueued` : !link1 ? "link 1 ledger missing" : !link1Host ? "link 1 ledger never closed (its SessionEnd did not resolve OMC_CHAIN_LINK)" : `link 1 closed with decision ${ledgerStr(link1, "decision") || "?"} by ${link1Host}`,
+      ...link1Ok ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.spawned",
+      ok: spawnedOk,
+      detail: spawnedOk ? `link 2 ${link2Id} spawned by link 1's SessionEnd worker (host copilot, stage ${CHAIN_LINK2_STAGE})` : `${children.length} ledger(s) with parentLink ${chain.firstLink}`,
+      ...spawnedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.inherited",
+      ok: inheritedOk,
+      detail: inheritedOk ? `link 2 ended as chain link ${link2Id} (host session ${link2Host}); no rejected OMC_CHAIN_LINK` : `link 2 host session ${link2Host || "none"}${rejected.length ? `; ${rejected.length} chain-link-rejected decision(s)` : ""}`,
+      ...inheritedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.closed",
+      ok: closedOk,
+      detail: closedOk ? `chain closed out: 2 links, 0 open ledgers, stop marker ${stopReason}` : `${chain.ledgers.length} link(s), ${open9.length} open, stop marker ${stopReason || "none"}`,
+      ...closedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.credits",
+      ok: creditsOk,
+      detail: `${Number(cost.credits.toFixed(3))} AI credits (legacy ${cost.premiumRequests} premium request(s)) over ${cost.source} (max ${CHAIN_MAX_CREDITS} credits)`
+    }
+  ];
+}
+function evaluateFactoryRun(run2) {
+  const name = run2.name;
+  const f = run2.factory;
+  if (!f) return scenarioCheckIds(name).slice(0, 11).map((id) => ({ id, ok: false, detail: run2.error ? `no factory evidence: ${excerpt(run2.error, 200)}` : "no factory evidence collected" }));
+  const p = `scn.${name}`;
+  const expected = FACTORY_RUN_EXPECTED_LANES[name];
+  const shape = f.lanes.map((l) => `${l.kind}${l.verdict ? `:${l.verdict}` : ""}@${l.status}`).join(", ") || "none";
+  const lanesOk = f.lanes.length === expected.length && expected.every((e, i) => f.lanes[i].kind === e.kind && f.lanes[i].status === "completed" && (e.verdict === void 0 || f.lanes[i].verdict === e.verdict) && !!f.lanes[i].jobId) && f.laneStarts.length === expected.length;
+  const writes = f.lanes.filter((l) => l.kind !== "review");
+  const implementedOk = writes.length > 0 && writes.every((l) => !!l.endSha && l.endSha !== l.startSha) && !!f.head && f.head === f.remoteHead && f.head === writes.at(-1).endSha;
+  const lastReview = f.lanes.filter((l) => l.kind === "review").at(-1);
+  const reviewedOk = !!lastReview && !!f.head && lastReview.startSha === f.head && lastReview.verdict === "approve";
+  const verdictOk = f.shipVerdict?.verdict === "approve" && f.shipVerdict.sha === f.head;
+  const tamperOk = f.tamperNotes.length === 0 && f.outcome?.gate !== "lane-tampered" && f.outcome?.gate !== "state-tampered";
+  const draftOk = f.gh.prCreates.length === 1 && /\s--draft(\s|$)/.test(f.gh.prCreates[0]);
+  const parkedOk = !!f.outcome && f.outcome.exitCode === 0 && f.outcome.gate === "merge" && /^gh pr merge \d+ /.test(f.outcome.mergeCommand ?? "");
+  const noMergeOk = f.gh.mergeCalls.length === 0 && !!f.baseBefore && f.baseAfter === f.baseBefore;
+  const allowedRefs = [`refs/heads/${FACTORY_RUN_BASE}`, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`];
+  const strayRefs = f.remoteRefs.filter((r) => !allowedRefs.includes(r));
+  const capsOk = f.laneStarts.length > 0 && f.laneStarts.every((s) => s.maxCredits === RUNTIME_MIN_MAX_CREDITS);
+  const measured = f.lanes.length > 0 && f.lanes.every((l) => typeof l.credits === "number");
+  const ceiling = FACTORY_RUN_MAX_CREDITS[name];
+  const creditsOk = capsOk && measured && f.cost.credits > 0 && f.cost.credits <= ceiling;
+  return [
+    { id: `${p}.lanes`, ok: lanesOk, detail: lanesOk ? `lanes ${shape}, each a copilot_run job` : `lanes ${shape} (expected ${expected.map((e) => `${e.kind}${e.verdict ? `:${e.verdict}` : ""}`).join(", ")})` },
+    { id: `${p}.implemented`, ok: implementedOk, detail: implementedOk ? `write lane(s) committed; engine pushed ${f.head.slice(0, 12)} to factory/issue-${FACTORY_RUN_ISSUE}` : `head ${f.head ?? "none"}, remote ${f.remoteHead ?? "none"}, write lanes ${writes.map((l) => `${l.startSha.slice(0, 8)}..${(l.endSha ?? "none").slice(0, 8)}`).join(", ") || "none"}` },
+    { id: `${p}.reviewed_on_head`, ok: reviewedOk, detail: reviewedOk ? `the last review ran at the pushed head and approved` : `last review ${lastReview ? `at ${lastReview.startSha.slice(0, 12)} verdict ${lastReview.verdict ?? "none"}` : "missing"}, head ${f.head ?? "none"}` },
+    { id: `${p}.verdict_recorded`, ok: verdictOk, detail: f.shipVerdict ? `ship verdict ${f.shipVerdict.verdict} by ${f.shipVerdict.reviewer} at ${f.shipVerdict.sha.slice(0, 12)}` : "no ship verdict recorded" },
+    { id: `${p}.tamper`, ok: tamperOk, detail: tamperOk ? "every lane passed the shared git state and state file checks" : `tamper: ${f.tamperNotes.map((n) => excerpt(n, 200)).join(" | ") || f.outcome?.gate}` },
+    { id: `${p}.draft_pr`, ok: draftOk, detail: draftOk ? `one draft PR created through the scripted gh` : `${f.gh.prCreates.length} gh pr create call(s)${f.gh.prCreates[0] ? `: ${excerpt(f.gh.prCreates[0], 200)}` : ""}` },
+    { id: `${p}.parked`, ok: parkedOk, detail: parkedOk ? `awaiting-human: merge; printed ${f.outcome.mergeCommand}` : `outcome ${f.outcome ? `exit ${f.outcome.exitCode}, phase ${f.outcome.phase ?? "none"}, gate ${f.outcome.gate ?? "none"}: ${f.outcome.message}` : "none"}` },
+    { id: `${p}.no_merge`, ok: noMergeOk, detail: noMergeOk ? `no merge call reached gh; ${FACTORY_RUN_BASE} on the remote unchanged` : `merge calls ${f.gh.mergeCalls.length}; ${FACTORY_RUN_BASE} ${f.baseBefore.slice(0, 12)} -> ${f.baseAfter.slice(0, 12)}` },
+    { id: `${p}.no_lane_push`, ok: strayRefs.length === 0, detail: strayRefs.length === 0 ? `the remote holds only ${allowedRefs.join(" and ")}` : `stray remote refs: ${strayRefs.join(", ")}` },
+    { id: `${p}.state_resumable`, ok: f.integrityOk, detail: f.integrityOk ? "factory state passes its integrity seal" : "factory state missing or fails its integrity seal" },
+    {
+      id: `${p}.credits`,
+      ok: creditsOk,
+      detail: `${Number(f.cost.credits.toFixed(3))} AI credits (legacy ${f.cost.premiumRequests} premium request(s)) over ${f.cost.source} (max ${ceiling} credits)` + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${f.laneStarts.map((s) => s.maxCredits).join(", ") || "none"} (expected ${RUNTIME_MIN_MAX_CREDITS})`) + (measured ? "" : "; a lane has no recorded usage")
+    }
+  ];
+}
+function parseSandboxProbe(text4) {
+  for (const line of text4.split(/\r?\n/)) {
+    const at = line.indexOf(SANDBOX_PROBE_MARKER);
+    if (at === -1) continue;
+    try {
+      const v = JSON.parse(line.slice(at + SANDBOX_PROBE_MARKER.length));
+      if (v && Array.isArray(v.writes) && v.net && typeof v.net === "object") return v;
+    } catch {
+    }
+  }
+  return null;
+}
+function evaluateSandboxLane(run2) {
+  const p = "scn.sandbox-lane";
+  const e = run2.sandbox;
+  if (!e) return scenarioCheckIds("sandbox-lane").slice(0, SANDBOX_LANE_CHECKS.length).map((id) => ({ id, ok: false, detail: run2.error ? `no sandbox evidence: ${excerpt(run2.error, 200)}` : "no sandbox evidence collected" }));
+  if (e.hostUnsupported) return [{ id: `${p}.host`, ok: false, detail: `host unsupported (${excerpt(e.hostUnsupported.reason ?? "no reason", 160)}); no lane ran, no credits spent` }];
+  const lane = (role) => e.lanes.find((l) => l.role === role);
+  const review = lane("review");
+  const write = lane("write");
+  const canaryLane = lane("canary");
+  const enforced = (l) => l?.sandbox?.mode === "enforced";
+  const modeOf = (l) => l ? `${l.role} ${l.sandbox?.mode ?? "no sandbox state"}${l.sandbox?.reason && l.sandbox.mode !== "enforced" ? ` (${excerpt(l.sandbox.reason, 160)})` : ""}` : "missing";
+  const target = (list2, kind) => list2.find((t) => t.kind === kind);
+  const fate = (t) => !t ? "not probed" : t.landed ? `LANDED at ${t.path}` : "blocked";
+  const unanswered = (l) => `unanswered: ${modeOf(l)}${l?.error ? `; ${excerpt(l.error, 160)}` : ""}`;
+  const host = e.lanes.find((l) => l.sandbox)?.sandbox?.host;
+  const hostOk = !!host?.supported && e.lanes.length === 3 && e.lanes.every(enforced);
+  const caps = host ? Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? "" : " (no)"}`).join(", ") || "none listed" : "unknown";
+  const reviewLanded = e.reviewTargets.filter((t) => t.landed);
+  const reviewRan = !!review && review.okShellCalls > 0;
+  const reviewOk = !!review && review.state === "completed" && enforced(review) && reviewRan && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
+  const inside = target(e.writeTargets, "worktree");
+  const insideOk = !!write && enforced(write) && !!inside?.landed;
+  const outside = e.writeTargets.filter((t) => t.kind === "main-checkout" || t.kind === "shared");
+  const main3 = target(e.writeTargets, "main-checkout");
+  const mainInformational = !!main3 && isUnder(main3.path, e.tempDir, process.platform);
+  const noProbe = `the write lane's probe never ran (no probe output), so no target was tried; ${modeOf(write)}${write?.error ? `; ${excerpt(write.error, 160)}` : ""}`;
+  const outsideOk = enforced(write) && !!e.probe && outside.length === 2 && outside.every((t) => !t.landed || mainInformational && t === main3);
+  const tempNote = mainInformational ? ` (main-checkout is informational: the scenario repository is under the OS temp dir${main3?.landed ? ", which the default sandbox grant includes" : ""}; the shared target decides)` : "";
+  const outbound = e.probe?.net.outbound;
+  const local = e.probe?.net.local;
+  const networkOk = enforced(write) && !!e.probe && e.localHits === 0 && outbound?.ok === false && local?.ok !== true;
+  const reach = (r) => !r ? "not tried" : r.ok ? `REACHED (HTTP ${r.status ?? "?"})` : `blocked (${excerpt(r.error ?? "error", 80)})`;
+  const enforcedLanes = e.lanes.filter(enforced);
+  const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0 && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+  const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;
+  const realHome = target(e.writeTargets, "real-home");
+  const profile = target(e.writeTargets, "profile");
+  const q1Answered = enforced(write) && !!realHome && !!e.probe;
+  const q1Ok = q1Answered && !realHome.landed;
+  const q1Detail = !q1Answered ? enforced(write) && !e.probe ? `Q1 unanswered: ${noProbe}` : `Q1 ${unanswered(write)}` : `Q1: real profile write ${realHome.landed ? `LANDED (${realHome.path}): the profile grant is read-write and relocation does not move it; add the real home to readonlyPaths` : "blocked"}; relocated profile write ${!profile ? "not probed (the probe printed no home)" : profile.landed ? `landed (${profile.path}): the profile grant follows USERPROFILE/HOME, and the read-only job home entry does not narrow it` : `blocked (${profile.path})`}`;
+  const gitDir = target(e.writeTargets, "git-dir");
+  const q2Answered = enforced(write) && !!gitDir && !!e.probe;
+  const q2Ok = q2Answered && !gitDir.landed;
+  const q2Detail = !q2Answered ? enforced(write) && !e.probe ? `Q2 unanswered: ${noProbe}` : `Q2 ${unanswered(write)}` : gitDir.landed ? `Q2: common git dir write LANDED (${gitDir.path}): the CLI grants it read-write for a linked worktree over the readonlyPaths entry; write lanes are not confined (upstream feature request)` : `Q2: common git dir write blocked (${gitDir.path}): no linked-worktree auto-grant overrides the readonlyPaths entry`;
+  const c = e.canary;
+  const cOutside = c ? target(c.targets, "shared") : void 0;
+  const cInside = c ? target(c.targets, "worktree") : void 0;
+  const cProbeRan = !!c?.result && parseSandboxProbe(c.result.output) !== null;
+  const q5Answered = enforced(canaryLane) && !!c?.called && cProbeRan;
+  const q5Ok = q5Answered && c.sandboxed === true && !!cOutside && !cOutside.landed && !!cInside?.landed;
+  const q5Detail = !c?.called ? `Q5 ${unanswered(canaryLane)}` : !c.result ? `Q5: shell.executeUserRequested failed: ${excerpt(c.error ?? "no result", 200)}` : !cProbeRan ? `Q5 unanswered: probe did not run (exit ${String(c.result.exitCode)}, no ${SANDBOX_PROBE_MARKER.trim()} line; output ${JSON.stringify(excerpt(c.result.output || c.error || "", 200))})` : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? "sandboxed" : c.sandboxed === false ? "NOT sandboxed" : "with no sandboxed attestation"} (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? "landed" : "missing"}; onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : "bypassed"}` + (q5Ok ? ": a free canary through this RPC works" : ": the canary needs a model turn instead");
+  const capsOk = e.lanes.length > 0 && e.lanes.every((l) => l.maxCredits === RUNTIME_MIN_MAX_CREDITS);
+  const measured = e.lanes.length > 0 && e.lanes.every((l) => typeof l.credits === "number");
+  const creditsOk = capsOk && measured && e.cost.credits > 0 && e.cost.credits <= SANDBOX_LANE_MAX_CREDITS;
+  return [
+    { id: `${p}.host`, ok: hostOk, detail: host ? `host ${host.supported ? "supported" : `unsupported (${excerpt(host.reason ?? "no reason", 160)})`}, capabilities ${caps}; ${e.lanes.map(modeOf).join(", ")}` : `no lane recorded a sandbox state; ${e.lanes.map(modeOf).join(", ") || "no lanes"}` },
+    {
+      id: `${p}.review_no_write`,
+      ok: reviewOk,
+      detail: !review ? "no review lane" : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? "LANDED" : "blocked"}`).join(", ") || "no targets"}; worktree changes ${review.changedFiles.join(", ") || "none"}` + (reviewRan ? "" : `; the lane ran no command (none of its ${review.shellCalls} shell call(s) succeeded), so "blocked" is no evidence${review.error ? `: ${excerpt(review.error, 160)}` : ""}`)
+    },
+    { id: `${p}.write_inside`, ok: insideOk, detail: !write ? "no write lane" : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside?.landed ? "created" : "missing"}` },
+    { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: !e.probe ? noProbe : outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join("; ")}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
+    { id: `${p}.network_blocked`, ok: networkOk, detail: !e.probe ? `no probe output from the write lane; ${modeOf(write)}` : `loopback listener ${e.localHits} hit(s), probe local ${reach(local)}; outbound https://github.com ${reach(outbound)}` },
+    {
+      id: `${p}.attested`,
+      ok: attestedOk,
+      detail: e.lanes.map((l) => `${l.role} ${l.shellCalls} shell call(s), ${l.unattestedShellCalls} without sandboxed:true, copilot_run counted ${l.sandbox?.unsandboxedCalls ?? 0}`).join("; ") || "no lanes"
+    },
+    { id: `${p}.engine_commit`, ok: commitOk, detail: !e.commit ? "the engine commit did not run" : e.commit.ok ? `engine committed ${e.commit.sha?.slice(0, 12)} with ${e.commit.files.join(", ") || "no files"}${commitOk ? "" : ` (expected only ${SANDBOX_LANE_FILE})`}` : `engine commit refused: ${excerpt(e.commit.reason ?? "", 200)}` },
+    { id: `${p}.q1_profile`, ok: q1Ok, detail: q1Detail },
+    { id: `${p}.q2_git_dir`, ok: q2Ok, detail: q2Detail },
+    { id: `${p}.q5_canary_rpc`, ok: q5Ok, detail: q5Detail },
+    {
+      id: `${p}.credits`,
+      ok: creditsOk,
+      detail: `${Number(e.cost.credits.toFixed(3))} AI credits (legacy ${e.cost.premiumRequests} premium request(s)) over ${e.cost.source} (max ${SANDBOX_LANE_MAX_CREDITS} credits)` + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${e.lanes.map((l) => l.maxCredits).join(", ") || "none"} (expected ${RUNTIME_MIN_MAX_CREDITS})`) + (measured ? "" : "; a lane has no recorded usage") + `; lanes ran on ${e.lanes.map((l) => `${l.role} ${l.model ?? "unreported"}`).join(", ") || "none"}`
+    }
+  ];
+}
+function probeHooksJson(node, script, log3) {
+  const hooks = {};
+  for (const e of PROBE_ENTRIES) {
+    (hooks[e.event] ??= []).push({
+      type: "command",
+      ..."matcher" in e ? { matcher: e.matcher } : {},
+      exec: node,
+      args: [script, e.label, log3],
+      timeoutSec: 10
+    });
+  }
+  return { version: 1, hooks };
+}
+function fileToolCalls(events) {
+  const done = new Map(events.filter((e) => e.type === "tool.execution_complete").map((e) => [str2(e.data?.toolCallId), e.data?.success === true]));
+  return events.filter((e) => e.type === "tool.execution_start" && [...FILE_READ_TOOLS, ...FILE_WRITE_TOOLS].includes(str2(e.data?.toolName))).map((e) => ({ id: str2(e.data?.toolCallId), name: str2(e.data?.toolName), args: e.data?.arguments, ok: done.get(str2(e.data?.toolCallId)) === true }));
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function inputPaths(input) {
+  if (typeof input === "string") return [...input.matchAll(PATCH_FILE_LINE)].map((m) => m[1]);
+  const o = asObject(input);
+  const p = o ? str2(o.file_path) || str2(o.path) : "";
+  return p ? [p] : [];
+}
+function probeTool(r) {
+  const p = r.payload ?? {};
+  return { name: str2(p.tool_name) || str2(p.toolName), input: p.tool_input ?? p.toolArgs };
+}
+function inputKey(input) {
+  if (typeof input === "string") return `text:${input}`;
+  const o = asObject(input);
+  return o ? JSON.stringify(o, Object.keys(o).sort()) : "";
+}
+function recordsFor(call, records2, label2) {
+  const want = inputKey(call.args);
+  return want ? records2.filter((r) => r.label === label2 && inputKey(probeTool(r).input) === want) : [];
+}
+function toolResultTexts(events, callId) {
+  const out = [];
+  for (const e of events) {
+    if (str2(e.data?.toolCallId) !== callId) continue;
+    if (e.type === "tool.execution_complete") out.push(str2(asObject(e.data?.result)?.content));
+    if (e.type === "model.tool_execution") out.push(str2(asObject(e.data?.toolResult)?.textResultForLlm));
+  }
+  return out.filter(Boolean);
+}
+function evaluateFiletools(run2) {
+  const ft = run2.filetools;
+  const ids2 = scenarioCheckIds("filetools");
+  if (!ft) return ids2.slice(0, 8).map((id) => ({ id, ok: false, detail: run2.error ? `no filetools evidence: ${excerpt(run2.error, 200)}` : "no filetools evidence collected" }));
+  const calls = fileToolCalls(run2.events).filter((c) => c.ok);
+  const reads = calls.filter((c) => FILE_READ_TOOLS.includes(c.name));
+  const writes = calls.filter((c) => FILE_WRITE_TOOLS.includes(c.name));
+  const toolsOk = reads.length > 0 && writes.length > 0 && ft.edited && ft.created;
+  const seen = (claudeLabel, nativeLabel) => {
+    const rows = calls.map((c) => ({ c, claude: recordsFor(c, ft.probe, claudeLabel), native: nativeLabel ? recordsFor(c, ft.probe, nativeLabel) : [] }));
+    const ok2 = calls.length > 0 && rows.every((r) => r.claude.length > 0 && (!nativeLabel || r.native.length > 0));
+    const names = (recs) => [...new Set(recs.map((x) => probeTool(x).name || "?"))].join("/") || "none";
+    const detail = rows.map((r) => `${r.c.name}\u2192${names(r.claude)}${nativeLabel ? ` (native ${names(r.native)})` : ""}`).join(", ") || "no file tool calls";
+    return { ok: ok2, detail, rows };
+  };
+  const pre = seen("PreToolUse", "preToolUse");
+  const post = seen("PostToolUse", "postToolUse");
+  const matcher = seen("PostToolUse:matcher");
+  const claudeNames = new Set(FILE_TOOL_MATCHER.split("|"));
+  const payloadRows = [...pre.rows, ...post.rows];
+  const payloadOk = calls.length > 0 && payloadRows.every((r) => r.claude.every((x) => claudeNames.has(probeTool(x).name) && inputPaths(probeTool(x).input).length > 0) && r.native.every((x) => probeTool(x).name === r.c.name));
+  const shape = (recs) => {
+    if (!recs[0]) return "none";
+    const { name, input } = probeTool(recs[0]);
+    return typeof input === "string" ? `${name} "<patch: ${inputPaths(input).map((p) => p.split(/[\\/]/).slice(-2).join("/")).join(", ")}>"` : `${name} {${Object.keys(asObject(input) ?? {}).join(",")}}`;
+  };
+  const contextCall = (c) => inputPaths(c.args).some((p) => /readme\.md$/i.test(p));
+  const injection = (nonce, from) => {
+    const hookOut = run2.events.some((e) => e.type === "hook.end" && e.data?.hookType === "postToolUse" && JSON.stringify(e.data?.output ?? "").includes(nonce));
+    const carrier = from.find((c) => !contextCall(c) && toolResultTexts(run2.events, c.id).some((t) => t.includes(nonce)));
+    return {
+      ok: hookOut && !!carrier,
+      detail: `nonce ${hookOut ? "in" : "missing from"} a postToolUse hook.end output; ${carrier ? `in the ${carrier.name} tool result sent to the model` : "in no model-facing tool result"}`
+    };
+  };
+  const read = injection(ft.nonce, reads);
+  const write = injection(ft.writeNonce, writes);
+  const echoed = assistantText2(run2.events).includes(ft.nonce);
+  return [
+    {
+      id: "scn.filetools.tools",
+      ok: toolsOk,
+      detail: `${calls.map((c) => c.name).join(", ") || "no file tool calls"} completed; notes.txt ${ft.edited ? "edited" : "unchanged"}, created.txt ${ft.created ? "created" : "missing"}`
+    },
+    hookCheck("scn.filetools.hooks", run2.events, ["preToolUse", "postToolUse"]),
+    { id: "scn.filetools.pre", ok: pre.ok, detail: `PreToolUse probe: ${pre.detail}` },
+    { id: "scn.filetools.post", ok: post.ok, detail: `PostToolUse probe: ${post.detail}` },
+    { id: "scn.filetools.matcher", ok: matcher.ok, detail: `PostToolUse matcher ${FILE_TOOL_MATCHER}: ${matcher.detail}` },
+    {
+      id: "scn.filetools.payload",
+      ok: payloadOk,
+      detail: post.rows.map((r) => `${r.c.name}: tool_name ${shape(r.claude)}`).join("; ") || "no file tool calls",
+      ...payloadOk ? {} : { evidence: excerpt(JSON.stringify(payloadRows.map((r) => ({ call: r.c.name, claude: r.claude.map(probeTool), native: r.native.map(probeTool) })))) }
+    },
+    {
+      id: "scn.filetools.injected",
+      ok: read.ok,
+      detail: `${FILETOOLS_FILES.context} ${read.detail}; model ${echoed ? "echoed it" : "did not echo it"}`,
+      ...read.ok ? {} : { evidence: excerpt(assistantText2(run2.events)) }
+    },
+    {
+      id: "scn.filetools.injected_write",
+      ok: write.ok,
+      detail: `${FILETOOLS_FILES.writeContext} ${write.detail}`
+    }
+  ];
+}
+function scenarioExcludedTools(name, mcpServer) {
+  return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
+}
+function scenarioCheckIds(name) {
+  const own2 = {
+    smoke: ["reply", "hooks", "no_tools"],
+    guardrail: ["denied", "no_push", "hooks"],
+    skill: ["invoked"],
+    delegate: ["selected", "hooks", "completed"],
+    filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
+    chain: ["link1", "spawned", "inherited", "closed", "credits"],
+    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "credits"],
+    "factory-run": FACTORY_RUN_CHECKS,
+    "factory-run-fix": FACTORY_RUN_CHECKS,
+    "sandbox-lane": SANDBOX_LANE_CHECKS,
+    continuation: ["blocked", "reason_injected", "stop_hook_active", "echo"],
+    "prompt-context": ["accepted", "reached_model"],
+    events: ["post_tool_use_failure", "permission_request", "pre_compact"],
+    ultragoal: ["seeded", "tools_allowed"]
+  };
+  return [...own2[name], "exit", "adapter_errors", "cost"].map((s) => `scn.${name}.${s}`);
+}
+function failedTier2Checks(scenarios, detail, from = "all") {
+  const sdkIds = from === "all" ? [...SDK_STATIC_IDS] : SDK_STATIC_IDS.slice(1);
+  return [...sdkIds, ...scenarios.flatMap(scenarioCheckIds)].map((id) => ({ id, ok: false, detail }));
+}
+function skippedScenarioChecks(name, detail) {
+  return scenarioCheckIds(name).map((id) => ({ id, ok: false, detail }));
+}
+function rpcFail(id, what, r) {
+  return { id, ok: false, detail: `${what} failed`, evidence: excerpt(r.error) };
+}
+function arr(value, key) {
+  const inner = value && typeof value === "object" && !Array.isArray(value) ? value[key] : value;
+  return Array.isArray(inner) ? inner.filter((x) => !!x && typeof x === "object") : [];
+}
+function str2(v) {
+  return typeof v === "string" ? v : "";
+}
+function canon(p, platform = process.platform) {
+  const out = (0, import_path107.resolve)(p).split(import_path107.sep).join("/");
+  return platform === "win32" ? out.toLowerCase() : out;
+}
+function evaluateSdkRuntime(status, binVersion, model) {
+  const id = "sdk.runtime";
+  if (!status.ok) return rpcFail(id, "getStatus()", status);
+  const version3 = str2(status.value.version);
+  const protocol = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : NaN;
+  const problems = [];
+  if (binVersion && version3 !== binVersion) problems.push(`runtime ${version3 || "?"} != copilot --version ${binVersion} (not the installed exe?)`);
+  if (!(protocol >= MIN_PROTOCOL_VERSION)) problems.push(`protocolVersion ${String(status.value.protocolVersion)} < ${MIN_PROTOCOL_VERSION}`);
+  return {
+    id,
+    ok: problems.length === 0,
+    detail: problems.length === 0 ? `runtime ${version3}, protocol ${protocol}; model ${model}` : problems.join("; ")
+  };
+}
+function evaluateSdkPlugins(plugins, packageVersion) {
+  const id = "sdk.plugins";
+  if (!plugins.ok) return rpcFail(id, "plugins.list", plugins);
+  const list2 = arr(plugins.value, "plugins");
+  const entry2 = list2.find((p) => p.name === PLUGIN_NAME2);
+  const ok2 = !!entry2 && entry2.version === packageVersion && entry2.enabled !== false;
+  return {
+    id,
+    ok: ok2,
+    detail: entry2 ? `${PLUGIN_NAME2}@${String(entry2.version)} enabled=${String(entry2.enabled)}${ok2 ? "" : ` (expected ${packageVersion}, enabled)`}` : `${PLUGIN_NAME2} not listed (${list2.length} plugin(s))`,
+    ...ok2 ? {} : { evidence: excerpt(JSON.stringify(plugins.value)) }
+  };
+}
+function evaluateSdkSkills(skills, root2, skillDirs, platform = process.platform) {
+  const id = "sdk.skills";
+  if (!skills.ok) return rpcFail(id, "skills.list", skills);
+  const prefix = `${canon((0, import_path107.join)(root2, "skills"), platform)}/`;
+  const pluginSkills = arr(skills.value, "skills").filter((s) => s.source === "plugin" && s.pluginName === PLUGIN_NAME2);
+  const fromSkillsDir = /* @__PURE__ */ new Set();
+  const other = [];
+  for (const s of pluginSkills) {
+    const p = canon(str2(s.path), platform);
+    if (str2(s.path) && p.startsWith(prefix)) fromSkillsDir.add(p.slice(prefix.length).split("/")[0]);
+    else other.push(str2(s.commandName) || str2(s.name));
+  }
+  const fold6 = (d) => platform === "win32" ? d.toLowerCase() : d;
+  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold6(d)));
+  const ok2 = skillDirs.length > 0 && missing.length === 0 && fromSkillsDir.size === skillDirs.length;
+  return {
+    id,
+    ok: ok2,
+    detail: `${fromSkillsDir.size}/${skillDirs.length} skills/*/SKILL.md listed as plugin skills` + (other.length ? `; plus ${other.length} non-skills/ plugin entr${other.length === 1 ? "y" : "ies"} (commands/*.md: ${other.join(", ")})` : ""),
+    ...ok2 ? {} : { evidence: excerpt(missing.length ? `missing: ${missing.join(", ")}` : JSON.stringify(pluginSkills.map((s) => s.path))) }
+  };
+}
+function evaluateSdkAgents(agents, agentFiles) {
+  const id = "sdk.agents";
+  if (!agents.ok) return rpcFail(id, "agent.list", agents);
+  const names = new Set(arr(agents.value, "agents").map((a) => str2(a.name)));
+  const expected = agentFiles.map((f) => `${PLUGIN_NAME2}:${(0, import_path107.basename)(f, ".md")}`);
+  const missing = expected.filter((n) => !names.has(n));
+  const ok2 = expected.length > 0 && missing.length === 0;
+  return {
+    id,
+    ok: ok2,
+    detail: `${expected.length - missing.length}/${expected.length} ${PLUGIN_NAME2}:<agent> listed (${names.size} agents total)`,
+    ...ok2 ? {} : { evidence: excerpt(`missing: ${missing.join(", ")}`) }
+  };
+}
+function evaluateSdkMcp(mcp, tools, server, expected) {
+  const id = "sdk.mcp";
+  if (!mcp.ok) return rpcFail(id, "mcp.list", mcp);
+  const entry2 = arr(mcp.value, "servers").find((s) => s.name === server);
+  if (!entry2 || entry2.status !== "connected") {
+    return { id, ok: false, detail: entry2 ? `server ${server} status ${String(entry2.status)}` : `server ${server} not listed`, evidence: excerpt(JSON.stringify(mcp.value)) };
+  }
+  if (!tools.ok) return rpcFail(id, `mcp.listTools(${server})`, tools);
+  const count3 = arr(tools.value, "tools").length;
+  if (typeof expected === "string") return { id, ok: false, detail: `server ${server} connected with ${count3} tools; registry unavailable: ${expected}` };
+  const ok2 = count3 === expected;
+  return { id, ok: ok2, detail: `server ${server} connected, ${count3} tools, registry allTools ${expected}${ok2 ? "" : " (stale dist? run npm run build)"}` };
+}
+function evaluateSdkToolsExcluded(meta, server) {
+  const id = "sdk.tools_excluded";
+  const excluded = hostSmokeToolName(server);
+  if (!meta.ok) return rpcFail(id, "tools.getCurrentMetadata", meta);
+  const tools = arr(meta.value, "tools");
+  if (tools.length === 0) return { id, ok: false, detail: "session tool list empty or not initialized", evidence: excerpt(JSON.stringify(meta.value)) };
+  const fromServer = tools.filter((t) => t.mcpServerName === server || str2(t.name).startsWith(`${server}-`));
+  const leaked = fromServer.filter((t) => t.name === excluded || t.namespacedName === excluded || t.mcpToolName === "host_smoke");
+  const ok2 = leaked.length === 0 && fromServer.length > 0;
+  return {
+    id,
+    ok: ok2,
+    detail: leaked.length ? `${excluded} still offered to the model` : fromServer.length === 0 ? `no ${server}-* tools in the session's ${tools.length} tools; exclusion of ${excluded} unproven` : `${excluded} absent; ${fromServer.length} other ${server}-* tools offered (${tools.length} total)`,
+    ...ok2 ? {} : { evidence: excerpt(JSON.stringify((leaked.length ? leaked : tools).map((t) => t.name))) }
+  };
+}
+function evaluateSdkSandbox(probe) {
+  const id = "sdk.sandbox";
+  const { host } = probe;
+  const caps = Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? "" : " (no)"}`).join(", ") || "none listed";
+  if (!probe.answered) return { id, ok: false, detail: `host probe failed: ${host.reason ?? "no answer"}` };
+  if (!host.supported && host.launchFailed) {
+    return { id, ok: false, detail: `launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: ${host.reason ?? "no reason"}; copilot_run sessions here run fail-closed; spawn canary not run (not a pass)` };
+  }
+  if (!host.supported) {
+    return { id, ok: true, detail: `unsupported (${host.reason ?? "no reason"}), capabilities ${caps}: copilot_run review sessions run read-only without a shell, write sessions refuse (sandbox-unavailable); canary skipped` };
+  }
+  if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
+  const enf = probe.enforcement;
+  if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
+  const spawn18 = probe.spawn ?? { ok: false, detail: "not run" };
+  return {
+    id,
+    ok: !enf.blocked && spawn18.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn18.detail}`
+  };
+}
+function sliceLogByTime(text4, starts) {
+  const out = starts.map(() => []);
+  let current = -1;
+  for (const line of text4.split(/\r?\n/)) {
+    const stamp = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)/.exec(line);
+    if (stamp) {
+      const t = Date.parse(stamp[1]);
+      current = -1;
+      for (let i = starts.length - 1; i >= 0; i--) if (t >= starts[i]) {
+        current = i;
+        break;
+      }
+    }
+    if (current >= 0 && line) out[current].push(line);
+  }
+  return out.map((lines4) => lines4.join("\n"));
+}
+function runCost(run2) {
+  if (run2.chain) return chainCost(run2.chain);
+  if (run2.team) return run2.team.cost;
+  if (run2.factory) return run2.factory.cost;
+  if (run2.sandbox) return run2.sandbox.cost;
+  return scenarioCost(run2.events);
+}
+function num2(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+function usageCredits(event) {
+  if (event.type !== "assistant.usage") return 0;
+  return num2(event.data?.copilotUsage?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
+}
+function scenarioCost(events) {
+  const shutdown = [...events].reverse().find((e) => e.type === "session.shutdown");
+  if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === "number" || typeof shutdown.data.totalNanoAiu === "number")) {
+    return { premiumRequests: num2(shutdown.data.totalPremiumRequests), credits: num2(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: "session.shutdown" };
+  }
+  const usage = events.filter((e) => e.type === "assistant.usage");
+  const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);
+  const premiumRequests = usage.filter((e) => e.data?.initiator === "user").length;
+  return { premiumRequests, credits, source: `${usage.length} assistant.usage event(s)` };
+}
+function hookCheck(id, events, required2, optional2 = {}) {
+  const runs = collectHookRuns(events);
+  const parts = [];
+  const bad = [];
+  for (const type of [...required2, ...Object.keys(optional2)]) {
+    const mine = runs.filter((r) => r.hookType === type);
+    const ended = mine.filter((r) => r.ended);
+    const failed3 = ended.filter((r) => r.success !== true);
+    if (mine.length === 0 && type in optional2) {
+      parts.push(`${type} ${optional2[type]}`);
+      continue;
+    }
+    if (ended.length === 0 || failed3.length > 0) {
+      bad.push(`${type}: ${mine.length ? failed3.map((r) => r.error ?? `success=${String(r.success)}`).join(", ") || "no hook.end" : "never fired"}`);
+    }
+    parts.push(`${type} ${ended.length - failed3.length}/${mine.length}`);
+  }
+  return {
+    id,
+    ok: bad.length === 0,
+    detail: `hook.end success:true \u2014 ${parts.join(", ")}`,
+    ...bad.length ? { evidence: excerpt(bad.join(" | ")) } : {}
+  };
+}
+function evaluateSmoke(run2) {
+  const text4 = assistantText2(run2.events);
+  const tools = run2.events.filter((e) => e.type === "tool.execution_start");
+  return [
+    {
+      id: "scn.smoke.reply",
+      ok: text4.includes(SMOKE_TOKEN),
+      detail: text4.includes(SMOKE_TOKEN) ? `assistant replied ${SMOKE_TOKEN}` : `${SMOKE_TOKEN} missing from assistant output`,
+      ...text4.includes(SMOKE_TOKEN) ? {} : { evidence: excerpt(text4) }
+    },
+    // sessionStart is lazy (fires after the first userPromptSubmitted); sessionEnd fires per turn.
+    hookCheck("scn.smoke.hooks", run2.events, ["sessionStart", "userPromptSubmitted", "agentStop", "sessionEnd"]),
+    {
+      id: "scn.smoke.no_tools",
+      ok: tools.length === 0,
+      detail: tools.length === 0 ? "no tool.execution_start" : `${tools.length} tool call(s): ${tools.map((e) => str2(e.data?.toolName)).join(", ")}`
+    }
+  ];
+}
+function evaluateGuardrail(run2) {
+  const denyHook = run2.events.find((e) => e.type === "hook.end" && e.data?.hookType === "preToolUse" && JSON.stringify(e.data?.output ?? "").includes(GUARDRAIL_MARKER));
+  const deniedTool = run2.events.find((e) => e.type === "tool.execution_complete" && e.data?.success === false && e.data?.error?.code === "denied");
+  const denied = !!denyHook && !!deniedTool;
+  const toolSummary = run2.events.filter((e) => e.type === "tool.execution_start" || e.type === "tool.execution_complete").map((e) => `${e.type} ${JSON.stringify(e.data?.arguments ?? e.data?.error ?? e.data?.success)}`).join("\n");
+  const refs2 = run2.remoteRefs;
+  const ranTool = run2.events.some((e) => e.type === "tool.execution_complete" && e.data?.success === true);
+  return [
+    {
+      id: "scn.guardrail.denied",
+      ok: denied,
+      detail: denied ? `preToolUse denied: ${excerpt(str2((deniedTool.data?.error).message).split("\n")[0], 120)}` : `${denyHook ? "" : `no preToolUse hook.end containing "${GUARDRAIL_MARKER}"; `}${deniedTool ? "" : "no tool.execution_complete with error.code=denied"}`.replace(/; $/, ""),
+      ...denied ? {} : { evidence: excerpt(toolSummary || assistantText2(run2.events)) }
+    },
+    {
+      id: "scn.guardrail.no_push",
+      ok: refs2 !== null && refs2 !== void 0 && refs2.trim() === "",
+      detail: refs2 === null || refs2 === void 0 ? "could not inspect the bare remote" : refs2.trim() === "" ? "bare remote has no refs" : "bare remote received refs: the push went through",
+      ...refs2 && refs2.trim() ? { evidence: excerpt(refs2) } : {}
+    },
+    ranTool ? hookCheck("scn.guardrail.hooks", run2.events, ["preToolUse", "postToolUse"]) : hookCheck("scn.guardrail.hooks", run2.events, ["preToolUse"], { postToolUse: "n/a (the denied tool never ran)" })
+  ];
+}
+function evaluateSkill(run2) {
+  const invoked = run2.events.filter((e) => e.type === "skill.invoked");
+  const hit2 = invoked.find((e) => /(^|[\\/])skills[\\/]plan[\\/]SKILL\.md$/.test(str2(e.data?.path)) && e.data?.pluginName === PLUGIN_NAME2);
+  return [{
+    id: "scn.skill.invoked",
+    ok: !!hit2,
+    detail: hit2 ? `skill.invoked ${str2(hit2.data?.name)} (${PLUGIN_NAME2}, path \u2026skills/plan/SKILL.md)` : invoked.length ? `skill.invoked without ${PLUGIN_NAME2} skills/plan/SKILL.md` : "no skill.invoked event",
+    ...hit2 ? {} : { evidence: excerpt(invoked.map((e) => JSON.stringify({ name: e.data?.name, path: e.data?.path, pluginName: e.data?.pluginName })).join("\n") || assistantText2(run2.events)) }
+  }];
+}
+function evaluateDelegate(run2) {
+  const named = (type) => run2.events.filter((e) => e.type === type && e.data?.agentName === DELEGATE_AGENT);
+  const selected = named("subagent.selected")[0];
+  const completed = named("subagent.completed").find((e) => e.data?.cancelled !== true);
+  const subagentEvents = run2.events.filter((e) => typeof e.type === "string" && e.type.startsWith("subagent.")).map((e) => `${e.type} ${str2(e.data?.agentName)}`).join("\n");
+  return [
+    {
+      id: "scn.delegate.selected",
+      ok: !!selected,
+      detail: selected ? `subagent.selected ${DELEGATE_AGENT}` : `no subagent.selected for ${DELEGATE_AGENT}`,
+      ...selected ? {} : { evidence: excerpt(subagentEvents || assistantText2(run2.events)) }
+    },
+    hookCheck("scn.delegate.hooks", run2.events, ["subagentStart", "subagentStop"]),
+    {
+      id: "scn.delegate.completed",
+      ok: !!completed,
+      detail: completed ? `subagent.completed ${DELEGATE_AGENT} (${num2(completed.data?.totalToolCalls)} tool call(s), ${num2(completed.data?.durationMs)} ms)` : `no non-cancelled subagent.completed for ${DELEGATE_AGENT}`,
+      ...completed || !subagentEvents ? {} : { evidence: excerpt(subagentEvents) }
+    }
+  ];
+}
+function adapterErrorLines(logText) {
+  return logText.split(/\r?\n/).filter((l) => (l.includes("[hook stderr]") || /^\s*Stderr:\s/.test(l)) && (l.includes("[omg-hook]") || l.includes("[run.cjs]"))).filter((l) => !BENIGN_ADAPTER_NOTES.some((re) => re.test(l))).map((l) => l.trim());
+}
+function hookScriptNames(lines4) {
+  const names = /* @__PURE__ */ new Set();
+  for (const line of lines4) for (const m of line.matchAll(/([\w.-]+\.(?:mjs|cjs|js))\b/g)) if (m[1] !== "run.cjs") names.add(m[1]);
+  return [...names];
+}
+function evaluateCommon(run2, cost) {
+  const p = `scn.${run2.name}`;
+  const idleEvent = [...run2.events].reverse().find((e) => e.type === "session.idle");
+  const aborted2 = idleEvent?.data?.aborted === true || run2.events.some((e) => e.type === "abort");
+  const exitOk = run2.idle && !run2.timedOut && !aborted2 && !run2.error && !run2.capped;
+  const lines4 = run2.logText === null ? [] : adapterErrorLines(run2.logText);
+  const scripts = hookScriptNames(lines4);
+  const budget = run2.budget ?? run2.maxCredits;
+  const overBudget = !!run2.capped || cost.credits > budget;
+  return [
+    {
+      id: `${p}.exit`,
+      ok: exitOk,
+      detail: run2.error ? `session failed: ${excerpt(run2.error, 200)}` : run2.capped ? `aborted: credit cap reached (${budget.toFixed(3)} of maxCredits ${run2.maxCredits} left at start)` : run2.timedOut ? `no session.idle within ${run2.timeoutMs} ms (aborted)` : aborted2 ? "session.idle after an abort" : run2.idle ? "session idle, not aborted" : "session never went idle"
+    },
+    {
+      id: `${p}.adapter_errors`,
+      ok: run2.logText !== null && lines4.length === 0,
+      detail: run2.logText === null ? "no debug log under <home>/logs (hook stderr is only logged at debug level)" : lines4.length === 0 ? "no [omg-hook]/[run.cjs] hook stderr lines" : `${lines4.length} hook stderr line(s) from ${scripts.join(", ") || "unknown script"}`,
+      ...lines4.length ? { evidence: excerpt(lines4.join("\n")) } : {}
+    },
+    {
+      id: `${p}.cost`,
+      ok: !overBudget,
+      detail: `${cost.credits.toFixed(3)} AI credits, legacy ${cost.premiumRequests} premium request(s) (${cost.source}); model ${run2.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run2.maxCredits})` : "")
+    }
+  ];
+}
+function accountQuotaError(events) {
+  const e = events.find(isQuotaEvent);
+  if (!e) return null;
+  const d = e.data ?? {};
+  if (e.type === "session.error") return `session.error quota${typeof d.message === "string" ? ` "${excerpt(d.message, 120)}"` : ""}`;
+  let message2 = typeof d.errorMessage === "string" ? d.errorMessage : "";
+  try {
+    message2 = String(JSON.parse(message2).message ?? message2);
+  } catch {
+  }
+  return [String(d.statusCode ?? "?"), typeof d.errorCode === "string" ? d.errorCode : "", message2 && `"${excerpt(message2, 120)}"`].filter(Boolean).join(" ");
+}
+function isQuotaEvent(e) {
+  const d = e.data ?? {};
+  if (e.type === "model.call_failure") return d.statusCode === 402 || typeof d.errorCode === "string" && /quota/i.test(d.errorCode);
+  return e.type === "session.error" && d.errorType === "quota";
+}
+function modelCallBeforeQuota(events) {
+  const first = events.findIndex(isQuotaEvent);
+  return events.slice(0, first < 0 ? events.length : first).some((e) => e.type === "assistant.usage");
+}
+function evaluateScenario(run2) {
+  const own2 = {
+    smoke: evaluateSmoke,
+    guardrail: evaluateGuardrail,
+    skill: evaluateSkill,
+    delegate: evaluateDelegate,
+    filetools: evaluateFiletools,
+    chain: evaluateChain,
+    team: evaluateTeam,
+    "factory-run": evaluateFactoryRun,
+    "factory-run-fix": evaluateFactoryRun,
+    "sandbox-lane": evaluateSandboxLane,
+    continuation: evaluateContinuation,
+    "prompt-context": evaluatePromptContext,
+    events: evaluateEvents,
+    ultragoal: evaluateUltragoal
+  }[run2.name](run2);
+  const cost = runCost(run2);
+  let checks = [...own2, ...evaluateCommon(run2, cost)];
+  const pending = PENDING_SCENARIOS[run2.name];
+  if (pending) checks = checks.map((c) => c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` });
+  const quota = accountQuotaError(run2.events);
+  if (quota) {
+    checks = [
+      {
+        id: `scn.${run2.name}.quota`,
+        ok: false,
+        detail: `account quota exhausted (${quota}), not a product failure; the checks below ${modelCallBeforeQuota(run2.events) ? "may have failed because of the quota" : "failed because no model call ran"}`
+      },
+      ...checks.map((c) => c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })
+    ];
+  }
+  return {
+    checks,
+    cost: { premiumRequests: cost.premiumRequests, credits: cost.credits }
+  };
+}
+function laneModelLabel(pinned, used) {
+  const ran = [...new Set(used.map((m) => m ?? "unreported"))];
+  return `copilot_run lanes ${pinned ? `pinned to ${pinned}` : "on runtime auto (no cheap model listed)"}; ran on ${ran.join(", ") || "no lane yet"}`;
+}
+function chooseModel(listed2, requested) {
+  const ids2 = [...new Set(listed2)];
+  if (requested) return { model: requested, label: requested, note: ids2.includes(requested) ? "requested, listed" : `requested, not in models.list (${ids2.join(", ") || "none"})` };
+  const cheap = ids2.find((id) => id !== "auto" && CHEAP_MODEL.test(id));
+  if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids2.length} listed` };
+  return { label: "auto", note: `models.list offers ${ids2.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
+}
+var import_fs88, import_path107, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_REPO_URL, FACTORY_RUN_ISSUE, FACTORY_RUN_PR, FACTORY_RUN_BASE, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord6, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_CREDITS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_CREDITS, ledgerStr, FACTORY_RUN_MAX_CREDITS, FACTORY_RUN_CHECKS, FACTORY_RUN_EXPECTED_LANES, SANDBOX_LANE_FILE, SANDBOX_REVIEW_FILE, SANDBOX_CANARY_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_PROBE_MARKER, SANDBOX_LANE_MAX_CREDITS, SANDBOX_LANE_CHECKS, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, GUARDRAIL_MARKER, CHEAP_MODEL;
+var init_copilot_sdk_scenarios = __esm({
+  "src/smoke/copilot-sdk-scenarios.ts"() {
+    "use strict";
+    import_fs88 = require("fs");
+    import_path107 = require("path");
+    init_ledger();
+    init_copilot_session_eval();
+    FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
+    SANDBOX_LANE_SCENARIO = "sandbox-lane";
+    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
+    ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
+    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
+    PENDING_SCENARIOS = {
+      ultragoal: "PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands"
+    };
+    KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
+    DEFAULT_SCENARIOS = ["smoke", "guardrail"];
+    PLUGIN_NAME2 = "oh-my-copilot";
+    DELEGATE_AGENT = "oh-my-copilot:architect";
+    MIN_PROTOCOL_VERSION = 3;
+    SDK_PACKAGE = "@github/copilot-sdk";
+    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
+    NO_WRITE_TOOLS = ["create", "edit"];
+    denyAll = () => false;
+    GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+    FILETOOLS_DIR = "filetools";
+    FILETOOLS_FILES = {
+      notes: `${FILETOOLS_DIR}/notes.txt`,
+      created: `${FILETOOLS_DIR}/new/created.txt`,
+      /**
+       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+       * README once per session, so the read (view of notes.txt) and the write
+       * (creating created.txt) each get their own.
+       */
+      context: `${FILETOOLS_DIR}/README.md`,
+      writeContext: `${FILETOOLS_DIR}/new/README.md`
+    };
+    FILETOOLS_MARKER = "Context marker:";
+    FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
+    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+    EVENTS_SHELL_TOKEN = "omg-events-probe";
+    FACTORY_RUN_REPO_URL = "https://github.com/omg-smoke/factory-run";
+    FACTORY_RUN_ISSUE = 1;
+    FACTORY_RUN_PR = 2;
+    FACTORY_RUN_BASE = "dev";
+    FACTORY_RUN_FILE = "greet.txt";
+    FACTORY_RUN_ISSUE_BODY = [
+      `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
+      "",
+      "## Acceptance criteria",
+      "",
+      `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
+      "- One commit, no other file changed. There is no test suite in this repository: do not add one."
+    ].join("\n");
+    SCENARIOS = {
+      smoke: {
+        name: "smoke",
+        prompt: `Reply with exactly: ${SMOKE_TOKEN}. Do not use tools.`,
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: denyAll
+      },
+      guardrail: {
+        name: "guardrail",
+        prompt: "Run the shell command: git push --force origin main \u2014 then report the exact result.",
+        excludedTools: [...NO_WRITE_TOOLS],
+        // Our preToolUse hook denies before any permission prompt. Should it not,
+        // only this exact push is approved, and the remote is a local bare repo
+        // (scn.guardrail.no_push then fails).
+        permit: permitGuardrailPush
+      },
+      skill: {
+        name: "skill",
+        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: permitScopedRead
+        // loading SKILL.md is a read request
+      },
+      delegate: {
+        name: "delegate",
+        prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
+        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+        permit: permitScopedRead
+      },
+      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+      filetools: {
+        name: "filetools",
+        prompt: [
+          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+          `1. View ${FILETOOLS_FILES.notes}.`,
+          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+        ].join("\n"),
+        excludedTools: ["powershell", "shell"],
+        permit: permitProjectFiles
+      },
+      // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
+      // factory link (copilot-chain-scenario.ts) under the AFK profile.
+      chain: {
+        name: "chain",
+        prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: the prompt is the `omg team` task, a
+      // numbered list that decomposes into one task per worker
+      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+      team: {
+        name: "team",
+        prompt: [
+          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
+          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session: the prompt is the scripted issue's body, which the
+      // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
+      "factory-run": {
+        name: "factory-run",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      "factory-run-fix": {
+        name: "factory-run-fix",
+        prompt: FACTORY_RUN_ISSUE_BODY,
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: copilot_run lanes with their own policy
+      // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
+      "sandbox-lane": {
+        name: "sandbox-lane",
+        prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+      continuation: {
+        name: "continuation",
+        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      "prompt-context": {
+        name: "prompt-context",
+        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+        excludedTools: [],
+        permit: denyAll
+      },
+      events: {
+        name: "events",
+        prompt: [
+          "Do these two steps in order, then answer with one short line:",
+          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
+      },
+      ultragoal: {
+        name: "ultragoal",
+        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
+        excludedTools: [],
+        permit: denyAll
+      }
+    };
+    COMPACT_PROMPT = "/compact";
+    ULTRAGOAL_ACTIVATION_PROMPT = "use ultragoal to write a hello.txt file containing hi";
+    ULTRAGOAL_CONFIRM_TTL_MS = 12e4;
+    isRecord6 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
+    TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
+    TEAM_WORKERS = ["worker-1", "worker-2"];
+    TEAM_MAX_CREDITS = 10;
+    TEAM_BUDGET_MS = 3e5;
+    CHAIN_INTENT_ID = "omg-smoke-chain";
+    CHAIN_SKILL = "chain-ack";
+    CHAIN_LINK1_STAGE = "link-1";
+    CHAIN_LINK2_STAGE = "link-2";
+    CHAIN_MAX_CREDITS = 6;
+    ledgerStr = (ledger, key) => str2(ledger?.[key]);
+    FACTORY_RUN_MAX_CREDITS = { "factory-run": 6, "factory-run-fix": 12 };
+    FACTORY_RUN_CHECKS = ["lanes", "implemented", "reviewed_on_head", "verdict_recorded", "tamper", "draft_pr", "parked", "no_merge", "no_lane_push", "state_resumable", "credits"];
+    FACTORY_RUN_EXPECTED_LANES = {
+      "factory-run": [{ kind: "implement" }, { kind: "review", verdict: "approve" }],
+      "factory-run-fix": [{ kind: "implement" }, { kind: "review", verdict: "changes-requested" }, { kind: "fix" }, { kind: "review", verdict: "approve" }]
+    };
+    SANDBOX_LANE_FILE = "sandbox-lane-ok.txt";
+    SANDBOX_REVIEW_FILE = "review-canary.txt";
+    SANDBOX_CANARY_FILE = "canary-inside.txt";
+    SANDBOX_PROBE_SCRIPT = "sandbox-probe.mjs";
+    SANDBOX_PROBE_MARKER = "OMG_SANDBOX_PROBE ";
+    SANDBOX_LANE_MAX_CREDITS = 9;
+    SANDBOX_LANE_CHECKS = ["host", "review_no_write", "write_inside", "write_outside_blocked", "network_blocked", "attested", "engine_commit", "q1_profile", "q2_git_dir", "q5_canary_rpc", "credits"];
+    PROBE_ENTRIES = [
+      { event: "PreToolUse", label: "PreToolUse" },
+      { event: "PostToolUse", label: "PostToolUse" },
+      { event: "PostToolUse", label: "PostToolUse:matcher", matcher: FILE_TOOL_MATCHER },
+      { event: "preToolUse", label: "preToolUse" },
+      { event: "postToolUse", label: "postToolUse" }
+    ];
+    FILE_READ_TOOLS = ["view"];
+    FILE_WRITE_TOOLS = ["create", "edit", "str_replace_editor", "apply_patch"];
+    PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
+    SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded", "sdk.sandbox"];
+    RUNTIME_MIN_MAX_CREDITS = 30;
+    CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
+    GUARDRAIL_MARKER = "Git guardrail";
+    CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
+  }
+});
+
+// src/smoke/copilot-session-env.ts
+function isCredentialEnvKey(key) {
+  const upper = key.toUpperCase();
+  return CREDENTIAL_ENV.includes(upper) || SECRET_NAME2.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_");
+}
+function isStrippedEnvKey(key) {
+  const upper = process.platform === "win32" ? key.toUpperCase() : key;
+  return STRIPPED_ENV_EXACT.includes(upper) || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
+}
+function resolveDefaultPluginRoot(env2 = process.env) {
+  const fromEnv = env2[OMC_PLUGIN_ROOT_ENV]?.trim();
+  if (fromEnv) return (0, import_path108.resolve)(fromEnv);
+  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
+}
+function resolvePackageRoot() {
+  return findPluginRoot(moduleDirs());
+}
+function moduleDirs() {
+  const starts = [];
+  if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
+  try {
+    starts.push((0, import_path108.dirname)((0, import_url15.fileURLToPath)(importMetaUrl)));
+  } catch {
+  }
+  return starts;
+}
+function findPluginRoot(starts) {
+  for (const start of starts) {
+    let dir = (0, import_path108.resolve)(start);
+    for (let i = 0; i < 8; i++) {
+      if (isPluginRoot(dir)) return dir;
+      const parent = (0, import_path108.dirname)(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+function isPluginRoot(dir) {
+  try {
+    const manifest = JSON.parse((0, import_fs89.readFileSync)((0, import_path108.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME2 && (0, import_fs89.existsSync)((0, import_path108.join)(dir, "package.json"));
+  } catch {
+    return false;
+  }
+}
+function buildSessionEnv(base, home, opts = {}) {
+  const env2 = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (isStrippedEnvKey(key)) continue;
+    if (opts.hasLogin && LOGIN_SHADOWING_TOKENS.includes(key.toUpperCase())) continue;
+    env2[key] = value;
+  }
+  env2.COPILOT_HOME = home;
+  Object.assign(env2, SMOKE_SET_ENV);
+  if (opts.session) Object.assign(env2, SESSION_SET_ENV);
+  return env2;
+}
+function loginIdentity(userConfigDir) {
+  try {
+    const parsed2 = parseJsonc((0, import_fs89.readFileSync)((0, import_path108.join)(userConfigDir, "config.json"), "utf-8"));
+    if (!parsed2 || typeof parsed2 !== "object") return {};
+    const out = {};
+    for (const key of ["loggedInUsers", "lastLoggedInUser"]) if (parsed2[key] !== void 0) out[key] = parsed2[key];
+    return out;
+  } catch {
+    return {};
+  }
+}
+var import_fs89, import_path108, import_url15, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME2;
+var init_copilot_session_env = __esm({
+  "src/smoke/copilot-session-env.ts"() {
+    "use strict";
+    import_fs89 = require("fs");
+    import_path108 = require("path");
+    import_url15 = require("url");
+    init_names2();
+    init_env_vars();
+    init_jsonc();
+    init_copilot_sdk_scenarios();
+    STRIPPED_ENV_EXACT = [
+      "DISABLE_OMC",
+      "CLAUDECODE",
+      "CLAUDE_SESSION_ID",
+      "CLAUDE_PLUGIN_ROOT",
+      "NODE_OPTIONS",
+      "COPILOT_HOME",
+      "COPILOT_OFFLINE",
+      "COPILOT_MODEL",
+      COPILOT_RUN_ALLOW_ENV
+    ];
+    STRIPPED_ENV_PREFIXES = ["OMC_", "CLAUDE_CODE_", "COPILOT_PROVIDER_"];
+    LOGIN_SHADOWING_TOKENS = ["GH_TOKEN", "GITHUB_TOKEN"];
+    SMOKE_SET_ENV = {
+      COPILOT_ALLOW_ALL: "false",
+      COPILOT_AUTO_UPDATE: "false",
+      NO_COLOR: "1"
+    };
+    SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: "1" };
+    CREDENTIAL_ENV = [
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GITHUB_ENTERPRISE_TOKEN",
+      "SSH_AUTH_SOCK",
+      "SSH_AGENT_PID",
+      "GIT_ASKPASS",
+      "SSH_ASKPASS",
+      "GIT_SSH",
+      "GIT_SSH_COMMAND",
+      "NPM_TOKEN",
+      "NODE_AUTH_TOKEN",
+      "ACTIONS_RUNTIME_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_URL",
+      // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
+      "AZURE_DEVOPS_EXT_PAT",
+      "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY",
+      "AZURE_DEVOPS_EXT_GITHUB_PAT",
+      "SYSTEM_ACCESSTOKEN",
+      // azure-identity / az: service principal, certificate, workload identity and managed identity.
+      "AZURE_CLIENT_SECRET",
+      "AZURE_CLIENT_CERTIFICATE_PATH",
+      "AZURE_CLIENT_CERTIFICATE_PASSWORD",
+      "AZURE_PASSWORD",
+      "AZURE_FEDERATED_TOKEN_FILE",
+      "IDENTITY_ENDPOINT",
+      "IDENTITY_HEADER",
+      "MSI_ENDPOINT",
+      "MSI_SECRET",
+      // az storage account keys and SAS.
+      "AZURE_STORAGE_KEY",
+      "AZURE_STORAGE_CONNECTION_STRING",
+      "AZURE_STORAGE_SAS_TOKEN",
+      // Terraform azurerm (ARM_*).
+      "ARM_CLIENT_SECRET",
+      "ARM_CLIENT_CERTIFICATE_PATH",
+      "ARM_CLIENT_CERTIFICATE_PASSWORD",
+      "ARM_OIDC_TOKEN",
+      "ARM_OIDC_TOKEN_FILE_PATH",
+      "ARM_OIDC_REQUEST_TOKEN",
+      "ARM_ACCESS_KEY",
+      "ARM_SAS_TOKEN"
+    ];
+    SECRET_NAME2 = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG|(?:^|_)(?:POSTGRES(?:QL)?|PG|MYSQL|AMQP|RABBITMQ|BROKER)_URL|INDEX_URL$|^BUNDLE_.*__/i;
+  }
+});
+
 // src/team/worker-launch-ack.ts
 function buildWindowsSupervisorSource() {
   return [
@@ -82235,7 +83818,30 @@ function parseEnvPassthrough(value) {
   if (!value || value.trim().length === 0) return [];
   return value.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
 }
-function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough) {
+function isEnabledFlag(value) {
+  return typeof value === "string" && value.length > 0 && value !== "0" && value.toLowerCase() !== "false";
+}
+function isProviderPassthroughCredential(key, provider, sourceEnv, platform, providerEnv) {
+  const name = platform === "win32" ? key.toUpperCase() : key;
+  if (PROVIDER_PASSTHROUGH_CREDENTIALS[provider]?.includes(name)) return true;
+  if (provider !== "claude") return false;
+  return name.startsWith("AWS_") && isEnabledFlag(providerEnv.CLAUDE_CODE_USE_BEDROCK ?? sourceEnv.CLAUDE_CODE_USE_BEDROCK) || name.startsWith("GOOGLE_") && isEnabledFlag(providerEnv.CLAUDE_CODE_USE_VERTEX ?? sourceEnv.CLAUDE_CODE_USE_VERTEX);
+}
+function passthroughKeyDisposition(key, provider, sourceEnv, platform, providerEnv = {}) {
+  if (!isCredentialEnvKey(key)) return "forward";
+  if (provider && isProviderPassthroughCredential(key, provider, sourceEnv, platform, providerEnv)) return "forward";
+  const anyProvider = Object.keys(PROVIDER_PASSTHROUGH_CREDENTIALS).some((candidate) => isProviderPassthroughCredential(key, candidate, sourceEnv, platform, providerEnv));
+  if (anyProvider) return provider ? "skip" : "forward";
+  throw new Error(
+    `worker_launch_env_passthrough_credential: OMC_TEAM_WORKER_ENV_PASSTHROUGH names credential ${key}${provider ? ` for a ${provider} worker` : ""}; remove it. Only a provider's own login passes through (copilot: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN; claude: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, AWS_* with CLAUDE_CODE_USE_BEDROCK, GOOGLE_* with CLAUDE_CODE_USE_VERTEX).`
+  );
+}
+function assertEnvPassthroughAllowed(provider, sourceEnv = process.env, platform = process.platform, providerEnv = {}) {
+  for (const key of parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH)) {
+    passthroughKeyDisposition(key, provider, sourceEnv, platform, providerEnv);
+  }
+}
+function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough, provider) {
   const normalized = normalizeProviderEnvironment(providerEnv, platform);
   const baseline = {};
   for (const key of SAFE_BASELINE_ENV_KEYS) {
@@ -82261,6 +83867,11 @@ function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform
     if (!isValidEnvironmentKey(key)) throw new Error("worker_launch_env_passthrough_key_invalid");
     if (WORKER_LAUNCH_INTERNAL_ENV_KEYS.has(key)) throw new Error("worker_launch_env_passthrough_key_reserved");
     if (platform === "win32" && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase())) throw new Error("worker_launch_env_passthrough_key_reserved");
+    if (passthroughKeyDisposition(key, provider, sourceEnv, platform, normalized) === "skip") {
+      process.stderr.write(`[omc] OMC_TEAM_WORKER_ENV_PASSTHROUGH: ${key} is another provider's login; not forwarded to this ${provider} worker
+`);
+      continue;
+    }
     const value = sourceEnv[key];
     if (typeof value === "string") baseline[key] = value;
   }
@@ -82587,6 +84198,7 @@ function quotePosixShellArgument(value) {
 async function materializeWorkerLaunchTransport(input) {
   const { attempt } = input;
   if (!attemptTransportPathsAreDeterministic(attempt)) throw new Error("worker_launch_transport_paths_invalid");
+  assertEnvPassthroughAllowed(attempt.provider, process.env, process.platform, input.providerEnv);
   const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
     providerEnv: input.providerEnv,
     releaseAfterSpawn: input.releaseAfterSpawn,
@@ -83251,7 +84863,7 @@ function buildWindowsBatchProviderLine(providerArgv) {
   if (line.length > WINDOWS_PROVIDER_LINE_MAX) throw new Error("worker_launch_provider_argv_too_long");
   return line;
 }
-var import_node_crypto8, import_node_fs12, import_promises17, import_node_path17, import_node_os3, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, DECIMAL_INTEGER_TEXT2, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
+var import_node_crypto8, import_node_fs12, import_promises17, import_node_path17, import_node_os3, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT2, WINDOWS_PROVIDER_LINE_MAX, PROVIDER_LINE_VAR;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
@@ -83266,6 +84878,7 @@ var init_worker_launch_ack = __esm({
     init_atomic_write();
     init_file_lock();
     init_host_load_gate();
+    init_copilot_session_env();
     WORKER_LAUNCH_SCHEMA_VERSION = 1;
     DEFAULT_ACK_TIMEOUT_MS = 8e3;
     DEFAULT_POLL_INTERVAL_MS = 25;
@@ -83309,6 +84922,10 @@ var init_worker_launch_ack = __esm({
       "PUBLIC",
       "ALLUSERSPROFILE"
     ];
+    PROVIDER_PASSTHROUGH_CREDENTIALS = {
+      copilot: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
+      claude: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"]
+    };
     DECIMAL_INTEGER_TEXT2 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
     WINDOWS_PROVIDER_LINE_MAX = 8e3;
     PROVIDER_LINE_VAR = "_OMC_PROVIDER_LINE";
@@ -83334,7 +84951,7 @@ function sha256(value) {
 }
 function parseCanonical(path30) {
   try {
-    const text4 = (0, import_fs87.readFileSync)(path30, "utf8");
+    const text4 = (0, import_fs90.readFileSync)(path30, "utf8");
     const parsed2 = JSON.parse(text4);
     return canonicalize2(parsed2) === text4 ? parsed2 : null;
   } catch {
@@ -83351,19 +84968,19 @@ function finalPath(cwd2, requestId) {
 }
 function phaseDirectory(cwd2, requestId) {
   assertSafeRecoveryRequestId(requestId);
-  return (0, import_path106.join)((0, import_path106.dirname)(reservationPath(cwd2, requestId)), "phases", requestId);
+  return (0, import_path109.join)((0, import_path109.dirname)(reservationPath(cwd2, requestId)), "phases", requestId);
 }
 function publishImmutable(target, value) {
   const bytes = canonicalize2(value);
-  (0, import_fs87.mkdirSync)((0, import_path106.dirname)(target), { recursive: true, mode: 448 });
-  const temp = (0, import_path106.join)((0, import_path106.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.tmp`);
-  (0, import_fs87.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
+  (0, import_fs90.mkdirSync)((0, import_path109.dirname)(target), { recursive: true, mode: 448 });
+  const temp = (0, import_path109.join)((0, import_path109.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.tmp`);
+  (0, import_fs90.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
-    (0, import_fs87.linkSync)(temp, target);
+    (0, import_fs90.linkSync)(temp, target);
   } catch (error2) {
     const existing = parseCanonical(target);
     try {
-      (0, import_fs87.unlinkSync)(temp);
+      (0, import_fs90.unlinkSync)(temp);
     } catch {
     }
     if (existing && canonicalize2(existing) === bytes) return existing;
@@ -83371,18 +84988,18 @@ function publishImmutable(target, value) {
   }
   const published = parseCanonical(target);
   if (!published || canonicalize2(published) !== bytes) throw new Error("immutable_recovery_record_verification_failed");
-  (0, import_fs87.unlinkSync)(temp);
+  (0, import_fs90.unlinkSync)(temp);
   return published;
 }
 function replaceDerivedIndex(target, value) {
   const bytes = canonicalize2(value);
-  (0, import_fs87.mkdirSync)((0, import_path106.dirname)(target), { recursive: true, mode: 448 });
-  const temp = (0, import_path106.join)((0, import_path106.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.repair.tmp`);
-  (0, import_fs87.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
+  (0, import_fs90.mkdirSync)((0, import_path109.dirname)(target), { recursive: true, mode: 448 });
+  const temp = (0, import_path109.join)((0, import_path109.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.repair.tmp`);
+  (0, import_fs90.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
-    (0, import_fs87.renameSync)(temp, target);
+    (0, import_fs90.renameSync)(temp, target);
   } finally {
-    if ((0, import_fs87.existsSync)(temp)) (0, import_fs87.unlinkSync)(temp);
+    if ((0, import_fs90.existsSync)(temp)) (0, import_fs90.unlinkSync)(temp);
   }
   const repaired = parseCanonical(target);
   if (!repaired || canonicalize2(repaired) !== bytes) throw new Error("immutable_recovery_record_verification_failed");
@@ -83481,7 +85098,7 @@ function resolveCanonicalRecoveryRequestId(cwd2, requestId) {
     visited.add(currentRequestId);
     const reservation2 = readRecoveryRequestReservation(cwd2, currentRequestId);
     if (!reservation2) {
-      if (alias || (0, import_fs87.existsSync)(reservationPath(cwd2, currentRequestId))) return null;
+      if (alias || (0, import_fs90.existsSync)(reservationPath(cwd2, currentRequestId))) return null;
       return currentRequestId;
     }
     if (alias && !hasMatchingReservationTuple(alias, reservation2)) return null;
@@ -83503,7 +85120,7 @@ function writeRecoveryPhase(cwd2, phase) {
     throw new Error("invalid_persisted_state");
   }
   const sequence = `${Date.now().toString().padStart(16, "0")}-${process.hrtime.bigint().toString().padStart(20, "0")}-${(0, import_crypto30.randomUUID)()}.json`;
-  return publishImmutable((0, import_path106.join)(phaseDirectory(cwd2, phase.request_id), sequence), { ...phase, schema_version: 1, kind: "phase", updated_at: phase.updated_at || (/* @__PURE__ */ new Date()).toISOString() });
+  return publishImmutable((0, import_path109.join)(phaseDirectory(cwd2, phase.request_id), sequence), { ...phase, schema_version: 1, kind: "phase", updated_at: phase.updated_at || (/* @__PURE__ */ new Date()).toISOString() });
 }
 function writeRecoveryFinal(cwd2, outcome) {
   const reservation2 = readRecoveryRequestReservation(cwd2, outcome.request_id);
@@ -83528,9 +85145,9 @@ function latestPhase(cwd2, requestId) {
   if (!reservation2 || reservation2.kind !== "reservation") return null;
   const directory = phaseDirectory(cwd2, requestId);
   try {
-    const candidates = (0, import_fs87.readdirSync)(directory).filter((file) => file.endsWith(".json")).sort().reverse();
+    const candidates = (0, import_fs90.readdirSync)(directory).filter((file) => file.endsWith(".json")).sort().reverse();
     if (candidates.length === 0) return null;
-    const phase = parseCanonical((0, import_path106.join)(directory, candidates[0]));
+    const phase = parseCanonical((0, import_path109.join)(directory, candidates[0]));
     return isValidRecoveryPhase(phase, reservation2) ? phase : null;
   } catch {
   }
@@ -83560,7 +85177,7 @@ function isValidRecoveryResult(value) {
 }
 function readRecoveryFinalState(cwd2, requestId) {
   const path30 = finalPath(cwd2, requestId);
-  if (!(0, import_fs87.existsSync)(path30)) return { kind: "missing" };
+  if (!(0, import_fs90.existsSync)(path30)) return { kind: "missing" };
   const final = parseCanonical(path30);
   if (!final || final.schema_version !== 1 || final.kind !== "final" || !isMatchingRecoveryFinal(final, { requestId })) {
     return { kind: "invalid" };
@@ -83570,11 +85187,11 @@ function readRecoveryFinalState(cwd2, requestId) {
   const byTeam = absPath(cwd2, TeamPaths.recoveryResultByTeam(reservation2.workspace_hash, final.team_name, final.recovery_id));
   try {
     const expectedBytes = canonicalize2(final);
-    const indexed = (0, import_fs87.existsSync)(byTeam) ? parseCanonical(byTeam) : null;
+    const indexed = (0, import_fs90.existsSync)(byTeam) ? parseCanonical(byTeam) : null;
     if (!indexed || canonicalize2(indexed) !== expectedBytes) {
       const lockPath2 = absPath(cwd2, TeamPaths.recoveryFinalIndexLock(reservation2.workspace_hash, final.team_name, final.recovery_id));
       withProcessIdentityFileLockSync(lockPath2, () => {
-        const current = (0, import_fs87.existsSync)(byTeam) ? parseCanonical(byTeam) : null;
+        const current = (0, import_fs90.existsSync)(byTeam) ? parseCanonical(byTeam) : null;
         if (!current || canonicalize2(current) !== expectedBytes) replaceDerivedIndex(byTeam, final);
       });
     }
@@ -83610,13 +85227,13 @@ function readRecoveryResult(cwd2, requestId) {
   const outcome = readRecoveryOutcome(cwd2, requestId);
   return outcome?.kind === "final" ? outcome.result ?? null : null;
 }
-var import_crypto30, import_fs87, import_path106, RETENTION_MS, MAX_RECOVERY_ALIAS_DEPTH, RECOVERY_ERRORS, RECOVERY_WARNINGS;
+var import_crypto30, import_fs90, import_path109, RETENTION_MS, MAX_RECOVERY_ALIAS_DEPTH, RECOVERY_ERRORS, RECOVERY_WARNINGS;
 var init_recovery_request_store = __esm({
   "src/team/recovery-request-store.ts"() {
     "use strict";
     import_crypto30 = require("crypto");
-    import_fs87 = require("fs");
-    import_path106 = require("path");
+    import_fs90 = require("fs");
+    import_path109 = require("path");
     init_types10();
     init_state_paths();
     init_process_identity_lock();
@@ -84395,7 +86012,7 @@ function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
 }
 function buildDetachedTmuxServerKeepaliveArgs(socketPath) {
-  if (!(0, import_path107.isAbsolute)(socketPath) && !import_path107.win32.isAbsolute(socketPath)) {
+  if (!(0, import_path110.isAbsolute)(socketPath) && !import_path110.win32.isAbsolute(socketPath)) {
     throw new Error("tmux_private_socket_path_not_absolute");
   }
   return [
@@ -84412,7 +86029,7 @@ function buildDetachedTmuxServerKeepaliveArgs(socketPath) {
 function buildPrivateTmuxSocketPath() {
   if (isPsmux()) return buildPsmuxNamespacePath();
   const socketDirectory = process.platform === "darwin" || process.platform === "linux" ? "/tmp" : (0, import_os18.tmpdir)();
-  const socketPath = (0, import_path107.join)(
+  const socketPath = (0, import_path110.join)(
     socketDirectory,
     `o-${process.pid.toString(36)}-${Date.now().toString(36)}-${(0, import_crypto31.randomUUID)().slice(0, 8)}.sock`
   );
@@ -84438,19 +86055,19 @@ function resolveTmuxServerGuardRuntime() {
   } catch {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
-  if (!(0, import_path107.isAbsolute)(runtimePath) && !import_path107.win32.isAbsolute(runtimePath) || !isRegularFile2(runtimePath)) {
+  if (!(0, import_path110.isAbsolute)(runtimePath) && !import_path110.win32.isAbsolute(runtimePath) || !isRegularFile2(runtimePath)) {
     throw new Error("tmux_server_guard_runtime_path_unavailable");
   }
   const nodePath = process.execPath;
-  if (!(0, import_path107.isAbsolute)(nodePath) && !import_path107.win32.isAbsolute(nodePath) || !isRegularFile2(nodePath)) {
+  if (!(0, import_path110.isAbsolute)(nodePath) && !import_path110.win32.isAbsolute(nodePath) || !isRegularFile2(nodePath)) {
     throw new Error("tmux_server_guard_node_path_unavailable");
   }
   return { nodePath, runtimePath };
 }
 function isRegularFile2(path30) {
-  if (!(0, import_fs88.existsSync)(path30)) return false;
+  if (!(0, import_fs91.existsSync)(path30)) return false;
   try {
-    return (0, import_fs88.statSync)(path30).isFile();
+    return (0, import_fs91.statSync)(path30).isFile();
   } catch {
     return false;
   }
@@ -85203,7 +86820,7 @@ function getDefaultShell() {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/bash";
-  const name = (0, import_path107.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = (0, import_path110.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
   }
@@ -85213,7 +86830,7 @@ function pathEntries(envPath) {
   return (envPath ?? "").split(process.platform === "win32" ? ";" : ":").map((entry2) => entry2.trim()).filter(Boolean);
 }
 function pathCandidateNames(candidatePath) {
-  const base = (0, import_path107.basename)(candidatePath.replace(/\\/g, "/"));
+  const base = (0, import_path110.basename)(candidatePath.replace(/\\/g, "/"));
   const bare = base.replace(/\.(exe|cmd|bat)$/i, "");
   if (process.platform === "win32") {
     return Array.from(/* @__PURE__ */ new Set([`${bare}.exe`, `${bare}.cmd`, `${bare}.bat`, bare]));
@@ -85223,15 +86840,15 @@ function pathCandidateNames(candidatePath) {
 function resolveShellFromPath(candidatePath) {
   for (const dir of pathEntries(process.env.PATH)) {
     for (const name of pathCandidateNames(candidatePath)) {
-      const full = (0, import_path107.join)(dir, name);
-      if ((0, import_fs88.existsSync)(full)) return full;
+      const full = (0, import_path110.join)(dir, name);
+      if ((0, import_fs91.existsSync)(full)) return full;
     }
   }
   return null;
 }
 function resolveShellFromCandidates(paths, rcFile) {
   for (const p of paths) {
-    if ((0, import_fs88.existsSync)(p)) return { shell: p, rcFile };
+    if ((0, import_fs91.existsSync)(p)) return { shell: p, rcFile };
     const resolvedFromPath = resolveShellFromPath(p);
     if (resolvedFromPath) return { shell: resolvedFromPath, rcFile };
   }
@@ -85239,9 +86856,9 @@ function resolveShellFromCandidates(paths, rcFile) {
 }
 function resolveSupportedShellAffinity(shellPath2) {
   if (!shellPath2) return null;
-  const name = (0, import_path107.basename)(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = (0, import_path110.basename)(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
-  if (!(0, import_fs88.existsSync)(shellPath2)) return null;
+  if (!(0, import_fs91.existsSync)(shellPath2)) return null;
   const home = process.env.HOME ?? "";
   const rcFile = home ? `${home}/.${name}rc` : null;
   return { shell: shellPath2, rcFile };
@@ -85274,7 +86891,7 @@ function logWorkerSpawnDiagnostic(message2) {
 `);
 }
 function paneCurrentCommandLooksReady(command) {
-  const normalized = (0, import_path107.basename)(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
+  const normalized = (0, import_path110.basename)(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
   return SUPPORTED_POSIX_SHELLS.has(normalized) || ["cmd", "powershell", "pwsh", "nu", "elvish"].includes(normalized);
 }
 async function getPaneCurrentCommandStatus(paneId, tmuxServerIdentity) {
@@ -85416,16 +87033,16 @@ async function verifyWorkerStartCommandSubmitted(paneId, startCmd, opts = {}) {
   return false;
 }
 function writePaneEnvFile(values) {
-  const directory = (0, import_fs88.mkdtempSync)((0, import_path107.join)((0, import_os18.tmpdir)(), "omc-pane-env-"));
-  const file = (0, import_path107.join)(directory, "env");
+  const directory = (0, import_fs91.mkdtempSync)((0, import_path110.join)((0, import_os18.tmpdir)(), "omc-pane-env-"));
+  const file = (0, import_path110.join)(directory, "env");
   const body = Object.entries(values).map(([key, value]) => `export ${key}=${shellQuote(value)}
 `).join("");
-  (0, import_fs88.writeFileSync)(file, body, { mode: 384, flag: "wx" });
+  (0, import_fs91.writeFileSync)(file, body, { mode: 384, flag: "wx" });
   return file;
 }
 function discardPaneEnvFile(envFile) {
   if (!envFile) return;
-  (0, import_fs88.rmSync)((0, import_path107.dirname)(envFile), { recursive: true, force: true });
+  (0, import_fs91.rmSync)((0, import_path110.dirname)(envFile), { recursive: true, force: true });
 }
 function workerPaneShellCommand() {
   if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
@@ -85483,7 +87100,7 @@ function assertSafeCmdValue2(value) {
   if (/[\r\n\0]/.test(value)) throw new Error("Invalid Windows command value: contains CR, LF, or NUL");
 }
 function shellNameFromPath(shellPath2) {
-  const shellName = (0, import_path107.basename)(shellPath2.replace(/\\/g, "/"));
+  const shellName = (0, import_path110.basename)(shellPath2.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -85495,7 +87112,7 @@ function assertSafeEnvKey(key) {
   }
 }
 function isAbsoluteLaunchBinaryPath(value) {
-  return (0, import_path107.isAbsolute)(value) || import_path107.win32.isAbsolute(value);
+  return (0, import_path110.isAbsolute)(value) || import_path110.win32.isAbsolute(value);
 }
 function assertSafeLaunchBinary(launchBinary) {
   if (launchBinary.trim().length === 0) {
@@ -86492,6 +88109,9 @@ async function spawnWorkerInPane(sessionName2, paneId, config2) {
       throw new Error("worker_start_tmux_server_identity_unverified");
     }
   }
+  if (!config2.launchAttempt && (config2.provider === "copilot" || config2.provider === "claude")) {
+    throw new Error(`worker_launch_attempt_missing:${config2.provider}`);
+  }
   if (config2.launchAttempt && config2.launchAttempt.pane_id !== paneId) {
     throw new Error("worker_launch_attempt_pane_mismatch");
   }
@@ -86607,7 +88227,7 @@ async function spawnWorkerInPane(sessionName2, paneId, config2) {
     if (config2.launchAttempt) {
       await revokeWorkerLaunchAttempt(config2.launchAttempt, "launch_failed").catch(() => void 0);
     }
-    if (config2.launchAttempt && (!materializedTransport || (0, import_fs88.existsSync)(materializedTransport.bootstrapDescriptorPath))) {
+    if (config2.launchAttempt && (!materializedTransport || (0, import_fs91.existsSync)(materializedTransport.bootstrapDescriptorPath))) {
       const cleaned = await cleanupWorkerLaunchTransport(config2.launchAttempt, "launch_failed").catch(() => false);
       if (!cleaned) {
         logWorkerSpawnDiagnostic(
@@ -87704,15 +89324,15 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   if (result.outcome === "executed") return true;
   return await observeTmuxServerIdentity(identity) === "dead";
 }
-var import_fs88, import_crypto31, import_child_process26, import_util11, import_path107, import_os18, sleep5, execFileAsync5, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DECIMAL_INTEGER_TEXT3, DANGEROUS_LAUNCH_BINARY_CHARS;
+var import_fs91, import_crypto31, import_child_process26, import_util11, import_path110, import_os18, sleep5, execFileAsync5, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DECIMAL_INTEGER_TEXT3, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
-    import_fs88 = require("fs");
+    import_fs91 = require("fs");
     import_crypto31 = require("crypto");
     import_child_process26 = require("child_process");
     import_util11 = require("util");
-    import_path107 = require("path");
+    import_path110 = require("path");
     import_os18 = require("os");
     init_team_name();
     init_tmux_utils();
@@ -87780,54 +89400,54 @@ var init_tmux_session = __esm({
 
 // src/team/fs-utils.ts
 function atomicWriteJson2(filePath, data, mode = 384) {
-  const dir = (0, import_path108.dirname)(filePath);
-  if (!(0, import_fs89.existsSync)(dir)) (0, import_fs89.mkdirSync)(dir, { recursive: true, mode: 448 });
+  const dir = (0, import_path111.dirname)(filePath);
+  if (!(0, import_fs92.existsSync)(dir)) (0, import_fs92.mkdirSync)(dir, { recursive: true, mode: 448 });
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  (0, import_fs89.writeFileSync)(tmpPath, JSON.stringify(data, null, 2) + "\n", { encoding: "utf-8", mode });
-  (0, import_fs89.renameSync)(tmpPath, filePath);
+  (0, import_fs92.writeFileSync)(tmpPath, JSON.stringify(data, null, 2) + "\n", { encoding: "utf-8", mode });
+  (0, import_fs92.renameSync)(tmpPath, filePath);
 }
 function ensureDirWithMode(dirPath, mode = 448) {
-  if (!(0, import_fs89.existsSync)(dirPath)) (0, import_fs89.mkdirSync)(dirPath, { recursive: true, mode });
+  if (!(0, import_fs92.existsSync)(dirPath)) (0, import_fs92.mkdirSync)(dirPath, { recursive: true, mode });
 }
 function safeRealpath(p) {
   try {
-    return (0, import_fs89.realpathSync)(p);
+    return (0, import_fs92.realpathSync)(p);
   } catch {
     const segments = [];
-    let current = (0, import_path108.resolve)(p);
-    while (!(0, import_fs89.existsSync)(current)) {
-      segments.unshift((0, import_path108.basename)(current));
-      const parent = (0, import_path108.dirname)(current);
+    let current = (0, import_path111.resolve)(p);
+    while (!(0, import_fs92.existsSync)(current)) {
+      segments.unshift((0, import_path111.basename)(current));
+      const parent = (0, import_path111.dirname)(current);
       if (parent === current) break;
       current = parent;
     }
     try {
-      return (0, import_path108.join)((0, import_fs89.realpathSync)(current), ...segments);
+      return (0, import_path111.join)((0, import_fs92.realpathSync)(current), ...segments);
     } catch {
-      return (0, import_path108.resolve)(p);
+      return (0, import_path111.resolve)(p);
     }
   }
 }
 function validateResolvedPath(resolvedPath, expectedBase) {
   const absResolved = safeRealpath(resolvedPath);
   const absBase = safeRealpath(expectedBase);
-  const rel = (0, import_path108.relative)(absBase, absResolved);
-  if (rel.startsWith("..") || (0, import_path108.resolve)(absBase, rel) !== absResolved) {
+  const rel = (0, import_path111.relative)(absBase, absResolved);
+  if (rel.startsWith("..") || (0, import_path111.resolve)(absBase, rel) !== absResolved) {
     throw new Error(`Path traversal detected: "${resolvedPath}" escapes base "${expectedBase}"`);
   }
 }
-var import_fs89, import_path108;
+var import_fs92, import_path111;
 var init_fs_utils = __esm({
   "src/team/fs-utils.ts"() {
     "use strict";
-    import_fs89 = require("fs");
-    import_path108 = require("path");
+    import_fs92 = require("fs");
+    import_path111 = require("path");
   }
 });
 
 // src/team/worker-bootstrap.ts
 function buildInstructionPath(...parts) {
-  return (0, import_path109.join)(...parts).replaceAll("\\", "/");
+  return (0, import_path112.join)(...parts).replaceAll("\\", "/");
 }
 function shellPath(path30) {
   if (path30.startsWith("$OMC_TEAM_STATE_ROOT/")) return `"${path30}"`;
@@ -88098,8 +89718,8 @@ ${bootstrapInstructions}
 ` : ""}`;
 }
 async function composeInitialInbox(teamName, workerName, content2, cwd2, cliOutputContract) {
-  const inboxPath = (0, import_path109.join)(teamStateRoot(cwd2, sanitizeName(teamName)), "workers", sanitizeName(workerName), "inbox.md");
-  await (0, import_promises19.mkdir)((0, import_path109.dirname)(inboxPath), { recursive: true });
+  const inboxPath = (0, import_path112.join)(teamStateRoot(cwd2, sanitizeName(teamName)), "workers", sanitizeName(workerName), "inbox.md");
+  await (0, import_promises19.mkdir)((0, import_path112.dirname)(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content2.includes(cliOutputContract) ? `${content2}
 ${cliOutputContract}` : content2;
   await (0, import_promises19.writeFile)(inboxPath, finalContent, "utf-8");
@@ -88107,9 +89727,9 @@ ${cliOutputContract}` : content2;
 async function appendToInbox(teamName, workerName, message2, cwd2) {
   const safeTeam = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const inboxPath = (0, import_path109.join)(teamStateRoot(cwd2, safeTeam), "workers", safeWorker, "inbox.md");
+  const inboxPath = (0, import_path112.join)(teamStateRoot(cwd2, safeTeam), "workers", safeWorker, "inbox.md");
   validateResolvedPath(inboxPath, teamStateRoot(cwd2, safeTeam));
-  await (0, import_promises19.mkdir)((0, import_path109.dirname)(inboxPath), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path112.dirname)(inboxPath), { recursive: true });
   await (0, import_promises19.appendFile)(inboxPath, `
 
 ---
@@ -88117,27 +89737,27 @@ ${message2}`, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName, cwd2) {
   const root2 = teamStateRoot(cwd2, sanitizeName(teamName));
-  const workerDir = (0, import_path109.join)(root2, "workers", sanitizeName(workerName));
+  const workerDir = (0, import_path112.join)(root2, "workers", sanitizeName(workerName));
   await (0, import_promises19.mkdir)(workerDir, { recursive: true });
-  const mailboxDir = (0, import_path109.join)(root2, "mailbox");
+  const mailboxDir = (0, import_path112.join)(root2, "mailbox");
   await (0, import_promises19.mkdir)(mailboxDir, { recursive: true });
-  const tasksDir = (0, import_path109.join)(root2, "tasks");
+  const tasksDir = (0, import_path112.join)(root2, "tasks");
   await (0, import_promises19.mkdir)(tasksDir, { recursive: true });
 }
 async function writeWorkerOverlay(params) {
   const { teamName, workerName, cwd: cwd2 } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = (0, import_path109.join)(teamStateRoot(cwd2, sanitizeName(teamName)), "workers", sanitizeName(workerName), "AGENTS.md");
-  await (0, import_promises19.mkdir)((0, import_path109.dirname)(overlayPath), { recursive: true });
+  const overlayPath = (0, import_path112.join)(teamStateRoot(cwd2, sanitizeName(teamName)), "workers", sanitizeName(workerName), "AGENTS.md");
+  await (0, import_promises19.mkdir)((0, import_path112.dirname)(overlayPath), { recursive: true });
   await (0, import_promises19.writeFile)(overlayPath, overlay, "utf-8");
   return overlayPath;
 }
-var import_promises19, import_path109, DEFAULT_INSTRUCTION_STATE_ROOT;
+var import_promises19, import_path112, DEFAULT_INSTRUCTION_STATE_ROOT;
 var init_worker_bootstrap = __esm({
   "src/team/worker-bootstrap.ts"() {
     "use strict";
     import_promises19 = require("fs/promises");
-    import_path109 = require("path");
+    import_path112 = require("path");
     init_prompt_helpers();
     init_omc_cli_rendering();
     init_tmux_session();
@@ -88184,14 +89804,14 @@ function resolveDispatchLockTimeoutMs(env2 = process.env) {
 }
 async function withDispatchLock(teamName, cwd2, fn) {
   const root2 = absPath(cwd2, TeamPaths.root(teamName));
-  if (!(0, import_fs90.existsSync)(root2)) throw new Error(`Team ${teamName} not found`);
+  if (!(0, import_fs93.existsSync)(root2)) throw new Error(`Team ${teamName} not found`);
   const lockDir = absPath(cwd2, TeamPaths.dispatchLockDir(teamName));
-  const ownerPath = (0, import_path110.join)(lockDir, "owner");
+  const ownerPath = (0, import_path113.join)(lockDir, "owner");
   const ownerToken = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
   const timeoutMs = resolveDispatchLockTimeoutMs(process.env);
   const deadline = Date.now() + timeoutMs;
   let pollMs = DISPATCH_LOCK_INITIAL_POLL_MS;
-  await (0, import_promises20.mkdir)((0, import_path110.dirname)(lockDir), { recursive: true });
+  await (0, import_promises20.mkdir)((0, import_path113.dirname)(lockDir), { recursive: true });
   while (true) {
     try {
       await (0, import_promises20.mkdir)(lockDir, { recursive: false });
@@ -88238,7 +89858,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
 async function readDispatchRequestsFromFile(teamName, cwd2) {
   const path30 = absPath(cwd2, TeamPaths.dispatchRequests(teamName));
   try {
-    if (!(0, import_fs90.existsSync)(path30)) return [];
+    if (!(0, import_fs93.existsSync)(path30)) return [];
     const raw = await (0, import_promises20.readFile)(path30, "utf8");
     const parsed2 = JSON.parse(raw);
     if (!Array.isArray(parsed2)) return [];
@@ -88249,7 +89869,7 @@ async function readDispatchRequestsFromFile(teamName, cwd2) {
 }
 async function writeDispatchRequestsToFile(teamName, requests, cwd2) {
   const path30 = absPath(cwd2, TeamPaths.dispatchRequests(teamName));
-  const dir = (0, import_path110.dirname)(path30);
+  const dir = (0, import_path113.dirname)(path30);
   ensureDirWithMode(dir);
   atomicWriteJson2(path30, requests);
 }
@@ -88385,7 +90005,7 @@ async function readDispatchRequestStrict(teamName, requestId, cwd2) {
   return read;
 }
 async function patchPendingDispatchReason(teamName, requestId, reason, cwd2) {
-  if (!(0, import_fs90.existsSync)(absPath(cwd2, TeamPaths.root(teamName)))) return { kind: "missing" };
+  if (!(0, import_fs93.existsSync)(absPath(cwd2, TeamPaths.root(teamName)))) return { kind: "missing" };
   try {
     return await withDispatchLock(teamName, cwd2, async () => {
       const { read, store } = await readStrictDispatchRequestWithIndex(teamName, requestId, cwd2);
@@ -88518,14 +90138,14 @@ async function markDispatchRequestDelivered(teamName, requestId, patch = {}, cwd
   if (current.status === "delivered") return current;
   return await transitionDispatchRequest(teamName, requestId, current.status, "delivered", patch, cwd2);
 }
-var import_crypto32, import_fs90, import_promises20, import_path110, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, DISPATCH_LOCK_INITIAL_POLL_MS, DISPATCH_LOCK_MAX_POLL_MS, LOCK_STALE_MS3;
+var import_crypto32, import_fs93, import_promises20, import_path113, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, DISPATCH_LOCK_INITIAL_POLL_MS, DISPATCH_LOCK_MAX_POLL_MS, LOCK_STALE_MS3;
 var init_dispatch_queue = __esm({
   "src/team/dispatch-queue.ts"() {
     "use strict";
     import_crypto32 = require("crypto");
-    import_fs90 = require("fs");
+    import_fs93 = require("fs");
     import_promises20 = require("fs/promises");
-    import_path110 = require("path");
+    import_path113 = require("path");
     init_state_paths();
     init_fs_utils();
     init_contracts();
@@ -91049,13 +92669,13 @@ var init_merge_coordinator = __esm({
 // src/team/leader-inbox.ts
 function leaderInboxPath(teamName, cwd2) {
   const safe2 = sanitizeName(teamName);
-  return (0, import_path111.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md");
+  return (0, import_path114.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md");
 }
 async function ensureLeaderInbox(teamName, cwd2) {
   const inboxPath = leaderInboxPath(teamName, cwd2);
   validateResolvedPath(inboxPath, teamStateRoot(cwd2, sanitizeName(teamName)));
-  await (0, import_promises21.mkdir)((0, import_path111.dirname)(inboxPath), { recursive: true });
-  if (!(0, import_fs91.existsSync)(inboxPath)) {
+  await (0, import_promises21.mkdir)((0, import_path114.dirname)(inboxPath), { recursive: true });
+  if (!(0, import_fs94.existsSync)(inboxPath)) {
     await (0, import_promises21.writeFile)(inboxPath, LEADER_INBOX_HEADER, "utf-8");
   }
   return inboxPath;
@@ -91063,7 +92683,7 @@ async function ensureLeaderInbox(teamName, cwd2) {
 async function appendToLeaderInbox(teamName, message2, cwd2) {
   const inboxPath = leaderInboxPath(teamName, cwd2);
   validateResolvedPath(inboxPath, teamStateRoot(cwd2, sanitizeName(teamName)));
-  await (0, import_promises21.mkdir)((0, import_path111.dirname)(inboxPath), { recursive: true });
+  await (0, import_promises21.mkdir)((0, import_path114.dirname)(inboxPath), { recursive: true });
   await (0, import_promises21.appendFile)(inboxPath, `
 
 ---
@@ -91071,16 +92691,16 @@ ${message2}`, "utf-8");
 }
 function extendLeaderBootstrapPrompt(teamName, cwd2) {
   const safe2 = sanitizeName(teamName);
-  const path30 = cwd2 ? (0, import_path111.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md") : `.omg/state/team/${safe2}/leader/inbox.md`;
+  const path30 = cwd2 ? (0, import_path114.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md") : `.omg/state/team/${safe2}/leader/inbox.md`;
   return `Runtime notifications appear at ${path30} \u2014 check this file periodically and after long-running operations.`;
 }
-var import_promises21, import_fs91, import_path111, LEADER_INBOX_HEADER;
+var import_promises21, import_fs94, import_path114, LEADER_INBOX_HEADER;
 var init_leader_inbox = __esm({
   "src/team/leader-inbox.ts"() {
     "use strict";
     import_promises21 = require("fs/promises");
-    import_fs91 = require("fs");
-    import_path111 = require("path");
+    import_fs94 = require("fs");
+    import_path114 = require("path");
     init_tmux_session();
     init_fs_utils();
     init_state_paths();
@@ -91210,27 +92830,27 @@ async function installPostToolUseHook(worktreePath, workerName) {
   if (isHookPaused(worktreePath)) {
     return;
   }
-  const claudeDir = (0, import_path112.join)(worktreePath, ".copilot");
+  const claudeDir = (0, import_path115.join)(worktreePath, ".copilot");
   await (0, import_promises22.mkdir)(claudeDir, { recursive: true });
-  const settingsPath = (0, import_path112.join)(claudeDir, "settings.json");
+  const settingsPath = (0, import_path115.join)(claudeDir, "settings.json");
   const hookCommand = buildHookCommand2(workerName);
   const merged = await mergeSettingsWithHook(settingsPath, hookCommand);
   await (0, import_promises22.writeFile)(settingsPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
 }
 async function pauseHookViaSentinel(worktreePath) {
-  const sentinelPath = (0, import_path112.join)(worktreePath, SENTINEL_FILENAME);
-  await (0, import_promises22.mkdir)((0, import_path112.dirname)(sentinelPath), { recursive: true });
+  const sentinelPath = (0, import_path115.join)(worktreePath, SENTINEL_FILENAME);
+  await (0, import_promises22.mkdir)((0, import_path115.dirname)(sentinelPath), { recursive: true });
   await (0, import_promises22.writeFile)(sentinelPath, "", "utf-8");
 }
 async function resumeHookViaSentinel(worktreePath) {
-  const sentinelPath = (0, import_path112.join)(worktreePath, SENTINEL_FILENAME);
+  const sentinelPath = (0, import_path115.join)(worktreePath, SENTINEL_FILENAME);
   try {
     await (0, import_promises22.unlink)(sentinelPath);
   } catch {
   }
 }
 function isHookPaused(worktreePath) {
-  return (0, import_fs92.existsSync)((0, import_path112.join)(worktreePath, SENTINEL_FILENAME));
+  return (0, import_fs95.existsSync)((0, import_path115.join)(worktreePath, SENTINEL_FILENAME));
 }
 function startFallbackPoller(worktreePath, workerName, opts) {
   assertSafeWorkerName(workerName);
@@ -91254,7 +92874,7 @@ function startFallbackPoller(worktreePath, workerName, opts) {
       runAutoCommit();
     }, debounceMs);
   };
-  const watcher = (0, import_fs92.watch)(worktreePath, { recursive: true }, (eventType, filename) => {
+  const watcher = (0, import_fs95.watch)(worktreePath, { recursive: true }, (eventType, filename) => {
     if (stopped) return;
     if (filename && (filename.startsWith(".git") || filename.startsWith(".git/"))) return;
     scheduleDebounce();
@@ -91289,7 +92909,7 @@ async function uninstallCommitCadence(ctx, io = { readFile: import_promises22.re
     if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
     return;
   }
-  const settingsPath = (0, import_path112.join)(ctx.worktreePath, ".copilot", "settings.json");
+  const settingsPath = (0, import_path115.join)(ctx.worktreePath, ".copilot", "settings.json");
   let raw;
   try {
     raw = await io.readFile(settingsPath, "utf-8");
@@ -91314,13 +92934,13 @@ async function uninstallCommitCadence(ctx, io = { readFile: import_promises22.re
   await io.writeFile(settingsPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
   if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
 }
-var import_fs92, import_promises22, import_path112, import_child_process27, cadenceOwners, SENTINEL_FILENAME, HOOK_MATCHER, DEFAULT_POLL_DEBOUNCE_MS, WORKER_NAME_RE;
+var import_fs95, import_promises22, import_path115, import_child_process27, cadenceOwners, SENTINEL_FILENAME, HOOK_MATCHER, DEFAULT_POLL_DEBOUNCE_MS, WORKER_NAME_RE;
 var init_worker_commit_cadence = __esm({
   "src/team/worker-commit-cadence.ts"() {
     "use strict";
-    import_fs92 = require("fs");
+    import_fs95 = require("fs");
     import_promises22 = require("fs/promises");
-    import_path112 = require("path");
+    import_path115 = require("path");
     import_child_process27 = require("child_process");
     cadenceOwners = /* @__PURE__ */ new Map();
     SENTINEL_FILENAME = ".hook-paused";
@@ -91482,8 +93102,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync172 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync172(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync171 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync171(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -91928,8 +93548,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync172 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync172(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync171 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync171(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -91994,1588 +93614,6 @@ var init_merge_orchestrator = __esm({
     DEFAULT_POLL_INTERVAL_MS2 = 1e3;
     DEFAULT_DRAIN_TIMEOUT_MS = 1e4;
     UNMERGED_STATUS = /^(?:DD|AU|UD|UA|DU|AA|UU) /;
-  }
-});
-
-// src/copilot-run/names.ts
-var COPILOT_RUN_ALLOW_ENV, COPILOT_RUN_TOOL_NAMES;
-var init_names2 = __esm({
-  "src/copilot-run/names.ts"() {
-    "use strict";
-    COPILOT_RUN_ALLOW_ENV = "OMG_COPILOT_RUN_ALLOW";
-    COPILOT_RUN_TOOL_NAMES = [
-      "copilot_run_start",
-      "copilot_run_status",
-      "copilot_run_wait",
-      "copilot_run_cancel",
-      "copilot_run_cleanup"
-    ];
-  }
-});
-
-// src/smoke/copilot-session-eval.ts
-function excerpt(text4, max = EVIDENCE_MAX) {
-  if (!text4) return "";
-  const flat = text4.replace(/\r/g, "").trim();
-  return flat.length <= max ? flat : `${flat.slice(0, max - 3)}...`;
-}
-function parseJsonl(text4) {
-  const events = [];
-  let bad = 0;
-  let badSample;
-  for (const line of text4.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const parsed2 = JSON.parse(trimmed);
-      if (parsed2 && typeof parsed2 === "object" && !Array.isArray(parsed2)) events.push(parsed2);
-      else {
-        bad++;
-        badSample ??= trimmed;
-      }
-    } catch {
-      bad++;
-      badSample ??= trimmed;
-    }
-  }
-  return { events, bad, badSample };
-}
-function str(value) {
-  return typeof value === "string" ? value : "";
-}
-function assistantText2(events) {
-  return events.filter((e) => typeof e.type === "string" && e.type.startsWith("assistant.message")).map((e) => str(e.data?.content) || str(e.data?.deltaContent) || str(e.data?.text)).join("");
-}
-function evaluateSessionExit(input) {
-  const { events } = parseJsonl(input.stdout);
-  const answer = events.length > 0 ? assistantText2(events) : input.stdout;
-  const source = events.length > 0 ? `${events.length} JSONL events` : "raw stdout";
-  const sawToken = answer.includes(SMOKE_TOKEN);
-  if (input.timedOut) {
-    return { id: "session.exit", ok: false, detail: `timed out after ${input.timeoutMs} ms (process tree killed)`, evidence: excerpt(input.stderr || input.stdout) };
-  }
-  if (input.error) {
-    return { id: "session.exit", ok: false, detail: `spawn failed: ${input.error}` };
-  }
-  const ok2 = input.exitCode === 0 && sawToken;
-  const modelHint = /from --model flag is not available/.test(input.stderr) ? "; the CLI rejected --model, omit it to let the CLI auto-pick" : "";
-  return {
-    id: "session.exit",
-    ok: ok2,
-    detail: ok2 ? `exit 0, assistant replied ${SMOKE_TOKEN} (${source})` : `exit ${input.exitCode}, ${sawToken ? "token present" : `${SMOKE_TOKEN} missing from assistant output`} (${source})${modelHint}`,
-    ...ok2 ? {} : { evidence: excerpt(input.stderr.trim() || answer || input.stdout.slice(-EVIDENCE_MAX)) }
-  };
-}
-function evaluateEventsLog(eventsPath, text4) {
-  if (text4 === null) {
-    return { check: { id: "session.events", ok: false, detail: `missing ${eventsPath}` }, events: [] };
-  }
-  const { events, bad, badSample } = parseJsonl(text4);
-  const ok2 = events.length > 0 && bad === 0;
-  return {
-    check: {
-      id: "session.events",
-      ok: ok2,
-      detail: `${events.length} events parsed, ${bad} unparseable line(s)`,
-      ...ok2 ? {} : { evidence: excerpt(badSample ?? text4) }
-    },
-    events
-  };
-}
-function collectHookRuns(events) {
-  const runs = [];
-  const byKey = /* @__PURE__ */ new Map();
-  const keysOf = (e) => {
-    const d = e.data ?? {};
-    return [str(d.hookInvocationId), str(d.invocationId), str(d.hookId)].filter(Boolean);
-  };
-  for (const e of events) {
-    if (e.type === "hook.start") {
-      const run2 = { hookType: str(e.data?.hookType), ended: false, success: null };
-      runs.push(run2);
-      for (const key of keysOf(e)) byKey.set(key, run2);
-      if (e.id) byKey.set(`id:${e.id}`, run2);
-    } else if (e.type === "hook.end") {
-      const d = e.data ?? {};
-      let run2 = keysOf(e).map((k) => byKey.get(k)).find(Boolean) ?? (e.parentId ? byKey.get(`id:${e.parentId}`) : void 0);
-      const hookType = str(d.hookType) || run2?.hookType || "";
-      if (!run2 || hookType && run2.hookType && run2.hookType !== hookType || run2.ended) {
-        run2 = runs.find((r) => !r.ended && r.hookType === hookType);
-      }
-      if (!run2) {
-        run2 = { hookType, ended: false, success: null };
-        runs.push(run2);
-      }
-      run2.ended = true;
-      run2.success = typeof d.success === "boolean" ? d.success : d.error ? false : null;
-      const err = d.error;
-      if (err) run2.error = typeof err === "string" ? err : JSON.stringify(err);
-    }
-  }
-  return runs;
-}
-function evaluateHooks(events) {
-  const runs = collectHookRuns(events);
-  const toolUsed = events.some((e) => e.type === "tool.execution_start");
-  const checks = [];
-  const check2 = (hookType, optional2) => {
-    const mine = runs.filter((r) => r.hookType === hookType);
-    const id = `hooks.${hookType}`;
-    if (mine.length === 0) {
-      if (optional2 && !toolUsed) return { id, ok: true, detail: "n/a (no tool use)" };
-      return { id, ok: false, detail: `no hook.start/hook.end with hookType ${hookType}` };
-    }
-    const ended = mine.filter((r) => r.ended);
-    const failed3 = ended.filter((r) => r.success !== true);
-    const ok2 = ended.length > 0 && failed3.length === 0;
-    return {
-      id,
-      ok: ok2,
-      detail: `${mine.length} start(s), ${ended.length} end(s), ${failed3.length} without success:true`,
-      ...ok2 ? {} : {
-        evidence: excerpt(failed3.map((r) => r.error ?? `success=${String(r.success)}`).join(" | ") || "hook.end missing")
-      }
-    };
-  };
-  for (const t of REQUIRED_HOOK_TYPES) checks.push(check2(t, false));
-  for (const t of TOOL_HOOK_TYPES) checks.push(check2(t, true));
-  return checks;
-}
-function evaluateAdapterErrors(sources) {
-  const id = "hooks.adapter_errors";
-  const hits = [];
-  const scanned = [];
-  for (const { name, text: text4 } of sources) {
-    if (!text4) continue;
-    scanned.push(name);
-    for (const line of text4.split(/\r?\n/)) {
-      if (!line.includes("[omg-hook]")) continue;
-      if (BENIGN_ADAPTER_NOTES.some((re) => re.test(line))) continue;
-      hits.push(`${name}: ${line.trim()}`);
-    }
-  }
-  if (hits.length === 0) {
-    return { id, ok: true, detail: `no [omg-hook] error lines in ${scanned.join(", ") || "any captured stream"}` };
-  }
-  return { id, ok: false, detail: `${hits.length} [omg-hook] error line(s): a hook failed`, evidence: excerpt(hits.join("\n")) };
-}
-function parsePluginsLoaded(line) {
-  const rest = line.slice(line.indexOf("Plugins loaded:") + "Plugins loaded:".length).trim();
-  try {
-    const parsed2 = JSON.parse(rest);
-    if (Array.isArray(parsed2)) return parsed2.filter((n) => typeof n === "string");
-  } catch {
-  }
-  return [...rest.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-}
-function evaluatePluginsLoaded(logText) {
-  const id = "plugins.loaded";
-  if (logText === null) return { id, ok: false, detail: "no debug log found under <home>/logs" };
-  const loadedLine = logText.split(/\r?\n/).find((l) => l.includes("Plugins loaded:"));
-  const activationLine = logText.split(/\r?\n/).find((l) => /Plugin activation \[agents\]/.test(l));
-  const listed2 = !!loadedLine && parsePluginsLoaded(loadedLine).includes(PLUGIN_NAME);
-  const activated = !!activationLine && /loaded=([1-9]\d*)/.test(activationLine);
-  const ok2 = listed2 && activated;
-  return {
-    id,
-    ok: ok2,
-    detail: ok2 ? `Plugins loaded lists ${PLUGIN_NAME}; agents activation loaded>=1` : `${listed2 ? "" : `"Plugins loaded:" without ${PLUGIN_NAME}; `}${activated ? "" : 'no "Plugin activation [agents]" with loaded>=1'}`.trim(),
-    evidence: excerpt([loadedLine, activationLine].filter(Boolean).join("\n")) || void 0
-  };
-}
-function evaluateMcpLoaded(events, logText, serverNames) {
-  const id = "mcp.server_loaded";
-  const loaded2 = events.filter((e) => e.type === "session.mcp_servers_loaded");
-  const mentionsOurs = (value) => {
-    const json = JSON.stringify(value ?? "");
-    return serverNames.some((n) => json.includes(`"${n}"`));
-  };
-  const ours = loaded2.find((e) => mentionsOurs(e.data));
-  if (ours) {
-    return { id, ok: true, detail: `session.mcp_servers_loaded lists ${serverNames.join(", ")} (events)`, evidence: excerpt(JSON.stringify(ours.data)) };
-  }
-  const statusChange = events.find((e) => e.type === "session.mcp_server_status_changed" && serverNames.includes(str(e.data?.serverName)) && str(e.data?.status) === "connected");
-  if (statusChange) {
-    return { id, ok: true, detail: `session.mcp_server_status_changed ${str(statusChange.data?.serverName)}=connected (events)`, evidence: excerpt(JSON.stringify(statusChange.data)) };
-  }
-  const tagLine = logText?.split(/\r?\n/).find((l) => l.includes(MCP_STDERR_TAG) && serverNames.some((n) => l.includes(`"server_name":"${n}"`) || l.includes(`server_name: ${n}`) || l.includes(`"serverName":"${n}"`))) ?? logText?.split(/\r?\n/).find((l) => l.includes(MCP_STDERR_TAG));
-  if (tagLine) {
-    return { id, ok: true, detail: "debug log shows the plugin MCP server stderr tag", evidence: excerpt(tagLine) };
-  }
-  return {
-    id,
-    ok: false,
-    detail: `no session.mcp_servers_loaded/status event naming ${serverNames.join(", ")} and no "${MCP_STDERR_TAG}" in the debug log`,
-    evidence: excerpt(loaded2.map((e) => JSON.stringify(e.data)).join("\n")) || void 0
-  };
-}
-function walkFiles(root2, limit = 500) {
-  const out = [];
-  const stack = [root2];
-  while (stack.length && out.length < limit) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = (0, import_fs93.readdirSync)(dir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
-      const full = (0, import_path113.join)(dir, name);
-      try {
-        if ((0, import_fs93.statSync)(full).isDirectory()) stack.push(full);
-        else out.push(full);
-      } catch {
-      }
-    }
-  }
-  return out;
-}
-function evaluateStateWritten(projectDir) {
-  const id = "state.written";
-  const omgRoot = (0, import_path113.join)(projectDir, ".omg");
-  if (!(0, import_fs93.existsSync)(omgRoot)) return { id, ok: false, detail: `${omgRoot} was not created by the hooks` };
-  const files = walkFiles(omgRoot).map((f) => (0, import_path113.relative)(projectDir, f).replace(/\\/g, "/"));
-  const marker = files.find((f) => f.endsWith(`/${SESSION_STARTED_MARKER}`) && f.includes("state/sessions/"));
-  if (marker) return { id, ok: true, detail: `SessionStart wrote ${marker}`, evidence: excerpt(files.join("\n")) };
-  return {
-    id,
-    ok: false,
-    detail: files.length ? `.omg/ has ${files.length} file(s) but no state/sessions/*/${SESSION_STARTED_MARKER}` : ".omg/ exists but is empty",
-    evidence: excerpt(files.join("\n")) || void 0
-  };
-}
-function evaluateSubagent(events, agentName) {
-  const id = "subagent.selected";
-  const named = (type) => events.find((e) => e.type === type && str(e.data?.agentName) === agentName);
-  const hit2 = named("subagent.selected") ?? named("subagent.started");
-  if (hit2) return { id, ok: true, detail: `${hit2.type} ${agentName}`, evidence: excerpt(JSON.stringify(hit2.data)) };
-  const any = events.filter((e) => typeof e.type === "string" && e.type.startsWith("subagent."));
-  return {
-    id,
-    ok: false,
-    detail: `no subagent.selected/started for ${agentName}`,
-    evidence: excerpt(any.map((e) => `${e.type} ${JSON.stringify(e.data)}`).join("\n")) || void 0
-  };
-}
-var import_fs93, import_path113, EVIDENCE_MAX, SMOKE_TOKEN, REQUIRED_HOOK_TYPES, TOOL_HOOK_TYPES, BENIGN_ADAPTER_NOTES, PLUGIN_NAME, MCP_STDERR_TAG, SESSION_STARTED_MARKER;
-var init_copilot_session_eval = __esm({
-  "src/smoke/copilot-session-eval.ts"() {
-    "use strict";
-    import_fs93 = require("fs");
-    import_path113 = require("path");
-    EVIDENCE_MAX = 400;
-    SMOKE_TOKEN = "SMOKE_OK";
-    REQUIRED_HOOK_TYPES = ["sessionStart", "userPromptSubmitted", "agentStop", "sessionEnd"];
-    TOOL_HOOK_TYPES = ["preToolUse", "postToolUse"];
-    BENIGN_ADAPTER_NOTES = [/continue:false overrides decision:block/, /dropped hookSpecificOutput\.updatedInput/];
-    PLUGIN_NAME = "oh-my-copilot";
-    MCP_STDERR_TAG = "OMC Tools MCP Server running on stdio";
-    SESSION_STARTED_MARKER = "session-started.json";
-  }
-});
-
-// src/smoke/copilot-sdk-scenarios.ts
-function hostSmokeToolName(mcpServer) {
-  return `${mcpServer}-host_smoke`;
-}
-function samePathKey(p, platform) {
-  let out = (0, import_path114.resolve)(p);
-  try {
-    out = import_fs94.realpathSync.native(out);
-  } catch {
-  }
-  return canon(out, platform);
-}
-function isUnder(p, root2, platform) {
-  const child = samePathKey(p, platform);
-  const parent = samePathKey(root2, platform);
-  return child === parent || child.startsWith(`${parent.replace(/\/$/, "")}/`);
-}
-function requestCwd(req) {
-  for (const key of ["cwd", "workingDirectory", "resolvedWorkingDirectory"]) {
-    if (typeof req[key] === "string" && req[key]) return req[key];
-  }
-  return void 0;
-}
-function permitGuardrailPush(req, ctx) {
-  if (req.kind !== "shell" || !GUARDRAIL_COMMAND.test(String(req.fullCommandText ?? ""))) return false;
-  const cwd2 = requestCwd(req);
-  const platform = ctx.platform ?? process.platform;
-  return cwd2 === void 0 || samePathKey(cwd2, platform) === samePathKey(ctx.projectDir, platform);
-}
-function permitScopedRead(req, ctx) {
-  if (req.kind !== "read") return false;
-  if (typeof req.path !== "string" || !req.path) return true;
-  const platform = ctx.platform ?? process.platform;
-  return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
-}
-function permitProjectFiles(req, ctx) {
-  const platform = ctx.platform ?? process.platform;
-  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
-  return typeof target === "string" && !!target && isUnder((0, import_path114.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
-}
-function continuationReason(nonce) {
-  return `[OMG-SMOKE-CONT ${nonce}] Stop hook continuation. Reply with exactly ${continuationToken(nonce)} and nothing else. Do not call tools.`;
-}
-function continuationToken(nonce) {
-  return `CONTINUED_${nonce}`;
-}
-function promptContextLine(nonce) {
-  return `${PROMPT_CONTEXT_PREFIX} ${nonce}`;
-}
-function hookEnds(events, hookType) {
-  return events.filter((e) => e.type === "hook.end" && e.data?.hookType === hookType);
-}
-function userMessages(events) {
-  return events.filter((e) => e.type === "user.message").map((e) => str2(e.data?.content));
-}
-function noCliEvidence(name, count3, run2) {
-  return scenarioCheckIds(name).slice(0, count3).map((id) => ({ id, ok: false, detail: run2.error ? `no CLI evidence: ${excerpt(run2.error, 200)}` : "no CLI evidence collected" }));
-}
-function evaluateContinuation(run2) {
-  const cli = run2.cli;
-  if (!cli) return noCliEvidence("continuation", 4, run2);
-  const reason = continuationReason(cli.nonce);
-  const token = continuationToken(cli.nonce);
-  const stopStarts = run2.events.filter((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
-  const blockIdx = run2.events.findIndex((e) => e.type === "hook.end" && e.data?.hookType === "agentStop" && isRecord6(e.data?.output) && e.data.output.decision === "block" && str2(e.data.output.reason).includes(cli.nonce));
-  const after = blockIdx === -1 ? [] : run2.events.slice(blockIdx + 1);
-  const injected = userMessages(after).some((m) => m.includes(reason));
-  const nextStop = after.find((e) => e.type === "hook.start" && e.data?.hookType === "agentStop");
-  const nextInput = isRecord6(nextStop?.data?.input) ? nextStop.data.input : {};
-  const activeOk = nextInput.stop_hook_active === true;
-  const text4 = assistantText2(after);
-  const echoed = text4.includes(token);
-  return [
-    {
-      id: "scn.continuation.blocked",
-      ok: blockIdx !== -1,
-      detail: blockIdx !== -1 ? "agentStop hook.end carried the stub decision:block with its reason" : `no agentStop block with the stub reason (${stopStarts.length} agentStop run(s))`,
-      ...blockIdx !== -1 ? {} : { evidence: excerpt(JSON.stringify(hookEnds(run2.events, "agentStop").map((e) => e.data?.output))) }
-    },
-    {
-      id: "scn.continuation.reason_injected",
-      ok: injected,
-      detail: injected ? "the block reason arrived as the next user.message" : "no user.message with the block reason after the block",
-      ...injected ? {} : { evidence: excerpt(userMessages(run2.events).join("\n")) }
-    },
-    {
-      id: "scn.continuation.stop_hook_active",
-      ok: activeOk,
-      detail: !nextStop ? "no agentStop after the continuation" : `next agentStop input stop_hook_active=${JSON.stringify(nextInput.stop_hook_active)}`
-    },
-    {
-      id: "scn.continuation.echo",
-      ok: echoed,
-      detail: echoed ? `the continuation turn replied ${token}` : `${token} missing from the continuation turn`,
-      ...echoed ? {} : { evidence: excerpt(text4 || assistantText2(run2.events)) }
-    }
-  ];
-}
-function evaluatePromptContext(run2) {
-  const cli = run2.cli;
-  if (!cli) return noCliEvidence("prompt-context", 2, run2);
-  const line = promptContextLine(cli.nonce);
-  const ends = hookEnds(run2.events, "userPromptSubmitted");
-  const accepted = ends.some((e) => isRecord6(e.data?.output) && str2(e.data.output.additionalContext).includes(line));
-  const text4 = assistantText2(run2.events);
-  const echoed = text4.includes(cli.nonce);
-  return [
-    {
-      id: "scn.prompt-context.accepted",
-      ok: accepted,
-      detail: accepted ? "userPromptSubmitted hook.end output carried the stub additionalContext" : "stub additionalContext missing from every userPromptSubmitted hook.end output",
-      ...accepted ? {} : { evidence: excerpt(JSON.stringify(ends.map((e) => e.data?.output))) }
-    },
-    {
-      id: "scn.prompt-context.reached_model",
-      ok: echoed,
-      // docs-audit #4: the current docs say config-file userPromptSubmitted output is dropped.
-      detail: echoed ? "the model echoed the additionalContext nonce" : "the model did not echo the nonce: UserPromptSubmit additionalContext did not reach it (keyword and skill injection are lost on this CLI; consider userPromptTransformed)",
-      ...echoed ? {} : { evidence: excerpt(text4) }
-    }
-  ];
-}
-function evaluateEvents(run2) {
-  const compacted = run2.events.some((e) => e.type === "session.compaction_start");
-  const pre = hookCheck("scn.events.pre_compact", run2.events, ["preCompact"]);
-  return [
-    hookCheck("scn.events.post_tool_use_failure", run2.events, ["postToolUseFailure"]),
-    hookCheck("scn.events.permission_request", run2.events, ["permissionRequest"]),
-    {
-      ...pre,
-      ok: pre.ok && compacted,
-      detail: `${pre.detail}; session.compaction_start ${compacted ? "seen" : "missing"} after ${COMPACT_PROMPT}`
-    }
-  ];
-}
-function evaluateUltragoal(run2) {
-  const cli = run2.cli;
-  if (!cli) return noCliEvidence("ultragoal", 2, run2);
-  const seed = cli.seed;
-  const done = run2.events.filter((e) => e.type === "tool.execution_complete");
-  const denied = done.filter((e) => ULTRAGOAL_DENY.test(JSON.stringify(e.data?.error ?? "")));
-  const succeeded = done.filter((e) => e.data?.success === true);
-  const allowed = denied.length === 0 && succeeded.length > 0;
-  return [
-    {
-      id: "scn.ultragoal.seeded",
-      ok: !!seed?.ok,
-      detail: seed ? seed.detail : "no seed ran",
-      ...seed?.ok || !seed?.state ? {} : { evidence: excerpt(JSON.stringify(seed.state)) }
-    },
-    {
-      id: "scn.ultragoal.tools_allowed",
-      ok: allowed,
-      detail: allowed ? `${succeeded.length} tool call(s) ran, none denied by the ultragoal gate` : denied.length ? `${denied.length} of ${done.length} tool call(s) denied by the ultragoal gate` : "no tool call completed",
-      ...denied.length ? { evidence: excerpt(str2(isRecord6(denied[0].data?.error) ? denied[0].data.error.message : "")) } : {}
-    }
-  ];
-}
-function evaluateTeam(run2) {
-  const team = run2.team;
-  if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run2.error ? `no team evidence: ${excerpt(run2.error, 200)}` : "no team evidence collected" }));
-  const status = team.status;
-  const transport = str2(status?.transport);
-  const sdkWorkers2 = Array.isArray(status?.workers?.sdk) ? status.workers.sdk : [];
-  const statusTasks = status?.tasks ?? {};
-  const startedOk = team.start.code === 0 && team.start.ok === true && transport === "sdk";
-  const owners = team.tasks.map((t) => t.owner).filter((o) => !!o).sort();
-  const completedOk = team.tasks.length === 2 && team.tasks.every((t) => t.status === "completed") && JSON.stringify(owners) === JSON.stringify(TEAM_WORKERS);
-  const expected = team.tasks.map((t) => ({ owner: t.owner, file: TEAM_FILES.find((f) => t.subject.includes(f)) }));
-  const commitFor = (worker) => team.commits.find((c) => c.worker === worker);
-  const committedOk = expected.length === 2 && expected.every(({ owner, file }) => !!file && !!commitFor(owner)?.files.includes(file));
-  const statusOk = status?.ok === true && transport === "sdk" && sdkWorkers2.length === 2 && sdkWorkers2.every((w) => num2(w.host_pid) > 0 && typeof w.session_id === "string" && w.session_id !== "" && w.provider === "alive") && num2(statusTasks.total) === 2 && num2(statusTasks.completed) === 2;
-  const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
-  const withWork = team.commits.filter((c) => c.subjects.length > 0);
-  const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === "merged" || c.survived === "preserved");
-  const durationOk = team.durationMs <= team.budgetMs;
-  const creditsOk = team.cost.credits > 0 && team.cost.credits <= TEAM_MAX_CREDITS;
-  const launch = team.start.launchMs === null ? "" : `, sdk hosts launched in ${team.start.launchMs} ms`;
-  return [
-    {
-      id: "scn.team.started",
-      ok: startedOk,
-      detail: startedOk ? `omg team started ${team.teamName} on the sdk transport (default, no --transport) in ${team.start.ms} ms${launch}` : `start exit ${String(team.start.code)}, ok ${String(team.start.ok)}, transport ${transport || "unknown"}`,
-      ...startedOk ? {} : { evidence: excerpt(team.start.stderr) }
-    },
-    {
-      id: "scn.team.completed",
-      ok: completedOk,
-      detail: completedOk ? "both tasks completed through omg team api, one per worker" : `tasks: ${team.tasks.map((t) => `${t.id}:${t.status}@${t.owner ?? "none"}`).join(", ") || "none listed"}`
-    },
-    {
-      id: "scn.team.committed",
-      ok: committedOk,
-      detail: committedOk ? expected.map(({ owner, file }) => `${owner} committed ${file} ("${commitFor(owner).subjects[0] ?? ""}")`).join("; ") : team.commits.map((c) => `${c.worker}: ${c.files.join(",") || "no new files"} in ${c.worktree ?? "no worktree"}`).join("; ") || "no worktree commits found"
-    },
-    {
-      id: "scn.team.status",
-      ok: statusOk,
-      detail: statusOk ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed` : `status --json: ok ${String(status?.ok)}, transport ${transport || "unknown"}, ${sdkWorkers2.length} sdk worker(s), tasks ${num2(statusTasks.completed)}/${num2(statusTasks.total)}`,
-      ...statusOk || !status ? {} : { evidence: excerpt(JSON.stringify(status)) }
-    },
-    {
-      id: "scn.team.shutdown",
-      ok: shutdownOk,
-      detail: shutdownOk ? `clean shutdown in ${team.shutdown.ms} ms: no host or runtime left, reservation released, team state disposed` : !team.shutdown ? "shutdown never ran" : `shutdown exit ${String(team.shutdown.code)}${team.shutdown.forced ? " (forced after a timeout)" : ""}; orphans ${team.orphans.join(",") || "none"}; reservations left ${team.reservationsLeft.length}; state ${team.stateLeft ? "left" : "disposed"}`,
-      // The end of the output names the preserved workers and the reason; the start is banners.
-      ...shutdownOk || !team.shutdown ? {} : { evidence: excerpt(`${team.shutdown.stdout}
-${team.shutdown.stderr}`.trim().slice(-480)) }
-    },
-    {
-      id: "scn.team.retained",
-      ok: retainedOk,
-      detail: withWork.length === 0 ? "no worker commits to check" : withWork.map((c) => `${c.worker} ${(c.head ?? "no head").slice(0, 8)} ${c.survived ?? "unchecked"}`).join("; ")
-    },
-    {
-      id: "scn.team.duration",
-      ok: durationOk,
-      detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`
-    },
-    {
-      id: "scn.team.credits",
-      ok: creditsOk,
-      detail: `${Number(team.cost.credits.toFixed(3))} AI credits (legacy ${team.cost.premiumRequests} premium request(s)) over ${team.cost.source} (max ${TEAM_MAX_CREDITS} credits)`
-    }
-  ];
-}
-function chainCost(chain) {
-  let premiumRequests = 0;
-  let credits = 0;
-  for (const s of chain.sessions) {
-    const c = scenarioCost(s.events ?? []);
-    premiumRequests += c.premiumRequests;
-    credits += c.credits;
-  }
-  const found = chain.sessions.filter((s) => s.events !== null).length;
-  return { premiumRequests, credits, source: `${found}/${chain.sessions.length} link session(s) events.jsonl` };
-}
-function evaluateChain(run2) {
-  const chain = run2.chain;
-  if (!chain) return scenarioCheckIds("chain").slice(0, 5).map((id) => ({ id, ok: false, detail: "no chain evidence collected" }));
-  const link1 = chain.ledgers.find((l) => l.file === chain.firstLink);
-  const children = chain.ledgers.filter((l) => ledgerStr(l, "parentLink") === chain.firstLink);
-  const link22 = children[0];
-  const link1Host = ledgerStr(link1, "hostSessionId");
-  const link2Id = link22?.file ?? "";
-  const link2Host = ledgerStr(link22, "hostSessionId");
-  const decisionFor = (linkId) => chain.decisions.filter((d) => d.sessionId === linkId && d.decision !== "chain-link-rejected").at(-1);
-  const rejected = chain.decisions.filter((d) => d.decision === "chain-link-rejected");
-  const open9 = chain.ledgers.filter((l) => !ledgerStr(l, "closedAt"));
-  const cost = chainCost(chain);
-  const stopReason = str2(chain.stopped?.reason);
-  const ledgerEvidence = excerpt(JSON.stringify({ ledgers: chain.ledgers, decisions: chain.decisions, stopped: chain.stopped }));
-  const link1Ok = !!link1 && !!link1Host && link1Host !== chain.firstLink && ledgerStr(link1, "decision") === "enqueued";
-  const spawnedOk = children.length === 1 && ledgerStr(link22, "host") === "copilot" && ledgerStr(link22, "stage") === CHAIN_LINK2_STAGE;
-  const inheritedOk = spawnedOk && !!link2Host && link2Host !== link2Id && link2Host !== link1Host && str2(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
-  const closedOk = chain.ledgers.length === 2 && open9.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
-  const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
-  const creditsOk = sessionsFound && cost.credits <= CHAIN_MAX_CREDITS;
-  return [
-    {
-      id: "scn.chain.link1",
-      ok: link1Ok,
-      detail: link1Ok ? `link 1 ${chain.firstLink} closed by host session ${link1Host} via OMC_CHAIN_LINK, decision enqueued` : !link1 ? "link 1 ledger missing" : !link1Host ? "link 1 ledger never closed (its SessionEnd did not resolve OMC_CHAIN_LINK)" : `link 1 closed with decision ${ledgerStr(link1, "decision") || "?"} by ${link1Host}`,
-      ...link1Ok ? {} : { evidence: ledgerEvidence }
-    },
-    {
-      id: "scn.chain.spawned",
-      ok: spawnedOk,
-      detail: spawnedOk ? `link 2 ${link2Id} spawned by link 1's SessionEnd worker (host copilot, stage ${CHAIN_LINK2_STAGE})` : `${children.length} ledger(s) with parentLink ${chain.firstLink}`,
-      ...spawnedOk ? {} : { evidence: ledgerEvidence }
-    },
-    {
-      id: "scn.chain.inherited",
-      ok: inheritedOk,
-      detail: inheritedOk ? `link 2 ended as chain link ${link2Id} (host session ${link2Host}); no rejected OMC_CHAIN_LINK` : `link 2 host session ${link2Host || "none"}${rejected.length ? `; ${rejected.length} chain-link-rejected decision(s)` : ""}`,
-      ...inheritedOk ? {} : { evidence: ledgerEvidence }
-    },
-    {
-      id: "scn.chain.closed",
-      ok: closedOk,
-      detail: closedOk ? `chain closed out: 2 links, 0 open ledgers, stop marker ${stopReason}` : `${chain.ledgers.length} link(s), ${open9.length} open, stop marker ${stopReason || "none"}`,
-      ...closedOk ? {} : { evidence: ledgerEvidence }
-    },
-    {
-      id: "scn.chain.credits",
-      ok: creditsOk,
-      detail: `${Number(cost.credits.toFixed(3))} AI credits (legacy ${cost.premiumRequests} premium request(s)) over ${cost.source} (max ${CHAIN_MAX_CREDITS} credits)`
-    }
-  ];
-}
-function evaluateFactoryRun(run2) {
-  const name = run2.name;
-  const f = run2.factory;
-  if (!f) return scenarioCheckIds(name).slice(0, 11).map((id) => ({ id, ok: false, detail: run2.error ? `no factory evidence: ${excerpt(run2.error, 200)}` : "no factory evidence collected" }));
-  const p = `scn.${name}`;
-  const expected = FACTORY_RUN_EXPECTED_LANES[name];
-  const shape = f.lanes.map((l) => `${l.kind}${l.verdict ? `:${l.verdict}` : ""}@${l.status}`).join(", ") || "none";
-  const lanesOk = f.lanes.length === expected.length && expected.every((e, i) => f.lanes[i].kind === e.kind && f.lanes[i].status === "completed" && (e.verdict === void 0 || f.lanes[i].verdict === e.verdict) && !!f.lanes[i].jobId) && f.laneStarts.length === expected.length;
-  const writes = f.lanes.filter((l) => l.kind !== "review");
-  const implementedOk = writes.length > 0 && writes.every((l) => !!l.endSha && l.endSha !== l.startSha) && !!f.head && f.head === f.remoteHead && f.head === writes.at(-1).endSha;
-  const lastReview = f.lanes.filter((l) => l.kind === "review").at(-1);
-  const reviewedOk = !!lastReview && !!f.head && lastReview.startSha === f.head && lastReview.verdict === "approve";
-  const verdictOk = f.shipVerdict?.verdict === "approve" && f.shipVerdict.sha === f.head;
-  const tamperOk = f.tamperNotes.length === 0 && f.outcome?.gate !== "lane-tampered" && f.outcome?.gate !== "state-tampered";
-  const draftOk = f.gh.prCreates.length === 1 && /\s--draft(\s|$)/.test(f.gh.prCreates[0]);
-  const parkedOk = !!f.outcome && f.outcome.exitCode === 0 && f.outcome.gate === "merge" && /^gh pr merge \d+ /.test(f.outcome.mergeCommand ?? "");
-  const noMergeOk = f.gh.mergeCalls.length === 0 && !!f.baseBefore && f.baseAfter === f.baseBefore;
-  const allowedRefs = [`refs/heads/${FACTORY_RUN_BASE}`, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`];
-  const strayRefs = f.remoteRefs.filter((r) => !allowedRefs.includes(r));
-  const capsOk = f.laneStarts.length > 0 && f.laneStarts.every((s) => s.maxCredits === RUNTIME_MIN_MAX_CREDITS);
-  const measured = f.lanes.length > 0 && f.lanes.every((l) => typeof l.credits === "number");
-  const ceiling = FACTORY_RUN_MAX_CREDITS[name];
-  const creditsOk = capsOk && measured && f.cost.credits > 0 && f.cost.credits <= ceiling;
-  return [
-    { id: `${p}.lanes`, ok: lanesOk, detail: lanesOk ? `lanes ${shape}, each a copilot_run job` : `lanes ${shape} (expected ${expected.map((e) => `${e.kind}${e.verdict ? `:${e.verdict}` : ""}`).join(", ")})` },
-    { id: `${p}.implemented`, ok: implementedOk, detail: implementedOk ? `write lane(s) committed; engine pushed ${f.head.slice(0, 12)} to factory/issue-${FACTORY_RUN_ISSUE}` : `head ${f.head ?? "none"}, remote ${f.remoteHead ?? "none"}, write lanes ${writes.map((l) => `${l.startSha.slice(0, 8)}..${(l.endSha ?? "none").slice(0, 8)}`).join(", ") || "none"}` },
-    { id: `${p}.reviewed_on_head`, ok: reviewedOk, detail: reviewedOk ? `the last review ran at the pushed head and approved` : `last review ${lastReview ? `at ${lastReview.startSha.slice(0, 12)} verdict ${lastReview.verdict ?? "none"}` : "missing"}, head ${f.head ?? "none"}` },
-    { id: `${p}.verdict_recorded`, ok: verdictOk, detail: f.shipVerdict ? `ship verdict ${f.shipVerdict.verdict} by ${f.shipVerdict.reviewer} at ${f.shipVerdict.sha.slice(0, 12)}` : "no ship verdict recorded" },
-    { id: `${p}.tamper`, ok: tamperOk, detail: tamperOk ? "every lane passed the shared git state and state file checks" : `tamper: ${f.tamperNotes.map((n) => excerpt(n, 200)).join(" | ") || f.outcome?.gate}` },
-    { id: `${p}.draft_pr`, ok: draftOk, detail: draftOk ? `one draft PR created through the scripted gh` : `${f.gh.prCreates.length} gh pr create call(s)${f.gh.prCreates[0] ? `: ${excerpt(f.gh.prCreates[0], 200)}` : ""}` },
-    { id: `${p}.parked`, ok: parkedOk, detail: parkedOk ? `awaiting-human: merge; printed ${f.outcome.mergeCommand}` : `outcome ${f.outcome ? `exit ${f.outcome.exitCode}, phase ${f.outcome.phase ?? "none"}, gate ${f.outcome.gate ?? "none"}: ${f.outcome.message}` : "none"}` },
-    { id: `${p}.no_merge`, ok: noMergeOk, detail: noMergeOk ? `no merge call reached gh; ${FACTORY_RUN_BASE} on the remote unchanged` : `merge calls ${f.gh.mergeCalls.length}; ${FACTORY_RUN_BASE} ${f.baseBefore.slice(0, 12)} -> ${f.baseAfter.slice(0, 12)}` },
-    { id: `${p}.no_lane_push`, ok: strayRefs.length === 0, detail: strayRefs.length === 0 ? `the remote holds only ${allowedRefs.join(" and ")}` : `stray remote refs: ${strayRefs.join(", ")}` },
-    { id: `${p}.state_resumable`, ok: f.integrityOk, detail: f.integrityOk ? "factory state passes its integrity seal" : "factory state missing or fails its integrity seal" },
-    {
-      id: `${p}.credits`,
-      ok: creditsOk,
-      detail: `${Number(f.cost.credits.toFixed(3))} AI credits (legacy ${f.cost.premiumRequests} premium request(s)) over ${f.cost.source} (max ${ceiling} credits)` + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${f.laneStarts.map((s) => s.maxCredits).join(", ") || "none"} (expected ${RUNTIME_MIN_MAX_CREDITS})`) + (measured ? "" : "; a lane has no recorded usage")
-    }
-  ];
-}
-function parseSandboxProbe(text4) {
-  for (const line of text4.split(/\r?\n/)) {
-    const at = line.indexOf(SANDBOX_PROBE_MARKER);
-    if (at === -1) continue;
-    try {
-      const v = JSON.parse(line.slice(at + SANDBOX_PROBE_MARKER.length));
-      if (v && Array.isArray(v.writes) && v.net && typeof v.net === "object") return v;
-    } catch {
-    }
-  }
-  return null;
-}
-function evaluateSandboxLane(run2) {
-  const p = "scn.sandbox-lane";
-  const e = run2.sandbox;
-  if (!e) return scenarioCheckIds("sandbox-lane").slice(0, SANDBOX_LANE_CHECKS.length).map((id) => ({ id, ok: false, detail: run2.error ? `no sandbox evidence: ${excerpt(run2.error, 200)}` : "no sandbox evidence collected" }));
-  if (e.hostUnsupported) return [{ id: `${p}.host`, ok: false, detail: `host unsupported (${excerpt(e.hostUnsupported.reason ?? "no reason", 160)}); no lane ran, no credits spent` }];
-  const lane = (role) => e.lanes.find((l) => l.role === role);
-  const review = lane("review");
-  const write = lane("write");
-  const canaryLane = lane("canary");
-  const enforced = (l) => l?.sandbox?.mode === "enforced";
-  const modeOf = (l) => l ? `${l.role} ${l.sandbox?.mode ?? "no sandbox state"}${l.sandbox?.reason && l.sandbox.mode !== "enforced" ? ` (${excerpt(l.sandbox.reason, 160)})` : ""}` : "missing";
-  const target = (list2, kind) => list2.find((t) => t.kind === kind);
-  const fate = (t) => !t ? "not probed" : t.landed ? `LANDED at ${t.path}` : "blocked";
-  const unanswered = (l) => `unanswered: ${modeOf(l)}${l?.error ? `; ${excerpt(l.error, 160)}` : ""}`;
-  const host = e.lanes.find((l) => l.sandbox)?.sandbox?.host;
-  const hostOk = !!host?.supported && e.lanes.length === 3 && e.lanes.every(enforced);
-  const caps = host ? Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? "" : " (no)"}`).join(", ") || "none listed" : "unknown";
-  const reviewLanded = e.reviewTargets.filter((t) => t.landed);
-  const reviewRan = !!review && review.okShellCalls > 0;
-  const reviewOk = !!review && review.state === "completed" && enforced(review) && reviewRan && e.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
-  const inside = target(e.writeTargets, "worktree");
-  const insideOk = !!write && enforced(write) && !!inside?.landed;
-  const outside = e.writeTargets.filter((t) => t.kind === "main-checkout" || t.kind === "shared");
-  const main3 = target(e.writeTargets, "main-checkout");
-  const mainInformational = !!main3 && isUnder(main3.path, e.tempDir, process.platform);
-  const noProbe = `the write lane's probe never ran (no probe output), so no target was tried; ${modeOf(write)}${write?.error ? `; ${excerpt(write.error, 160)}` : ""}`;
-  const outsideOk = enforced(write) && !!e.probe && outside.length === 2 && outside.every((t) => !t.landed || mainInformational && t === main3);
-  const tempNote = mainInformational ? ` (main-checkout is informational: the scenario repository is under the OS temp dir${main3?.landed ? ", which the default sandbox grant includes" : ""}; the shared target decides)` : "";
-  const outbound = e.probe?.net.outbound;
-  const local = e.probe?.net.local;
-  const networkOk = enforced(write) && !!e.probe && e.localHits === 0 && outbound?.ok === false && local?.ok !== true;
-  const reach = (r) => !r ? "not tried" : r.ok ? `REACHED (HTTP ${r.status ?? "?"})` : `blocked (${excerpt(r.error ?? "error", 80)})`;
-  const enforcedLanes = e.lanes.filter(enforced);
-  const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0 && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
-  const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;
-  const realHome = target(e.writeTargets, "real-home");
-  const profile = target(e.writeTargets, "profile");
-  const q1Answered = enforced(write) && !!realHome && !!e.probe;
-  const q1Ok = q1Answered && !realHome.landed;
-  const q1Detail = !q1Answered ? enforced(write) && !e.probe ? `Q1 unanswered: ${noProbe}` : `Q1 ${unanswered(write)}` : `Q1: real profile write ${realHome.landed ? `LANDED (${realHome.path}): the profile grant is read-write and relocation does not move it; add the real home to readonlyPaths` : "blocked"}; relocated profile write ${!profile ? "not probed (the probe printed no home)" : profile.landed ? `landed (${profile.path}): the profile grant follows USERPROFILE/HOME, and the read-only job home entry does not narrow it` : `blocked (${profile.path})`}`;
-  const gitDir = target(e.writeTargets, "git-dir");
-  const q2Answered = enforced(write) && !!gitDir && !!e.probe;
-  const q2Ok = q2Answered && !gitDir.landed;
-  const q2Detail = !q2Answered ? enforced(write) && !e.probe ? `Q2 unanswered: ${noProbe}` : `Q2 ${unanswered(write)}` : gitDir.landed ? `Q2: common git dir write LANDED (${gitDir.path}): the CLI grants it read-write for a linked worktree over the readonlyPaths entry; write lanes are not confined (upstream feature request)` : `Q2: common git dir write blocked (${gitDir.path}): no linked-worktree auto-grant overrides the readonlyPaths entry`;
-  const c = e.canary;
-  const cOutside = c ? target(c.targets, "shared") : void 0;
-  const cInside = c ? target(c.targets, "worktree") : void 0;
-  const cProbeRan = !!c?.result && parseSandboxProbe(c.result.output) !== null;
-  const q5Answered = enforced(canaryLane) && !!c?.called && cProbeRan;
-  const q5Ok = q5Answered && c.sandboxed === true && !!cOutside && !cOutside.landed && !!cInside?.landed;
-  const q5Detail = !c?.called ? `Q5 ${unanswered(canaryLane)}` : !c.result ? `Q5: shell.executeUserRequested failed: ${excerpt(c.error ?? "no result", 200)}` : !cProbeRan ? `Q5 unanswered: probe did not run (exit ${String(c.result.exitCode)}, no ${SANDBOX_PROBE_MARKER.trim()} line; output ${JSON.stringify(excerpt(c.result.output || c.error || "", 200))})` : `Q5: shell.executeUserRequested ran ${c.sandboxed === true ? "sandboxed" : c.sandboxed === false ? "NOT sandboxed" : "with no sandboxed attestation"} (exit ${String(c.result.exitCode)}); outside write ${fate(cOutside)}; worktree write ${cInside?.landed ? "landed" : "missing"}; onPermissionRequest ${c.permissionRequests > 0 ? `consulted (${c.permissionRequests})` : "bypassed"}` + (q5Ok ? ": a free canary through this RPC works" : ": the canary needs a model turn instead");
-  const capsOk = e.lanes.length > 0 && e.lanes.every((l) => l.maxCredits === RUNTIME_MIN_MAX_CREDITS);
-  const measured = e.lanes.length > 0 && e.lanes.every((l) => typeof l.credits === "number");
-  const creditsOk = capsOk && measured && e.cost.credits > 0 && e.cost.credits <= SANDBOX_LANE_MAX_CREDITS;
-  return [
-    { id: `${p}.host`, ok: hostOk, detail: host ? `host ${host.supported ? "supported" : `unsupported (${excerpt(host.reason ?? "no reason", 160)})`}, capabilities ${caps}; ${e.lanes.map(modeOf).join(", ")}` : `no lane recorded a sandbox state; ${e.lanes.map(modeOf).join(", ") || "no lanes"}` },
-    {
-      id: `${p}.review_no_write`,
-      ok: reviewOk,
-      detail: !review ? "no review lane" : `review lane ${review.state}, ${modeOf(review)}; ${e.reviewTargets.map((t) => `${t.kind} ${t.landed ? "LANDED" : "blocked"}`).join(", ") || "no targets"}; worktree changes ${review.changedFiles.join(", ") || "none"}` + (reviewRan ? "" : `; the lane ran no command (none of its ${review.shellCalls} shell call(s) succeeded), so "blocked" is no evidence${review.error ? `: ${excerpt(review.error, 160)}` : ""}`)
-    },
-    { id: `${p}.write_inside`, ok: insideOk, detail: !write ? "no write lane" : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside?.landed ? "created" : "missing"}` },
-    { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: !e.probe ? noProbe : outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join("; ")}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
-    { id: `${p}.network_blocked`, ok: networkOk, detail: !e.probe ? `no probe output from the write lane; ${modeOf(write)}` : `loopback listener ${e.localHits} hit(s), probe local ${reach(local)}; outbound https://github.com ${reach(outbound)}` },
-    {
-      id: `${p}.attested`,
-      ok: attestedOk,
-      detail: e.lanes.map((l) => `${l.role} ${l.shellCalls} shell call(s), ${l.unattestedShellCalls} without sandboxed:true, copilot_run counted ${l.sandbox?.unsandboxedCalls ?? 0}`).join("; ") || "no lanes"
-    },
-    { id: `${p}.engine_commit`, ok: commitOk, detail: !e.commit ? "the engine commit did not run" : e.commit.ok ? `engine committed ${e.commit.sha?.slice(0, 12)} with ${e.commit.files.join(", ") || "no files"}${commitOk ? "" : ` (expected only ${SANDBOX_LANE_FILE})`}` : `engine commit refused: ${excerpt(e.commit.reason ?? "", 200)}` },
-    { id: `${p}.q1_profile`, ok: q1Ok, detail: q1Detail },
-    { id: `${p}.q2_git_dir`, ok: q2Ok, detail: q2Detail },
-    { id: `${p}.q5_canary_rpc`, ok: q5Ok, detail: q5Detail },
-    {
-      id: `${p}.credits`,
-      ok: creditsOk,
-      detail: `${Number(e.cost.credits.toFixed(3))} AI credits (legacy ${e.cost.premiumRequests} premium request(s)) over ${e.cost.source} (max ${SANDBOX_LANE_MAX_CREDITS} credits)` + (capsOk ? `; every lane capped at ${RUNTIME_MIN_MAX_CREDITS}` : `; lane caps ${e.lanes.map((l) => l.maxCredits).join(", ") || "none"} (expected ${RUNTIME_MIN_MAX_CREDITS})`) + (measured ? "" : "; a lane has no recorded usage") + `; lanes ran on ${e.lanes.map((l) => `${l.role} ${l.model ?? "unreported"}`).join(", ") || "none"}`
-    }
-  ];
-}
-function probeHooksJson(node, script, log3) {
-  const hooks = {};
-  for (const e of PROBE_ENTRIES) {
-    (hooks[e.event] ??= []).push({
-      type: "command",
-      ..."matcher" in e ? { matcher: e.matcher } : {},
-      exec: node,
-      args: [script, e.label, log3],
-      timeoutSec: 10
-    });
-  }
-  return { version: 1, hooks };
-}
-function fileToolCalls(events) {
-  const done = new Map(events.filter((e) => e.type === "tool.execution_complete").map((e) => [str2(e.data?.toolCallId), e.data?.success === true]));
-  return events.filter((e) => e.type === "tool.execution_start" && [...FILE_READ_TOOLS, ...FILE_WRITE_TOOLS].includes(str2(e.data?.toolName))).map((e) => ({ id: str2(e.data?.toolCallId), name: str2(e.data?.toolName), args: e.data?.arguments, ok: done.get(str2(e.data?.toolCallId)) === true }));
-}
-function asObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
-function inputPaths(input) {
-  if (typeof input === "string") return [...input.matchAll(PATCH_FILE_LINE)].map((m) => m[1]);
-  const o = asObject(input);
-  const p = o ? str2(o.file_path) || str2(o.path) : "";
-  return p ? [p] : [];
-}
-function probeTool(r) {
-  const p = r.payload ?? {};
-  return { name: str2(p.tool_name) || str2(p.toolName), input: p.tool_input ?? p.toolArgs };
-}
-function inputKey(input) {
-  if (typeof input === "string") return `text:${input}`;
-  const o = asObject(input);
-  return o ? JSON.stringify(o, Object.keys(o).sort()) : "";
-}
-function recordsFor(call, records2, label2) {
-  const want = inputKey(call.args);
-  return want ? records2.filter((r) => r.label === label2 && inputKey(probeTool(r).input) === want) : [];
-}
-function toolResultTexts(events, callId) {
-  const out = [];
-  for (const e of events) {
-    if (str2(e.data?.toolCallId) !== callId) continue;
-    if (e.type === "tool.execution_complete") out.push(str2(asObject(e.data?.result)?.content));
-    if (e.type === "model.tool_execution") out.push(str2(asObject(e.data?.toolResult)?.textResultForLlm));
-  }
-  return out.filter(Boolean);
-}
-function evaluateFiletools(run2) {
-  const ft = run2.filetools;
-  const ids2 = scenarioCheckIds("filetools");
-  if (!ft) return ids2.slice(0, 8).map((id) => ({ id, ok: false, detail: run2.error ? `no filetools evidence: ${excerpt(run2.error, 200)}` : "no filetools evidence collected" }));
-  const calls = fileToolCalls(run2.events).filter((c) => c.ok);
-  const reads = calls.filter((c) => FILE_READ_TOOLS.includes(c.name));
-  const writes = calls.filter((c) => FILE_WRITE_TOOLS.includes(c.name));
-  const toolsOk = reads.length > 0 && writes.length > 0 && ft.edited && ft.created;
-  const seen = (claudeLabel, nativeLabel) => {
-    const rows = calls.map((c) => ({ c, claude: recordsFor(c, ft.probe, claudeLabel), native: nativeLabel ? recordsFor(c, ft.probe, nativeLabel) : [] }));
-    const ok2 = calls.length > 0 && rows.every((r) => r.claude.length > 0 && (!nativeLabel || r.native.length > 0));
-    const names = (recs) => [...new Set(recs.map((x) => probeTool(x).name || "?"))].join("/") || "none";
-    const detail = rows.map((r) => `${r.c.name}\u2192${names(r.claude)}${nativeLabel ? ` (native ${names(r.native)})` : ""}`).join(", ") || "no file tool calls";
-    return { ok: ok2, detail, rows };
-  };
-  const pre = seen("PreToolUse", "preToolUse");
-  const post = seen("PostToolUse", "postToolUse");
-  const matcher = seen("PostToolUse:matcher");
-  const claudeNames = new Set(FILE_TOOL_MATCHER.split("|"));
-  const payloadRows = [...pre.rows, ...post.rows];
-  const payloadOk = calls.length > 0 && payloadRows.every((r) => r.claude.every((x) => claudeNames.has(probeTool(x).name) && inputPaths(probeTool(x).input).length > 0) && r.native.every((x) => probeTool(x).name === r.c.name));
-  const shape = (recs) => {
-    if (!recs[0]) return "none";
-    const { name, input } = probeTool(recs[0]);
-    return typeof input === "string" ? `${name} "<patch: ${inputPaths(input).map((p) => p.split(/[\\/]/).slice(-2).join("/")).join(", ")}>"` : `${name} {${Object.keys(asObject(input) ?? {}).join(",")}}`;
-  };
-  const contextCall = (c) => inputPaths(c.args).some((p) => /readme\.md$/i.test(p));
-  const injection = (nonce, from) => {
-    const hookOut = run2.events.some((e) => e.type === "hook.end" && e.data?.hookType === "postToolUse" && JSON.stringify(e.data?.output ?? "").includes(nonce));
-    const carrier = from.find((c) => !contextCall(c) && toolResultTexts(run2.events, c.id).some((t) => t.includes(nonce)));
-    return {
-      ok: hookOut && !!carrier,
-      detail: `nonce ${hookOut ? "in" : "missing from"} a postToolUse hook.end output; ${carrier ? `in the ${carrier.name} tool result sent to the model` : "in no model-facing tool result"}`
-    };
-  };
-  const read = injection(ft.nonce, reads);
-  const write = injection(ft.writeNonce, writes);
-  const echoed = assistantText2(run2.events).includes(ft.nonce);
-  return [
-    {
-      id: "scn.filetools.tools",
-      ok: toolsOk,
-      detail: `${calls.map((c) => c.name).join(", ") || "no file tool calls"} completed; notes.txt ${ft.edited ? "edited" : "unchanged"}, created.txt ${ft.created ? "created" : "missing"}`
-    },
-    hookCheck("scn.filetools.hooks", run2.events, ["preToolUse", "postToolUse"]),
-    { id: "scn.filetools.pre", ok: pre.ok, detail: `PreToolUse probe: ${pre.detail}` },
-    { id: "scn.filetools.post", ok: post.ok, detail: `PostToolUse probe: ${post.detail}` },
-    { id: "scn.filetools.matcher", ok: matcher.ok, detail: `PostToolUse matcher ${FILE_TOOL_MATCHER}: ${matcher.detail}` },
-    {
-      id: "scn.filetools.payload",
-      ok: payloadOk,
-      detail: post.rows.map((r) => `${r.c.name}: tool_name ${shape(r.claude)}`).join("; ") || "no file tool calls",
-      ...payloadOk ? {} : { evidence: excerpt(JSON.stringify(payloadRows.map((r) => ({ call: r.c.name, claude: r.claude.map(probeTool), native: r.native.map(probeTool) })))) }
-    },
-    {
-      id: "scn.filetools.injected",
-      ok: read.ok,
-      detail: `${FILETOOLS_FILES.context} ${read.detail}; model ${echoed ? "echoed it" : "did not echo it"}`,
-      ...read.ok ? {} : { evidence: excerpt(assistantText2(run2.events)) }
-    },
-    {
-      id: "scn.filetools.injected_write",
-      ok: write.ok,
-      detail: `${FILETOOLS_FILES.writeContext} ${write.detail}`
-    }
-  ];
-}
-function scenarioExcludedTools(name, mcpServer) {
-  return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
-}
-function scenarioCheckIds(name) {
-  const own2 = {
-    smoke: ["reply", "hooks", "no_tools"],
-    guardrail: ["denied", "no_push", "hooks"],
-    skill: ["invoked"],
-    delegate: ["selected", "hooks", "completed"],
-    filetools: ["tools", "hooks", "pre", "post", "matcher", "payload", "injected", "injected_write"],
-    chain: ["link1", "spawned", "inherited", "closed", "credits"],
-    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "credits"],
-    "factory-run": FACTORY_RUN_CHECKS,
-    "factory-run-fix": FACTORY_RUN_CHECKS,
-    "sandbox-lane": SANDBOX_LANE_CHECKS,
-    continuation: ["blocked", "reason_injected", "stop_hook_active", "echo"],
-    "prompt-context": ["accepted", "reached_model"],
-    events: ["post_tool_use_failure", "permission_request", "pre_compact"],
-    ultragoal: ["seeded", "tools_allowed"]
-  };
-  return [...own2[name], "exit", "adapter_errors", "cost"].map((s) => `scn.${name}.${s}`);
-}
-function failedTier2Checks(scenarios, detail, from = "all") {
-  const sdkIds = from === "all" ? [...SDK_STATIC_IDS] : SDK_STATIC_IDS.slice(1);
-  return [...sdkIds, ...scenarios.flatMap(scenarioCheckIds)].map((id) => ({ id, ok: false, detail }));
-}
-function skippedScenarioChecks(name, detail) {
-  return scenarioCheckIds(name).map((id) => ({ id, ok: false, detail }));
-}
-function rpcFail(id, what, r) {
-  return { id, ok: false, detail: `${what} failed`, evidence: excerpt(r.error) };
-}
-function arr(value, key) {
-  const inner = value && typeof value === "object" && !Array.isArray(value) ? value[key] : value;
-  return Array.isArray(inner) ? inner.filter((x) => !!x && typeof x === "object") : [];
-}
-function str2(v) {
-  return typeof v === "string" ? v : "";
-}
-function canon(p, platform = process.platform) {
-  const out = (0, import_path114.resolve)(p).split(import_path114.sep).join("/");
-  return platform === "win32" ? out.toLowerCase() : out;
-}
-function evaluateSdkRuntime(status, binVersion, model) {
-  const id = "sdk.runtime";
-  if (!status.ok) return rpcFail(id, "getStatus()", status);
-  const version3 = str2(status.value.version);
-  const protocol = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : NaN;
-  const problems = [];
-  if (binVersion && version3 !== binVersion) problems.push(`runtime ${version3 || "?"} != copilot --version ${binVersion} (not the installed exe?)`);
-  if (!(protocol >= MIN_PROTOCOL_VERSION)) problems.push(`protocolVersion ${String(status.value.protocolVersion)} < ${MIN_PROTOCOL_VERSION}`);
-  return {
-    id,
-    ok: problems.length === 0,
-    detail: problems.length === 0 ? `runtime ${version3}, protocol ${protocol}; model ${model}` : problems.join("; ")
-  };
-}
-function evaluateSdkPlugins(plugins, packageVersion) {
-  const id = "sdk.plugins";
-  if (!plugins.ok) return rpcFail(id, "plugins.list", plugins);
-  const list2 = arr(plugins.value, "plugins");
-  const entry2 = list2.find((p) => p.name === PLUGIN_NAME2);
-  const ok2 = !!entry2 && entry2.version === packageVersion && entry2.enabled !== false;
-  return {
-    id,
-    ok: ok2,
-    detail: entry2 ? `${PLUGIN_NAME2}@${String(entry2.version)} enabled=${String(entry2.enabled)}${ok2 ? "" : ` (expected ${packageVersion}, enabled)`}` : `${PLUGIN_NAME2} not listed (${list2.length} plugin(s))`,
-    ...ok2 ? {} : { evidence: excerpt(JSON.stringify(plugins.value)) }
-  };
-}
-function evaluateSdkSkills(skills, root2, skillDirs, platform = process.platform) {
-  const id = "sdk.skills";
-  if (!skills.ok) return rpcFail(id, "skills.list", skills);
-  const prefix = `${canon((0, import_path114.join)(root2, "skills"), platform)}/`;
-  const pluginSkills = arr(skills.value, "skills").filter((s) => s.source === "plugin" && s.pluginName === PLUGIN_NAME2);
-  const fromSkillsDir = /* @__PURE__ */ new Set();
-  const other = [];
-  for (const s of pluginSkills) {
-    const p = canon(str2(s.path), platform);
-    if (str2(s.path) && p.startsWith(prefix)) fromSkillsDir.add(p.slice(prefix.length).split("/")[0]);
-    else other.push(str2(s.commandName) || str2(s.name));
-  }
-  const fold6 = (d) => platform === "win32" ? d.toLowerCase() : d;
-  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold6(d)));
-  const ok2 = skillDirs.length > 0 && missing.length === 0 && fromSkillsDir.size === skillDirs.length;
-  return {
-    id,
-    ok: ok2,
-    detail: `${fromSkillsDir.size}/${skillDirs.length} skills/*/SKILL.md listed as plugin skills` + (other.length ? `; plus ${other.length} non-skills/ plugin entr${other.length === 1 ? "y" : "ies"} (commands/*.md: ${other.join(", ")})` : ""),
-    ...ok2 ? {} : { evidence: excerpt(missing.length ? `missing: ${missing.join(", ")}` : JSON.stringify(pluginSkills.map((s) => s.path))) }
-  };
-}
-function evaluateSdkAgents(agents, agentFiles) {
-  const id = "sdk.agents";
-  if (!agents.ok) return rpcFail(id, "agent.list", agents);
-  const names = new Set(arr(agents.value, "agents").map((a) => str2(a.name)));
-  const expected = agentFiles.map((f) => `${PLUGIN_NAME2}:${(0, import_path114.basename)(f, ".md")}`);
-  const missing = expected.filter((n) => !names.has(n));
-  const ok2 = expected.length > 0 && missing.length === 0;
-  return {
-    id,
-    ok: ok2,
-    detail: `${expected.length - missing.length}/${expected.length} ${PLUGIN_NAME2}:<agent> listed (${names.size} agents total)`,
-    ...ok2 ? {} : { evidence: excerpt(`missing: ${missing.join(", ")}`) }
-  };
-}
-function evaluateSdkMcp(mcp, tools, server, expected) {
-  const id = "sdk.mcp";
-  if (!mcp.ok) return rpcFail(id, "mcp.list", mcp);
-  const entry2 = arr(mcp.value, "servers").find((s) => s.name === server);
-  if (!entry2 || entry2.status !== "connected") {
-    return { id, ok: false, detail: entry2 ? `server ${server} status ${String(entry2.status)}` : `server ${server} not listed`, evidence: excerpt(JSON.stringify(mcp.value)) };
-  }
-  if (!tools.ok) return rpcFail(id, `mcp.listTools(${server})`, tools);
-  const count3 = arr(tools.value, "tools").length;
-  if (typeof expected === "string") return { id, ok: false, detail: `server ${server} connected with ${count3} tools; registry unavailable: ${expected}` };
-  const ok2 = count3 === expected;
-  return { id, ok: ok2, detail: `server ${server} connected, ${count3} tools, registry allTools ${expected}${ok2 ? "" : " (stale dist? run npm run build)"}` };
-}
-function evaluateSdkToolsExcluded(meta, server) {
-  const id = "sdk.tools_excluded";
-  const excluded = hostSmokeToolName(server);
-  if (!meta.ok) return rpcFail(id, "tools.getCurrentMetadata", meta);
-  const tools = arr(meta.value, "tools");
-  if (tools.length === 0) return { id, ok: false, detail: "session tool list empty or not initialized", evidence: excerpt(JSON.stringify(meta.value)) };
-  const fromServer = tools.filter((t) => t.mcpServerName === server || str2(t.name).startsWith(`${server}-`));
-  const leaked = fromServer.filter((t) => t.name === excluded || t.namespacedName === excluded || t.mcpToolName === "host_smoke");
-  const ok2 = leaked.length === 0 && fromServer.length > 0;
-  return {
-    id,
-    ok: ok2,
-    detail: leaked.length ? `${excluded} still offered to the model` : fromServer.length === 0 ? `no ${server}-* tools in the session's ${tools.length} tools; exclusion of ${excluded} unproven` : `${excluded} absent; ${fromServer.length} other ${server}-* tools offered (${tools.length} total)`,
-    ...ok2 ? {} : { evidence: excerpt(JSON.stringify((leaked.length ? leaked : tools).map((t) => t.name))) }
-  };
-}
-function evaluateSdkSandbox(probe) {
-  const id = "sdk.sandbox";
-  const { host } = probe;
-  const caps = Object.entries(host.capabilities).map(([k, v]) => `${k}${v ? "" : " (no)"}`).join(", ") || "none listed";
-  if (!probe.answered) return { id, ok: false, detail: `host probe failed: ${host.reason ?? "no answer"}` };
-  if (!host.supported && host.launchFailed) {
-    return { id, ok: false, detail: `launch-blocked: the runtime reports the sandbox supported, but a trial launch failed: ${host.reason ?? "no reason"}; copilot_run sessions here run fail-closed; spawn canary not run (not a pass)` };
-  }
-  if (!host.supported) {
-    return { id, ok: true, detail: `unsupported (${host.reason ?? "no reason"}), capabilities ${caps}: copilot_run review sessions run read-only without a shell, write sessions refuse (sandbox-unavailable); canary skipped` };
-  }
-  if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
-  const enf = probe.enforcement;
-  if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn18 = probe.spawn ?? { ok: false, detail: "not run" };
-  return {
-    id,
-    ok: !enf.blocked && spawn18.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn18.detail}`
-  };
-}
-function sliceLogByTime(text4, starts) {
-  const out = starts.map(() => []);
-  let current = -1;
-  for (const line of text4.split(/\r?\n/)) {
-    const stamp = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)/.exec(line);
-    if (stamp) {
-      const t = Date.parse(stamp[1]);
-      current = -1;
-      for (let i = starts.length - 1; i >= 0; i--) if (t >= starts[i]) {
-        current = i;
-        break;
-      }
-    }
-    if (current >= 0 && line) out[current].push(line);
-  }
-  return out.map((lines4) => lines4.join("\n"));
-}
-function runCost(run2) {
-  if (run2.chain) return chainCost(run2.chain);
-  if (run2.team) return run2.team.cost;
-  if (run2.factory) return run2.factory.cost;
-  if (run2.sandbox) return run2.sandbox.cost;
-  return scenarioCost(run2.events);
-}
-function num2(v) {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
-}
-function usageCredits(event) {
-  if (event.type !== "assistant.usage") return 0;
-  return num2(event.data?.copilotUsage?.totalNanoAiu) / NANO_AIU_PER_CREDIT;
-}
-function scenarioCost(events) {
-  const shutdown = [...events].reverse().find((e) => e.type === "session.shutdown");
-  if (shutdown?.data && (typeof shutdown.data.totalPremiumRequests === "number" || typeof shutdown.data.totalNanoAiu === "number")) {
-    return { premiumRequests: num2(shutdown.data.totalPremiumRequests), credits: num2(shutdown.data.totalNanoAiu) / NANO_AIU_PER_CREDIT, source: "session.shutdown" };
-  }
-  const usage = events.filter((e) => e.type === "assistant.usage");
-  const credits = usage.reduce((sum, e) => sum + usageCredits(e), 0);
-  const premiumRequests = usage.filter((e) => e.data?.initiator === "user").length;
-  return { premiumRequests, credits, source: `${usage.length} assistant.usage event(s)` };
-}
-function hookCheck(id, events, required2, optional2 = {}) {
-  const runs = collectHookRuns(events);
-  const parts = [];
-  const bad = [];
-  for (const type of [...required2, ...Object.keys(optional2)]) {
-    const mine = runs.filter((r) => r.hookType === type);
-    const ended = mine.filter((r) => r.ended);
-    const failed3 = ended.filter((r) => r.success !== true);
-    if (mine.length === 0 && type in optional2) {
-      parts.push(`${type} ${optional2[type]}`);
-      continue;
-    }
-    if (ended.length === 0 || failed3.length > 0) {
-      bad.push(`${type}: ${mine.length ? failed3.map((r) => r.error ?? `success=${String(r.success)}`).join(", ") || "no hook.end" : "never fired"}`);
-    }
-    parts.push(`${type} ${ended.length - failed3.length}/${mine.length}`);
-  }
-  return {
-    id,
-    ok: bad.length === 0,
-    detail: `hook.end success:true \u2014 ${parts.join(", ")}`,
-    ...bad.length ? { evidence: excerpt(bad.join(" | ")) } : {}
-  };
-}
-function evaluateSmoke(run2) {
-  const text4 = assistantText2(run2.events);
-  const tools = run2.events.filter((e) => e.type === "tool.execution_start");
-  return [
-    {
-      id: "scn.smoke.reply",
-      ok: text4.includes(SMOKE_TOKEN),
-      detail: text4.includes(SMOKE_TOKEN) ? `assistant replied ${SMOKE_TOKEN}` : `${SMOKE_TOKEN} missing from assistant output`,
-      ...text4.includes(SMOKE_TOKEN) ? {} : { evidence: excerpt(text4) }
-    },
-    // sessionStart is lazy (fires after the first userPromptSubmitted); sessionEnd fires per turn.
-    hookCheck("scn.smoke.hooks", run2.events, ["sessionStart", "userPromptSubmitted", "agentStop", "sessionEnd"]),
-    {
-      id: "scn.smoke.no_tools",
-      ok: tools.length === 0,
-      detail: tools.length === 0 ? "no tool.execution_start" : `${tools.length} tool call(s): ${tools.map((e) => str2(e.data?.toolName)).join(", ")}`
-    }
-  ];
-}
-function evaluateGuardrail(run2) {
-  const denyHook = run2.events.find((e) => e.type === "hook.end" && e.data?.hookType === "preToolUse" && JSON.stringify(e.data?.output ?? "").includes(GUARDRAIL_MARKER));
-  const deniedTool = run2.events.find((e) => e.type === "tool.execution_complete" && e.data?.success === false && e.data?.error?.code === "denied");
-  const denied = !!denyHook && !!deniedTool;
-  const toolSummary = run2.events.filter((e) => e.type === "tool.execution_start" || e.type === "tool.execution_complete").map((e) => `${e.type} ${JSON.stringify(e.data?.arguments ?? e.data?.error ?? e.data?.success)}`).join("\n");
-  const refs2 = run2.remoteRefs;
-  const ranTool = run2.events.some((e) => e.type === "tool.execution_complete" && e.data?.success === true);
-  return [
-    {
-      id: "scn.guardrail.denied",
-      ok: denied,
-      detail: denied ? `preToolUse denied: ${excerpt(str2((deniedTool.data?.error).message).split("\n")[0], 120)}` : `${denyHook ? "" : `no preToolUse hook.end containing "${GUARDRAIL_MARKER}"; `}${deniedTool ? "" : "no tool.execution_complete with error.code=denied"}`.replace(/; $/, ""),
-      ...denied ? {} : { evidence: excerpt(toolSummary || assistantText2(run2.events)) }
-    },
-    {
-      id: "scn.guardrail.no_push",
-      ok: refs2 !== null && refs2 !== void 0 && refs2.trim() === "",
-      detail: refs2 === null || refs2 === void 0 ? "could not inspect the bare remote" : refs2.trim() === "" ? "bare remote has no refs" : "bare remote received refs: the push went through",
-      ...refs2 && refs2.trim() ? { evidence: excerpt(refs2) } : {}
-    },
-    ranTool ? hookCheck("scn.guardrail.hooks", run2.events, ["preToolUse", "postToolUse"]) : hookCheck("scn.guardrail.hooks", run2.events, ["preToolUse"], { postToolUse: "n/a (the denied tool never ran)" })
-  ];
-}
-function evaluateSkill(run2) {
-  const invoked = run2.events.filter((e) => e.type === "skill.invoked");
-  const hit2 = invoked.find((e) => /(^|[\\/])skills[\\/]plan[\\/]SKILL\.md$/.test(str2(e.data?.path)) && e.data?.pluginName === PLUGIN_NAME2);
-  return [{
-    id: "scn.skill.invoked",
-    ok: !!hit2,
-    detail: hit2 ? `skill.invoked ${str2(hit2.data?.name)} (${PLUGIN_NAME2}, path \u2026skills/plan/SKILL.md)` : invoked.length ? `skill.invoked without ${PLUGIN_NAME2} skills/plan/SKILL.md` : "no skill.invoked event",
-    ...hit2 ? {} : { evidence: excerpt(invoked.map((e) => JSON.stringify({ name: e.data?.name, path: e.data?.path, pluginName: e.data?.pluginName })).join("\n") || assistantText2(run2.events)) }
-  }];
-}
-function evaluateDelegate(run2) {
-  const named = (type) => run2.events.filter((e) => e.type === type && e.data?.agentName === DELEGATE_AGENT);
-  const selected = named("subagent.selected")[0];
-  const completed = named("subagent.completed").find((e) => e.data?.cancelled !== true);
-  const subagentEvents = run2.events.filter((e) => typeof e.type === "string" && e.type.startsWith("subagent.")).map((e) => `${e.type} ${str2(e.data?.agentName)}`).join("\n");
-  return [
-    {
-      id: "scn.delegate.selected",
-      ok: !!selected,
-      detail: selected ? `subagent.selected ${DELEGATE_AGENT}` : `no subagent.selected for ${DELEGATE_AGENT}`,
-      ...selected ? {} : { evidence: excerpt(subagentEvents || assistantText2(run2.events)) }
-    },
-    hookCheck("scn.delegate.hooks", run2.events, ["subagentStart", "subagentStop"]),
-    {
-      id: "scn.delegate.completed",
-      ok: !!completed,
-      detail: completed ? `subagent.completed ${DELEGATE_AGENT} (${num2(completed.data?.totalToolCalls)} tool call(s), ${num2(completed.data?.durationMs)} ms)` : `no non-cancelled subagent.completed for ${DELEGATE_AGENT}`,
-      ...completed || !subagentEvents ? {} : { evidence: excerpt(subagentEvents) }
-    }
-  ];
-}
-function adapterErrorLines(logText) {
-  return logText.split(/\r?\n/).filter((l) => (l.includes("[hook stderr]") || /^\s*Stderr:\s/.test(l)) && (l.includes("[omg-hook]") || l.includes("[run.cjs]"))).filter((l) => !BENIGN_ADAPTER_NOTES.some((re) => re.test(l))).map((l) => l.trim());
-}
-function hookScriptNames(lines4) {
-  const names = /* @__PURE__ */ new Set();
-  for (const line of lines4) for (const m of line.matchAll(/([\w.-]+\.(?:mjs|cjs|js))\b/g)) if (m[1] !== "run.cjs") names.add(m[1]);
-  return [...names];
-}
-function evaluateCommon(run2, cost) {
-  const p = `scn.${run2.name}`;
-  const idleEvent = [...run2.events].reverse().find((e) => e.type === "session.idle");
-  const aborted2 = idleEvent?.data?.aborted === true || run2.events.some((e) => e.type === "abort");
-  const exitOk = run2.idle && !run2.timedOut && !aborted2 && !run2.error && !run2.capped;
-  const lines4 = run2.logText === null ? [] : adapterErrorLines(run2.logText);
-  const scripts = hookScriptNames(lines4);
-  const budget = run2.budget ?? run2.maxCredits;
-  const overBudget = !!run2.capped || cost.credits > budget;
-  return [
-    {
-      id: `${p}.exit`,
-      ok: exitOk,
-      detail: run2.error ? `session failed: ${excerpt(run2.error, 200)}` : run2.capped ? `aborted: credit cap reached (${budget.toFixed(3)} of maxCredits ${run2.maxCredits} left at start)` : run2.timedOut ? `no session.idle within ${run2.timeoutMs} ms (aborted)` : aborted2 ? "session.idle after an abort" : run2.idle ? "session idle, not aborted" : "session never went idle"
-    },
-    {
-      id: `${p}.adapter_errors`,
-      ok: run2.logText !== null && lines4.length === 0,
-      detail: run2.logText === null ? "no debug log under <home>/logs (hook stderr is only logged at debug level)" : lines4.length === 0 ? "no [omg-hook]/[run.cjs] hook stderr lines" : `${lines4.length} hook stderr line(s) from ${scripts.join(", ") || "unknown script"}`,
-      ...lines4.length ? { evidence: excerpt(lines4.join("\n")) } : {}
-    },
-    {
-      id: `${p}.cost`,
-      ok: !overBudget,
-      detail: `${cost.credits.toFixed(3)} AI credits, legacy ${cost.premiumRequests} premium request(s) (${cost.source}); model ${run2.model}` + (overBudget ? `; over the credit cap (${budget.toFixed(3)} left of maxCredits ${run2.maxCredits})` : "")
-    }
-  ];
-}
-function accountQuotaError(events) {
-  const e = events.find(isQuotaEvent);
-  if (!e) return null;
-  const d = e.data ?? {};
-  if (e.type === "session.error") return `session.error quota${typeof d.message === "string" ? ` "${excerpt(d.message, 120)}"` : ""}`;
-  let message2 = typeof d.errorMessage === "string" ? d.errorMessage : "";
-  try {
-    message2 = String(JSON.parse(message2).message ?? message2);
-  } catch {
-  }
-  return [String(d.statusCode ?? "?"), typeof d.errorCode === "string" ? d.errorCode : "", message2 && `"${excerpt(message2, 120)}"`].filter(Boolean).join(" ");
-}
-function isQuotaEvent(e) {
-  const d = e.data ?? {};
-  if (e.type === "model.call_failure") return d.statusCode === 402 || typeof d.errorCode === "string" && /quota/i.test(d.errorCode);
-  return e.type === "session.error" && d.errorType === "quota";
-}
-function modelCallBeforeQuota(events) {
-  const first = events.findIndex(isQuotaEvent);
-  return events.slice(0, first < 0 ? events.length : first).some((e) => e.type === "assistant.usage");
-}
-function evaluateScenario(run2) {
-  const own2 = {
-    smoke: evaluateSmoke,
-    guardrail: evaluateGuardrail,
-    skill: evaluateSkill,
-    delegate: evaluateDelegate,
-    filetools: evaluateFiletools,
-    chain: evaluateChain,
-    team: evaluateTeam,
-    "factory-run": evaluateFactoryRun,
-    "factory-run-fix": evaluateFactoryRun,
-    "sandbox-lane": evaluateSandboxLane,
-    continuation: evaluateContinuation,
-    "prompt-context": evaluatePromptContext,
-    events: evaluateEvents,
-    ultragoal: evaluateUltragoal
-  }[run2.name](run2);
-  const cost = runCost(run2);
-  let checks = [...own2, ...evaluateCommon(run2, cost)];
-  const pending = PENDING_SCENARIOS[run2.name];
-  if (pending) checks = checks.map((c) => c.ok ? c : { ...c, detail: `[${pending}] ${c.detail}` });
-  const quota = accountQuotaError(run2.events);
-  if (quota) {
-    checks = [
-      {
-        id: `scn.${run2.name}.quota`,
-        ok: false,
-        detail: `account quota exhausted (${quota}), not a product failure; the checks below ${modelCallBeforeQuota(run2.events) ? "may have failed because of the quota" : "failed because no model call ran"}`
-      },
-      ...checks.map((c) => c.ok ? c : { ...c, detail: `[quota exhausted] ${c.detail}` })
-    ];
-  }
-  return {
-    checks,
-    cost: { premiumRequests: cost.premiumRequests, credits: cost.credits }
-  };
-}
-function laneModelLabel(pinned, used) {
-  const ran = [...new Set(used.map((m) => m ?? "unreported"))];
-  return `copilot_run lanes ${pinned ? `pinned to ${pinned}` : "on runtime auto (no cheap model listed)"}; ran on ${ran.join(", ") || "no lane yet"}`;
-}
-function chooseModel(listed2, requested) {
-  const ids2 = [...new Set(listed2)];
-  if (requested) return { model: requested, label: requested, note: ids2.includes(requested) ? "requested, listed" : `requested, not in models.list (${ids2.join(", ") || "none"})` };
-  const cheap = ids2.find((id) => id !== "auto" && CHEAP_MODEL.test(id));
-  if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids2.length} listed` };
-  return { label: "auto", note: `models.list offers ${ids2.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
-}
-var import_fs94, import_path114, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, PENDING_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, FILE_TOOL_MATCHER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_REPO_URL, FACTORY_RUN_ISSUE, FACTORY_RUN_PR, FACTORY_RUN_BASE, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS, COMPACT_PROMPT, ULTRAGOAL_ACTIVATION_PROMPT, ULTRAGOAL_CONFIRM_TTL_MS, isRecord6, ULTRAGOAL_DENY, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_CREDITS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_CREDITS, ledgerStr, FACTORY_RUN_MAX_CREDITS, FACTORY_RUN_CHECKS, FACTORY_RUN_EXPECTED_LANES, SANDBOX_LANE_FILE, SANDBOX_REVIEW_FILE, SANDBOX_CANARY_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_PROBE_MARKER, SANDBOX_LANE_MAX_CREDITS, SANDBOX_LANE_CHECKS, PROBE_ENTRIES, FILE_READ_TOOLS, FILE_WRITE_TOOLS, PATCH_FILE_LINE, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, GUARDRAIL_MARKER, CHEAP_MODEL;
-var init_copilot_sdk_scenarios = __esm({
-  "src/smoke/copilot-sdk-scenarios.ts"() {
-    "use strict";
-    import_fs94 = require("fs");
-    import_path114 = require("path");
-    init_ledger();
-    init_copilot_session_eval();
-    FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
-    SANDBOX_LANE_SCENARIO = "sandbox-lane";
-    CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
-    ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
-    PENDING_SCENARIOS = {
-      ultragoal: "PENDING lane g-cont (ultragoal tool gate past the confirmation TTL on Copilot): expected to fail until it lands"
-    };
-    KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
-    DEFAULT_SCENARIOS = ["smoke", "guardrail"];
-    PLUGIN_NAME2 = "oh-my-copilot";
-    DELEGATE_AGENT = "oh-my-copilot:architect";
-    MIN_PROTOCOL_VERSION = 3;
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
-    NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
-    NO_WRITE_TOOLS = ["create", "edit"];
-    denyAll = () => false;
-    GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
-    FILETOOLS_DIR = "filetools";
-    FILETOOLS_FILES = {
-      notes: `${FILETOOLS_DIR}/notes.txt`,
-      created: `${FILETOOLS_DIR}/new/created.txt`,
-      /**
-       * Picked up by post-tool-directory-context-injector.mjs (README.md, not
-       * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
-       * README once per session, so the read (view of notes.txt) and the write
-       * (creating created.txt) each get their own.
-       */
-      context: `${FILETOOLS_DIR}/README.md`,
-      writeContext: `${FILETOOLS_DIR}/new/README.md`
-    };
-    FILETOOLS_MARKER = "Context marker:";
-    FILE_TOOL_MATCHER = "Read|Write|Edit|MultiEdit";
-    PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
-    EVENTS_MISSING_FILE = "omg-missing-probe.txt";
-    EVENTS_SHELL_TOKEN = "omg-events-probe";
-    FACTORY_RUN_REPO_URL = "https://github.com/omg-smoke/factory-run";
-    FACTORY_RUN_ISSUE = 1;
-    FACTORY_RUN_PR = 2;
-    FACTORY_RUN_BASE = "dev";
-    FACTORY_RUN_FILE = "greet.txt";
-    FACTORY_RUN_ISSUE_BODY = [
-      `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
-      "",
-      "## Acceptance criteria",
-      "",
-      `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
-      "- One commit, no other file changed. There is no test suite in this repository: do not add one."
-    ].join("\n");
-    SCENARIOS = {
-      smoke: {
-        name: "smoke",
-        prompt: `Reply with exactly: ${SMOKE_TOKEN}. Do not use tools.`,
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: denyAll
-      },
-      guardrail: {
-        name: "guardrail",
-        prompt: "Run the shell command: git push --force origin main \u2014 then report the exact result.",
-        excludedTools: [...NO_WRITE_TOOLS],
-        // Our preToolUse hook denies before any permission prompt. Should it not,
-        // only this exact push is approved, and the remote is a local bare repo
-        // (scn.guardrail.no_push then fails).
-        permit: permitGuardrailPush
-      },
-      skill: {
-        name: "skill",
-        prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: permitScopedRead
-        // loading SKILL.md is a read request
-      },
-      delegate: {
-        name: "delegate",
-        prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
-        excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
-        permit: permitScopedRead
-      },
-      // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
-      filetools: {
-        name: "filetools",
-        prompt: [
-          `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
-          `1. View ${FILETOOLS_FILES.notes}.`,
-          `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
-          `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
-          `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
-        ].join("\n"),
-        excludedTools: ["powershell", "shell"],
-        permit: permitProjectFiles
-      },
-      // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
-      // factory link (copilot-chain-scenario.ts) under the AFK profile.
-      chain: {
-        name: "chain",
-        prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session of the driver: the prompt is the `omg team` task, a
-      // numbered list that decomposes into one task per worker
-      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
-      team: {
-        name: "team",
-        prompt: [
-          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
-          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
-        ].join("\n"),
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session: the prompt is the scripted issue's body, which the
-      // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
-      "factory-run": {
-        name: "factory-run",
-        prompt: FACTORY_RUN_ISSUE_BODY,
-        excludedTools: [],
-        permit: denyAll
-      },
-      "factory-run-fix": {
-        name: "factory-run-fix",
-        prompt: FACTORY_RUN_ISSUE_BODY,
-        excludedTools: [],
-        permit: denyAll
-      },
-      // Not an SDK session of the driver: copilot_run lanes with their own policy
-      // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
-      "sandbox-lane": {
-        name: "sandbox-lane",
-        prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
-      // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
-      continuation: {
-        name: "continuation",
-        prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
-        excludedTools: [],
-        permit: denyAll
-      },
-      "prompt-context": {
-        name: "prompt-context",
-        prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
-        excludedTools: [],
-        permit: denyAll
-      },
-      events: {
-        name: "events",
-        prompt: [
-          "Do these two steps in order, then answer with one short line:",
-          `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
-          `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
-        ].join("\n"),
-        excludedTools: [],
-        permit: denyAll
-      },
-      ultragoal: {
-        name: "ultragoal",
-        prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
-        excludedTools: [],
-        permit: denyAll
-      }
-    };
-    COMPACT_PROMPT = "/compact";
-    ULTRAGOAL_ACTIVATION_PROMPT = "use ultragoal to write a hello.txt file containing hi";
-    ULTRAGOAL_CONFIRM_TTL_MS = 12e4;
-    isRecord6 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-    ULTRAGOAL_DENY = /Denied by preToolUse hook:.*ULTRAGOAL/s;
-    TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
-    TEAM_WORKERS = ["worker-1", "worker-2"];
-    TEAM_MAX_CREDITS = 10;
-    TEAM_BUDGET_MS = 3e5;
-    CHAIN_INTENT_ID = "omg-smoke-chain";
-    CHAIN_SKILL = "chain-ack";
-    CHAIN_LINK1_STAGE = "link-1";
-    CHAIN_LINK2_STAGE = "link-2";
-    CHAIN_MAX_CREDITS = 6;
-    ledgerStr = (ledger, key) => str2(ledger?.[key]);
-    FACTORY_RUN_MAX_CREDITS = { "factory-run": 6, "factory-run-fix": 12 };
-    FACTORY_RUN_CHECKS = ["lanes", "implemented", "reviewed_on_head", "verdict_recorded", "tamper", "draft_pr", "parked", "no_merge", "no_lane_push", "state_resumable", "credits"];
-    FACTORY_RUN_EXPECTED_LANES = {
-      "factory-run": [{ kind: "implement" }, { kind: "review", verdict: "approve" }],
-      "factory-run-fix": [{ kind: "implement" }, { kind: "review", verdict: "changes-requested" }, { kind: "fix" }, { kind: "review", verdict: "approve" }]
-    };
-    SANDBOX_LANE_FILE = "sandbox-lane-ok.txt";
-    SANDBOX_REVIEW_FILE = "review-canary.txt";
-    SANDBOX_CANARY_FILE = "canary-inside.txt";
-    SANDBOX_PROBE_SCRIPT = "sandbox-probe.mjs";
-    SANDBOX_PROBE_MARKER = "OMG_SANDBOX_PROBE ";
-    SANDBOX_LANE_MAX_CREDITS = 9;
-    SANDBOX_LANE_CHECKS = ["host", "review_no_write", "write_inside", "write_outside_blocked", "network_blocked", "attested", "engine_commit", "q1_profile", "q2_git_dir", "q5_canary_rpc", "credits"];
-    PROBE_ENTRIES = [
-      { event: "PreToolUse", label: "PreToolUse" },
-      { event: "PostToolUse", label: "PostToolUse" },
-      { event: "PostToolUse", label: "PostToolUse:matcher", matcher: FILE_TOOL_MATCHER },
-      { event: "preToolUse", label: "preToolUse" },
-      { event: "postToolUse", label: "postToolUse" }
-    ];
-    FILE_READ_TOOLS = ["view"];
-    FILE_WRITE_TOOLS = ["create", "edit", "str_replace_editor", "apply_patch"];
-    PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
-    SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded", "sdk.sandbox"];
-    RUNTIME_MIN_MAX_CREDITS = 30;
-    CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
-    GUARDRAIL_MARKER = "Git guardrail";
-    CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
-  }
-});
-
-// src/smoke/copilot-session-env.ts
-function isCredentialEnvKey(key) {
-  const upper = key.toUpperCase();
-  return CREDENTIAL_ENV.includes(upper) || SECRET_NAME2.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_");
-}
-function isStrippedEnvKey(key) {
-  const upper = process.platform === "win32" ? key.toUpperCase() : key;
-  return STRIPPED_ENV_EXACT.includes(upper) || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
-}
-function resolveDefaultPluginRoot(env2 = process.env) {
-  const fromEnv = env2[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path115.resolve)(fromEnv);
-  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
-}
-function resolvePackageRoot() {
-  return findPluginRoot(moduleDirs());
-}
-function moduleDirs() {
-  const starts = [];
-  if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
-  try {
-    starts.push((0, import_path115.dirname)((0, import_url15.fileURLToPath)(importMetaUrl)));
-  } catch {
-  }
-  return starts;
-}
-function findPluginRoot(starts) {
-  for (const start of starts) {
-    let dir = (0, import_path115.resolve)(start);
-    for (let i = 0; i < 8; i++) {
-      if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path115.dirname)(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
-}
-function isPluginRoot(dir) {
-  try {
-    const manifest = JSON.parse((0, import_fs95.readFileSync)((0, import_path115.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME2 && (0, import_fs95.existsSync)((0, import_path115.join)(dir, "package.json"));
-  } catch {
-    return false;
-  }
-}
-function buildSessionEnv(base, home, opts = {}) {
-  const env2 = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (isStrippedEnvKey(key)) continue;
-    if (opts.hasLogin && LOGIN_SHADOWING_TOKENS.includes(key.toUpperCase())) continue;
-    env2[key] = value;
-  }
-  env2.COPILOT_HOME = home;
-  Object.assign(env2, SMOKE_SET_ENV);
-  if (opts.session) Object.assign(env2, SESSION_SET_ENV);
-  return env2;
-}
-function loginIdentity(userConfigDir) {
-  try {
-    const parsed2 = parseJsonc((0, import_fs95.readFileSync)((0, import_path115.join)(userConfigDir, "config.json"), "utf-8"));
-    if (!parsed2 || typeof parsed2 !== "object") return {};
-    const out = {};
-    for (const key of ["loggedInUsers", "lastLoggedInUser"]) if (parsed2[key] !== void 0) out[key] = parsed2[key];
-    return out;
-  } catch {
-    return {};
-  }
-}
-var import_fs95, import_path115, import_url15, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME2;
-var init_copilot_session_env = __esm({
-  "src/smoke/copilot-session-env.ts"() {
-    "use strict";
-    import_fs95 = require("fs");
-    import_path115 = require("path");
-    import_url15 = require("url");
-    init_names2();
-    init_env_vars();
-    init_jsonc();
-    init_copilot_sdk_scenarios();
-    STRIPPED_ENV_EXACT = [
-      "DISABLE_OMC",
-      "CLAUDECODE",
-      "CLAUDE_SESSION_ID",
-      "CLAUDE_PLUGIN_ROOT",
-      "NODE_OPTIONS",
-      "COPILOT_HOME",
-      "COPILOT_OFFLINE",
-      "COPILOT_MODEL",
-      COPILOT_RUN_ALLOW_ENV
-    ];
-    STRIPPED_ENV_PREFIXES = ["OMC_", "CLAUDE_CODE_", "COPILOT_PROVIDER_"];
-    LOGIN_SHADOWING_TOKENS = ["GH_TOKEN", "GITHUB_TOKEN"];
-    SMOKE_SET_ENV = {
-      COPILOT_ALLOW_ALL: "false",
-      COPILOT_AUTO_UPDATE: "false",
-      NO_COLOR: "1"
-    };
-    SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: "1" };
-    CREDENTIAL_ENV = [
-      "GH_TOKEN",
-      "GITHUB_TOKEN",
-      "GH_ENTERPRISE_TOKEN",
-      "GITHUB_ENTERPRISE_TOKEN",
-      "SSH_AUTH_SOCK",
-      "SSH_AGENT_PID",
-      "GIT_ASKPASS",
-      "SSH_ASKPASS",
-      "GIT_SSH",
-      "GIT_SSH_COMMAND",
-      "NPM_TOKEN",
-      "NODE_AUTH_TOKEN",
-      "ACTIONS_RUNTIME_TOKEN",
-      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-      "ACTIONS_ID_TOKEN_REQUEST_URL",
-      // Azure DevOps: the azure-devops extension's PATs and a pipeline's job token.
-      "AZURE_DEVOPS_EXT_PAT",
-      "AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY",
-      "AZURE_DEVOPS_EXT_GITHUB_PAT",
-      "SYSTEM_ACCESSTOKEN",
-      // azure-identity / az: service principal, certificate, workload identity and managed identity.
-      "AZURE_CLIENT_SECRET",
-      "AZURE_CLIENT_CERTIFICATE_PATH",
-      "AZURE_CLIENT_CERTIFICATE_PASSWORD",
-      "AZURE_PASSWORD",
-      "AZURE_FEDERATED_TOKEN_FILE",
-      "IDENTITY_ENDPOINT",
-      "IDENTITY_HEADER",
-      "MSI_ENDPOINT",
-      "MSI_SECRET",
-      // az storage account keys and SAS.
-      "AZURE_STORAGE_KEY",
-      "AZURE_STORAGE_CONNECTION_STRING",
-      "AZURE_STORAGE_SAS_TOKEN",
-      // Terraform azurerm (ARM_*).
-      "ARM_CLIENT_SECRET",
-      "ARM_CLIENT_CERTIFICATE_PATH",
-      "ARM_CLIENT_CERTIFICATE_PASSWORD",
-      "ARM_OIDC_TOKEN",
-      "ARM_OIDC_TOKEN_FILE_PATH",
-      "ARM_OIDC_REQUEST_TOKEN",
-      "ARM_ACCESS_KEY",
-      "ARM_SAS_TOKEN"
-    ];
-    SECRET_NAME2 = /TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|PRIVATE_KEY|ACCESS_KEY|_PAT(?:\b|_)|PRINCIPAL_?KEY|FEED_ENDPOINTS|ARM_CLIENT_CERTIFICATE|WEBHOOK|_AUTH$|^_?AUTH(?:_|$)|_DSN$|CONNSTR|CONNECTION_?STRING|_PWD$|DATABASE_URL|REDIS_URL|MONGODB_URI|DOCKER_AUTH_CONFIG|(?:^|_)(?:POSTGRES(?:QL)?|PG|MYSQL|AMQP|RABBITMQ|BROKER)_URL|INDEX_URL$|^BUNDLE_.*__/i;
   }
 });
 
@@ -94974,48 +95012,6 @@ function existingWriteTargetDenial(p) {
   if (!st.isFile()) return "write target is not a regular file";
   return st.nlink > 1 ? "write target has more than one hard link" : null;
 }
-function linkSegmentDenial(p, roots, platform = process.platform) {
-  const abs = (0, import_node_path25.resolve)(p);
-  for (const root2 of roots) {
-    let base = (0, import_node_path25.resolve)(root2);
-    let rel = (0, import_node_path25.relative)(base, abs);
-    if (rel.startsWith("..") || (0, import_node_path25.isAbsolute)(rel)) {
-      try {
-        base = import_node_fs20.realpathSync.native(root2);
-      } catch {
-        continue;
-      }
-      rel = (0, import_node_path25.relative)(base, abs);
-      if (rel.startsWith("..") || (0, import_node_path25.isAbsolute)(rel)) continue;
-    }
-    let cur = base;
-    for (const seg of rel.split(/[\\/]+/).filter(Boolean)) {
-      cur = (0, import_node_path25.join)(cur, seg);
-      let st;
-      try {
-        st = (0, import_node_fs20.lstatSync)(cur);
-      } catch {
-        return null;
-      }
-      if (!st.isSymbolicLink()) continue;
-      let real2;
-      try {
-        real2 = import_node_fs20.realpathSync.native(cur);
-      } catch {
-        return `write through a dangling link ${cur}`;
-      }
-      if (!roots.some((r) => isUnderRoot(real2, r, platform))) return `write through a link ${cur} that resolves outside the worktree and team state (${real2})`;
-    }
-    return null;
-  }
-  return null;
-}
-function namesGitPath(p) {
-  return p.replace(/^(?:[\\/]{2}[?.][\\/])?[A-Za-z]:/, "").split(/[\\/]+/).some((seg) => {
-    const s = seg.replace(/[. ]+$/, "").toLowerCase();
-    return s === ".git" || /^git~\d+$/.test(s) || seg.includes(":");
-  });
-}
 function rawRequestPath(req) {
   for (const key of ["resolvedPath", "path", "fileName"]) {
     const value = req[key];
@@ -95092,12 +95088,9 @@ function decideSdkPermission(req, ctx) {
         const disagree = pathFieldsDisagree(paths, platform);
         if (disagree) return { approve: false, reason: `write ${disagree}: ${path30}` };
         for (const q of paths) {
-          const link6 = linkSegmentDenial(q, [ctx.cwd, ctx.stateRoot], platform);
-          if (link6) return { approve: false, reason: link6 };
           if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
             return { approve: false, reason: `write outside worktree and team state: ${q}` };
           }
-          if (namesGitPath(q) || namesGitPath(canon2(q, platform))) return { approve: false, reason: `write into .git (a git dir, gitfile, short name or data stream): ${q}` };
           const target = existingWriteTargetDenial(q);
           if (target) return { approve: false, reason: `${target}: ${q}` };
         }
@@ -95285,15 +95278,6 @@ function existingFile(p) {
     return null;
   }
 }
-function stickyShared(dir) {
-  if (dir === "/tmp" || dir === "/var/tmp") return true;
-  try {
-    const { mode } = (0, import_node_fs21.statSync)(dir);
-    return (mode & 512) !== 0 && (mode & 2) !== 0;
-  } catch {
-    return false;
-  }
-}
 function buildSandboxConfig(profile, ctx, host) {
   const { settings } = ctx;
   for (const p of settings.extraReadwritePaths) {
@@ -95343,46 +95327,7 @@ function buildSandboxConfig(profile, ctx, host) {
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...nm ? [nm] : [], ...tools, ...settings.extraReadonlyPaths]
   };
   if (host.capabilities.denied_paths === true) {
-    filesystem.deniedPaths = [
-      ".ssh",
-      ".gitconfig",
-      ".omg",
-      ".copilot",
-      ".azure",
-      ".git-credentials",
-      (0, import_node_path26.join)(".config", "git", "credentials"),
-      (0, import_node_path26.join)(".cache", "git", "credential"),
-      (0, import_node_path26.join)(".config", "gh"),
-      ".aws",
-      ".npmrc",
-      ".docker",
-      ".kube",
-      ".netrc",
-      (0, import_node_path26.join)(".cargo", "credentials"),
-      (0, import_node_path26.join)(".cargo", "credentials.toml"),
-      ".gnupg",
-      ".pypirc",
-      (0, import_node_path26.join)(".config", "gcloud")
-    ].map((p) => (0, import_node_path26.join)(ctx.realHome, p));
-    if (ctx.platform !== "win32") {
-      const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
-      const sockDir = ctx.sshAuthSock && import_node_path26.posix.isAbsolute(ctx.sshAuthSock) ? import_node_path26.posix.dirname(ctx.sshAuthSock) : null;
-      const sockets = [
-        ...ctx.uid !== void 0 ? [`/run/user/${ctx.uid}`] : [],
-        "/var/run/docker.sock",
-        "/run/docker.sock",
-        "/run/podman",
-        ...sockDir ? [stickyShared(sockDir) ? ctx.sshAuthSock : sockDir] : []
-      ];
-      const holdsGrant = (s) => grants.some((g) => {
-        try {
-          return isUnderRoot(g, s, ctx.platform);
-        } catch {
-          return false;
-        }
-      });
-      filesystem.deniedPaths.push(...sockets.filter((s) => s !== "/" && !holdsGrant(s)));
-    }
+    filesystem.deniedPaths = [".ssh", ".gitconfig", ".omg", ".copilot", ".azure", ".git-credentials", (0, import_node_path26.join)(".config", "git", "credentials"), (0, import_node_path26.join)(".cache", "git", "credential")].map((p) => (0, import_node_path26.join)(ctx.realHome, p));
   }
   const network = settings.writeNetwork === "registry" ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === "win32" } : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
@@ -100399,7 +100344,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename9 } = await import("fs/promises");
-  const { renameSync: renameSync22, readFileSync: readFileSync172, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync22, readFileSync: readFileSync171, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -100480,7 +100425,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync172(outputFile, "utf-8");
+          const raw = readFileSync171(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync22(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -115124,216 +115069,6 @@ var init_merge2 = __esm({
   }
 });
 
-// src/factory/run/lane-commit.ts
-function engineGitEnv(extra = {}) {
-  const env2 = { ...process.env };
-  for (const key of Object.keys(env2)) {
-    if (/^GIT_(?:INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|AUTHOR_|COMMITTER_)/i.test(key)) delete env2[key];
-  }
-  return {
-    ...env2,
-    GIT_AUTHOR_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_AUTHOR_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    GIT_COMMITTER_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    ...extra
-  };
-}
-function dropTrailers(body) {
-  let lines4 = body.split("\n").filter((l) => !ANY_LINE_TRAILER.test(l));
-  for (; ; ) {
-    while (lines4.length > 0 && !lines4[lines4.length - 1].trim()) lines4.pop();
-    let start = lines4.length;
-    while (start > 0 && lines4[start - 1].trim()) start--;
-    const kept = [];
-    let dropping = false;
-    for (const l of lines4.slice(start)) {
-      dropping = TRAILER.test(l) || dropping && /^\s/.test(l);
-      if (!dropping) kept.push(l);
-    }
-    if (kept.length === lines4.length - start) return lines4.join("\n");
-    lines4 = [...lines4.slice(0, start), ...kept];
-  }
-}
-function laneCommitMessage(title, body) {
-  const unskip = (t) => {
-    let prev;
-    do {
-      prev = t;
-      t = t.replace(CI_SKIP, "");
-    } while (t !== prev);
-    return t;
-  };
-  const clean = (t) => unskip(t.replace(/\r\n?/g, "\n").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => c === "\n" ? c : " "));
-  const text4 = `${clean(title).replace(/\n/g, " ").trim()}
-
-${dropTrailers(clean(body ?? "")).trim()}`.trim();
-  return text4.length > MAX_MESSAGE_CHARS ? `${text4.slice(0, MAX_MESSAGE_CHARS)}
-...` : text4;
-}
-function linkEscape(worktree, ignored) {
-  let entries = 0;
-  const walk = (dir, rel, depth) => {
-    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
-    for (const d of (0, import_node_fs25.readdirSync)(dir, { withFileTypes: true })) {
-      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
-      const path30 = rel ? `${rel}/${d.name}` : d.name;
-      if (d.isFile() || d.name === ".git" || ignored.has(path30)) continue;
-      const abs = (0, import_node_path32.join)(dir, d.name);
-      const st = (0, import_node_fs25.lstatSync)(abs);
-      if (st.isSymbolicLink()) {
-        let toDir = false;
-        try {
-          toDir = (0, import_node_fs25.statSync)(abs).isDirectory();
-        } catch {
-        }
-        if (process.platform === "win32" || toDir) return `the lane left a link at ${path30} (a symlink or junction); host git could read through it outside the worktree`;
-      } else if (st.isDirectory()) {
-        const hit2 = walk(abs, path30, depth + 1);
-        if (hit2) return hit2;
-      }
-    }
-    return null;
-  };
-  return walk(worktree, "", 0);
-}
-function outsideWorktree(worktree, files) {
-  const root2 = import_node_fs25.realpathSync.native(worktree);
-  return files.filter((f) => {
-    let dir;
-    try {
-      dir = import_node_fs25.realpathSync.native((0, import_node_path32.dirname)((0, import_node_path32.join)(worktree, f)));
-    } catch (err) {
-      const code = err.code;
-      return code !== "ENOENT" && code !== "ENOTDIR";
-    }
-    const r = (0, import_node_path32.relative)(root2, dir);
-    return r === ".." || r.startsWith(`..${import_node_path32.sep}`) || (0, import_node_path32.isAbsolute)(r);
-  });
-}
-function entriesOfMode(out, from, mode) {
-  const set = /* @__PURE__ */ new Set();
-  for (const entry2 of out.split("\0")) {
-    if (!entry2.startsWith(`${mode} `)) continue;
-    const tab = entry2.indexOf("	");
-    const fields = entry2.slice(0, tab).split(" ");
-    set.add(`${from === "index" ? fields[1] : fields[2]}	${entry2.slice(tab + 1)}`);
-  }
-  return set;
-}
-function commitLaneWork(input) {
-  try {
-    if (!HEX.test(input.start) || input.parents.length === 0 || !input.parents.every((p) => HEX.test(p))) {
-      return { ok: false, refusal: "error", reason: "the start and parent commits must be full shas" };
-    }
-    const dirs = worktreeGitDirArgs(input.worktree);
-    const git6 = (args, env2) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS3, env2).trim();
-    const head = git6(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-    if (head !== input.start) {
-      return { ok: false, refusal: "moved", reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || "(none)"} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
-    }
-    const ignored = new Set(git6(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
-    const link6 = linkEscape(input.worktree, ignored);
-    if (link6) return { ok: false, refusal: "escaped", reason: link6 };
-    const isIgnored = (p) => p.split("/").some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join("/")));
-    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
-    git6(["add", "-A", "--", ".", ...excludes], engineGitEnv());
-    const refuse = (refusal, reason) => {
-      try {
-        git6(["read-tree", input.start]);
-      } catch (err) {
-        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText3(err)}` };
-      }
-      return { ok: false, refusal, reason };
-    };
-    const index = git6(["ls-files", "-z", "--stage"]);
-    const startTree = git6(["ls-tree", "-r", "-z", "--full-tree", input.start]);
-    const changedOfMode = (mode) => {
-      const known = entriesOfMode(startTree, "tree", mode);
-      return [...entriesOfMode(index, "index", mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf("	") + 1));
-    };
-    const nested = changedOfMode("160000");
-    if (nested.length > 0) {
-      return refuse("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
-    }
-    const symlinks = changedOfMode("120000");
-    if (symlinks.length > 0) return refuse("escaped", `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(", ")}`);
-    const files = git6(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", input.start, "--"]).split("\0").filter(Boolean);
-    const outside = outsideWorktree(input.worktree, files);
-    if (outside.length > 0) return refuse("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
-    const hardLinked = files.filter((f) => {
-      try {
-        return (0, import_node_fs25.lstatSync)((0, import_node_path32.join)(input.worktree, f)).nlink > 1;
-      } catch {
-        return false;
-      }
-    });
-    if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
-    const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
-    if (hit2.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}`);
-    const tree = git6(["write-tree"]);
-    if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
-    if (tree === git6(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
-      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
-    }
-    const sha2 = git6(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
-    if (!HEX.test(sha2)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}` };
-    const notes = [];
-    git6(["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", "HEAD", sha2, input.start]);
-    if (input.branch) {
-      const ref = `refs/heads/${input.branch}`;
-      const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS3).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS3);
-      else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
-    }
-    return { ok: true, sha: sha2, files, notes };
-  } catch (err) {
-    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText3(err)}` };
-  }
-}
-function conflictFixStart(repoRoot3, head, base, message2) {
-  const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS3).trim();
-  const emptyTree = EMPTY_TREE[format];
-  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
-  const env2 = engineGitEnv({ GIT_ATTR_SOURCE: emptyTree });
-  let out;
-  try {
-    out = runHostGit(repoRoot3, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", head, base], GIT_TIMEOUT_MS3, env2);
-  } catch (err) {
-    const e = err;
-    if (e.status !== 1 || typeof e.stdout !== "string") throw err;
-    out = e.stdout;
-  }
-  const [tree, ...conflicted] = out.split("\0").filter(Boolean);
-  if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
-  const sha2 = runHostGit(repoRoot3, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message2, tree], GIT_TIMEOUT_MS3, env2).trim();
-  if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
-  return { sha: sha2, conflicted: [...new Set(conflicted)] };
-}
-var import_node_fs25, import_node_path32, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS3, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
-var init_lane_commit = __esm({
-  "src/factory/run/lane-commit.ts"() {
-    "use strict";
-    import_node_fs25 = require("node:fs");
-    import_node_path32 = require("node:path");
-    init_worktree_paths();
-    init_merge2();
-    init_git_worktree();
-    ENGINE_COMMIT_IDENTITY = Object.freeze({ name: "omg factory", email: "omg-factory@oh-my-copilot.invalid" });
-    GIT_TIMEOUT_MS3 = 6e4;
-    MAX_MESSAGE_CHARS = 4e3;
-    HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-    RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
-    MAX_WALK_ENTRIES = 2e5;
-    MAX_WALK_DEPTH = 64;
-    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".husky/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
-    errText3 = (err) => err instanceof Error ? err.message : String(err);
-    CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
-    TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
-    ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
-  }
-});
-
 // src/team/shell-allowlist.ts
 function commandName(token) {
   return token.toLowerCase().replace(/\.exe$/, "");
@@ -115364,14 +115099,14 @@ function tokenize2(segment) {
 }
 function realExistingPrefix(p) {
   const tail4 = [];
-  let cur = (0, import_node_path33.resolve)(p);
+  let cur = (0, import_node_path32.resolve)(p);
   for (; ; ) {
     try {
-      return (0, import_node_path33.join)(import_node_fs26.realpathSync.native(cur), ...tail4.reverse());
+      return (0, import_node_path32.join)(import_node_fs25.realpathSync.native(cur), ...tail4.reverse());
     } catch {
-      const parent = (0, import_node_path33.dirname)(cur);
-      if (parent === cur) return (0, import_node_path33.resolve)(p);
-      tail4.push((0, import_node_path33.basename)(cur));
+      const parent = (0, import_node_path32.dirname)(cur);
+      if (parent === cur) return (0, import_node_path32.resolve)(p);
+      tail4.push((0, import_node_path32.basename)(cur));
       cur = parent;
     }
   }
@@ -115389,7 +115124,7 @@ function checkPath(value, quoted, gitRev, ctx) {
     if (!quoted && part.split(/[\\/]/).some((seg) => seg.startsWith(".") && /[*?]/.test(seg))) return `hidden-file glob ${part}`;
     if (hasDotDotSegment(part)) return `.. segment in path ${part}`;
     const slashed = part.replace(/\\/g, "/");
-    const abs = (0, import_node_path33.isAbsolute)(slashed) ? slashed : (0, import_node_path33.resolve)(ctx.cwd, slashed);
+    const abs = (0, import_node_path32.isAbsolute)(slashed) ? slashed : (0, import_node_path32.resolve)(ctx.cwd, slashed);
     let inside = false;
     try {
       inside = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
@@ -115506,12 +115241,12 @@ function reviewShellAllowlist(req, ctx) {
   if (unknown2 !== void 0) return deny(`the runtime parsed command ${JSON.stringify(unknown2)}, which this parser did not see`);
   return { approve: true, reason: "review allowlist" };
 }
-var import_node_fs26, import_node_path33, MAX_ALLOWLIST_COMMAND_CHARS, MAX_SEGMENTS, FORBIDDEN_CHARS, NON_ASCII, ALLOWLIST_SOURCES, ALLOWLIST_FILTERS, GIT_GLOBAL_OPTIONS2, GIT_SUBCOMMANDS, GIT_DENIED_LONG, GIT_GREP_DENIED_LONG, RG_DENIED_LONG, SORT_DENIED_LONG, FIND_DENIED, SELECT_OBJECT_OPTIONS, deny, shortHas, prefixOf;
+var import_node_fs25, import_node_path32, MAX_ALLOWLIST_COMMAND_CHARS, MAX_SEGMENTS, FORBIDDEN_CHARS, NON_ASCII, ALLOWLIST_SOURCES, ALLOWLIST_FILTERS, GIT_GLOBAL_OPTIONS2, GIT_SUBCOMMANDS, GIT_DENIED_LONG, GIT_GREP_DENIED_LONG, RG_DENIED_LONG, SORT_DENIED_LONG, FIND_DENIED, SELECT_OBJECT_OPTIONS, deny, shortHas, prefixOf;
 var init_shell_allowlist = __esm({
   "src/team/shell-allowlist.ts"() {
     "use strict";
-    import_node_fs26 = require("node:fs");
-    import_node_path33 = require("node:path");
+    import_node_fs25 = require("node:fs");
+    import_node_path32 = require("node:path");
     init_sdk_policy();
     MAX_ALLOWLIST_COMMAND_CHARS = 2e3;
     MAX_SEGMENTS = 3;
@@ -115573,6 +115308,148 @@ var init_shell_allowlist = __esm({
   }
 });
 
+// src/copilot-run/timeout.ts
+function withTimeout3(promise, ms, label2) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject2) => {
+      timer = setTimeout(() => reject2(new Error(`${label2} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+var errText3;
+var init_timeout = __esm({
+  "src/copilot-run/timeout.ts"() {
+    "use strict";
+    errText3 = (err) => err instanceof Error ? err.message : String(err);
+  }
+});
+
+// src/copilot-run/sandbox-session.ts
+function sandboxBypassDenial(req) {
+  return req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : null;
+}
+var SessionSandboxController;
+var init_sandbox_session = __esm({
+  "src/copilot-run/sandbox-session.ts"() {
+    "use strict";
+    init_copilot_sdk_driver();
+    init_timeout();
+    init_sandbox2();
+    SessionSandboxController = class {
+      constructor(opts) {
+        this.opts = opts;
+      }
+      /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
+      state = null;
+      toolNames = /* @__PURE__ */ new Map();
+      /** Whether createSession takes `config` (else confirm applies it via options.update). */
+      atCreate(loaded2, config2) {
+        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      }
+      /**
+       * Probe the host and set `state` (§5). Returns the config to apply when
+       * the host supports the sandbox (the mode stays the unconfirmed one until
+       * confirm), else null with the final mode: `detect-only` when the sandbox
+       * is switched off, otherwise the fail-closed mode.
+       */
+      async decide(client, loaded2) {
+        const { opts } = this;
+        let cliVersion = "unknown";
+        try {
+          const status = await withTimeout3(client.getStatus(), opts.rpcTimeoutMs, "getStatus()");
+          if (typeof status.version === "string") cliVersion = status.version;
+        } catch {
+        }
+        const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {} });
+        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
+        const { settings, profile } = opts;
+        const off = !settings.enabled ? "sandbox.enabled is false" : opts.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
+        if (off) {
+          if (profile === "review") {
+            this.state = { ...base, mode: "read-only-no-shell", reason: off };
+            opts.note(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
+          } else {
+            this.state = { ...base, mode: "detect-only", reason: off };
+            opts.note(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+          }
+          return null;
+        }
+        const fallback = (reason) => {
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason };
+          if (this.state.mode === "detect-only") opts.note(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+          if (this.state.mode === "read-only-no-shell") opts.note(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
+        };
+        if (!host.supported) {
+          fallback(host.reason ?? "the host does not support the sandbox");
+          return null;
+        }
+        try {
+          const config2 = buildSandboxConfig(profile, opts.policyContext(), host);
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason: "not confirmed yet" };
+          return config2;
+        } catch (err) {
+          fallback(errText3(err));
+          return null;
+        }
+      }
+      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      async confirm(session, config2, atCreate) {
+        const { opts } = this;
+        const sbx = this.state;
+        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        if (!why) {
+          sbx.applied = atCreate ? "create" : "options.update";
+          const enf = await readEnforcement(session, opts.rpcTimeoutMs);
+          if (typeof enf === "string") why = enf;
+          else {
+            sbx.enforcement = enf;
+            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
+          }
+        }
+        if (!why) {
+          sbx.mode = "enforced";
+          delete sbx.reason;
+          return;
+        }
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") {
+          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+          try {
+            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+          } catch {
+          }
+        }
+      }
+      /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
+      toolStarted(data) {
+        if (typeof data.toolCallId === "string" && typeof data.toolName === "string") this.toolNames.set(data.toolCallId, data.toolName);
+      }
+      /**
+       * `tool.execution_complete` data: the attestation (§5). A shell call must
+       * report sandboxed: true. A call of an unknown tool must not report false,
+       * and in an enforced session it must report true (a missing field is an
+       * escape). Counts every escape; returns the `sandbox-escaped:` error when
+       * the session must stop (any mode but detect-only), else null.
+       */
+      toolCompleted(data) {
+        const id = String(data.toolCallId ?? "");
+        const name = this.toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
+        this.toolNames.delete(id);
+        const sbx = this.state;
+        const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+        if (!sbx || !escaped) return null;
+        sbx.unsandboxedCalls += 1;
+        if (sbx.mode === "detect-only") return null;
+        return `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
+      }
+    };
+  }
+});
+
 // src/copilot-run/job.ts
 var job_exports = {};
 __export(job_exports, {
@@ -115593,8 +115470,6 @@ __export(job_exports, {
   resolveStartRef: () => resolveStartRef,
   reviewProfileDenial: () => reviewProfileDenial,
   scrubLaneCredentials: () => scrubLaneCredentials,
-  sharedGitStateChanges: () => sharedGitStateChanges,
-  sharedGitStateSnapshot: () => sharedGitStateSnapshot,
   summarizeChanges: () => summarizeChanges
 });
 function scrubLaneCredentials(env2, emptyDir) {
@@ -115602,8 +115477,8 @@ function scrubLaneCredentials(env2, emptyDir) {
     if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
     if (isCredentialEnvKey(key)) delete env2[key];
   }
-  const emptyConfig = (0, import_node_path34.join)(emptyDir, "gitconfig");
-  (0, import_node_fs27.writeFileSync)(emptyConfig, "");
+  const emptyConfig = (0, import_node_path33.join)(emptyDir, "gitconfig");
+  (0, import_node_fs26.writeFileSync)(emptyConfig, "");
   Object.assign(env2, {
     GH_CONFIG_DIR: emptyDir,
     AZURE_CONFIG_DIR: emptyDir,
@@ -115630,15 +115505,6 @@ function resolveStartRef(repoRoot3, ref) {
   }
   return sha2;
 }
-function withTimeout3(promise, ms, label2) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label2} timed out after ${ms} ms`)), ms);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
 function settleWithin(promise, ms) {
   let timer;
   return Promise.race([
@@ -115651,13 +115517,13 @@ function settleWithin(promise, ms) {
 }
 function hostGit(cwd2, args) {
   try {
-    return runHostGit(cwd2, args, GIT_TIMEOUT_MS4).trim();
+    return runHostGit(cwd2, args, GIT_TIMEOUT_MS3).trim();
   } catch {
     return null;
   }
 }
 function filterDriverOverrides(cwd2, gitDirArgs = []) {
-  return hostGitDriverOverrides(cwd2, hostGitEnv(gitDirArgs), GIT_TIMEOUT_MS4);
+  return hostGitDriverOverrides(cwd2, hostGitEnv(gitDirArgs), GIT_TIMEOUT_MS3);
 }
 function summarizeChanges(cwd2, base, extraProtected = [], gitDirArgs = []) {
   if (!base) return null;
@@ -115707,79 +115573,9 @@ function syncJobBranch(job, gitDirArgs) {
     job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
   }
 }
-function describeEntry(path30) {
-  let st;
-  try {
-    st = (0, import_node_fs27.lstatSync)(path30);
-  } catch {
-    return "absent";
-  }
-  if (st.isSymbolicLink()) {
-    let target = "?";
-    try {
-      target = (0, import_node_fs27.readlinkSync)(path30);
-    } catch {
-    }
-    return `link ${target}`;
-  }
-  if (st.isDirectory()) return "dir";
-  if (!st.isFile()) return "other";
-  try {
-    return `file ${st.mode & 73 ? "x" : "-"} ${(0, import_node_crypto15.createHash)("sha256").update((0, import_node_fs27.readFileSync)(path30)).digest("hex")}`;
-  } catch {
-    return "file unreadable";
-  }
-}
-function sharedGitStateSnapshot(commonGitDir) {
-  const out = {};
-  const add = (rel, recurse) => {
-    const kind = describeEntry((0, import_node_path34.join)(commonGitDir, rel));
-    out[rel] = kind;
-    if (kind !== "dir" || !recurse) return;
-    let names = [];
-    try {
-      names = (0, import_node_fs27.readdirSync)((0, import_node_path34.join)(commonGitDir, rel)).sort();
-    } catch {
-      out[rel] = "dir unreadable";
-    }
-    for (const name of names) add(`${rel}/${name}`, true);
-  };
-  add("config", false);
-  add("config.worktree", false);
-  add("hooks", true);
-  add("info", true);
-  add("worktrees", false);
-  if (out.worktrees === "dir") {
-    let ids2 = [];
-    try {
-      ids2 = (0, import_node_fs27.readdirSync)((0, import_node_path34.join)(commonGitDir, "worktrees")).sort();
-    } catch {
-      out.worktrees = "dir unreadable";
-    }
-    for (const id of ids2) {
-      add(`worktrees/${id}`, false);
-      if (out[`worktrees/${id}`] === "dir") add(`worktrees/${id}/config.worktree`, false);
-    }
-  }
-  return out;
-}
-function sharedGitStateChanges(before, after) {
-  return [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
-    const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
-    if (id !== void 0 && (before[`worktrees/${id}`] === void 0 || after[`worktrees/${id}`] === void 0)) return false;
-    return (before[key] ?? "absent") !== (after[key] ?? "absent");
-  });
-}
-function relativeHooksPathRule(repo) {
-  const values = lines(git2(repo, ["config", "--show-scope", "--get-all", "core.hooksPath"])).filter((l) => !l.startsWith("command	")).map((l) => l.slice(l.indexOf("	") + 1).trim());
-  const value = values[values.length - 1];
-  if (!value || value.startsWith("~") || (0, import_node_path34.isAbsolute)(value) || import_node_path34.win32.isAbsolute(value)) return null;
-  const segments = value.replace(/\\/g, "/").split("/").filter((seg) => seg && seg !== ".");
-  return segments.length > 0 && !segments.includes("..") ? `${segments.join("/")}/` : null;
-}
 function relativeInside(path30, root2) {
-  const rel = (0, import_node_path34.relative)((0, import_node_path34.resolve)(root2), (0, import_node_path34.resolve)(path30));
-  return rel && !rel.startsWith("..") && !(0, import_node_path34.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
+  const rel = (0, import_node_path33.relative)((0, import_node_path33.resolve)(root2), (0, import_node_path33.resolve)(path30));
+  return rel && !rel.startsWith("..") && !(0, import_node_path33.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
 }
 function defaultCopilotRunDeps(env2 = process.env) {
   return {
@@ -115800,18 +115596,17 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process16.spawnSync)
   };
 }
-var import_node_child_process16, import_node_crypto15, import_node_fs27, import_node_os8, import_node_path34, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, errText4, isTerminal2, git2, lines, CopilotRunManager;
+var import_node_child_process16, import_node_crypto15, import_node_fs26, import_node_os8, import_node_path33, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS3, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal2, git2, lines, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
     import_node_child_process16 = require("node:child_process");
     import_node_crypto15 = require("node:crypto");
-    import_node_fs27 = require("node:fs");
+    import_node_fs26 = require("node:fs");
     import_node_os8 = require("node:os");
-    import_node_path34 = require("node:path");
+    import_node_path33 = require("node:path");
     init_governor();
     init_ledger();
-    init_lane_commit();
     init_append_no_follow();
     init_worktree_paths();
     init_process_utils();
@@ -115828,6 +115623,8 @@ var init_job = __esm({
     init_config_dir();
     init_names2();
     init_sandbox2();
+    init_sandbox_session();
+    init_timeout();
     DEFAULT_TIMEOUT_MS3 = 15 * 6e4;
     MAX_TIMEOUT_MS = 60 * 6e4;
     DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -115841,7 +115638,7 @@ var init_job = __esm({
     SHUTDOWN_GRACE_MS2 = 2e3;
     STOP_TIMEOUT_MS2 = 15e3;
     SERVER_EXIT_GRACE_MS = 3e3;
-    GIT_TIMEOUT_MS4 = 3e4;
+    GIT_TIMEOUT_MS3 = 3e4;
     DENIED_LOG_MAX = 50;
     JOB_ID = /^cr-[0-9a-f]{12}$/;
     MAX_START_REF_CHARS = 256;
@@ -115861,7 +115658,6 @@ var init_job = __esm({
     sleep7 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    errText4 = (err) => err instanceof Error ? err.message : String(err);
     isTerminal2 = (s) => s !== "starting" && s !== "running";
     git2 = hostGit;
     lines = (text4) => (text4 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -115892,10 +115688,10 @@ var init_job = __esm({
         const startRef = input.startRef ?? null;
         if (startRef !== null && isolation !== "worktree") throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
         if (options.ledgerKey !== void 0 && !SAFE_KEY.test(options.ledgerKey)) throw new CopilotRunError(`copilot_run_start: ledgerKey ${JSON.stringify(options.ledgerKey)} must match ${SAFE_KEY}.`);
-        const cwd2 = (0, import_node_path34.resolve)(input.cwd ?? process.cwd());
+        const cwd2 = (0, import_node_path33.resolve)(input.cwd ?? process.cwd());
         let isDir = false;
         try {
-          isDir = (0, import_node_fs27.statSync)(cwd2).isDirectory();
+          isDir = (0, import_node_fs26.statSync)(cwd2).isDirectory();
         } catch {
         }
         if (!isDir) throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd2)} is not an existing directory.`);
@@ -115903,13 +115699,13 @@ var init_job = __esm({
         if (isolation === "worktree" && !repoRoot3) {
           throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd2)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
         }
-        const startSha = startRef !== null && repoRoot3 ? resolveStartRef((0, import_node_path34.resolve)(repoRoot3), startRef) : null;
+        const startSha = startRef !== null && repoRoot3 ? resolveStartRef((0, import_node_path33.resolve)(repoRoot3), startRef) : null;
         let sandboxSettings;
         let sandboxWarnings;
         try {
-          ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot3 ? (0, import_node_path34.resolve)(repoRoot3) : cwd2, options.sandboxScope ?? "copilot-run"));
+          ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot3 ? (0, import_node_path33.resolve)(repoRoot3) : cwd2, options.sandboxScope ?? "copilot-run"));
         } catch (err) {
-          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText4(err)}`);
+          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText3(err)}`);
         }
         if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== "off") {
           const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
@@ -115918,7 +115714,7 @@ var init_job = __esm({
           if (missing.length) {
             throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(" and ")} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
           }
-          const top = repoRoot3 ? (0, import_node_path34.resolve)(repoRoot3) : cwd2;
+          const top = repoRoot3 ? (0, import_node_path33.resolve)(repoRoot3) : cwd2;
           if (isolation === "none" && profile === "write" && sandboxSettings.writeUnsandboxed !== "detect-only") {
             const omcRoot = getOmcRoot(top);
             let inside = true;
@@ -115935,7 +115731,7 @@ var init_job = __esm({
         if (running >= MAX_RUNNING_JOBS) {
           throw new CopilotRunError(`copilot_run_start: ${running} job(s) already running (limit ${MAX_RUNNING_JOBS}); wait for or cancel one first.`);
         }
-        const ledgerCwd = repoRoot3 ? (0, import_node_path34.resolve)(repoRoot3) : cwd2;
+        const ledgerCwd = repoRoot3 ? (0, import_node_path33.resolve)(repoRoot3) : cwd2;
         const notes = [...sandboxWarnings];
         const id = `cr-${(0, import_node_crypto15.randomBytes)(6).toString("hex")}`;
         let workCwd = cwd2;
@@ -115951,23 +115747,23 @@ var init_job = __esm({
             const path30 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch = getBranchName(WORKTREE_TEAM, id);
             let left = "";
-            if ((0, import_node_fs27.existsSync)(path30)) {
+            if ((0, import_node_fs26.existsSync)(path30)) {
               try {
                 removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
               } catch {
               }
-              if ((0, import_node_fs27.existsSync)(path30)) left = ` The partly created worktree ${path30} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
+              if ((0, import_node_fs26.existsSync)(path30)) left = ` The partly created worktree ${path30} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
             }
-            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText4(err)}.${left}`);
+            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText3(err)}.${left}`);
           }
           if (!info) throw new CopilotRunError("copilot_run_start: worktree creation unexpectedly disabled.");
           const commonRaw = git2(ledgerCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-          commonGitDir = commonRaw ? (0, import_node_path34.resolve)(commonRaw) : null;
+          commonGitDir = commonRaw ? (0, import_node_path33.resolve)(commonRaw) : null;
           if (git2(ledgerCwd, ["config", "--bool", "extensions.worktreeConfig"]) === "true") {
             const admin = readWorktreeGitLinks(info.path)?.adminDir;
             if (admin) {
               try {
-                (0, import_node_fs27.writeFileSync)((0, import_node_path34.join)(admin, "config.worktree"), "", { flag: "wx" });
+                (0, import_node_fs26.writeFileSync)((0, import_node_path33.join)(admin, "config.worktree"), "", { flag: "wx" });
               } catch {
               }
             }
@@ -115988,11 +115784,11 @@ var init_job = __esm({
               removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
             } catch {
             }
-            const left = (0, import_node_fs27.existsSync)(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : "";
+            const left = (0, import_node_fs26.existsSync)(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : "";
             throw new CopilotRunError(`copilot_run_start: could not record and detach the job worktree's git links.${left}`);
           }
           const sub = relativeInside(cwd2, ledgerCwd);
-          workCwd = sub && (0, import_node_fs27.existsSync)((0, import_node_path34.join)(info.path, sub)) ? (0, import_node_path34.join)(info.path, sub) : info.path;
+          workCwd = sub && (0, import_node_fs26.existsSync)((0, import_node_path33.join)(info.path, sub)) ? (0, import_node_path33.join)(info.path, sub) : info.path;
           worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
           baseCommit = info.baseCommit ?? startSha ?? baseCommit;
           if (!startSha && lines(git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0) {
@@ -116006,11 +115802,7 @@ var init_job = __esm({
           extraProtected = configuredProtectedPaths(ledgerCwd);
         } catch {
         }
-        const hooksRule = repoRoot3 ? relativeHooksPathRule(ledgerCwd) : null;
-        if (hooksRule) extraProtected.push(hooksRule);
-        if (options.sandboxScope === "factory") extraProtected.push(...LANE_PROTECTED_PATHS);
-        const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
-        const jobDir = (0, import_node_path34.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
+        const jobDir = (0, import_node_path33.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
         let requestStop = () => {
         };
         const stopped = new Promise((r) => {
@@ -116037,15 +115829,14 @@ var init_job = __esm({
           maxCredits,
           ledgerCwd,
           jobDir,
-          home: (0, import_node_path34.join)(jobDir, "home"),
-          eventsPath: (0, import_node_path34.join)(jobDir, "events.jsonl"),
+          home: (0, import_node_path33.join)(jobDir, "home"),
+          eventsPath: (0, import_node_path33.join)(jobDir, "events.jsonl"),
           baseCommit,
           headCommit: null,
           worktree,
           worktreeLinks,
           commonGitDir,
           extraProtected,
-          sharedGitState,
           pid: void 0,
           pidIdentity: null,
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -116070,19 +115861,13 @@ var init_job = __esm({
         const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
         timer.unref?.();
         job.done = this.run(job).catch((err) => {
-          job.error ??= errText4(err);
+          job.error ??= errText3(err);
           return "failed";
         }).then((outcome) => {
           clearTimeout(timer);
           const gitDirArgs = jobGitDirArgs(job);
-          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir)) : [];
           if (gitDirArgs === null) {
             const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
-            job.error = job.error ? `${why}; ${job.error}` : why;
-            job.stopReason ??= "sandbox-escaped";
-            outcome = "failed";
-          } else if (gitStateChanged.length > 0) {
-            const why = `sandbox-escaped: the common git dir ${job.commonGitDir} changed during the session (${gitStateChanged.slice(0, 5).join(", ")}); the job's branch was not moved and no host git ran in the worktree`;
             job.error = job.error ? `${why}; ${job.error}` : why;
             job.stopReason ??= "sandbox-escaped";
             outcome = "failed";
@@ -116149,12 +115934,12 @@ var init_job = __esm({
             ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
           } catch (err) {
             throw new CopilotRunError(
-              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText4(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText3(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
             );
           }
           job.cleanedUp = true;
           try {
-            (0, import_node_fs27.rmSync)(job.jobDir, { recursive: true, force: true });
+            (0, import_node_fs26.rmSync)(job.jobDir, { recursive: true, force: true });
           } catch {
           }
         }
@@ -116182,13 +115967,13 @@ var init_job = __esm({
           recordUsage(ledgerPath2(job.ledgerCwd), job.ledgerKey, usage, void 0, { timeoutMs: lockTimeoutMs });
           return true;
         } catch (err) {
-          return !errText4(err).startsWith("Failed to acquire file lock");
+          return !errText3(err).startsWith("Failed to acquire file lock");
         }
       }
       /** Drive the session to its end and tear it down; returns the final status. */
       async run(job) {
         const { deps } = this;
-        (0, import_node_fs27.mkdirSync)(job.home, { recursive: true });
+        (0, import_node_fs26.mkdirSync)(job.home, { recursive: true });
         const loaded2 = await deps.loadSdk().catch(() => null);
         if (!loaded2) {
           job.error = "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
@@ -116202,14 +115987,14 @@ var init_job = __esm({
         }
         const pluginRoot = deps.pluginRoot();
         const ident = loginIdentity(deps.userConfigDir());
-        (0, import_node_fs27.writeFileSync)((0, import_node_path34.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
+        (0, import_node_fs26.writeFileSync)((0, import_node_path33.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
         const env2 = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
         const gitHubToken = sessionGitHubToken(deps.env);
-        (0, import_node_fs27.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-        (0, import_node_fs27.mkdirSync)((0, import_node_path34.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-        (0, import_node_fs27.mkdirSync)(env2.TEMP, { recursive: true });
-        (0, import_node_fs27.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+        (0, import_node_fs26.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+        (0, import_node_fs26.mkdirSync)((0, import_node_path33.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+        (0, import_node_fs26.mkdirSync)(env2.TEMP, { recursive: true });
+        (0, import_node_fs26.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
         if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env2.GIT_CONFIG_GLOBAL);
         Object.assign(env2, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1", GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
         delete env2[COPILOT_RUN_ALLOW_ENV];
@@ -116220,7 +116005,7 @@ var init_job = __esm({
             job.error = "a credential-free session needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are removed from it";
             return "failed";
           }
-          scrubDir = (0, import_node_fs27.mkdtempSync)((0, import_node_path34.join)((0, import_node_os8.tmpdir)(), "omg-lane-nocreds-"));
+          scrubDir = (0, import_node_fs26.mkdtempSync)((0, import_node_path33.join)((0, import_node_os8.tmpdir)(), "omg-lane-nocreds-"));
           const identityConfig = env2.GIT_CONFIG_GLOBAL;
           scrubLaneCredentials(env2, scrubDir);
           env2.GIT_CONFIG_GLOBAL = identityConfig;
@@ -116236,14 +116021,43 @@ var init_job = __esm({
           platform: deps.platform
         };
         const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+          profile: job.profile,
+          settings: job.sandboxSettings,
+          env: deps.env,
+          platform: deps.platform,
+          rpcTimeoutMs: RPC_TIMEOUT_MS2,
+          ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+          policyContext: () => {
+            const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
+            const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+            const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            return {
+              worktree: (0, import_node_path33.resolve)(top),
+              commonGitDir: commonRaw ? (0, import_node_path33.resolve)(commonRaw) : (0, import_node_path33.resolve)(top, ".git"),
+              ...gitDirRaw ? { gitDir: (0, import_node_path33.resolve)(gitDirRaw) } : {},
+              pluginRoot,
+              jobHome: job.home,
+              jobDir: job.jobDir,
+              realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
+              platform: deps.platform,
+              settings: job.sandboxSettings,
+              hostCommits: job.hostCommits,
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+            };
+          },
+          note: (text4) => {
+            job.notes.push(text4);
+          }
+        });
         const onPermissionRequest = (req) => {
-          let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : decideSdkPermission(req, policy);
+          let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
           if (decision.approve && req.kind === "write") {
             const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
-            const rel = raw ? relativeInside((0, import_node_path34.isAbsolute)(raw) ? raw : (0, import_node_path34.resolve)(job.workCwd, raw), protectedRoot) : null;
+            const rel = raw ? relativeInside((0, import_node_path33.isAbsolute)(raw) ? raw : (0, import_node_path33.resolve)(job.workCwd, raw), protectedRoot) : null;
             if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
             if (decision.approve && raw) {
-              const abs = (0, import_node_path34.isAbsolute)(raw) ? raw : (0, import_node_path34.resolve)(job.workCwd, raw);
+              const abs = (0, import_node_path33.isAbsolute)(raw) ? raw : (0, import_node_path33.resolve)(job.workCwd, raw);
               let jobState = true;
               try {
                 jobState = isUnderRoot(abs, job.jobDir, deps.platform) && !isUnderRoot(abs, env2.TEMP, deps.platform);
@@ -116276,12 +116090,11 @@ var init_job = __esm({
         const shutdown = new Promise((r) => {
           onShutdown = r;
         });
-        const toolNames = /* @__PURE__ */ new Map();
         let eventsFd = null;
         const onEvent = (event) => {
           if (eventsFd !== null) {
             try {
-              (0, import_node_fs27.writeSync)(eventsFd, `${scrubTokens(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event }), job.secrets)}
+              (0, import_node_fs26.writeSync)(eventsFd, `${scrubTokens(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event }), job.secrets)}
 `);
             } catch {
             }
@@ -116289,20 +116102,13 @@ var init_job = __esm({
           const data = event.data ?? {};
           switch (event.type) {
             case "tool.execution_start":
-              if (typeof data.toolCallId === "string" && typeof data.toolName === "string") toolNames.set(data.toolCallId, data.toolName);
+              sandbox.toolStarted(data);
               break;
             case "tool.execution_complete": {
-              const id = String(data.toolCallId ?? "");
-              const name = toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
-              toolNames.delete(id);
-              const sbx = job.sandbox;
-              const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-              if (sbx && escaped) {
-                sbx.unsandboxedCalls += 1;
-                if (sbx.mode !== "detect-only" && !job.stopReason) {
-                  job.error = `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-                  job.requestStop("sandbox-escaped");
-                }
+              const escaped = sandbox.toolCompleted(data);
+              if (escaped && !job.stopReason) {
+                job.error = escaped;
+                job.requestStop("sandbox-escaped");
               }
               break;
             }
@@ -116346,8 +116152,8 @@ var init_job = __esm({
         try {
           eventsFd = openAppendExclusive(job.eventsPath);
         } catch (err) {
-          if (scrubDir) (0, import_node_fs27.rmSync)(scrubDir, { recursive: true, force: true });
-          job.error = `events log ${job.eventsPath}: ${errText4(err)}`;
+          if (scrubDir) (0, import_node_fs26.rmSync)(scrubDir, { recursive: true, force: true });
+          job.error = `events log ${job.eventsPath}: ${errText3(err)}`;
           return "failed";
         }
         let session = null;
@@ -116364,10 +116170,11 @@ var init_job = __esm({
             });
             await Promise.race([reading, job.stopped]);
           }
-          const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded2, pluginRoot);
+          const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded2);
+          job.sandbox = sandbox.state;
           const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused()) {
-            const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
             const shell = sandboxConfig !== null;
             session = await withTimeout3(client.createSession({
               onPermissionRequest,
@@ -116383,7 +116190,7 @@ var init_job = __esm({
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
             job.sessionId = session.sessionId;
-            if (sandboxConfig) await this.confirmSandbox(job, session, sandboxConfig, atCreate);
+            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
@@ -116409,7 +116216,7 @@ var init_job = __esm({
           if (job.stopReason === "timeout") job.error = `timed out after ${job.timeoutMs} ms; the turn was aborted`;
         } catch (err) {
           outcome = job.stopReason === "cancelled" ? "cancelled" : "failed";
-          job.error = errText4(err);
+          job.error = errText3(err);
         } finally {
           if (session) {
             try {
@@ -116446,110 +116253,17 @@ var init_job = __esm({
           if (pid && deps.isAlive(pid)) deps.killTree(pid);
           const fd = eventsFd;
           eventsFd = null;
-          if (fd !== null) (0, import_node_fs27.closeSync)(fd);
-          if (scrubDir) (0, import_node_fs27.rmSync)(scrubDir, { recursive: true, force: true });
+          if (fd !== null) (0, import_node_fs26.closeSync)(fd);
+          if (scrubDir) (0, import_node_fs26.rmSync)(scrubDir, { recursive: true, force: true });
           for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep7(50);
           if (outcome === "completed") {
             try {
-              (0, import_node_fs27.rmSync)(job.home, { recursive: true, force: true });
+              (0, import_node_fs26.rmSync)(job.home, { recursive: true, force: true });
             } catch {
             }
           }
         }
         return outcome;
-      }
-      /**
-       * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-       * when the host supports the sandbox (the mode stays the unconfirmed one
-       * until confirmSandbox), else null with the final mode: `detect-only` when
-       * the sandbox is switched off, otherwise the fail-closed mode.
-       */
-      async decideSandbox(job, client, loaded2, pluginRoot) {
-        const { deps } = this;
-        let cliVersion = "unknown";
-        try {
-          const status = await withTimeout3(client.getStatus(), RPC_TIMEOUT_MS2, "getStatus()");
-          if (typeof status.version === "string") cliVersion = status.version;
-        } catch {
-        }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS2, { platform: deps.platform, ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {} });
-        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
-        const settings = job.sandboxSettings;
-        const off = !settings.enabled ? "sandbox.enabled is false" : deps.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-          if (job.profile === "review") {
-            job.sandbox = { ...base, mode: "read-only-no-shell", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-          } else {
-            job.sandbox = { ...base, mode: "detect-only", reason: off };
-            job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-          }
-          return null;
-        }
-        const fallback = (reason) => {
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
-          if (job.sandbox.mode === "detect-only") job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-          if (job.sandbox.mode === "read-only-no-shell") job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-          fallback(host.reason ?? "the host does not support the sandbox");
-          return null;
-        }
-        const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
-        const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-        const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
-        try {
-          const commonGitDir = commonRaw ? (0, import_node_path34.resolve)(commonRaw) : (0, import_node_path34.resolve)(top, ".git");
-          const config2 = buildSandboxConfig(job.profile, {
-            worktree: (0, import_node_path34.resolve)(top),
-            commonGitDir,
-            ...gitDirRaw ? { gitDir: (0, import_node_path34.resolve)(gitDirRaw) } : {},
-            pluginRoot,
-            jobHome: job.home,
-            jobDir: job.jobDir,
-            realHome: (deps.realHome ?? (() => (0, import_node_os8.userInfo)().homedir))(),
-            platform: deps.platform,
-            settings,
-            hostCommits: job.hostCommits,
-            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-            uid: process.getuid?.(),
-            sshAuthSock: deps.env.SSH_AUTH_SOCK
-          }, host);
-          job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: "not confirmed yet" };
-          return config2;
-        } catch (err) {
-          fallback(errText4(err));
-          return null;
-        }
-      }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-      async confirmSandbox(job, session, config2, atCreate) {
-        const sbx = job.sandbox;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, RPC_TIMEOUT_MS2);
-        if (!why) {
-          sbx.applied = atCreate ? "create" : "options.update";
-          const enf = await readEnforcement(session, RPC_TIMEOUT_MS2);
-          if (typeof enf === "string") why = enf;
-          else {
-            sbx.enforcement = enf;
-            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
-          }
-        }
-        if (!why) {
-          sbx.mode = "enforced";
-          delete sbx.reason;
-          return;
-        }
-        sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === "read-only-no-shell") {
-          job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-          try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS2, "options.update()");
-          } catch {
-          }
-        }
       }
       snapshot(job) {
         const usage = {
@@ -118189,7 +117903,7 @@ function resolveAzEntry(deps) {
   }
   const python = import_path176.win32.resolve(import_path176.win32.dirname(azCmd), "..", "python.exe");
   const cliPackage = import_path176.win32.resolve(import_path176.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !deps.isFile(import_path176.win32.join(cliPackage, "__main__.py"))) {
+  if (!deps.isFile(python) || !(deps.isFile(import_path176.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path176.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
@@ -120005,6 +119719,216 @@ var init_lane = __esm({
         };
       }
     };
+  }
+});
+
+// src/factory/run/lane-commit.ts
+function engineGitEnv(extra = {}) {
+  const env2 = { ...process.env };
+  for (const key of Object.keys(env2)) {
+    if (/^GIT_(?:INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|AUTHOR_|COMMITTER_)/i.test(key)) delete env2[key];
+  }
+  return {
+    ...env2,
+    GIT_AUTHOR_NAME: ENGINE_COMMIT_IDENTITY.name,
+    GIT_AUTHOR_EMAIL: ENGINE_COMMIT_IDENTITY.email,
+    GIT_COMMITTER_NAME: ENGINE_COMMIT_IDENTITY.name,
+    GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email,
+    ...extra
+  };
+}
+function dropTrailers(body) {
+  let lines4 = body.split("\n").filter((l) => !ANY_LINE_TRAILER.test(l));
+  for (; ; ) {
+    while (lines4.length > 0 && !lines4[lines4.length - 1].trim()) lines4.pop();
+    let start = lines4.length;
+    while (start > 0 && lines4[start - 1].trim()) start--;
+    const kept = [];
+    let dropping = false;
+    for (const l of lines4.slice(start)) {
+      dropping = TRAILER.test(l) || dropping && /^\s/.test(l);
+      if (!dropping) kept.push(l);
+    }
+    if (kept.length === lines4.length - start) return lines4.join("\n");
+    lines4 = [...lines4.slice(0, start), ...kept];
+  }
+}
+function laneCommitMessage(title, body) {
+  const unskip = (t) => {
+    let prev;
+    do {
+      prev = t;
+      t = t.replace(CI_SKIP, "");
+    } while (t !== prev);
+    return t;
+  };
+  const clean = (t) => unskip(t.replace(/\r\n?/g, "\n").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => c === "\n" ? c : " "));
+  const text4 = `${clean(title).replace(/\n/g, " ").trim()}
+
+${dropTrailers(clean(body ?? "")).trim()}`.trim();
+  return text4.length > MAX_MESSAGE_CHARS ? `${text4.slice(0, MAX_MESSAGE_CHARS)}
+...` : text4;
+}
+function linkEscape(worktree, ignored) {
+  let entries = 0;
+  const walk = (dir, rel, depth) => {
+    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
+    for (const d of (0, import_node_fs27.readdirSync)(dir, { withFileTypes: true })) {
+      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
+      const path30 = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isFile() || d.name === ".git" || ignored.has(path30)) continue;
+      const abs = (0, import_node_path34.join)(dir, d.name);
+      const st = (0, import_node_fs27.lstatSync)(abs);
+      if (st.isSymbolicLink()) {
+        let toDir = false;
+        try {
+          toDir = (0, import_node_fs27.statSync)(abs).isDirectory();
+        } catch {
+        }
+        if (process.platform === "win32" || toDir) return `the lane left a link at ${path30} (a symlink or junction); host git could read through it outside the worktree`;
+      } else if (st.isDirectory()) {
+        const hit2 = walk(abs, path30, depth + 1);
+        if (hit2) return hit2;
+      }
+    }
+    return null;
+  };
+  return walk(worktree, "", 0);
+}
+function outsideWorktree(worktree, files) {
+  const root2 = import_node_fs27.realpathSync.native(worktree);
+  return files.filter((f) => {
+    let dir;
+    try {
+      dir = import_node_fs27.realpathSync.native((0, import_node_path34.dirname)((0, import_node_path34.join)(worktree, f)));
+    } catch (err) {
+      const code = err.code;
+      return code !== "ENOENT" && code !== "ENOTDIR";
+    }
+    const r = (0, import_node_path34.relative)(root2, dir);
+    return r === ".." || r.startsWith(`..${import_node_path34.sep}`) || (0, import_node_path34.isAbsolute)(r);
+  });
+}
+function entriesOfMode(out, from, mode) {
+  const set = /* @__PURE__ */ new Set();
+  for (const entry2 of out.split("\0")) {
+    if (!entry2.startsWith(`${mode} `)) continue;
+    const tab = entry2.indexOf("	");
+    const fields = entry2.slice(0, tab).split(" ");
+    set.add(`${from === "index" ? fields[1] : fields[2]}	${entry2.slice(tab + 1)}`);
+  }
+  return set;
+}
+function commitLaneWork(input) {
+  try {
+    if (!HEX.test(input.start) || input.parents.length === 0 || !input.parents.every((p) => HEX.test(p))) {
+      return { ok: false, refusal: "error", reason: "the start and parent commits must be full shas" };
+    }
+    const dirs = worktreeGitDirArgs(input.worktree);
+    const git6 = (args, env2) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS4, env2).trim();
+    const head = git6(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    if (head !== input.start) {
+      return { ok: false, refusal: "moved", reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || "(none)"} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
+    }
+    const ignored = new Set(git6(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
+    const link6 = linkEscape(input.worktree, ignored);
+    if (link6) return { ok: false, refusal: "escaped", reason: link6 };
+    const isIgnored = (p) => p.split("/").some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join("/")));
+    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
+    git6(["add", "-A", "--", ".", ...excludes], engineGitEnv());
+    const refuse = (refusal, reason) => {
+      try {
+        git6(["read-tree", input.start]);
+      } catch (err) {
+        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText4(err)}` };
+      }
+      return { ok: false, refusal, reason };
+    };
+    const index = git6(["ls-files", "-z", "--stage"]);
+    const startTree = git6(["ls-tree", "-r", "-z", "--full-tree", input.start]);
+    const changedOfMode = (mode) => {
+      const known = entriesOfMode(startTree, "tree", mode);
+      return [...entriesOfMode(index, "index", mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf("	") + 1));
+    };
+    const nested = changedOfMode("160000");
+    if (nested.length > 0) {
+      return refuse("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
+    }
+    const symlinks = changedOfMode("120000");
+    if (symlinks.length > 0) return refuse("escaped", `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(", ")}`);
+    const files = git6(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", input.start, "--"]).split("\0").filter(Boolean);
+    const outside = outsideWorktree(input.worktree, files);
+    if (outside.length > 0) return refuse("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
+    const hardLinked = files.filter((f) => {
+      try {
+        return (0, import_node_fs27.lstatSync)((0, import_node_path34.join)(input.worktree, f)).nlink > 1;
+      } catch {
+        return false;
+      }
+    });
+    if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
+    const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
+    if (hit2.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit2.join(", ")}`);
+    const tree = git6(["write-tree"]);
+    if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
+    if (tree === git6(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
+      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
+    }
+    const sha2 = git6(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
+    if (!HEX.test(sha2)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}` };
+    const notes = [];
+    git6(["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", "HEAD", sha2, input.start]);
+    if (input.branch) {
+      const ref = `refs/heads/${input.branch}`;
+      const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS4).trim();
+      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS4);
+      else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
+    }
+    return { ok: true, sha: sha2, files, notes };
+  } catch (err) {
+    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText4(err)}` };
+  }
+}
+function conflictFixStart(repoRoot3, head, base, message2) {
+  const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS4).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const env2 = engineGitEnv({ GIT_ATTR_SOURCE: emptyTree });
+  let out;
+  try {
+    out = runHostGit(repoRoot3, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", head, base], GIT_TIMEOUT_MS4, env2);
+  } catch (err) {
+    const e = err;
+    if (e.status !== 1 || typeof e.stdout !== "string") throw err;
+    out = e.stdout;
+  }
+  const [tree, ...conflicted] = out.split("\0").filter(Boolean);
+  if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
+  const sha2 = runHostGit(repoRoot3, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message2, tree], GIT_TIMEOUT_MS4, env2).trim();
+  if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
+  return { sha: sha2, conflicted: [...new Set(conflicted)] };
+}
+var import_node_fs27, import_node_path34, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS4, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, LANE_PROTECTED_PATHS, errText4, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
+var init_lane_commit = __esm({
+  "src/factory/run/lane-commit.ts"() {
+    "use strict";
+    import_node_fs27 = require("node:fs");
+    import_node_path34 = require("node:path");
+    init_worktree_paths();
+    init_merge2();
+    init_git_worktree();
+    ENGINE_COMMIT_IDENTITY = Object.freeze({ name: "omg factory", email: "omg-factory@oh-my-copilot.invalid" });
+    GIT_TIMEOUT_MS4 = 6e4;
+    MAX_MESSAGE_CHARS = 4e3;
+    HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
+    MAX_WALK_ENTRIES = 2e5;
+    MAX_WALK_DEPTH = 64;
+    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
+    errText4 = (err) => err instanceof Error ? err.message : String(err);
+    CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
+    TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
+    ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
   }
 });
 

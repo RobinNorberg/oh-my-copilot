@@ -711,6 +711,14 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
+#### Pane worker env
+
+Pane workers are not sandboxed; their env is hygiene, not a boundary.
+
+- The pane shell starts from `env -i` plus a fixed baseline, then sources your shell rc. The provider is launched by a supervisor that rebuilds its env from an allowlist (`PATH`, `HOME`, `TEMP`/`TMP`, `TERM`/`COLORTERM`, and the Windows system variables on Windows) plus the worker env, so the tmux server env and rc exports reach the provider only through that allowlist and the passthrough list below.
+- `OMC_TEAM_WORKER_ENV_PASSTHROUGH=NAME,NAME` forwards more variables to the provider. Credential-named variables (tokens, keys, passwords, `SSH_AUTH_SOCK`, `GIT_CONFIG*` and the like) are refused, and the start fails with `worker_launch_env_passthrough_credential`. Only the provider's own login passes: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` for copilot workers; `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` for claude workers, plus `AWS_*` when `CLAUDE_CODE_USE_BEDROCK` is set and `GOOGLE_*` when `CLAUDE_CODE_USE_VERTEX` is set (in the leader env or the worker env). In a mixed team one list serves every worker: another provider's login is skipped for a worker (a notice names it) and forwarded only to its own provider's workers.
+- A pane Copilot worker gets the leader's `COPILOT_HOME`, and with it the leader's stored Copilot login, plugins and `deniedUrls`. That is inherent to pane workers; use SDK workers for a worker with its own home.
+
 #### Headless SDK workers (`--transport sdk`, the default under Copilot CLI)
 
 `omg team 2:copilot "<task>"` runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).
@@ -1325,6 +1333,41 @@ omg factory setup --intake label:factory | milestone:v5.18 ...   # GitHub
 - **JSON:** `{ exitCode, forge, auth, config, written: <paths>|null, diffs, labels: { missing, created }, prerequisites, preview, previewError?, notes, error? }`.
 - **Exit codes:** `0` written or dry run, `2` usage error, `3` auth or Azure DevOps extension missing, `5` incompatible (unsupported forge, mismatch, unknown query, state validation failed), `1` other failures.
 - **Listener:** `omg factory listen` receives GitHub webhooks only. It refuses when the origin remote or the user config's `factory.forge.kind` is `azure-devops`.
+
+#### Live acceptance on Azure DevOps (maintainers)
+
+Three scripts in the repository (not in the package) test the factory against a real Azure DevOps org and turn what they see into fixtures. They need a build (`npm run build`), except `ado-capture.mjs`.
+
+```bash
+node scripts/ado-acceptance.mjs --org https://dev.azure.com/<org> --source C:/Code/ExcavatorTrek \
+  [--phase preflight|create|exercise|heal-drill|capture|cleanup|all] [--run <runId>] \
+  [--pool <self-hosted pool> | --hosted] [--with-lanes] [--project-id <guid>] [--dry-run]
+```
+
+- **Run:** each run makes one private Agile project named `omg-acc-<yyyymmddHHMM>` (UTC). Its manifest is `~/.omg/acceptance/<runId>.json`. It records every created id and is written before each create. The clone, the OMC recording (`OMG_ADO_RECORD_DIR`) and the capture are kept in `~/.omg/acceptance/<runId>/`. Later phases take `--run`; without it they use the newest manifest.
+- **Phases:** `all` runs `preflight`, `create`, `exercise` and `capture`. `heal-drill` and `cleanup` run only by name.
+  - `preflight` checks az, the `azure-devops` extension, the login, the org, a clean `--source` and the agent pools. It is read-only.
+  - `create` makes the project. It clones `--source` with `git clone --no-local`, commits `azure-pipelines.yml` on `main`, and pushes `main` and the other branches to the new, empty repository (no force). It then creates the `ci` pipeline and one User Story per `## EXC-NNN` ticket of `BACKLOG.md`. Each story gets its acceptance criteria and the tag `factory`, and every `Depends on:` becomes a predecessor link. It runs `omg factory setup` and pushes `.copilot/omg.jsonc`. Last, after every direct push, it creates a blocking build policy on `main` (a branch with required policies refuses direct pushes without bypass permission). It adds no `trustedAuthors`.
+  - `exercise` runs `omg factory check --json`, `omg factory board --json` and `omg factory run <first runnable> --dry-run`.
+  - `heal-drill` pushes a failing test to `main` and waits up to 20 minutes for its build. It then runs `omg factory heal scan` and `heal run <sig8> --dry-run`, and reverts the test with a new commit. It disables the build policy (`az repos policy build update --enabled false`) around each of its two pushes and enables it again right after.
+  - `capture` runs `ado-capture.mjs` and `ado-fixture-diff.mjs` on the recording.
+  - `cleanup` deletes the project with `az devops project delete`. Azure DevOps soft-deletes it, so it can be restored for 28 days. Cleanup also removes the clone.
+- **Credits:** without `--with-lanes` nothing spends Copilot credits. With it, `exercise` also runs `omg factory run <id>` (capped by the `factory.run` limits, which it prints first) and `omg factory poll --once`, then checks the recording: a draft PR linked to the item, gates read from policy evaluations, the run parked at `awaiting-human: merge`, and the PR never `completed`. `heal-drill` with `--with-lanes` also runs `heal run <sig8>` (one debugger lane) and, when that succeeds, `heal approve` (the ci-heal run).
+- **Agents:** the pipeline uses the self-hosted pool `Default` unless you pass `--pool <name>`. A self-hosted agent is free for one job, but you must register it in the org. `--hosted` uses Microsoft-hosted `ubuntu-latest`, which needs the org linked to an Azure subscription. Without an agent, builds stay queued, and `heal-drill` cannot finish.
+- **Cleanup guard:** cleanup needs `--org`, equal to the manifest's org, and deletes only the project id in that run's manifest. Every az call asks for `--output json`, so an unreadable `az devops project show` refuses too. It refuses when the manifest's project name lacks the `omg-acc-` prefix or is not the run id, when `--project-id` differs from the manifest, when `az devops project show` names another project, and when `<runId>/` or its clone is a symlink or a junction.
+- **Dry run:** `--dry-run` prints the exact argv of every command, and every file it would write, for any phase. It runs nothing, not even read-only commands, and writes nothing.
+
+`node scripts/ado-capture.mjs --org https://dev.azure.com/<org> --project <p> --repo <r> [--moment <label>] [--work-items <ids>] [--prs <ids>] [--builds <ids>] [--out <dir>]` needs only node and az, so it can run on another computer. It makes GETs only, through `az devops invoke` (and `az --version`, `az extension show`). It writes fixtures in the format of `src/forge/ado/__tests__/fixtures.ts` into `<out>/<moment>/`, plus the text form of failed build logs, the resource table and the az environment. It also writes `<out>/manifest.json` with SHA-256s. Run it once per moment (for example `draft`, `ready`, `second-push`, `red-build`).
+
+`node scripts/ado-fixture-import.mjs <dir> [--into <dir>] [--dry-run]` scrubs a capture or a recording on this machine, then adds it under `src/forge/ado/__tests__/fixtures/live/<name>/`:
+
+- PATs go through `redactAdoSecrets`.
+- `uniqueName`s and emails become `user<n>@example.com`, and display names become `User <n>`.
+- The org becomes `contoso`, the project `Web` and the repository `web-app`.
+- GUIDs are remapped consistently, so they keep the GUID shape.
+- Self-hosted agent and machine names become `agent<n>`, user profile paths (`C:Users<name>`, `/home/<name>`, `/Users/<name>`) name `user`, and agent `_work` paths start at `C:agent_work` or `/agent/_work`.
+
+A file that still holds a PAT shape, `AZDO`, one of the names, a real email, an agent or machine name, a user profile path or an agent `_work` path refuses the whole import. Existing files are never replaced. Fixtures for routes that this build's route table lacks are left out.
 
 ### `omg smoke copilot`
 

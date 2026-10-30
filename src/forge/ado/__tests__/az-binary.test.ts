@@ -56,6 +56,11 @@ describe('resolveAzEntry', () => {
     expect(AZ_PYTHON_PREFIX).toEqual(['-IBm', 'azure.cli']);
   });
 
+  it('accepts an MSI layout that ships only __main__.pyc', () => {
+    const pyc = msi(MSI).map((p) => p.replace(/__main__\.py$/, '__main__.pyc'));
+    expect(resolveAzEntry(win(`${MSI}\\wbin`, files(...pyc))).command).toBe(`${MSI}\\python.exe`);
+  });
+
   it('reads PATH under any casing of the name', () => {
     expect(resolveAzEntry(win(`${MSI}\\wbin`, files(...msi(MSI)), 'PATH')).command).toBe(`${MSI}\\python.exe`);
   });

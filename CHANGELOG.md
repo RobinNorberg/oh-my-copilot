@@ -10,6 +10,20 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **A file-tool write swapped into the common git dir fails the job.** The sandboxed shell could replace an approved dir with a junction to the common git dir before the unsandboxed file tool wrote, planting `core.fsmonitor` in the repository config. `copilot_run` now snapshots the common git dir's `config`, `config.worktree`, `hooks/`, `info/` and `worktrees/<id>/config.worktree` before the session and fails the job as `sandbox-escaped` on any change, without moving its branch; the permission handler also refuses a write through a link segment that resolves outside the worktree or dangles.
 - **Lane-protected paths gain `.claude/`, `.vscode/`, `.mcp.json` and `.husky/`.** A lane change there parks at `protected-paths`, like `.github/` and `.copilot/`, and a factory lane's file tools may no longer write them at all. Every job refuses file-tool writes under a relative `core.hooksPath`.
 - **The lane sandbox denies more credentials and sockets.** When the host reports `denied_paths`, the home's `.config/gh`, `.aws`, `.npmrc`, `.docker`, `.kube`, `.netrc`, `.cargo/credentials(.toml)`, `.gnupg`, `.pypirc` and `.config/gcloud` are denied, and on Linux and macOS also `/run/user/<uid>`, the Docker and Podman sockets and the `SSH_AUTH_SOCK` directory (only the socket when it sits directly in `/tmp` or another sticky world-writable dir; never a dir that holds a tool dir).
+- **Pane team workers no longer pass credentials through
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH`.** A credential-named variable in the list
+  (an AWS secret, `NPM_TOKEN`, `SSH_AUTH_SOCK` and the like) fails the worker
+  start with `worker_launch_env_passthrough_credential`, reported by the
+  leader before the pane runs anything. Only the provider's own login passes:
+  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` for copilot;
+  `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` for claude, and `AWS_*` /
+  `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is set.
+  In a mixed team, another provider's login is skipped for a worker rather
+  than failing its start.
+
+### Fixed
+
+- Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
 
 # oh-my-copilot v5.18.1
 

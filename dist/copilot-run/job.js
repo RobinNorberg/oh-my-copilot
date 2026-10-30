@@ -40,20 +40,19 @@
  *   node_modules) are unlinked first so their targets survive.
  */
 import { spawnSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, win32 } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
-import { LANE_PROTECTED_PATHS } from '../factory/run/lane-commit.js';
 import { openAppendExclusive } from '../lib/append-no-follow.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
-import { loadCopilotSdk, resolveShimTarget, runtimePid, sdkCreateSessionAcceptsSandbox, } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget, runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
@@ -62,7 +61,9 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, laneToolPaths, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
+import { errText, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -176,15 +177,7 @@ export function resolveStartRef(repoRoot, ref) {
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
 const IDENTITY_TIMEOUT_MS = 10_000;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
-const errText = (err) => (err instanceof Error ? err.message : String(err));
 const isTerminal = (s) => s !== 'starting' && s !== 'running';
-function withTimeout(promise, ms, label) {
-    let timer;
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-    ]).finally(() => clearTimeout(timer));
-}
 /** Wait for `promise` (which never rejects) or `ms`, whichever comes first; the timer is cleared either way. */
 function settleWithin(promise, ms) {
     let timer;
@@ -309,105 +302,6 @@ function syncJobBranch(job, gitDirArgs) {
     if (git(wt.repoRoot, ['update-ref', '-m', 'copilot_run: the session\'s commits', ref, head, current]) === null) {
         job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
     }
-}
-/** Type and content of one path, never through a link: `absent`, `link <target>`, `dir`, `other` or `file <x|-> <sha256>`. */
-function describeEntry(path) {
-    let st;
-    try {
-        st = lstatSync(path);
-    }
-    catch {
-        return 'absent';
-    }
-    if (st.isSymbolicLink()) {
-        let target = '?';
-        try {
-            target = readlinkSync(path);
-        }
-        catch { /* unreadable link */ }
-        return `link ${target}`;
-    }
-    if (st.isDirectory())
-        return 'dir';
-    if (!st.isFile())
-        return 'other';
-    try {
-        return `file ${st.mode & 0o111 ? 'x' : '-'} ${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
-    }
-    catch {
-        return 'file unreadable';
-    }
-}
-/**
- * The common git dir's files that steer host git, keyed by path relative to
- * it: `config`, `config.worktree`, `hooks/` and `info/` (recursive), and per
- * `worktrees/<id>` its type and `config.worktree`. The sandbox keeps them
- * read-only to the shell, but the built-in file tools write unsandboxed, and
- * a path approved under the worktree can be swapped for a link into the git
- * dir between the approval and the write. Taken before the session and
- * compared after it (sharedGitStateChanges).
- */
-export function sharedGitStateSnapshot(commonGitDir) {
-    const out = {};
-    const add = (rel, recurse) => {
-        const kind = describeEntry(join(commonGitDir, rel));
-        out[rel] = kind;
-        if (kind !== 'dir' || !recurse)
-            return;
-        let names = [];
-        try {
-            names = readdirSync(join(commonGitDir, rel)).sort();
-        }
-        catch {
-            out[rel] = 'dir unreadable';
-        }
-        for (const name of names)
-            add(`${rel}/${name}`, true);
-    };
-    add('config', false);
-    add('config.worktree', false);
-    add('hooks', true);
-    add('info', true);
-    add('worktrees', false);
-    if (out.worktrees === 'dir') {
-        let ids = [];
-        try {
-            ids = readdirSync(join(commonGitDir, 'worktrees')).sort();
-        }
-        catch {
-            out.worktrees = 'dir unreadable';
-        }
-        for (const id of ids) {
-            add(`worktrees/${id}`, false);
-            if (out[`worktrees/${id}`] === 'dir')
-                add(`worktrees/${id}/config.worktree`, false);
-        }
-    }
-    return out;
-}
-/**
- * What changed between two sharedGitStateSnapshot results, as paths relative
- * to the common git dir. A `worktrees/<id>` entry another job added or removed
- * meanwhile is not a change; a kept entry that changed type, or whose
- * `config.worktree` appeared, changed or went, is.
- */
-export function sharedGitStateChanges(before, after) {
-    return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
-        const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
-        if (id !== undefined && (before[`worktrees/${id}`] === undefined || after[`worktrees/${id}`] === undefined))
-            return false;
-        return (before[key] ?? 'absent') !== (after[key] ?? 'absent');
-    });
-}
-/** A relative `core.hooksPath` (any config level but the command line) as a protected dir rule, or null. */
-function relativeHooksPathRule(repo) {
-    const values = lines(git(repo, ['config', '--show-scope', '--get-all', 'core.hooksPath']))
-        .filter((l) => !l.startsWith('command\t')).map((l) => l.slice(l.indexOf('\t') + 1).trim());
-    const value = values[values.length - 1];
-    if (!value || value.startsWith('~') || isAbsolute(value) || win32.isAbsolute(value))
-        return null;
-    const segments = value.replace(/\\/g, '/').split('/').filter((seg) => seg && seg !== '.');
-    return segments.length > 0 && !segments.includes('..') ? `${segments.join('/')}/` : null;
 }
 /** The repository-relative path when `path` lies in `root`, else null. */
 function relativeInside(path, root) {
@@ -604,14 +498,6 @@ export class CopilotRunManager {
             extraProtected = configuredProtectedPaths(ledgerCwd);
         }
         catch { /* the defaults still apply */ }
-        // Unhardened git in the worktree (the runtime's, a plugin hook's) runs the hooks a relative core.hooksPath names there.
-        const hooksRule = repoRoot ? relativeHooksPathRule(ledgerCwd) : null;
-        if (hooksRule)
-            extraProtected.push(hooksRule);
-        // A factory lane may not write what lane-commit refuses to commit, so its file tools cannot plant it in the live worktree.
-        if (options.sandboxScope === 'factory')
-            extraProtected.push(...LANE_PROTECTED_PATHS);
-        const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
         const jobDir = join(getOmcRoot(ledgerCwd), 'state', 'copilot-run', id);
         let requestStop = () => { };
         const stopped = new Promise((r) => { requestStop = (reason) => { if (!job.stopReason)
@@ -642,7 +528,6 @@ export class CopilotRunManager {
             worktreeLinks,
             commonGitDir,
             extraProtected,
-            sharedGitState,
             pid: undefined,
             pidIdentity: null,
             startedAt: new Date().toISOString(),
@@ -672,17 +557,9 @@ export class CopilotRunManager {
             .then((outcome) => {
             clearTimeout(timer);
             const gitDirArgs = jobGitDirArgs(job);
-            const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir)) : [];
             if (gitDirArgs === null) {
                 // A redirected .git, gitdir or commondir points host git at a git dir the session controls; a changed config.worktree plants config in it.
                 const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it';
-                job.error = job.error ? `${why}; ${job.error}` : why;
-                job.stopReason ??= 'sandbox-escaped';
-                outcome = 'failed';
-            }
-            else if (gitStateChanged.length > 0) {
-                // A file-tool write swapped into the git dir, or anything else outside the sandbox: host git would read it.
-                const why = `sandbox-escaped: the common git dir ${job.commonGitDir} changed during the session (${gitStateChanged.slice(0, 5).join(', ')}); the job's branch was not moved and no host git ran in the worktree`;
                 job.error = job.error ? `${why}; ${job.error}` : why;
                 job.stopReason ??= 'sandbox-escaped';
                 outcome = 'failed';
@@ -861,10 +738,36 @@ export class CopilotRunManager {
             platform: deps.platform,
         };
         const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+            profile: job.profile,
+            settings: job.sandboxSettings,
+            env: deps.env,
+            platform: deps.platform,
+            rpcTimeoutMs: RPC_TIMEOUT_MS,
+            ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}),
+            policyContext: () => {
+                const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
+                // A job worktree's git dirs come from the links recorded at creation, never from discovery.
+                const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+                const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
+                return {
+                    worktree: resolve(top),
+                    commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
+                    ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
+                    pluginRoot,
+                    jobHome: job.home,
+                    jobDir: job.jobDir,
+                    realHome: (deps.realHome ?? (() => userInfo().homedir))(),
+                    platform: deps.platform,
+                    settings: job.sandboxSettings,
+                    hostCommits: job.hostCommits,
+                    toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+                };
+            },
+            note: (text) => { job.notes.push(text); },
+        });
         const onPermissionRequest = (req) => {
-            let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true
-                ? { approve: false, reason: 'sandbox bypass requests are never approved' }
-                : decideSdkPermission(req, policy);
+            let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
             if (decision.approve && req.kind === 'write') {
                 const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === 'string' && v.trim() !== '');
                 const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
@@ -906,7 +809,6 @@ export class CopilotRunManager {
         let sent = false;
         let idle = new Promise((r) => { onIdle = r; });
         const shutdown = new Promise((r) => { onShutdown = r; });
-        const toolNames = new Map();
         let eventsFd = null;
         const onEvent = (event) => {
             if (eventsFd !== null) {
@@ -918,25 +820,14 @@ export class CopilotRunManager {
             const data = (event.data ?? {});
             switch (event.type) {
                 case 'tool.execution_start':
-                    if (typeof data.toolCallId === 'string' && typeof data.toolName === 'string')
-                        toolNames.set(data.toolCallId, data.toolName);
+                    sandbox.toolStarted(data);
                     break;
                 case 'tool.execution_complete': {
-                    // Attestation (§5): a shell call must report sandboxed: true. A call of an unknown tool must not
-                    // report false, and in an enforced session it must report true (a missing field is an escape).
-                    const id = String(data.toolCallId ?? '');
-                    const name = toolNames.get(id) ?? (typeof data.toolName === 'string' ? data.toolName : null);
-                    toolNames.delete(id);
-                    const sbx = job.sandbox;
-                    const escaped = name === null
-                        ? (sbx?.mode === 'enforced' ? data.sandboxed !== true : data.sandboxed === false)
-                        : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-                    if (sbx && escaped) {
-                        sbx.unsandboxedCalls += 1;
-                        if (sbx.mode !== 'detect-only' && !job.stopReason) {
-                            job.error = `sandbox-escaped: ${name ?? 'a tool'} call ${id || '?'} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-                            job.requestStop('sandbox-escaped');
-                        }
+                    // Attestation (sandbox-session.ts): an unsandboxed shell call stops the session unless detect-only.
+                    const escaped = sandbox.toolCompleted(data);
+                    if (escaped && !job.stopReason) {
+                        job.error = escaped;
+                        job.requestStop('sandbox-escaped');
                     }
                     break;
                 }
@@ -1012,10 +903,11 @@ export class CopilotRunManager {
                 await Promise.race([reading, job.stopped]);
             }
             // The sandbox is decided before the session exists: a refused job creates none.
-            const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded, pluginRoot);
+            const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded);
+            job.sandbox = sandbox.state;
             const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
             if (!job.stopReason && !refused()) {
-                const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded);
+                const atCreate = sandbox.atCreate(loaded, sandboxConfig);
                 // Review: the shell tools only while an enforced sandbox is still possible (confirmSandbox hides them on a downgrade).
                 const shell = sandboxConfig !== null;
                 session = await withTimeout(client.createSession({
@@ -1033,7 +925,7 @@ export class CopilotRunManager {
                 }), RPC_TIMEOUT_MS, 'createSession()');
                 job.sessionId = session.sessionId;
                 if (sandboxConfig)
-                    await this.confirmSandbox(job, session, sandboxConfig, atCreate);
+                    await sandbox.confirm(session, sandboxConfig, atCreate);
             }
             if (job.sandbox?.mode === 'refused') {
                 job.error = `sandbox-unavailable: ${job.sandbox.reason ?? 'the sandbox is not confirmed'}`;
@@ -1129,110 +1021,6 @@ export class CopilotRunManager {
             }
         }
         return outcome;
-    }
-    /**
-     * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-     * when the host supports the sandbox (the mode stays the unconfirmed one
-     * until confirmSandbox), else null with the final mode: `detect-only` when
-     * the sandbox is switched off, otherwise the fail-closed mode.
-     */
-    async decideSandbox(job, client, loaded, pluginRoot) {
-        const { deps } = this;
-        let cliVersion = 'unknown';
-        try {
-            const status = await withTimeout(client.getStatus(), RPC_TIMEOUT_MS, 'getStatus()');
-            if (typeof status.version === 'string')
-                cliVersion = status.version;
-        }
-        catch { /* recorded as unknown */ }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: deps.platform, ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}) });
-        const base = { host, applied: 'none', canary: 'skipped', unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
-        const settings = job.sandboxSettings;
-        const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-            // detect-only applies to write sessions only: a review without an enforced sandbox has no shell.
-            if (job.profile === 'review') {
-                job.sandbox = { ...base, mode: 'read-only-no-shell', reason: off };
-                job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-            }
-            else {
-                job.sandbox = { ...base, mode: 'detect-only', reason: off };
-                job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-            }
-            return null;
-        }
-        const fallback = (reason) => {
-            job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
-            if (job.sandbox.mode === 'detect-only')
-                job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-            if (job.sandbox.mode === 'read-only-no-shell')
-                job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-            fallback(host.reason ?? 'the host does not support the sandbox');
-            return null;
-        }
-        const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
-        // A job worktree's git dirs come from the links recorded at creation, never from discovery.
-        const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-        const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
-        try {
-            const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
-            const config = buildSandboxConfig(job.profile, {
-                worktree: resolve(top),
-                commonGitDir,
-                ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
-                pluginRoot,
-                jobHome: job.home,
-                jobDir: job.jobDir,
-                realHome: (deps.realHome ?? (() => userInfo().homedir))(),
-                platform: deps.platform,
-                settings,
-                hostCommits: job.hostCommits,
-                toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-                uid: process.getuid?.(),
-                sshAuthSock: deps.env.SSH_AUTH_SOCK,
-            }, host);
-            job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
-            return config;
-        }
-        catch (err) {
-            fallback(errText(err));
-            return null;
-        }
-    }
-    /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-    async confirmSandbox(job, session, config, atCreate) {
-        const sbx = job.sandbox;
-        let why = atCreate ? null : await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
-        if (!why) {
-            sbx.applied = atCreate ? 'create' : 'options.update';
-            const enf = await readEnforcement(session, RPC_TIMEOUT_MS);
-            if (typeof enf === 'string')
-                why = enf;
-            else {
-                sbx.enforcement = enf;
-                if (enf.blocked)
-                    why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ''}`;
-            }
-        }
-        if (!why) {
-            sbx.mode = 'enforced';
-            delete sbx.reason;
-            return;
-        }
-        sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
-        sbx.reason = why;
-        if (sbx.mode === 'detect-only')
-            job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === 'read-only-no-shell') {
-            job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-            // The permission handler already refuses every shell call; this also hides the tools.
-            try {
-                await withTimeout(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS, 'options.update()');
-            }
-            catch { /* the handler still refuses */ }
-        }
     }
     snapshot(job) {
         const usage = {

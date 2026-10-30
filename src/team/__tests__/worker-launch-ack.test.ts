@@ -1,3 +1,4 @@
+import type { CliAgentType } from '../model-contract.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -28,6 +29,7 @@ import {
   terminateWorkerLaunchProvider,
   revokeWorkerLaunchAttempt,
   withWorkerLaunchAttemptFence,
+  assertEnvPassthroughAllowed,
   buildProviderEnvironment,
   buildProviderSpawnInvocation,
   materializeProviderSpawnInvocation,
@@ -112,7 +114,7 @@ afterEach(async () => {
   cwd = '';
 });
 
-async function attempt() {
+async function attempt(provider: CliAgentType = 'codex') {
   cwd = await createFixture('worker-launch-ack-');
   return prepareWorkerLaunchAttempt({
     cwd,
@@ -120,7 +122,7 @@ async function attempt() {
     workerName: 'worker-1',
     instanceId: randomUUID(),
     paneId: '%2',
-    provider: 'codex',
+    provider,
     runtimeCliPath: '/runtime-cli.cjs',
   });
 }
@@ -3521,7 +3523,7 @@ describe('worker launch acknowledgement', () => {
     const sourceEnv = {
       PATH: '/usr/bin:/bin',
       HOME: '/home/provider',
-      CUSTOM_PROVIDER_TOKEN: 'secret-token-123',
+      CUSTOM_PROVIDER_SETTING: 'secret-token-123',
       ANOTHER_CUSTOM_VAR: 'another-value',
     };
 
@@ -3532,7 +3534,7 @@ describe('worker launch acknowledgement', () => {
       'linux',
     );
     expect(runtimeEnv).toHaveProperty('EXPLICIT', 'yes');
-    expect(runtimeEnv).not.toHaveProperty('CUSTOM_PROVIDER_TOKEN');
+    expect(runtimeEnv).not.toHaveProperty('CUSTOM_PROVIDER_SETTING');
     expect(runtimeEnv).not.toHaveProperty('ANOTHER_CUSTOM_VAR');
 
     // Verify that custom vars ARE included when passthrough is specified
@@ -3540,10 +3542,10 @@ describe('worker launch acknowledgement', () => {
       { EXPLICIT: 'yes' },
       sourceEnv,
       'linux',
-      ['CUSTOM_PROVIDER_TOKEN', 'ANOTHER_CUSTOM_VAR'],
+      ['CUSTOM_PROVIDER_SETTING', 'ANOTHER_CUSTOM_VAR'],
     );
     expect(runtimeEnvWithPassthrough).toHaveProperty('EXPLICIT', 'yes');
-    expect(runtimeEnvWithPassthrough).toHaveProperty('CUSTOM_PROVIDER_TOKEN', 'secret-token-123');
+    expect(runtimeEnvWithPassthrough).toHaveProperty('CUSTOM_PROVIDER_SETTING', 'secret-token-123');
     expect(runtimeEnvWithPassthrough).toHaveProperty('ANOTHER_CUSTOM_VAR', 'another-value');
 
     // Passthrough vars that don't exist in sourceEnv should be silently skipped
@@ -3551,9 +3553,9 @@ describe('worker launch acknowledgement', () => {
       { EXPLICIT: 'yes' },
       sourceEnv,
       'linux',
-      ['NONEXISTENT_VAR', 'CUSTOM_PROVIDER_TOKEN'],
+      ['NONEXISTENT_VAR', 'CUSTOM_PROVIDER_SETTING'],
     );
-    expect(runtimeEnvMissingVar).toHaveProperty('CUSTOM_PROVIDER_TOKEN', 'secret-token-123');
+    expect(runtimeEnvMissingVar).toHaveProperty('CUSTOM_PROVIDER_SETTING', 'secret-token-123');
     expect(runtimeEnvMissingVar).not.toHaveProperty('NONEXISTENT_VAR');
   });
 
@@ -3633,5 +3635,121 @@ describe('worker launch acknowledgement', () => {
       'win32',
       ['SYSTEMROOT'],
     )).toThrow('worker_launch_env_passthrough_key_reserved');
+  });
+});
+
+describe('worker env passthrough refuses credentials except the provider login', () => {
+  const sourceEnv = {
+    PATH: '/usr/bin',
+    HOME: '/home/user',
+    AWS_SECRET_ACCESS_KEY: 'aws-secret',
+    AWS_REGION: 'eu-north-1',
+    NPM_TOKEN: 'npm-secret',
+    SSH_AUTH_SOCK: '/tmp/agent.sock',
+    GH_TOKEN: 'gh-secret',
+    ANTHROPIC_API_KEY: 'anthropic-secret',
+    GOOGLE_APPLICATION_CREDENTIALS: '/keys/sa.json',
+  };
+
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('builds the provider env without the source env credentials', () => {
+    for (const provider of ['copilot', 'claude', undefined] as const) {
+      const env = buildProviderEnvironment({}, sourceEnv, 'linux', undefined, provider);
+      expect(Object.keys(env).sort()).toEqual(['HOME', 'PATH']);
+    }
+  });
+
+  it.each(['AWS_SECRET_ACCESS_KEY', 'NPM_TOKEN', 'SSH_AUTH_SOCK'])('refuses passthrough of %s for every provider', key => {
+    for (const provider of ['copilot', 'claude', 'codex', undefined] as const) {
+      expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', [key], provider))
+        .toThrow('worker_launch_env_passthrough_credential');
+    }
+  });
+
+  it('passes ANTHROPIC_API_KEY to claude only and GH_TOKEN to copilot only, skipping the other', () => {
+    const notice = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY'], 'claude'))
+      .toHaveProperty('ANTHROPIC_API_KEY', 'anthropic-secret');
+    expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['GH_TOKEN'], 'copilot'))
+      .toHaveProperty('GH_TOKEN', 'gh-secret');
+    expect(notice).not.toHaveBeenCalled();
+    // A mixed team shares one list: another provider's login is skipped, not refused.
+    const mixed = ['ANTHROPIC_API_KEY', 'GH_TOKEN', 'CUSTOM_SETTING'];
+    const env = { ...sourceEnv, CUSTOM_SETTING: 'custom' };
+    const copilot = buildProviderEnvironment({}, env, 'linux', mixed, 'copilot');
+    expect(copilot).toMatchObject({ GH_TOKEN: 'gh-secret', CUSTOM_SETTING: 'custom' });
+    expect(copilot).not.toHaveProperty('ANTHROPIC_API_KEY');
+    const claude = buildProviderEnvironment({}, env, 'linux', mixed, 'claude');
+    expect(claude).toMatchObject({ ANTHROPIC_API_KEY: 'anthropic-secret', CUSTOM_SETTING: 'custom' });
+    expect(claude).not.toHaveProperty('GH_TOKEN');
+    const codex = buildProviderEnvironment({}, env, 'linux', mixed, 'codex');
+    expect(codex).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(codex).not.toHaveProperty('GH_TOKEN');
+    expect(notice).toHaveBeenCalledWith(expect.stringMatching(/ANTHROPIC_API_KEY is another provider's login; not forwarded to this copilot worker/));
+    notice.mockRestore();
+    // The pane shell hosts any provider: any provider's login passes there.
+    expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY', 'GH_TOKEN']))
+      .toMatchObject({ ANTHROPIC_API_KEY: 'anthropic-secret', GH_TOKEN: 'gh-secret' });
+  });
+
+  it('passes AWS_* and GOOGLE_* to claude only when Bedrock or Vertex is enabled', () => {
+    const bedrock = { ...sourceEnv, CLAUDE_CODE_USE_BEDROCK: '1' };
+    expect(buildProviderEnvironment({}, bedrock, 'linux', ['AWS_SECRET_ACCESS_KEY', 'AWS_REGION'], 'claude'))
+      .toMatchObject({ AWS_SECRET_ACCESS_KEY: 'aws-secret', AWS_REGION: 'eu-north-1' });
+    const notice = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    expect(buildProviderEnvironment({}, bedrock, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'copilot'))
+      .not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    notice.mockRestore();
+    expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'copilot'))
+      .toThrow('worker_launch_env_passthrough_credential');
+    expect(() => buildProviderEnvironment({}, { ...sourceEnv, CLAUDE_CODE_USE_BEDROCK: '0' }, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'claude'))
+      .toThrow('worker_launch_env_passthrough_credential');
+    expect(() => buildProviderEnvironment({}, bedrock, 'linux', ['GOOGLE_APPLICATION_CREDENTIALS'], 'claude'))
+      .toThrow('worker_launch_env_passthrough_credential');
+    expect(buildProviderEnvironment({}, { ...sourceEnv, CLAUDE_CODE_USE_VERTEX: 'true' }, 'linux', ['GOOGLE_APPLICATION_CREDENTIALS'], 'claude'))
+      .toHaveProperty('GOOGLE_APPLICATION_CREDENTIALS', '/keys/sa.json');
+  });
+
+  it('matches the provider login by case on POSIX and case-insensitively on Windows', () => {
+    const env = { ...sourceEnv, gh_token: 'lower' };
+    expect(() => buildProviderEnvironment({}, env, 'linux', ['gh_token'], 'copilot'))
+      .toThrow('worker_launch_env_passthrough_credential');
+    expect(buildProviderEnvironment({}, env, 'win32', ['gh_token'], 'copilot')).toHaveProperty('gh_token', 'lower');
+  });
+
+  it('names the key, the provider and the allowed logins in the error', () => {
+    expect(() => assertEnvPassthroughAllowed('copilot', { OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'PATH, NPM_TOKEN' }, 'linux'))
+      .toThrow(/^worker_launch_env_passthrough_credential: .*NPM_TOKEN for a copilot worker; remove it\..*COPILOT_GITHUB_TOKEN/);
+    expect(() => assertEnvPassthroughAllowed('copilot', { OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'COPILOT_GITHUB_TOKEN,CUSTOM_SETTING' }, 'linux'))
+      .not.toThrow();
+  });
+
+  it('the supervisor refuses a passthrough credential no provider owns', async () => {
+    const launchAttempt = await attempt();
+    const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, { platform: 'win32' });
+    expect(() => buildWindowsSupervisorInvocation(spec, { ...sourceEnv, OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'NPM_TOKEN' }))
+      .toThrow('worker_launch_env_passthrough_credential');
+  });
+
+  it('the supervisor takes the Bedrock switch from the worker env, not only the pane shell env', async () => {
+    const launchAttempt = await attempt('claude');
+    const providerEnv = { CLAUDE_CODE_USE_BEDROCK: '1' };
+    const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['claude'], cwd, { platform: 'win32', providerEnv });
+    // The pane shell env (env -i + baseline + passthrough) carries no switch.
+    const paneEnv = { ...sourceEnv, OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'AWS_SECRET_ACCESS_KEY,AWS_REGION' };
+    expect(() => buildWindowsSupervisorInvocation(spec, paneEnv)).not.toThrow('worker_launch_env_passthrough_credential');
+    expect(buildProviderEnvironment(spec.provider_env, paneEnv, 'linux', undefined, 'claude'))
+      .toMatchObject({ CLAUDE_CODE_USE_BEDROCK: '1', AWS_SECRET_ACCESS_KEY: 'aws-secret', AWS_REGION: 'eu-north-1' });
+    expect(() => assertEnvPassthroughAllowed('claude', paneEnv, 'linux', providerEnv)).not.toThrow();
+  });
+
+  it('the leader refuses before materializing the launch transport', async () => {
+    const launchAttempt = await attempt();
+    vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'NPM_TOKEN');
+    vi.stubEnv('NPM_TOKEN', 'npm-secret');
+    await expect(materializeWorkerLaunchTransport({ attempt: launchAttempt, providerArgv: ['codex'], cwd }))
+      .rejects.toThrow('worker_launch_env_passthrough_credential');
+    expect(existsSync(launchAttempt.bootstrapDescriptorPath)).toBe(false);
   });
 });

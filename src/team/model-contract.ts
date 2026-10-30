@@ -601,8 +601,9 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
   'OMC_GROK_DEFAULT_MODEL',
   'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL',
   'OMC_ANTIGRAVITY_DEFAULT_MODEL',
-  // tmux panes inherit the tmux server env; pin Copilot workers to the
-  // leader's config home (login, plugins, deniedUrls) and model.
+  // The provider env is an allowlist (buildProviderEnvironment), not the
+  // tmux server env; carry the leader's config home (login, plugins,
+  // deniedUrls) and model so pane Copilot workers share them.
   'COPILOT_HOME',
   'COPILOT_MODEL',
 ] as const;
