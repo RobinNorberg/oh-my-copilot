@@ -6,7 +6,7 @@
  * src/ship/gates.ts unchanged.
  */
 
-import { analyzeFailedLog, type FailingTest } from '../../ship/gates.js';
+import { ADO_LOG_PREFIX, analyzeFailedLog, type FailingTest } from '../../ship/gates.js';
 import type { KnownFlakyTest } from '../../ship/config.js';
 
 /** A log longer than this keeps its head (setup lines) and its tail (the failures). */
@@ -27,9 +27,10 @@ export function capLog(log: string): string {
   return sized.split(/\r?\n/).map((l) => (l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) : l)).join('\n');
 }
 
-/** One log line without ANSI codes, the `job<TAB>step<TAB>` prefix and the timestamp. */
+/** One log line without ANSI codes, the GitHub `job<TAB>step<TAB>` prefix or else the Azure Pipelines one, and the timestamp. */
 export function cleanLine(rawLine: string): string {
-  return rawLine.replace(ANSI, '').replace(GH_LOG_PREFIX, '').replace(/^\p{Cf}/u, '');
+  const line = rawLine.replace(ANSI, '');
+  return (GH_LOG_PREFIX.test(line) ? line.replace(GH_LOG_PREFIX, '') : line.replace(ADO_LOG_PREFIX, '')).replace(/^\p{Cf}/u, '');
 }
 
 export interface JobEnv {

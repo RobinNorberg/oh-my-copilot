@@ -17,7 +17,9 @@
  * source or limit, no intake source, `--mark` without `--yes` and no TTY),
  * 5 incompatible (forge mismatch, unsupported remote, no adapter for the forge).
  */
-import type { ForgeFactory } from '../../forge/types.js';
+import type { ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
+import { type AzEntry } from '../../forge/ado/az-binary.js';
+import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { type CheckEnv, type CheckResult } from './score.js';
@@ -50,6 +52,8 @@ export interface FactoryCheckDeps {
     projectConfig: (root: string) => unknown;
     /** The forge adapter (src/forge/index.ts createForge; tests inject a fake). */
     createForge: ForgeFactory;
+    /** The az entry on Azure DevOps (default defaultResolveAz; tests inject one). */
+    resolveAz?: (root: string) => AzEntry;
     isTTY: () => boolean;
     confirm: (question: string) => Promise<boolean>;
     out: (line: string) => void;
@@ -91,6 +95,18 @@ export interface CheckJson {
  */
 export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;
+/** Production az entry: resolved outside every root a lane writes (factoryForgeOptions). */
+export declare const defaultResolveAz: (root: string) => AzEntry;
+/**
+ * The read-only check guard for a resolved forge, and the options to build
+ * the forge on it. On Azure DevOps the az entry is resolved once: the guard
+ * gets the forge repo and that entry (adoGuardContext), and the adapter
+ * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
+ */
+export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined): {
+    exec: Exec;
+    options: AzureDevOpsForgeOptions;
+};
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export declare function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=cli.d.ts.map
