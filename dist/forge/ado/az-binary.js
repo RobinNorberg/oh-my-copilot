@@ -95,7 +95,8 @@ function resolvePosixAz(deps, given) {
  * Resolve the az entry point once. Windows: the first searchable PATH entry
  * holding az.cmd wins, and it must be the MSI layout: `<dir>\..\python.exe`
  * next to `<dir>\..\Lib\site-packages\azure\cli` (checked through its
- * `__main__.py`, the module `-m azure.cli` runs). PATH entries and roots
+ * `__main__.py`, or `__main__.pyc` when the MSI ships only bytecode, the
+ * module `-m azure.cli` runs). PATH entries and roots
  * compare by real path, so an 8.3 short name or a junction cannot alias a
  * root, and the python.exe found must itself be outside the roots.
  */
@@ -119,7 +120,7 @@ export function resolveAzEntry(deps) {
     }
     const python = win32.resolve(win32.dirname(azCmd), '..', 'python.exe');
     const cliPackage = win32.resolve(win32.dirname(azCmd), '..', 'Lib', 'site-packages', 'azure', 'cli');
-    if (!deps.isFile(python) || !deps.isFile(win32.join(cliPackage, '__main__.py'))) {
+    if (!deps.isFile(python) || !(deps.isFile(win32.join(cliPackage, '__main__.py')) || deps.isFile(win32.join(cliPackage, '__main__.pyc')))) {
         throw new AzBinaryError(`Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`);
     }
     const realPython = real(deps, python);
