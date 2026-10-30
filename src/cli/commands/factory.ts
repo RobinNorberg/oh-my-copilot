@@ -9,8 +9,8 @@
  *
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
- * the factory prerequisites. Default seeds the narrow starter loop; --no-narrow
- * seeds the full-pipeline widening template. Never overwrites without --force.
+ * the factory prerequisites. It seeds the narrow starter loop; --no-narrow is
+ * retired and refuses. Never overwrites without --force.
  *
  * Liveness: pid file at <omc root>/state/factory-listener.json (SessionStart
  * supervision reads it) plus a GET /status endpoint on the listening port.
@@ -328,9 +328,9 @@ export function factoryCommand(): Command {
   cmd
     .command('init')
     .description('Seed the project route table .omg/factory-routes.json (the chain-routing source of truth) and validate factory prerequisites')
-    // Negatable option: Commander defaults `narrow` to true, so the default
-    // seed is the narrow starter loop; --no-narrow seeds the widening template.
-    .option('--no-narrow', 'seed the full-pipeline widening template (intake -> intent -> launch -> diagnose) instead of the narrow starter loop')
+    // Negatable option: Commander defaults `narrow` to true. --no-narrow is
+    // kept only so that it refuses with a pointer instead of "unknown option".
+    .option('--no-narrow', 'retired: the full-pipeline template (intake -> intent -> launch -> diagnose) now refuses')
     .option('--cwd <dir>', 'project directory to seed (defaults to the working directory)', process.cwd())
     .option('--force', 'replace an existing route table (read it first — it is the routing source of truth)', false)
     .action((options: { narrow?: boolean; cwd: string; force?: boolean }) => {
@@ -371,22 +371,6 @@ export function buildRouteTableNarrow(): RouteTable {
 }
 
 /**
- * Full-pipeline widening template: a documented example widening the starter
- * loop into the intent -> launch -> diagnose progression. Keys are
- * `outcome:reason` pairs (the listener's intake label event, or the ending
- * session's outcome + hook reason); values name the next stage/skill. This is
- * a starting point to edit per project — a missing route halts the chain, and
- * `skill: "stop"` declares a terminal stage.
- */
-export function buildRouteTableFull(): RouteTable {
-  return {
-    'success:intake': { stage: 'intent', skill: 'intent' },
-    'success:intent': { stage: 'launch', skill: 'launch' },
-    'success:launch': { stage: 'diagnose', skill: 'diagnose' },
-  };
-}
-
-/**
  * Factory prerequisites, checked loudly before anything is written:
  * harbor needs the OMC state root (`.omg/state/`) and the shipyard layout
  * needs `docs/design/`.
@@ -404,13 +388,19 @@ export interface FactoryInitResult {
 }
 
 /**
- * `omg factoryinit`: seed `.omg/factory-routes.json` — narrow starter table
- * by default, full widening template with narrow:false. Refuses loudly when
+ * `omg factoryinit`: seed `.omg/factory-routes.json` with the narrow starter
+ * table. narrow:false (the retired full template) refuses. Refuses loudly when
  * prerequisites are missing and never overwrites an existing table without
  * force (the SessionEnd chain enqueuer reads that file as the single source
  * of truth).
  */
 export function runFactoryInit(options: { narrow?: boolean; cwd?: string; force?: boolean } = {}): FactoryInitResult {
+  if (options.narrow === false) {
+    return {
+      exitCode: 1,
+      message: 'factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; CI: failed push runs of ci.yml on the dev branch are queued by the listener (workflow_run) and processed by the next omg factory heal scan; failures on other branches or workflows are no longer acted on by the listener (run omg factory heal scan manually). See the factory section of docs/REFERENCE.md.',
+    };
+  }
   const cwd = resolve(options.cwd ?? process.cwd());
   const routesPath = join(getOmcRoot(cwd), 'factory-routes.json');
 
@@ -427,17 +417,16 @@ export function runFactoryInit(options: { narrow?: boolean; cwd?: string; force?
       message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`,
     };
   }
-  const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
+  const table = buildRouteTableNarrow();
   try {
     mkdirSync(join(routesPath, '..'), { recursive: true });
     writeFileSync(routesPath, `${JSON.stringify(table, null, 2)}\n`, 'utf8');
   } catch (error) {
     return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${(error as Error).message}` };
   }
-  const mode = options.narrow === false ? 'full-pipeline widening template' : 'narrow starter table';
   const routes = Object.entries(table).map(([key, directive]) => `${key} -> ${directive.stage}/${directive.skill}`).join('; ');
   return {
     exitCode: 0,
-    message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth — a missing route halts the chain, and skill "stop" marks a terminal stage.`,
+    message: `factory init wrote ${routesPath} (narrow starter table): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth — a missing route halts the chain, and skill "stop" marks a terminal stage.`,
   };
 }

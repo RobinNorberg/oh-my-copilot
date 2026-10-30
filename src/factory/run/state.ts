@@ -93,6 +93,8 @@ export interface FactoryGate {
 
 export interface FactoryFinding {
   severity: 'blocker' | 'major' | 'minor' | 'nit';
+  /** The review axis of a two-axis review (the base has docs/standards/). */
+  axis?: 'spec' | 'standards';
   file?: string;
   line?: number;
   summary: string;
