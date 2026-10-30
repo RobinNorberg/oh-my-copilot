@@ -66,7 +66,8 @@ import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { createForge } from '../../forge/index.js';
 import { GhCommandError } from '../../forge/github/gh.js';
 import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView } from '../../forge/github/reviews.js';
-import { ghIssueComment, ghIssueJson, ghIssueView, githubTracker } from '../../forge/github/tracker.js';
+import { ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
+import { outcomePosts, postedBefore } from './outcome.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, linkNodeModules } from './prepare.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { lockPathFor } from '../../lib/file-lock.js';
@@ -756,6 +757,12 @@ class FactoryEngine {
                 }
                 final = this.state;
             }
+            // A crash after the terminal save and before its outcome comments: post the missing ones now.
+            if (!forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url)) {
+                this.state = final;
+                this.postOutcome(final.phase);
+                final = this.state;
+            }
             return { exitCode: final.phase === 'failed' ? 1 : 0, phase: final.phase, state: final, message: `the factory run for ${this.what} is ${final.phase}` };
         }
         // A config change cannot swap adapters mid-run (critic amendments §A.9).
@@ -910,6 +917,7 @@ class FactoryEngine {
                 const s = this.reload();
                 phase = s.phase;
                 if (TERMINAL_FACTORY_PHASES.includes(s.phase)) {
+                    this.postOutcome(s.phase);
                     return { exitCode: s.phase === 'failed' ? 1 : 0, phase: s.phase, state: s, message: `factory run for ${this.what} is ${s.phase}` };
                 }
                 if (this.cancelWanted(s)) {
@@ -949,6 +957,8 @@ class FactoryEngine {
         // A tampered state is parked from the engine's memory without further writes; every other gate gets its issue comment.
         if (gate.name !== 'state-tampered')
             this.commentGate(gate);
+        if (gate.name === 'merge')
+            this.postOutcome('ready-to-merge');
         return {
             exitCode: gate.name === 'merge' ? 0 : EXIT_AWAITING_HUMAN,
             phase: this.state.phase,
@@ -998,6 +1008,43 @@ class FactoryEngine {
             `Resume with \`${this.resume}\` once it is resolved.`,
             '',
         ].join('\n'));
+    }
+    /**
+     * Outcome write-back (outcome.ts): the item's outcome comment and the
+     * parent spec's rollup line, each once per (child, event, head). The item is
+     * read for its parent and comments; any failure is a warning and never
+     * blocks or changes a transition.
+     */
+    postOutcome(event) {
+        const s = this.state;
+        if (s.kind === 'ci-heal' || !this.o.issue || !s.repoUrl)
+            return;
+        const done = `outcome-done:${event}@${(s.head ?? 'none').slice(0, 12)}`;
+        if (s.gateComments?.includes(done))
+            return;
+        const read = (n) => (this.forge ? this.forge.tracker.viewItem(n) : ghViewItem(this.exec, n, this.o.root));
+        try {
+            const item = read(this.o.issue);
+            let all = true;
+            for (const post of outcomePosts(s, event, item.parent, s.forgeKind ?? 'github')) {
+                if (this.state.gateComments?.includes(post.tag))
+                    continue;
+                if (!postedBefore(post.target === item.id ? item.comments : read(post.target).comments, post.marker)) {
+                    const res = this.commentIssue(post.target, this.writeBody(`outcome-${post.target}`, post.body));
+                    if (!res.ok) {
+                        this.o.warn?.(`omg factory run: could not post the ${event} outcome on #${post.target}: ${res.stderr.trim()}`);
+                        all = false;
+                        continue;
+                    }
+                }
+                this.save((x) => ({ ...x, gateComments: [...(x.gateComments ?? []), post.tag] }));
+            }
+            if (all)
+                this.save((x) => ({ ...x, gateComments: [...(x.gateComments ?? []), done] }));
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: the ${event} outcome comments failed: ${errText(error)}`);
+        }
     }
     async cancel() {
         const usage = new Map();
