@@ -6,14 +6,14 @@
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
     "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-    "sourceSha256": "487259a9e0ebf3b58576f3f6c48bc1dc5f3069e90b5854e35bfad64348b6bd1f",
+    "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
   "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-  "sourceSha256": "487259a9e0ebf3b58576f3f6c48bc1dc5f3069e90b5854e35bfad64348b6bd1f",
+  "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1882,
-      "total": 1906
+      "srcFiles": 1880,
+      "total": 1904
     },
     "generated": {
       "distFiles": 6980,
@@ -952,6 +952,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/spikes/request-handler-probe.mjs",
       "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
@@ -45996,6 +45997,11 @@
         "path": "scripts/smoke-multirepo.mjs"
       },
       {
+        "id": "scripts/spikes/request-handler-probe.mjs",
+        "kind": "script",
+        "path": "scripts/spikes/request-handler-probe.mjs"
+      },
+      {
         "id": "scripts/stale-run-reporter.mjs",
         "kind": "script",
         "path": "scripts/stale-run-reporter.mjs"
@@ -54346,16 +54352,6 @@
         "path": "src/smoke/process-utils.ts"
       },
       {
-        "id": "src/smoke/replay/__tests__/matcher.test.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/__tests__/matcher.test.ts"
-      },
-      {
-        "id": "src/smoke/replay/matcher.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/matcher.ts"
-      },
-      {
         "id": "src/team/__tests__/ack-timeout-env.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/ack-timeout-env.test.ts"
@@ -59399,6 +59395,31 @@
       },
       {
         "from": "scripts/smoke-multirepo.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -99793,61 +99814,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "src/smoke/replay/matcher.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/matcher.test.ts",
-        "to": "src/smoke/replay/matcher.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/replay/matcher.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/matcher.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/matcher.ts",
-        "to": "src/lib/append-no-follow.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/team/__tests__/ack-timeout-env.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -112844,12 +112810,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9605,
-      "edgeCount": 11251,
-      "importEdgeCount": 9268,
+      "nodeCount": 9604,
+      "edgeCount": 11245,
+      "importEdgeCount": 9263,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "0d6b6338716f27990f234432bd7d2842258d7dd613698fb7db603f00735066e7",
-  "manifestSha256": "6275d2d34c794d32f704ae0aa4d8c902e1a4adeb461735fa77a3d4776496630e"
+  "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
+  "manifestSha256": "539e4b97aadc3b29d500545f6083ec26832a38dea5f4d8d65650aac06eb0d785"
 }
