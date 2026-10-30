@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -132,6 +132,87 @@ describe('buildSandboxConfig', () => {
             expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
         }
         expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
+    });
+    it('grants a CA bundle dir read-only in both profiles, never a root or a dir holding the real home', () => {
+        const ca = join(root, 'certs');
+        for (const profile of ['review', 'write']) {
+            const fs = buildSandboxConfig(profile, { ...ctx, extraReadonly: [ca, root, resolve('/')] }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(ca);
+            expect(fs.readonlyPaths).not.toContain(root);
+            expect(fs.readonlyPaths).not.toContain(resolve('/'));
+            expect(fs.readwritePaths).not.toContain(ca);
+        }
+    });
+    it('drops an extra read-only path that is a dangling link instead of failing the config', () => {
+        const target = join(root, 'gone-target');
+        const link = join(root, 'dangling-ca');
+        mkdirSync(target, { recursive: true });
+        symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+        rmSync(target, { recursive: true, force: true });
+        const ca = join(root, 'certs');
+        try {
+            const fs = buildSandboxConfig('write', { ...ctx, extraReadonly: [link, ca] }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(ca);
+            expect(fs.readonlyPaths).not.toContain(link);
+        }
+        finally {
+            unlinkSync(link);
+        }
+    });
+    it('proxyCaEnv grants the CA bundle files themselves (not their dirs), and notes a proxy URL with userinfo', () => {
+        const dl = join(root, 'me', 'Downloads');
+        mkdirSync(dl, { recursive: true });
+        mkdirSync(join(root, 'etc'), { recursive: true });
+        const ca = join(dl, 'corp.pem');
+        const bundle = join(root, 'etc', 'bundle.pem');
+        writeFileSync(ca, 'pem');
+        writeFileSync(bundle, 'pem');
+        const env = { node_extra_ca_certs: ca, SSL_CERT_FILE: bundle, HTTPS_PROXY: 'http://u:p@proxy:3128', HTTP_PROXY: 'http://proxy:3128' };
+        const out = proxyCaEnv(env, process.platform, ctx.realHome);
+        expect(out.caPaths).toEqual([realpathSync.native(ca), realpathSync.native(bundle)]);
+        expect(out.caPaths).not.toContain(realpathSync.native(dl));
+        expect(out.notes).toHaveLength(1);
+        expect(out.notes[0]).toContain('HTTPS_PROXY');
+        expect(out.notes[0]).not.toContain('u:p');
+        expect(proxyCaEnv({ NODE_EXTRA_CA_CERTS: 'relative.pem' }, process.platform, ctx.realHome)).toEqual({ caPaths: [], notes: [] });
+        // A dir in place of a bundle file is not granted.
+        const asDir = proxyCaEnv({ SSL_CERT_FILE: dl }, process.platform, ctx.realHome);
+        expect(asDir.caPaths).toEqual([]);
+        expect(asDir.notes[0]).toMatch(/SSL_CERT_FILE .* is not a file/);
+    });
+    it('proxyCaEnv drops a CA path that does not resolve with a note naming it', () => {
+        const target = join(root, 'gone-ca-dir');
+        const link = join(root, 'dangling-cert-dir');
+        mkdirSync(target, { recursive: true });
+        symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+        rmSync(target, { recursive: true, force: true });
+        try {
+            const missing = join(root, 'nope', 'ca.pem');
+            const out = proxyCaEnv({ NODE_EXTRA_CA_CERTS: missing, SSL_CERT_DIR: link }, process.platform, ctx.realHome);
+            expect(out.caPaths).toEqual([]);
+            expect(out.notes).toHaveLength(2);
+            expect(out.notes[0]).toContain(`NODE_EXTRA_CA_CERTS ${missing} does not resolve`);
+            expect(out.notes[1]).toContain(`SSL_CERT_DIR ${link} does not resolve`);
+        }
+        finally {
+            unlinkSync(link);
+        }
+    });
+    it('proxyCaEnv grants SSL_CERT_DIR entries read-only, never the home, a dir holding it or a root', () => {
+        const home = ctx.realHome;
+        const certs = join(home, '.certs');
+        mkdirSync(certs, { recursive: true });
+        const P = process.platform === 'win32' ? ';' : ':';
+        const out = proxyCaEnv({ SSL_CERT_DIR: [certs, home, root, resolve('/')].join(P) }, process.platform, home);
+        expect(out.caPaths).toEqual([realpathSync.native(certs)]);
+        expect(out.notes).toHaveLength(3);
+        for (const n of out.notes)
+            expect(n).toMatch(/^sandbox: SSL_CERT_DIR .* is a filesystem root or holds the home; it is not granted/);
+        for (const profile of ['review', 'write']) {
+            const fs = buildSandboxConfig(profile, { ...ctx, extraReadonly: out.caPaths }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(realpathSync.native(certs));
+            expect(fs.readwritePaths).not.toContain(realpathSync.native(certs));
+        }
     });
     it('drops a tool dir that holds the worktree, the common git dir or the job dir', () => {
         const win = {
@@ -354,6 +435,12 @@ describe('detection helpers', () => {
             // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
             COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
         });
+    });
+    it('allowlistSessionEnv keeps the proxy and CA variables in any case', () => {
+        const hostEnv = { https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c', ALL_PROXY: 'x' };
+        const env = allowlistSessionEnv(hostEnv, join(root, 'h'));
+        expect(env).toMatchObject({ https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c' });
+        expect(env.ALL_PROXY).toBeUndefined();
     });
     it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {
         const hostEnv = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', GH_TOKEN: 'ghp_x' };

@@ -61,7 +61,7 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
@@ -752,6 +752,9 @@ export class CopilotRunManager {
                 // A job worktree's git dirs come from the links recorded at creation, never from discovery.
                 const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
                 const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
+                const realHome = (deps.realHome ?? (() => userInfo().homedir))();
+                const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+                job.notes.push(...proxy.notes);
                 return {
                     worktree: resolve(top),
                     commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
@@ -759,11 +762,12 @@ export class CopilotRunManager {
                     pluginRoot,
                     jobHome: job.home,
                     jobDir: job.jobDir,
-                    realHome: (deps.realHome ?? (() => userInfo().homedir))(),
+                    realHome,
                     platform: deps.platform,
                     settings: job.sandboxSettings,
                     hostCommits: job.hostCommits,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+                    extraReadonly: proxy.caPaths,
                 };
             },
             note: (text) => { job.notes.push(text); },
