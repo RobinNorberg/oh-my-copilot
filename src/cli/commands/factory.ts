@@ -45,6 +45,9 @@ import { defaultExec, type Exec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { healCommand } from '../../factory/heal/cli.js';
 import { defaultFactoryCheckDeps, factoryCheckCommand, ttyConfirm } from './factory-check.js';
+import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_INCOMPATIBLE, EXIT_CHECK_USAGE, type FactoryCheckDeps } from '../../factory/check/cli.js';
+import { plainText } from '../../factory/check/score.js';
+import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
@@ -268,11 +271,40 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
   return run;
 }
 
+/** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
+export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
+  return new Command('enqueue')
+    .description('Push launch\'s approved tickets to the tracker as children of a spec (GitHub; idempotent by shipyard-key)')
+    .requiredOption('--spec <id>', 'the parent spec issue')
+    .requiredOption('--file <path>', 'the ticket file launch wrote (schemaVersion 1)')
+    .option('--dry-run', 'print the exact writes and write nothing')
+    .option('--json', 'JSON output (schemaVersion 1)')
+    .addHelpText('after', [
+      '',
+      'Without --dry-run, enqueue creates or updates the items (with the intake label and a priority label),',
+      'rewrites the spec\'s task list, then runs the mark step `omg factory check --parent <spec> --mark --yes`,',
+      'which adds factory.intake.marker to the runnable children. The launch C3 signature is the confirmation',
+      'for all of it: run --dry-run first and show its output at C3. Items already claimed by a factory run',
+      'are never edited, and items whose key left the file are reported as orphaned, never closed.',
+    ].join('\n'))
+    .action(async (o: { spec: string; file: string; dryRun?: boolean; json?: boolean }) => {
+      try {
+        process.exitCode = await runFactoryEnqueue(o, deps);
+      } catch (error) {
+        const message = plainText(error instanceof Error ? error.message : String(error));
+        if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
+        else deps.err(chalk.red(`Error: ${message}`));
+        process.exitCode = error instanceof CheckUsageError ? EXIT_CHECK_USAGE : error instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+      }
+    });
+}
+
 export function factoryCommand(): Command {
   const cmd = new Command('factory');
   cmd.description('Software factory automation (chain trigger + intake listener)');
   cmd.addCommand(factoryRunCommand());
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(healCommand({
     exec: defaultExec,
     base: defaultFactoryRunDeps.base,

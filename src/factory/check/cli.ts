@@ -213,7 +213,7 @@ function requireLabel(exec: Exec, root: string, marker: string, repo: string): v
 }
 
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
-function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null {
+export function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null {
   const fetched = git(exec, root, ['fetch', 'origin', base]);
   if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
   const sha = git(exec, root, ['rev-parse', '--verify', `refs/remotes/origin/${base}`]);
@@ -223,7 +223,7 @@ function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): 
 }
 
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
-function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown {
+export function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown {
   const trustedBases = resolveShipConfig({ trustedBases: (trustedUser as { ship?: { trustedBases?: unknown } } | null | undefined)?.ship?.trustedBases }).trustedBases;
   if (!trustedBases.includes(base)) {
     warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);

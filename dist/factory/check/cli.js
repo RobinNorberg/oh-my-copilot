@@ -183,7 +183,7 @@ function requireLabel(exec, root, marker, repo) {
         throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
-function fetchBase(exec, root, base, warnings) {
+export function fetchBase(exec, root, base, warnings) {
     const fetched = git(exec, root, ['fetch', 'origin', base]);
     if (!fetched.ok)
         warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
@@ -194,7 +194,7 @@ function fetchBase(exec, root, base, warnings) {
     return null;
 }
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
-function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
+export function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
     const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
     if (!trustedBases.includes(base)) {
         warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
