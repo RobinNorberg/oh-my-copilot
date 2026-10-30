@@ -2452,6 +2452,11 @@ export async function spawnWorkerInPane(sessionName, paneId, config) {
             throw new Error('worker_start_tmux_server_identity_unverified');
         }
     }
+    // Only the supervisor rebuilds the provider env from the allowlist; an
+    // unsupervised copilot/claude pane would hand it the whole pane shell env.
+    if (!config.launchAttempt && (config.provider === 'copilot' || config.provider === 'claude')) {
+        throw new Error(`worker_launch_attempt_missing:${config.provider}`);
+    }
     if (config.launchAttempt && config.launchAttempt.pane_id !== paneId) {
         throw new Error('worker_launch_attempt_pane_mismatch');
     }

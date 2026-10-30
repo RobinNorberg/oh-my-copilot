@@ -66,8 +66,8 @@ describe('splitTeamWorkerPaneWithEvidence pane env file cleanup', () => {
     vi.stubEnv('SHELL', '/bin/bash');
     vi.stubEnv('MSYSTEM', '');
     vi.stubEnv('MINGW_PREFIX', '');
-    vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'OMC_SPLIT_ENV_TOKEN');
-    vi.stubEnv('OMC_SPLIT_ENV_TOKEN', 'split-env-secret');
+    vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'GITHUB_TOKEN');
+    vi.stubEnv('GITHUB_TOKEN', 'split-env-secret');
   });
 
   afterEach(() => {
