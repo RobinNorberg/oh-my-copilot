@@ -56,6 +56,9 @@ describe('detectStalledLinks', () => {
         ['chain-loop-capped', 'success'],
         ['human-gate', 'success'],
         ['no-route', 'failed'],
+        ['route-retired:diagnose', 'success'],
+        ['route-retired:launch', 'failed'],
+        ['route-unknown:launch.', 'success'],
     ])('does not report a closed ledger whose %s closeout left a stop marker', (decision, outcome) => {
         const dir = tempDir();
         const factoryDir = join(dir, '.omg', 'state', 'factory');

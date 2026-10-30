@@ -67,7 +67,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
         writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
         mkdirSync(join(dir, '.omg'), { recursive: true });
         writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-            'success:*': { stage: 'review', skill: 'code-review' },
+            'success:*': { stage: 'review', skill: 'omc-review' },
         }), 'utf8');
         const result = await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-a'));
         expect(result).toEqual({ continue: true });
@@ -93,7 +93,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
         writeLedger(dir, 'sess-c', { intentId: 'intent-c' });
         mkdirSync(join(dir, '.omg'), { recursive: true });
         writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-            'success:*': { stage: 'review', skill: 'code-review' },
+            'success:*': { stage: 'review', skill: 'omc-review' },
         }), 'utf8');
         vi.mocked(prepareCoreManifest).mockReturnValueOnce(null);
         await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-c'));
@@ -108,7 +108,7 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
         writeLedger(dir, 'sess-d', { intentId: 'intent-d' });
         mkdirSync(join(dir, '.omg'), { recursive: true });
         writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({
-            'success:*': { stage: 'review', skill: 'code-review' },
+            'success:*': { stage: 'review', skill: 'omc-review' },
         }), 'utf8');
         vi.mocked(spawnSessionEndWorker).mockReturnValueOnce(false);
         await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-d'));

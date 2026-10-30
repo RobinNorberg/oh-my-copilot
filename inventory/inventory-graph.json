@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a41dd693424eb6dd2a2fc5198a5f8e68f0744b4e",
-    "sourceSha256": "e8c47291c5c3c6684f25a612e7c6da673ac6f7ca82f5b8dbe39d96d6d3dfe74a",
+    "head": "aed75367656742bef630594d1059fc7aa28d70bd",
+    "sourceSha256": "a88b389dc3c59473646f7d4d86fad50ebfd1c8c5b7ec9c20d3c81b68449061b1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a41dd693424eb6dd2a2fc5198a5f8e68f0744b4e",
-  "sourceSha256": "e8c47291c5c3c6684f25a612e7c6da673ac6f7ca82f5b8dbe39d96d6d3dfe74a",
+  "head": "aed75367656742bef630594d1059fc7aa28d70bd",
+  "sourceSha256": "a88b389dc3c59473646f7d4d86fad50ebfd1c8c5b7ec9c20d3c81b68449061b1",
   "counts": {
     "public": {
       "skills": 63,
@@ -72982,7 +72982,17 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/hooks/session-end/routing.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -91021,6 +91031,11 @@
       },
       {
         "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
@@ -91037,6 +91052,11 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/frontmatter.ts",
         "kind": "imports"
       },
       {
@@ -114657,11 +114677,11 @@
     ],
     "stats": {
       "nodeCount": 9733,
-      "edgeCount": 11466,
-      "importEdgeCount": 9431,
+      "edgeCount": 11470,
+      "importEdgeCount": 9435,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "fdde596adc3bf3e66acfec11c709d13809a5d7f96e5a66e3775bcb07a4f60d68",
-  "manifestSha256": "850bdadddf2ebb2a3c2d760945fbbe044f608d82b4c5baba272fa9f408732233"
+  "manifestSha256": "69aebd11f531b94c8b614608c8f3b8812b12ca8d31a1e073443c1ffa16a2f358"
 }

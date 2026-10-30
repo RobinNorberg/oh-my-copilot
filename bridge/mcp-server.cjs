@@ -38840,6 +38840,8 @@ var init_spawn_next = __esm({
     init_tmux_utils();
     init_host_detection();
     init_chain_tracker();
+    init_skills();
+    init_frontmatter();
     CHAIN_LINK_ENV = "OMC_CHAIN_LINK";
     LINK_ENV_DROPPED = [CHAIN_LINK_ENV, "COPILOT_AGENT_SESSION_ID"];
     AFK_ALLOWED_TOOLS = [
@@ -48493,6 +48495,8 @@ var init_factory = __esm({
     import_path103 = require("path");
     init_listener();
     init_status();
+    init_routing();
+    init_spawn_next();
     init_worktree_paths();
     init_project_config_path();
     init_job();
