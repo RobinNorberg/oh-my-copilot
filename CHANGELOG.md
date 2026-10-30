@@ -8,11 +8,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **The listener no longer starts a billed session for a nonexistent
   `diagnose` skill on CI failures.** A failed `check_suite` webhook is now
-  an audited `204` discard ("CI failures are healed from workflow_run"); red
-  CI reaches the heal queue through `workflow_run` only. `omg factory init
+  an audited `204` discard ("CI failures are healed from workflow_run"); only
+  failed push runs of `ci.yml` on the dev branch reach the heal queue (via
+  `workflow_run`), and the next `omg factory heal scan` processes them;
+  failures on other branches or workflows are no longer acted on by the
+  listener (run `omg factory heal scan` manually). `omg factory init
   --no-narrow`, whose full template routed `success:launch` to the same
   missing skill, now refuses (exit 1, nothing written) and points at
-  `omg factory run <issue>`. The default narrow table is unchanged.
+  `omg factory run <issue>`. The default narrow table is unchanged. Interim: an existing
+  `.omg/factory-routes.json` created with the old full template still routes
+  `success:intent` to `launch` and `success:launch` to `diagnose` until the
+  follow-up adds `omg factory init --check/--migrate`; re-run `omg factory init
+  --force` (narrow) to drop them.
 
 # oh-my-copilot v5.18.2
 

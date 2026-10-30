@@ -56,7 +56,7 @@ describe('runFactoryInit', () => {
         expect(JSON.parse(readFileSync(routesPath(dir), 'utf8'))).toEqual(buildRouteTableNarrow());
         expect(readProjectRoutes(dir)).toEqual(buildRouteTableNarrow());
     });
-    it('refuses narrow: false (--no-narrow) with a pointer to the integration design and writes nothing', () => {
+    it('refuses narrow: false (--no-narrow) with a pointer to docs/REFERENCE.md and writes nothing', () => {
         const dir = tempDir();
         seedPrerequisites(dir);
         const result = runFactoryInit({ cwd: dir, narrow: false });
@@ -64,7 +64,7 @@ describe('runFactoryInit', () => {
         expect(result.message).toContain('--no-narrow');
         expect(result.message).toContain('diagnose');
         expect(result.message).toContain('omg factory run <issue>');
-        expect(result.message).toContain('shipyard-factory-integration-design');
+        expect(result.message).toContain('docs/REFERENCE.md');
         expect(existsSync(routesPath(dir))).toBe(false);
     });
     it('refuses narrow: false even with --force and leaves an existing table untouched', () => {

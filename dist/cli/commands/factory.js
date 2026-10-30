@@ -374,7 +374,7 @@ export function runFactoryInit(options = {}) {
     if (options.narrow === false) {
         return {
             exitCode: 1,
-            message: 'factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; red CI is healed by omg factory heal scan. See the shipyard factory integration design (.omc/plans/2026-10-30-shipyard-factory-integration-design.md).',
+            message: 'factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; CI: failed push runs of ci.yml on the dev branch are queued by the listener (workflow_run) and processed by the next omg factory heal scan; failures on other branches or workflows are no longer acted on by the listener (run omg factory heal scan manually). See the factory section of docs/REFERENCE.md.',
         };
     }
     const cwd = resolve(options.cwd ?? process.cwd());
