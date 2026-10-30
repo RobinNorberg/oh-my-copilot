@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b62f23e08830f2b94c9c9112d53027c6c73959a7",
-    "sourceSha256": "4ed933b72acb0a4ee34ebee92f7d95dbaa0268ad6c89885f1c8262dddeab6012",
+    "head": "0cecad3f27d2ea26845f24a5db66b15ff2afa222",
+    "sourceSha256": "8921ba8ace80c79feed1b5c96168c537c2bec19c5302b927babb8e0230b4784c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b62f23e08830f2b94c9c9112d53027c6c73959a7",
-  "sourceSha256": "4ed933b72acb0a4ee34ebee92f7d95dbaa0268ad6c89885f1c8262dddeab6012",
+  "head": "0cecad3f27d2ea26845f24a5db66b15ff2afa222",
+  "sourceSha256": "8921ba8ace80c79feed1b5c96168c537c2bec19c5302b927babb8e0230b4784c",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1884,
-      "total": 1908
+      "srcFiles": 1886,
+      "total": 1910
     },
     "generated": {
-      "distFiles": 6992,
+      "distFiles": 7000,
       "bridgeFiles": 9,
-      "total": 7001
+      "total": 7009
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -6601,6 +6601,14 @@
       "dist/smoke/process-utils.d.ts.map",
       "dist/smoke/process-utils.js",
       "dist/smoke/process-utils.js.map",
+      "dist/smoke/replay/__tests__/matcher.test.d.ts",
+      "dist/smoke/replay/__tests__/matcher.test.d.ts.map",
+      "dist/smoke/replay/__tests__/matcher.test.js",
+      "dist/smoke/replay/__tests__/matcher.test.js.map",
+      "dist/smoke/replay/matcher.d.ts",
+      "dist/smoke/replay/matcher.d.ts.map",
+      "dist/smoke/replay/matcher.js",
+      "dist/smoke/replay/matcher.js.map",
       "dist/team/__tests__/ack-timeout-env.test.d.ts",
       "dist/team/__tests__/ack-timeout-env.test.d.ts.map",
       "dist/team/__tests__/ack-timeout-env.test.js",
@@ -37748,6 +37756,46 @@
         "path": "dist/smoke/process-utils.js.map"
       },
       {
+        "id": "dist/smoke/replay/__tests__/matcher.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.js"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.js.map"
+      },
+      {
         "id": "dist/team/__tests__/ack-timeout-env.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/ack-timeout-env.test.d.ts"
@@ -54466,6 +54514,16 @@
         "id": "src/smoke/process-utils.ts",
         "kind": "src",
         "path": "src/smoke/process-utils.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/matcher.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/matcher.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/matcher.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/matcher.ts"
       },
       {
         "id": "src/team/__tests__/ack-timeout-env.test.ts",
@@ -100190,6 +100248,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/ack-timeout-env.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -113186,12 +113299,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9624,
-      "edgeCount": 11297,
-      "importEdgeCount": 9305,
+      "nodeCount": 9634,
+      "edgeCount": 11308,
+      "importEdgeCount": 9315,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "95db577df8ae3475e66941f6520ce064c8285e87738bea211dd4599249778376",
-  "manifestSha256": "6cec8d06313862acffa680c0ac76564172db1e1d80ef6fd929bc1b26f57f90fe"
+  "inventorySha256": "d484efbb33687087a6816ba5dafcf5ae3cb789a9272b20090c60e83a5478e33c",
+  "manifestSha256": "fecdf6253a683bc1066e6beef0f2db38aedc2ae3f79f3bc124ca2ad5c68ab515"
 }
