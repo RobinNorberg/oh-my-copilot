@@ -121,13 +121,13 @@ export interface RecordMeta {
   runOrder?: string[];
 }
 
-/** The global (`GET /models`-like) interactions of a scenario's finished parts, in recording order. */
+/** The global GET and HEAD interactions of a scenario's finished parts, in recording order (a global POST is never borrowed). */
 function recordedGlobals(stateDir: string): Cassette['interactions'] {
   const partsDir = join(stateDir, RECORD_PARTS_DIR);
   if (!existsSync(partsDir)) return [];
   return readdirSync(partsDir).sort()
     .filter((n) => statSync(join(partsDir, n)).isDirectory())
-    .flatMap((n) => readCassette(join(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM));
+    .flatMap((n) => readCassette(join(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM && (it.req.method === 'GET' || it.req.method === 'HEAD')));
 }
 
 /**
@@ -203,7 +203,7 @@ export function keepFailedParts(run: CassetteRun, scenario: string): string | nu
   if (!existsSync(parts) || readdirSync(parts).length === 0) return null;
   const dest = join(resolve(run.root), FAILED_RECORDINGS_DIR, scenario);
   rmSync(dest, { recursive: true, force: true });
-  cpSync(parts, join(dest, RECORD_PARTS_DIR), { recursive: true });
+  cpSync(parts, join(dest, RECORD_PARTS_DIR), { recursive: true, filter: (src) => !src.endsWith(RECORD_STARTED_SUFFIX) });
   return dest;
 }
 

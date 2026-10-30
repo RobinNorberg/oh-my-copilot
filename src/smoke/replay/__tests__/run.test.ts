@@ -20,6 +20,7 @@ import {
   cassetteEnv,
   finalizeRecording,
   gateCassettes,
+  keepFailedParts,
   importCassettes,
   mergeRecordedParts,
   platformTag,
@@ -198,6 +199,35 @@ describe('cassette run: record parts, merge, finalize', () => {
     expect(await killed.stop()).toEqual([]);
     expect(readdirSync(partsDir).filter((n) => n.endsWith(RECORD_STARTED_SUFFIX))).toEqual([]);
     expect(mergeRecordedParts(scenarioStateDir(run, 'team'), 'team')!.manifest.streams).toHaveLength(2);
+  });
+
+  it('borrows a global GET from another scenario but not a global POST', async () => {
+    const run = newRun('record');
+    await recordScenario(run, 'smoke', [['task alpha']]);
+    const { Base } = fakeSdkBase();
+    const client = newClient(withCassette(fakeSdk(Base), cassetteEnv({}, run, {}, 'smoke')));
+    const url = `${API}/chat/completions`;
+    await client.handler.sendRequest(new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), { sessionId: 'g', transport: 'http', url, headers: { 'content-type': ['application/json'] } });
+    expect(await client.stop()).toEqual([]);
+    const own = mergeRecordedParts(scenarioStateDir(run, 'smoke'), 'smoke')!;
+    expect(own.interactions.filter((it) => it.stream === GLOBAL_STREAM).map((it) => it.req.method).sort()).toEqual(['GET', 'POST']);
+    await recordScenario(run, 'guardrail', [['task beta']]);
+    finalizeRecording(run, 'guardrail', {}, { globalsFrom: ['smoke', 'guardrail'] });
+    const globals = readCassette(scenarioCassetteDir(run, 'guardrail')).interactions.filter((it) => it.stream === GLOBAL_STREAM);
+    expect(globals.map((it) => it.req.method)).toEqual(['GET']);
+  });
+
+  it('keepFailedParts copies parts and .failed markers but not .started markers', async () => {
+    const run = newRun('record');
+    await recordScenario(run, 'team', [['task alpha']]);
+    const partsDir = join(scenarioStateDir(run, 'team'), RECORD_PARTS_DIR);
+    writeFileSync(join(partsDir, `9-1${RECORD_STARTED_SUFFIX}`), '9');
+    writeFileSync(join(partsDir, `9-2${RECORD_FAILED_SUFFIX}`), 'boom');
+    const kept = join(keepFailedParts(run, 'team')!, RECORD_PARTS_DIR);
+    const names = readdirSync(kept);
+    expect(names).toContain(`9-2${RECORD_FAILED_SUFFIX}`);
+    expect(names.some((n) => n.endsWith(RECORD_STARTED_SUFFIX))).toBe(false);
+    expect(names.length).toBeGreaterThan(1);
   });
 });
 

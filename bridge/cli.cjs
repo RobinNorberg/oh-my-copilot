@@ -97682,7 +97682,7 @@ function mergeRecordedParts(stateDir, scenario) {
 function recordedGlobals(stateDir) {
   const partsDir = (0, import_path122.join)(stateDir, RECORD_PARTS_DIR);
   if (!(0, import_fs101.existsSync)(partsDir)) return [];
-  return (0, import_fs101.readdirSync)(partsDir).sort().filter((n) => (0, import_fs101.statSync)((0, import_path122.join)(partsDir, n)).isDirectory()).flatMap((n) => readCassette((0, import_path122.join)(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM));
+  return (0, import_fs101.readdirSync)(partsDir).sort().filter((n) => (0, import_fs101.statSync)((0, import_path122.join)(partsDir, n)).isDirectory()).flatMap((n) => readCassette((0, import_path122.join)(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM && (it.req.method === "GET" || it.req.method === "HEAD")));
 }
 function finalizeRecording(run2, scenario, meta, opts = {}) {
   const merged = mergeRecordedParts(scenarioStateDir(run2, scenario), scenario);
@@ -97725,7 +97725,7 @@ function keepFailedParts(run2, scenario) {
   if (!(0, import_fs101.existsSync)(parts) || (0, import_fs101.readdirSync)(parts).length === 0) return null;
   const dest = (0, import_path122.join)((0, import_path122.resolve)(run2.root), FAILED_RECORDINGS_DIR, scenario);
   (0, import_fs101.rmSync)(dest, { recursive: true, force: true });
-  (0, import_fs101.cpSync)(parts, (0, import_path122.join)(dest, RECORD_PARTS_DIR), { recursive: true });
+  (0, import_fs101.cpSync)(parts, (0, import_path122.join)(dest, RECORD_PARTS_DIR), { recursive: true, filter: (src) => !src.endsWith(RECORD_STARTED_SUFFIX) });
   return dest;
 }
 function cassetteDirsUnder(root2) {

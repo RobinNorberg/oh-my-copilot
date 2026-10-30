@@ -91,14 +91,14 @@ export function mergeRecordedParts(stateDir, scenario) {
         interactions,
     };
 }
-/** The global (`GET /models`-like) interactions of a scenario's finished parts, in recording order. */
+/** The global GET and HEAD interactions of a scenario's finished parts, in recording order (a global POST is never borrowed). */
 function recordedGlobals(stateDir) {
     const partsDir = join(stateDir, RECORD_PARTS_DIR);
     if (!existsSync(partsDir))
         return [];
     return readdirSync(partsDir).sort()
         .filter((n) => statSync(join(partsDir, n)).isDirectory())
-        .flatMap((n) => readCassette(join(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM));
+        .flatMap((n) => readCassette(join(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM && (it.req.method === 'GET' || it.req.method === 'HEAD')));
 }
 /**
  * Merge the scenario's parts and write the cassette to
@@ -171,7 +171,7 @@ export function keepFailedParts(run, scenario) {
         return null;
     const dest = join(resolve(run.root), FAILED_RECORDINGS_DIR, scenario);
     rmSync(dest, { recursive: true, force: true });
-    cpSync(parts, join(dest, RECORD_PARTS_DIR), { recursive: true });
+    cpSync(parts, join(dest, RECORD_PARTS_DIR), { recursive: true, filter: (src) => !src.endsWith(RECORD_STARTED_SUFFIX) });
     return dest;
 }
 /** The cassettes under `root`, leaving out the kept parts of failed recordings. */
