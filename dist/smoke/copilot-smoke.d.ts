@@ -13,7 +13,7 @@
 import { type BinaryResolverDeps } from './copilot-binary.js';
 import { type SmokeCheck } from './copilot-session-eval.js';
 import { type SpawnFn, type SpawnSyncFn } from './process-utils.js';
-import { type LoadSdkFn } from './copilot-sdk-driver.js';
+import { type LoadSdkFn, type SdkTierResult } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
 import { runCliScenario } from './copilot-cli-scenarios.js';
 import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
@@ -60,6 +60,17 @@ export interface SmokeOptions {
     delegate?: boolean;
     /** Tier 2 scenarios (default {@link DEFAULT_SCENARIOS}); [] = SDK static checks only, zero model calls. */
     scenarios?: Scenario[];
+    /**
+     * Tier 2: record every model request of the scenarios into
+     * `<record>/<platform>-<arch>/<scenario>/` (billed; needs {@link SmokeOptions.model}).
+     */
+    record?: string;
+    /** With `record`: replace an existing cassette. */
+    recordOverwrite?: boolean;
+    /** Tier 2: answer every model request from `<replay>/<platform>-<arch>/<scenario>/` (free, credential-free). */
+    replay?: string;
+    /** With `replay`: a drifted request misses instead of being served. */
+    replayStrict?: boolean;
     env?: NodeJS.ProcessEnv;
     /** Test seams; defaults are the real implementations. */
     deps?: SmokeDeps;
@@ -103,6 +114,8 @@ export interface SmokeReport {
     };
     /** Tier 2: summed over the scenarios (AI credits = nano-AIU / 1e9). */
     cost?: ScenarioCost;
+    /** Tier 2 with `replay`: per scenario, what `scn.<name>.replay` found. */
+    replay?: SdkTierResult['replay'];
 }
 /**
  * Paths kept with keepHome (else deleted and omitted). `listHome` is the tier 0
@@ -174,5 +187,12 @@ export declare const LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused u
  * tier 2). Returns the refusal detail, or null to proceed.
  */
 export declare function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | undefined, deps: SmokeDeps, env?: NodeJS.ProcessEnv): string | null;
+/**
+ * Why the `record`/`replay` options are refused, or null (design sections 2,
+ * 6 and 8.5): both at once; a flag without its mode; outside tier 2 or with
+ * no scenario; a `copilot -p` scenario (no request handler to record or
+ * replay through); recording under CI or without a pinned model.
+ */
+export declare function cassetteOptionsError(opts: Pick<Partial<SmokeOptions>, 'tier' | 'scenarios' | 'model' | 'record' | 'recordOverwrite' | 'replay' | 'replayStrict'>, env?: NodeJS.ProcessEnv): string | null;
 export declare function runCopilotSmoke(input?: Partial<SmokeOptions>): Promise<SmokeReport>;
 //# sourceMappingURL=copilot-smoke.d.ts.map

@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, buildSandboxConfig, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -62,8 +62,45 @@ describe('buildSandboxConfig', () => {
         expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere') })).toEqual([join(ctx.commonGitDir, 'objects')]);
         expect(plain.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
         const denied = buildSandboxConfig('write', ctx, host({ shell: true, denied_paths: true }));
-        expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
-            .map((p) => join(ctx.realHome, p)));
+        const homeDenied = [
+            '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
+            join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
+            '.gnupg', '.pypirc', join('.config', 'gcloud'),
+        ].map((p) => join(ctx.realHome, p));
+        expect(denied.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+        // The user's runtime dir and the SSH agent's socket dir are denied on Linux/macOS.
+        const sockets = buildSandboxConfig('write', { ...ctx, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+        expect(sockets.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']);
+        // Never the root or a dir that holds a grant (the home, the worktree).
+        for (const sshAuthSock of ['/agent.sock', join(ctx.realHome, 'agent.sock'), join(ctx.worktree, 'agent.sock'), join(root, 'agent.sock')]) {
+            const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths, sshAuthSock).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+        }
+        // No socket entry on Windows.
+        const win = buildSandboxConfig('write', { ...ctx, platform: 'win32', uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+        expect(win.userPolicy.filesystem.deniedPaths).toEqual(homeDenied);
+        // An agent socket directly in a shared sticky dir: only the socket, never all of /tmp.
+        for (const sshAuthSock of ['/tmp/agent.42', '/var/tmp/agent.42']) {
+            const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths, sshAuthSock).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman', sshAuthSock]);
+        }
+        // A tool dir under /run/user/<uid> is a grant: the runtime dir is not denied over it.
+        const tool = buildSandboxConfig('write', { ...ctx, uid: 1000, toolPaths: ['/run/user/1000/fnm/node'] }, host({ shell: true, denied_paths: true }));
+        expect(tool.userPolicy.filesystem.readonlyPaths).toContain('/run/user/1000/fnm/node');
+        expect(tool.userPolicy.filesystem.deniedPaths).not.toContain('/run/user/1000');
+    });
+    it('a dangling link among the grants keeps the socket denials and does not abort the config', () => {
+        const dangling = join(root, 'dangling-grant');
+        // A junction needs no privilege on Windows; elsewhere the type is ignored and a symlink is made.
+        symlinkSync(join(root, 'gone'), dangling, 'junction');
+        try {
+            const settings = { ...ctx.settings, extraReadonlyPaths: [dangling] };
+            const cfg = buildSandboxConfig('write', { ...ctx, settings, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths).toEqual(expect.arrayContaining(['/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']));
+        }
+        finally {
+            unlinkSync(dangling);
+        }
     });
     it('write with hostCommits (the factory engine commits) keeps the whole common git dir read-only (§4.3)', () => {
         const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');
@@ -132,6 +169,87 @@ describe('buildSandboxConfig', () => {
             expect(fs.readwritePaths).not.toContain(join(root, 'nodejs'));
         }
         expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
+    });
+    it('grants a CA bundle dir read-only in both profiles, never a root or a dir holding the real home', () => {
+        const ca = join(root, 'certs');
+        for (const profile of ['review', 'write']) {
+            const fs = buildSandboxConfig(profile, { ...ctx, extraReadonly: [ca, root, resolve('/')] }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(ca);
+            expect(fs.readonlyPaths).not.toContain(root);
+            expect(fs.readonlyPaths).not.toContain(resolve('/'));
+            expect(fs.readwritePaths).not.toContain(ca);
+        }
+    });
+    it('drops an extra read-only path that is a dangling link instead of failing the config', () => {
+        const target = join(root, 'gone-target');
+        const link = join(root, 'dangling-ca');
+        mkdirSync(target, { recursive: true });
+        symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+        rmSync(target, { recursive: true, force: true });
+        const ca = join(root, 'certs');
+        try {
+            const fs = buildSandboxConfig('write', { ...ctx, extraReadonly: [link, ca] }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(ca);
+            expect(fs.readonlyPaths).not.toContain(link);
+        }
+        finally {
+            unlinkSync(link);
+        }
+    });
+    it('proxyCaEnv grants the CA bundle files themselves (not their dirs), and notes a proxy URL with userinfo', () => {
+        const dl = join(root, 'me', 'Downloads');
+        mkdirSync(dl, { recursive: true });
+        mkdirSync(join(root, 'etc'), { recursive: true });
+        const ca = join(dl, 'corp.pem');
+        const bundle = join(root, 'etc', 'bundle.pem');
+        writeFileSync(ca, 'pem');
+        writeFileSync(bundle, 'pem');
+        const env = { node_extra_ca_certs: ca, SSL_CERT_FILE: bundle, HTTPS_PROXY: 'http://u:p@proxy:3128', HTTP_PROXY: 'http://proxy:3128' };
+        const out = proxyCaEnv(env, process.platform, ctx.realHome);
+        expect(out.caPaths).toEqual([realpathSync.native(ca), realpathSync.native(bundle)]);
+        expect(out.caPaths).not.toContain(realpathSync.native(dl));
+        expect(out.notes).toHaveLength(1);
+        expect(out.notes[0]).toContain('HTTPS_PROXY');
+        expect(out.notes[0]).not.toContain('u:p');
+        expect(proxyCaEnv({ NODE_EXTRA_CA_CERTS: 'relative.pem' }, process.platform, ctx.realHome)).toEqual({ caPaths: [], notes: [] });
+        // A dir in place of a bundle file is not granted.
+        const asDir = proxyCaEnv({ SSL_CERT_FILE: dl }, process.platform, ctx.realHome);
+        expect(asDir.caPaths).toEqual([]);
+        expect(asDir.notes[0]).toMatch(/SSL_CERT_FILE .* is not a file/);
+    });
+    it('proxyCaEnv drops a CA path that does not resolve with a note naming it', () => {
+        const target = join(root, 'gone-ca-dir');
+        const link = join(root, 'dangling-cert-dir');
+        mkdirSync(target, { recursive: true });
+        symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+        rmSync(target, { recursive: true, force: true });
+        try {
+            const missing = join(root, 'nope', 'ca.pem');
+            const out = proxyCaEnv({ NODE_EXTRA_CA_CERTS: missing, SSL_CERT_DIR: link }, process.platform, ctx.realHome);
+            expect(out.caPaths).toEqual([]);
+            expect(out.notes).toHaveLength(2);
+            expect(out.notes[0]).toContain(`NODE_EXTRA_CA_CERTS ${missing} does not resolve`);
+            expect(out.notes[1]).toContain(`SSL_CERT_DIR ${link} does not resolve`);
+        }
+        finally {
+            unlinkSync(link);
+        }
+    });
+    it('proxyCaEnv grants SSL_CERT_DIR entries read-only, never the home, a dir holding it or a root', () => {
+        const home = ctx.realHome;
+        const certs = join(home, '.certs');
+        mkdirSync(certs, { recursive: true });
+        const P = process.platform === 'win32' ? ';' : ':';
+        const out = proxyCaEnv({ SSL_CERT_DIR: [certs, home, root, resolve('/')].join(P) }, process.platform, home);
+        expect(out.caPaths).toEqual([realpathSync.native(certs)]);
+        expect(out.notes).toHaveLength(3);
+        for (const n of out.notes)
+            expect(n).toMatch(/^sandbox: SSL_CERT_DIR .* is a filesystem root or holds the home; it is not granted/);
+        for (const profile of ['review', 'write']) {
+            const fs = buildSandboxConfig(profile, { ...ctx, extraReadonly: out.caPaths }, host()).userPolicy.filesystem;
+            expect(fs.readonlyPaths).toContain(realpathSync.native(certs));
+            expect(fs.readwritePaths).not.toContain(realpathSync.native(certs));
+        }
     });
     it('drops a tool dir that holds the worktree, the common git dir or the job dir', () => {
         const win = {
@@ -354,6 +472,12 @@ describe('detection helpers', () => {
             // The host LOCALAPPDATA passes for MXC; the runtime's cache stays in the job home, outside the lane-writable profile.
             COPILOT_CACHE_HOME: join(root, 'h', '.cache', 'copilot'),
         });
+    });
+    it('allowlistSessionEnv keeps the proxy and CA variables in any case', () => {
+        const hostEnv = { https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c', ALL_PROXY: 'x' };
+        const env = allowlistSessionEnv(hostEnv, join(root, 'h'));
+        expect(env).toMatchObject({ https_proxy: 'http://p:1', HTTP_PROXY: 'http://p:1', No_Proxy: 'localhost', NODE_EXTRA_CA_CERTS: '/c/ca.pem', SSL_CERT_FILE: '/c/b.pem', SSL_CERT_DIR: '/c' });
+        expect(env.ALL_PROXY).toBeUndefined();
     });
     it('every variable the Windows sandbox requires passes the allowlist with its host value', () => {
         const hostEnv = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', GH_TOKEN: 'ghp_x' };

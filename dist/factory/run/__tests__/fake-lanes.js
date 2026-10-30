@@ -64,7 +64,7 @@ export class FakeLanes {
             headSha: terminal ? gitIn(job.ctx.worktree, 'rev-parse', 'HEAD') : null,
             baseSha: job.ctx.baseSha,
             worktree: job.ctx.worktree,
-            changes: terminal ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
+            changes: terminal && !o.noChanges ? summarizeChanges(job.ctx.worktree, job.ctx.baseSha) : null,
             finalText: o.finalText ?? null,
             logsUrl: null,
             usage: { premiumRequests: terminal ? 1 : 0, credits: terminal ? (o.credits ?? 5) : 0, source: 'measured', detail: '' },

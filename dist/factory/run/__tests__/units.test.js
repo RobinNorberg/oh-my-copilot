@@ -9,7 +9,7 @@ import { assertFactoryCommand, FactorySafetyError, hardenedGitExec } from '../ex
 import { EngineLedger, LedgerError } from '../ledger.js';
 import { createFactoryProgress } from '../progress.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from '../review-output.js';
-import { acquireFactoryOwner, createFactoryState, factoryCancelRequested, factoryStatePath, moveTo, requestFactoryCancel, setGate, updateFactoryState, } from '../state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, factoryStatePath, moveTo, requestFactoryCancel, setGate, updateFactoryState, } from '../state.js';
 import { gitIn } from './fake-lanes.js';
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const block = (o) => `Review done.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
@@ -240,6 +240,17 @@ describe('factory run state, owner file and cancel', () => {
         expect(() => acquireFactoryOwner(dir, 7, NOW, { pid: 3, hostname: 'h', isAlive: () => true })).toThrow(/pid 2/);
         second.release();
         expect(acquireFactoryOwner(dir, 7, NOW, { pid: 3, hostname: 'h', isAlive: () => true }).tookOver).toBeUndefined();
+    });
+    it('repository owner file: one engine per repository whatever the run; it names the run that holds it', () => {
+        const live = { pid: 1, hostname: 'h', isAlive: () => true };
+        const first = acquireFactoryRepoOwner(dir, 7, NOW, live);
+        expect(() => acquireFactoryRepoOwner(dir, 'heal-0123abcd', NOW, { ...live, pid: 2 })).toThrow(/another omg factory engine runs in this repository \(7, pid 1 on h/);
+        const second = acquireFactoryRepoOwner(dir, 8, NOW, { pid: 2, hostname: 'h', isAlive: () => false });
+        expect(second.tookOver).toMatchObject({ pid: 1, run: '7' });
+        first.release(); // not its file any more
+        expect(() => acquireFactoryRepoOwner(dir, 9, NOW, { pid: 3, hostname: 'h', isAlive: () => true })).toThrow(/\(8, pid 2/);
+        second.release();
+        expect(acquireFactoryRepoOwner(dir, 9, NOW, { pid: 3, hostname: 'h', isAlive: () => true }).tookOver).toBeUndefined();
     });
 });
 describe('factory progress events', () => {

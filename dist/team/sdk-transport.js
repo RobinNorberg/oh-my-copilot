@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { killProcessTree, isProcessAlive, isProcessIdentityLive } from '../platform/process-utils.js';
-import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
+import { isCredentialEnvKey, isReplayEnv } from '../smoke/copilot-session-env.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, } from './worker-launch-ack.js';
 export const SDK_TARGET_PREFIX = 'sdk:';
@@ -79,10 +79,13 @@ export const HOST_CREDENTIAL_ENV = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_
 export function hostSpawnEnv(env) {
     return Object.fromEntries(Object.entries(env).filter(([key]) => !isCredentialEnvKey(key)));
 }
-/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+/**
+ * The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`; none in a
+ * cassette replay, whose hosts run credential-free (replay design section 8.2).
+ */
 export function hostCredentialHandoff(env) {
     const out = {};
-    for (const [key, value] of Object.entries(env)) {
+    for (const [key, value] of isReplayEnv(env) ? [] : Object.entries(env)) {
         const upper = key.toUpperCase();
         if (HOST_CREDENTIAL_ENV.includes(upper) && value && !(upper in out))
             out[upper] = value;

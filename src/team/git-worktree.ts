@@ -836,7 +836,8 @@ export function deleteWorkerBranchAt(repoRoot: string, branch: string, commit: s
       process.stderr.write(`[omc] warning: kept merged worker branch ${branch} (checked out in a worktree)\n`);
       return;
     }
-    git(repoRoot, ['update-ref', '-d', ref, commit]);
+    // --no-deref: a branch rewritten as `ref: refs/heads/main` would otherwise delete main.
+    git(repoRoot, ['update-ref', '--no-deref', '-d', ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
     const error = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);

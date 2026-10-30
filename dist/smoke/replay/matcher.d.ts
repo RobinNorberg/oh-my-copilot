@@ -126,15 +126,38 @@ export interface ReplayMatcherOptions {
     stateDir: string;
     mode: MatchMode;
 }
+/**
+ * Positions of live streams: the session ordinal (the order in which sessions
+ * first issued a request, allocated across every process of the run) and the
+ * agent path (`root`, `root/2`). The recorder (handler.ts) and the matcher both
+ * track through this class, so a recorded position means the same on replay.
+ */
+export declare class StreamPositions {
+    private readonly stateDir;
+    private readonly sessionOrdinals;
+    private readonly agentPaths;
+    private readonly childCounts;
+    constructor(stateDir: string);
+    /** Records the session ordinal and agent path of the request's live stream. */
+    track(req: Pick<LiveRequest, 'sessionId' | 'agentId' | 'parentAgentId'>): {
+        ordinal: number;
+        path: string;
+    };
+    /**
+     * Next free session ordinal across every process of the run: the first n for
+     * which `<state>/sessions/<n>` can be created exclusively, so a recorded
+     * `session` means the same thing for a team whose sessions live in several
+     * sdk hosts.
+     */
+    private allocateOrdinal;
+}
 export declare class ReplayMatcher {
     private readonly cassette;
     private readonly stateDir;
     private readonly mode;
     private readonly byStream;
     private readonly bound;
-    private readonly sessionOrdinals;
-    private readonly agentPaths;
-    private readonly childCounts;
+    private readonly positions;
     private readonly globalCursors;
     constructor(opts: ReplayMatcherOptions);
     /** Never throws: a failure to read or write the replay state is answered as a miss. */
@@ -150,15 +173,6 @@ export declare class ReplayMatcher {
     private boundFor;
     /** O_EXCL claim file; false when another matcher (any process) holds the stream. */
     private claim;
-    /** Records the session ordinal and agent path of the request's live stream; returns the agent path. */
-    private trackAgent;
-    /**
-     * Next free session ordinal across every process of the run: the first n for
-     * which `<state>/sessions/<n>` can be created exclusively. The recorder must
-     * allocate ordinals the same way, so a recorded `session` means the same
-     * thing for a team whose sessions live in several sdk hosts.
-     */
-    private allocateOrdinal;
     private miss;
     private served;
     private logDrift;
@@ -176,4 +190,5 @@ export interface ReplayStateSummary {
 export declare function summarizeReplayState(stateDir: string, cassette: MatcherCassette): ReplayStateSummary;
 /** Excerpt of both texts from shortly before their first difference, at most 400 chars of each side together. */
 export declare function diffExcerpt(recorded: string, live: string): string;
+export declare function liveKey(sessionId: string, agentId: string | undefined): string;
 //# sourceMappingURL=matcher.d.ts.map

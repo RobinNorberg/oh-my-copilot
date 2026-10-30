@@ -230,6 +230,8 @@ export declare function factoryBranch(key: FactoryRunKey): string;
 export declare function factoryStateDir(root: string): string;
 export declare function factoryStatePath(root: string, key: FactoryRunKey): string;
 export declare function factoryOwnerPath(root: string, key: FactoryRunKey): string;
+/** One engine (issue or ci-heal run) at a time per repository: its lanes and checkouts share the repo's git state. */
+export declare function factoryRepoOwnerPath(root: string): string;
 /** `omg factory run cancel` and `omg factory heal cancel` drop this file; the engine alone writes the state file. */
 export declare function factoryCancelPath(root: string, key: FactoryRunKey): string;
 export declare function factoryCancelRequested(root: string, key: FactoryRunKey): boolean;
@@ -297,6 +299,8 @@ export interface FactoryOwner {
     pid: number;
     hostname: string;
     startedAt: string;
+    /** The run key (the repository owner file only). */
+    run?: string;
 }
 export interface OwnerDeps {
     pid: number;
@@ -310,6 +314,15 @@ export declare const defaultOwnerDeps: () => OwnerDeps;
  * over, and `tookOver` names it for the history.
  */
 export declare function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): {
+    release: () => void;
+    tookOver?: FactoryOwner;
+};
+/**
+ * Claim the repository's engine owner file (factoryRepoOwnerPath) for `key`
+ * like acquireFactoryOwner: a second engine on the same repository refuses
+ * instead of tripping the first one's shared git state checks.
+ */
+export declare function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps?: OwnerDeps): {
     release: () => void;
     tookOver?: FactoryOwner;
 };

@@ -19,6 +19,7 @@ import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } fro
 import { prependPath, readDoorbell, readHostCredentials, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import {
+  hostCredentialHandoff,
   hostSpawnEnv,
   isSdkTarget,
   launchSdkHost,
@@ -137,6 +138,24 @@ describe('sdk permission policy', () => {
     }
   });
 
+  // Each segment is lstat'ed: the reason names the planted link, a dangling one is refused even as the leaf.
+  it('names a link segment that resolves outside and refuses a dangling one, and allows a link that stays inside', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));
+    try {
+      mkdirSync(join(worktree, 'src', 'real'), { recursive: true });
+      symlinkSync(outside, join(worktree, 'src', 'd'), 'junction');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'd', 'config') }, ctx()))
+        .toMatchObject({ approve: false, reason: expect.stringMatching(/^write through a link .*src.d that resolves outside/) });
+      symlinkSync(join(outside, 'gone'), join(worktree, 'src', 'dangling'), 'junction');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'dangling') }, ctx()))
+        .toMatchObject({ approve: false, reason: expect.stringMatching(/dangling link/) });
+      symlinkSync(join(worktree, 'src', 'real'), join(worktree, 'src', 'inside'), 'junction');
+      expect(decideSdkPermission({ kind: 'write', fileName: join(worktree, 'src', 'inside', 'new.txt') }, ctx()).approve).toBe(true);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   // `resolve` would collapse `l/../x` to `x`; the kernel climbs from the target of the link `l`.
   it('refuses a read or write path with a .. segment', () => {
     for (const p of [`${worktree}/l/../x.txt`, `${worktree}\\l\\..\\x.txt`, 'l/../x.txt']) {
@@ -159,6 +178,32 @@ describe('sdk permission policy', () => {
       expect(decideSdkPermission({ kind, resolvedPath: clean, fileName: outside }, ctx())).toMatchObject({ approve: false });
       expect(decideSdkPermission({ kind, resolvedPath: clean, path: join(worktree, 'y.txt') }, ctx())).toMatchObject({ approve: false, reason: expect.stringMatching(/different targets/) });
       expect(decideSdkPermission({ kind, resolvedPath: clean, path: 'x.txt' }, ctx()).approve).toBe(true);
+    }
+  });
+
+  // A rewritten `.git` gitfile points the runtime's unsandboxed git at a worker-written config (core.fsmonitor).
+  it.each(['win32', 'linux'] as const)('refuses a file-tool write to any .git segment, in every spelling (%s)', (platform) => {
+    writeFileSync(join(worktree, '.git'), 'gitdir: /elsewhere\n');
+    const c = { ...ctx(), platform };
+    for (const fileName of [
+      join(worktree, '.git'), '.git', join(worktree, '.GIT', 'config'), join(worktree, 'sub', '.git'), '.git/config',
+      `${worktree}\\GIT~1\\x`, `${worktree}/git~12/x`, join(worktree, '.git::$DATA'), join(worktree, 'foo:stream'),
+      join(worktree, '.git.'), `${join(worktree, '.git')} `, `${join(worktree, '.git')}. .`, join(worktree, '.git.', 'config'),
+      join(stateRoot, '.git', 'config'),
+    ]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, c), fileName).toMatchObject({ approve: false, reason: expect.stringMatching(/\.git/) });
+    }
+    for (const fileName of [join(worktree, '.gitignore'), join(worktree, '.github', 'x'), join(worktree, '.gitattributes'), join(worktree, 'src', 'git.ts')]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, c).approve, fileName).toBe(true);
+    }
+  });
+
+  it('refuses a write that resolves into a .git dir through a planted link', () => {
+    mkdirSync(join(worktree, 'sub', '.git'), { recursive: true });
+    writeFileSync(join(worktree, 'sub', '.git', 'config'), '');
+    symlinkSync(join(worktree, 'sub', '.git'), join(worktree, 'd'), 'junction');
+    for (const fileName of [join(worktree, 'd', 'config'), join(worktree, 'd', 'hooks', 'pre-commit')]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, ctx()), fileName).toMatchObject({ approve: false, reason: expect.stringMatching(/\.git/) });
     }
   });
 
@@ -892,6 +937,24 @@ describe('sdk host', () => {
       expect(readSdkSession(stateRoot, WORKER)?.last_error).toMatch(/stored Copilot login .* or COPILOT_GITHUB_TOKEN/);
       expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
     });
+
+    it('the login requirement is skipped for a replay SDK (its marker), not for the replay env alone', async () => {
+      const replayEnv = { [pathKey]: '/usr/bin', OMG_COPILOT_CASSETTE_MODE: 'replay' };
+      const refused = await newAttempt();
+      const plain = fakeSdk();
+      const refusedHost = await hostWithLeader(refused, deps(plain.loaded, { env: replayEnv }), async () => {});
+      expect(await refusedHost).toBe('start_failed');
+      expect(plain.rec.ops).toEqual([]);
+
+      const attempt = await newAttempt();
+      const { loaded, rec } = fakeSdk();
+      const host = await hostWithLeader(attempt, deps({ ...loaded, cassette: 'replay' }, { env: { [pathKey]: '/usr/bin' } }), async () => {
+        await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+        ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+      });
+      expect(await host).toBe('stopped');
+      expect(rec.sessions[0]?.gitHubToken).toBeUndefined();
+    });
   });
 
   it('a missing SDK fails the launch with a terminal record and an install hint', async () => {
@@ -1269,6 +1332,13 @@ describe('host credential handoff', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 20_000);
+
+  it('hostCredentialHandoff hands over the Copilot tokens, and none in a cassette replay', () => {
+    const env = { PATH: '/bin', COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g', NPM_TOKEN: 'n' };
+    expect(JSON.parse(hostCredentialHandoff(env))).toEqual({ COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g' });
+    expect(hostCredentialHandoff({ ...env, OMG_COPILOT_CASSETTE_MODE: 'replay' })).toBe('{}\n');
+    expect(JSON.parse(hostCredentialHandoff({ ...env, OMG_COPILOT_CASSETTE_MODE: 'record' }))).toEqual({ COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g' });
+  });
 
   it('hostSpawnEnv drops credentials and keeps the rest', () => {
     expect(hostSpawnEnv({ PATH: '/bin', OMC_X: '1', github_token: 't', NPM_TOKEN: 'n', JAVA_HOME: '/jdk' })).toEqual({ PATH: '/bin', OMC_X: '1', JAVA_HOME: '/jdk' });

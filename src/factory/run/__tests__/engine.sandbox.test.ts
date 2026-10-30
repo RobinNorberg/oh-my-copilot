@@ -216,6 +216,21 @@ describe('commitLaneWork', () => {
     expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
   });
 
+  it('refuses a lane branch rewritten as a symref after the lane ended; main does not move', () => {
+    const { worktree, start, branch } = laneTree('cr-symref');
+    // A copilot_run job worktree's HEAD is detached (the session commits on it).
+    gitIn(worktree, 'checkout', '-q', '--detach');
+    const mainRef = gitIn(h.root, 'symbolic-ref', 'HEAD');
+    const main = gitIn(h.root, 'rev-parse', mainRef);
+    const common = gitIn(h.root, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+    writeFileSync(join(common, 'refs', 'heads', ...branch.split('/')), `ref: ${mainRef}\n`);
+    writeFileSync(join(worktree, 'a.ts'), 'a\n');
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: false, refusal: 'escaped' });
+    expect((res as { reason: string }).reason).toMatch(/symbolic|plain commit id/);
+    expect(gitIn(h.root, 'rev-parse', mainRef)).toBe(main);
+  });
+
   it('refuses a worktree whose git links were never recorded, and never commits the lane\'s runtime state', () => {
     const unrecorded = join(h.dir, 'cr-unrecorded');
     const start = gitIn(h.root, 'rev-parse', 'HEAD');
@@ -360,7 +375,7 @@ describe('commitLaneWork', () => {
   });
 
   it('refuses the lane-protected paths (agent instructions, hooks, skills, CI) and resets the index', () => {
-    for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
+    for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.claude/settings.json','.vscode/tasks.json', '.mcp.json', '.husky/pre-commit', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
       const { worktree, start, branch } = laneTree(`cr-p-${path.replace(/[^a-z]/gi, '')}`);
       // The harness repository ignores .omg/: a repository that commits its skills does not.
       writeFileSync(join(worktree, '.gitignore'), '');

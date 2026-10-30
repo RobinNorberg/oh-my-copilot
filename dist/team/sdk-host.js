@@ -509,11 +509,12 @@ export async function runSdkHost(spec, deps) {
     await flush(true);
     // 2. SDK client + session.
     let loaded = null;
+    // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
     try {
         loaded = await deps.loadSdk();
     }
-    catch {
-        loaded = null;
+    catch (err) {
+        return fail('sdk_missing', `loading @github/copilot-sdk failed: ${errText(err)}`);
     }
     if (!loaded)
         return fail('sdk_missing', '@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)');
@@ -525,7 +526,8 @@ export async function runSdkHost(spec, deps) {
     }
     const hasLogin = ident.loggedInUsers !== undefined;
     const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin);
-    if (!hasLogin && !gitHubToken) {
+    // Replay answers every model request from the cassette and runs credential-free (design section 8.2); the SDK says so.
+    if (!hasLogin && !gitHubToken && loaded.cassette !== 'replay') {
         return fail('start_failed', 'an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login');
     }
     writeOmgShims(files.bin, spec.omg_cli_path, spec.node_path);
@@ -919,6 +921,8 @@ export async function runSdkHostMain(specPath, loadInProcessTools) {
     try {
         // First, before anything else reads stdin: the leader's credential handoff.
         const credentials = await readHostCredentials(process.stdin, CREDENTIAL_READ_TIMEOUT_MS);
+        // A recording must never write them: they join the cassette deny set (memory only).
+        (await import('../smoke/replay/handler.js')).addRecordingDenyLiterals(Object.values(credentials));
         const spec = JSON.parse(readFileSync(specPath, 'utf8'));
         if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root)
             throw new Error('invalid sdk host spec');

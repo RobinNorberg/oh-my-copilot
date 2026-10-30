@@ -124,6 +124,12 @@ export interface SandboxPolicyContext {
     hostCommits?: boolean;
     /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
     toolPaths?: string[];
+    /** The account's uid (Linux/macOS): `/run/user/<uid>` holds its D-Bus, systemd and agent sockets. */
+    uid?: number;
+    /** The engine's SSH_AUTH_SOCK: the agent socket's dir is denied (Linux/macOS). */
+    sshAuthSock?: string;
+    /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
+    extraReadonly?: string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
 /**
@@ -256,6 +262,17 @@ export declare function unconfirmedMode(profile: SandboxProfile, settings: Sandb
  * session over RPC instead (sessionGitHubToken).
  */
 export declare const SESSION_ENV_ALLOWLIST: readonly string[];
+/**
+ * The CA paths to grant sandboxed node and git read-only, and notes: the bundle file itself of NODE_EXTRA_CA_CERTS
+ * and SSL_CERT_FILE (never its dir, which may be ~/Downloads), and each SSL_CERT_DIR entry unless it is a filesystem
+ * root or holds the real home. An entry that does not resolve (missing, a dangling link) is dropped with a note
+ * rather than failing the whole sandbox config. A proxy URL with userinfo is noted too: the shells inherit the
+ * runtime env, so they see it, and it is not stripped because the runtime needs it.
+ */
+export declare function proxyCaEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, realHome: string): {
+    caPaths: string[];
+    notes: string[];
+};
 /**
  * The variables the Windows sandbox (MXC) needs to launch any process,
  * hook or shell, with the runtime's env taken verbatim

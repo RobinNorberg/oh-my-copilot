@@ -21,7 +21,7 @@
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { hostname } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -253,6 +253,11 @@ export function factoryOwnerPath(root: string, key: FactoryRunKey): string {
   return join(factoryStateDir(root), `run-${key}.owner`);
 }
 
+/** One engine (issue or ci-heal run) at a time per repository: its lanes and checkouts share the repo's git state. */
+export function factoryRepoOwnerPath(root: string): string {
+  return join(factoryStateDir(root), 'engine.owner');
+}
+
 /** `omg factory run cancel` and `omg factory heal cancel` drop this file; the engine alone writes the state file. */
 export function factoryCancelPath(root: string, key: FactoryRunKey): string {
   return join(factoryStateDir(root), `run-${key}.cancel`);
@@ -473,6 +478,8 @@ export interface FactoryOwner {
   pid: number;
   hostname: string;
   startedAt: string;
+  /** The run key (the repository owner file only). */
+  run?: string;
 }
 
 export interface OwnerDeps {
@@ -489,8 +496,21 @@ export const defaultOwnerDeps = (): OwnerDeps => ({ pid: process.pid, hostname: 
  * over, and `tookOver` names it for the history.
  */
 export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): { release: () => void; tookOver?: FactoryOwner } {
-  const path = factoryOwnerPath(root, key);
-  ensureDirSync(factoryStateDir(root));
+  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+}
+
+/**
+ * Claim the repository's engine owner file (factoryRepoOwnerPath) for `key`
+ * like acquireFactoryOwner: a second engine on the same repository refuses
+ * instead of tripping the first one's shared git state checks.
+ */
+export function acquireFactoryRepoOwner(root: string, key: FactoryRunKey, now: string, deps: OwnerDeps = defaultOwnerDeps()): { release: () => void; tookOver?: FactoryOwner } {
+  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) =>
+    `another omg factory engine runs in this repository (${prior.run ?? 'run unknown'}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per repository at a time, so start ${key} after it ends`, String(key));
+}
+
+function claimOwner(path: string, now: string, deps: OwnerDeps, busy: (prior: FactoryOwner) => string, run?: string): { release: () => void; tookOver?: FactoryOwner } {
+  ensureDirSync(dirname(path));
   const tookOver = withFileLockSync(lockPathFor(path), () => {
     let prior: FactoryOwner | undefined;
     if (existsSync(path)) {
@@ -500,10 +520,11 @@ export function acquireFactoryOwner(root: string, key: FactoryRunKey, now: strin
         prior = undefined;
       }
       if (prior && (prior.hostname !== deps.hostname || (prior.pid !== deps.pid && deps.isAlive(prior.pid)))) {
-        throw new FactoryStateError(`omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+        throw new FactoryStateError(busy(prior));
       }
     }
-    writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now } satisfies FactoryOwner)}\n`, 'utf8');
+    writeFileSync(path, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...(run ? { run } : {}) } satisfies FactoryOwner)}
+`, 'utf8');
     return prior;
   }, { timeoutMs: 5_000 });
   const release = () => {

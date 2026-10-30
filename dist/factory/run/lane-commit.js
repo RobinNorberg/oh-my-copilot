@@ -30,7 +30,8 @@
  * to the start tree.
  */
 import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { jobRefProblem } from '../../copilot-run/job.js';
 import { OmcPaths } from '../../lib/worktree-paths.js';
 import { protectedChanges } from '../../ship/merge.js';
 import { EMPTY_TREE, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
@@ -54,9 +55,12 @@ export const ADO_PIPELINE_PATHS = ['azure-pipelines.yml', 'azure-pipelines.yaml'
 /**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
- * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows;
+ * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
+ * tasks other agents and editors run from a checkout, `.husky/` the git hooks
+ * husky installs.
  */
-export const LANE_PROTECTED_PATHS = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
+export const LANE_PROTECTED_PATHS = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
 const errText = (err) => (err instanceof Error ? err.message : String(err));
 /** The engine's env with the commit identity fixed, and no variable that redirects the index or object store. */
 function engineGitEnv(extra = {}) {
@@ -255,6 +259,13 @@ export function commitLaneWork(input) {
         const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
         if (hit.length > 0)
             return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+        if (input.branch) {
+            // The job has ended, but a loose ref rewritten since as `ref: refs/heads/main` (or a link) would make update-ref move main.
+            const common = resolve(input.repoRoot, runHostGit(input.repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], GIT_TIMEOUT_MS).trim());
+            const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+            if (problem)
+                return refuse('escaped', `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+        }
         const tree = git(['write-tree']);
         if (!HEX.test(tree))
             return { ok: false, refusal: 'error', reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
@@ -270,7 +281,7 @@ export function commitLaneWork(input) {
             const ref = `refs/heads/${input.branch}`;
             const at = runHostGit(input.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();
             if (at === input.start)
-                runHostGit(input.repoRoot, ['update-ref', '-m', 'omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
+                runHostGit(input.repoRoot, ['update-ref', '--no-deref', '-m', 'omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
             else
                 notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || '(none)'}, not the lane start; it was left there`);
         }

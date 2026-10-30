@@ -159,7 +159,7 @@ function worktreeEntries(commonDir, ids) {
     return out;
 }
 /** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
-function moduleEntries(commonDir) {
+export function moduleEntries(commonDir) {
     const out = {};
     const walk = (dir, rel) => {
         const oddDir = notADirectory(dir);
