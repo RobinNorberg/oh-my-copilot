@@ -41,18 +41,20 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from 'node:path';
 
 import { formatAmount } from '../budget/governor.js';
 import { SAFE_KEY, ledgerPath, NANO_AIU_PER_CREDIT, recordUsage, type UsageRecord } from '../budget/ledger.js';
+import { LANE_PROTECTED_PATHS } from '../factory/run/lane-commit.js';
+import { moduleEntries } from '../factory/run/review-guard.js';
 import { openAppendExclusive } from '../lib/append-no-follow.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
-import { protectedChanges } from '../ship/merge.js';
+import { PROTECTED_PATHS, protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
 import {
   loadCopilotSdk,
@@ -385,8 +387,14 @@ interface Job {
   worktreeLinks: WorktreeGitLinks | null;
   /** The repository's common git dir (resolved from the repository root at creation). */
   commonGitDir: string | null;
-  /** Configured merge-rule paths beyond PROTECTED_PATHS (ship.knownFlakyFile). */
+  /** Paths beyond PROTECTED_PATHS: ship.knownFlakyFile, a relative core.hooksPath, and LANE_PROTECTED_PATHS for a factory lane. */
   extraProtected: string[];
+  /** The common git dir's host-git-steering files before the session (sharedGitStateSnapshot); null without a worktree. */
+  sharedGitState: Record<string, string> | null;
+  /** `worktrees/<id>/HEAD` of this job's worktree and of the jobs live at its start: their sessions move them (a job's key goes when it ends). */
+  liveWorktreeHeads: Set<string>;
+  /** The commit the job left its branch at when it ended (syncJobBranch); null before, or when no branch was synced. */
+  branchCommit: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
   pid: number | undefined;
   /** The runtime's start identity once read (null: not read or unknown). */
@@ -469,8 +477,13 @@ export function filterDriverOverrides(cwd: string, gitDirArgs: readonly string[]
  * runs no external diff driver, no textconv, no fsmonitor and no filter
  * driver (runHostGit's driver overrides; a driver it cannot override fails
  * the diff, so the summary is null).
+ *
+ * With `ignoredUnderProtected` (a job worktree: a fresh checkout, so an
+ * ignored file there came from the session), ignored files under a protected path count as protected changes too:
+ * a hook the shell plants in an ignored dir (husky's `.husky/_/` ignores
+ * itself) is what unhardened git in the worktree runs.
  */
-export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = [], gitDirArgs: readonly string[] = []): ChangeSummary | null {
+export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = [], gitDirArgs: readonly string[] = [], ignoredUnderProtected = false): ChangeSummary | null {
   if (!base) return null;
   const top = git(cwd, [...gitDirArgs, 'rev-parse', '--show-toplevel']);
   if (!top) return null;
@@ -485,11 +498,18 @@ export function summarizeChanges(cwd: string, base: string | null, extraProtecte
   const newGitlinks = [...new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
   const changedFiles = [...new Set([...lines(names), ...newGitlinks])];
   const untrackedFiles = lines(git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']));
+  let ignored: string[] = [];
+  if (ignoredUnderProtected) {
+    const specs = [...PROTECTED_PATHS, ...extraProtected].map((rule) => `:(icase,literal)${rule}`);
+    const out = git(top, [...gitDirArgs, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...specs]);
+    if (out === null) return null;
+    ignored = out.split('\0').filter(Boolean);
+  }
   return {
     diffStat: stat,
     changedFiles,
     untrackedFiles,
-    protectedChanges: [...new Set([...protectedChanges([...changedFiles, ...untrackedFiles], extraProtected), ...newGitlinks])],
+    protectedChanges: [...new Set([...protectedChanges([...changedFiles, ...untrackedFiles, ...ignored], extraProtected), ...newGitlinks])],
     newGitlinks,
   };
 }
@@ -527,16 +547,241 @@ function jobGitDirArgs(job: Pick<Job, 'worktree' | 'worktreeLinks' | 'commonGitD
  * session commits on a detached HEAD because the sandbox keeps every ref
  * read-only, so one job cannot rewrite another job's branch. Run from the
  * repository root, with the old value, after jobGitDirArgs confirmed the links.
+ * Refuses (returns the problem) when the branch is not a plain sha ref
+ * (jobRefProblem) or the worktree's HEAD is no longer detached; otherwise
+ * returns the commit it moved the branch to, or null.
  */
-function syncJobBranch(job: Job, gitDirArgs: readonly string[]): void {
+function syncJobBranch(job: Job, gitDirArgs: readonly string[]): { problem: string } | { moved: string | null } {
   const wt = job.worktree!;
-  const head = git(wt.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
   const ref = `refs/heads/${wt.branch}`;
+  const problem = jobRefProblem(job.commonGitDir, wt.repoRoot, ref);
+  if (problem) return { problem };
+  // An attached HEAD (`ref: refs/heads/main` from a file tool or `git checkout`) would land a later commit in the worktree on that branch.
+  const attached = git(wt.path, [...gitDirArgs, 'symbolic-ref', '-q', 'HEAD']);
+  if (attached) return { problem: `the worktree's HEAD is attached to ${attached}, not detached` };
+  const head = git(wt.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
   const current = git(wt.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-  if (!head || !current || head === current) return;
-  if (git(wt.repoRoot, ['update-ref', '-m', 'copilot_run: the session\'s commits', ref, head, current]) === null) {
+  if (!head || !current || head === current) return { moved: null };
+  if (git(wt.repoRoot, ['update-ref', '--no-deref', '-m', 'copilot_run: the session\'s commits', ref, head, current]) === null) {
     job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
+    return { moved: null };
   }
+  return { moved: head };
+}
+
+/**
+ * Why the job's branch `ref` is not a plain sha ref, or null. A loose ref
+ * the file tools rewrote as `ref: refs/heads/main` makes rev-parse read
+ * main and a dereferencing update-ref move main; a link or junction on the
+ * way, or a non-regular file, points the ref elsewhere. A ref only in
+ * `packed-refs` is plain (packed refs hold no symrefs).
+ */
+export function jobRefProblem(commonGitDir: string | null, repoRoot: string, ref: string): string | null {
+  if (!commonGitDir) return `the common git dir of ${ref} is unknown`;
+  let path = commonGitDir;
+  for (const seg of ref.split('/')) {
+    path = join(path, seg);
+    let st;
+    try { st = lstatSync(path); } catch { return null; }
+    if (st.isSymbolicLink()) return `${ref} runs through a link (${path})`;
+  }
+  const kind = describeEntry(path);
+  if (!kind.startsWith('file ')) return `${ref} is not a regular file (${kind})`;
+  let text = '';
+  try { text = readFileSync(path, 'utf8'); } catch { return `${ref} is unreadable`; }
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?\r?\n?$/.test(text)) return `${ref} does not hold a plain commit id (${JSON.stringify(text.trim().slice(0, 80))})`;
+  if (git(repoRoot, ['symbolic-ref', '-q', ref])) return `${ref} is a symbolic ref`;
+  return null;
+}
+
+/** Type and content of one path, never through a link: `absent`, `link <target>`, `dir`, `other` or `file <x|-> <sha256>`. */
+function describeEntry(path: string): string {
+  let st;
+  try { st = lstatSync(path); } catch { return 'absent'; }
+  if (st.isSymbolicLink()) {
+    let target = '?';
+    try { target = readlinkSync(path); } catch { /* unreadable link */ }
+    return `link ${target}`;
+  }
+  if (st.isDirectory()) return 'dir';
+  if (!st.isFile()) return 'other';
+  try {
+    return `file ${st.mode & 0o111 ? 'x' : '-'} ${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
+  } catch {
+    return 'file unreadable';
+  }
+}
+
+/**
+ * The common git dir's files that steer host git, keyed by path relative to
+ * it: `config`, `config.worktree`, `commondir` and `gitdir` (git reads
+ * `commondir` in any git dir, so writing one redirects the main checkout's
+ * git to a config and hooks of the writer's choosing), `HEAD`, `hooks/` and
+ * `info/` (recursive), per `worktrees/<id>` its type, `config.worktree`,
+ * `commondir`, `gitdir` and `HEAD` (another checkout's branch), every
+ * submodule git dir under `modules/` (config, hooks, info, alternates: the
+ * factory's moduleEntries), and the branches (`refs/heads/*`, loose or
+ * packed), the job branches included: the manager updates every live job's
+ * snapshot when it creates, moves or deletes one (expectJobRef). The sandbox
+ * keeps them read-only to the shell, but the built-in file tools write
+ * unsandboxed, and a path approved under the worktree can be swapped for a
+ * link into the git dir between the approval and the write. Taken before the
+ * session and compared after it (sharedGitStateChanges).
+ *
+ * Left out: `description` and `logs/` (git never acts on them), `FETCH_HEAD`
+ * (rewritten by any fetch, and read only by an explicit merge of it), and
+ * `objects/` with `objects/info/alternates` (concurrent jobs write objects,
+ * and an object never runs anything; alternates only adds objects to look up).
+ * A reftable repository keeps its refs in `reftable/`, not compared here.
+ */
+export function sharedGitStateSnapshot(commonGitDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (rel: string, recurse: boolean) => {
+    const kind = describeEntry(join(commonGitDir, rel));
+    out[rel] = kind;
+    if (kind !== 'dir' || !recurse) return;
+    let names: string[] = [];
+    try { names = readdirSync(join(commonGitDir, rel)).sort(); } catch { out[rel] = 'dir unreadable'; }
+    for (const name of names) add(`${rel}/${name}`, true);
+  };
+  add('config', false);
+  add('config.worktree', false);
+  add('commondir', false);
+  add('gitdir', false);
+  add('HEAD', false);
+  add('hooks', true);
+  add('info', true);
+  add('worktrees', false);
+  if (out.worktrees === 'dir') {
+    let ids: string[] = [];
+    try { ids = readdirSync(join(commonGitDir, 'worktrees')).sort(); } catch { out.worktrees = 'dir unreadable'; }
+    for (const id of ids) {
+      add(`worktrees/${id}`, false);
+      if (out[`worktrees/${id}`] !== 'dir') continue;
+      for (const name of ['config.worktree', 'commondir', 'gitdir']) add(`worktrees/${id}/${name}`, false);
+      out[`worktrees/${id}/HEAD`] = worktreeHeadEntry(join(commonGitDir, 'worktrees', id, 'HEAD'));
+    }
+  }
+  try {
+    for (const [name, kind] of Object.entries(moduleEntries(commonGitDir))) out[`modules/${name}`] = kind;
+  } catch { out.modules = 'dir unreadable'; }
+  Object.assign(out, branchRefs(commonGitDir));
+  return out;
+}
+
+/**
+ * A worktree's `HEAD` by what it points at: `head <sha>` (detached),
+ * `head ref: <target>`, or describeEntry's kind for anything else (a link, a
+ * non-regular file, a file with other content).
+ */
+function worktreeHeadEntry(path: string): string {
+  const kind = describeEntry(path);
+  if (!kind.startsWith('file ')) return kind;
+  let text: string;
+  try { text = readFileSync(path, 'utf8'); } catch { return 'file unreadable'; }
+  const m = /^(?:([0-9a-f]{40}(?:[0-9a-f]{24})?)|ref: (refs\/\S+))\r?\n?$/.exec(text);
+  if (!m) return kind;
+  return m[1] ? `head ${m[1]}` : `head ref: ${m[2]}`;
+}
+
+/**
+ * `refs/heads/*` as name -> `ref <value>`, packed
+ * then loose (a loose ref wins, so packing refs changes nothing), read as
+ * files without running git. A `packed-refs` or loose ref that is not a
+ * regular file is kept by its type.
+ */
+function branchRefs(commonGitDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const packed = join(commonGitDir, 'packed-refs');
+  const packedKind = describeEntry(packed);
+  if (packedKind.startsWith('file ')) {
+    let text = '';
+    try { text = readFileSync(packed, 'utf8'); } catch { out['packed-refs'] = 'file unreadable'; }
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^([0-9a-f]{40,64}) (refs\/heads\/\S+)$/.exec(line.trim());
+      if (m) out[m[2]] =`ref ${m[1]}`;
+    }
+  } else if (packedKind !== 'absent') {
+    out['packed-refs'] = packedKind;
+  }
+  const walk = (rel: string) => {
+    const path = join(commonGitDir, rel);
+    const kind = describeEntry(path);
+    if (kind === 'dir') {
+      let names: string[] = [];
+      try { names = readdirSync(path).sort(); } catch { out[rel] = 'dir unreadable'; }
+      for (const name of names) walk(`${rel}/${name}`);
+    } else if (kind.startsWith('file ')) {
+      // Only the final newline goes: content after the commit id makes the value not plain.
+      try { out[rel] = `ref ${readFileSync(path, 'utf8').replace(/\r?\n$/, '')}`; } catch { out[rel] = 'file unreadable'; }
+    } else if (kind !== 'absent' || rel === 'refs/heads') {
+      out[rel] = kind;
+    }
+  };
+  walk('refs/heads');
+  return out;
+}
+
+/** Where every copilot_run job branch lives (worktreeBranchName of WORKTREE_TEAM). */
+const JOB_REF_PREFIX = `refs/heads/omc-team/${WORKTREE_TEAM}/`;
+const PLAIN_REF = /^ref [0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+/**
+ * What changed between two sharedGitStateSnapshot results, as paths relative
+ * to the common git dir. A `worktrees/<id>` entry another job added or removed
+ * meanwhile is not a change; a kept entry that changed type, or whose
+ * `config.worktree` appeared, changed or went, is. Keys in `ignore` (the
+ * HEADs of job worktrees whose sessions run meanwhile) are no change.
+ *
+ * Keys in `owned` (the job branches and worktree HEADs of the caller's
+ * manager, whose expected values it keeps) compare exactly. Other processes
+ * run their own jobs in the same repository (a second Copilot session, `omg
+ * factory run`), so outside `owned` a job branch that stays absent or a plain
+ * commit id, and another worktree's HEAD that ends detached, are no change;
+ * a symref, link, non-regular file or extra content in a job branch is, and
+ * so is a HEAD that came to point at a different ref. Residual: a lane can
+ * repoint another process's finished job branch to a different plain commit
+ * undetected here; that process's manager reports it (branchMismatch).
+ */
+export function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>, ignore: ReadonlySet<string> = new Set(), owned: ReadonlySet<string> = new Set()): string[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
+    if (ignore.has(key)) return false;
+    const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
+    if (id !== undefined && (before[`worktrees/${id}`] === undefined || after[`worktrees/${id}`] === undefined)) return false;
+    const was = before[key];
+    const now = after[key];
+    if (!owned.has(key)) {
+      const plain = (v: string | undefined) => v === undefined || PLAIN_REF.test(v);
+      if (key.startsWith(JOB_REF_PREFIX) && plain(was) && plain(now)) return false;
+      if (key === `worktrees/${id}/HEAD` && now?.startsWith('head ') && !now.startsWith('head ref: ')) return false;
+    }
+    return (was ?? 'absent') !== (now ?? 'absent');
+  });
+}
+
+/**
+ * A relative `core.hooksPath` (any config level but the command line) as a
+ * protected dir rule, or null, as git resolves it in `cwd` with `gitDirArgs`
+ * (the job worktree, so an `includeIf "gitdir:..."` rule applies as it does
+ * there). Throws when git cannot tell (an error, or a git older than 2.26
+ * without `--show-scope`): the caller refuses the job rather than miss it.
+ */
+export function relativeHooksPathRule(cwd: string, gitDirArgs: readonly string[] = []): string | null {
+  let out: string;
+  try {
+    out = runHostGit(cwd, [...gitDirArgs, 'config', '--show-scope', '--get-all', 'core.hooksPath'], GIT_TIMEOUT_MS);
+  } catch (err) {
+    const e = err as { status?: number; stdout?: string; stderr?: string };
+    // Exit 1 with no output: the key is not set at any level.
+    if (e.status === 1 && !e.stdout?.trim() && !e.stderr?.trim()) return null;
+    throw new Error(`cannot read core.hooksPath with git config --show-scope (git 2.26 or newer): ${e.stderr?.trim() || errText(err)}`);
+  }
+  const values = lines(out)
+    .filter((l) => !l.startsWith('command\t')).map((l) => l.slice(l.indexOf('\t') + 1).trim());
+  const value = values[values.length - 1];
+  if (!value || value.startsWith('~') || isAbsolute(value) || win32.isAbsolute(value)) return null;
+  const segments = value.replace(/\\/g, '/').split('/').filter((seg) => seg && seg !== '.');
+  return segments.length > 0 && !segments.includes('..') ? `${segments.join('/')}/` : null;
 }
 
 /** The repository-relative path when `path` lies in `root`, else null. */
@@ -560,6 +805,8 @@ export function defaultCopilotRunDeps(env: NodeJS.ProcessEnv = process.env): Cop
 
 export class CopilotRunManager {
   private readonly jobs = new Map<string, Job>();
+  /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+  private readonly owned = new Set<string>();
 
   constructor(private readonly deps: CopilotRunDeps) {}
 
@@ -644,6 +891,8 @@ export class CopilotRunManager {
     let worktreeLinks: WorktreeGitLinks | null = null;
     let commonGitDir: string | null = null;
     let baseCommit = repoRoot ? git(cwd, ['rev-parse', 'HEAD']) : null;
+    // Unhardened git in the worktree (the runtime's, a plugin hook's) runs the hooks a relative core.hooksPath names there.
+    let hooksRule: string | null = null;
     if (isolation === 'worktree') {
       let info;
       try {
@@ -684,6 +933,13 @@ export class CopilotRunManager {
         const left = existsSync(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : '';
         throw new CopilotRunError(`copilot_run_start: could not record and detach the job worktree's git links.${left}`);
       }
+      try {
+        hooksRule = relativeHooksPathRule(info.path, worktreeGitDirArgs(info.path));
+      } catch (err) {
+        try { removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd); } catch { /* reported below */ }
+        const left = existsSync(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : '';
+        throw new CopilotRunError(`copilot_run_start: ${errText(err)}.${left}`);
+      }
       // The caller's subdirectory, mirrored in the worktree.
       const sub = relativeInside(cwd, ledgerCwd);
       workCwd = sub && existsSync(join(info.path, sub)) ? join(info.path, sub) : info.path;
@@ -694,10 +950,30 @@ export class CopilotRunManager {
       }
     } else if (repoRoot) {
       notes.push('isolation "none": Copilot works in your working tree; the change summary includes edits that were already there.');
+      try {
+        hooksRule = relativeHooksPathRule(ledgerCwd);
+      } catch (err) {
+        throw new CopilotRunError(`copilot_run_start: ${errText(err)}.`);
+      }
     }
 
     let extraProtected: string[] = [];
     try { extraProtected = configuredProtectedPaths(ledgerCwd); } catch { /* the defaults still apply */ }
+    if (hooksRule) extraProtected.push(hooksRule);
+    // A factory lane may not write what lane-commit refuses to commit, so its file tools cannot plant it in the live worktree.
+    if (options.sandboxScope === 'factory') extraProtected.push(...LANE_PROTECTED_PATHS);
+    const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
+    const liveWorktreeHeads = new Set<string>();
+    for (const j of [...this.jobs.values()].filter((other) => !isTerminal(other.status))) {
+      if (j.worktreeLinks) liveWorktreeHeads.add(`worktrees/${basename(j.worktreeLinks.adminDir)}/HEAD`);
+    }
+    if (worktree && worktreeLinks) {
+      const headKey = `worktrees/${basename(worktreeLinks.adminDir)}/HEAD`;
+      liveWorktreeHeads.add(headKey);
+      this.owned.add(headKey).add(`refs/heads/${worktree.branch}`);
+      // git created the branch at the base commit; the live jobs' snapshots expect it from now on.
+      this.expectJobRef(worktree.branch, baseCommit);
+    }
 
     const jobDir = join(getOmcRoot(ledgerCwd), 'state', 'copilot-run', id);
     let requestStop: Job['requestStop'] = () => {};
@@ -728,6 +1004,9 @@ export class CopilotRunManager {
       worktreeLinks,
       commonGitDir,
       extraProtected,
+      sharedGitState,
+      liveWorktreeHeads,
+      branchCommit: null,
       pid: undefined,
       pidIdentity: null,
       startedAt: new Date().toISOString(),
@@ -757,20 +1036,42 @@ export class CopilotRunManager {
       .then((outcome) => {
         clearTimeout(timer);
         const gitDirArgs = jobGitDirArgs(job);
+        const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads, this.owned) : [];
         if (gitDirArgs === null) {
           // A redirected .git, gitdir or commondir points host git at a git dir the session controls; a changed config.worktree plants config in it.
           const why = 'sandbox-escaped: the job worktree\'s git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it';
           job.error = job.error ? `${why}; ${job.error}` : why;
           job.stopReason ??= 'sandbox-escaped';
           outcome = 'failed';
+        } else if (gitStateChanged.length > 0) {
+          // A file-tool write swapped into the git dir, or anything else outside the sandbox: host git would read it.
+          const why = `sandbox-escaped: the common git dir ${job.commonGitDir} changed during the session (${gitStateChanged.slice(0, 5).join(', ')}); the job's branch was not moved and no host git ran in the worktree`;
+          job.error = job.error ? `${why}; ${job.error}` : why;
+          job.stopReason ??= 'sandbox-escaped';
+          outcome = 'failed';
         } else {
-          if (job.worktree) {
-            syncJobBranch(job, gitDirArgs);
-            job.headCommit = git(job.worktree.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+          const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
+          if ('problem' in sync) {
+            // update-ref through a symref would move the branch it names (main) to the session's unreviewed commits.
+            const why = `sandbox-escaped: the job's branch ${job.worktree!.branch} or its worktree's HEAD changed kind during the session (${sync.problem}); the branch was not moved and no host git ran in the worktree`;
+            job.error = job.error ? `${why}; ${job.error}` : why;
+            job.stopReason ??= 'sandbox-escaped';
+            outcome = 'failed';
+          } else {
+            if (job.worktree) {
+              if (sync.moved) this.expectJobRef(job.worktree.branch, sync.moved);
+              job.branchCommit = sync.moved ?? git(job.worktree.repoRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${job.worktree.branch}^{commit}`]);
+              job.headCommit = git(job.worktree.path, [...gitDirArgs, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+            }
+            job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
           }
-          job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs);
           const nested = job.changes?.newGitlinks ?? [];
-          if (job.worktree && nested.length > 0) {
+          if (job.worktree && outcome !== 'failed' && !job.changes) {
+            // Unchecked protected paths must not pass as none: a caller reading the summary would commit them.
+            const why = 'the change summary could not be read in the job worktree (git failed), so its protected paths were not checked';
+            job.error = job.error ? `${why}; ${job.error}` : why;
+            outcome = 'failed';
+          } else if (job.worktree && nested.length > 0) {
             const why = `sandbox-escaped: the session added nested repositories as gitlinks (${nested.slice(0, 5).join(', ')}); host git does not enter them, so their content was not inspected`;
             job.error = job.error ? `${why}; ${job.error}` : why;
             job.stopReason ??= 'sandbox-escaped';
@@ -779,6 +1080,7 @@ export class CopilotRunManager {
         }
         job.endedAt = new Date().toISOString();
         job.status = outcome;
+        this.releaseWorktreeHead(job);
       });
     return this.snapshot(job);
   }
@@ -824,6 +1126,13 @@ export class CopilotRunManager {
     if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
     let tampered: string | null = null;
     if (!job.cleanedUp) {
+      const moved = this.branchMismatch(job);
+      if (moved) {
+        throw new CopilotRunError(
+          `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${moved}. `
+          + 'Do not merge that branch: inspect it, delete it yourself (git branch -D), then call cleanup again.',
+        );
+      }
       try {
         // With the recorded links, a worktree whose links changed is removed by path and no git runs in it.
         ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
@@ -835,9 +1144,61 @@ export class CopilotRunManager {
       }
       job.cleanedUp = true;
       try { rmSync(job.jobDir, { recursive: true, force: true }); } catch { /* evidence only */ }
+      // A branch still there keeps its expected value, so a change to it stays a change.
+      if (job.commonGitDir && branchRefs(job.commonGitDir)[`refs/heads/${job.worktree.branch}`] === undefined) this.expectJobRef(job.worktree.branch, null);
     }
     if (tampered) return { ...this.snapshot(job), cleanup: `sandbox-escaped: ${tampered}` };
     return { ...this.snapshot(job), cleanup: `removed worktree ${job.worktree.path} and branch ${job.worktree.branch}` };
+  }
+
+  /**
+   * A job branch this manager created, moved or deleted (null): the value
+   * every live job's common git dir snapshot expects from now on, so the
+   * manager's own ref writes are no change and any other write to a job
+   * branch (a lane retargeting another job's branch) is.
+   */
+  /**
+   * Why a finished job's branch no longer holds the commit the job left it
+   * at (branchCommit), or null (also once it is gone). A lane of another
+   * process can repoint it to a plain commit that lane's own check does not
+   * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+   */
+  private branchMismatch(job: Job): string | null {
+    if (!job.worktree || job.cleanedUp || !job.branchCommit) return null;
+    const ref = `refs/heads/${job.worktree.branch}`;
+    const problem = jobRefProblem(job.commonGitDir, job.worktree.repoRoot, ref);
+    if (problem) return `sandbox-escaped: the job's branch changed after the job ended (${problem})`;
+    const at = git(job.worktree.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    if (at && at !== job.branchCommit) {
+      return `sandbox-escaped: the job's branch was moved after the job ended, to ${at.slice(0, 12)} (the job left it at ${job.branchCommit.slice(0, 12)})`;
+    }
+    return null;
+  }
+
+  /**
+   * A job that ended: its worktree HEAD stops moving, so the live jobs that
+   * ignored it compare it from its value now on. Only a detached HEAD (what
+   * the session leaves) becomes the new baseline; an attached or otherwise
+   * changed one keeps the old baseline, so the live jobs' check reports it.
+   */
+  private releaseWorktreeHead(job: Job): void {
+    if (!job.worktreeLinks || !job.commonGitDir) return;
+    const key = `worktrees/${basename(job.worktreeLinks.adminDir)}/HEAD`;
+    const entry = worktreeHeadEntry(join(job.commonGitDir, key));
+    const detached = /^head [0-9a-f]+$/.test(entry);
+    for (const other of this.jobs.values()) {
+      if (other === job || isTerminal(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState) continue;
+      if (detached) other.sharedGitState[key] = entry;
+    }
+  }
+
+  private expectJobRef(branch: string, sha: string | null): void {
+    const key = `refs/heads/${branch}`;
+    for (const other of this.jobs.values()) {
+      if (isTerminal(other.status) || !other.sharedGitState) continue;
+      if (sha) other.sharedGitState[key] = `ref ${sha}`;
+      else delete other.sharedGitState[key];
+    }
   }
 
   private find(jobId: string): Job {
@@ -1179,6 +1540,8 @@ export class CopilotRunManager {
       summary: `${formatAmount(job.usage.premiumRequests, 'premiumRequests')}, ${formatAmount(Number(job.usage.credits.toFixed(3)), 'credits')}`,
     };
     const scrub = (text: string) => scrubTokens(text, job.secrets);
+    const moved = this.branchMismatch(job);
+    const notes = moved ? [...job.notes, `${moved}; do not merge the branch.`] : job.notes;
     return {
       jobId: job.id,
       status: job.status,
@@ -1202,7 +1565,7 @@ export class CopilotRunManager {
       ...(job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...(job.headCommit ? { headCommit: job.headCommit } : {}) } } : {}),
       ...(job.changes ? { changes: job.changes } : {}),
       ...(job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {}),
-      ...(job.notes.length ? { notes: job.notes.map(scrub) } : {}),
+      ...(notes.length ? { notes: notes.map(scrub) } : {}),
       eventsPath: job.eventsPath,
       ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
       ...(job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}),

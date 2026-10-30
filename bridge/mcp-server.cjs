@@ -7097,7 +7097,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve44.call(this, root, ref);
+      let _sch = resolve45.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7124,7 +7124,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve44(root, ref) {
+    function resolve45(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7755,55 +7755,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve44(baseURI, relativeURI, options) {
+    function resolve45(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse13(baseURI, schemelessOptions), parse13(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative28, options, skipNormalization) {
+    function resolveComponent(base, relative29, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative28 = parse13(serialize(relative28, options), options);
+        relative29 = parse13(serialize(relative29, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative28.scheme) {
-        target.scheme = relative28.scheme;
-        target.userinfo = relative28.userinfo;
-        target.host = relative28.host;
-        target.port = relative28.port;
-        target.path = removeDotSegments(relative28.path || "");
-        target.query = relative28.query;
+      if (!options.tolerant && relative29.scheme) {
+        target.scheme = relative29.scheme;
+        target.userinfo = relative29.userinfo;
+        target.host = relative29.host;
+        target.port = relative29.port;
+        target.path = removeDotSegments(relative29.path || "");
+        target.query = relative29.query;
       } else {
-        if (relative28.userinfo !== void 0 || relative28.host !== void 0 || relative28.port !== void 0) {
-          target.userinfo = relative28.userinfo;
-          target.host = relative28.host;
-          target.port = relative28.port;
-          target.path = removeDotSegments(relative28.path || "");
-          target.query = relative28.query;
+        if (relative29.userinfo !== void 0 || relative29.host !== void 0 || relative29.port !== void 0) {
+          target.userinfo = relative29.userinfo;
+          target.host = relative29.host;
+          target.port = relative29.port;
+          target.path = removeDotSegments(relative29.path || "");
+          target.query = relative29.query;
         } else {
-          if (!relative28.path) {
+          if (!relative29.path) {
             target.path = base.path;
-            if (relative28.query !== void 0) {
-              target.query = relative28.query;
+            if (relative29.query !== void 0) {
+              target.query = relative29.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative28.path[0] === "/") {
-              target.path = removeDotSegments(relative28.path);
+            if (relative29.path[0] === "/") {
+              target.path = removeDotSegments(relative29.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative28.path;
+                target.path = "/" + relative29.path;
               } else if (!base.path) {
-                target.path = relative28.path;
+                target.path = relative29.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative28.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative29.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative28.query;
+            target.query = relative29.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7811,7 +7811,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative28.fragment;
+      target.fragment = relative29.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8013,7 +8013,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize9,
-      resolve: resolve44,
+      resolve: resolve45,
       resolveComponent,
       equal,
       serialize,
@@ -12720,7 +12720,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve44) => setTimeout(resolve44, ms));
+  return new Promise((resolve45) => setTimeout(resolve45, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13419,7 +13419,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve44, reject2) => {
+        return new Promise((resolve45, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13467,7 +13467,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve44();
+            resolve45();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13726,13 +13726,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve44, reject2) => {
+        return new Promise((resolve45, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve44,
+            resolve: resolve45,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -13912,7 +13912,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve44) => setTimeout(resolve44, 100));
+        await new Promise((resolve45) => setTimeout(resolve45, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -14144,7 +14144,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve44, reject2) => {
+        return new Promise((resolve45, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -14163,7 +14163,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve44();
+                resolve45();
               }
             }
           };
@@ -14171,7 +14171,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve44();
+              resolve45();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -17547,7 +17547,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve44) => setTimeout(resolve44, ms));
+  return new Promise((resolve45) => setTimeout(resolve45, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17739,7 +17739,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve44, reject2) => {
+  return new Promise((resolve45, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17829,7 +17829,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve44(response.result);
+            resolve45(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -21364,7 +21364,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve44) => setTimeout(resolve44, 25));
+        await new Promise((resolve45) => setTimeout(resolve45, 25));
         continue;
       }
       try {
@@ -21385,7 +21385,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve44) => setTimeout(resolve44, 25));
+        await new Promise((resolve45) => setTimeout(resolve45, 25));
       }
     }
     return await fn();
@@ -23561,7 +23561,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve44) => setTimeout(resolve44, ms));
+  return new Promise((resolve45) => setTimeout(resolve45, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -24605,7 +24605,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve44) {
+function mergeByKey(base, incoming, keyFn, resolve45) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -24614,7 +24614,7 @@ function mergeByKey(base, incoming, keyFn, resolve44) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve44(existing, item));
+      seen.set(key, resolve45(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -29236,15 +29236,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? import_fs44.existsSync;
-  const resolve44 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve45 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs44.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve44(override);
+    const found = resolve45(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve44("copilot");
+  const onPath = resolve45("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29567,7 +29567,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve44) => {
+  return new Promise((resolve45) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29576,7 +29576,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve44({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve45({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29589,7 +29589,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve44({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve45({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -32168,6 +32168,48 @@ function existingWriteTargetDenial(p) {
   if (!st.isFile()) return "write target is not a regular file";
   return st.nlink > 1 ? "write target has more than one hard link" : null;
 }
+function linkSegmentDenial(p, roots, platform = process.platform) {
+  const abs = (0, import_node_path6.resolve)(p);
+  for (const root of roots) {
+    let base = (0, import_node_path6.resolve)(root);
+    let rel = (0, import_node_path6.relative)(base, abs);
+    if (rel.startsWith("..") || (0, import_node_path6.isAbsolute)(rel)) {
+      try {
+        base = import_node_fs5.realpathSync.native(root);
+      } catch {
+        continue;
+      }
+      rel = (0, import_node_path6.relative)(base, abs);
+      if (rel.startsWith("..") || (0, import_node_path6.isAbsolute)(rel)) continue;
+    }
+    let cur = base;
+    for (const seg of rel.split(/[\\/]+/).filter(Boolean)) {
+      cur = (0, import_node_path6.join)(cur, seg);
+      let st;
+      try {
+        st = (0, import_node_fs5.lstatSync)(cur);
+      } catch {
+        return null;
+      }
+      if (!st.isSymbolicLink()) continue;
+      let real2;
+      try {
+        real2 = import_node_fs5.realpathSync.native(cur);
+      } catch {
+        return `write through a dangling link ${cur}`;
+      }
+      if (!roots.some((r) => isUnderRoot(real2, r, platform))) return `write through a link ${cur} that resolves outside the worktree and team state (${real2})`;
+    }
+    return null;
+  }
+  return null;
+}
+function namesGitPath(p) {
+  return p.replace(/^(?:[\\/]{2}[?.][\\/])?[A-Za-z]:/, "").split(/[\\/]+/).some((seg) => {
+    const s = seg.replace(/[. ]+$/, "").toLowerCase();
+    return s === ".git" || /^git~\d+$/.test(s) || seg.includes(":");
+  });
+}
 function rawRequestPath(req) {
   for (const key of ["resolvedPath", "path", "fileName"]) {
     const value = req[key];
@@ -32244,9 +32286,12 @@ function decideSdkPermission(req, ctx) {
         const disagree = pathFieldsDisagree(paths, platform);
         if (disagree) return { approve: false, reason: `write ${disagree}: ${path15}` };
         for (const q of paths) {
+          const link = linkSegmentDenial(q, [ctx.cwd, ctx.stateRoot], platform);
+          if (link) return { approve: false, reason: link };
           if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
             return { approve: false, reason: `write outside worktree and team state: ${q}` };
           }
+          if (namesGitPath(q) || namesGitPath(canon2(q, platform))) return { approve: false, reason: `write into .git (a git dir, gitfile, short name or data stream): ${q}` };
           const target = existingWriteTargetDenial(q);
           if (target) return { approve: false, reason: `${target}: ${q}` };
         }
@@ -32434,6 +32479,15 @@ function existingFile(p) {
     return null;
   }
 }
+function stickyShared(dir) {
+  if (dir === "/tmp" || dir === "/var/tmp") return true;
+  try {
+    const { mode } = (0, import_node_fs6.statSync)(dir);
+    return (mode & 512) !== 0 && (mode & 2) !== 0;
+  } catch {
+    return false;
+  }
+}
 function buildSandboxConfig(profile, ctx, host) {
   const { settings } = ctx;
   for (const p of settings.extraReadwritePaths) {
@@ -32489,7 +32543,46 @@ function buildSandboxConfig(profile, ctx, host) {
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...nm ? [nm] : [], ...tools, ...settings.extraReadonlyPaths]
   };
   if (host.capabilities.denied_paths === true) {
-    filesystem.deniedPaths = [".ssh", ".gitconfig", ".omg", ".copilot", ".azure", ".git-credentials", (0, import_node_path7.join)(".config", "git", "credentials"), (0, import_node_path7.join)(".cache", "git", "credential")].map((p) => (0, import_node_path7.join)(ctx.realHome, p));
+    filesystem.deniedPaths = [
+      ".ssh",
+      ".gitconfig",
+      ".omg",
+      ".copilot",
+      ".azure",
+      ".git-credentials",
+      (0, import_node_path7.join)(".config", "git", "credentials"),
+      (0, import_node_path7.join)(".cache", "git", "credential"),
+      (0, import_node_path7.join)(".config", "gh"),
+      ".aws",
+      ".npmrc",
+      ".docker",
+      ".kube",
+      ".netrc",
+      (0, import_node_path7.join)(".cargo", "credentials"),
+      (0, import_node_path7.join)(".cargo", "credentials.toml"),
+      ".gnupg",
+      ".pypirc",
+      (0, import_node_path7.join)(".config", "gcloud")
+    ].map((p) => (0, import_node_path7.join)(ctx.realHome, p));
+    if (ctx.platform !== "win32") {
+      const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+      const sockDir = ctx.sshAuthSock && import_node_path7.posix.isAbsolute(ctx.sshAuthSock) ? import_node_path7.posix.dirname(ctx.sshAuthSock) : null;
+      const sockets = [
+        ...ctx.uid !== void 0 ? [`/run/user/${ctx.uid}`] : [],
+        "/var/run/docker.sock",
+        "/run/docker.sock",
+        "/run/podman",
+        ...sockDir ? [stickyShared(sockDir) ? ctx.sshAuthSock : sockDir] : []
+      ];
+      const holdsGrant = (s) => grants.some((g) => {
+        try {
+          return isUnderRoot(g, s, ctx.platform);
+        } catch {
+          return false;
+        }
+      });
+      filesystem.deniedPaths.push(...sockets.filter((s) => s !== "/" && !holdsGrant(s)));
+    }
   }
   const network = settings.writeNetwork === "registry" ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === "win32" } : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
@@ -34214,11 +34307,11 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve44;
+  let resolve45;
   const promise = new Promise((r) => {
-    resolve44 = r;
+    resolve45 = r;
   });
-  return { promise, resolve: resolve44 };
+  return { promise, resolve: resolve45 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -35122,7 +35215,7 @@ async function runSdkTier(input) {
       }
       const path15 = (0, import_path67.join)(input.home, `events-${name}.jsonl`);
       events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve44) => setTimeout(resolve44, 2));
+      if (entries.length > 0) await new Promise((resolve45) => setTimeout(resolve45, 2));
       const start = Date.now();
       const { wedged: stuck, ...run2 } = name === "chain" ? await input.runChain({
         bin,
@@ -39939,7 +40032,7 @@ function deleteWorkerBranchAt(repoRoot, branch, commit) {
 `);
       return;
     }
-    git(repoRoot, ["update-ref", "-d", ref, commit]);
+    git(repoRoot, ["update-ref", "--no-deref", "-d", ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
     const error2 = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);
@@ -40393,1299 +40486,220 @@ var init_git_worktree = __esm({
   }
 });
 
-// src/team/shell-allowlist.ts
-function commandName(token) {
-  return token.toLowerCase().replace(/\.exe$/, "");
-}
-function tokenize2(segment) {
-  const tokens = [];
-  let i = 0;
-  while (i < segment.length) {
-    while (i < segment.length && /\s/.test(segment[i])) i++;
-    if (i >= segment.length) break;
-    const ch = segment[i];
-    if (ch === '"' || ch === "'") {
-      const close = segment.indexOf(ch, i + 1);
-      if (close < 0) return "unterminated quote";
-      if (close + 1 < segment.length && !/\s/.test(segment[close + 1])) return "quote inside a word";
-      tokens.push({ text: segment.slice(i + 1, close), quoted: true });
-      i = close + 1;
-      continue;
-    }
-    let end = i;
-    while (end < segment.length && !/\s/.test(segment[end])) end++;
-    const word = segment.slice(i, end);
-    if (/["']/.test(word)) return "quote inside a word";
-    tokens.push({ text: word, quoted: false });
-    i = end;
+// src/factory/run/lane-commit.ts
+function engineGitEnv(extra = {}) {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (/^GIT_(?:INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|AUTHOR_|COMMITTER_)/i.test(key)) delete env[key];
   }
-  return tokens;
+  return {
+    ...env,
+    GIT_AUTHOR_NAME: ENGINE_COMMIT_IDENTITY.name,
+    GIT_AUTHOR_EMAIL: ENGINE_COMMIT_IDENTITY.email,
+    GIT_COMMITTER_NAME: ENGINE_COMMIT_IDENTITY.name,
+    GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email,
+    ...extra
+  };
 }
-function realExistingPrefix(p) {
-  const tail2 = [];
-  let cur = (0, import_node_path10.resolve)(p);
+function dropTrailers(body) {
+  let lines3 = body.split("\n").filter((l) => !ANY_LINE_TRAILER.test(l));
   for (; ; ) {
-    try {
-      return (0, import_node_path10.join)(import_node_fs9.realpathSync.native(cur), ...tail2.reverse());
-    } catch {
-      const parent = (0, import_node_path10.dirname)(cur);
-      if (parent === cur) return (0, import_node_path10.resolve)(p);
-      tail2.push((0, import_node_path10.basename)(cur));
-      cur = parent;
+    while (lines3.length > 0 && !lines3[lines3.length - 1].trim()) lines3.pop();
+    let start = lines3.length;
+    while (start > 0 && lines3[start - 1].trim()) start--;
+    const kept = [];
+    let dropping = false;
+    for (const l of lines3.slice(start)) {
+      dropping = TRAILER.test(l) || dropping && /^\s/.test(l);
+      if (!dropping) kept.push(l);
     }
+    if (kept.length === lines3.length - start) return lines3.join("\n");
+    lines3 = [...lines3.slice(0, start), ...kept];
   }
 }
-function checkPath(value, quoted, gitRev, ctx) {
-  if (value === "-") return "reading stdin (-)";
-  if (value.startsWith("~") || value.includes("=~") || value.includes(":~")) return `home path ${value}`;
-  if (value.startsWith("\\\\") || value.startsWith("//")) return `UNC path ${value}`;
-  for (let part of value.split(",")) {
-    if (/^[A-Za-z]:/.test(part)) return `drive path ${part}`;
-    if (part.includes(":")) {
-      if (!gitRev || part.split(":").length !== 2) return `colon in argument ${part}`;
-      part = part.slice(part.indexOf(":") + 1);
-    }
-    if (!quoted && part.split(/[\\/]/).some((seg) => seg.startsWith(".") && /[*?]/.test(seg))) return `hidden-file glob ${part}`;
-    if (hasDotDotSegment(part)) return `.. segment in path ${part}`;
-    const slashed = part.replace(/\\/g, "/");
-    const abs = (0, import_node_path10.isAbsolute)(slashed) ? slashed : (0, import_node_path10.resolve)(ctx.cwd, slashed);
-    let inside = false;
-    try {
-      inside = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
-    } catch {
-      return `path not resolvable: ${part}`;
-    }
-    if (!inside) return `path outside the worktree: ${part}`;
-  }
-  return null;
+function laneCommitMessage(title, body) {
+  const unskip = (t) => {
+    let prev;
+    do {
+      prev = t;
+      t = t.replace(CI_SKIP, "");
+    } while (t !== prev);
+    return t;
+  };
+  const clean = (t) => unskip(t.replace(/\r\n?/g, "\n").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => c === "\n" ? c : " "));
+  const text3 = `${clean(title).replace(/\n/g, " ").trim()}
+
+${dropTrailers(clean(body ?? "")).trim()}`.trim();
+  return text3.length > MAX_MESSAGE_CHARS ? `${text3.slice(0, MAX_MESSAGE_CHARS)}
+...` : text3;
 }
-function checkOption(cmd, sub, token, ctx) {
-  if (/[\\~]/.test(token) || /^-[^-]/.test(token) && /[/:]/.test(token)) return `option with an attached path or escape ${token}`;
-  const long = token.startsWith("--");
-  const eq = token.indexOf("=");
-  const name = long && eq > 0 ? token.slice(0, eq) : token;
-  switch (cmd) {
-    case "git":
-      if (long && prefixOf(name, GIT_DENIED_LONG)) return `git option ${name}`;
-      if (sub === "grep" && (long && prefixOf(name, GIT_GREP_DENIED_LONG) || shortHas(token, "O"))) return "git grep -O (open files in pager)";
-      break;
-    case "rg":
-      if (RG_DENIED_LONG.has(name) || shortHas(token, "z")) return `rg option ${name}`;
-      break;
-    case "sort":
-      if (long && prefixOf(name, SORT_DENIED_LONG) || shortHas(token, "o")) return `sort option ${name}`;
-      break;
-    case "find": {
-      const lower = token.toLowerCase();
-      if (FIND_DENIED.has(lower) || lower.startsWith("-fprint")) return `find action ${token}`;
-      break;
-    }
-    default:
-      break;
-  }
-  return long && eq > 0 ? checkPath(token.slice(eq + 1), false, cmd === "git", ctx) : null;
-}
-function checkSegment(tokens, role, ctx) {
-  const cmd = commandName(tokens[0].text);
-  const table = role === "source" ? ALLOWLIST_SOURCES : ALLOWLIST_FILTERS;
-  if (!table.has(cmd)) return `${JSON.stringify(tokens[0].text)} is not an allowed ${role} command`;
-  let rest = tokens.slice(1);
-  let sub = null;
-  if (cmd === "git") {
-    let i = 0;
-    while (i < rest.length && rest[i].text.startsWith("-")) {
-      if (!GIT_GLOBAL_OPTIONS2.has(rest[i].text)) return `git global option ${rest[i].text}`;
-      i++;
-    }
-    sub = rest[i]?.text ?? null;
-    if (sub === null || !GIT_SUBCOMMANDS.has(sub)) return `git subcommand ${JSON.stringify(sub ?? "")} is not allowed`;
-    rest = rest.slice(i + 1);
-  }
-  if (cmd === "select-object") {
-    for (let i = 0; i < rest.length; i += 2) {
-      if (!SELECT_OBJECT_OPTIONS.has(rest[i].text.toLowerCase()) || !/^\d+$/.test(rest[i + 1]?.text ?? "")) {
-        return "select-object takes only -First, -Last or -Skip with a number";
+function linkEscape(worktree, ignored) {
+  let entries = 0;
+  const walk = (dir, rel, depth) => {
+    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
+    for (const d of (0, import_node_fs9.readdirSync)(dir, { withFileTypes: true })) {
+      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
+      const path15 = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isFile() || d.name === ".git" || ignored.has(path15)) continue;
+      const abs = (0, import_node_path10.join)(dir, d.name);
+      const st = (0, import_node_fs9.lstatSync)(abs);
+      if (st.isSymbolicLink()) {
+        let toDir = false;
+        try {
+          toDir = (0, import_node_fs9.statSync)(abs).isDirectory();
+        } catch {
+        }
+        if (process.platform === "win32" || toDir) return `the lane left a link at ${path15} (a symlink or junction); host git could read through it outside the worktree`;
+      } else if (st.isDirectory()) {
+        const hit = walk(abs, path15, depth + 1);
+        if (hit) return hit;
       }
     }
     return null;
-  }
-  let endOfOptions = false;
-  for (const tok of rest) {
-    const problem = !endOfOptions && tok.text === "--" ? null : !endOfOptions && tok.text.startsWith("-") && tok.text !== "-" ? checkOption(cmd, sub, tok.text, ctx) : checkPath(tok.text, tok.quoted, cmd === "git", ctx);
-    if (problem) return problem;
-    if (tok.text === "--") endOfOptions = true;
-  }
-  return null;
+  };
+  return walk(worktree, "", 0);
 }
-function checkText(text3, ctx, raw) {
-  const segments = text3.split("|");
-  if (segments.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
-  const names = [];
-  for (const [i, segment] of segments.entries()) {
-    const tokens = tokenize2(segment);
-    if (typeof tokens === "string") return tokens;
-    if (tokens.length === 0) return "empty pipeline segment";
-    const glob = raw ? tokens.find((t) => !t.quoted && /[*?]/.test(t.text)) : void 0;
-    if (glob) return `unquoted glob ${glob.text}`;
-    const problem = checkSegment(tokens, i === 0 ? "source" : "filter", ctx);
-    if (problem) return problem;
-    names.push(commandName(tokens[0].text));
-  }
-  return names;
-}
-function runtimeIdentifiers(req) {
-  const out = [];
-  for (const key of ["commands", "commandSegments"]) {
-    const list = req[key];
-    if (!Array.isArray(list)) continue;
-    for (const entry of list) {
-      const id = entry?.identifier;
-      if (typeof id !== "string" || !id.trim()) continue;
-      out.push(commandName(id.trim().split(/[\\/]/).pop().split(/\s+/)[0]));
+function outsideWorktree(worktree, files) {
+  const root = import_node_fs9.realpathSync.native(worktree);
+  return files.filter((f) => {
+    let dir;
+    try {
+      dir = import_node_fs9.realpathSync.native((0, import_node_path10.dirname)((0, import_node_path10.join)(worktree, f)));
+    } catch (err) {
+      const code = err.code;
+      return code !== "ENOENT" && code !== "ENOTDIR";
     }
+    const r = (0, import_node_path10.relative)(root, dir);
+    return r === ".." || r.startsWith(`..${import_node_path10.sep}`) || (0, import_node_path10.isAbsolute)(r);
+  });
+}
+function entriesOfMode(out, from, mode) {
+  const set = /* @__PURE__ */ new Set();
+  for (const entry of out.split("\0")) {
+    if (!entry.startsWith(`${mode} `)) continue;
+    const tab = entry.indexOf("	");
+    const fields = entry.slice(0, tab).split(" ");
+    set.add(`${from === "index" ? fields[1] : fields[2]}	${entry.slice(tab + 1)}`);
   }
-  return out;
+  return set;
 }
-function reviewShellAllowlist(req, ctx) {
-  if (req.kind !== "shell") return deny(`permission kind ${String(req.kind)} is not a shell command`);
-  const raw = typeof req.fullCommandText === "string" ? req.fullCommandText : "";
-  if (!raw.trim()) return deny("shell without command text");
-  if (raw.length > MAX_ALLOWLIST_COMMAND_CHARS) return deny(`command longer than ${MAX_ALLOWLIST_COMMAND_CHARS} characters`);
-  if (req.hasWriteFileRedirection === true) return deny("file redirection");
-  const wide = NON_ASCII.exec(raw);
-  if (wide) return deny(`non-ASCII character U+${wide[0].codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
-  const bad = FORBIDDEN_CHARS.exec(raw);
-  if (bad) return deny(`forbidden character ${JSON.stringify(bad[0])}`);
-  const parsed = checkText(raw, ctx, true);
-  if (typeof parsed === "string") return deny(parsed);
-  const normalized = checkText(normalizeShellCommand(raw), ctx, false);
-  if (typeof normalized === "string") return deny(`${normalized} (after quote normalization)`);
-  const seen = /* @__PURE__ */ new Set([...parsed, ...normalized]);
-  const unknown2 = runtimeIdentifiers(req).find((id) => !seen.has(id));
-  if (unknown2 !== void 0) return deny(`the runtime parsed command ${JSON.stringify(unknown2)}, which this parser did not see`);
-  return { approve: true, reason: "review allowlist" };
+function commitLaneWork(input) {
+  try {
+    if (!HEX.test(input.start) || input.parents.length === 0 || !input.parents.every((p) => HEX.test(p))) {
+      return { ok: false, refusal: "error", reason: "the start and parent commits must be full shas" };
+    }
+    const dirs = worktreeGitDirArgs(input.worktree);
+    const git3 = (args, env) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS, env).trim();
+    const head = git3(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    if (head !== input.start) {
+      return { ok: false, refusal: "moved", reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || "(none)"} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
+    }
+    const ignored = new Set(git3(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
+    const link = linkEscape(input.worktree, ignored);
+    if (link) return { ok: false, refusal: "escaped", reason: link };
+    const isIgnored = (p) => p.split("/").some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join("/")));
+    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
+    git3(["add", "-A", "--", ".", ...excludes], engineGitEnv());
+    const refuse = (refusal, reason) => {
+      try {
+        git3(["read-tree", input.start]);
+      } catch (err) {
+        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText3(err)}` };
+      }
+      return { ok: false, refusal, reason };
+    };
+    const index = git3(["ls-files", "-z", "--stage"]);
+    const startTree = git3(["ls-tree", "-r", "-z", "--full-tree", input.start]);
+    const changedOfMode = (mode) => {
+      const known = entriesOfMode(startTree, "tree", mode);
+      return [...entriesOfMode(index, "index", mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf("	") + 1));
+    };
+    const nested = changedOfMode("160000");
+    if (nested.length > 0) {
+      return refuse("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
+    }
+    const symlinks = changedOfMode("120000");
+    if (symlinks.length > 0) return refuse("escaped", `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(", ")}`);
+    const files = git3(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", input.start, "--"]).split("\0").filter(Boolean);
+    const outside = outsideWorktree(input.worktree, files);
+    if (outside.length > 0) return refuse("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
+    const hardLinked = files.filter((f) => {
+      try {
+        return (0, import_node_fs9.lstatSync)((0, import_node_path10.join)(input.worktree, f)).nlink > 1;
+      } catch {
+        return false;
+      }
+    });
+    if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
+    const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
+    if (hit.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit.join(", ")}`);
+    if (input.branch) {
+      const common = (0, import_node_path10.resolve)(input.repoRoot, runHostGit(input.repoRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS).trim());
+      const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+      if (problem) return refuse("escaped", `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+    }
+    const tree = git3(["write-tree"]);
+    if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
+    if (tree === git3(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
+      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
+    }
+    const sha2 = git3(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
+    if (!HEX.test(sha2)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}` };
+    const notes = [];
+    git3(["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", "HEAD", sha2, input.start]);
+    if (input.branch) {
+      const ref = `refs/heads/${input.branch}`;
+      const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();
+      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS);
+      else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
+    }
+    return { ok: true, sha: sha2, files, notes };
+  } catch (err) {
+    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText3(err)}` };
+  }
 }
-var import_node_fs9, import_node_path10, MAX_ALLOWLIST_COMMAND_CHARS, MAX_SEGMENTS, FORBIDDEN_CHARS, NON_ASCII, ALLOWLIST_SOURCES, ALLOWLIST_FILTERS, GIT_GLOBAL_OPTIONS2, GIT_SUBCOMMANDS, GIT_DENIED_LONG, GIT_GREP_DENIED_LONG, RG_DENIED_LONG, SORT_DENIED_LONG, FIND_DENIED, SELECT_OBJECT_OPTIONS, deny, shortHas, prefixOf;
-var init_shell_allowlist = __esm({
-  "src/team/shell-allowlist.ts"() {
+function conflictFixStart(repoRoot, head, base, message) {
+  const format2 = runHostGit(repoRoot, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS).trim();
+  const emptyTree = EMPTY_TREE[format2];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format2)}`);
+  const env = engineGitEnv({ GIT_ATTR_SOURCE: emptyTree });
+  let out;
+  try {
+    out = runHostGit(repoRoot, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", head, base], GIT_TIMEOUT_MS, env);
+  } catch (err) {
+    const e = err;
+    if (e.status !== 1 || typeof e.stdout !== "string") throw err;
+    out = e.stdout;
+  }
+  const [tree, ...conflicted] = out.split("\0").filter(Boolean);
+  if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
+  const sha2 = runHostGit(repoRoot, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message, tree], GIT_TIMEOUT_MS, env).trim();
+  if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
+  return { sha: sha2, conflicted: [...new Set(conflicted)] };
+}
+var import_node_fs9, import_node_path10, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
+var init_lane_commit = __esm({
+  "src/factory/run/lane-commit.ts"() {
     "use strict";
     import_node_fs9 = require("node:fs");
     import_node_path10 = require("node:path");
-    init_sdk_policy();
-    MAX_ALLOWLIST_COMMAND_CHARS = 2e3;
-    MAX_SEGMENTS = 3;
-    FORBIDDEN_CHARS = /[`$;&><(){}[\]@!%\r\n\0]/;
-    NON_ASCII = /[^\t\x20-\x7e]/;
-    ALLOWLIST_SOURCES = /* @__PURE__ */ new Set([
-      "git",
-      "rg",
-      "grep",
-      "findstr",
-      "select-string",
-      "sls",
-      "cat",
-      "type",
-      "get-content",
-      "gc",
-      "head",
-      "tail",
-      "wc",
-      "ls",
-      "dir",
-      "get-childitem",
-      "gci",
-      "pwd",
-      "get-location",
-      "find"
-    ]);
-    ALLOWLIST_FILTERS = /* @__PURE__ */ new Set(["head", "tail", "wc", "sort", "select-object", "measure-object", "sort-object"]);
-    GIT_GLOBAL_OPTIONS2 = /* @__PURE__ */ new Set(["--no-pager", "-P", "--no-optional-locks"]);
-    GIT_SUBCOMMANDS = /* @__PURE__ */ new Set([
-      "status",
-      "diff",
-      "log",
-      "show",
-      "blame",
-      "rev-parse",
-      "merge-base",
-      "ls-files",
-      "ls-tree",
-      "cat-file",
-      "shortlog",
-      "describe",
-      "grep",
-      "name-rev",
-      "rev-list",
-      "diff-tree",
-      "show-ref",
-      "for-each-ref"
-    ]);
-    GIT_DENIED_LONG = ["--output", "--ext-diff", "--textconv", "--no-index", "--filters"];
-    GIT_GREP_DENIED_LONG = ["--open-files-in-pager"];
-    RG_DENIED_LONG = /* @__PURE__ */ new Set(["--pre", "--pre-glob", "--search-zip", "--hostname-bin"]);
-    SORT_DENIED_LONG = ["--output", "--compress-program"];
-    FIND_DENIED = /* @__PURE__ */ new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fls"]);
-    SELECT_OBJECT_OPTIONS = /* @__PURE__ */ new Set(["-first", "-last", "-skip"]);
-    deny = (reason) => ({ approve: false, reason: `review allowlist: ${reason}` });
-    shortHas = (token, letters) => /^-[^-]/.test(token) && [...letters].some((l) => token.slice(1).includes(l));
-    prefixOf = (name, denied) => denied.some((d) => d.startsWith(name) || name.startsWith(d));
-  }
-});
-
-// src/copilot-run/timeout.ts
-function withTimeout3(promise, ms, label) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
-var errText3;
-var init_timeout = __esm({
-  "src/copilot-run/timeout.ts"() {
-    "use strict";
-    errText3 = (err) => err instanceof Error ? err.message : String(err);
-  }
-});
-
-// src/copilot-run/sandbox-session.ts
-function sandboxBypassDenial(req) {
-  return req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : null;
-}
-var SessionSandboxController;
-var init_sandbox_session = __esm({
-  "src/copilot-run/sandbox-session.ts"() {
-    "use strict";
-    init_copilot_sdk_driver();
-    init_timeout();
-    init_sandbox2();
-    SessionSandboxController = class {
-      constructor(opts) {
-        this.opts = opts;
-      }
-      /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
-      state = null;
-      toolNames = /* @__PURE__ */ new Map();
-      /** Whether createSession takes `config` (else confirm applies it via options.update). */
-      atCreate(loaded2, config2) {
-        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
-      }
-      /**
-       * Probe the host and set `state` (§5). Returns the config to apply when
-       * the host supports the sandbox (the mode stays the unconfirmed one until
-       * confirm), else null with the final mode: `detect-only` when the sandbox
-       * is switched off, otherwise the fail-closed mode.
-       */
-      async decide(client, loaded2) {
-        const { opts } = this;
-        let cliVersion = "unknown";
-        try {
-          const status = await withTimeout3(client.getStatus(), opts.rpcTimeoutMs, "getStatus()");
-          if (typeof status.version === "string") cliVersion = status.version;
-        } catch {
-        }
-        const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {} });
-        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
-        const { settings, profile } = opts;
-        const off = !settings.enabled ? "sandbox.enabled is false" : opts.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-          if (profile === "review") {
-            this.state = { ...base, mode: "read-only-no-shell", reason: off };
-            opts.note(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-          } else {
-            this.state = { ...base, mode: "detect-only", reason: off };
-            opts.note(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-          }
-          return null;
-        }
-        const fallback = (reason) => {
-          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason };
-          if (this.state.mode === "detect-only") opts.note(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-          if (this.state.mode === "read-only-no-shell") opts.note(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-          fallback(host.reason ?? "the host does not support the sandbox");
-          return null;
-        }
-        try {
-          const config2 = buildSandboxConfig(profile, opts.policyContext(), host);
-          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason: "not confirmed yet" };
-          return config2;
-        } catch (err) {
-          fallback(errText3(err));
-          return null;
-        }
-      }
-      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-      async confirm(session, config2, atCreate) {
-        const { opts } = this;
-        const sbx = this.state;
-        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
-        if (!why) {
-          sbx.applied = atCreate ? "create" : "options.update";
-          const enf = await readEnforcement(session, opts.rpcTimeoutMs);
-          if (typeof enf === "string") why = enf;
-          else {
-            sbx.enforcement = enf;
-            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
-          }
-        }
-        if (!why) {
-          sbx.mode = "enforced";
-          delete sbx.reason;
-          return;
-        }
-        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === "read-only-no-shell") {
-          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-          try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
-          } catch {
-          }
-        }
-      }
-      /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
-      toolStarted(data) {
-        if (typeof data.toolCallId === "string" && typeof data.toolName === "string") this.toolNames.set(data.toolCallId, data.toolName);
-      }
-      /**
-       * `tool.execution_complete` data: the attestation (§5). A shell call must
-       * report sandboxed: true. A call of an unknown tool must not report false,
-       * and in an enforced session it must report true (a missing field is an
-       * escape). Counts every escape; returns the `sandbox-escaped:` error when
-       * the session must stop (any mode but detect-only), else null.
-       */
-      toolCompleted(data) {
-        const id = String(data.toolCallId ?? "");
-        const name = this.toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
-        this.toolNames.delete(id);
-        const sbx = this.state;
-        const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-        if (!sbx || !escaped) return null;
-        sbx.unsandboxedCalls += 1;
-        if (sbx.mode === "detect-only") return null;
-        return `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-      }
-    };
-  }
-});
-
-// src/copilot-run/job.ts
-var job_exports = {};
-__export(job_exports, {
-  CopilotRunError: () => CopilotRunError,
-  CopilotRunManager: () => CopilotRunManager,
-  DEFAULT_MAX_CREDITS: () => DEFAULT_MAX_CREDITS,
-  DEFAULT_TIMEOUT_MS: () => DEFAULT_TIMEOUT_MS,
-  MAX_PROMPT_CHARS: () => MAX_PROMPT_CHARS,
-  MAX_RUNNING_JOBS: () => MAX_RUNNING_JOBS,
-  MAX_TIMEOUT_MS: () => MAX_TIMEOUT_MS,
-  REVIEW_SHELL_DENY_PATTERNS: () => REVIEW_SHELL_DENY_PATTERNS,
-  STOP_CONTINUATION_SKIP_TOKEN: () => STOP_CONTINUATION_SKIP_TOKEN,
-  WORKTREE_TEAM: () => WORKTREE_TEAM,
-  defaultCopilotRunDeps: () => defaultCopilotRunDeps,
-  filterDriverOverrides: () => filterDriverOverrides,
-  hostGit: () => hostGit,
-  hostGitHardeningArgs: () => hostGitHardeningArgs,
-  resolveStartRef: () => resolveStartRef,
-  reviewProfileDenial: () => reviewProfileDenial,
-  scrubLaneCredentials: () => scrubLaneCredentials,
-  summarizeChanges: () => summarizeChanges
-});
-function scrubLaneCredentials(env, emptyDir) {
-  for (const key of Object.keys(env)) {
-    if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
-    if (isCredentialEnvKey(key)) delete env[key];
-  }
-  const emptyConfig = (0, import_node_path11.join)(emptyDir, "gitconfig");
-  (0, import_node_fs10.writeFileSync)(emptyConfig, "");
-  Object.assign(env, {
-    GH_CONFIG_DIR: emptyDir,
-    AZURE_CONFIG_DIR: emptyDir,
-    GIT_CONFIG_GLOBAL: emptyConfig,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_TERMINAL_PROMPT: "0",
-    GCM_INTERACTIVE: "never"
-  });
-}
-function reviewProfileDenial(req) {
-  if (req.kind === "write") return "review profile: the write tool is disabled";
-  if (req.kind !== "shell") return null;
-  const normalized = normalizeShellCommand(String(req.fullCommandText ?? ""));
-  return REVIEW_SHELL_DENY_PATTERNS.find(({ re }) => re.test(normalized))?.reason ?? null;
-}
-function resolveStartRef(repoRoot, ref) {
-  if (typeof ref !== "string" || !ref.trim()) throw new CopilotRunError("copilot_run_start: startRef must be a non-empty string.");
-  if (ref.length > MAX_START_REF_CHARS || ref.startsWith("-") || /[\s\x00-\x1f\x7f]/.test(ref)) {
-    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} is not a valid ref.`);
-  }
-  const sha2 = git2(repoRoot, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`]);
-  if (!sha2 || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha2)) {
-    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} does not resolve to a commit in ${repoRoot}.`);
-  }
-  return sha2;
-}
-function settleWithin(promise, ms) {
-  let timer;
-  return Promise.race([
-    promise.then(() => {
-    }),
-    new Promise((r) => {
-      timer = setTimeout(r, ms);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
-function hostGit(cwd, args) {
-  try {
-    return runHostGit(cwd, args, GIT_TIMEOUT_MS).trim();
-  } catch {
-    return null;
-  }
-}
-function filterDriverOverrides(cwd, gitDirArgs = []) {
-  return hostGitDriverOverrides(cwd, hostGitEnv(gitDirArgs), GIT_TIMEOUT_MS);
-}
-function summarizeChanges(cwd, base, extraProtected = [], gitDirArgs = []) {
-  if (!base) return null;
-  const top = git2(cwd, [...gitDirArgs, "rev-parse", "--show-toplevel"]);
-  if (!top) return null;
-  const stat = git2(top, [...gitDirArgs, "diff", "--no-ext-diff", "--no-textconv", "--stat", base, "--"]);
-  const names = git2(top, [...gitDirArgs, "diff", "--no-ext-diff", "--no-textconv", "--name-only", base, "--"]);
-  const gitlinks = (out) => out === null ? null : out.split("\0").filter((e) => e.startsWith("160000 ")).map((e) => e.slice(e.indexOf("	") + 1));
-  const indexLinks = gitlinks(git2(top, [...gitDirArgs, "ls-files", "-z", "--stage"]));
-  const headLinks = gitlinks(git2(top, [...gitDirArgs, "ls-tree", "-r", "-z", "--full-tree", "HEAD"]));
-  const baseLinks = gitlinks(git2(top, [...gitDirArgs, "ls-tree", "-r", "-z", "--full-tree", base]));
-  if (stat === null || names === null || indexLinks === null || headLinks === null || baseLinks === null) return null;
-  const newGitlinks = [.../* @__PURE__ */ new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
-  const changedFiles = [.../* @__PURE__ */ new Set([...lines(names), ...newGitlinks])];
-  const untrackedFiles = lines(git2(top, [...gitDirArgs, "ls-files", "--others", "--exclude-standard"]));
-  return {
-    diffStat: stat,
-    changedFiles,
-    untrackedFiles,
-    protectedChanges: [.../* @__PURE__ */ new Set([...protectedChanges([...changedFiles, ...untrackedFiles], extraProtected), ...newGitlinks])],
-    newGitlinks
-  };
-}
-function seedGitIdentity(repo, globalConfig2) {
-  for (const key of ["user.name", "user.email"]) {
-    const value = git2(repo, ["config", "--get", key]);
-    if (value) git2(repo, ["config", "--file", globalConfig2, key, value]);
-  }
-}
-function jobGitDirArgs(job) {
-  if (!job.worktree) return [];
-  const { worktreeLinks: links, commonGitDir } = job;
-  if (!links || !commonGitDir || !worktreeGitLinksIntact(job.worktree.path, links, commonGitDir)) return null;
-  try {
-    return worktreeGitDirArgs(job.worktree.path);
-  } catch {
-    return null;
-  }
-}
-function syncJobBranch(job, gitDirArgs) {
-  const wt = job.worktree;
-  const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-  const ref = `refs/heads/${wt.branch}`;
-  const current = git2(wt.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
-  if (!head || !current || head === current) return;
-  if (git2(wt.repoRoot, ["update-ref", "-m", "copilot_run: the session's commits", ref, head, current]) === null) {
-    job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
-  }
-}
-function relativeInside(path15, root) {
-  const rel = (0, import_node_path11.relative)((0, import_node_path11.resolve)(root), (0, import_node_path11.resolve)(path15));
-  return rel && !rel.startsWith("..") && !(0, import_node_path11.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
-}
-function defaultCopilotRunDeps(env = process.env) {
-  return {
-    env,
-    platform: process.platform,
-    loadSdk: () => loadCopilotSdk(env, import_node_child_process4.spawnSync),
-    resolveBin: () => resolveCopilotBinary(void 0, env).bin,
-    pluginRoot: () => resolveDefaultPluginRoot(env),
-    userConfigDir: () => getCopilotConfigDir(),
-    isAlive: (pid) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch (err) {
-        return err.code === "EPERM";
-      }
-    },
-    killTree: (pid) => killProcessTree(pid, import_node_child_process4.spawnSync)
-  };
-}
-var import_node_child_process4, import_node_crypto3, import_node_fs10, import_node_os4, import_node_path11, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, CopilotRunManager;
-var init_job = __esm({
-  "src/copilot-run/job.ts"() {
-    "use strict";
-    import_node_child_process4 = require("node:child_process");
-    import_node_crypto3 = require("node:crypto");
-    import_node_fs10 = require("node:fs");
-    import_node_os4 = require("node:os");
-    import_node_path11 = require("node:path");
-    init_governor();
-    init_ledger();
-    init_append_no_follow();
-    init_worktree_paths();
-    init_process_utils();
-    init_config2();
-    init_merge2();
-    init_copilot_binary();
-    init_copilot_sdk_driver();
-    init_copilot_sdk_scenarios();
-    init_copilot_session_env();
-    init_process_utils2();
-    init_git_worktree();
-    init_sdk_policy();
-    init_shell_allowlist();
-    init_config_dir();
-    init_names2();
-    init_sandbox2();
-    init_sandbox_session();
-    init_timeout();
-    DEFAULT_TIMEOUT_MS = 15 * 6e4;
-    MAX_TIMEOUT_MS = 60 * 6e4;
-    DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
-    MAX_RUNNING_JOBS = 2;
-    MAX_PROMPT_CHARS = 1e5;
-    WORKTREE_TEAM = "copilot-run";
-    MCP_SERVER = "t";
-    START_TIMEOUT_MS2 = 6e4;
-    RPC_TIMEOUT_MS2 = 3e4;
-    ABORT_GRACE_MS2 = 1e4;
-    SHUTDOWN_GRACE_MS2 = 2e3;
-    STOP_TIMEOUT_MS2 = 15e3;
-    SERVER_EXIT_GRACE_MS = 3e3;
-    GIT_TIMEOUT_MS = 3e4;
-    DENIED_LOG_MAX = 50;
-    JOB_ID = /^cr-[0-9a-f]{12}$/;
-    MAX_START_REF_CHARS = 256;
-    STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
-    CopilotRunError = class extends Error {
-    };
-    REVIEW_SHELL_DENY_PATTERNS = [
-      ...gitSubcommandDeny(
-        String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config|pull|bisect|remote|clean|sparse-checkout|submodule|read-tree|update-index|checkout-index|filter-branch|gc\s+[^;&|\n]*--prune|reflog\s+expire)(?![\w-])`,
-        "review profile: git commands that change the tree, its refs or its config"
-      ),
-      ...gitSubcommandDeny(String.raw`(?:-c(?:\s|$)|--config-env\b)`, "review profile: git config overrides (-c, --config-env)"),
-      // A refspec argument (`src:dst`, `+refs/*:refs/*`); a URL's `://` and scp-style `user@host:` are not one.
-      ...gitSubcommandDeny(String.raw`fetch\b[^;&|\n]*?\s\+?[\w./*-]*:(?!//)`, "review profile: git fetch with a refspec")
-    ];
-    IDENTITY_TIMEOUT_MS = 1e4;
-    sleep5 = (ms) => new Promise((r) => {
-      setTimeout(r, ms);
-    });
-    isTerminal2 = (s) => s !== "starting" && s !== "running";
-    git2 = hostGit;
-    lines = (text3) => (text3 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    CopilotRunManager = class {
-      constructor(deps) {
-        this.deps = deps;
-      }
-      jobs = /* @__PURE__ */ new Map();
-      /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
-      start(input, options = {}) {
-        if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== "1") {
-          throw new CopilotRunError(
-            `copilot_run_start runs a live, billed Copilot session and is disabled. Set ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env (claude mcp add omg-dev -e ${COPILOT_RUN_ALLOW_ENV}=1 -- node <oh-my-copilot>/dist/mcp/standalone-server.js).`
-          );
-        }
-        const prompt = input.prompt;
-        if (typeof prompt !== "string" || !prompt.trim()) throw new CopilotRunError("copilot_run_start: prompt is empty.");
-        if (prompt.length > MAX_PROMPT_CHARS) throw new CopilotRunError(`copilot_run_start: prompt is longer than ${MAX_PROMPT_CHARS} characters.`);
-        const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-        if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
-          throw new CopilotRunError(`copilot_run_start: timeoutMs must be positive and at most ${MAX_TIMEOUT_MS}.`);
-        }
-        const maxCredits = input.maxCredits ?? DEFAULT_MAX_CREDITS;
-        if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new CopilotRunError("copilot_run_start: maxCredits must be a positive number.");
-        const isolation = input.isolation ?? "worktree";
-        const profile = input.profile ?? "write";
-        if (profile !== "write" && profile !== "review") throw new CopilotRunError(`copilot_run_start: profile must be "write" or "review", not ${JSON.stringify(profile)}.`);
-        const startRef = input.startRef ?? null;
-        if (startRef !== null && isolation !== "worktree") throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
-        if (options.ledgerKey !== void 0 && !SAFE_KEY.test(options.ledgerKey)) throw new CopilotRunError(`copilot_run_start: ledgerKey ${JSON.stringify(options.ledgerKey)} must match ${SAFE_KEY}.`);
-        const cwd = (0, import_node_path11.resolve)(input.cwd ?? process.cwd());
-        let isDir = false;
-        try {
-          isDir = (0, import_node_fs10.statSync)(cwd).isDirectory();
-        } catch {
-        }
-        if (!isDir) throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not an existing directory.`);
-        const repoRoot = git2(cwd, ["rev-parse", "--show-toplevel"]);
-        if (isolation === "worktree" && !repoRoot) {
-          throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
-        }
-        const startSha = startRef !== null && repoRoot ? resolveStartRef((0, import_node_path11.resolve)(repoRoot), startRef) : null;
-        let sandboxSettings;
-        let sandboxWarnings;
-        try {
-          ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot ? (0, import_node_path11.resolve)(repoRoot) : cwd, options.sandboxScope ?? "copilot-run"));
-        } catch (err) {
-          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText3(err)}`);
-        }
-        if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== "off") {
-          const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
-          if (problem) throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
-          const missing = missingSandboxEnv(this.deps.env, this.deps.platform);
-          if (missing.length) {
-            throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(" and ")} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
-          }
-          const top = repoRoot ? (0, import_node_path11.resolve)(repoRoot) : cwd;
-          if (isolation === "none" && profile === "write" && sandboxSettings.writeUnsandboxed !== "detect-only") {
-            const omcRoot = getOmcRoot(top);
-            let inside = true;
-            try {
-              inside = isUnderRoot(omcRoot, top, this.deps.platform);
-            } catch {
-            }
-            if (inside) {
-              throw new CopilotRunError(`copilot_run_start: a sandboxed write job with isolation "none" would let the lane write the job's state in ${omcRoot}, which lies inside ${top}. Use isolation "worktree" (the default), or the review profile.`);
-            }
-          }
-        }
-        const running = [...this.jobs.values()].filter((j) => !isTerminal2(j.status)).length;
-        if (running >= MAX_RUNNING_JOBS) {
-          throw new CopilotRunError(`copilot_run_start: ${running} job(s) already running (limit ${MAX_RUNNING_JOBS}); wait for or cancel one first.`);
-        }
-        const ledgerCwd = repoRoot ? (0, import_node_path11.resolve)(repoRoot) : cwd;
-        const notes = [...sandboxWarnings];
-        const id = `cr-${(0, import_node_crypto3.randomBytes)(6).toString("hex")}`;
-        let workCwd = cwd;
-        let worktree = null;
-        let worktreeLinks = null;
-        let commonGitDir = null;
-        let baseCommit = repoRoot ? git2(cwd, ["rev-parse", "HEAD"]) : null;
-        if (isolation === "worktree") {
-          let info;
-          try {
-            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {} });
-          } catch (err) {
-            const path15 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
-            const branch = getBranchName(WORKTREE_TEAM, id);
-            let left = "";
-            if ((0, import_node_fs10.existsSync)(path15)) {
-              try {
-                removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
-              } catch {
-              }
-              if ((0, import_node_fs10.existsSync)(path15)) left = ` The partly created worktree ${path15} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
-            }
-            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText3(err)}.${left}`);
-          }
-          if (!info) throw new CopilotRunError("copilot_run_start: worktree creation unexpectedly disabled.");
-          const commonRaw = git2(ledgerCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-          commonGitDir = commonRaw ? (0, import_node_path11.resolve)(commonRaw) : null;
-          if (git2(ledgerCwd, ["config", "--bool", "extensions.worktreeConfig"]) === "true") {
-            const admin = readWorktreeGitLinks(info.path)?.adminDir;
-            if (admin) {
-              try {
-                (0, import_node_fs10.writeFileSync)((0, import_node_path11.join)(admin, "config.worktree"), "", { flag: "wx" });
-              } catch {
-              }
-            }
-          }
-          worktreeLinks = readWorktreeGitLinks(info.path);
-          const head = info.baseCommit ?? null;
-          const recorded = (links) => {
-            try {
-              recordWorktreeGitLinks(info.path, links);
-              return true;
-            } catch {
-              return false;
-            }
-          };
-          const detached = worktreeLinks !== null && commonGitDir !== null && head !== null && worktreeGitLinksIntact(info.path, worktreeLinks, commonGitDir) && recorded(worktreeLinks) && git2(info.path, [...worktreeGitDirArgs(info.path), "update-ref", "--no-deref", "-m", "copilot_run: detach for the session", "HEAD", head]) !== null;
-          if (!detached) {
-            try {
-              removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
-            } catch {
-            }
-            const left = (0, import_node_fs10.existsSync)(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : "";
-            throw new CopilotRunError(`copilot_run_start: could not record and detach the job worktree's git links.${left}`);
-          }
-          const sub = relativeInside(cwd, ledgerCwd);
-          workCwd = sub && (0, import_node_fs10.existsSync)((0, import_node_path11.join)(info.path, sub)) ? (0, import_node_path11.join)(info.path, sub) : info.path;
-          worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
-          baseCommit = info.baseCommit ?? startSha ?? baseCommit;
-          if (!startSha && lines(git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0) {
-            notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? "?"} without them.`);
-          }
-        } else if (repoRoot) {
-          notes.push('isolation "none": Copilot works in your working tree; the change summary includes edits that were already there.');
-        }
-        let extraProtected = [];
-        try {
-          extraProtected = configuredProtectedPaths(ledgerCwd);
-        } catch {
-        }
-        const jobDir = (0, import_node_path11.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
-        let requestStop = () => {
-        };
-        const stopped = new Promise((r) => {
-          requestStop = (reason) => {
-            if (!job.stopReason) job.stopReason = reason;
-            r();
-          };
-        });
-        const job = {
-          id,
-          status: "starting",
-          prompt,
-          cwd,
-          workCwd,
-          isolation,
-          profile,
-          startRef,
-          disableStopContinuations: options.disableStopContinuations === true,
-          scrubCredentials: options.scrubCredentials === true,
-          hostCommits: options.hostCommits === true,
-          ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
-          model: input.model ?? null,
-          timeoutMs,
-          maxCredits,
-          ledgerCwd,
-          jobDir,
-          home: (0, import_node_path11.join)(jobDir, "home"),
-          eventsPath: (0, import_node_path11.join)(jobDir, "events.jsonl"),
-          baseCommit,
-          headCommit: null,
-          worktree,
-          worktreeLinks,
-          commonGitDir,
-          extraProtected,
-          pid: void 0,
-          pidIdentity: null,
-          startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          endedAt: null,
-          sessionId: null,
-          finalText: null,
-          error: null,
-          notes,
-          usage: { premiumRequests: 0, credits: 0, measured: false },
-          denied: [],
-          changes: null,
-          cleanedUp: false,
-          sandboxSettings,
-          sandbox: null,
-          secrets: secretValues(this.deps.env),
-          stopReason: null,
-          requestStop: (reason) => requestStop(reason),
-          stopped,
-          done: Promise.resolve()
-        };
-        this.jobs.set(id, job);
-        const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
-        timer.unref?.();
-        job.done = this.run(job).catch((err) => {
-          job.error ??= errText3(err);
-          return "failed";
-        }).then((outcome) => {
-          clearTimeout(timer);
-          const gitDirArgs = jobGitDirArgs(job);
-          if (gitDirArgs === null) {
-            const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
-            job.error = job.error ? `${why}; ${job.error}` : why;
-            job.stopReason ??= "sandbox-escaped";
-            outcome = "failed";
-          } else {
-            if (job.worktree) {
-              syncJobBranch(job, gitDirArgs);
-              job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-            }
-            job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs);
-            const nested = job.changes?.newGitlinks ?? [];
-            if (job.worktree && nested.length > 0) {
-              const why = `sandbox-escaped: the session added nested repositories as gitlinks (${nested.slice(0, 5).join(", ")}); host git does not enter them, so their content was not inspected`;
-              job.error = job.error ? `${why}; ${job.error}` : why;
-              job.stopReason ??= "sandbox-escaped";
-              outcome = "failed";
-            }
-          }
-          job.endedAt = (/* @__PURE__ */ new Date()).toISOString();
-          job.status = outcome;
-        });
-        return this.snapshot(job);
-      }
-      status(jobId) {
-        return this.snapshot(this.find(jobId));
-      }
-      /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
-      async wait(jobId, timeoutMs) {
-        const job = this.find(jobId);
-        await settleWithin(job.done, Math.max(0, timeoutMs));
-        return this.snapshot(job);
-      }
-      /** Abort the session and wait (bounded) for the teardown. */
-      async cancel(jobId) {
-        const job = this.find(jobId);
-        if (!isTerminal2(job.status)) {
-          job.requestStop("cancelled");
-          await settleWithin(job.done, ABORT_GRACE_MS2 + STOP_TIMEOUT_MS2 + RPC_TIMEOUT_MS2);
-        }
-        return this.snapshot(job);
-      }
-      /**
-       * Server shutdown: cancel every live job, wait up to `graceMs` for the
-       * teardowns, then kill the runtimes still alive. Worktrees stay for review.
-       */
-      async stopAll(graceMs = SERVER_EXIT_GRACE_MS) {
-        const live = [...this.jobs.values()].filter((j) => !isTerminal2(j.status));
-        for (const job of live) job.requestStop("cancelled");
-        await settleWithin(Promise.all(live.map((j) => j.done)), graceMs);
-        for (const job of live) {
-          try {
-            if (job.pid && this.deps.isAlive(job.pid)) this.deps.killTree(job.pid);
-          } catch {
-          }
-        }
-      }
-      /** Remove a finished job's worktree and branch when nothing in them would be lost. */
-      cleanup(jobId) {
-        const job = this.find(jobId);
-        if (!isTerminal2(job.status)) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} is still ${job.status}; cancel it first.`);
-        if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
-        let tampered = null;
-        if (!job.cleanedUp) {
-          try {
-            ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
-          } catch (err) {
-            throw new CopilotRunError(
-              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText3(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
-            );
-          }
-          job.cleanedUp = true;
-          try {
-            (0, import_node_fs10.rmSync)(job.jobDir, { recursive: true, force: true });
-          } catch {
-          }
-        }
-        if (tampered) return { ...this.snapshot(job), cleanup: `sandbox-escaped: ${tampered}` };
-        return { ...this.snapshot(job), cleanup: `removed worktree ${job.worktree.path} and branch ${job.worktree.branch}` };
-      }
-      find(jobId) {
-        if (typeof jobId !== "string" || !JOB_ID.test(jobId)) throw new CopilotRunError(`Invalid jobId ${JSON.stringify(jobId)}.`);
-        const job = this.jobs.get(jobId);
-        if (!job) throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
-        return job;
-      }
-      /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
-      recordBudget(job, lockTimeoutMs) {
-        if (this.deps.env.OMC_BUDGET_GOVERNOR === "0") return true;
-        const usage = {
-          premiumRequests: job.usage.premiumRequests,
-          credits: job.usage.credits,
-          source: job.usage.measured ? "measured" : "estimated",
-          detail: job.usage.measured ? "session.shutdown" : "copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
-          ...job.model ? { model: job.model } : {},
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        try {
-          recordUsage(ledgerPath2(job.ledgerCwd), job.ledgerKey, usage, void 0, { timeoutMs: lockTimeoutMs });
-          return true;
-        } catch (err) {
-          return !errText3(err).startsWith("Failed to acquire file lock");
-        }
-      }
-      /** Drive the session to its end and tear it down; returns the final status. */
-      async run(job) {
-        const { deps } = this;
-        (0, import_node_fs10.mkdirSync)(job.home, { recursive: true });
-        let loadError;
-        const loaded2 = await deps.loadSdk().catch((err) => {
-          loadError = `loading @github/copilot-sdk failed: ${errText3(err)}`;
-          return null;
-        });
-        if (!loaded2) {
-          job.error = loadError ?? "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
-          return "failed";
-        }
-        const found = deps.resolveBin();
-        const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-        if (!bin) {
-          job.error = found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet)";
-          return "failed";
-        }
-        const pluginRoot = deps.pluginRoot();
-        const ident = loginIdentity(deps.userConfigDir());
-        (0, import_node_fs10.writeFileSync)((0, import_node_path11.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
-`);
-        const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
-        const gitHubToken = sessionGitHubToken(deps.env);
-        (0, import_node_fs10.mkdirSync)(env.XDG_CONFIG_HOME, { recursive: true });
-        (0, import_node_fs10.mkdirSync)((0, import_node_path11.dirname)(env.GIT_CONFIG_GLOBAL), { recursive: true });
-        (0, import_node_fs10.mkdirSync)(env.TEMP, { recursive: true });
-        (0, import_node_fs10.writeFileSync)(env.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-        if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL);
-        Object.assign(env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1", GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
-        delete env[COPILOT_RUN_ALLOW_ENV];
-        if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
-        let scrubDir = null;
-        if (job.scrubCredentials) {
-          if (ident.loggedInUsers === void 0 && !gitHubToken) {
-            job.error = "a credential-free session needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are removed from it";
-            return "failed";
-          }
-          scrubDir = (0, import_node_fs10.mkdtempSync)((0, import_node_path11.join)((0, import_node_os4.tmpdir)(), "omg-lane-nocreds-"));
-          const identityConfig = env.GIT_CONFIG_GLOBAL;
-          scrubLaneCredentials(env, scrubDir);
-          env.GIT_CONFIG_GLOBAL = identityConfig;
-        }
-        const policy = {
-          cwd: job.workCwd,
-          // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
-          // the runtime reads back from the job home (config.json, session state, policies, logs, the package cache).
-          stateRoot: env.TEMP,
-          pluginRoot,
-          readRoots: [job.home],
-          mcpServer: MCP_SERVER,
-          platform: deps.platform
-        };
-        const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
-        const sandbox = new SessionSandboxController({
-          profile: job.profile,
-          settings: job.sandboxSettings,
-          env: deps.env,
-          platform: deps.platform,
-          rpcTimeoutMs: RPC_TIMEOUT_MS2,
-          ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
-          policyContext: () => {
-            const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
-            const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-            const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
-            const realHome = (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))();
-            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
-            job.notes.push(...proxy.notes);
-            return {
-              worktree: (0, import_node_path11.resolve)(top),
-              commonGitDir: commonRaw ? (0, import_node_path11.resolve)(commonRaw) : (0, import_node_path11.resolve)(top, ".git"),
-              ...gitDirRaw ? { gitDir: (0, import_node_path11.resolve)(gitDirRaw) } : {},
-              pluginRoot,
-              jobHome: job.home,
-              jobDir: job.jobDir,
-              realHome,
-              platform: deps.platform,
-              settings: job.sandboxSettings,
-              hostCommits: job.hostCommits,
-              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-              extraReadonly: proxy.caPaths
-            };
-          },
-          note: (text3) => {
-            job.notes.push(text3);
-          }
-        });
-        const onPermissionRequest = (req) => {
-          let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
-          if (decision.approve && req.kind === "write") {
-            const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
-            const rel = raw ? relativeInside((0, import_node_path11.isAbsolute)(raw) ? raw : (0, import_node_path11.resolve)(job.workCwd, raw), protectedRoot) : null;
-            if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
-            if (decision.approve && raw) {
-              const abs = (0, import_node_path11.isAbsolute)(raw) ? raw : (0, import_node_path11.resolve)(job.workCwd, raw);
-              let jobState = true;
-              try {
-                jobState = isUnderRoot(abs, job.jobDir, deps.platform) && !isUnderRoot(abs, env.TEMP, deps.platform);
-              } catch {
-              }
-              if (jobState) decision = { approve: false, reason: `write into the job's state dir ${job.jobDir}` };
-            }
-          }
-          if (decision.approve && job.profile === "review") {
-            const denial = reviewProfileDenial(req);
-            const mode = job.sandbox?.mode;
-            if (denial) decision = { approve: false, reason: denial };
-            else if (req.kind === "shell") {
-              decision = mode === "enforced" ? reviewShellAllowlist(req, { cwd: job.workCwd, platform: deps.platform }) : { approve: false, reason: "review profile: no shell without a confirmed sandbox" };
-            }
-          }
-          if (decision.approve) return { kind: "approve-once" };
-          job.denied.push({ kind: String(req.kind), reason: decision.reason });
-          if (job.denied.length > DENIED_LOG_MAX) job.denied.splice(0, job.denied.length - DENIED_LOG_MAX);
-          return { kind: "reject", feedback: `copilot_run policy: ${decision.reason}` };
-        };
-        let onIdle = () => {
-        };
-        let onShutdown = () => {
-        };
-        let sent = false;
-        let idle = new Promise((r) => {
-          onIdle = r;
-        });
-        const shutdown = new Promise((r) => {
-          onShutdown = r;
-        });
-        let eventsFd = null;
-        const onEvent = (event) => {
-          if (eventsFd !== null) {
-            try {
-              (0, import_node_fs10.writeSync)(eventsFd, `${scrubTokens(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event }), job.secrets)}
-`);
-            } catch {
-            }
-          }
-          const data = event.data ?? {};
-          switch (event.type) {
-            case "tool.execution_start":
-              sandbox.toolStarted(data);
-              break;
-            case "tool.execution_complete": {
-              const escaped = sandbox.toolCompleted(data);
-              if (escaped && !job.stopReason) {
-                job.error = escaped;
-                job.requestStop("sandbox-escaped");
-              }
-              break;
-            }
-            case "session.idle":
-              if (sent) onIdle();
-              break;
-            case "assistant.message":
-              if (typeof data.content === "string" && data.content.trim()) job.finalText = scrubTokens(data.content, job.secrets);
-              break;
-            case "assistant.usage":
-              job.usage.credits += usageCredits(event);
-              if (data.initiator === "user") job.usage.premiumRequests += 1;
-              if (typeof data.model === "string" && !job.model) job.model = data.model;
-              if (job.usage.credits >= job.maxCredits) job.requestStop("capped");
-              this.recordBudget(job, 0);
-              break;
-            case "session.shutdown":
-              if (typeof data.totalPremiumRequests === "number") {
-                job.usage.premiumRequests = data.totalPremiumRequests;
-                job.usage.measured = true;
-              }
-              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
-              if (typeof data.currentModel === "string") job.model = data.currentModel;
-              onShutdown();
-              break;
-            case "session.error":
-            case "model.turn_failed":
-              job.error = String(data.message ?? data.error ?? data.reason ?? event.type).slice(0, 500);
-              break;
-            default:
-              break;
-          }
-        };
-        const { CopilotClient, RuntimeConnection } = loaded2.module;
-        const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
-        const client = new CopilotClient({
-          connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env }),
-          baseDirectory: job.home,
-          workingDirectory: job.workCwd
-        });
-        try {
-          eventsFd = openAppendExclusive(job.eventsPath);
-        } catch (err) {
-          if (scrubDir) (0, import_node_fs10.rmSync)(scrubDir, { recursive: true, force: true });
-          job.error = `events log ${job.eventsPath}: ${errText3(err)}`;
-          return "failed";
-        }
-        let session = null;
-        let pid;
-        let outcome = "failed";
-        try {
-          await withTimeout3(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
-          pid = runtimePid(client);
-          job.pid = pid;
-          if (pid) {
-            const identify = deps.processIdentity ?? ((p) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
-            const reading = identify(pid).catch(() => null).then((id) => {
-              job.pidIdentity = id;
-            });
-            await Promise.race([reading, job.stopped]);
-          }
-          const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded2);
-          job.sandbox = sandbox.state;
-          const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
-          if (!job.stopReason && !refused()) {
-            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
-            const shell = sandboxConfig !== null;
-            session = await withTimeout3(client.createSession({
-              onPermissionRequest,
-              onEvent,
-              pluginDirectories: [pluginRoot],
-              workingDirectory: job.workCwd,
-              disabledMcpServers: ["github-mcp-server"],
-              // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-              ...gitHubToken ? { gitHubToken } : {},
-              excludedTools: buildSdkExcludedTools(MCP_SERVER),
-              ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {},
-              ...atCreate ? { sandboxConfig } : {},
-              ...job.model ? { model: job.model } : {}
-            }), RPC_TIMEOUT_MS2, "createSession()");
-            job.sessionId = session.sessionId;
-            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
-          }
-          if (job.sandbox?.mode === "refused") {
-            job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
-          } else if (session && !job.stopReason) {
-            job.status = "running";
-            sent = true;
-            await withTimeout3(session.send({ prompt: job.prompt }), RPC_TIMEOUT_MS2, "send()");
-            const winner = await Promise.race([idle.then(() => "idle"), job.stopped.then(() => "stop")]);
-            if (winner === "stop") {
-              const s = session;
-              idle = new Promise((r) => {
-                onIdle = r;
-              });
-              try {
-                await withTimeout3(s.abort(), RPC_TIMEOUT_MS2, "abort()");
-              } catch {
-              }
-              await settleWithin(idle, ABORT_GRACE_MS2);
-            }
-          }
-          outcome = job.stopReason === "timeout" ? "timeout" : job.stopReason === "cancelled" ? "cancelled" : job.stopReason === "capped" || job.stopReason === "sandbox-escaped" || job.sandbox?.mode === "refused" ? "failed" : "completed";
-          if (job.stopReason === "capped") job.error = `credit cap ${job.maxCredits} reached (${job.usage.credits.toFixed(2)} AI credits); the turn was aborted`;
-          if (job.stopReason === "timeout") job.error = `timed out after ${job.timeoutMs} ms; the turn was aborted`;
-        } catch (err) {
-          outcome = job.stopReason === "cancelled" ? "cancelled" : "failed";
-          job.error = errText3(err);
-        } finally {
-          if (session) {
-            try {
-              await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS2, "disconnect()");
-            } catch {
-            }
-            await settleWithin(shutdown, SHUTDOWN_GRACE_MS2);
-            try {
-              await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS2, "deleteSession()");
-            } catch {
-            }
-          }
-          pid ??= runtimePid(client);
-          job.pid = pid;
-          if (session && pid && deps.isAlive(pid)) {
-            try {
-              deps.killTree(pid);
-            } catch {
-            }
-          }
-          let stopped = false;
-          try {
-            await withTimeout3(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
-            stopped = true;
-          } catch {
-          }
-          if (!stopped) {
-            if (pid && deps.isAlive(pid)) deps.killTree(pid);
-            try {
-              await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
-            } catch {
-            }
-          }
-          if (pid && deps.isAlive(pid)) deps.killTree(pid);
-          const fd = eventsFd;
-          eventsFd = null;
-          if (fd !== null) (0, import_node_fs10.closeSync)(fd);
-          if (scrubDir) (0, import_node_fs10.rmSync)(scrubDir, { recursive: true, force: true });
-          for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep5(50);
-          if (outcome === "completed") {
-            try {
-              (0, import_node_fs10.rmSync)(job.home, { recursive: true, force: true });
-            } catch {
-            }
-          }
-        }
-        return outcome;
-      }
-      snapshot(job) {
-        const usage = {
-          premiumRequests: job.usage.premiumRequests,
-          credits: Number(job.usage.credits.toFixed(3)),
-          source: job.usage.measured ? "measured" : "estimated",
-          summary: `${formatAmount(job.usage.premiumRequests, "premiumRequests")}, ${formatAmount(Number(job.usage.credits.toFixed(3)), "credits")}`
-        };
-        const scrub = (text3) => scrubTokens(text3, job.secrets);
-        return {
-          jobId: job.id,
-          status: job.status,
-          // Set as soon as a stop is asked for: a cancel that returns while the teardown runs still shows it.
-          stopRequested: job.stopReason,
-          isolation: job.isolation,
-          profile: job.profile,
-          ...job.startRef !== null ? { startRef: job.startRef } : {},
-          cwd: job.cwd,
-          workingDirectory: job.workCwd,
-          model: job.model,
-          startedAt: job.startedAt,
-          endedAt: job.endedAt,
-          timeoutMs: job.timeoutMs,
-          maxCredits: job.maxCredits,
-          sessionId: job.sessionId,
-          // Lane output reaches state, PR comments and the ledger from here: no token passes.
-          finalText: job.finalText === null ? null : scrub(job.finalText),
-          error: job.error === null ? null : scrub(job.error),
-          usage,
-          ...job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...job.headCommit ? { headCommit: job.headCommit } : {} } } : {},
-          ...job.changes ? { changes: job.changes } : {},
-          ...job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {},
-          ...job.notes.length ? { notes: job.notes.map(scrub) } : {},
-          eventsPath: job.eventsPath,
-          ...job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {},
-          ...job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}
-        };
-      }
-    };
-  }
-});
-
-// src/factory/run/budget.ts
-function assertLaneCreditCap(limits) {
-  const cap = limits?.laneMaxCredits;
-  if (typeof cap !== "number" || !Number.isFinite(cap)) {
-    throw new Error("omg factory run refuses to start: no per-lane AI-credit cap is resolved (factory.run.laneMaxCredits)");
-  }
-  if (cap < RUNTIME_MIN_MAX_CREDITS) {
-    throw new Error(`omg factory run refuses to start: factory.run.laneMaxCredits ${cap} is below the Copilot CLI minimum of ${RUNTIME_MIN_MAX_CREDITS} AI credits`);
-  }
-  if (limits.maxRunCredits !== void 0 && limits.maxRunCredits < cap) {
-    throw new Error(`omg factory run refuses to start: factory.run.maxRunCredits ${limits.maxRunCredits} is below one lane's cap (${cap})`);
-  }
-}
-function runCredits(state) {
-  return state.lanes.reduce((sum, lane) => sum + (lane.usage?.credits ?? 0), 0);
-}
-function nextLaneCap(state, limits) {
-  assertLaneCreditCap(limits);
-  if (limits.maxRunCredits === void 0) return { ok: true, cap: limits.laneMaxCredits };
-  const spent = runCredits(state);
-  const left = limits.maxRunCredits - spent;
-  if (left < RUNTIME_MIN_MAX_CREDITS) {
-    return { ok: false, reason: `run spent ${spent.toFixed(2)} of factory.run.maxRunCredits ${limits.maxRunCredits} AI credits; a lane needs at least ${RUNTIME_MIN_MAX_CREDITS} (raise the limit and rerun)` };
-  }
-  return { ok: true, cap: Math.min(limits.laneMaxCredits, Math.floor(left)) };
-}
-function runCreditsExceeded(state, limits) {
-  if (limits.maxRunCredits === void 0) return null;
-  const spent = runCredits(state);
-  return spent >= limits.maxRunCredits ? `run spent ${spent.toFixed(2)} AI credits, at or above factory.run.maxRunCredits ${limits.maxRunCredits}` : null;
-}
-var DEFAULT_FACTORY_RUN_LIMITS;
-var init_budget = __esm({
-  "src/factory/run/budget.ts"() {
-    "use strict";
-    init_copilot_sdk_scenarios();
     init_job();
-    init_config2();
-    DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
-      laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
-      laneTimeoutMs: 30 * 6e4,
-      maxRunWallTimeMs: 4 * 60 * 6e4,
-      maxRetries: 1,
-      maxLostRespawns: 1,
-      maxFixRounds: DEFAULT_SHIP_CONFIG.maxFixRounds,
-      maxCiFixRounds: 1,
-      gatesTimeoutMs: 90 * 6e4
-    });
+    init_worktree_paths();
+    init_merge2();
+    init_git_worktree();
+    ENGINE_COMMIT_IDENTITY = Object.freeze({ name: "omg factory", email: "omg-factory@oh-my-copilot.invalid" });
+    GIT_TIMEOUT_MS = 6e4;
+    MAX_MESSAGE_CHARS = 4e3;
+    HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
+    MAX_WALK_ENTRIES = 2e5;
+    MAX_WALK_DEPTH = 64;
+    ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
+    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".husky/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md", ...ADO_PIPELINE_PATHS];
+    errText3 = (err) => err instanceof Error ? err.message : String(err);
+    CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
+    TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
+    ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
   }
 });
 
@@ -41839,30 +40853,1999 @@ var init_exec2 = __esm({
   }
 });
 
-// src/factory/run/ledger.ts
-function defaultLedgerDir(env = process.env) {
-  const base = env.OMC_STATE_DIR?.trim() ? (0, import_path82.resolve)(env.OMC_STATE_DIR) : (0, import_path82.join)((0, import_os14.homedir)(), ".omg");
-  return (0, import_path82.join)(base, "factory-ledger");
+// src/factory/run/review-guard.ts
+function run(exec, cwd, args) {
+  const res = exec("git", args, { cwd, env: TRUSTED_READ_ENV });
+  if (res.status !== 0) throw new SnapshotError(`git ${args.join(" ")} failed in ${cwd}: ${res.stderr.trim().split("\n")[0]}`);
+  return res.stdout;
 }
-function ledgerFilePath(dir, root, key) {
-  return (0, import_path82.join)(dir, sha256((0, import_path82.resolve)(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
+function excludesFileOf(exec, cwd) {
+  const res = exec("git", ["config", "--get", "core.excludesFile"], { cwd, env: TRUSTED_READ_ENV });
+  return res.status === 0 && res.stdout.trim() ? res.stdout.trim() : void 0;
 }
-function emptyHooksDir2(dir) {
-  const path15 = (0, import_path82.join)(dir, "empty-hooks");
-  (0, import_fs66.mkdirSync)(path15, { recursive: true, mode: 448 });
-  return path15;
+function fileHash(path15) {
+  if (!(0, import_fs66.existsSync)(path15)) return "absent";
+  return (0, import_crypto19.createHash)("sha256").update((0, import_fs66.readFileSync)(path15)).digest("hex");
 }
-function currentBytes(path15) {
-  return (0, import_fs66.existsSync)(path15) ? (0, import_fs66.readFileSync)(path15) : null;
+function fileText(path15) {
+  return (0, import_fs66.existsSync)(path15) ? (0, import_fs66.readFileSync)(path15, "utf8").trim() : "";
 }
-var import_crypto19, import_fs66, import_os14, import_path82, LedgerError, sha256, EngineLedger;
-var init_ledger2 = __esm({
-  "src/factory/run/ledger.ts"() {
+function treeHash(dir) {
+  if (!(0, import_fs66.existsSync)(dir)) return "absent";
+  const entries = [];
+  const walk = (abs, rel) => {
+    for (const name of (0, import_fs66.readdirSync)(abs).sort()) {
+      const p = (0, import_path82.join)(abs, name);
+      const r = rel ? `${rel}/${name}` : name;
+      const st = (0, import_fs66.lstatSync)(p);
+      if (st.isSymbolicLink()) entries.push(`l ${r} ${(0, import_fs66.readlinkSync)(p)}`);
+      else if (st.isDirectory()) {
+        entries.push(`d ${r}`);
+        walk(p, r);
+      } else entries.push(`f ${r} ${st.mode & 73 ? "x" : "-"} ${fileHash(p)}`);
+    }
+  };
+  walk(dir, "");
+  return sha(entries.join("\n"));
+}
+function pathHash(path15) {
+  if (!(0, import_fs66.existsSync)(path15)) return "absent";
+  return (0, import_fs66.lstatSync)(path15).isDirectory() ? `d ${treeHash(path15)}` : `f ${fileHash(path15)}`;
+}
+function alternatesHash(gitDir) {
+  return `${fileHash((0, import_path82.join)(gitDir, "objects", "info", "alternates"))} ${fileHash((0, import_path82.join)(gitDir, "objects", "info", "http-alternates"))}`;
+}
+function notADirectory(path15) {
+  let st;
+  try {
+    st = (0, import_fs66.lstatSync)(path15);
+  } catch {
+    return null;
+  }
+  if (st.isDirectory()) return null;
+  if (st.isSymbolicLink()) {
+    let target = "?";
+    try {
+      target = (0, import_fs66.readlinkSync)(path15);
+    } catch {
+    }
+    return `a symlink or junction to ${target}`;
+  }
+  return st.isFile() ? "a file" : "not a directory";
+}
+function worktreeEntries(commonDir, ids) {
+  const out = {};
+  for (const id of ids) {
+    const dir = (0, import_path82.join)(commonDir, "worktrees", id);
+    const odd = notADirectory(dir);
+    if (odd) {
+      out[id] = { meta: `${NOT_A_DIR}${odd}`, gitdir: "", commondir: "", notDir: odd };
+      continue;
+    }
+    if (!(0, import_fs66.existsSync)(dir)) continue;
+    const head = fileText((0, import_path82.join)(dir, "HEAD"));
+    const gitdir = fileText((0, import_path82.join)(dir, "gitdir"));
+    const commondir = fileText((0, import_path82.join)(dir, "commondir"));
+    const stale = !gitdir || !(0, import_fs66.existsSync)((0, import_path82.isAbsolute)(gitdir) ? gitdir : (0, import_path82.resolve)(dir, gitdir));
+    out[id] = { meta: sha([head, gitdir, commondir, treeHash((0, import_path82.join)(dir, "refs"))].join("\n")), gitdir, commondir, ...stale ? { stale } : {} };
+  }
+  return out;
+}
+function moduleEntries(commonDir) {
+  const out = {};
+  const walk = (dir, rel) => {
+    const oddDir = notADirectory(dir);
+    if (oddDir) {
+      out[rel || "."] = `${NOT_A_DIR}${oddDir}`;
+      return;
+    }
+    if (!(0, import_fs66.existsSync)(dir)) return;
+    for (const name of (0, import_fs66.readdirSync)(dir).sort()) {
+      const p = (0, import_path82.join)(dir, name);
+      const r = rel ? `${rel}/${name}` : name;
+      const odd = notADirectory(p);
+      if (odd) {
+        out[r] = `${NOT_A_DIR}${odd}`;
+        continue;
+      }
+      if ((0, import_fs66.existsSync)((0, import_path82.join)(p, "HEAD")) || (0, import_fs66.existsSync)((0, import_path82.join)(p, "config"))) {
+        out[r] = sha([fileHash((0, import_path82.join)(p, "config")), fileHash((0, import_path82.join)(p, "config.worktree")), treeHash((0, import_path82.join)(p, "hooks")), treeHash((0, import_path82.join)(p, "info")), alternatesHash(p)].join("\n"));
+        walk((0, import_path82.join)(p, "modules"), `${r}/modules`);
+      } else {
+        walk(p, r);
+      }
+    }
+  };
+  walk((0, import_path82.join)(commonDir, "modules"), "");
+  return out;
+}
+function globalConfigFiles(env = process.env) {
+  if (env.GIT_CONFIG_GLOBAL?.trim()) return [(0, import_path82.resolve)(env.GIT_CONFIG_GLOBAL)];
+  const home = env.HOME?.trim() || (0, import_os14.homedir)();
+  const xdg = env.XDG_CONFIG_HOME?.trim() || (0, import_path82.join)(home, ".config");
+  return [(0, import_path82.join)(home, ".gitconfig"), (0, import_path82.join)(xdg, "git", "config")];
+}
+function includeTargets(text3, fromFile, home) {
+  const out = [];
+  let inInclude = false;
+  for (const raw of text3.split(/\r?\n/)) {
+    let line = raw.trim();
+    const section = /^\[([^\]]*)\](.*)$/.exec(line);
+    if (section) {
+      const name = section[1].trim().split(/[\s"]/)[0].toLowerCase();
+      inInclude = name === "include" || name === "includeif";
+      line = section[2].trim();
+    }
+    if (!inInclude || !line) continue;
+    const kv = /^path\s*=\s*(.*)$/i.exec(line);
+    if (!kv) continue;
+    let value = kv[1].trim();
+    const quoted = /^"((?:[^"\\]|\\.)*)"/.exec(value);
+    value = quoted ? quoted[1].replace(/\\(.)/g, "$1") : value.replace(/\s*[;#].*$/, "").trim();
+    if (!value) continue;
+    const path15 = value === "~" || value.startsWith("~/") ? (0, import_path82.join)(home, value.slice(2)) : (0, import_path82.isAbsolute)(value) ? value : (0, import_path82.join)((0, import_path82.dirname)(fromFile), value);
+    out.push((0, import_path82.resolve)(path15));
+  }
+  return out;
+}
+function safeFileHash(path15) {
+  try {
+    return (0, import_fs66.existsSync)(path15) && (0, import_fs66.statSync)(path15).isDirectory() ? "a directory" : fileHash(path15);
+  } catch (error2) {
+    return `unreadable: ${error2 instanceof Error ? error2.message : String(error2)}`;
+  }
+}
+function globalConfigHash(repoConfigs, env = process.env, excludesFile) {
+  const home = env.HOME?.trim() || (0, import_os14.homedir)();
+  const seen = /* @__PURE__ */ new Map();
+  const follow = (file, depth) => {
+    if (depth > MAX_INCLUDE_DEPTH) return;
+    let text3;
+    try {
+      text3 = (0, import_fs66.readFileSync)(file, "utf8");
+    } catch {
+      return;
+    }
+    for (const target of includeTargets(text3, file, home)) visit2(target, depth);
+  };
+  const visit2 = (file, depth) => {
+    const path15 = (0, import_path82.resolve)(file);
+    if (seen.has(path15)) return;
+    seen.set(path15, safeFileHash(path15));
+    follow(path15, depth + 1);
+  };
+  for (const f of globalConfigFiles(env)) visit2(f, 0);
+  for (const f of repoConfigs) follow((0, import_path82.resolve)(f), 1);
+  const xdg = env.XDG_CONFIG_HOME?.trim() || (0, import_path82.join)(home, ".config");
+  const excludes = excludesFile ? [excludesFile === "~" || excludesFile.startsWith("~/") ? (0, import_path82.join)(home, excludesFile.slice(2)) : excludesFile] : [];
+  for (const f of [(0, import_path82.join)(xdg, "git", "ignore"), ...excludes]) seen.set((0, import_path82.resolve)(f), safeFileHash((0, import_path82.resolve)(f)));
+  return sha([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([p, h]) => `${p} ${h}`).join("\n"));
+}
+function ignoredHash(root) {
+  const names = (0, import_fs66.existsSync)(root) ? (0, import_fs66.readdirSync)(root).filter((n) => /^\.env/i.test(n)) : [];
+  const paths = [.../* @__PURE__ */ new Set([...names, ...SENSITIVE_IGNORED])].sort();
+  return sha(paths.map((p) => `${p} ${pathHash((0, import_path82.join)(root, p))}`).join("\n"));
+}
+function stableStatus(raw, stateRootRel) {
+  const prefix = stateRootRel ? `${stateRootRel.replace(/\\/g, "/").replace(/\/+$/, "")}/` : null;
+  const entries = [];
+  const parts = raw.split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (!entry) continue;
+    const code = entry.slice(0, 2);
+    const path15 = entry.slice(3);
+    if (code[0] === "R" || code[0] === "C") {
+      entries.push(`${entry} <- ${parts[i + 1] ?? ""}`);
+      i++;
+      continue;
+    }
+    if (code === "??" && prefix && path15.startsWith(prefix) && !path15.startsWith(`${prefix}skills/`)) continue;
+    entries.push(entry);
+  }
+  return entries.sort().join("\n");
+}
+function snapshotRepo(exec, root, stateRootRel = ".omg", against) {
+  const rawCommon = run(exec, root, ["rev-parse", "--git-common-dir"]).trim();
+  const commonDir = (0, import_path82.isAbsolute)(rawCommon) ? rawCommon : (0, import_path82.resolve)(root, rawCommon);
+  const refs2 = {};
+  for (const line of run(exec, root, ["for-each-ref", FOR_EACH_REF_FORMAT]).split(/\r?\n/)) {
+    const m = /^(\S+) ([0-9a-f]{40,64})$/.exec(line.trim());
+    if (m) refs2[m[1]] = m[2];
+  }
+  const worktreeConfigs = {};
+  const wtDir = (0, import_path82.join)(commonDir, "worktrees");
+  const worktreeIds = notADirectory(wtDir) ? ["."] : (0, import_fs66.existsSync)(wtDir) ? (0, import_fs66.readdirSync)(wtDir).sort() : [];
+  for (const id of worktreeIds) {
+    if (id === ".") continue;
+    const p = (0, import_path82.join)(wtDir, id, "config.worktree");
+    if ((0, import_fs66.existsSync)(p)) worktreeConfigs[id] = fileHash(p);
+  }
+  const files = {
+    config: fileHash((0, import_path82.join)(commonDir, "config")),
+    configWorktree: fileHash((0, import_path82.join)(commonDir, "config.worktree")),
+    info: treeHash((0, import_path82.join)(commonDir, "info")),
+    modules: moduleEntries(commonDir),
+    globalConfig: globalConfigHash([
+      (0, import_path82.join)(commonDir, "config"),
+      (0, import_path82.join)(commonDir, "config.worktree"),
+      ...worktreeIds.filter((id) => id !== ".").map((id) => (0, import_path82.join)(wtDir, id, "config.worktree"))
+    ], process.env, excludesFileOf(exec, root))
+  };
+  const statusUnsafe = against !== void 0 && (files.config !== against.config || files.configWorktree !== against.configWorktree || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules) || files.globalConfig !== against.globalConfig);
+  return {
+    commonDir,
+    refs: refs2,
+    ...files,
+    worktreeConfigs,
+    worktreeIds,
+    worktrees: worktreeEntries(commonDir, worktreeIds),
+    hooks: treeHash((0, import_path82.join)(commonDir, "hooks")),
+    alternates: alternatesHash(commonDir),
+    ignored: ignoredHash(root),
+    mainHead: run(exec, root, ["rev-parse", "HEAD"]).trim(),
+    mainSymbolic: run(exec, root, ["rev-parse", "--symbolic-full-name", "HEAD"]).trim(),
+    mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]), stateRootRel)
+  };
+}
+function samePath2(a, b) {
+  const norm2 = (p) => {
+    let out = (0, import_path82.resolve)(p);
+    try {
+      out = import_fs66.realpathSync.native(out);
+    } catch {
+    }
+    return process.platform === "win32" ? out.toLowerCase() : out;
+  };
+  return norm2(a) === norm2(b);
+}
+function compareSnapshots(before, after, allowedNewRefs = {}, allow = {}) {
+  const problems = [];
+  if (before.commonDir !== after.commonDir) problems.push(`common git dir moved (${before.commonDir} -> ${after.commonDir})`);
+  const names = /* @__PURE__ */ new Set([...Object.keys(before.refs), ...Object.keys(after.refs)]);
+  for (const name of [...names].sort()) {
+    const was = before.refs[name];
+    const now = after.refs[name];
+    if (was === now) continue;
+    if (was === void 0 && name in allowedNewRefs && (allowedNewRefs[name] === "*" || now === allowedNewRefs[name])) continue;
+    if (was === void 0 && now !== void 0 && allow.refAllowed?.(name, now)) continue;
+    if (was === void 0) problems.push(`ref ${name} was created (${now.slice(0, 12)})`);
+    else if (now === void 0) problems.push(`ref ${name} was deleted (was ${was.slice(0, 12)})`);
+    else problems.push(`ref ${name} moved ${was.slice(0, 12)} -> ${now.slice(0, 12)}`);
+  }
+  if (before.config !== after.config) problems.push("the common git config changed");
+  if (before.configWorktree !== after.configWorktree) problems.push("config.worktree changed");
+  const ids = /* @__PURE__ */ new Set([...Object.keys(before.worktreeConfigs), ...Object.keys(after.worktreeConfigs)]);
+  for (const id of [...ids].sort()) {
+    if (after.worktreeConfigs[id] === void 0 && !after.worktreeIds.includes(id)) continue;
+    if (before.worktreeConfigs[id] !== after.worktreeConfigs[id]) problems.push(`worktrees/${id}/config.worktree changed`);
+  }
+  const ownNew = (id, entry) => {
+    const own = allow.newWorktree;
+    if (!own) return false;
+    if (own.id !== void 0 && own.id === id) return true;
+    return Boolean(own.path) && Boolean(entry.gitdir) && samePath2((0, import_path82.dirname)(entry.gitdir), own.path);
+  };
+  const entries = /* @__PURE__ */ new Set([...Object.keys(before.worktrees ?? {}), ...Object.keys(after.worktrees ?? {})]);
+  for (const id of [...entries].sort()) {
+    const was = before.worktrees?.[id];
+    const now = after.worktrees?.[id];
+    if (now?.notDir) {
+      problems.push(`worktrees/${id} is not a real directory (${now.notDir})`);
+      continue;
+    }
+    if (!now) {
+      if (was && !was.stale) problems.push(`worktree entry worktrees/${id} was removed or is no longer a directory`);
+      continue;
+    }
+    if (!was) {
+      if (!ownNew(id, now)) problems.push(`worktree entry worktrees/${id} was added`);
+      else if (now.commondir !== "../..") problems.push(`the lane's worktree entry worktrees/${id} points its commondir at ${now.commondir}`);
+      continue;
+    }
+    if (was.meta !== now.meta) problems.push(`worktrees/${id} changed (HEAD, gitdir, commondir or per-worktree refs)`);
+  }
+  if (before.hooks !== after.hooks) problems.push("the hooks/ directory changed");
+  if (before.info !== after.info) problems.push("the info/ directory changed");
+  const mods = /* @__PURE__ */ new Set([...Object.keys(before.modules ?? {}), ...Object.keys(after.modules ?? {})]);
+  for (const m of [...mods].sort()) {
+    const was = before.modules?.[m];
+    const now = after.modules?.[m];
+    if (was === now) continue;
+    if (now?.startsWith(NOT_A_DIR)) {
+      problems.push(`modules/${m} is not a real directory (${now.slice(NOT_A_DIR.length)})`);
+      continue;
+    }
+    problems.push(was === void 0 ? `submodule git dir modules/${m} was added` : now === void 0 ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
+  }
+  if (before.alternates !== after.alternates) problems.push("objects/info/alternates changed");
+  if (before.globalConfig !== after.globalConfig) problems.push("the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)");
+  if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(", ")})`);
+  if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);
+  if (before.mainSymbolic !== after.mainSymbolic) problems.push(`the main checkout's HEAD switched ${before.mainSymbolic} -> ${after.mainSymbolic}`);
+  if (before.mainStatus !== after.mainStatus && after.mainStatus !== STATUS_SKIPPED) problems.push("the main checkout's working tree changed (modified, added or deleted files, untracked included)");
+  return problems;
+}
+function verifyReviewWorktree(result, head, commonDir) {
+  const problems = [];
+  if (result.baseSha !== head) problems.push(`the lane started at ${result.baseSha?.slice(0, 12) ?? "unknown"}, not the head ${head.slice(0, 12)}`);
+  if (!result.worktree) return [...problems, "the lane reported no worktree to verify"];
+  const links = recordedWorktreeGitLinks(result.worktree);
+  if (!links) return [...problems, "the lane worktree cannot be read: no git links were recorded for it at its creation"];
+  const laneCommon = (0, import_path82.dirname)((0, import_path82.dirname)(links.adminDir));
+  if ((0, import_path82.basename)((0, import_path82.dirname)(links.adminDir)) !== "worktrees" || commonDir !== void 0 && !samePath2(laneCommon, commonDir)) {
+    return [...problems, `the lane worktree's git dir is ${links.adminDir}, not the repository's ${(0, import_path82.join)(commonDir ?? laneCommon, "worktrees")}/<name>`];
+  }
+  let laneHead = "";
+  let status = "";
+  try {
+    const gitDirArgs = worktreeGitDirArgs(result.worktree);
+    laneHead = runHostGit(result.worktree, [...gitDirArgs, "rev-parse", "HEAD"]).trim();
+    status = runHostGit(result.worktree, [...gitDirArgs, "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+  } catch (error2) {
+    return [...problems, `the lane worktree cannot be read: ${error2 instanceof Error ? error2.message : String(error2)}`];
+  }
+  if (laneHead !== head || result.headSha !== null && result.headSha !== head) {
+    problems.push(`the lane worktree's HEAD is ${(laneHead || result.headSha || "unknown").slice(0, 12)}, not the reviewed ${head.slice(0, 12)}`);
+  }
+  const changes = result.changes;
+  if (!changes) problems.push("the lane reported no change summary");
+  else {
+    const touched = [...changes.changedFiles, ...changes.untrackedFiles, ...changes.protectedChanges];
+    if (touched.length > 0) problems.push(`the lane changed files: ${[...new Set(touched)].slice(0, 10).join(", ")}`);
+  }
+  if (status) problems.push("the lane worktree is not clean (modified, deleted or untracked files)");
+  return problems;
+}
+var import_crypto19, import_fs66, import_os14, import_path82, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha, NOT_A_DIR, MAX_INCLUDE_DEPTH;
+var init_review_guard = __esm({
+  "src/factory/run/review-guard.ts"() {
     "use strict";
     import_crypto19 = require("crypto");
     import_fs66 = require("fs");
     import_os14 = require("os");
     import_path82 = require("path");
+    init_exec();
+    init_git_worktree();
+    init_exec2();
+    SnapshotError = class extends Error {
+    };
+    SENSITIVE_IGNORED = [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
+    STATUS_SKIPPED = "skipped: the config, info/ or a submodule changed";
+    sha = (text3) => (0, import_crypto19.createHash)("sha256").update(text3).digest("hex");
+    NOT_A_DIR = "not a directory: ";
+    MAX_INCLUDE_DEPTH = 10;
+  }
+});
+
+// src/team/shell-allowlist.ts
+function commandName(token) {
+  return token.toLowerCase().replace(/\.exe$/, "");
+}
+function tokenize2(segment) {
+  const tokens = [];
+  let i = 0;
+  while (i < segment.length) {
+    while (i < segment.length && /\s/.test(segment[i])) i++;
+    if (i >= segment.length) break;
+    const ch = segment[i];
+    if (ch === '"' || ch === "'") {
+      const close = segment.indexOf(ch, i + 1);
+      if (close < 0) return "unterminated quote";
+      if (close + 1 < segment.length && !/\s/.test(segment[close + 1])) return "quote inside a word";
+      tokens.push({ text: segment.slice(i + 1, close), quoted: true });
+      i = close + 1;
+      continue;
+    }
+    let end = i;
+    while (end < segment.length && !/\s/.test(segment[end])) end++;
+    const word = segment.slice(i, end);
+    if (/["']/.test(word)) return "quote inside a word";
+    tokens.push({ text: word, quoted: false });
+    i = end;
+  }
+  return tokens;
+}
+function realExistingPrefix(p) {
+  const tail2 = [];
+  let cur = (0, import_node_path11.resolve)(p);
+  for (; ; ) {
+    try {
+      return (0, import_node_path11.join)(import_node_fs10.realpathSync.native(cur), ...tail2.reverse());
+    } catch {
+      const parent = (0, import_node_path11.dirname)(cur);
+      if (parent === cur) return (0, import_node_path11.resolve)(p);
+      tail2.push((0, import_node_path11.basename)(cur));
+      cur = parent;
+    }
+  }
+}
+function checkPath(value, quoted, gitRev, ctx) {
+  if (value === "-") return "reading stdin (-)";
+  if (value.startsWith("~") || value.includes("=~") || value.includes(":~")) return `home path ${value}`;
+  if (value.startsWith("\\\\") || value.startsWith("//")) return `UNC path ${value}`;
+  for (let part of value.split(",")) {
+    if (/^[A-Za-z]:/.test(part)) return `drive path ${part}`;
+    if (part.includes(":")) {
+      if (!gitRev || part.split(":").length !== 2) return `colon in argument ${part}`;
+      part = part.slice(part.indexOf(":") + 1);
+    }
+    if (!quoted && part.split(/[\\/]/).some((seg) => seg.startsWith(".") && /[*?]/.test(seg))) return `hidden-file glob ${part}`;
+    if (hasDotDotSegment(part)) return `.. segment in path ${part}`;
+    const slashed = part.replace(/\\/g, "/");
+    const abs = (0, import_node_path11.isAbsolute)(slashed) ? slashed : (0, import_node_path11.resolve)(ctx.cwd, slashed);
+    let inside = false;
+    try {
+      inside = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
+    } catch {
+      return `path not resolvable: ${part}`;
+    }
+    if (!inside) return `path outside the worktree: ${part}`;
+  }
+  return null;
+}
+function checkOption(cmd, sub, token, ctx) {
+  if (/[\\~]/.test(token) || /^-[^-]/.test(token) && /[/:]/.test(token)) return `option with an attached path or escape ${token}`;
+  const long = token.startsWith("--");
+  const eq = token.indexOf("=");
+  const name = long && eq > 0 ? token.slice(0, eq) : token;
+  switch (cmd) {
+    case "git":
+      if (long && prefixOf(name, GIT_DENIED_LONG)) return `git option ${name}`;
+      if (sub === "grep" && (long && prefixOf(name, GIT_GREP_DENIED_LONG) || shortHas(token, "O"))) return "git grep -O (open files in pager)";
+      break;
+    case "rg":
+      if (RG_DENIED_LONG.has(name) || shortHas(token, "z")) return `rg option ${name}`;
+      break;
+    case "sort":
+      if (long && prefixOf(name, SORT_DENIED_LONG) || shortHas(token, "o")) return `sort option ${name}`;
+      break;
+    case "find": {
+      const lower = token.toLowerCase();
+      if (FIND_DENIED.has(lower) || lower.startsWith("-fprint")) return `find action ${token}`;
+      break;
+    }
+    default:
+      break;
+  }
+  return long && eq > 0 ? checkPath(token.slice(eq + 1), false, cmd === "git", ctx) : null;
+}
+function checkSegment(tokens, role, ctx) {
+  const cmd = commandName(tokens[0].text);
+  const table = role === "source" ? ALLOWLIST_SOURCES : ALLOWLIST_FILTERS;
+  if (!table.has(cmd)) return `${JSON.stringify(tokens[0].text)} is not an allowed ${role} command`;
+  let rest = tokens.slice(1);
+  let sub = null;
+  if (cmd === "git") {
+    let i = 0;
+    while (i < rest.length && rest[i].text.startsWith("-")) {
+      if (!GIT_GLOBAL_OPTIONS2.has(rest[i].text)) return `git global option ${rest[i].text}`;
+      i++;
+    }
+    sub = rest[i]?.text ?? null;
+    if (sub === null || !GIT_SUBCOMMANDS.has(sub)) return `git subcommand ${JSON.stringify(sub ?? "")} is not allowed`;
+    rest = rest.slice(i + 1);
+  }
+  if (cmd === "select-object") {
+    for (let i = 0; i < rest.length; i += 2) {
+      if (!SELECT_OBJECT_OPTIONS.has(rest[i].text.toLowerCase()) || !/^\d+$/.test(rest[i + 1]?.text ?? "")) {
+        return "select-object takes only -First, -Last or -Skip with a number";
+      }
+    }
+    return null;
+  }
+  let endOfOptions = false;
+  for (const tok of rest) {
+    const problem = !endOfOptions && tok.text === "--" ? null : !endOfOptions && tok.text.startsWith("-") && tok.text !== "-" ? checkOption(cmd, sub, tok.text, ctx) : checkPath(tok.text, tok.quoted, cmd === "git", ctx);
+    if (problem) return problem;
+    if (tok.text === "--") endOfOptions = true;
+  }
+  return null;
+}
+function checkText(text3, ctx, raw) {
+  const segments = text3.split("|");
+  if (segments.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
+  const names = [];
+  for (const [i, segment] of segments.entries()) {
+    const tokens = tokenize2(segment);
+    if (typeof tokens === "string") return tokens;
+    if (tokens.length === 0) return "empty pipeline segment";
+    const glob = raw ? tokens.find((t) => !t.quoted && /[*?]/.test(t.text)) : void 0;
+    if (glob) return `unquoted glob ${glob.text}`;
+    const problem = checkSegment(tokens, i === 0 ? "source" : "filter", ctx);
+    if (problem) return problem;
+    names.push(commandName(tokens[0].text));
+  }
+  return names;
+}
+function runtimeIdentifiers(req) {
+  const out = [];
+  for (const key of ["commands", "commandSegments"]) {
+    const list = req[key];
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      const id = entry?.identifier;
+      if (typeof id !== "string" || !id.trim()) continue;
+      out.push(commandName(id.trim().split(/[\\/]/).pop().split(/\s+/)[0]));
+    }
+  }
+  return out;
+}
+function reviewShellAllowlist(req, ctx) {
+  if (req.kind !== "shell") return deny(`permission kind ${String(req.kind)} is not a shell command`);
+  const raw = typeof req.fullCommandText === "string" ? req.fullCommandText : "";
+  if (!raw.trim()) return deny("shell without command text");
+  if (raw.length > MAX_ALLOWLIST_COMMAND_CHARS) return deny(`command longer than ${MAX_ALLOWLIST_COMMAND_CHARS} characters`);
+  if (req.hasWriteFileRedirection === true) return deny("file redirection");
+  const wide = NON_ASCII.exec(raw);
+  if (wide) return deny(`non-ASCII character U+${wide[0].codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
+  const bad = FORBIDDEN_CHARS.exec(raw);
+  if (bad) return deny(`forbidden character ${JSON.stringify(bad[0])}`);
+  const parsed = checkText(raw, ctx, true);
+  if (typeof parsed === "string") return deny(parsed);
+  const normalized = checkText(normalizeShellCommand(raw), ctx, false);
+  if (typeof normalized === "string") return deny(`${normalized} (after quote normalization)`);
+  const seen = /* @__PURE__ */ new Set([...parsed, ...normalized]);
+  const unknown2 = runtimeIdentifiers(req).find((id) => !seen.has(id));
+  if (unknown2 !== void 0) return deny(`the runtime parsed command ${JSON.stringify(unknown2)}, which this parser did not see`);
+  return { approve: true, reason: "review allowlist" };
+}
+var import_node_fs10, import_node_path11, MAX_ALLOWLIST_COMMAND_CHARS, MAX_SEGMENTS, FORBIDDEN_CHARS, NON_ASCII, ALLOWLIST_SOURCES, ALLOWLIST_FILTERS, GIT_GLOBAL_OPTIONS2, GIT_SUBCOMMANDS, GIT_DENIED_LONG, GIT_GREP_DENIED_LONG, RG_DENIED_LONG, SORT_DENIED_LONG, FIND_DENIED, SELECT_OBJECT_OPTIONS, deny, shortHas, prefixOf;
+var init_shell_allowlist = __esm({
+  "src/team/shell-allowlist.ts"() {
+    "use strict";
+    import_node_fs10 = require("node:fs");
+    import_node_path11 = require("node:path");
+    init_sdk_policy();
+    MAX_ALLOWLIST_COMMAND_CHARS = 2e3;
+    MAX_SEGMENTS = 3;
+    FORBIDDEN_CHARS = /[`$;&><(){}[\]@!%\r\n\0]/;
+    NON_ASCII = /[^\t\x20-\x7e]/;
+    ALLOWLIST_SOURCES = /* @__PURE__ */ new Set([
+      "git",
+      "rg",
+      "grep",
+      "findstr",
+      "select-string",
+      "sls",
+      "cat",
+      "type",
+      "get-content",
+      "gc",
+      "head",
+      "tail",
+      "wc",
+      "ls",
+      "dir",
+      "get-childitem",
+      "gci",
+      "pwd",
+      "get-location",
+      "find"
+    ]);
+    ALLOWLIST_FILTERS = /* @__PURE__ */ new Set(["head", "tail", "wc", "sort", "select-object", "measure-object", "sort-object"]);
+    GIT_GLOBAL_OPTIONS2 = /* @__PURE__ */ new Set(["--no-pager", "-P", "--no-optional-locks"]);
+    GIT_SUBCOMMANDS = /* @__PURE__ */ new Set([
+      "status",
+      "diff",
+      "log",
+      "show",
+      "blame",
+      "rev-parse",
+      "merge-base",
+      "ls-files",
+      "ls-tree",
+      "cat-file",
+      "shortlog",
+      "describe",
+      "grep",
+      "name-rev",
+      "rev-list",
+      "diff-tree",
+      "show-ref",
+      "for-each-ref"
+    ]);
+    GIT_DENIED_LONG = ["--output", "--ext-diff", "--textconv", "--no-index", "--filters"];
+    GIT_GREP_DENIED_LONG = ["--open-files-in-pager"];
+    RG_DENIED_LONG = /* @__PURE__ */ new Set(["--pre", "--pre-glob", "--search-zip", "--hostname-bin"]);
+    SORT_DENIED_LONG = ["--output", "--compress-program"];
+    FIND_DENIED = /* @__PURE__ */ new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fls"]);
+    SELECT_OBJECT_OPTIONS = /* @__PURE__ */ new Set(["-first", "-last", "-skip"]);
+    deny = (reason) => ({ approve: false, reason: `review allowlist: ${reason}` });
+    shortHas = (token, letters) => /^-[^-]/.test(token) && [...letters].some((l) => token.slice(1).includes(l));
+    prefixOf = (name, denied) => denied.some((d) => d.startsWith(name) || name.startsWith(d));
+  }
+});
+
+// src/copilot-run/timeout.ts
+function withTimeout3(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject2) => {
+      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+var errText4;
+var init_timeout = __esm({
+  "src/copilot-run/timeout.ts"() {
+    "use strict";
+    errText4 = (err) => err instanceof Error ? err.message : String(err);
+  }
+});
+
+// src/copilot-run/sandbox-session.ts
+function sandboxBypassDenial(req) {
+  return req.requestSandboxBypass === true || req.requestSandboxPermissive === true ? { approve: false, reason: "sandbox bypass requests are never approved" } : null;
+}
+var SessionSandboxController;
+var init_sandbox_session = __esm({
+  "src/copilot-run/sandbox-session.ts"() {
+    "use strict";
+    init_copilot_sdk_driver();
+    init_timeout();
+    init_sandbox2();
+    SessionSandboxController = class {
+      constructor(opts) {
+        this.opts = opts;
+      }
+      /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
+      state = null;
+      toolNames = /* @__PURE__ */ new Map();
+      /** Whether createSession takes `config` (else confirm applies it via options.update). */
+      atCreate(loaded2, config2) {
+        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      }
+      /**
+       * Probe the host and set `state` (§5). Returns the config to apply when
+       * the host supports the sandbox (the mode stays the unconfirmed one until
+       * confirm), else null with the final mode: `detect-only` when the sandbox
+       * is switched off, otherwise the fail-closed mode.
+       */
+      async decide(client, loaded2) {
+        const { opts } = this;
+        let cliVersion = "unknown";
+        try {
+          const status = await withTimeout3(client.getStatus(), opts.rpcTimeoutMs, "getStatus()");
+          if (typeof status.version === "string") cliVersion = status.version;
+        } catch {
+        }
+        const host = await probeHostSupport(client, opts.rpcTimeoutMs, { platform: opts.platform, ...opts.trialLaunch ? { trialLaunch: opts.trialLaunch } : {} });
+        const base = { host, applied: "none", canary: "skipped", unsandboxedCalls: 0, cliVersion, sdkVersion: loaded2.version ?? "unknown" };
+        const { settings, profile } = opts;
+        const off = !settings.enabled ? "sandbox.enabled is false" : opts.env[SANDBOX_KILL_ENV] === "off" ? `${SANDBOX_KILL_ENV}=off` : null;
+        if (off) {
+          if (profile === "review") {
+            this.state = { ...base, mode: "read-only-no-shell", reason: off };
+            opts.note(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
+          } else {
+            this.state = { ...base, mode: "detect-only", reason: off };
+            opts.note(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
+          }
+          return null;
+        }
+        const fallback = (reason) => {
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason };
+          if (this.state.mode === "detect-only") opts.note(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+          if (this.state.mode === "read-only-no-shell") opts.note(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
+        };
+        if (!host.supported) {
+          fallback(host.reason ?? "the host does not support the sandbox");
+          return null;
+        }
+        try {
+          const config2 = buildSandboxConfig(profile, opts.policyContext(), host);
+          this.state = { ...base, mode: unconfirmedMode(profile, settings), reason: "not confirmed yet" };
+          return config2;
+        } catch (err) {
+          fallback(errText4(err));
+          return null;
+        }
+      }
+      /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
+      async confirm(session, config2, atCreate) {
+        const { opts } = this;
+        const sbx = this.state;
+        let why = atCreate ? null : await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
+        if (!why) {
+          sbx.applied = atCreate ? "create" : "options.update";
+          const enf = await readEnforcement(session, opts.rpcTimeoutMs);
+          if (typeof enf === "string") why = enf;
+          else {
+            sbx.enforcement = enf;
+            if (enf.blocked) why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ""}`;
+          }
+        }
+        if (!why) {
+          sbx.mode = "enforced";
+          delete sbx.reason;
+          return;
+        }
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") {
+          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
+          try {
+            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+          } catch {
+          }
+        }
+      }
+      /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
+      toolStarted(data) {
+        if (typeof data.toolCallId === "string" && typeof data.toolName === "string") this.toolNames.set(data.toolCallId, data.toolName);
+      }
+      /**
+       * `tool.execution_complete` data: the attestation (§5). A shell call must
+       * report sandboxed: true. A call of an unknown tool must not report false,
+       * and in an enforced session it must report true (a missing field is an
+       * escape). Counts every escape; returns the `sandbox-escaped:` error when
+       * the session must stop (any mode but detect-only), else null.
+       */
+      toolCompleted(data) {
+        const id = String(data.toolCallId ?? "");
+        const name = this.toolNames.get(id) ?? (typeof data.toolName === "string" ? data.toolName : null);
+        this.toolNames.delete(id);
+        const sbx = this.state;
+        const escaped = name === null ? sbx?.mode === "enforced" ? data.sandboxed !== true : data.sandboxed === false : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
+        if (!sbx || !escaped) return null;
+        sbx.unsandboxedCalls += 1;
+        if (sbx.mode === "detect-only") return null;
+        return `sandbox-escaped: ${name ?? "a tool"} call ${id || "?"} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
+      }
+    };
+  }
+});
+
+// src/copilot-run/job.ts
+var job_exports = {};
+__export(job_exports, {
+  CopilotRunError: () => CopilotRunError,
+  CopilotRunManager: () => CopilotRunManager,
+  DEFAULT_MAX_CREDITS: () => DEFAULT_MAX_CREDITS,
+  DEFAULT_TIMEOUT_MS: () => DEFAULT_TIMEOUT_MS,
+  MAX_PROMPT_CHARS: () => MAX_PROMPT_CHARS,
+  MAX_RUNNING_JOBS: () => MAX_RUNNING_JOBS,
+  MAX_TIMEOUT_MS: () => MAX_TIMEOUT_MS,
+  REVIEW_SHELL_DENY_PATTERNS: () => REVIEW_SHELL_DENY_PATTERNS,
+  STOP_CONTINUATION_SKIP_TOKEN: () => STOP_CONTINUATION_SKIP_TOKEN,
+  WORKTREE_TEAM: () => WORKTREE_TEAM,
+  defaultCopilotRunDeps: () => defaultCopilotRunDeps,
+  filterDriverOverrides: () => filterDriverOverrides,
+  hostGit: () => hostGit,
+  hostGitHardeningArgs: () => hostGitHardeningArgs,
+  jobRefProblem: () => jobRefProblem,
+  relativeHooksPathRule: () => relativeHooksPathRule,
+  resolveStartRef: () => resolveStartRef,
+  reviewProfileDenial: () => reviewProfileDenial,
+  scrubLaneCredentials: () => scrubLaneCredentials,
+  sharedGitStateChanges: () => sharedGitStateChanges,
+  sharedGitStateSnapshot: () => sharedGitStateSnapshot,
+  summarizeChanges: () => summarizeChanges
+});
+function scrubLaneCredentials(env, emptyDir) {
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
+    if (isCredentialEnvKey(key)) delete env[key];
+  }
+  const emptyConfig = (0, import_node_path12.join)(emptyDir, "gitconfig");
+  (0, import_node_fs11.writeFileSync)(emptyConfig, "");
+  Object.assign(env, {
+    GH_CONFIG_DIR: emptyDir,
+    AZURE_CONFIG_DIR: emptyDir,
+    GIT_CONFIG_GLOBAL: emptyConfig,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never"
+  });
+}
+function reviewProfileDenial(req) {
+  if (req.kind === "write") return "review profile: the write tool is disabled";
+  if (req.kind !== "shell") return null;
+  const normalized = normalizeShellCommand(String(req.fullCommandText ?? ""));
+  return REVIEW_SHELL_DENY_PATTERNS.find(({ re }) => re.test(normalized))?.reason ?? null;
+}
+function resolveStartRef(repoRoot, ref) {
+  if (typeof ref !== "string" || !ref.trim()) throw new CopilotRunError("copilot_run_start: startRef must be a non-empty string.");
+  if (ref.length > MAX_START_REF_CHARS || ref.startsWith("-") || /[\s\x00-\x1f\x7f]/.test(ref)) {
+    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} is not a valid ref.`);
+  }
+  const sha2 = git2(repoRoot, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`]);
+  if (!sha2 || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha2)) {
+    throw new CopilotRunError(`copilot_run_start: startRef ${JSON.stringify(ref)} does not resolve to a commit in ${repoRoot}.`);
+  }
+  return sha2;
+}
+function settleWithin(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise.then(() => {
+    }),
+    new Promise((r) => {
+      timer = setTimeout(r, ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+function hostGit(cwd, args) {
+  try {
+    return runHostGit(cwd, args, GIT_TIMEOUT_MS2).trim();
+  } catch {
+    return null;
+  }
+}
+function filterDriverOverrides(cwd, gitDirArgs = []) {
+  return hostGitDriverOverrides(cwd, hostGitEnv(gitDirArgs), GIT_TIMEOUT_MS2);
+}
+function summarizeChanges(cwd, base, extraProtected = [], gitDirArgs = [], ignoredUnderProtected = false) {
+  if (!base) return null;
+  const top = git2(cwd, [...gitDirArgs, "rev-parse", "--show-toplevel"]);
+  if (!top) return null;
+  const stat = git2(top, [...gitDirArgs, "diff", "--no-ext-diff", "--no-textconv", "--stat", base, "--"]);
+  const names = git2(top, [...gitDirArgs, "diff", "--no-ext-diff", "--no-textconv", "--name-only", base, "--"]);
+  const gitlinks = (out) => out === null ? null : out.split("\0").filter((e) => e.startsWith("160000 ")).map((e) => e.slice(e.indexOf("	") + 1));
+  const indexLinks = gitlinks(git2(top, [...gitDirArgs, "ls-files", "-z", "--stage"]));
+  const headLinks = gitlinks(git2(top, [...gitDirArgs, "ls-tree", "-r", "-z", "--full-tree", "HEAD"]));
+  const baseLinks = gitlinks(git2(top, [...gitDirArgs, "ls-tree", "-r", "-z", "--full-tree", base]));
+  if (stat === null || names === null || indexLinks === null || headLinks === null || baseLinks === null) return null;
+  const newGitlinks = [.../* @__PURE__ */ new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
+  const changedFiles = [.../* @__PURE__ */ new Set([...lines(names), ...newGitlinks])];
+  const untrackedFiles = lines(git2(top, [...gitDirArgs, "ls-files", "--others", "--exclude-standard"]));
+  let ignored = [];
+  if (ignoredUnderProtected) {
+    const specs = [...PROTECTED_PATHS, ...extraProtected].map((rule) => `:(icase,literal)${rule}`);
+    const out = git2(top, [...gitDirArgs, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", ...specs]);
+    if (out === null) return null;
+    ignored = out.split("\0").filter(Boolean);
+  }
+  return {
+    diffStat: stat,
+    changedFiles,
+    untrackedFiles,
+    protectedChanges: [.../* @__PURE__ */ new Set([...protectedChanges([...changedFiles, ...untrackedFiles, ...ignored], extraProtected), ...newGitlinks])],
+    newGitlinks
+  };
+}
+function seedGitIdentity(repo, globalConfig2) {
+  for (const key of ["user.name", "user.email"]) {
+    const value = git2(repo, ["config", "--get", key]);
+    if (value) git2(repo, ["config", "--file", globalConfig2, key, value]);
+  }
+}
+function jobGitDirArgs(job) {
+  if (!job.worktree) return [];
+  const { worktreeLinks: links, commonGitDir } = job;
+  if (!links || !commonGitDir || !worktreeGitLinksIntact(job.worktree.path, links, commonGitDir)) return null;
+  try {
+    return worktreeGitDirArgs(job.worktree.path);
+  } catch {
+    return null;
+  }
+}
+function syncJobBranch(job, gitDirArgs) {
+  const wt = job.worktree;
+  const ref = `refs/heads/${wt.branch}`;
+  const problem = jobRefProblem(job.commonGitDir, wt.repoRoot, ref);
+  if (problem) return { problem };
+  const attached = git2(wt.path, [...gitDirArgs, "symbolic-ref", "-q", "HEAD"]);
+  if (attached) return { problem: `the worktree's HEAD is attached to ${attached}, not detached` };
+  const head = git2(wt.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+  const current = git2(wt.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  if (!head || !current || head === current) return { moved: null };
+  if (git2(wt.repoRoot, ["update-ref", "--no-deref", "-m", "copilot_run: the session's commits", ref, head, current]) === null) {
+    job.notes.push(`could not move branch ${wt.branch} to the worktree's HEAD ${head.slice(0, 12)}; the commits are on the worktree's detached HEAD.`);
+    return { moved: null };
+  }
+  return { moved: head };
+}
+function jobRefProblem(commonGitDir, repoRoot, ref) {
+  if (!commonGitDir) return `the common git dir of ${ref} is unknown`;
+  let path15 = commonGitDir;
+  for (const seg of ref.split("/")) {
+    path15 = (0, import_node_path12.join)(path15, seg);
+    let st;
+    try {
+      st = (0, import_node_fs11.lstatSync)(path15);
+    } catch {
+      return null;
+    }
+    if (st.isSymbolicLink()) return `${ref} runs through a link (${path15})`;
+  }
+  const kind = describeEntry(path15);
+  if (!kind.startsWith("file ")) return `${ref} is not a regular file (${kind})`;
+  let text3 = "";
+  try {
+    text3 = (0, import_node_fs11.readFileSync)(path15, "utf8");
+  } catch {
+    return `${ref} is unreadable`;
+  }
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?\r?\n?$/.test(text3)) return `${ref} does not hold a plain commit id (${JSON.stringify(text3.trim().slice(0, 80))})`;
+  if (git2(repoRoot, ["symbolic-ref", "-q", ref])) return `${ref} is a symbolic ref`;
+  return null;
+}
+function describeEntry(path15) {
+  let st;
+  try {
+    st = (0, import_node_fs11.lstatSync)(path15);
+  } catch {
+    return "absent";
+  }
+  if (st.isSymbolicLink()) {
+    let target = "?";
+    try {
+      target = (0, import_node_fs11.readlinkSync)(path15);
+    } catch {
+    }
+    return `link ${target}`;
+  }
+  if (st.isDirectory()) return "dir";
+  if (!st.isFile()) return "other";
+  try {
+    return `file ${st.mode & 73 ? "x" : "-"} ${(0, import_node_crypto3.createHash)("sha256").update((0, import_node_fs11.readFileSync)(path15)).digest("hex")}`;
+  } catch {
+    return "file unreadable";
+  }
+}
+function sharedGitStateSnapshot(commonGitDir) {
+  const out = {};
+  const add = (rel, recurse) => {
+    const kind = describeEntry((0, import_node_path12.join)(commonGitDir, rel));
+    out[rel] = kind;
+    if (kind !== "dir" || !recurse) return;
+    let names = [];
+    try {
+      names = (0, import_node_fs11.readdirSync)((0, import_node_path12.join)(commonGitDir, rel)).sort();
+    } catch {
+      out[rel] = "dir unreadable";
+    }
+    for (const name of names) add(`${rel}/${name}`, true);
+  };
+  add("config", false);
+  add("config.worktree", false);
+  add("commondir", false);
+  add("gitdir", false);
+  add("HEAD", false);
+  add("hooks", true);
+  add("info", true);
+  add("worktrees", false);
+  if (out.worktrees === "dir") {
+    let ids = [];
+    try {
+      ids = (0, import_node_fs11.readdirSync)((0, import_node_path12.join)(commonGitDir, "worktrees")).sort();
+    } catch {
+      out.worktrees = "dir unreadable";
+    }
+    for (const id of ids) {
+      add(`worktrees/${id}`, false);
+      if (out[`worktrees/${id}`] !== "dir") continue;
+      for (const name of ["config.worktree", "commondir", "gitdir"]) add(`worktrees/${id}/${name}`, false);
+      out[`worktrees/${id}/HEAD`] = worktreeHeadEntry((0, import_node_path12.join)(commonGitDir, "worktrees", id, "HEAD"));
+    }
+  }
+  try {
+    for (const [name, kind] of Object.entries(moduleEntries(commonGitDir))) out[`modules/${name}`] = kind;
+  } catch {
+    out.modules = "dir unreadable";
+  }
+  Object.assign(out, branchRefs(commonGitDir));
+  return out;
+}
+function worktreeHeadEntry(path15) {
+  const kind = describeEntry(path15);
+  if (!kind.startsWith("file ")) return kind;
+  let text3;
+  try {
+    text3 = (0, import_node_fs11.readFileSync)(path15, "utf8");
+  } catch {
+    return "file unreadable";
+  }
+  const m = /^(?:([0-9a-f]{40}(?:[0-9a-f]{24})?)|ref: (refs\/\S+))\r?\n?$/.exec(text3);
+  if (!m) return kind;
+  return m[1] ? `head ${m[1]}` : `head ref: ${m[2]}`;
+}
+function branchRefs(commonGitDir) {
+  const out = {};
+  const packed = (0, import_node_path12.join)(commonGitDir, "packed-refs");
+  const packedKind = describeEntry(packed);
+  if (packedKind.startsWith("file ")) {
+    let text3 = "";
+    try {
+      text3 = (0, import_node_fs11.readFileSync)(packed, "utf8");
+    } catch {
+      out["packed-refs"] = "file unreadable";
+    }
+    for (const line of text3.split(/\r?\n/)) {
+      const m = /^([0-9a-f]{40,64}) (refs\/heads\/\S+)$/.exec(line.trim());
+      if (m) out[m[2]] = `ref ${m[1]}`;
+    }
+  } else if (packedKind !== "absent") {
+    out["packed-refs"] = packedKind;
+  }
+  const walk = (rel) => {
+    const path15 = (0, import_node_path12.join)(commonGitDir, rel);
+    const kind = describeEntry(path15);
+    if (kind === "dir") {
+      let names = [];
+      try {
+        names = (0, import_node_fs11.readdirSync)(path15).sort();
+      } catch {
+        out[rel] = "dir unreadable";
+      }
+      for (const name of names) walk(`${rel}/${name}`);
+    } else if (kind.startsWith("file ")) {
+      try {
+        out[rel] = `ref ${(0, import_node_fs11.readFileSync)(path15, "utf8").replace(/\r?\n$/, "")}`;
+      } catch {
+        out[rel] = "file unreadable";
+      }
+    } else if (kind !== "absent" || rel === "refs/heads") {
+      out[rel] = kind;
+    }
+  };
+  walk("refs/heads");
+  return out;
+}
+function sharedGitStateChanges(before, after, ignore = /* @__PURE__ */ new Set(), owned = /* @__PURE__ */ new Set()) {
+  return [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter((key) => {
+    if (ignore.has(key)) return false;
+    const id = /^worktrees\/([^/]+)/.exec(key)?.[1];
+    if (id !== void 0 && (before[`worktrees/${id}`] === void 0 || after[`worktrees/${id}`] === void 0)) return false;
+    const was = before[key];
+    const now = after[key];
+    if (!owned.has(key)) {
+      const plain = (v) => v === void 0 || PLAIN_REF.test(v);
+      if (key.startsWith(JOB_REF_PREFIX) && plain(was) && plain(now)) return false;
+      if (key === `worktrees/${id}/HEAD` && now?.startsWith("head ") && !now.startsWith("head ref: ")) return false;
+    }
+    return (was ?? "absent") !== (now ?? "absent");
+  });
+}
+function relativeHooksPathRule(cwd, gitDirArgs = []) {
+  let out;
+  try {
+    out = runHostGit(cwd, [...gitDirArgs, "config", "--show-scope", "--get-all", "core.hooksPath"], GIT_TIMEOUT_MS2);
+  } catch (err) {
+    const e = err;
+    if (e.status === 1 && !e.stdout?.trim() && !e.stderr?.trim()) return null;
+    throw new Error(`cannot read core.hooksPath with git config --show-scope (git 2.26 or newer): ${e.stderr?.trim() || errText4(err)}`);
+  }
+  const values = lines(out).filter((l) => !l.startsWith("command	")).map((l) => l.slice(l.indexOf("	") + 1).trim());
+  const value = values[values.length - 1];
+  if (!value || value.startsWith("~") || (0, import_node_path12.isAbsolute)(value) || import_node_path12.win32.isAbsolute(value)) return null;
+  const segments = value.replace(/\\/g, "/").split("/").filter((seg) => seg && seg !== ".");
+  return segments.length > 0 && !segments.includes("..") ? `${segments.join("/")}/` : null;
+}
+function relativeInside(path15, root) {
+  const rel = (0, import_node_path12.relative)((0, import_node_path12.resolve)(root), (0, import_node_path12.resolve)(path15));
+  return rel && !rel.startsWith("..") && !(0, import_node_path12.isAbsolute)(rel) ? rel.replace(/\\/g, "/") : null;
+}
+function defaultCopilotRunDeps(env = process.env) {
+  return {
+    env,
+    platform: process.platform,
+    loadSdk: () => loadCopilotSdk(env, import_node_child_process4.spawnSync),
+    resolveBin: () => resolveCopilotBinary(void 0, env).bin,
+    pluginRoot: () => resolveDefaultPluginRoot(env),
+    userConfigDir: () => getCopilotConfigDir(),
+    isAlive: (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (err) {
+        return err.code === "EPERM";
+      }
+    },
+    killTree: (pid) => killProcessTree(pid, import_node_child_process4.spawnSync)
+  };
+}
+var import_node_child_process4, import_node_crypto3, import_node_fs11, import_node_os4, import_node_path12, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var init_job = __esm({
+  "src/copilot-run/job.ts"() {
+    "use strict";
+    import_node_child_process4 = require("node:child_process");
+    import_node_crypto3 = require("node:crypto");
+    import_node_fs11 = require("node:fs");
+    import_node_os4 = require("node:os");
+    import_node_path12 = require("node:path");
+    init_governor();
+    init_ledger();
+    init_lane_commit();
+    init_review_guard();
+    init_append_no_follow();
+    init_worktree_paths();
+    init_process_utils();
+    init_config2();
+    init_merge2();
+    init_copilot_binary();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_process_utils2();
+    init_git_worktree();
+    init_sdk_policy();
+    init_shell_allowlist();
+    init_config_dir();
+    init_names2();
+    init_sandbox2();
+    init_sandbox_session();
+    init_timeout();
+    DEFAULT_TIMEOUT_MS = 15 * 6e4;
+    MAX_TIMEOUT_MS = 60 * 6e4;
+    DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
+    MAX_RUNNING_JOBS = 2;
+    MAX_PROMPT_CHARS = 1e5;
+    WORKTREE_TEAM = "copilot-run";
+    MCP_SERVER = "t";
+    START_TIMEOUT_MS2 = 6e4;
+    RPC_TIMEOUT_MS2 = 3e4;
+    ABORT_GRACE_MS2 = 1e4;
+    SHUTDOWN_GRACE_MS2 = 2e3;
+    STOP_TIMEOUT_MS2 = 15e3;
+    SERVER_EXIT_GRACE_MS = 3e3;
+    GIT_TIMEOUT_MS2 = 3e4;
+    DENIED_LOG_MAX = 50;
+    JOB_ID = /^cr-[0-9a-f]{12}$/;
+    MAX_START_REF_CHARS = 256;
+    STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
+    CopilotRunError = class extends Error {
+    };
+    REVIEW_SHELL_DENY_PATTERNS = [
+      ...gitSubcommandDeny(
+        String.raw`(?:commit|reset|checkout|merge|rebase|stash|switch|restore|cherry-pick|revert|apply|am|branch|tag|update-ref|symbolic-ref|worktree|notes|replace|push|config|pull|bisect|remote|clean|sparse-checkout|submodule|read-tree|update-index|checkout-index|filter-branch|gc\s+[^;&|\n]*--prune|reflog\s+expire)(?![\w-])`,
+        "review profile: git commands that change the tree, its refs or its config"
+      ),
+      ...gitSubcommandDeny(String.raw`(?:-c(?:\s|$)|--config-env\b)`, "review profile: git config overrides (-c, --config-env)"),
+      // A refspec argument (`src:dst`, `+refs/*:refs/*`); a URL's `://` and scp-style `user@host:` are not one.
+      ...gitSubcommandDeny(String.raw`fetch\b[^;&|\n]*?\s\+?[\w./*-]*:(?!//)`, "review profile: git fetch with a refspec")
+    ];
+    IDENTITY_TIMEOUT_MS = 1e4;
+    sleep5 = (ms) => new Promise((r) => {
+      setTimeout(r, ms);
+    });
+    isTerminal2 = (s) => s !== "starting" && s !== "running";
+    git2 = hostGit;
+    lines = (text3) => (text3 ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    JOB_REF_PREFIX = `refs/heads/omc-team/${WORKTREE_TEAM}/`;
+    PLAIN_REF = /^ref [0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+    CopilotRunManager = class {
+      constructor(deps) {
+        this.deps = deps;
+      }
+      jobs = /* @__PURE__ */ new Map();
+      /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+      owned = /* @__PURE__ */ new Set();
+      /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
+      start(input, options = {}) {
+        if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== "1") {
+          throw new CopilotRunError(
+            `copilot_run_start runs a live, billed Copilot session and is disabled. Set ${COPILOT_RUN_ALLOW_ENV}=1 in the MCP server env (claude mcp add omg-dev -e ${COPILOT_RUN_ALLOW_ENV}=1 -- node <oh-my-copilot>/dist/mcp/standalone-server.js).`
+          );
+        }
+        const prompt = input.prompt;
+        if (typeof prompt !== "string" || !prompt.trim()) throw new CopilotRunError("copilot_run_start: prompt is empty.");
+        if (prompt.length > MAX_PROMPT_CHARS) throw new CopilotRunError(`copilot_run_start: prompt is longer than ${MAX_PROMPT_CHARS} characters.`);
+        const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
+          throw new CopilotRunError(`copilot_run_start: timeoutMs must be positive and at most ${MAX_TIMEOUT_MS}.`);
+        }
+        const maxCredits = input.maxCredits ?? DEFAULT_MAX_CREDITS;
+        if (!Number.isFinite(maxCredits) || maxCredits <= 0) throw new CopilotRunError("copilot_run_start: maxCredits must be a positive number.");
+        const isolation = input.isolation ?? "worktree";
+        const profile = input.profile ?? "write";
+        if (profile !== "write" && profile !== "review") throw new CopilotRunError(`copilot_run_start: profile must be "write" or "review", not ${JSON.stringify(profile)}.`);
+        const startRef = input.startRef ?? null;
+        if (startRef !== null && isolation !== "worktree") throw new CopilotRunError('copilot_run_start: startRef needs isolation "worktree".');
+        if (options.ledgerKey !== void 0 && !SAFE_KEY.test(options.ledgerKey)) throw new CopilotRunError(`copilot_run_start: ledgerKey ${JSON.stringify(options.ledgerKey)} must match ${SAFE_KEY}.`);
+        const cwd = (0, import_node_path12.resolve)(input.cwd ?? process.cwd());
+        let isDir = false;
+        try {
+          isDir = (0, import_node_fs11.statSync)(cwd).isDirectory();
+        } catch {
+        }
+        if (!isDir) throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not an existing directory.`);
+        const repoRoot = git2(cwd, ["rev-parse", "--show-toplevel"]);
+        if (isolation === "worktree" && !repoRoot) {
+          throw new CopilotRunError(`copilot_run_start: cwd ${JSON.stringify(cwd)} is not inside a git repository; isolation "worktree" needs one (or pass isolation: "none").`);
+        }
+        const startSha = startRef !== null && repoRoot ? resolveStartRef((0, import_node_path12.resolve)(repoRoot), startRef) : null;
+        let sandboxSettings;
+        let sandboxWarnings;
+        try {
+          ({ settings: sandboxSettings, warnings: sandboxWarnings } = (this.deps.sandboxSettings ?? loadSandboxSettings)(repoRoot ? (0, import_node_path12.resolve)(repoRoot) : cwd, options.sandboxScope ?? "copilot-run"));
+        } catch (err) {
+          throw new CopilotRunError(`copilot_run_start: sandbox config: ${errText4(err)}`);
+        }
+        if (sandboxSettings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== "off") {
+          const problem = (this.deps.hostGitAttrSourceProblem ?? hostGitAttrSourceProblem)();
+          if (problem) throw new CopilotRunError(`copilot_run_start: ${problem}. Upgrade git, or switch the sandbox off (sandbox.enabled false).`);
+          const missing = missingSandboxEnv(this.deps.env, this.deps.platform);
+          if (missing.length) {
+            throw new CopilotRunError(`copilot_run_start: the Windows sandbox needs ${missing.join(" and ")} in the environment to launch any process, and it is unset here. Set it, or switch the sandbox off (sandbox.enabled false).`);
+          }
+          const top = repoRoot ? (0, import_node_path12.resolve)(repoRoot) : cwd;
+          if (isolation === "none" && profile === "write" && sandboxSettings.writeUnsandboxed !== "detect-only") {
+            const omcRoot = getOmcRoot(top);
+            let inside = true;
+            try {
+              inside = isUnderRoot(omcRoot, top, this.deps.platform);
+            } catch {
+            }
+            if (inside) {
+              throw new CopilotRunError(`copilot_run_start: a sandboxed write job with isolation "none" would let the lane write the job's state in ${omcRoot}, which lies inside ${top}. Use isolation "worktree" (the default), or the review profile.`);
+            }
+          }
+        }
+        const running = [...this.jobs.values()].filter((j) => !isTerminal2(j.status)).length;
+        if (running >= MAX_RUNNING_JOBS) {
+          throw new CopilotRunError(`copilot_run_start: ${running} job(s) already running (limit ${MAX_RUNNING_JOBS}); wait for or cancel one first.`);
+        }
+        const ledgerCwd = repoRoot ? (0, import_node_path12.resolve)(repoRoot) : cwd;
+        const notes = [...sandboxWarnings];
+        const id = `cr-${(0, import_node_crypto3.randomBytes)(6).toString("hex")}`;
+        let workCwd = cwd;
+        let worktree = null;
+        let worktreeLinks = null;
+        let commonGitDir = null;
+        let baseCommit = repoRoot ? git2(cwd, ["rev-parse", "HEAD"]) : null;
+        let hooksRule = null;
+        if (isolation === "worktree") {
+          let info;
+          try {
+            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {} });
+          } catch (err) {
+            const path15 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
+            const branch = getBranchName(WORKTREE_TEAM, id);
+            let left = "";
+            if ((0, import_node_fs11.existsSync)(path15)) {
+              try {
+                removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
+              } catch {
+              }
+              if ((0, import_node_fs11.existsSync)(path15)) left = ` The partly created worktree ${path15} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
+            }
+            throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText4(err)}.${left}`);
+          }
+          if (!info) throw new CopilotRunError("copilot_run_start: worktree creation unexpectedly disabled.");
+          const commonRaw = git2(ledgerCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+          commonGitDir = commonRaw ? (0, import_node_path12.resolve)(commonRaw) : null;
+          if (git2(ledgerCwd, ["config", "--bool", "extensions.worktreeConfig"]) === "true") {
+            const admin = readWorktreeGitLinks(info.path)?.adminDir;
+            if (admin) {
+              try {
+                (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(admin, "config.worktree"), "", { flag: "wx" });
+              } catch {
+              }
+            }
+          }
+          worktreeLinks = readWorktreeGitLinks(info.path);
+          const head = info.baseCommit ?? null;
+          const recorded = (links) => {
+            try {
+              recordWorktreeGitLinks(info.path, links);
+              return true;
+            } catch {
+              return false;
+            }
+          };
+          const detached = worktreeLinks !== null && commonGitDir !== null && head !== null && worktreeGitLinksIntact(info.path, worktreeLinks, commonGitDir) && recorded(worktreeLinks) && git2(info.path, [...worktreeGitDirArgs(info.path), "update-ref", "--no-deref", "-m", "copilot_run: detach for the session", "HEAD", head]) !== null;
+          if (!detached) {
+            try {
+              removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
+            } catch {
+            }
+            const left = (0, import_node_fs11.existsSync)(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : "";
+            throw new CopilotRunError(`copilot_run_start: could not record and detach the job worktree's git links.${left}`);
+          }
+          try {
+            hooksRule = relativeHooksPathRule(info.path, worktreeGitDirArgs(info.path));
+          } catch (err) {
+            try {
+              removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
+            } catch {
+            }
+            const left = (0, import_node_fs11.existsSync)(info.path) ? ` The worktree ${info.path} (branch ${info.branch}) is left; check it and remove it by hand.` : "";
+            throw new CopilotRunError(`copilot_run_start: ${errText4(err)}.${left}`);
+          }
+          const sub = relativeInside(cwd, ledgerCwd);
+          workCwd = sub && (0, import_node_fs11.existsSync)((0, import_node_path12.join)(info.path, sub)) ? (0, import_node_path12.join)(info.path, sub) : info.path;
+          worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
+          baseCommit = info.baseCommit ?? startSha ?? baseCommit;
+          if (!startSha && lines(git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0) {
+            notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? "?"} without them.`);
+          }
+        } else if (repoRoot) {
+          notes.push('isolation "none": Copilot works in your working tree; the change summary includes edits that were already there.');
+          try {
+            hooksRule = relativeHooksPathRule(ledgerCwd);
+          } catch (err) {
+            throw new CopilotRunError(`copilot_run_start: ${errText4(err)}.`);
+          }
+        }
+        let extraProtected = [];
+        try {
+          extraProtected = configuredProtectedPaths(ledgerCwd);
+        } catch {
+        }
+        if (hooksRule) extraProtected.push(hooksRule);
+        if (options.sandboxScope === "factory") extraProtected.push(...LANE_PROTECTED_PATHS);
+        const sharedGitState = commonGitDir ? sharedGitStateSnapshot(commonGitDir) : null;
+        const liveWorktreeHeads = /* @__PURE__ */ new Set();
+        for (const j of [...this.jobs.values()].filter((other) => !isTerminal2(other.status))) {
+          if (j.worktreeLinks) liveWorktreeHeads.add(`worktrees/${(0, import_node_path12.basename)(j.worktreeLinks.adminDir)}/HEAD`);
+        }
+        if (worktree && worktreeLinks) {
+          const headKey = `worktrees/${(0, import_node_path12.basename)(worktreeLinks.adminDir)}/HEAD`;
+          liveWorktreeHeads.add(headKey);
+          this.owned.add(headKey).add(`refs/heads/${worktree.branch}`);
+          this.expectJobRef(worktree.branch, baseCommit);
+        }
+        const jobDir = (0, import_node_path12.join)(getOmcRoot(ledgerCwd), "state", "copilot-run", id);
+        let requestStop = () => {
+        };
+        const stopped = new Promise((r) => {
+          requestStop = (reason) => {
+            if (!job.stopReason) job.stopReason = reason;
+            r();
+          };
+        });
+        const job = {
+          id,
+          status: "starting",
+          prompt,
+          cwd,
+          workCwd,
+          isolation,
+          profile,
+          startRef,
+          disableStopContinuations: options.disableStopContinuations === true,
+          scrubCredentials: options.scrubCredentials === true,
+          hostCommits: options.hostCommits === true,
+          ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
+          model: input.model ?? null,
+          timeoutMs,
+          maxCredits,
+          ledgerCwd,
+          jobDir,
+          home: (0, import_node_path12.join)(jobDir, "home"),
+          eventsPath: (0, import_node_path12.join)(jobDir, "events.jsonl"),
+          baseCommit,
+          headCommit: null,
+          worktree,
+          worktreeLinks,
+          commonGitDir,
+          extraProtected,
+          sharedGitState,
+          liveWorktreeHeads,
+          branchCommit: null,
+          pid: void 0,
+          pidIdentity: null,
+          startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          endedAt: null,
+          sessionId: null,
+          finalText: null,
+          error: null,
+          notes,
+          usage: { premiumRequests: 0, credits: 0, measured: false },
+          denied: [],
+          changes: null,
+          cleanedUp: false,
+          sandboxSettings,
+          sandbox: null,
+          secrets: secretValues(this.deps.env),
+          stopReason: null,
+          requestStop: (reason) => requestStop(reason),
+          stopped,
+          done: Promise.resolve()
+        };
+        this.jobs.set(id, job);
+        const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
+        timer.unref?.();
+        job.done = this.run(job).catch((err) => {
+          job.error ??= errText4(err);
+          return "failed";
+        }).then((outcome) => {
+          clearTimeout(timer);
+          const gitDirArgs = jobGitDirArgs(job);
+          const gitStateChanged = job.sharedGitState && job.commonGitDir ? sharedGitStateChanges(job.sharedGitState, sharedGitStateSnapshot(job.commonGitDir), job.liveWorktreeHeads, this.owned) : [];
+          if (gitDirArgs === null) {
+            const why = "sandbox-escaped: the job worktree's git links (.git, gitdir, commondir or config.worktree) changed during the session; no host git ran in it";
+            job.error = job.error ? `${why}; ${job.error}` : why;
+            job.stopReason ??= "sandbox-escaped";
+            outcome = "failed";
+          } else if (gitStateChanged.length > 0) {
+            const why = `sandbox-escaped: the common git dir ${job.commonGitDir} changed during the session (${gitStateChanged.slice(0, 5).join(", ")}); the job's branch was not moved and no host git ran in the worktree`;
+            job.error = job.error ? `${why}; ${job.error}` : why;
+            job.stopReason ??= "sandbox-escaped";
+            outcome = "failed";
+          } else {
+            const sync = job.worktree ? syncJobBranch(job, gitDirArgs) : { moved: null };
+            if ("problem" in sync) {
+              const why = `sandbox-escaped: the job's branch ${job.worktree.branch} or its worktree's HEAD changed kind during the session (${sync.problem}); the branch was not moved and no host git ran in the worktree`;
+              job.error = job.error ? `${why}; ${job.error}` : why;
+              job.stopReason ??= "sandbox-escaped";
+              outcome = "failed";
+            } else {
+              if (job.worktree) {
+                if (sync.moved) this.expectJobRef(job.worktree.branch, sync.moved);
+                job.branchCommit = sync.moved ?? git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${job.worktree.branch}^{commit}`]);
+                job.headCommit = git2(job.worktree.path, [...gitDirArgs, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+              }
+              job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected, gitDirArgs, job.worktree !== null);
+            }
+            const nested = job.changes?.newGitlinks ?? [];
+            if (job.worktree && outcome !== "failed" && !job.changes) {
+              const why = "the change summary could not be read in the job worktree (git failed), so its protected paths were not checked";
+              job.error = job.error ? `${why}; ${job.error}` : why;
+              outcome = "failed";
+            } else if (job.worktree && nested.length > 0) {
+              const why = `sandbox-escaped: the session added nested repositories as gitlinks (${nested.slice(0, 5).join(", ")}); host git does not enter them, so their content was not inspected`;
+              job.error = job.error ? `${why}; ${job.error}` : why;
+              job.stopReason ??= "sandbox-escaped";
+              outcome = "failed";
+            }
+          }
+          job.endedAt = (/* @__PURE__ */ new Date()).toISOString();
+          job.status = outcome;
+          this.releaseWorktreeHead(job);
+        });
+        return this.snapshot(job);
+      }
+      status(jobId) {
+        return this.snapshot(this.find(jobId));
+      }
+      /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
+      async wait(jobId, timeoutMs) {
+        const job = this.find(jobId);
+        await settleWithin(job.done, Math.max(0, timeoutMs));
+        return this.snapshot(job);
+      }
+      /** Abort the session and wait (bounded) for the teardown. */
+      async cancel(jobId) {
+        const job = this.find(jobId);
+        if (!isTerminal2(job.status)) {
+          job.requestStop("cancelled");
+          await settleWithin(job.done, ABORT_GRACE_MS2 + STOP_TIMEOUT_MS2 + RPC_TIMEOUT_MS2);
+        }
+        return this.snapshot(job);
+      }
+      /**
+       * Server shutdown: cancel every live job, wait up to `graceMs` for the
+       * teardowns, then kill the runtimes still alive. Worktrees stay for review.
+       */
+      async stopAll(graceMs = SERVER_EXIT_GRACE_MS) {
+        const live = [...this.jobs.values()].filter((j) => !isTerminal2(j.status));
+        for (const job of live) job.requestStop("cancelled");
+        await settleWithin(Promise.all(live.map((j) => j.done)), graceMs);
+        for (const job of live) {
+          try {
+            if (job.pid && this.deps.isAlive(job.pid)) this.deps.killTree(job.pid);
+          } catch {
+          }
+        }
+      }
+      /** Remove a finished job's worktree and branch when nothing in them would be lost. */
+      cleanup(jobId) {
+        const job = this.find(jobId);
+        if (!isTerminal2(job.status)) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} is still ${job.status}; cancel it first.`);
+        if (!job.worktree) throw new CopilotRunError(`copilot_run_cleanup: job ${jobId} ran with isolation "none"; there is no worktree to remove.`);
+        let tampered = null;
+        if (!job.cleanedUp) {
+          const moved = this.branchMismatch(job);
+          if (moved) {
+            throw new CopilotRunError(
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${moved}. Do not merge that branch: inspect it, delete it yourself (git branch -D), then call cleanup again.`
+            );
+          }
+          try {
+            ({ tampered } = removeWorkerWorktree(WORKTREE_TEAM, job.id, job.worktree.repoRoot, job.worktreeLinks ? { gitLinks: job.worktreeLinks } : {}));
+          } catch (err) {
+            throw new CopilotRunError(
+              `copilot_run_cleanup: kept ${job.worktree.path} (branch ${job.worktree.branch}): ${errText4(err)}. Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.`
+            );
+          }
+          job.cleanedUp = true;
+          try {
+            (0, import_node_fs11.rmSync)(job.jobDir, { recursive: true, force: true });
+          } catch {
+          }
+          if (job.commonGitDir && branchRefs(job.commonGitDir)[`refs/heads/${job.worktree.branch}`] === void 0) this.expectJobRef(job.worktree.branch, null);
+        }
+        if (tampered) return { ...this.snapshot(job), cleanup: `sandbox-escaped: ${tampered}` };
+        return { ...this.snapshot(job), cleanup: `removed worktree ${job.worktree.path} and branch ${job.worktree.branch}` };
+      }
+      /**
+       * A job branch this manager created, moved or deleted (null): the value
+       * every live job's common git dir snapshot expects from now on, so the
+       * manager's own ref writes are no change and any other write to a job
+       * branch (a lane retargeting another job's branch) is.
+       */
+      /**
+       * Why a finished job's branch no longer holds the commit the job left it
+       * at (branchCommit), or null (also once it is gone). A lane of another
+       * process can repoint it to a plain commit that lane's own check does not
+       * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+       */
+      branchMismatch(job) {
+        if (!job.worktree || job.cleanedUp || !job.branchCommit) return null;
+        const ref = `refs/heads/${job.worktree.branch}`;
+        const problem = jobRefProblem(job.commonGitDir, job.worktree.repoRoot, ref);
+        if (problem) return `sandbox-escaped: the job's branch changed after the job ended (${problem})`;
+        const at = git2(job.worktree.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        if (at && at !== job.branchCommit) {
+          return `sandbox-escaped: the job's branch was moved after the job ended, to ${at.slice(0, 12)} (the job left it at ${job.branchCommit.slice(0, 12)})`;
+        }
+        return null;
+      }
+      /**
+       * A job that ended: its worktree HEAD stops moving, so the live jobs that
+       * ignored it compare it from its value now on. Only a detached HEAD (what
+       * the session leaves) becomes the new baseline; an attached or otherwise
+       * changed one keeps the old baseline, so the live jobs' check reports it.
+       */
+      releaseWorktreeHead(job) {
+        if (!job.worktreeLinks || !job.commonGitDir) return;
+        const key = `worktrees/${(0, import_node_path12.basename)(job.worktreeLinks.adminDir)}/HEAD`;
+        const entry = worktreeHeadEntry((0, import_node_path12.join)(job.commonGitDir, key));
+        const detached = /^head [0-9a-f]+$/.test(entry);
+        for (const other of this.jobs.values()) {
+          if (other === job || isTerminal2(other.status) || !other.liveWorktreeHeads.delete(key) || !other.sharedGitState) continue;
+          if (detached) other.sharedGitState[key] = entry;
+        }
+      }
+      expectJobRef(branch, sha2) {
+        const key = `refs/heads/${branch}`;
+        for (const other of this.jobs.values()) {
+          if (isTerminal2(other.status) || !other.sharedGitState) continue;
+          if (sha2) other.sharedGitState[key] = `ref ${sha2}`;
+          else delete other.sharedGitState[key];
+        }
+      }
+      find(jobId) {
+        if (typeof jobId !== "string" || !JOB_ID.test(jobId)) throw new CopilotRunError(`Invalid jobId ${JSON.stringify(jobId)}.`);
+        const job = this.jobs.get(jobId);
+        if (!job) throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
+        return job;
+      }
+      /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
+      recordBudget(job, lockTimeoutMs) {
+        if (this.deps.env.OMC_BUDGET_GOVERNOR === "0") return true;
+        const usage = {
+          premiumRequests: job.usage.premiumRequests,
+          credits: job.usage.credits,
+          source: job.usage.measured ? "measured" : "estimated",
+          detail: job.usage.measured ? "session.shutdown" : "copilot_run sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)",
+          ...job.model ? { model: job.model } : {},
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        try {
+          recordUsage(ledgerPath2(job.ledgerCwd), job.ledgerKey, usage, void 0, { timeoutMs: lockTimeoutMs });
+          return true;
+        } catch (err) {
+          return !errText4(err).startsWith("Failed to acquire file lock");
+        }
+      }
+      /** Drive the session to its end and tear it down; returns the final status. */
+      async run(job) {
+        const { deps } = this;
+        (0, import_node_fs11.mkdirSync)(job.home, { recursive: true });
+        let loadError;
+        const loaded2 = await deps.loadSdk().catch((err) => {
+          loadError = `loading @github/copilot-sdk failed: ${errText4(err)}`;
+          return null;
+        });
+        if (!loaded2) {
+          job.error = loadError ?? "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
+          return "failed";
+        }
+        const found = deps.resolveBin();
+        const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+        if (!bin) {
+          job.error = found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet)";
+          return "failed";
+        }
+        const pluginRoot = deps.pluginRoot();
+        const ident = loginIdentity(deps.userConfigDir());
+        (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
+`);
+        const env = allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home);
+        const gitHubToken = sessionGitHubToken(deps.env);
+        (0, import_node_fs11.mkdirSync)(env.XDG_CONFIG_HOME, { recursive: true });
+        (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(env.GIT_CONFIG_GLOBAL), { recursive: true });
+        (0, import_node_fs11.mkdirSync)(env.TEMP, { recursive: true });
+        (0, import_node_fs11.writeFileSync)(env.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+        if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL);
+        Object.assign(env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1", GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
+        delete env[COPILOT_RUN_ALLOW_ENV];
+        if (job.disableStopContinuations) env.OMC_SKIP_HOOKS = STOP_CONTINUATION_SKIP_TOKEN;
+        let scrubDir = null;
+        if (job.scrubCredentials) {
+          if (ident.loggedInUsers === void 0 && !gitHubToken) {
+            job.error = "a credential-free session needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are removed from it";
+            return "failed";
+          }
+          scrubDir = (0, import_node_fs11.mkdtempSync)((0, import_node_path12.join)((0, import_node_os4.tmpdir)(), "omg-lane-nocreds-"));
+          const identityConfig = env.GIT_CONFIG_GLOBAL;
+          scrubLaneCredentials(env, scrubDir);
+          env.GIT_CONFIG_GLOBAL = identityConfig;
+        }
+        const policy = {
+          cwd: job.workCwd,
+          // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
+          // the runtime reads back from the job home (config.json, session state, policies, logs, the package cache).
+          stateRoot: env.TEMP,
+          pluginRoot,
+          readRoots: [job.home],
+          mcpServer: MCP_SERVER,
+          platform: deps.platform
+        };
+        const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+          profile: job.profile,
+          settings: job.sandboxSettings,
+          env: deps.env,
+          platform: deps.platform,
+          rpcTimeoutMs: RPC_TIMEOUT_MS2,
+          ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+          policyContext: () => {
+            const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
+            const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+            const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+            const realHome = (deps.realHome ?? (() => (0, import_node_os4.userInfo)().homedir))();
+            const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+            job.notes.push(...proxy.notes);
+            return {
+              worktree: (0, import_node_path12.resolve)(top),
+              commonGitDir: commonRaw ? (0, import_node_path12.resolve)(commonRaw) : (0, import_node_path12.resolve)(top, ".git"),
+              ...gitDirRaw ? { gitDir: (0, import_node_path12.resolve)(gitDirRaw) } : {},
+              pluginRoot,
+              jobHome: job.home,
+              jobDir: job.jobDir,
+              realHome,
+              platform: deps.platform,
+              settings: job.sandboxSettings,
+              hostCommits: job.hostCommits,
+              toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+              extraReadonly: proxy.caPaths
+            };
+          },
+          note: (text3) => {
+            job.notes.push(text3);
+          }
+        });
+        const onPermissionRequest = (req) => {
+          let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
+          if (decision.approve && req.kind === "write") {
+            const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === "string" && v.trim() !== "");
+            const rel = raw ? relativeInside((0, import_node_path12.isAbsolute)(raw) ? raw : (0, import_node_path12.resolve)(job.workCwd, raw), protectedRoot) : null;
+            if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+            if (decision.approve && raw) {
+              const abs = (0, import_node_path12.isAbsolute)(raw) ? raw : (0, import_node_path12.resolve)(job.workCwd, raw);
+              let jobState = true;
+              try {
+                jobState = isUnderRoot(abs, job.jobDir, deps.platform) && !isUnderRoot(abs, env.TEMP, deps.platform);
+              } catch {
+              }
+              if (jobState) decision = { approve: false, reason: `write into the job's state dir ${job.jobDir}` };
+            }
+          }
+          if (decision.approve && job.profile === "review") {
+            const denial = reviewProfileDenial(req);
+            const mode = job.sandbox?.mode;
+            if (denial) decision = { approve: false, reason: denial };
+            else if (req.kind === "shell") {
+              decision = mode === "enforced" ? reviewShellAllowlist(req, { cwd: job.workCwd, platform: deps.platform }) : { approve: false, reason: "review profile: no shell without a confirmed sandbox" };
+            }
+          }
+          if (decision.approve) return { kind: "approve-once" };
+          job.denied.push({ kind: String(req.kind), reason: decision.reason });
+          if (job.denied.length > DENIED_LOG_MAX) job.denied.splice(0, job.denied.length - DENIED_LOG_MAX);
+          return { kind: "reject", feedback: `copilot_run policy: ${decision.reason}` };
+        };
+        let onIdle = () => {
+        };
+        let onShutdown = () => {
+        };
+        let sent = false;
+        let idle = new Promise((r) => {
+          onIdle = r;
+        });
+        const shutdown = new Promise((r) => {
+          onShutdown = r;
+        });
+        let eventsFd = null;
+        const onEvent = (event) => {
+          if (eventsFd !== null) {
+            try {
+              (0, import_node_fs11.writeSync)(eventsFd, `${scrubTokens(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event }), job.secrets)}
+`);
+            } catch {
+            }
+          }
+          const data = event.data ?? {};
+          switch (event.type) {
+            case "tool.execution_start":
+              sandbox.toolStarted(data);
+              break;
+            case "tool.execution_complete": {
+              const escaped = sandbox.toolCompleted(data);
+              if (escaped && !job.stopReason) {
+                job.error = escaped;
+                job.requestStop("sandbox-escaped");
+              }
+              break;
+            }
+            case "session.idle":
+              if (sent) onIdle();
+              break;
+            case "assistant.message":
+              if (typeof data.content === "string" && data.content.trim()) job.finalText = scrubTokens(data.content, job.secrets);
+              break;
+            case "assistant.usage":
+              job.usage.credits += usageCredits(event);
+              if (data.initiator === "user") job.usage.premiumRequests += 1;
+              if (typeof data.model === "string" && !job.model) job.model = data.model;
+              if (job.usage.credits >= job.maxCredits) job.requestStop("capped");
+              this.recordBudget(job, 0);
+              break;
+            case "session.shutdown":
+              if (typeof data.totalPremiumRequests === "number") {
+                job.usage.premiumRequests = data.totalPremiumRequests;
+                job.usage.measured = true;
+              }
+              if (typeof data.totalNanoAiu === "number") job.usage.credits = data.totalNanoAiu / NANO_AIU_PER_CREDIT;
+              if (typeof data.currentModel === "string") job.model = data.currentModel;
+              onShutdown();
+              break;
+            case "session.error":
+            case "model.turn_failed":
+              job.error = String(data.message ?? data.error ?? data.reason ?? event.type).slice(0, 500);
+              break;
+            default:
+              break;
+          }
+        };
+        const { CopilotClient, RuntimeConnection } = loaded2.module;
+        const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
+        const client = new CopilotClient({
+          connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env }),
+          baseDirectory: job.home,
+          workingDirectory: job.workCwd
+        });
+        try {
+          eventsFd = openAppendExclusive(job.eventsPath);
+        } catch (err) {
+          if (scrubDir) (0, import_node_fs11.rmSync)(scrubDir, { recursive: true, force: true });
+          job.error = `events log ${job.eventsPath}: ${errText4(err)}`;
+          return "failed";
+        }
+        let session = null;
+        let pid;
+        let outcome = "failed";
+        try {
+          await withTimeout3(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
+          pid = runtimePid(client);
+          job.pid = pid;
+          if (pid) {
+            const identify = deps.processIdentity ?? ((p) => getProcessStartIdentity(p, Date.now() + IDENTITY_TIMEOUT_MS));
+            const reading = identify(pid).catch(() => null).then((id) => {
+              job.pidIdentity = id;
+            });
+            await Promise.race([reading, job.stopped]);
+          }
+          const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded2);
+          job.sandbox = sandbox.state;
+          const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
+          if (!job.stopReason && !refused()) {
+            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
+            const shell = sandboxConfig !== null;
+            session = await withTimeout3(client.createSession({
+              onPermissionRequest,
+              onEvent,
+              pluginDirectories: [pluginRoot],
+              workingDirectory: job.workCwd,
+              disabledMcpServers: ["github-mcp-server"],
+              // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
+              ...gitHubToken ? { gitHubToken } : {},
+              excludedTools: buildSdkExcludedTools(MCP_SERVER),
+              ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {},
+              ...atCreate ? { sandboxConfig } : {},
+              ...job.model ? { model: job.model } : {}
+            }), RPC_TIMEOUT_MS2, "createSession()");
+            job.sessionId = session.sessionId;
+            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
+          }
+          if (job.sandbox?.mode === "refused") {
+            job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
+          } else if (session && !job.stopReason) {
+            job.status = "running";
+            sent = true;
+            await withTimeout3(session.send({ prompt: job.prompt }), RPC_TIMEOUT_MS2, "send()");
+            const winner = await Promise.race([idle.then(() => "idle"), job.stopped.then(() => "stop")]);
+            if (winner === "stop") {
+              const s = session;
+              idle = new Promise((r) => {
+                onIdle = r;
+              });
+              try {
+                await withTimeout3(s.abort(), RPC_TIMEOUT_MS2, "abort()");
+              } catch {
+              }
+              await settleWithin(idle, ABORT_GRACE_MS2);
+            }
+          }
+          outcome = job.stopReason === "timeout" ? "timeout" : job.stopReason === "cancelled" ? "cancelled" : job.stopReason === "capped" || job.stopReason === "sandbox-escaped" || job.sandbox?.mode === "refused" ? "failed" : "completed";
+          if (job.stopReason === "capped") job.error = `credit cap ${job.maxCredits} reached (${job.usage.credits.toFixed(2)} AI credits); the turn was aborted`;
+          if (job.stopReason === "timeout") job.error = `timed out after ${job.timeoutMs} ms; the turn was aborted`;
+        } catch (err) {
+          outcome = job.stopReason === "cancelled" ? "cancelled" : "failed";
+          job.error = errText4(err);
+        } finally {
+          if (session) {
+            try {
+              await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS2, "disconnect()");
+            } catch {
+            }
+            await settleWithin(shutdown, SHUTDOWN_GRACE_MS2);
+            try {
+              await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS2, "deleteSession()");
+            } catch {
+            }
+          }
+          pid ??= runtimePid(client);
+          job.pid = pid;
+          if (session && pid && deps.isAlive(pid)) {
+            try {
+              deps.killTree(pid);
+            } catch {
+            }
+          }
+          let stopped = false;
+          try {
+            await withTimeout3(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
+            stopped = true;
+          } catch {
+          }
+          if (!stopped) {
+            if (pid && deps.isAlive(pid)) deps.killTree(pid);
+            try {
+              await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
+            } catch {
+            }
+          }
+          if (pid && deps.isAlive(pid)) deps.killTree(pid);
+          const fd = eventsFd;
+          eventsFd = null;
+          if (fd !== null) (0, import_node_fs11.closeSync)(fd);
+          if (scrubDir) (0, import_node_fs11.rmSync)(scrubDir, { recursive: true, force: true });
+          for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep5(50);
+          if (outcome === "completed") {
+            try {
+              (0, import_node_fs11.rmSync)(job.home, { recursive: true, force: true });
+            } catch {
+            }
+          }
+        }
+        return outcome;
+      }
+      snapshot(job) {
+        const usage = {
+          premiumRequests: job.usage.premiumRequests,
+          credits: Number(job.usage.credits.toFixed(3)),
+          source: job.usage.measured ? "measured" : "estimated",
+          summary: `${formatAmount(job.usage.premiumRequests, "premiumRequests")}, ${formatAmount(Number(job.usage.credits.toFixed(3)), "credits")}`
+        };
+        const scrub = (text3) => scrubTokens(text3, job.secrets);
+        const moved = this.branchMismatch(job);
+        const notes = moved ? [...job.notes, `${moved}; do not merge the branch.`] : job.notes;
+        return {
+          jobId: job.id,
+          status: job.status,
+          // Set as soon as a stop is asked for: a cancel that returns while the teardown runs still shows it.
+          stopRequested: job.stopReason,
+          isolation: job.isolation,
+          profile: job.profile,
+          ...job.startRef !== null ? { startRef: job.startRef } : {},
+          cwd: job.cwd,
+          workingDirectory: job.workCwd,
+          model: job.model,
+          startedAt: job.startedAt,
+          endedAt: job.endedAt,
+          timeoutMs: job.timeoutMs,
+          maxCredits: job.maxCredits,
+          sessionId: job.sessionId,
+          // Lane output reaches state, PR comments and the ledger from here: no token passes.
+          finalText: job.finalText === null ? null : scrub(job.finalText),
+          error: job.error === null ? null : scrub(job.error),
+          usage,
+          ...job.worktree ? { worktree: { ...job.worktree, baseCommit: job.baseCommit, removed: job.cleanedUp, ...job.headCommit ? { headCommit: job.headCommit } : {} } } : {},
+          ...job.changes ? { changes: job.changes } : {},
+          ...job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {},
+          ...notes.length ? { notes: notes.map(scrub) } : {},
+          eventsPath: job.eventsPath,
+          ...job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {},
+          ...job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}
+        };
+      }
+    };
+  }
+});
+
+// src/factory/run/budget.ts
+function assertLaneCreditCap(limits) {
+  const cap = limits?.laneMaxCredits;
+  if (typeof cap !== "number" || !Number.isFinite(cap)) {
+    throw new Error("omg factory run refuses to start: no per-lane AI-credit cap is resolved (factory.run.laneMaxCredits)");
+  }
+  if (cap < RUNTIME_MIN_MAX_CREDITS) {
+    throw new Error(`omg factory run refuses to start: factory.run.laneMaxCredits ${cap} is below the Copilot CLI minimum of ${RUNTIME_MIN_MAX_CREDITS} AI credits`);
+  }
+  if (limits.maxRunCredits !== void 0 && limits.maxRunCredits < cap) {
+    throw new Error(`omg factory run refuses to start: factory.run.maxRunCredits ${limits.maxRunCredits} is below one lane's cap (${cap})`);
+  }
+}
+function runCredits(state) {
+  return state.lanes.reduce((sum, lane) => sum + (lane.usage?.credits ?? 0), 0);
+}
+function nextLaneCap(state, limits) {
+  assertLaneCreditCap(limits);
+  if (limits.maxRunCredits === void 0) return { ok: true, cap: limits.laneMaxCredits };
+  const spent = runCredits(state);
+  const left = limits.maxRunCredits - spent;
+  if (left < RUNTIME_MIN_MAX_CREDITS) {
+    return { ok: false, reason: `run spent ${spent.toFixed(2)} of factory.run.maxRunCredits ${limits.maxRunCredits} AI credits; a lane needs at least ${RUNTIME_MIN_MAX_CREDITS} (raise the limit and rerun)` };
+  }
+  return { ok: true, cap: Math.min(limits.laneMaxCredits, Math.floor(left)) };
+}
+function runCreditsExceeded(state, limits) {
+  if (limits.maxRunCredits === void 0) return null;
+  const spent = runCredits(state);
+  return spent >= limits.maxRunCredits ? `run spent ${spent.toFixed(2)} AI credits, at or above factory.run.maxRunCredits ${limits.maxRunCredits}` : null;
+}
+var DEFAULT_FACTORY_RUN_LIMITS;
+var init_budget = __esm({
+  "src/factory/run/budget.ts"() {
+    "use strict";
+    init_copilot_sdk_scenarios();
+    init_job();
+    init_config2();
+    DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
+      laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
+      laneTimeoutMs: 30 * 6e4,
+      maxRunWallTimeMs: 4 * 60 * 6e4,
+      maxRetries: 1,
+      maxLostRespawns: 1,
+      maxFixRounds: DEFAULT_SHIP_CONFIG.maxFixRounds,
+      maxCiFixRounds: 1,
+      gatesTimeoutMs: 90 * 6e4
+    });
+  }
+});
+
+// src/factory/run/ledger.ts
+function defaultLedgerDir(env = process.env) {
+  const base = env.OMC_STATE_DIR?.trim() ? (0, import_path83.resolve)(env.OMC_STATE_DIR) : (0, import_path83.join)((0, import_os15.homedir)(), ".omg");
+  return (0, import_path83.join)(base, "factory-ledger");
+}
+function ledgerFilePath(dir, root, key) {
+  return (0, import_path83.join)(dir, sha256((0, import_path83.resolve)(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
+}
+function emptyHooksDir2(dir) {
+  const path15 = (0, import_path83.join)(dir, "empty-hooks");
+  (0, import_fs67.mkdirSync)(path15, { recursive: true, mode: 448 });
+  return path15;
+}
+function currentBytes(path15) {
+  return (0, import_fs67.existsSync)(path15) ? (0, import_fs67.readFileSync)(path15) : null;
+}
+var import_crypto20, import_fs67, import_os15, import_path83, LedgerError, sha256, EngineLedger;
+var init_ledger2 = __esm({
+  "src/factory/run/ledger.ts"() {
+    "use strict";
+    import_crypto20 = require("crypto");
+    import_fs67 = require("fs");
+    import_os15 = require("os");
+    import_path83 = require("path");
     init_atomic_write();
     LedgerError = class extends Error {
       constructor(message) {
@@ -41870,7 +42853,7 @@ var init_ledger2 = __esm({
         this.name = "LedgerError";
       }
     };
-    sha256 = (data) => (0, import_crypto19.createHash)("sha256").update(data).digest("hex");
+    sha256 = (data) => (0, import_crypto20.createHash)("sha256").update(data).digest("hex");
     EngineLedger = class _EngineLedger {
       constructor(file, data, existed) {
         this.file = file;
@@ -41880,10 +42863,10 @@ var init_ledger2 = __esm({
       /** Load the sidecar for (root, issue), or start an empty one; a malformed sidecar is refused. */
       static open(dir, root, issue2) {
         const file = ledgerFilePath(dir, root, issue2);
-        if (!(0, import_fs66.existsSync)(file)) return new _EngineLedger(file, { version: 1, root: (0, import_path82.resolve)(root), issue: issue2, files: {}, baselines: {} }, false);
+        if (!(0, import_fs67.existsSync)(file)) return new _EngineLedger(file, { version: 1, root: (0, import_path83.resolve)(root), issue: issue2, files: {}, baselines: {} }, false);
         let parsed;
         try {
-          parsed = JSON.parse((0, import_fs66.readFileSync)(file, "utf8"));
+          parsed = JSON.parse((0, import_fs67.readFileSync)(file, "utf8"));
         } catch (error2) {
           throw new LedgerError(`the engine ledger ${file} is not valid JSON: ${error2 instanceof Error ? error2.message : String(error2)}`);
         }
@@ -41895,15 +42878,15 @@ var init_ledger2 = __esm({
         return new _EngineLedger(file, d, true);
       }
       tracks(path15) {
-        return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path82.resolve)(path15));
+        return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path83.resolve)(path15));
       }
       /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
       recorded(path15) {
-        return this.data.files[(0, import_path82.resolve)(path15)]?.content;
+        return this.data.files[(0, import_path83.resolve)(path15)]?.content;
       }
       /** Record the engine's write of `path` (null: the file must not exist) and persist the sidecar. */
       record(path15, content) {
-        this.data.files[(0, import_path82.resolve)(path15)] = { sha256: content === null ? null : sha256(content), content };
+        this.data.files[(0, import_path83.resolve)(path15)] = { sha256: content === null ? null : sha256(content), content };
         this.persist();
       }
       /**
@@ -41912,13 +42895,13 @@ var init_ledger2 = __esm({
        * between a hash and a second read cannot happen. Untracked: false.
        */
       matches(path15, bytes) {
-        const rec = this.data.files[(0, import_path82.resolve)(path15)];
+        const rec = this.data.files[(0, import_path83.resolve)(path15)];
         if (!rec) return false;
         return (bytes === null ? null : sha256(bytes)) === rec.sha256;
       }
       /** Engine-owned files whose bytes differ from the engine's last write (optionally only `paths`). */
       mismatches(paths) {
-        const wanted = paths ? new Set(paths.map((p) => (0, import_path82.resolve)(p))) : null;
+        const wanted = paths ? new Set(paths.map((p) => (0, import_path83.resolve)(p))) : null;
         const out = [];
         for (const [path15, rec] of Object.entries(this.data.files)) {
           if (wanted && !wanted.has(path15)) continue;
@@ -41935,12 +42918,12 @@ var init_ledger2 = __esm({
       restore(paths, stamp) {
         const aside = [];
         for (const raw of paths) {
-          const path15 = (0, import_path82.resolve)(raw);
+          const path15 = (0, import_path83.resolve)(raw);
           const rec = this.data.files[path15];
           if (!rec) continue;
-          if ((0, import_fs66.existsSync)(path15)) {
+          if ((0, import_fs67.existsSync)(path15)) {
             const to = `${path15}.tampered-${stamp}`;
-            (0, import_fs66.renameSync)(path15, to);
+            (0, import_fs67.renameSync)(path15, to);
             aside.push(to);
           }
           if (rec.content !== null) atomicWriteFileSync(path15, rec.content);
@@ -41968,11 +42951,11 @@ var init_ledger2 = __esm({
         this.persist();
       }
       persist() {
-        const dir = (0, import_path82.dirname)(this.file);
-        (0, import_fs66.mkdirSync)(dir, { recursive: true, mode: 448 });
+        const dir = (0, import_path83.dirname)(this.file);
+        (0, import_fs67.mkdirSync)(dir, { recursive: true, mode: 448 });
         atomicWriteFileSync(this.file, JSON.stringify(this.data));
         try {
-          (0, import_fs66.chmodSync)(this.file, 384);
+          (0, import_fs67.chmodSync)(this.file, 384);
         } catch {
         }
       }
@@ -42008,22 +42991,25 @@ function factoryBranch(key) {
   return typeof key === "number" ? `factory/issue-${key}` : `factory/${key}`;
 }
 function factoryStateDir2(root) {
-  return (0, import_path83.join)(getOmcRoot(root), "state", "factory");
+  return (0, import_path84.join)(getOmcRoot(root), "state", "factory");
 }
 function factoryStatePath(root, key) {
-  return (0, import_path83.join)(factoryStateDir2(root), `run-${key}.json`);
+  return (0, import_path84.join)(factoryStateDir2(root), `run-${key}.json`);
 }
 function factoryOwnerPath(root, key) {
-  return (0, import_path83.join)(factoryStateDir2(root), `run-${key}.owner`);
+  return (0, import_path84.join)(factoryStateDir2(root), `run-${key}.owner`);
+}
+function factoryRepoOwnerPath(root) {
+  return (0, import_path84.join)(factoryStateDir2(root), "engine.owner");
 }
 function factoryCancelPath(root, key) {
-  return (0, import_path83.join)(factoryStateDir2(root), `run-${key}.cancel`);
+  return (0, import_path84.join)(factoryStateDir2(root), `run-${key}.cancel`);
 }
 function factoryCancelRequested(root, key) {
-  return (0, import_fs67.existsSync)(factoryCancelPath(root, key));
+  return (0, import_fs68.existsSync)(factoryCancelPath(root, key));
 }
 function shipVerdictHash(v) {
-  return (0, import_crypto20.createHash)("sha256").update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest("hex");
+  return (0, import_crypto21.createHash)("sha256").update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest("hex");
 }
 function createFactoryState(input, now) {
   const key = input.heal ? healRunKey(input.heal.sig8) : input.issue;
@@ -42090,7 +43076,7 @@ function trackerStageOf(s) {
   }
 }
 function computeFactoryIntegrity(state) {
-  return (0, import_crypto20.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
+  return (0, import_crypto21.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
 }
 function verifyFactoryIntegrity(state) {
   return typeof state.integrity === "string" && state.integrity === computeFactoryIntegrity(state);
@@ -42130,8 +43116,8 @@ function shapeProblem2(s) {
 }
 function readFactoryState(root, key) {
   const path15 = factoryStatePath(root, key);
-  if (!(0, import_fs67.existsSync)(path15)) return null;
-  return parseFactoryState(path15, key, (0, import_fs67.readFileSync)(path15, "utf8"));
+  if (!(0, import_fs68.existsSync)(path15)) return null;
+  return parseFactoryState(path15, key, (0, import_fs68.readFileSync)(path15, "utf8"));
 }
 function parseFactoryState(path15, key, raw) {
   let parsed;
@@ -42148,11 +43134,11 @@ function parseFactoryState(path15, key, raw) {
   return parsed;
 }
 function updateFactoryState(root, key, mutate, options = {}) {
-  if (!(0, import_fs67.existsSync)((0, import_path83.join)(root, ".git"))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
+  if (!(0, import_fs68.existsSync)((0, import_path84.join)(root, ".git"))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
   const path15 = factoryStatePath(root, key);
   ensureDirSync(factoryStateDir2(root));
   return withFileLockSync(lockPathFor(path15), () => {
-    const bytes = (0, import_fs67.existsSync)(path15) ? (0, import_fs67.readFileSync)(path15) : null;
+    const bytes = (0, import_fs68.existsSync)(path15) ? (0, import_fs68.readFileSync)(path15) : null;
     options.verify?.(bytes);
     const current = bytes === null ? null : parseFactoryState(path15, key, bytes.toString("utf8"));
     if (current && !verifyFactoryIntegrity(current)) {
@@ -42174,43 +43160,48 @@ function overwriteFactoryState(root, key, state) {
   return writeSealed(factoryStatePath(root, key), state);
 }
 function acquireFactoryOwner(root, key, now, deps = defaultOwnerDeps()) {
-  const path15 = factoryOwnerPath(root, key);
-  ensureDirSync(factoryStateDir2(root));
+  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+}
+function acquireFactoryRepoOwner(root, key, now, deps = defaultOwnerDeps()) {
+  return claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => `another omg factory engine runs in this repository (${prior.run ?? "run unknown"}, pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt}); one engine runs per repository at a time, so start ${key} after it ends`, String(key));
+}
+function claimOwner(path15, now, deps, busy, run2) {
+  ensureDirSync((0, import_path84.dirname)(path15));
   const tookOver = withFileLockSync(lockPathFor(path15), () => {
     let prior;
-    if ((0, import_fs67.existsSync)(path15)) {
+    if ((0, import_fs68.existsSync)(path15)) {
       try {
-        prior = JSON.parse((0, import_fs67.readFileSync)(path15, "utf8"));
+        prior = JSON.parse((0, import_fs68.readFileSync)(path15, "utf8"));
       } catch {
         prior = void 0;
       }
       if (prior && (prior.hostname !== deps.hostname || prior.pid !== deps.pid && deps.isAlive(prior.pid))) {
-        throw new FactoryStateError(`omg factory run ${key} is already running (pid ${prior.pid} on ${prior.hostname} since ${prior.startedAt})`);
+        throw new FactoryStateError(busy(prior));
       }
     }
-    (0, import_fs67.writeFileSync)(path15, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now })}
+    (0, import_fs68.writeFileSync)(path15, `${JSON.stringify({ pid: deps.pid, hostname: deps.hostname, startedAt: now, ...run2 ? { run: run2 } : {} })}
 `, "utf8");
     return prior;
   }, { timeoutMs: 5e3 });
   const release = () => {
     try {
       withFileLockSync(lockPathFor(path15), () => {
-        const owner = (0, import_fs67.existsSync)(path15) ? JSON.parse((0, import_fs67.readFileSync)(path15, "utf8")) : null;
-        if (owner && owner.pid === deps.pid && owner.hostname === deps.hostname) (0, import_fs67.unlinkSync)(path15);
+        const owner = (0, import_fs68.existsSync)(path15) ? JSON.parse((0, import_fs68.readFileSync)(path15, "utf8")) : null;
+        if (owner && owner.pid === deps.pid && owner.hostname === deps.hostname) (0, import_fs68.unlinkSync)(path15);
       }, { timeoutMs: 5e3 });
     } catch {
     }
   };
   return { release, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto20, import_fs67, import_os15, import_path83, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, runSlug, runLabel, isStr2, isCount3, defaultOwnerDeps;
+var import_crypto21, import_fs68, import_os16, import_path84, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, runSlug, runLabel, isStr2, isCount3, defaultOwnerDeps;
 var init_state5 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
-    import_crypto20 = require("crypto");
-    import_fs67 = require("fs");
-    import_os15 = require("os");
-    import_path83 = require("path");
+    import_crypto21 = require("crypto");
+    import_fs68 = require("fs");
+    import_os16 = require("os");
+    import_path84 = require("path");
     init_atomic_write();
     init_file_lock();
     init_worktree_paths();
@@ -42247,7 +43238,7 @@ var init_state5 = __esm({
     runLabel = (key) => typeof key === "number" ? `#${key}` : key;
     isStr2 = (v) => typeof v === "string";
     isCount3 = (v) => Number.isInteger(v) && v >= 0;
-    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os15.hostname)(), isAlive: isProcessAlive });
+    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os16.hostname)(), isAlive: isProcessAlive });
   }
 });
 
@@ -42259,17 +43250,17 @@ function checkoutBranch(issue2) {
   return getBranchName(FACTORY_CHECKOUT_TEAM, checkoutWorker(issue2));
 }
 function linkNodeModules(root, checkout) {
-  const source = (0, import_path84.join)(root, "node_modules");
-  const target = (0, import_path84.join)(checkout, "node_modules");
-  if (!(0, import_fs68.existsSync)(source) || !(0, import_fs68.existsSync)(checkout) || (0, import_fs68.existsSync)(target)) return;
-  (0, import_fs68.symlinkSync)(source, target, process.platform === "win32" ? "junction" : "dir");
+  const source = (0, import_path85.join)(root, "node_modules");
+  const target = (0, import_path85.join)(checkout, "node_modules");
+  if (!(0, import_fs69.existsSync)(source) || !(0, import_fs69.existsSync)(checkout) || (0, import_fs69.existsSync)(target)) return;
+  (0, import_fs69.symlinkSync)(source, target, process.platform === "win32" ? "junction" : "dir");
 }
-var import_fs68, import_path84, FACTORY_CHECKOUT_TEAM, checkoutWorker, defaultGateConfigLoader;
+var import_fs69, import_path85, FACTORY_CHECKOUT_TEAM, checkoutWorker, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
-    import_fs68 = require("fs");
-    import_path84 = require("path");
+    import_fs69 = require("fs");
+    import_path85 = require("path");
     init_config2();
     init_git_worktree();
     init_state5();
@@ -42294,11 +43285,11 @@ var init_prepare = __esm({
 });
 
 // src/factory/run/clean.ts
-var import_fs69;
+var import_fs70;
 var init_clean = __esm({
   "src/factory/run/clean.ts"() {
     "use strict";
-    import_fs69 = require("fs");
+    import_fs70 = require("fs");
     init_job();
     init_config2();
     init_exec();
@@ -42352,7 +43343,7 @@ function runPrepare(opts) {
   const { exec, cwd, base } = opts;
   const remote = opts.remote ?? "origin";
   const node = opts.node ?? process.execPath;
-  const exists = opts.exists ?? ((p) => (0, import_fs70.existsSync)((0, import_path85.isAbsolute)(p) ? p : (0, import_path85.join)(cwd, p)));
+  const exists = opts.exists ?? ((p) => (0, import_fs71.existsSync)((0, import_path86.isAbsolute)(p) ? p : (0, import_path86.join)(cwd, p)));
   const upstream = `refs/remotes/${remote}/${base}`;
   const { baseSha } = opts;
   const steps = [];
@@ -42383,7 +43374,7 @@ function runPrepare(opts) {
   }
   for (const marker of ["rebase-merge", "rebase-apply"]) {
     const p = git3("rev-parse", "--git-path", marker).stdout.trim();
-    if (p && exists((0, import_path85.isAbsolute)(p) ? p : (0, import_path85.join)(cwd, p))) return fail2("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
+    if (p && exists((0, import_path86.isAbsolute)(p) ? p : (0, import_path86.join)(cwd, p))) return fail2("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
   }
   const dirty = git3("status", "--porcelain", "--untracked-files=no").stdout.trim();
   if (dirty) return fail2("preflight", `working tree has uncommitted changes:
@@ -42427,7 +43418,7 @@ ${dirty}`);
       ["tsc", ["node_modules/typescript/bin/tsc", "--noEmit"], ""],
       ["lint", lintable.length > 0 ? ["node_modules/eslint/bin/eslint.js", ...lintable] : null, "no changed src TypeScript"],
       ["tests", tests.length > 0 ? ["node_modules/vitest/vitest.mjs", "run", ...tests] : null, "no targeted tests for the diff"],
-      ...selectGeneratorChecks(changed).map((args) => [import_path85.posix.basename(args[0]), args, ""])
+      ...selectGeneratorChecks(changed).map((args) => [import_path86.posix.basename(args[0]), args, ""])
     ];
     for (const [name, args, skipReason] of plan) {
       if (!args) {
@@ -42466,12 +43457,12 @@ ${tail(verified.stderr || verified.stdout)}`);
   }
   return { ok: true, steps, housekeepingCommits };
 }
-var import_fs70, import_path85, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, TEST_FILE;
+var import_fs71, import_path86, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, TEST_FILE;
 var init_prepare2 = __esm({
   "src/ship/prepare.ts"() {
     "use strict";
-    import_fs70 = require("fs");
-    import_path85 = require("path");
+    import_fs71 = require("fs");
+    import_path86 = require("path");
     init_config2();
     INVENTORY_DIR = "inventory";
     INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
@@ -43018,217 +44009,6 @@ var init_gates_driver = __esm({
   }
 });
 
-// src/factory/run/lane-commit.ts
-function engineGitEnv(extra = {}) {
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (/^GIT_(?:INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|AUTHOR_|COMMITTER_)/i.test(key)) delete env[key];
-  }
-  return {
-    ...env,
-    GIT_AUTHOR_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_AUTHOR_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    GIT_COMMITTER_NAME: ENGINE_COMMIT_IDENTITY.name,
-    GIT_COMMITTER_EMAIL: ENGINE_COMMIT_IDENTITY.email,
-    ...extra
-  };
-}
-function dropTrailers(body) {
-  let lines3 = body.split("\n").filter((l) => !ANY_LINE_TRAILER.test(l));
-  for (; ; ) {
-    while (lines3.length > 0 && !lines3[lines3.length - 1].trim()) lines3.pop();
-    let start = lines3.length;
-    while (start > 0 && lines3[start - 1].trim()) start--;
-    const kept = [];
-    let dropping = false;
-    for (const l of lines3.slice(start)) {
-      dropping = TRAILER.test(l) || dropping && /^\s/.test(l);
-      if (!dropping) kept.push(l);
-    }
-    if (kept.length === lines3.length - start) return lines3.join("\n");
-    lines3 = [...lines3.slice(0, start), ...kept];
-  }
-}
-function laneCommitMessage(title, body) {
-  const unskip = (t) => {
-    let prev;
-    do {
-      prev = t;
-      t = t.replace(CI_SKIP, "");
-    } while (t !== prev);
-    return t;
-  };
-  const clean = (t) => unskip(t.replace(/\r\n?/g, "\n").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, (c) => c === "\n" ? c : " "));
-  const text3 = `${clean(title).replace(/\n/g, " ").trim()}
-
-${dropTrailers(clean(body ?? "")).trim()}`.trim();
-  return text3.length > MAX_MESSAGE_CHARS ? `${text3.slice(0, MAX_MESSAGE_CHARS)}
-...` : text3;
-}
-function linkEscape(worktree, ignored) {
-  let entries = 0;
-  const walk = (dir, rel, depth) => {
-    if (depth > MAX_WALK_DEPTH) return `the worktree is nested deeper than ${MAX_WALK_DEPTH} directories at ${rel}, so it was not checked for links`;
-    for (const d of (0, import_node_fs11.readdirSync)(dir, { withFileTypes: true })) {
-      if (++entries > MAX_WALK_ENTRIES) return `the worktree holds more than ${MAX_WALK_ENTRIES} entries git does not ignore, so it was not checked for links`;
-      const path15 = rel ? `${rel}/${d.name}` : d.name;
-      if (d.isFile() || d.name === ".git" || ignored.has(path15)) continue;
-      const abs = (0, import_node_path12.join)(dir, d.name);
-      const st = (0, import_node_fs11.lstatSync)(abs);
-      if (st.isSymbolicLink()) {
-        let toDir = false;
-        try {
-          toDir = (0, import_node_fs11.statSync)(abs).isDirectory();
-        } catch {
-        }
-        if (process.platform === "win32" || toDir) return `the lane left a link at ${path15} (a symlink or junction); host git could read through it outside the worktree`;
-      } else if (st.isDirectory()) {
-        const hit = walk(abs, path15, depth + 1);
-        if (hit) return hit;
-      }
-    }
-    return null;
-  };
-  return walk(worktree, "", 0);
-}
-function outsideWorktree(worktree, files) {
-  const root = import_node_fs11.realpathSync.native(worktree);
-  return files.filter((f) => {
-    let dir;
-    try {
-      dir = import_node_fs11.realpathSync.native((0, import_node_path12.dirname)((0, import_node_path12.join)(worktree, f)));
-    } catch (err) {
-      const code = err.code;
-      return code !== "ENOENT" && code !== "ENOTDIR";
-    }
-    const r = (0, import_node_path12.relative)(root, dir);
-    return r === ".." || r.startsWith(`..${import_node_path12.sep}`) || (0, import_node_path12.isAbsolute)(r);
-  });
-}
-function entriesOfMode(out, from, mode) {
-  const set = /* @__PURE__ */ new Set();
-  for (const entry of out.split("\0")) {
-    if (!entry.startsWith(`${mode} `)) continue;
-    const tab = entry.indexOf("	");
-    const fields = entry.slice(0, tab).split(" ");
-    set.add(`${from === "index" ? fields[1] : fields[2]}	${entry.slice(tab + 1)}`);
-  }
-  return set;
-}
-function commitLaneWork(input) {
-  try {
-    if (!HEX.test(input.start) || input.parents.length === 0 || !input.parents.every((p) => HEX.test(p))) {
-      return { ok: false, refusal: "error", reason: "the start and parent commits must be full shas" };
-    }
-    const dirs = worktreeGitDirArgs(input.worktree);
-    const git3 = (args, env) => runHostGit(input.worktree, [...dirs, ...args], GIT_TIMEOUT_MS2, env).trim();
-    const head = git3(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-    if (head !== input.start) {
-      return { ok: false, refusal: "moved", reason: `the lane moved its worktree's HEAD to ${head.slice(0, 12) || "(none)"} (it started at ${input.start.slice(0, 12)}); a write lane leaves its changes uncommitted and the engine commits them` };
-    }
-    const ignored = new Set(git3(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
-    const link = linkEscape(input.worktree, ignored);
-    if (link) return { ok: false, refusal: "escaped", reason: link };
-    const isIgnored = (p) => p.split("/").some((_, i, segs) => ignored.has(segs.slice(0, i + 1).join("/")));
-    const excludes = RUNTIME_STATE_DIRS.filter((d) => !isIgnored(d)).map((d) => `:(top,exclude)${d}`);
-    git3(["add", "-A", "--", ".", ...excludes], engineGitEnv());
-    const refuse = (refusal, reason) => {
-      try {
-        git3(["read-tree", input.start]);
-      } catch (err) {
-        return { ok: false, refusal, reason: `${reason}; the index could not be reset: ${errText4(err)}` };
-      }
-      return { ok: false, refusal, reason };
-    };
-    const index = git3(["ls-files", "-z", "--stage"]);
-    const startTree = git3(["ls-tree", "-r", "-z", "--full-tree", input.start]);
-    const changedOfMode = (mode) => {
-      const known = entriesOfMode(startTree, "tree", mode);
-      return [...entriesOfMode(index, "index", mode)].filter((g) => !known.has(g)).map((g) => g.slice(g.indexOf("	") + 1));
-    };
-    const nested = changedOfMode("160000");
-    if (nested.length > 0) {
-      return refuse("gitlink", `the lane added or changed nested repositories (gitlinks): ${nested.slice(0, 5).join(", ")}; host git does not enter them, so their content is not reviewed`);
-    }
-    const symlinks = changedOfMode("120000");
-    if (symlinks.length > 0) return refuse("escaped", `the lane added or changed symlinks: ${symlinks.slice(0, 5).join(", ")}`);
-    const files = git3(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", input.start, "--"]).split("\0").filter(Boolean);
-    const outside = outsideWorktree(input.worktree, files);
-    if (outside.length > 0) return refuse("escaped", `staged paths resolve outside the worktree (through a link): ${outside.slice(0, 5).join(", ")}`);
-    const hardLinked = files.filter((f) => {
-      try {
-        return (0, import_node_fs11.lstatSync)((0, import_node_path12.join)(input.worktree, f)).nlink > 1;
-      } catch {
-        return false;
-      }
-    });
-    if (hardLinked.length > 0) return refuse("escaped", `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(", ")}`);
-    const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...input.extraProtected ?? []]);
-    if (hit.length > 0) return refuse("protected", `the lane changed merge-rule or lane-protected paths: ${hit.join(", ")}`);
-    const tree = git3(["write-tree"]);
-    if (!HEX.test(tree)) return { ok: false, refusal: "error", reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
-    if (tree === git3(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
-      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
-    }
-    const sha2 = git3(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
-    if (!HEX.test(sha2)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}` };
-    const notes = [];
-    git3(["update-ref", "--no-deref", "-m", "omg factory run: the engine commit of the lane", "HEAD", sha2, input.start]);
-    if (input.branch) {
-      const ref = `refs/heads/${input.branch}`;
-      const at = runHostGit(input.repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], GIT_TIMEOUT_MS2).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ["update-ref", "-m", "omg factory run: the engine commit of the lane", ref, sha2, input.start], GIT_TIMEOUT_MS2);
-      else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || "(none)"}, not the lane start; it was left there`);
-    }
-    return { ok: true, sha: sha2, files, notes };
-  } catch (err) {
-    return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText4(err)}` };
-  }
-}
-function conflictFixStart(repoRoot, head, base, message) {
-  const format2 = runHostGit(repoRoot, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS2).trim();
-  const emptyTree = EMPTY_TREE[format2];
-  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format2)}`);
-  const env = engineGitEnv({ GIT_ATTR_SOURCE: emptyTree });
-  let out;
-  try {
-    out = runHostGit(repoRoot, ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", head, base], GIT_TIMEOUT_MS2, env);
-  } catch (err) {
-    const e = err;
-    if (e.status !== 1 || typeof e.stdout !== "string") throw err;
-    out = e.stdout;
-  }
-  const [tree, ...conflicted] = out.split("\0").filter(Boolean);
-  if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
-  const sha2 = runHostGit(repoRoot, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message, tree], GIT_TIMEOUT_MS2, env).trim();
-  if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
-  return { sha: sha2, conflicted: [...new Set(conflicted)] };
-}
-var import_node_fs11, import_node_path12, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS2, MAX_MESSAGE_CHARS, HEX, RUNTIME_STATE_DIRS, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, LANE_PROTECTED_PATHS, errText4, CI_SKIP, TRAILER, ANY_LINE_TRAILER;
-var init_lane_commit = __esm({
-  "src/factory/run/lane-commit.ts"() {
-    "use strict";
-    import_node_fs11 = require("node:fs");
-    import_node_path12 = require("node:path");
-    init_worktree_paths();
-    init_merge2();
-    init_git_worktree();
-    ENGINE_COMMIT_IDENTITY = Object.freeze({ name: "omg factory", email: "omg-factory@oh-my-copilot.invalid" });
-    GIT_TIMEOUT_MS2 = 6e4;
-    MAX_MESSAGE_CHARS = 4e3;
-    HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-    RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
-    MAX_WALK_ENTRIES = 2e5;
-    MAX_WALK_DEPTH = 64;
-    ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
-    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md", ...ADO_PIPELINE_PATHS];
-    errText4 = (err) => err instanceof Error ? err.message : String(err);
-    CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
-    TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;
-    ANY_LINE_TRAILER = /^\s*(?:co-authored-by|signed-off-by|skip-checks)\s*:/i;
-  }
-});
-
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec, root, ship, view, config2, known, forge) {
   const gate = evaluateGates(exec, view.number, config2, known, root, view.headRefOid, forge);
@@ -43314,15 +44094,15 @@ function searchable(dir, deps, roots) {
   if (dir.slice(3).split(/[\\/]+/).some((s) => s.endsWith(".") || s.endsWith(" "))) return void 0;
   const resolved = real(deps, dir);
   if (resolved === void 0 || !/^[A-Za-z]:[\\/]/.test(resolved)) return void 0;
-  return trustedPath(resolved, roots) ? import_path86.win32.resolve(resolved) : void 0;
+  return trustedPath(resolved, roots) ? import_path87.win32.resolve(resolved) : void 0;
 }
 function resolvePosixAz(deps, given) {
-  const roots = given.flatMap((r) => [import_path86.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path87.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   for (const dir of (deps.env.PATH ?? "").split(":")) {
     if (!dir.startsWith("/") || dir.split("/").some((s) => s === "." || s === "..")) continue;
     const realDir = real(deps, dir);
     if (realDir === void 0 || !posixTrusted(realDir, roots)) continue;
-    const candidate = import_path86.posix.join(realDir, "az");
+    const candidate = import_path87.posix.join(realDir, "az");
     if (!deps.isFile(candidate)) continue;
     const realAz = real(deps, candidate);
     if (realAz === void 0 || !realAz.startsWith("/") || !posixTrusted(realAz, roots)) continue;
@@ -43334,17 +44114,17 @@ function resolveAzEntry(deps) {
   const given = deps.untrustedRoots.filter((r) => r.trim() !== "");
   if (given.length === 0) throw new AzBinaryError("Azure CLI resolution needs the repository, worktree, lane and job roots (untrustedRoots)");
   if (deps.platform !== "win32") return resolvePosixAz(deps, given);
-  const roots = given.flatMap((r) => [import_path86.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path87.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   const dirs = pathEnv(deps.env, deps.platform).split(";").map((d) => d.trim().replace(/^"(.*)"$/, "$1")).filter((d) => d !== "").map((d) => searchable(d, deps, roots)).filter((d) => d !== void 0);
-  const azCmd = dirs.map((d) => import_path86.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
+  const azCmd = dirs.map((d) => import_path87.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
   if (!azCmd) {
     throw new AzBinaryError(
       "Azure CLI not found: no az.cmd on a drive-absolute PATH entry outside node_modules and the repository, lane and job roots. Install it with the MSI (https://aka.ms/installazurecliwindows)."
     );
   }
-  const python = import_path86.win32.resolve(import_path86.win32.dirname(azCmd), "..", "python.exe");
-  const cliPackage = import_path86.win32.resolve(import_path86.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !(deps.isFile(import_path86.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path86.win32.join(cliPackage, "__main__.pyc")))) {
+  const python = import_path87.win32.resolve(import_path87.win32.dirname(azCmd), "..", "python.exe");
+  const cliPackage = import_path87.win32.resolve(import_path87.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
+  if (!deps.isFile(python) || !(deps.isFile(import_path87.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path87.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
@@ -43355,11 +44135,11 @@ function resolveAzEntry(deps) {
   }
   return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: "MSI" } };
 }
-var import_path86, AZ_PYTHON_PREFIX, AzBinaryError, fold2, within, trustedPath, posixWithin, posixTrusted;
+var import_path87, AZ_PYTHON_PREFIX, AzBinaryError, fold2, within, trustedPath, posixWithin, posixTrusted;
 var init_az_binary = __esm({
   "src/forge/ado/az-binary.ts"() {
     "use strict";
-    import_path86 = require("path");
+    import_path87 = require("path");
     AZ_PYTHON_PREFIX = Object.freeze(["-IBm", "azure.cli"]);
     AzBinaryError = class extends Error {
       constructor(message) {
@@ -43367,14 +44147,14 @@ var init_az_binary = __esm({
         this.name = "AzBinaryError";
       }
     };
-    fold2 = (p) => import_path86.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
+    fold2 = (p) => import_path87.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
     within = (dir, root) => {
       const d = fold2(dir), r = fold2(root);
       return d === r || d.startsWith(`${r}\\`);
     };
-    trustedPath = (path15, roots) => !import_path86.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path15, root));
+    trustedPath = (path15, roots) => !import_path87.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path15, root));
     posixWithin = (path15, root) => {
-      const p = import_path86.posix.resolve(path15), r = import_path86.posix.resolve(root);
+      const p = import_path87.posix.resolve(path15), r = import_path87.posix.resolve(root);
       return p === r || p.startsWith(r === "/" ? "/" : `${r}/`);
     };
     posixTrusted = (path15, roots) => !path15.split("/").includes("node_modules") && !roots.some((root) => posixWithin(path15, root));
@@ -43431,9 +44211,9 @@ function adoCall(ctx, routeId, routeParameters, queryParameters = {}, body) {
   try {
     let inFile;
     if (body !== void 0) {
-      dir = (0, import_fs71.mkdtempSync)((0, import_path87.join)((0, import_os16.tmpdir)(), "omg-ado-"));
-      inFile = (0, import_path87.join)(dir, "body.json");
-      (0, import_fs71.writeFileSync)(inFile, JSON.stringify(body), { encoding: "utf8", mode: 384 });
+      dir = (0, import_fs72.mkdtempSync)((0, import_path88.join)((0, import_os17.tmpdir)(), "omg-ado-"));
+      inFile = (0, import_path88.join)(dir, "body.json");
+      (0, import_fs72.writeFileSync)(inFile, JSON.stringify(body), { encoding: "utf8", mode: 384 });
     }
     const res = ctx.exec(ctx.entry.command, adoInvokeArgs(ctx, routeId, routeParameters, queryParameters, inFile), {
       cwd: ctx.cwd,
@@ -43449,7 +44229,7 @@ function adoCall(ctx, routeId, routeParameters, queryParameters = {}, body) {
     }
     return { ok: res.status === 0 && json !== void 0, status: res.status, json, stderr: redactAdoSecrets(res.stderr.trim()) };
   } finally {
-    if (dir) (0, import_fs71.rmSync)(dir, { recursive: true, force: true });
+    if (dir) (0, import_fs72.rmSync)(dir, { recursive: true, force: true });
   }
 }
 function adoJson(call, what) {
@@ -43457,13 +44237,13 @@ function adoJson(call, what) {
   const detail = call.stderr || (call.status === 0 ? "stdout is not JSON" : `az exited ${call.status}`);
   throw new Error(`${what} failed: ${detail}`);
 }
-var import_fs71, import_os16, import_path87, repoParams, projectParams, isObject3, listValue, str3;
+var import_fs72, import_os17, import_path88, repoParams, projectParams, isObject3, listValue, str3;
 var init_invoke = __esm({
   "src/forge/ado/invoke.ts"() {
     "use strict";
-    import_fs71 = require("fs");
-    import_os16 = require("os");
-    import_path87 = require("path");
+    import_fs72 = require("fs");
+    import_os17 = require("os");
+    import_path88 = require("path");
     init_guard();
     init_redact2();
     init_routes();
@@ -43495,7 +44275,7 @@ function readAdoPr(ctx, pr) {
   };
 }
 function description(bodyFile) {
-  const text3 = (0, import_fs72.readFileSync)(bodyFile, "utf8").replace(new RegExp("(?![\\t\\r\\n])\\p{Cc}", "gu"), "");
+  const text3 = (0, import_fs73.readFileSync)(bodyFile, "utf8").replace(new RegExp("(?![\\t\\r\\n])\\p{Cc}", "gu"), "");
   return text3.length <= ADO_PR_DESCRIPTION_MAX ? text3 : `${text3.slice(0, ADO_PR_DESCRIPTION_MAX - TRUNCATED.length)}${TRUNCATED}`;
 }
 function adoReviews(ctx) {
@@ -43550,7 +44330,7 @@ function adoReviews(ctx) {
     },
     commentPr(pr, bodyFile) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: (0, import_fs72.readFileSync)(bodyFile, "utf8"), commentType: 1 }], status: 1 };
+        const body = { comments: [{ parentCommentId: 0, content: (0, import_fs73.readFileSync)(bodyFile, "utf8"), commentType: 1 }], status: 1 };
         const call = adoCall(ctx, "git.pullRequestThreads.POST", { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error2) {
@@ -43559,11 +44339,11 @@ function adoReviews(ctx) {
     }
   };
 }
-var import_fs72, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, commitOf, STATE, branchOf;
+var import_fs73, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, commitOf, STATE, branchOf;
 var init_reviews2 = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
-    import_fs72 = require("fs");
+    import_fs73 = require("fs");
     init_invoke();
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
@@ -43772,7 +44552,7 @@ function adoMergeBody(headSha) {
   return { status: "completed", lastMergeSourceCommit: { commitId: headSha }, completionOptions: { mergeStrategy: "noFastForward" } };
 }
 function mergeBodyDirProblem(dir, platform = process.platform) {
-  const st = (0, import_fs73.lstatSync)(dir);
+  const st = (0, import_fs74.lstatSync)(dir);
   if (!st.isDirectory()) return `merge body directory ${dir} is not a directory`;
   if (platform === "win32") return void 0;
   const uid = typeof process.getuid === "function" ? process.getuid() : void 0;
@@ -43781,19 +44561,19 @@ function mergeBodyDirProblem(dir, platform = process.platform) {
   return void 0;
 }
 function writeBody(ctx, o, pr, headSha) {
-  if (!(0, import_path88.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
-  (0, import_fs73.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
+  if (!(0, import_path89.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
+  (0, import_fs74.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
   const dir = realOr(o.stateDir);
   const root = o.untrustedRoots.find((r) => r.trim() !== "" && under(dir, r));
   if (root) throw new Error(`merge body directory ${dir} is under the untrusted root ${root}`);
   const problem = mergeBodyDirProblem(dir);
   if (problem) throw new Error(problem);
-  const path15 = (0, import_path88.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
+  const path15 = (0, import_path89.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
   const content = `${JSON.stringify(adoMergeBody(headSha), null, 2)}
 `;
-  (0, import_fs73.rmSync)(path15, { force: true });
-  (0, import_fs73.writeFileSync)(path15, content, { encoding: "utf8", mode: 384, flag: "wx" });
-  return { path: path15, sha256: (0, import_crypto21.createHash)("sha256").update(content, "utf8").digest("hex") };
+  (0, import_fs74.rmSync)(path15, { force: true });
+  (0, import_fs74.writeFileSync)(path15, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  return { path: path15, sha256: (0, import_crypto22.createHash)("sha256").update(content, "utf8").digest("hex") };
 }
 function adoMerge(ctx, o) {
   const humanMerge = (pr, headSha) => {
@@ -43821,27 +44601,27 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto21, import_fs73, import_path88, SATISFIED, realOr, under, fileSafe;
+var import_crypto22, import_fs74, import_path89, SATISFIED, realOr, under, fileSafe;
 var init_merge3 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
-    import_crypto21 = require("crypto");
-    import_fs73 = require("fs");
-    import_path88 = require("path");
+    import_crypto22 = require("crypto");
+    import_fs74 = require("fs");
+    import_path89 = require("path");
     init_checks2();
     init_invoke();
     init_reviews2();
     SATISFIED = /* @__PURE__ */ new Set(["approved", "notApplicable"]);
     realOr = (p) => {
       try {
-        return import_fs73.realpathSync.native(p);
+        return import_fs74.realpathSync.native(p);
       } catch {
-        return (0, import_path88.resolve)(p);
+        return (0, import_path89.resolve)(p);
       }
     };
     under = (path15, root) => {
-      const rel = (0, import_path88.relative)(realOr(root), path15);
-      return rel === "" || !rel.startsWith("..") && !(0, import_path88.isAbsolute)(rel);
+      const rel = (0, import_path89.relative)(realOr(root), path15);
+      return rel === "" || !rel.startsWith("..") && !(0, import_path89.isAbsolute)(rel);
     };
     fileSafe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "_");
   }
@@ -43856,7 +44636,7 @@ function recordingAdoExec(exec, dir, now = () => /* @__PURE__ */ new Date()) {
     let requestBody;
     if (typeof inv !== "string" && inv.flags["--in-file"]) {
       try {
-        requestBody = parseMaybe((0, import_fs74.readFileSync)(inv.flags["--in-file"], "utf8"));
+        requestBody = parseMaybe((0, import_fs75.readFileSync)(inv.flags["--in-file"], "utf8"));
       } catch {
         requestBody = "<unreadable>";
       }
@@ -43876,19 +44656,19 @@ function recordingAdoExec(exec, dir, now = () => /* @__PURE__ */ new Date()) {
       argv: azArgs.map((a, i) => inv.inFileAt === i ? "<in-file>" : a),
       ...requestBody !== void 0 ? { requestBody } : {}
     };
-    (0, import_fs74.mkdirSync)(dir, { recursive: true });
-    (0, import_fs74.writeFileSync)((0, import_path89.join)(dir, `${inv.route.id}.${(0, import_crypto22.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
+    (0, import_fs75.mkdirSync)(dir, { recursive: true });
+    (0, import_fs75.writeFileSync)((0, import_path90.join)(dir, `${inv.route.id}.${(0, import_crypto23.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
 `, "utf8");
     return res;
   };
 }
-var import_crypto22, import_fs74, import_path89, ADO_RECORD_ENV, parseMaybe;
+var import_crypto23, import_fs75, import_path90, ADO_RECORD_ENV, parseMaybe;
 var init_record = __esm({
   "src/forge/ado/record.ts"() {
     "use strict";
-    import_crypto22 = require("crypto");
-    import_fs74 = require("fs");
-    import_path89 = require("path");
+    import_crypto23 = require("crypto");
+    import_fs75 = require("fs");
+    import_path90 = require("path");
     init_az_binary();
     init_guard();
     init_redact2();
@@ -44114,7 +44894,7 @@ function adoTracker(ctx, intakeSource) {
     },
     comment(id, bodyFile) {
       try {
-        const call = adoCall(ctx, "wit.comments.POST", { ...projectParams(ctx), workItemId: String(id) }, { format: "markdown" }, { text: (0, import_fs75.readFileSync)(bodyFile, "utf8") });
+        const call = adoCall(ctx, "wit.comments.POST", { ...projectParams(ctx), workItemId: String(id) }, { format: "markdown" }, { text: (0, import_fs76.readFileSync)(bodyFile, "utf8") });
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error2) {
         return { ok: false, stderr: failure(error2) };
@@ -44157,11 +44937,11 @@ function adoTracker(ctx, intakeSource) {
     }
   };
 }
-var import_fs75, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, REV_CONFLICT, linkedIds, splitTags, num3, failure;
+var import_fs76, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, REV_CONFLICT, linkedIds, splitTags, num3, failure;
 var init_tracker = __esm({
   "src/forge/ado/tracker.ts"() {
     "use strict";
-    import_fs75 = require("fs");
+    import_fs76 = require("fs");
     init_config3();
     init_html();
     init_invoke();
@@ -44184,12 +44964,12 @@ function defaultAzBinaryDeps(untrustedRoots, env = process.env) {
     env,
     isFile: (p) => {
       try {
-        return (0, import_fs76.statSync)(p).isFile();
+        return (0, import_fs77.statSync)(p).isFile();
       } catch {
         return false;
       }
     },
-    realpath: (p) => import_fs76.realpathSync.native(p),
+    realpath: (p) => import_fs77.realpathSync.native(p),
     untrustedRoots
   };
 }
@@ -44218,17 +44998,17 @@ function createAzureDevOpsForge(exec, cwd, config2, options) {
     tracker: adoTracker(ctx, config2.intake.source),
     reviews: adoReviews(ctx),
     checks: adoChecks(ctx),
-    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path90.join)((0, import_os17.homedir)(), ".omg", "forge"), untrustedRoots }),
+    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path91.join)((0, import_os18.homedir)(), ".omg", "forge"), untrustedRoots }),
     capabilities: { heal: false, projectsV2: false, boardColumns: true, webhookIntake: false }
   };
 }
-var import_fs76, import_os17, import_path90, progressValues, progressStates, progressColumns;
+var import_fs77, import_os18, import_path91, progressValues, progressStates, progressColumns;
 var init_ado = __esm({
   "src/forge/ado/index.ts"() {
     "use strict";
-    import_fs76 = require("fs");
-    import_os17 = require("os");
-    import_path90 = require("path");
+    import_fs77 = require("fs");
+    import_os18 = require("os");
+    import_path91 = require("path");
     init_az_binary();
     init_checks2();
     init_merge3();
@@ -44664,10 +45444,10 @@ function factoryForgeOptions(repoRoot, env = process.env) {
   const omcRoot = getOmcRoot(repoRoot);
   return {
     untrustedRoots: [
-      (0, import_path91.resolve)(repoRoot),
+      (0, import_path92.resolve)(repoRoot),
       omcRoot,
-      (0, import_path91.join)(omcRoot, "team"),
-      (0, import_path91.join)(omcRoot, "state", "copilot-run"),
+      (0, import_path92.join)(omcRoot, "team"),
+      (0, import_path92.join)(omcRoot, "state", "copilot-run"),
       env.OMC_JOBS_DIR || getGlobalOmcStatePath("team-jobs")
     ],
     stateDir: getGlobalOmcStatePath("forge")
@@ -44678,18 +45458,18 @@ function assertFactoryForgeOptions(repoRoot, options, env = process.env) {
   const missing = factoryForgeOptions(repoRoot, env).untrustedRoots.filter((r) => !given.has(norm(r)));
   if (missing.length > 0) throw new Error(`the forge options must list every untrusted root (factoryForgeOptions); missing: ${missing.join(", ")}`);
 }
-var import_path91, norm;
+var import_path92, norm;
 var init_forge_roots = __esm({
   "src/factory/run/forge-roots.ts"() {
     "use strict";
-    import_path91 = require("path");
+    import_path92 = require("path");
     init_config3();
     init_worktree_paths();
     init_config2();
     init_exec();
     init_jsonc();
     init_paths2();
-    norm = (p) => process.platform === "win32" ? (0, import_path91.resolve)(p).toLowerCase() : (0, import_path91.resolve)(p);
+    norm = (p) => process.platform === "win32" ? (0, import_path92.resolve)(p).toLowerCase() : (0, import_path92.resolve)(p);
   }
 });
 
@@ -44818,26 +45598,26 @@ function progressAgentFileName(agent) {
   return `${agent.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_") || "agent"}.log`;
 }
 function defaultProgressDir(cwd = process.cwd()) {
-  return (0, import_path92.join)(getOmcRoot(cwd), "progress");
+  return (0, import_path93.join)(getOmcRoot(cwd), "progress");
 }
 function resolveProgressFile(agent, file, cwd) {
-  return file || process.env[PROGRESS_FILE_ENV] || (0, import_path92.join)(defaultProgressDir(cwd), progressAgentFileName(agent));
+  return file || process.env[PROGRESS_FILE_ENV] || (0, import_path93.join)(defaultProgressDir(cwd), progressAgentFileName(agent));
 }
 function truncate(value, max) {
   return value.length <= max ? value : Array.from(value).slice(0, max).join("");
 }
 function rotateIfNeeded2(path15) {
   try {
-    if ((0, import_fs77.statSync)(path15).size < PROGRESS_MAX_BYTES) return;
+    if ((0, import_fs78.statSync)(path15).size < PROGRESS_MAX_BYTES) return;
     const claimed = `${path15}.${process.pid}.${Date.now()}.rotating`;
-    (0, import_fs77.renameSync)(path15, claimed);
-    if ((0, import_fs77.statSync)(claimed).size >= PROGRESS_MAX_BYTES) {
-      (0, import_fs77.renameSync)(claimed, `${path15}.1`);
-    } else if (!(0, import_fs77.existsSync)(path15)) {
-      (0, import_fs77.renameSync)(claimed, path15);
+    (0, import_fs78.renameSync)(path15, claimed);
+    if ((0, import_fs78.statSync)(claimed).size >= PROGRESS_MAX_BYTES) {
+      (0, import_fs78.renameSync)(claimed, `${path15}.1`);
+    } else if (!(0, import_fs78.existsSync)(path15)) {
+      (0, import_fs78.renameSync)(claimed, path15);
     } else {
-      (0, import_fs77.appendFileSync)(path15, (0, import_fs77.readFileSync)(claimed));
-      (0, import_fs77.unlinkSync)(claimed);
+      (0, import_fs78.appendFileSync)(path15, (0, import_fs78.readFileSync)(claimed));
+      (0, import_fs78.unlinkSync)(claimed);
     }
   } catch {
   }
@@ -44857,21 +45637,21 @@ function emitProgress(input) {
       agent,
       fields
     });
-    (0, import_fs77.mkdirSync)((0, import_path92.dirname)(path15), { recursive: true });
+    (0, import_fs78.mkdirSync)((0, import_path93.dirname)(path15), { recursive: true });
     rotateIfNeeded2(path15);
-    (0, import_fs77.appendFileSync)(path15, `${line}
+    (0, import_fs78.appendFileSync)(path15, `${line}
 `, "utf8");
     return true;
   } catch {
     return false;
   }
 }
-var import_fs77, import_path92, PROGRESS_STATUSES, PROGRESS_FILE_ENV, PROGRESS_AGENT_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, PROGRESS_MAX_VALUE, KEY_RE, BARE_VALUE_RE, RESERVED_KEYS;
+var import_fs78, import_path93, PROGRESS_STATUSES, PROGRESS_FILE_ENV, PROGRESS_AGENT_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, PROGRESS_MAX_VALUE, KEY_RE, BARE_VALUE_RE, RESERVED_KEYS;
 var init_agent_progress = __esm({
   "src/lib/agent-progress.ts"() {
     "use strict";
-    import_fs77 = require("fs");
-    import_path92 = require("path");
+    import_fs78 = require("fs");
+    import_path93 = require("path");
     init_worktree_paths();
     PROGRESS_STATUSES = ["start", "ok", "fail", "blocked", "heartbeat", "done"];
     PROGRESS_FILE_ENV = "OMG_PROGRESS_FILE";
@@ -44887,7 +45667,7 @@ var init_agent_progress = __esm({
 
 // src/factory/run/progress.ts
 function factoryProgressFile(root, issue2) {
-  return (0, import_path93.join)(defaultProgressDir(root), `factory-${issue2}.log`);
+  return (0, import_path94.join)(defaultProgressDir(root), `factory-${issue2}.log`);
 }
 function createFactoryProgress(input) {
   const file = input.file ?? factoryProgressFile(input.root, input.issue);
@@ -44913,378 +45693,13 @@ function createFactoryProgress(input) {
     }
   };
 }
-var import_path93, HEARTBEAT_MIN_MS;
+var import_path94, HEARTBEAT_MIN_MS;
 var init_progress2 = __esm({
   "src/factory/run/progress.ts"() {
     "use strict";
-    import_path93 = require("path");
+    import_path94 = require("path");
     init_agent_progress();
     HEARTBEAT_MIN_MS = 6e4;
-  }
-});
-
-// src/factory/run/review-guard.ts
-function run(exec, cwd, args) {
-  const res = exec("git", args, { cwd, env: TRUSTED_READ_ENV });
-  if (res.status !== 0) throw new SnapshotError(`git ${args.join(" ")} failed in ${cwd}: ${res.stderr.trim().split("\n")[0]}`);
-  return res.stdout;
-}
-function excludesFileOf(exec, cwd) {
-  const res = exec("git", ["config", "--get", "core.excludesFile"], { cwd, env: TRUSTED_READ_ENV });
-  return res.status === 0 && res.stdout.trim() ? res.stdout.trim() : void 0;
-}
-function fileHash(path15) {
-  if (!(0, import_fs78.existsSync)(path15)) return "absent";
-  return (0, import_crypto23.createHash)("sha256").update((0, import_fs78.readFileSync)(path15)).digest("hex");
-}
-function fileText(path15) {
-  return (0, import_fs78.existsSync)(path15) ? (0, import_fs78.readFileSync)(path15, "utf8").trim() : "";
-}
-function treeHash(dir) {
-  if (!(0, import_fs78.existsSync)(dir)) return "absent";
-  const entries = [];
-  const walk = (abs, rel) => {
-    for (const name of (0, import_fs78.readdirSync)(abs).sort()) {
-      const p = (0, import_path94.join)(abs, name);
-      const r = rel ? `${rel}/${name}` : name;
-      const st = (0, import_fs78.lstatSync)(p);
-      if (st.isSymbolicLink()) entries.push(`l ${r} ${(0, import_fs78.readlinkSync)(p)}`);
-      else if (st.isDirectory()) {
-        entries.push(`d ${r}`);
-        walk(p, r);
-      } else entries.push(`f ${r} ${st.mode & 73 ? "x" : "-"} ${fileHash(p)}`);
-    }
-  };
-  walk(dir, "");
-  return sha(entries.join("\n"));
-}
-function pathHash(path15) {
-  if (!(0, import_fs78.existsSync)(path15)) return "absent";
-  return (0, import_fs78.lstatSync)(path15).isDirectory() ? `d ${treeHash(path15)}` : `f ${fileHash(path15)}`;
-}
-function alternatesHash(gitDir) {
-  return `${fileHash((0, import_path94.join)(gitDir, "objects", "info", "alternates"))} ${fileHash((0, import_path94.join)(gitDir, "objects", "info", "http-alternates"))}`;
-}
-function notADirectory(path15) {
-  let st;
-  try {
-    st = (0, import_fs78.lstatSync)(path15);
-  } catch {
-    return null;
-  }
-  if (st.isDirectory()) return null;
-  if (st.isSymbolicLink()) {
-    let target = "?";
-    try {
-      target = (0, import_fs78.readlinkSync)(path15);
-    } catch {
-    }
-    return `a symlink or junction to ${target}`;
-  }
-  return st.isFile() ? "a file" : "not a directory";
-}
-function worktreeEntries(commonDir, ids) {
-  const out = {};
-  for (const id of ids) {
-    const dir = (0, import_path94.join)(commonDir, "worktrees", id);
-    const odd = notADirectory(dir);
-    if (odd) {
-      out[id] = { meta: `${NOT_A_DIR}${odd}`, gitdir: "", commondir: "", notDir: odd };
-      continue;
-    }
-    if (!(0, import_fs78.existsSync)(dir)) continue;
-    const head = fileText((0, import_path94.join)(dir, "HEAD"));
-    const gitdir = fileText((0, import_path94.join)(dir, "gitdir"));
-    const commondir = fileText((0, import_path94.join)(dir, "commondir"));
-    const stale = !gitdir || !(0, import_fs78.existsSync)((0, import_path94.isAbsolute)(gitdir) ? gitdir : (0, import_path94.resolve)(dir, gitdir));
-    out[id] = { meta: sha([head, gitdir, commondir, treeHash((0, import_path94.join)(dir, "refs"))].join("\n")), gitdir, commondir, ...stale ? { stale } : {} };
-  }
-  return out;
-}
-function moduleEntries(commonDir) {
-  const out = {};
-  const walk = (dir, rel) => {
-    const oddDir = notADirectory(dir);
-    if (oddDir) {
-      out[rel || "."] = `${NOT_A_DIR}${oddDir}`;
-      return;
-    }
-    if (!(0, import_fs78.existsSync)(dir)) return;
-    for (const name of (0, import_fs78.readdirSync)(dir).sort()) {
-      const p = (0, import_path94.join)(dir, name);
-      const r = rel ? `${rel}/${name}` : name;
-      const odd = notADirectory(p);
-      if (odd) {
-        out[r] = `${NOT_A_DIR}${odd}`;
-        continue;
-      }
-      if ((0, import_fs78.existsSync)((0, import_path94.join)(p, "HEAD")) || (0, import_fs78.existsSync)((0, import_path94.join)(p, "config"))) {
-        out[r] = sha([fileHash((0, import_path94.join)(p, "config")), fileHash((0, import_path94.join)(p, "config.worktree")), treeHash((0, import_path94.join)(p, "hooks")), treeHash((0, import_path94.join)(p, "info")), alternatesHash(p)].join("\n"));
-        walk((0, import_path94.join)(p, "modules"), `${r}/modules`);
-      } else {
-        walk(p, r);
-      }
-    }
-  };
-  walk((0, import_path94.join)(commonDir, "modules"), "");
-  return out;
-}
-function globalConfigFiles(env = process.env) {
-  if (env.GIT_CONFIG_GLOBAL?.trim()) return [(0, import_path94.resolve)(env.GIT_CONFIG_GLOBAL)];
-  const home = env.HOME?.trim() || (0, import_os18.homedir)();
-  const xdg = env.XDG_CONFIG_HOME?.trim() || (0, import_path94.join)(home, ".config");
-  return [(0, import_path94.join)(home, ".gitconfig"), (0, import_path94.join)(xdg, "git", "config")];
-}
-function includeTargets(text3, fromFile, home) {
-  const out = [];
-  let inInclude = false;
-  for (const raw of text3.split(/\r?\n/)) {
-    let line = raw.trim();
-    const section = /^\[([^\]]*)\](.*)$/.exec(line);
-    if (section) {
-      const name = section[1].trim().split(/[\s"]/)[0].toLowerCase();
-      inInclude = name === "include" || name === "includeif";
-      line = section[2].trim();
-    }
-    if (!inInclude || !line) continue;
-    const kv = /^path\s*=\s*(.*)$/i.exec(line);
-    if (!kv) continue;
-    let value = kv[1].trim();
-    const quoted = /^"((?:[^"\\]|\\.)*)"/.exec(value);
-    value = quoted ? quoted[1].replace(/\\(.)/g, "$1") : value.replace(/\s*[;#].*$/, "").trim();
-    if (!value) continue;
-    const path15 = value === "~" || value.startsWith("~/") ? (0, import_path94.join)(home, value.slice(2)) : (0, import_path94.isAbsolute)(value) ? value : (0, import_path94.join)((0, import_path94.dirname)(fromFile), value);
-    out.push((0, import_path94.resolve)(path15));
-  }
-  return out;
-}
-function safeFileHash(path15) {
-  try {
-    return (0, import_fs78.existsSync)(path15) && (0, import_fs78.statSync)(path15).isDirectory() ? "a directory" : fileHash(path15);
-  } catch (error2) {
-    return `unreadable: ${error2 instanceof Error ? error2.message : String(error2)}`;
-  }
-}
-function globalConfigHash(repoConfigs, env = process.env, excludesFile) {
-  const home = env.HOME?.trim() || (0, import_os18.homedir)();
-  const seen = /* @__PURE__ */ new Map();
-  const follow = (file, depth) => {
-    if (depth > MAX_INCLUDE_DEPTH) return;
-    let text3;
-    try {
-      text3 = (0, import_fs78.readFileSync)(file, "utf8");
-    } catch {
-      return;
-    }
-    for (const target of includeTargets(text3, file, home)) visit2(target, depth);
-  };
-  const visit2 = (file, depth) => {
-    const path15 = (0, import_path94.resolve)(file);
-    if (seen.has(path15)) return;
-    seen.set(path15, safeFileHash(path15));
-    follow(path15, depth + 1);
-  };
-  for (const f of globalConfigFiles(env)) visit2(f, 0);
-  for (const f of repoConfigs) follow((0, import_path94.resolve)(f), 1);
-  const xdg = env.XDG_CONFIG_HOME?.trim() || (0, import_path94.join)(home, ".config");
-  const excludes = excludesFile ? [excludesFile === "~" || excludesFile.startsWith("~/") ? (0, import_path94.join)(home, excludesFile.slice(2)) : excludesFile] : [];
-  for (const f of [(0, import_path94.join)(xdg, "git", "ignore"), ...excludes]) seen.set((0, import_path94.resolve)(f), safeFileHash((0, import_path94.resolve)(f)));
-  return sha([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([p, h]) => `${p} ${h}`).join("\n"));
-}
-function ignoredHash(root) {
-  const names = (0, import_fs78.existsSync)(root) ? (0, import_fs78.readdirSync)(root).filter((n) => /^\.env/i.test(n)) : [];
-  const paths = [.../* @__PURE__ */ new Set([...names, ...SENSITIVE_IGNORED])].sort();
-  return sha(paths.map((p) => `${p} ${pathHash((0, import_path94.join)(root, p))}`).join("\n"));
-}
-function stableStatus(raw, stateRootRel) {
-  const prefix = stateRootRel ? `${stateRootRel.replace(/\\/g, "/").replace(/\/+$/, "")}/` : null;
-  const entries = [];
-  const parts = raw.split("\0");
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i];
-    if (!entry) continue;
-    const code = entry.slice(0, 2);
-    const path15 = entry.slice(3);
-    if (code[0] === "R" || code[0] === "C") {
-      entries.push(`${entry} <- ${parts[i + 1] ?? ""}`);
-      i++;
-      continue;
-    }
-    if (code === "??" && prefix && path15.startsWith(prefix) && !path15.startsWith(`${prefix}skills/`)) continue;
-    entries.push(entry);
-  }
-  return entries.sort().join("\n");
-}
-function snapshotRepo(exec, root, stateRootRel = ".omg", against) {
-  const rawCommon = run(exec, root, ["rev-parse", "--git-common-dir"]).trim();
-  const commonDir = (0, import_path94.isAbsolute)(rawCommon) ? rawCommon : (0, import_path94.resolve)(root, rawCommon);
-  const refs2 = {};
-  for (const line of run(exec, root, ["for-each-ref", FOR_EACH_REF_FORMAT]).split(/\r?\n/)) {
-    const m = /^(\S+) ([0-9a-f]{40,64})$/.exec(line.trim());
-    if (m) refs2[m[1]] = m[2];
-  }
-  const worktreeConfigs = {};
-  const wtDir = (0, import_path94.join)(commonDir, "worktrees");
-  const worktreeIds = notADirectory(wtDir) ? ["."] : (0, import_fs78.existsSync)(wtDir) ? (0, import_fs78.readdirSync)(wtDir).sort() : [];
-  for (const id of worktreeIds) {
-    if (id === ".") continue;
-    const p = (0, import_path94.join)(wtDir, id, "config.worktree");
-    if ((0, import_fs78.existsSync)(p)) worktreeConfigs[id] = fileHash(p);
-  }
-  const files = {
-    config: fileHash((0, import_path94.join)(commonDir, "config")),
-    configWorktree: fileHash((0, import_path94.join)(commonDir, "config.worktree")),
-    info: treeHash((0, import_path94.join)(commonDir, "info")),
-    modules: moduleEntries(commonDir),
-    globalConfig: globalConfigHash([
-      (0, import_path94.join)(commonDir, "config"),
-      (0, import_path94.join)(commonDir, "config.worktree"),
-      ...worktreeIds.filter((id) => id !== ".").map((id) => (0, import_path94.join)(wtDir, id, "config.worktree"))
-    ], process.env, excludesFileOf(exec, root))
-  };
-  const statusUnsafe = against !== void 0 && (files.config !== against.config || files.configWorktree !== against.configWorktree || files.info !== against.info || JSON.stringify(files.modules) !== JSON.stringify(against.modules) || files.globalConfig !== against.globalConfig);
-  return {
-    commonDir,
-    refs: refs2,
-    ...files,
-    worktreeConfigs,
-    worktreeIds,
-    worktrees: worktreeEntries(commonDir, worktreeIds),
-    hooks: treeHash((0, import_path94.join)(commonDir, "hooks")),
-    alternates: alternatesHash(commonDir),
-    ignored: ignoredHash(root),
-    mainHead: run(exec, root, ["rev-parse", "HEAD"]).trim(),
-    mainSymbolic: run(exec, root, ["rev-parse", "--symbolic-full-name", "HEAD"]).trim(),
-    mainStatus: statusUnsafe ? STATUS_SKIPPED : stableStatus(run(exec, root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]), stateRootRel)
-  };
-}
-function samePath2(a, b) {
-  const norm2 = (p) => {
-    let out = (0, import_path94.resolve)(p);
-    try {
-      out = import_fs78.realpathSync.native(out);
-    } catch {
-    }
-    return process.platform === "win32" ? out.toLowerCase() : out;
-  };
-  return norm2(a) === norm2(b);
-}
-function compareSnapshots(before, after, allowedNewRefs = {}, allow = {}) {
-  const problems = [];
-  if (before.commonDir !== after.commonDir) problems.push(`common git dir moved (${before.commonDir} -> ${after.commonDir})`);
-  const names = /* @__PURE__ */ new Set([...Object.keys(before.refs), ...Object.keys(after.refs)]);
-  for (const name of [...names].sort()) {
-    const was = before.refs[name];
-    const now = after.refs[name];
-    if (was === now) continue;
-    if (was === void 0 && name in allowedNewRefs && (allowedNewRefs[name] === "*" || now === allowedNewRefs[name])) continue;
-    if (was === void 0 && now !== void 0 && allow.refAllowed?.(name, now)) continue;
-    if (was === void 0) problems.push(`ref ${name} was created (${now.slice(0, 12)})`);
-    else if (now === void 0) problems.push(`ref ${name} was deleted (was ${was.slice(0, 12)})`);
-    else problems.push(`ref ${name} moved ${was.slice(0, 12)} -> ${now.slice(0, 12)}`);
-  }
-  if (before.config !== after.config) problems.push("the common git config changed");
-  if (before.configWorktree !== after.configWorktree) problems.push("config.worktree changed");
-  const ids = /* @__PURE__ */ new Set([...Object.keys(before.worktreeConfigs), ...Object.keys(after.worktreeConfigs)]);
-  for (const id of [...ids].sort()) {
-    if (after.worktreeConfigs[id] === void 0 && !after.worktreeIds.includes(id)) continue;
-    if (before.worktreeConfigs[id] !== after.worktreeConfigs[id]) problems.push(`worktrees/${id}/config.worktree changed`);
-  }
-  const ownNew = (id, entry) => {
-    const own = allow.newWorktree;
-    if (!own) return false;
-    if (own.id !== void 0 && own.id === id) return true;
-    return Boolean(own.path) && Boolean(entry.gitdir) && samePath2((0, import_path94.dirname)(entry.gitdir), own.path);
-  };
-  const entries = /* @__PURE__ */ new Set([...Object.keys(before.worktrees ?? {}), ...Object.keys(after.worktrees ?? {})]);
-  for (const id of [...entries].sort()) {
-    const was = before.worktrees?.[id];
-    const now = after.worktrees?.[id];
-    if (now?.notDir) {
-      problems.push(`worktrees/${id} is not a real directory (${now.notDir})`);
-      continue;
-    }
-    if (!now) {
-      if (was && !was.stale) problems.push(`worktree entry worktrees/${id} was removed or is no longer a directory`);
-      continue;
-    }
-    if (!was) {
-      if (!ownNew(id, now)) problems.push(`worktree entry worktrees/${id} was added`);
-      else if (now.commondir !== "../..") problems.push(`the lane's worktree entry worktrees/${id} points its commondir at ${now.commondir}`);
-      continue;
-    }
-    if (was.meta !== now.meta) problems.push(`worktrees/${id} changed (HEAD, gitdir, commondir or per-worktree refs)`);
-  }
-  if (before.hooks !== after.hooks) problems.push("the hooks/ directory changed");
-  if (before.info !== after.info) problems.push("the info/ directory changed");
-  const mods = /* @__PURE__ */ new Set([...Object.keys(before.modules ?? {}), ...Object.keys(after.modules ?? {})]);
-  for (const m of [...mods].sort()) {
-    const was = before.modules?.[m];
-    const now = after.modules?.[m];
-    if (was === now) continue;
-    if (now?.startsWith(NOT_A_DIR)) {
-      problems.push(`modules/${m} is not a real directory (${now.slice(NOT_A_DIR.length)})`);
-      continue;
-    }
-    problems.push(was === void 0 ? `submodule git dir modules/${m} was added` : now === void 0 ? `submodule git dir modules/${m} was removed` : `modules/${m} changed (config, hooks, info or alternates)`);
-  }
-  if (before.alternates !== after.alternates) problems.push("objects/info/alternates changed");
-  if (before.globalConfig !== after.globalConfig) problems.push("the global git config or a file a git config includes changed (~/.gitconfig, $XDG_CONFIG_HOME/git/config, include.path / includeIf targets)");
-  if (before.ignored !== after.ignored) problems.push(`an ignored file in the main checkout changed (.env*, ${SENSITIVE_IGNORED.join(", ")})`);
-  if (before.mainHead !== after.mainHead) problems.push(`the main checkout's HEAD moved ${before.mainHead.slice(0, 12)} -> ${after.mainHead.slice(0, 12)}`);
-  if (before.mainSymbolic !== after.mainSymbolic) problems.push(`the main checkout's HEAD switched ${before.mainSymbolic} -> ${after.mainSymbolic}`);
-  if (before.mainStatus !== after.mainStatus && after.mainStatus !== STATUS_SKIPPED) problems.push("the main checkout's working tree changed (modified, added or deleted files, untracked included)");
-  return problems;
-}
-function verifyReviewWorktree(result, head, commonDir) {
-  const problems = [];
-  if (result.baseSha !== head) problems.push(`the lane started at ${result.baseSha?.slice(0, 12) ?? "unknown"}, not the head ${head.slice(0, 12)}`);
-  if (!result.worktree) return [...problems, "the lane reported no worktree to verify"];
-  const links = recordedWorktreeGitLinks(result.worktree);
-  if (!links) return [...problems, "the lane worktree cannot be read: no git links were recorded for it at its creation"];
-  const laneCommon = (0, import_path94.dirname)((0, import_path94.dirname)(links.adminDir));
-  if ((0, import_path94.basename)((0, import_path94.dirname)(links.adminDir)) !== "worktrees" || commonDir !== void 0 && !samePath2(laneCommon, commonDir)) {
-    return [...problems, `the lane worktree's git dir is ${links.adminDir}, not the repository's ${(0, import_path94.join)(commonDir ?? laneCommon, "worktrees")}/<name>`];
-  }
-  let laneHead = "";
-  let status = "";
-  try {
-    const gitDirArgs = worktreeGitDirArgs(result.worktree);
-    laneHead = runHostGit(result.worktree, [...gitDirArgs, "rev-parse", "HEAD"]).trim();
-    status = runHostGit(result.worktree, [...gitDirArgs, "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-  } catch (error2) {
-    return [...problems, `the lane worktree cannot be read: ${error2 instanceof Error ? error2.message : String(error2)}`];
-  }
-  if (laneHead !== head || result.headSha !== null && result.headSha !== head) {
-    problems.push(`the lane worktree's HEAD is ${(laneHead || result.headSha || "unknown").slice(0, 12)}, not the reviewed ${head.slice(0, 12)}`);
-  }
-  const changes = result.changes;
-  if (!changes) problems.push("the lane reported no change summary");
-  else {
-    const touched = [...changes.changedFiles, ...changes.untrackedFiles, ...changes.protectedChanges];
-    if (touched.length > 0) problems.push(`the lane changed files: ${[...new Set(touched)].slice(0, 10).join(", ")}`);
-  }
-  if (status) problems.push("the lane worktree is not clean (modified, deleted or untracked files)");
-  return problems;
-}
-var import_crypto23, import_fs78, import_os18, import_path94, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha, NOT_A_DIR, MAX_INCLUDE_DEPTH;
-var init_review_guard = __esm({
-  "src/factory/run/review-guard.ts"() {
-    "use strict";
-    import_crypto23 = require("crypto");
-    import_fs78 = require("fs");
-    import_os18 = require("os");
-    import_path94 = require("path");
-    init_exec();
-    init_git_worktree();
-    init_exec2();
-    SnapshotError = class extends Error {
-    };
-    SENSITIVE_IGNORED = [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
-    STATUS_SKIPPED = "skipped: the config, info/ or a submodule changed";
-    sha = (text3) => (0, import_crypto23.createHash)("sha256").update(text3).digest("hex");
-    NOT_A_DIR = "not a directory: ";
-    MAX_INCLUDE_DEPTH = 10;
   }
 });
 
@@ -45558,14 +45973,23 @@ async function runFactoryEngine(o) {
   const dir = o.ledgerDir ?? defaultLedgerDir();
   const ledger = EngineLedger.open(dir, o.root, key);
   const hooksDir = emptyHooksDir2(dir);
-  const owner = acquireFactoryOwner(o.root, key, new Date((o.now ?? Date.now)()).toISOString(), o.owner);
-  const ownerPath = factoryOwnerPath(o.root, key);
-  ledger.record(ownerPath, (0, import_fs79.existsSync)(ownerPath) ? (0, import_fs79.readFileSync)(ownerPath, "utf8") : null);
+  const now = new Date((o.now ?? Date.now)()).toISOString();
+  const repoOwner = acquireFactoryRepoOwner(o.root, key, now, o.owner);
+  let owner;
+  try {
+    owner = acquireFactoryOwner(o.root, key, now, o.owner);
+  } catch (error2) {
+    repoOwner.release();
+    throw error2;
+  }
+  const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
+  for (const path15 of ownerPaths) ledger.record(path15, (0, import_fs79.existsSync)(path15) ? (0, import_fs79.readFileSync)(path15, "utf8") : null);
   try {
     return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
   } finally {
     owner.release();
-    ledger.record(ownerPath, null);
+    repoOwner.release();
+    for (const path15 of ownerPaths) ledger.record(path15, null);
   }
 }
 var import_fs79, import_path95, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CI_DETAIL_CHARS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, MAX_REVIEW_DIFF_CHARS, MAX_TITLE_CHARS, ADO_HEAD_LAG_POLLS, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, HEX404, WRITE_LANE_GIT_RULES, resumeCommand, subject, planLabel, untrustedText, HEAL_ACCEPTANCE, planSection, usageOf, capUsage, FactoryEngine;
@@ -45597,6 +46021,7 @@ var init_engine = __esm({
     init_forge_roots();
     init_process_utils();
     init_lane();
+    init_job();
     init_lane_commit();
     init_ledger2();
     init_progress2();
@@ -46336,7 +46761,11 @@ ${item.acceptance}
         if (result.sandbox?.mode === "detect-only") {
           this.o.warn?.(`omg factory run: ${lane.kind} lane ${lane.id} ran without an OS sandbox (writeUnsandboxed "detect-only"${result.sandbox.reason ? `: ${result.sandbox.reason}` : ""})`);
         }
-        const hit = result.changes?.protectedChanges ?? [];
+        if (!result.changes) {
+          this.gate("protected-paths", `lane ${lane.id} reported no change summary, so its protected paths were not checked; nothing was pushed`);
+          return;
+        }
+        const hit = result.changes.protectedChanges;
         if (hit.length > 0) {
           this.gate("protected-paths", `lane ${lane.id} changed merge-rule paths: ${hit.join(", ")}; nothing was pushed`);
           return;
@@ -46665,6 +47094,12 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         this.discardCheckout();
         const path15 = checkoutPath(this.o.root, this.key);
         const branch = checkoutBranch(this.key);
+        const common = (0, import_path95.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
+        const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch}`);
+        if (refProblem) {
+          this.gate("lane-tampered", `the prepare checkout branch ${branch} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
+          return;
+        }
         let before;
         try {
           before = snapshotRepo(this.exec, this.o.root, this.stateRootRel);
@@ -56720,7 +57155,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve44) => setTimeout(resolve44, pollInterval));
+        await new Promise((resolve45) => setTimeout(resolve45, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -56737,7 +57172,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve44, reject2) => {
+    return new Promise((resolve45, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -56815,7 +57250,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve44(parseResult.data);
+            resolve45(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -57076,12 +57511,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve44, reject2) => {
+    return new Promise((resolve45, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve44, interval);
+      const timeoutId = setTimeout(resolve45, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -57810,12 +58245,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve44) => {
+    return new Promise((resolve45) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve44();
+        resolve45();
       } else {
-        this._stdout.once("drain", resolve44);
+        this._stdout.once("drain", resolve45);
       }
     });
   }

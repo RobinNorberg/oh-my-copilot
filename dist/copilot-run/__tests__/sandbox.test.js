@@ -62,8 +62,45 @@ describe('buildSandboxConfig', () => {
         expect(laneGitWritePaths({ ...ctx, gitDir: join(root, 'elsewhere') })).toEqual([join(ctx.commonGitDir, 'objects')]);
         expect(plain.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
         const denied = buildSandboxConfig('write', ctx, host({ shell: true, denied_paths: true }));
-        expect(denied.userPolicy.filesystem.deniedPaths).toEqual(['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
-            .map((p) => join(ctx.realHome, p)));
+        const homeDenied = [
+            '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
+            join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
+            '.gnupg', '.pypirc', join('.config', 'gcloud'),
+        ].map((p) => join(ctx.realHome, p));
+        expect(denied.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+        // The user's runtime dir and the SSH agent's socket dir are denied on Linux/macOS.
+        const sockets = buildSandboxConfig('write', { ...ctx, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+        expect(sockets.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']);
+        // Never the root or a dir that holds a grant (the home, the worktree).
+        for (const sshAuthSock of ['/agent.sock', join(ctx.realHome, 'agent.sock'), join(ctx.worktree, 'agent.sock'), join(root, 'agent.sock')]) {
+            const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths, sshAuthSock).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+        }
+        // No socket entry on Windows.
+        const win = buildSandboxConfig('write', { ...ctx, platform: 'win32', uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+        expect(win.userPolicy.filesystem.deniedPaths).toEqual(homeDenied);
+        // An agent socket directly in a shared sticky dir: only the socket, never all of /tmp.
+        for (const sshAuthSock of ['/tmp/agent.42', '/var/tmp/agent.42']) {
+            const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths, sshAuthSock).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman', sshAuthSock]);
+        }
+        // A tool dir under /run/user/<uid> is a grant: the runtime dir is not denied over it.
+        const tool = buildSandboxConfig('write', { ...ctx, uid: 1000, toolPaths: ['/run/user/1000/fnm/node'] }, host({ shell: true, denied_paths: true }));
+        expect(tool.userPolicy.filesystem.readonlyPaths).toContain('/run/user/1000/fnm/node');
+        expect(tool.userPolicy.filesystem.deniedPaths).not.toContain('/run/user/1000');
+    });
+    it('a dangling link among the grants keeps the socket denials and does not abort the config', () => {
+        const dangling = join(root, 'dangling-grant');
+        // A junction needs no privilege on Windows; elsewhere the type is ignored and a symlink is made.
+        symlinkSync(join(root, 'gone'), dangling, 'junction');
+        try {
+            const settings = { ...ctx.settings, extraReadonlyPaths: [dangling] };
+            const cfg = buildSandboxConfig('write', { ...ctx, settings, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
+            expect(cfg.userPolicy.filesystem.deniedPaths).toEqual(expect.arrayContaining(['/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']));
+        }
+        finally {
+            unlinkSync(dangling);
+        }
     });
     it('write with hostCommits (the factory engine commits) keeps the whole common git dir read-only (§4.3)', () => {
         const gitDir = join(ctx.commonGitDir, 'worktrees', 'cr-1');

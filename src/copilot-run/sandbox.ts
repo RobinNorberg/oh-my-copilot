@@ -201,6 +201,10 @@ export interface SandboxPolicyContext {
   hostCommits?: boolean;
   /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
   toolPaths?: string[];
+  /** The account's uid (Linux/macOS): `/run/user/<uid>` holds its D-Bus, systemd and agent sockets. */
+  uid?: number;
+  /** The engine's SSH_AUTH_SOCK: the agent socket's dir is denied (Linux/macOS). */
+  sshAuthSock?: string;
   /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
   extraReadonly?: string[];
 }
@@ -252,6 +256,17 @@ function ownGitDir(ctx: Pick<SandboxPolicyContext, 'commonGitDir' | 'gitDir' | '
 
 function existingFile(p: string): string | null {
   try { return lstatSync(p).isFile() ? p : null; } catch { return null; }
+}
+
+/** `/tmp`, `/var/tmp` or another sticky world-writable dir: every user's files share it, so it is never denied whole. */
+function stickyShared(dir: string): boolean {
+  if (dir === '/tmp' || dir === '/var/tmp') return true;
+  try {
+    const { mode } = statSync(dir);
+    return (mode & 0o1000) !== 0 && (mode & 0o002) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -327,9 +342,28 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
-    // Git's plaintext credential stores (~/.git-credentials, XDG) and the credential-cache daemon's socket dir.
-    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
-      .map((p) => join(ctx.realHome, p));
+    // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the
+    // gh, cloud, registry, container and signing credentials.
+    filesystem.deniedPaths = [
+      '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
+      join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
+      '.gnupg', '.pypirc', join('.config', 'gcloud'),
+    ].map((p) => join(ctx.realHome, p));
+    if (ctx.platform !== 'win32') {
+      // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
+      // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either,
+      // a tool dir), and of an agent socket directly in a shared sticky dir (/tmp) only the socket.
+      const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths, ctx.realHome];
+      const sockDir = ctx.sshAuthSock && posix.isAbsolute(ctx.sshAuthSock) ? posix.dirname(ctx.sshAuthSock) : null;
+      const sockets = [
+        ...(ctx.uid !== undefined ? [`/run/user/${ctx.uid}`] : []),
+        '/var/run/docker.sock', '/run/docker.sock', '/run/podman',
+        ...(sockDir ? [stickyShared(sockDir) ? ctx.sshAuthSock! : sockDir] : []),
+      ];
+      // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
+      const holdsGrant = (s: string) => grants.some((g) => { try { return isUnderRoot(g, s, ctx.platform); } catch { return false; } });
+      filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
+    }
   }
   const network: SandboxConfig['userPolicy']['network'] = settings.writeNetwork === 'registry'
     ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }

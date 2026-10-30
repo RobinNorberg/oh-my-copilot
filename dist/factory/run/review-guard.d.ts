@@ -99,6 +99,8 @@ export declare class SnapshotError extends Error {
 export declare const SENSITIVE_IGNORED: readonly [".npmrc", ".yarnrc", ".yarnrc.yml", "node_modules/.bin"];
 /** Hash of every entry under `dir` (relative name, kind and content); `absent` when there is none. */
 export declare function treeHash(dir: string): string;
+/** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
+export declare function moduleEntries(commonDir: string): Record<string, string>;
 /** git's own include depth limit. */
 export declare const MAX_INCLUDE_DEPTH = 10;
 /** The global config files git reads: GIT_CONFIG_GLOBAL when set, else `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config`. */

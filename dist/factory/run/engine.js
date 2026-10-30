@@ -77,13 +77,14 @@ import { factoryGuardExec, hardenedGitExec } from './exec.js';
 import { assertFactoryForgeOptions } from './forge-roots.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
+import { jobRefProblem } from '../../copilot-run/job.js';
 import { commitLaneWork, conflictFixStart, laneCommitMessage } from './lane-commit.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir } from './ledger.js';
 import { createFactoryProgress } from './progress.js';
 import { compareSnapshots, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
-import { acquireFactoryOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, shipVerdictHash, TERMINAL_FACTORY_PHASES, trackerStageOf, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
 /** The prepare steps that are checks (a failure there starts a ci-fix lane); the rest are engine steps. */
@@ -1184,7 +1185,12 @@ class FactoryEngine {
         if (result.sandbox?.mode === 'detect-only') {
             this.o.warn?.(`omg factory run: ${lane.kind} lane ${lane.id} ran without an OS sandbox (writeUnsandboxed "detect-only"${result.sandbox.reason ? `: ${result.sandbox.reason}` : ''})`);
         }
-        const hit = result.changes?.protectedChanges ?? [];
+        if (!result.changes) {
+            // No change summary means the protected paths went unchecked, not that none changed.
+            this.gate('protected-paths', `lane ${lane.id} reported no change summary, so its protected paths were not checked; nothing was pushed`);
+            return;
+        }
+        const hit = result.changes.protectedChanges;
         if (hit.length > 0) {
             this.gate('protected-paths', `lane ${lane.id} changed merge-rule paths: ${hit.join(', ')}; nothing was pushed`);
             return;
@@ -1555,6 +1561,13 @@ class FactoryEngine {
         this.discardCheckout();
         const path = checkoutPath(this.o.root, this.key);
         const branch = checkoutBranch(this.key);
+        // `worktree add -B` writes through a symbolic ref: a checkout branch a lane rewrote as `ref: refs/heads/main` would move main.
+        const common = resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
+        const refProblem = jobRefProblem(common, this.o.root, `refs/heads/${branch}`);
+        if (refProblem) {
+            this.gate('lane-tampered', `the prepare checkout branch ${branch} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
+            return;
+        }
         // prepare runs the PR's own code (tsc, eslint, vitest): the shared git state is compared around it like a lane's.
         let before;
         try {
@@ -2275,15 +2288,28 @@ export async function runFactoryEngine(o) {
     const dir = o.ledgerDir ?? defaultLedgerDir();
     const ledger = EngineLedger.open(dir, o.root, key);
     const hooksDir = emptyHooksDir(dir);
-    const owner = acquireFactoryOwner(o.root, key, new Date((o.now ?? Date.now)()).toISOString(), o.owner);
-    const ownerPath = factoryOwnerPath(o.root, key);
-    ledger.record(ownerPath, existsSync(ownerPath) ? readFileSync(ownerPath, 'utf8') : null);
+    const now = new Date((o.now ?? Date.now)()).toISOString();
+    // The repository lock first: a second engine refuses before it touches this run's files or git state.
+    const repoOwner = acquireFactoryRepoOwner(o.root, key, now, o.owner);
+    let owner;
+    try {
+        owner = acquireFactoryOwner(o.root, key, now, o.owner);
+    }
+    catch (error) {
+        repoOwner.release();
+        throw error;
+    }
+    const ownerPaths = [factoryRepoOwnerPath(o.root), factoryOwnerPath(o.root, key)];
+    for (const path of ownerPaths)
+        ledger.record(path, existsSync(path) ? readFileSync(path, 'utf8') : null);
     try {
         return await new FactoryEngine(o, ledger, hooksDir).start(owner.tookOver);
     }
     finally {
         owner.release();
-        ledger.record(ownerPath, null);
+        repoOwner.release();
+        for (const path of ownerPaths)
+            ledger.record(path, null);
     }
 }
 //# sourceMappingURL=engine.js.map

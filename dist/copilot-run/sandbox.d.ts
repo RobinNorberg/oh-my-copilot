@@ -124,6 +124,10 @@ export interface SandboxPolicyContext {
     hostCommits?: boolean;
     /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
     toolPaths?: string[];
+    /** The account's uid (Linux/macOS): `/run/user/<uid>` holds its D-Bus, systemd and agent sockets. */
+    uid?: number;
+    /** The engine's SSH_AUTH_SOCK: the agent socket's dir is denied (Linux/macOS). */
+    sshAuthSock?: string;
     /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
     extraReadonly?: string[];
 }

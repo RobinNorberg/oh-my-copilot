@@ -21,6 +21,8 @@ export interface LaneOutcome {
     /** wait() throws LaneLostError (the job vanished with its process). */
     lost?: boolean;
     sandbox?: CopilotRunSandboxState;
+    /** The result carries no change summary (git could not tell). */
+    noChanges?: boolean;
 }
 export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void;
 export declare class FakeLanes implements LaneBackend {
