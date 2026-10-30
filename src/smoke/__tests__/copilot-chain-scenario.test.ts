@@ -74,11 +74,12 @@ describe('prepareChainProject', () => {
     const { project } = sandbox();
     expect(prepareChainProject(project)).toBeNull();
     expect(readProjectRoutes(project)).toEqual({
-      'success:intake': { stage: 'intent', skill: 'intent' },
+      'success:intake': { stage: 'harbor', skill: 'harbor' },
       'success:*': { stage: CHAIN_LINK2_STAGE, skill: CHAIN_SKILL },
       'failed:*': { stage: 'halt', skill: 'stop' },
     });
     expect(readFileSync(join(project, '.github', 'skills', CHAIN_SKILL, 'SKILL.md'), 'utf8')).toContain(`name: ${CHAIN_SKILL}`);
+    expect(existsSync(join(project, 'GLOSSARY.md'))).toBe(true);
   });
 });
 

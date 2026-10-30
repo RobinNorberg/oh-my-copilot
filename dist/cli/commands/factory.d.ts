@@ -5,7 +5,7 @@
  * (smee.io / cloudflared / direct) live outside the OMC boundary: the daemon
  * only receives already-unpacked webhook events as POSTs and does the OMC-side
  * work itself (HMAC verification, repo whitelist, intake label gate, routing
- * through the shared pure function, headless intent session spawn).
+ * through the shared pure function, headless harbor session spawn).
  *
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
@@ -51,14 +51,14 @@ export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
 export declare function factoryCommand(): Command;
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the
- * single intake -> intent hop. Everything after a completed intent session
+ * single intake -> harbor hop. Everything after a completed harbor session
  * halts (`no-route`) until the project deliberately widens the table.
  */
 export declare function buildRouteTableNarrow(): RouteTable;
 /**
  * Factory prerequisites, checked loudly before anything is written:
- * harbor needs the OMC state root (`.omg/state/`) and the shipyard layout
- * needs `docs/design/`.
+ * harbor needs the OMC state root (`.omg/state/`) and the yard's two day-one
+ * faces drydock seeds (`CLAUDE.md` + `GLOSSARY.md`).
  */
 export declare function validateFactoryPrerequisites(cwd: string): {
     ok: boolean;

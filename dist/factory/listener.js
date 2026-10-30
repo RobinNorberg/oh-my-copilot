@@ -21,7 +21,8 @@ import { getOmcRoot } from '../lib/worktree-paths.js';
 import { withFileLockSync } from '../lib/file-lock.js';
 import { enqueueWebhookRun, healStateDir } from './heal/state.js';
 export const INTAKE_LABEL = 'intake';
-export const INTAKE_ROUTE_TABLE = { 'success:intake': { stage: 'intent', skill: 'intent' } };
+/** Tracker intake is harbor's job (verify, desk, signed dispositions); intent needs a live contributor. */
+export const INTAKE_ROUTE_TABLE = { 'success:intake': { stage: 'harbor', skill: 'harbor' } };
 /** Why a failed check suite starts nothing: heal owns CI via workflow_run. */
 const CI_FAILURE_DISCARD_REASON = 'CI failures are healed from workflow_run';
 /** The workflow whose red dev push runs may heal (fixed, like the poller's). */
@@ -82,9 +83,10 @@ export function routeTrackerEvent(event, whitelist, table = INTAKE_ROUTE_TABLE) 
         return { kind: 'discarded', reason: 'route table has no intake directive' };
     return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
 }
-export function buildIntentPrompt(directive, issueNumber, issueUrl) {
-    const target = issueUrl ?? `(issue #${issueNumber ?? '?'})`;
-    return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
+/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
+export function buildHarborPrompt(directive, issueNumber, issueUrl) {
+    const target = issueNumber !== undefined ? `#${issueNumber}` : issueUrl ?? '#?';
+    return `/oh-my-copilot:${directive.skill} look at ${target}`;
 }
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 function issueUrlMatchesRepo(issueUrl, repo) {
@@ -189,10 +191,9 @@ export function processEvent(event, config, deps = {}) {
     return spawnChainLink({
         intentId,
         directive: outcome.directive,
-        prompt: buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
-        tracker: outcome.issueNumber !== undefined
-            ? { repo, issue: outcome.issueNumber, nextLabel: 'needs-review', failedLabel: 'failed' }
-            : undefined,
+        prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+        // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
+        tracker: outcome.issueNumber !== undefined ? { repo, issue: outcome.issueNumber } : undefined,
         routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },
         config,
         deps,

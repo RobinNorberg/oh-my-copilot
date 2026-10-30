@@ -4,6 +4,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Listener intake goes to harbor, not intent.** An issue labeled `intake`
+  now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
+  prompt) instead of an intent session with a Chinese prompt, and the default
+  narrow route table (`omg factory init`) is `success:intake` → `harbor`. The
+  listener no longer writes the `needs-review` / `failed` labels, which are
+  outside harbor's label set. A stalled chain link is flagged with
+  `harbor:for-maintainer` instead of `harbor:need-info` ("waiting on the
+  reporter"). `omg factory init` now requires the yard faces `CLAUDE.md` and
+  `GLOSSARY.md` (from `/oh-my-copilot:drydock`) instead of `docs/design/`.
+
 ### Fixed
 
 - **The listener no longer starts a billed session for a nonexistent

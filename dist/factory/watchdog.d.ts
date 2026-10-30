@@ -14,7 +14,8 @@
  */
 import { type SpawnNextTracker } from '../hooks/session-end/spawn-next.js';
 export declare const DEFAULT_STALL_THRESHOLD_MS: number;
-export declare const HARBOR_NEED_INFO_LABEL = "harbor:need-info";
+/** A stall needs the maintainer; `harbor:need-info` would read as "waiting on the reporter". */
+export declare const HARBOR_FOR_MAINTAINER_LABEL = "harbor:for-maintainer";
 export interface StalledLink {
     intentId: string;
     /** Session uuid from the ledger file name. */
@@ -41,6 +42,6 @@ export interface WatchdogDeps {
     audit?: (record: Record<string, unknown>) => void;
 }
 export declare function stallAlertComment(stall: StalledLink): string;
-/** One-shot alert for a stalled link: tracker issue gets the harbor:need-info label + comment, otherwise audit trail. */
+/** One-shot alert for a stalled link: tracker issue gets the harbor:for-maintainer label + comment, otherwise audit trail. */
 export declare function flagStall(stall: StalledLink, deps: WatchdogDeps): void;
 //# sourceMappingURL=watchdog.d.ts.map

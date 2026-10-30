@@ -4,7 +4,7 @@ import fs, { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  buildIntentPrompt,
+  buildHarborPrompt,
   MAX_BODY_BYTES,
   processEvent,
   routeTrackerEvent,
@@ -94,11 +94,11 @@ describe('verifySignature', () => {
 });
 
 describe('routeTrackerEvent', () => {
-  it('routes an intake-labeled event to the intent directive', () => {
+  it('routes an intake-labeled event to the harbor directive', () => {
     const r = routeTrackerEvent(event(), WHITELIST);
     expect(r).toEqual({
       kind: 'routed',
-      directive: { stage: 'intent', skill: 'intent' },
+      directive: { stage: 'harbor', skill: 'harbor' },
       issueNumber: 7,
       issueUrl: 'https://github.com/pangpang778/factory-demo/issues/7',
     });
@@ -120,8 +120,18 @@ describe('routeTrackerEvent', () => {
   });
 });
 
+describe('buildHarborPrompt', () => {
+  it('is the English plugin-skill form harbor registers on Copilot', () => {
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, 7, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at #7');
+  });
+
+  it('falls back to the issue url when the event has no issue number', () => {
+    expect(buildHarborPrompt({ stage: 'harbor', skill: 'harbor' }, undefined, 'https://github.com/o/r/issues/7')).toBe('/oh-my-copilot:harbor look at https://github.com/o/r/issues/7');
+  });
+});
+
 describe('processEvent', () => {
-  it('spawns a headless intent session with a pre-written chain ledger', () => {
+  it('spawns a headless harbor session with a pre-written chain ledger and no labels harbor does not use', () => {
     const cfg = config();
     const spawned: Array<[string, string[]]> = [];
     const audits: Record<string, unknown>[] = [];
@@ -130,7 +140,7 @@ describe('processEvent', () => {
       audit: (r) => audits.push(r),
     });
     expect(result.kind).toBe('accepted');
-    const prompt = buildIntentPrompt({ stage: 'intent', skill: 'intent' }, 7, 'https://github.com/pangpang778/factory-demo/issues/7');
+    const prompt = '/oh-my-copilot:harbor look at #7';
     expect(spawned).toHaveLength(1);
     expect(spawned[0][0]).toBe('claude');
     expect(spawned[0][1][0]).toBe('-p');
@@ -139,12 +149,14 @@ describe('processEvent', () => {
     const sessionId = spawned[0][1][3];
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
     const ledgerPath = join(getOmcRoot(cfg.cwd), 'state', 'factory', `chain-${sessionId}.json`);
-    const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) as { intentId: string; stage: string; includeUserSettings: boolean; tracker?: { repo: string; issue: number; nextLabel: string; failedLabel: string } };
+    const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) as { intentId: string; stage: string; includeUserSettings: boolean; tracker?: Record<string, unknown> };
     expect(ledger.intentId).toBe('pangpang778-factory-demo-7');
-    expect(ledger.stage).toBe('intent');
+    expect(ledger.stage).toBe('harbor');
     expect(ledger.includeUserSettings).toBe(false);
-    expect(ledger.tracker).toEqual({ repo: 'pangpang778/factory-demo', issue: 7, nextLabel: 'needs-review', failedLabel: 'failed' });
-    expect(audits[0]).toMatchObject({ kind: 'routed', stage: 'intent', skill: 'intent', issue: 'https://github.com/pangpang778/factory-demo/issues/7', session: sessionId });
+    // Harbor owns the issue's labels: the ledger keeps only the pointer the stall watchdog flags.
+    expect(ledger.tracker).toEqual({ repo: 'pangpang778/factory-demo', issue: 7 });
+    expect(JSON.stringify(ledger)).not.toMatch(/needs-review|"failed"/);
+    expect(audits[0]).toMatchObject({ kind: 'routed', stage: 'harbor', skill: 'harbor', issue: 'https://github.com/pangpang778/factory-demo/issues/7', session: sessionId });
   });
 
   it('captures the user-settings choice in the initial factory ledger and link argv', () => {
@@ -344,7 +356,7 @@ describe('listener server', () => {
     }
   });
 
-  it('spawns the intent session with the AFK permission profile and a cwd matching the ledger state root', async () => {
+  it('spawns the harbor session with the AFK permission profile and a cwd matching the ledger state root', async () => {
     const spawned: Array<{ cmd: string; args: string[]; ctx: unknown }> = [];
     const cfg = config({ port: 0 });
     const server = await startListener(cfg, { spawner: (cmd, args, ctx) => spawned.push({ cmd, args, ctx }) });
