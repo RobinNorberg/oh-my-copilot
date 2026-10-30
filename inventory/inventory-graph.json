@@ -6,14 +6,14 @@
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
     "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-    "sourceSha256": "72f613ad59e7adc2440dbc08a0a7bad68ffa41545868c7abc03132610acda0f3",
+    "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
   "head": "95bc2e140df9e10dd3d06a1f388e797ac68fedcd",
-  "sourceSha256": "72f613ad59e7adc2440dbc08a0a7bad68ffa41545868c7abc03132610acda0f3",
+  "sourceSha256": "79686516838776a19ecc0e3a4c353d2b69adbfb4d101cd91d44d99fd338e99c1",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1886,
-      "total": 1910
+      "srcFiles": 1880,
+      "total": 1904
     },
     "generated": {
-      "distFiles": 7004,
+      "distFiles": 6980,
       "bridgeFiles": 9,
-      "total": 7013
+      "total": 6989
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -952,6 +952,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/spikes/request-handler-probe.mjs",
       "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
@@ -6584,30 +6585,6 @@
       "dist/smoke/process-utils.d.ts.map",
       "dist/smoke/process-utils.js",
       "dist/smoke/process-utils.js.map",
-      "dist/smoke/replay/__tests__/cassette.test.d.ts",
-      "dist/smoke/replay/__tests__/cassette.test.d.ts.map",
-      "dist/smoke/replay/__tests__/cassette.test.js",
-      "dist/smoke/replay/__tests__/cassette.test.js.map",
-      "dist/smoke/replay/__tests__/normalize.test.d.ts",
-      "dist/smoke/replay/__tests__/normalize.test.d.ts.map",
-      "dist/smoke/replay/__tests__/normalize.test.js",
-      "dist/smoke/replay/__tests__/normalize.test.js.map",
-      "dist/smoke/replay/__tests__/redact.test.d.ts",
-      "dist/smoke/replay/__tests__/redact.test.d.ts.map",
-      "dist/smoke/replay/__tests__/redact.test.js",
-      "dist/smoke/replay/__tests__/redact.test.js.map",
-      "dist/smoke/replay/cassette.d.ts",
-      "dist/smoke/replay/cassette.d.ts.map",
-      "dist/smoke/replay/cassette.js",
-      "dist/smoke/replay/cassette.js.map",
-      "dist/smoke/replay/normalize.d.ts",
-      "dist/smoke/replay/normalize.d.ts.map",
-      "dist/smoke/replay/normalize.js",
-      "dist/smoke/replay/normalize.js.map",
-      "dist/smoke/replay/redact.d.ts",
-      "dist/smoke/replay/redact.d.ts.map",
-      "dist/smoke/replay/redact.js",
-      "dist/smoke/replay/redact.js.map",
       "dist/team/__tests__/ack-timeout-env.test.d.ts",
       "dist/team/__tests__/ack-timeout-env.test.d.ts.map",
       "dist/team/__tests__/ack-timeout-env.test.js",
@@ -37695,126 +37672,6 @@
         "path": "dist/smoke/process-utils.js.map"
       },
       {
-        "id": "dist/smoke/replay/__tests__/cassette.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/cassette.test.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/cassette.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/cassette.test.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/cassette.test.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/cassette.test.js"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/cassette.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/cassette.test.js.map"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/normalize.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/normalize.test.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/normalize.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/normalize.test.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/normalize.test.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/normalize.test.js"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/normalize.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/normalize.test.js.map"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/redact.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/redact.test.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/redact.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/redact.test.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/redact.test.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/redact.test.js"
-      },
-      {
-        "id": "dist/smoke/replay/__tests__/redact.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/__tests__/redact.test.js.map"
-      },
-      {
-        "id": "dist/smoke/replay/cassette.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/cassette.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/cassette.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/cassette.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/cassette.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/cassette.js"
-      },
-      {
-        "id": "dist/smoke/replay/cassette.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/cassette.js.map"
-      },
-      {
-        "id": "dist/smoke/replay/normalize.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/normalize.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/normalize.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/normalize.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/normalize.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/normalize.js"
-      },
-      {
-        "id": "dist/smoke/replay/normalize.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/normalize.js.map"
-      },
-      {
-        "id": "dist/smoke/replay/redact.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/redact.d.ts"
-      },
-      {
-        "id": "dist/smoke/replay/redact.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/redact.d.ts.map"
-      },
-      {
-        "id": "dist/smoke/replay/redact.js",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/redact.js"
-      },
-      {
-        "id": "dist/smoke/replay/redact.js.map",
-        "kind": "generated-dist",
-        "path": "dist/smoke/replay/redact.js.map"
-      },
-      {
         "id": "dist/team/__tests__/ack-timeout-env.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/ack-timeout-env.test.d.ts"
@@ -46138,6 +45995,11 @@
         "id": "scripts/smoke-multirepo.mjs",
         "kind": "script",
         "path": "scripts/smoke-multirepo.mjs"
+      },
+      {
+        "id": "scripts/spikes/request-handler-probe.mjs",
+        "kind": "script",
+        "path": "scripts/spikes/request-handler-probe.mjs"
       },
       {
         "id": "scripts/stale-run-reporter.mjs",
@@ -54490,36 +54352,6 @@
         "path": "src/smoke/process-utils.ts"
       },
       {
-        "id": "src/smoke/replay/__tests__/cassette.test.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/__tests__/cassette.test.ts"
-      },
-      {
-        "id": "src/smoke/replay/__tests__/normalize.test.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/__tests__/normalize.test.ts"
-      },
-      {
-        "id": "src/smoke/replay/__tests__/redact.test.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/__tests__/redact.test.ts"
-      },
-      {
-        "id": "src/smoke/replay/cassette.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/cassette.ts"
-      },
-      {
-        "id": "src/smoke/replay/normalize.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/normalize.ts"
-      },
-      {
-        "id": "src/smoke/replay/redact.ts",
-        "kind": "src",
-        "path": "src/smoke/replay/redact.ts"
-      },
-      {
         "id": "src/team/__tests__/ack-timeout-env.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/ack-timeout-env.test.ts"
@@ -59563,6 +59395,31 @@
       },
       {
         "from": "scripts/smoke-multirepo.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -99957,106 +99814,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "src/smoke/replay/cassette.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "src/smoke/replay/cassette.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/cassette.test.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/normalize.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/normalize.test.ts",
-        "to": "src/smoke/replay/normalize.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/redact.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/__tests__/redact.test.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/cassette.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/cassette.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/cassette.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/cassette.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/cassette.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/replay/normalize.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/normalize.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/replay/normalize.ts",
-        "to": "src/smoke/replay/redact.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/replay/redact.ts",
-        "to": "src/smoke/copilot-session-env.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/team/__tests__/ack-timeout-env.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -113053,12 +112810,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9633,
-      "edgeCount": 11260,
-      "importEdgeCount": 9275,
+      "nodeCount": 9604,
+      "edgeCount": 11245,
+      "importEdgeCount": 9263,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "bdf024ddb97e8755ec8d38e44848399ae65f86d89d70468a87907d95e4c64627",
-  "manifestSha256": "6e7ee7708585130da1f788911231e74b0fe929550de504cc303588b778a0c674"
+  "inventorySha256": "1668383279893734c55c2064c763873e60b810a118fab6fbe8450bac95d007c0",
+  "manifestSha256": "539e4b97aadc3b29d500545f6083ec26832a38dea5f4d8d65650aac06eb0d785"
 }
