@@ -52,7 +52,7 @@ import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
-import { loadCopilotSdk, resolveShimTarget, runtimePid, sdkCreateSessionAcceptsSandbox, } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget, runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
@@ -61,7 +61,9 @@ import { buildSdkExcludedTools, decideSdkPermission, gitSubcommandDeny, isUnderR
 import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
-import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, laneToolPaths, loadSandboxSettings, missingSandboxEnv, probeHostSupport, readEnforcement, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from './sandbox.js';
+import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
+import { errText, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -175,15 +177,7 @@ export function resolveStartRef(repoRoot, ref) {
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
 const IDENTITY_TIMEOUT_MS = 10_000;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
-const errText = (err) => (err instanceof Error ? err.message : String(err));
 const isTerminal = (s) => s !== 'starting' && s !== 'running';
-function withTimeout(promise, ms, label) {
-    let timer;
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-    ]).finally(() => clearTimeout(timer));
-}
 /** Wait for `promise` (which never rejects) or `ms`, whichever comes first; the timer is cleared either way. */
 function settleWithin(promise, ms) {
     let timer;
@@ -744,10 +738,36 @@ export class CopilotRunManager {
             platform: deps.platform,
         };
         const protectedRoot = job.worktree?.path ?? job.ledgerCwd;
+        const sandbox = new SessionSandboxController({
+            profile: job.profile,
+            settings: job.sandboxSettings,
+            env: deps.env,
+            platform: deps.platform,
+            rpcTimeoutMs: RPC_TIMEOUT_MS,
+            ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}),
+            policyContext: () => {
+                const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
+                // A job worktree's git dirs come from the links recorded at creation, never from discovery.
+                const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+                const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
+                return {
+                    worktree: resolve(top),
+                    commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
+                    ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
+                    pluginRoot,
+                    jobHome: job.home,
+                    jobDir: job.jobDir,
+                    realHome: (deps.realHome ?? (() => userInfo().homedir))(),
+                    platform: deps.platform,
+                    settings: job.sandboxSettings,
+                    hostCommits: job.hostCommits,
+                    toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+                };
+            },
+            note: (text) => { job.notes.push(text); },
+        });
         const onPermissionRequest = (req) => {
-            let decision = req.requestSandboxBypass === true || req.requestSandboxPermissive === true
-                ? { approve: false, reason: 'sandbox bypass requests are never approved' }
-                : decideSdkPermission(req, policy);
+            let decision = sandboxBypassDenial(req) ?? decideSdkPermission(req, policy);
             if (decision.approve && req.kind === 'write') {
                 const raw = [req.resolvedPath, req.path, req.fileName].find((v) => typeof v === 'string' && v.trim() !== '');
                 const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
@@ -789,7 +809,6 @@ export class CopilotRunManager {
         let sent = false;
         let idle = new Promise((r) => { onIdle = r; });
         const shutdown = new Promise((r) => { onShutdown = r; });
-        const toolNames = new Map();
         let eventsFd = null;
         const onEvent = (event) => {
             if (eventsFd !== null) {
@@ -801,25 +820,14 @@ export class CopilotRunManager {
             const data = (event.data ?? {});
             switch (event.type) {
                 case 'tool.execution_start':
-                    if (typeof data.toolCallId === 'string' && typeof data.toolName === 'string')
-                        toolNames.set(data.toolCallId, data.toolName);
+                    sandbox.toolStarted(data);
                     break;
                 case 'tool.execution_complete': {
-                    // Attestation (§5): a shell call must report sandboxed: true. A call of an unknown tool must not
-                    // report false, and in an enforced session it must report true (a missing field is an escape).
-                    const id = String(data.toolCallId ?? '');
-                    const name = toolNames.get(id) ?? (typeof data.toolName === 'string' ? data.toolName : null);
-                    toolNames.delete(id);
-                    const sbx = job.sandbox;
-                    const escaped = name === null
-                        ? (sbx?.mode === 'enforced' ? data.sandboxed !== true : data.sandboxed === false)
-                        : SANDBOX_SHELL_TOOLS.has(name) && data.sandboxed !== true;
-                    if (sbx && escaped) {
-                        sbx.unsandboxedCalls += 1;
-                        if (sbx.mode !== 'detect-only' && !job.stopReason) {
-                            job.error = `sandbox-escaped: ${name ?? 'a tool'} call ${id || '?'} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
-                            job.requestStop('sandbox-escaped');
-                        }
+                    // Attestation (sandbox-session.ts): an unsandboxed shell call stops the session unless detect-only.
+                    const escaped = sandbox.toolCompleted(data);
+                    if (escaped && !job.stopReason) {
+                        job.error = escaped;
+                        job.requestStop('sandbox-escaped');
                     }
                     break;
                 }
@@ -895,10 +903,11 @@ export class CopilotRunManager {
                 await Promise.race([reading, job.stopped]);
             }
             // The sandbox is decided before the session exists: a refused job creates none.
-            const sandboxConfig = job.stopReason ? null : await this.decideSandbox(job, client, loaded, pluginRoot);
+            const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded);
+            job.sandbox = sandbox.state;
             const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
             if (!job.stopReason && !refused()) {
-                const atCreate = sandboxConfig !== null && sdkCreateSessionAcceptsSandbox(loaded);
+                const atCreate = sandbox.atCreate(loaded, sandboxConfig);
                 // Review: the shell tools only while an enforced sandbox is still possible (confirmSandbox hides them on a downgrade).
                 const shell = sandboxConfig !== null;
                 session = await withTimeout(client.createSession({
@@ -916,7 +925,7 @@ export class CopilotRunManager {
                 }), RPC_TIMEOUT_MS, 'createSession()');
                 job.sessionId = session.sessionId;
                 if (sandboxConfig)
-                    await this.confirmSandbox(job, session, sandboxConfig, atCreate);
+                    await sandbox.confirm(session, sandboxConfig, atCreate);
             }
             if (job.sandbox?.mode === 'refused') {
                 job.error = `sandbox-unavailable: ${job.sandbox.reason ?? 'the sandbox is not confirmed'}`;
@@ -1012,108 +1021,6 @@ export class CopilotRunManager {
             }
         }
         return outcome;
-    }
-    /**
-     * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-     * when the host supports the sandbox (the mode stays the unconfirmed one
-     * until confirmSandbox), else null with the final mode: `detect-only` when
-     * the sandbox is switched off, otherwise the fail-closed mode.
-     */
-    async decideSandbox(job, client, loaded, pluginRoot) {
-        const { deps } = this;
-        let cliVersion = 'unknown';
-        try {
-            const status = await withTimeout(client.getStatus(), RPC_TIMEOUT_MS, 'getStatus()');
-            if (typeof status.version === 'string')
-                cliVersion = status.version;
-        }
-        catch { /* recorded as unknown */ }
-        const host = await probeHostSupport(client, RPC_TIMEOUT_MS, { platform: deps.platform, ...(deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {}) });
-        const base = { host, applied: 'none', canary: 'skipped', unsandboxedCalls: 0, cliVersion, sdkVersion: loaded.version ?? 'unknown' };
-        const settings = job.sandboxSettings;
-        const off = !settings.enabled ? 'sandbox.enabled is false' : deps.env[SANDBOX_KILL_ENV] === 'off' ? `${SANDBOX_KILL_ENV}=off` : null;
-        if (off) {
-            // detect-only applies to write sessions only: a review without an enforced sandbox has no shell.
-            if (job.profile === 'review') {
-                job.sandbox = { ...base, mode: 'read-only-no-shell', reason: off };
-                job.notes.push(`sandbox: switched off (${off}); the review runs read-only without a shell.`);
-            }
-            else {
-                job.sandbox = { ...base, mode: 'detect-only', reason: off };
-                job.notes.push(`sandbox: switched off (${off}); this session is not OS-sandboxed (detect-only).`);
-            }
-            return null;
-        }
-        const fallback = (reason) => {
-            job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason };
-            if (job.sandbox.mode === 'detect-only')
-                job.notes.push(`sandbox: not available (${reason}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-            if (job.sandbox.mode === 'read-only-no-shell')
-                job.notes.push(`sandbox: not available (${reason}); the review runs read-only without a shell.`);
-        };
-        if (!host.supported) {
-            fallback(host.reason ?? 'the host does not support the sandbox');
-            return null;
-        }
-        const top = job.worktree?.path ?? git(job.workCwd, ['rev-parse', '--show-toplevel']) ?? job.workCwd;
-        // A job worktree's git dirs come from the links recorded at creation, never from discovery.
-        const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-        const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
-        try {
-            const commonGitDir = commonRaw ? resolve(commonRaw) : resolve(top, '.git');
-            const config = buildSandboxConfig(job.profile, {
-                worktree: resolve(top),
-                commonGitDir,
-                ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
-                pluginRoot,
-                jobHome: job.home,
-                jobDir: job.jobDir,
-                realHome: (deps.realHome ?? (() => userInfo().homedir))(),
-                platform: deps.platform,
-                settings,
-                hostCommits: job.hostCommits,
-                toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-            }, host);
-            job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
-            return config;
-        }
-        catch (err) {
-            fallback(errText(err));
-            return null;
-        }
-    }
-    /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-    async confirmSandbox(job, session, config, atCreate) {
-        const sbx = job.sandbox;
-        let why = atCreate ? null : await applySandboxConfig(session, config, RPC_TIMEOUT_MS);
-        if (!why) {
-            sbx.applied = atCreate ? 'create' : 'options.update';
-            const enf = await readEnforcement(session, RPC_TIMEOUT_MS);
-            if (typeof enf === 'string')
-                why = enf;
-            else {
-                sbx.enforcement = enf;
-                if (enf.blocked)
-                    why = `sandbox enforcement is blocked${enf.reason ? `: ${enf.reason}` : ''}`;
-            }
-        }
-        if (!why) {
-            sbx.mode = 'enforced';
-            delete sbx.reason;
-            return;
-        }
-        sbx.mode = unconfirmedMode(job.profile, job.sandboxSettings);
-        sbx.reason = why;
-        if (sbx.mode === 'detect-only')
-            job.notes.push(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-        if (sbx.mode === 'read-only-no-shell') {
-            job.notes.push(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-            // The permission handler already refuses every shell call; this also hides the tools.
-            try {
-                await withTimeout(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), RPC_TIMEOUT_MS, 'options.update()');
-            }
-            catch { /* the handler still refuses */ }
-        }
     }
     snapshot(job) {
         const usage = {

@@ -29,6 +29,21 @@ All notable changes to oh-my-copilot will be documented in this file.
   `##[section]Starting:`) still blocks the known-flaky verdict, and the
   known-flaky suggestion on Azure DevOps points at the build to re-queue
   instead of `gh run rerun`.
+### Security
+
+- **Pane team workers no longer pass credentials through
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH`.** A credential-named variable in the list
+  (an AWS secret, `NPM_TOKEN`, `SSH_AUTH_SOCK` and the like) fails the worker
+  start with `worker_launch_env_passthrough_credential`, reported by the
+  leader before the pane runs anything. Only the provider's own login passes:
+  `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` for copilot;
+  `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` for claude, and `AWS_*` /
+  `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is set.
+  In a mixed team, another provider's login is skipped for a worker rather
+  than failing its start.
+### Fixed
+
+- Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
 
 # oh-my-copilot v5.18.1
 
