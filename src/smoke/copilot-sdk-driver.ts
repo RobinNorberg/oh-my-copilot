@@ -56,6 +56,7 @@ import {
   failedTier2Checks,
   FILETOOLS_FILES,
   FILETOOLS_MARKER,
+  KNOWN_SCENARIOS,
   probeHooksJson,
   hostSmokeToolName,
   runCost,
@@ -86,10 +87,12 @@ import {
   cassetteEnv,
   finalizeRecording,
   hasCassette,
+  keepFailedParts,
   platformTag,
   replayOutcome,
   scenarioCassetteDir,
   scenarioStateDir,
+  storedRunOrder,
   type CassetteRun,
 } from './replay/run.js';
 import type { PlaceholderDirs } from './replay/redact.js';
@@ -660,6 +663,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
   const isAlive = input.isAlive ?? pidAlive;
   const killTree = input.killTree ?? ((pid: number) => killProcessTree(pid, input.spawnSync));
   const tape = input.cassette;
+  let runOrder: Scenario[] = [];
   let pid: number | undefined;
   let wedged = false;
 
@@ -690,7 +694,17 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
     // last. team runs before it, so its worker sessions never meet that route
     // table, and its copied worker logs fall in its own time slice.
     const order: Scenario[] = ['team', 'chain'];
-    for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
+    let names = [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))];
+    // One runtime serves every scenario and caches global GETs: a cassette run
+    // keeps one order (the known-scenario order, team and chain last), and a
+    // replay the order its recording stored.
+    if (tape) {
+      const rank = (s: Scenario) => (order.includes(s) ? KNOWN_SCENARIOS.length + order.indexOf(s) : KNOWN_SCENARIOS.indexOf(s));
+      names = [...names].sort((a, b) => rank(a) - rank(b));
+      if (tape.mode === 'replay') names = storedRunOrder(tape, names) ?? names;
+    }
+    runOrder = names;
+    for (const name of names) {
       if (projectError) { entries.push({ name, skip: `sandbox project setup failed: ${projectError}` }); continue; }
       if (stopReason) { entries.push({ name, skip: stopReason }); continue; }
       // Each scenario records into, or replays from, its own cassette state; a missing cassette never falls through to live.
@@ -840,22 +854,32 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
       // A recording of a failed run would only replay the failure.
       const failed = own.filter((c) => !c.ok).map((c) => c.id);
       checks.push(failed.length > 0
-        ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(', ')}); its parts stay in ${scenarioStateDir(tape, entry.name)} until the run's temp dir is removed` }
-        : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run) }));
+        ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(', ')})${keptAt(tape, entry.name)}` }
+        : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run), runOrder }, ran.map((e) => e.name)));
     }
   }
   return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}) };
 }
 
+/** Where a scenario's unwritten recording was kept, for a check's detail. */
+function keptAt(run: CassetteRun, name: Scenario): string {
+  try {
+    const dir = keepFailedParts(run, name);
+    return dir ? `; its recorded parts are kept in ${dir}` : '; nothing was recorded';
+  } catch (err) {
+    return `; its recorded parts could not be kept: ${excerpt(errText(err), 200)}`;
+  }
+}
+
 /** `scn.<name>.record`: the scenario's parts merged and written as one cassette (gate passed). */
-function recordCheck(run: CassetteRun, name: Scenario, meta: { model?: string; maxCredits: number; cost: ScenarioCost }): SmokeCheck {
+function recordCheck(run: CassetteRun, name: Scenario, meta: { model?: string; maxCredits: number; cost: ScenarioCost; runOrder: Scenario[] }, ran: Scenario[]): SmokeCheck {
   const id = `scn.${name}.record`;
   try {
     const cost = { credits: Number(meta.cost.credits.toFixed(3)), premiumRequests: meta.cost.premiumRequests };
-    const written = finalizeRecording(run, name, { ...(meta.model ? { model: meta.model } : {}), maxCredits: meta.maxCredits, cost });
+    const written = finalizeRecording(run, name, { ...(meta.model ? { model: meta.model } : {}), maxCredits: meta.maxCredits, cost, runOrder: meta.runOrder }, { globalsFrom: ran });
     return { id, ok: true, detail: `${written.interactions} interaction(s) in ${written.streams} stream(s) written to ${written.dir}` };
   } catch (err) {
-    return { id, ok: false, detail: `not written: ${excerpt(errText(err), 600)}` };
+    return { id, ok: false, detail: `not written: ${excerpt(errText(err), 600)}${keptAt(run, name)}` };
   }
 }
 
@@ -870,8 +894,8 @@ async function staticChecks(client: SdkClientLike, input: SdkTierInput, loaded: 
         workingDirectory: input.projectDir,
         disabledMcpServers: ['github-mcp-server'],
         excludedTools: [hostSmokeToolName(input.mcpServer)],
-        // A replay client creates no session without a pinned model (no model call follows).
-        ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
+        // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
+        ...(loaded.cassette && input.model ? { model: input.model } : {}),
       }), RPC_TIMEOUT_MS, 'createSession()');
     } catch (err) {
       return failAll(`static session not created: ${excerpt(errText(err), 200)}`);
@@ -1008,7 +1032,7 @@ async function sandboxSpawnCanary(loaded: LoadedSdk, bin: string, input: SdkTier
       workingDirectory: input.projectDir,
       disabledMcpServers: ['github-mcp-server'],
       excludedTools: [],
-      ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
+      ...(loaded.cassette && input.model ? { model: input.model } : {}),
     }), RPC_TIMEOUT_MS, 'canary createSession()');
     const shell = (session.rpc as { shell?: { executeUserRequested?: (p: { requestId: string; command: string }) => Promise<unknown> } }).shell;
     if (typeof shell?.executeUserRequested !== 'function') return { ok: false, detail: 'the SDK has no shell.executeUserRequested RPC, so the spawn canary cannot run (not a pass)' };

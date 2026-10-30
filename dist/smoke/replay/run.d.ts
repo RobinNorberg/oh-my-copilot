@@ -27,7 +27,8 @@ export declare function scenarioStateDir(run: Pick<CassetteRun, 'stateRoot'>, sc
 /**
  * The cassette env on top of `base`. With a scenario, the scenario's state
  * dir; without one (the smoke driver's shared client, switched per scenario
- * by `setCassetteScenario`), a state dir no scenario reads.
+ * by `setCassetteScenario`), the unscoped state dir, whose requests both
+ * modes answer with a 418 miss.
  */
 export declare function cassetteEnv(base: NodeJS.ProcessEnv, run: CassetteRun, dirs: PlaceholderDirs, scenario?: string): NodeJS.ProcessEnv;
 /**
@@ -45,18 +46,42 @@ export interface RecordMeta {
         credits?: number;
         premiumRequests?: number;
     };
+    /** The scenarios of the recording run, in the order they ran; a replay runs them in this order. */
+    runOrder?: string[];
 }
 /**
  * Merge the scenario's parts and write the cassette to
  * `<root>/<platform>-<arch>/<scenario>/` through the gate. Returns the
  * cassette dir and the stream count; throws when nothing was recorded or the
  * merge or write refuses.
+ *
+ * `globalsFrom`: the run's other scenarios. A runtime caches global GETs
+ * across the scenarios of one client, so only the first scenario to need one
+ * records it; each global key this scenario lacks is copied from them, and a
+ * replay of any subset, in any order, finds it (an unserved global is not a
+ * replay failure).
  */
-export declare function finalizeRecording(run: CassetteRun, scenario: string, meta: RecordMeta): {
+export declare function finalizeRecording(run: CassetteRun, scenario: string, meta: RecordMeta, opts?: {
+    globalsFrom?: string[];
+}): {
     dir: string;
     streams: number;
     interactions: number;
 };
+/**
+ * The selected scenarios in the order their recording ran (the manifests'
+ * `runOrder`), or null when no selected cassette stores one. Scenarios the
+ * stored order does not name keep their relative order, after the others.
+ */
+export declare function storedRunOrder<T extends string>(run: Pick<CassetteRun, 'root'>, scenarios: readonly T[]): T[] | null;
+/** Where a scenario's parts go when its recording is not written: `<root>/_failed/<scenario>/` (never read as a cassette). */
+export declare const FAILED_RECORDINGS_DIR = "_failed";
+/**
+ * Keep a scenario's recorded parts (each already through the gate) under
+ * `<root>/_failed/<scenario>/` for diagnosis, replacing an earlier copy.
+ * Returns that dir, or null when the scenario recorded nothing.
+ */
+export declare function keepFailedParts(run: CassetteRun, scenario: string): string | null;
 /** Why recording `scenario` would be refused before any credit is spent (an existing cassette), or null. */
 export declare function recordTargetRefusal(run: CassetteRun, scenario: string): string | null;
 export type ReplayOutcome = ReplayStateSummary & {

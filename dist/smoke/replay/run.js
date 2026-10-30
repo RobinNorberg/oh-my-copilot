@@ -5,11 +5,11 @@
  * one cassette, the replay summary behind `scn.<name>.replay`, and the
  * `omg smoke cassette verify|import` file work.
  */
-import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'fs';
 import { join, relative, resolve } from 'path';
 import { CASSETTE_ENV } from '../copilot-session-env.js';
 import { GLOBAL_STREAM, MANIFEST_FILE, findCassetteDirs, readCassette, verifyCassetteDir, writeCassette, formatGateHits, } from './cassette.js';
-import { RECORD_FAILED_SUFFIX, RECORD_PARTS_DIR } from './handler.js';
+import { RECORD_FAILED_SUFFIX, RECORD_PARTS_DIR, RECORD_STARTED_SUFFIX, UNSCOPED_STATE_DIR } from './handler.js';
 import { summarizeReplayState } from './matcher.js';
 /** `<platform>-<arch>` of this machine: the cassette subdir it records into and replays from. */
 export function platformTag() {
@@ -24,14 +24,15 @@ export function scenarioStateDir(run, scenario) {
 /**
  * The cassette env on top of `base`. With a scenario, the scenario's state
  * dir; without one (the smoke driver's shared client, switched per scenario
- * by `setCassetteScenario`), a state dir no scenario reads.
+ * by `setCassetteScenario`), the unscoped state dir, whose requests both
+ * modes answer with a 418 miss.
  */
 export function cassetteEnv(base, run, dirs, scenario) {
     const env = {
         ...base,
         [CASSETTE_ENV.mode]: run.mode,
         [CASSETTE_ENV.dir]: run.mode === 'replay' ? join(resolve(run.root), platformTag()) : resolve(run.root),
-        [CASSETTE_ENV.state]: scenario ? scenarioStateDir(run, scenario) : join(run.stateRoot, '_client'),
+        [CASSETTE_ENV.state]: scenario ? scenarioStateDir(run, scenario) : join(run.stateRoot, UNSCOPED_STATE_DIR),
         [CASSETTE_ENV.match]: run.strict ? 'strict' : 'tolerant',
         [CASSETTE_ENV.dirs]: JSON.stringify(dirs),
     };
@@ -53,6 +54,10 @@ export function mergeRecordedParts(stateDir, scenario) {
     if (!existsSync(partsDir))
         return null;
     const names = readdirSync(partsDir).sort();
+    const unfinished = names.filter((n) => n.endsWith(RECORD_STARTED_SUFFIX)).map((n) => n.slice(0, -RECORD_STARTED_SUFFIX.length));
+    if (unfinished.length > 0) {
+        throw new Error(`recording part(s) ${unfinished.join(', ')} never finished (the client was not stopped, or its process was killed), refusing to merge`);
+    }
     const failed = names.filter((n) => n.endsWith(RECORD_FAILED_SUFFIX));
     if (failed.length > 0) {
         const why = failed.map((n) => `${n}: ${readFileSync(join(partsDir, n), 'utf-8').trim().slice(0, 300)}`);
@@ -86,25 +91,92 @@ export function mergeRecordedParts(stateDir, scenario) {
         interactions,
     };
 }
+/** The global (`GET /models`-like) interactions of a scenario's finished parts, in recording order. */
+function recordedGlobals(stateDir) {
+    const partsDir = join(stateDir, RECORD_PARTS_DIR);
+    if (!existsSync(partsDir))
+        return [];
+    return readdirSync(partsDir).sort()
+        .filter((n) => statSync(join(partsDir, n)).isDirectory())
+        .flatMap((n) => readCassette(join(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM));
+}
 /**
  * Merge the scenario's parts and write the cassette to
  * `<root>/<platform>-<arch>/<scenario>/` through the gate. Returns the
  * cassette dir and the stream count; throws when nothing was recorded or the
  * merge or write refuses.
+ *
+ * `globalsFrom`: the run's other scenarios. A runtime caches global GETs
+ * across the scenarios of one client, so only the first scenario to need one
+ * records it; each global key this scenario lacks is copied from them, and a
+ * replay of any subset, in any order, finds it (an unserved global is not a
+ * replay failure).
  */
-export function finalizeRecording(run, scenario, meta) {
+export function finalizeRecording(run, scenario, meta, opts = {}) {
     const merged = mergeRecordedParts(scenarioStateDir(run, scenario), scenario);
     if (!merged || merged.interactions.length === 0)
         throw new Error('no model request was recorded');
+    const key = (it) => `${it.req.method} ${it.req.path}`;
+    const own = new Set(merged.interactions.filter((it) => it.stream === GLOBAL_STREAM).map(key));
+    let globalSeq = own.size === 0 ? 0 : Math.max(...merged.interactions.filter((it) => it.stream === GLOBAL_STREAM).map((it) => it.seq));
+    const borrowed = [];
+    for (const other of opts.globalsFrom ?? []) {
+        if (other === scenario)
+            continue;
+        for (const it of recordedGlobals(scenarioStateDir(run, other))) {
+            if (own.has(key(it)) || borrowed.some((b) => key(b) === key(it)))
+                continue;
+            borrowed.push({ ...it, seq: ++globalSeq });
+        }
+    }
+    const interactions = [...merged.interactions, ...borrowed];
     const manifest = {
         ...merged.manifest,
         ...(meta.model ? { model: meta.model } : {}),
         ...(meta.maxCredits !== undefined ? { maxCredits: meta.maxCredits } : {}),
         ...(meta.cost ? { cost: meta.cost } : {}),
+        ...(meta.runOrder ? { runOrder: meta.runOrder } : {}),
     };
     const dir = scenarioCassetteDir(run, scenario);
-    writeCassette(dir, { ...merged, manifest }, { overwrite: run.overwrite });
-    return { dir, streams: manifest.streams.length, interactions: merged.interactions.length };
+    writeCassette(dir, { ...merged, interactions, manifest }, { overwrite: run.overwrite });
+    return { dir, streams: manifest.streams.length, interactions: interactions.length };
+}
+/**
+ * The selected scenarios in the order their recording ran (the manifests'
+ * `runOrder`), or null when no selected cassette stores one. Scenarios the
+ * stored order does not name keep their relative order, after the others.
+ */
+export function storedRunOrder(run, scenarios) {
+    for (const scenario of scenarios) {
+        if (!hasCassette(run, scenario))
+            continue;
+        const order = readCassette(scenarioCassetteDir(run, scenario)).manifest.runOrder;
+        if (!order)
+            continue;
+        const rank = (s) => (order.includes(s) ? order.indexOf(s) : order.length);
+        return [...scenarios].sort((a, b) => rank(a) - rank(b));
+    }
+    return null;
+}
+/** Where a scenario's parts go when its recording is not written: `<root>/_failed/<scenario>/` (never read as a cassette). */
+export const FAILED_RECORDINGS_DIR = '_failed';
+/**
+ * Keep a scenario's recorded parts (each already through the gate) under
+ * `<root>/_failed/<scenario>/` for diagnosis, replacing an earlier copy.
+ * Returns that dir, or null when the scenario recorded nothing.
+ */
+export function keepFailedParts(run, scenario) {
+    const parts = join(scenarioStateDir(run, scenario), RECORD_PARTS_DIR);
+    if (!existsSync(parts) || readdirSync(parts).length === 0)
+        return null;
+    const dest = join(resolve(run.root), FAILED_RECORDINGS_DIR, scenario);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(parts, join(dest, RECORD_PARTS_DIR), { recursive: true });
+    return dest;
+}
+/** The cassettes under `root`, leaving out the kept parts of failed recordings. */
+function cassetteDirsUnder(root) {
+    return findCassetteDirs(root).filter((dir) => relative(root, dir).split(/[\\/]/)[0] !== FAILED_RECORDINGS_DIR);
 }
 /** Why recording `scenario` would be refused before any credit is spent (an existing cassette), or null. */
 export function recordTargetRefusal(run, scenario) {
@@ -148,7 +220,7 @@ export function hasCassette(run, scenario) {
 export function gateCassettes(root) {
     if (!existsSync(root))
         throw new Error(`${root} does not exist`);
-    return findCassetteDirs(resolve(root)).map((dir) => {
+    return cassetteDirsUnder(resolve(root)).map((dir) => {
         const result = verifyCassetteDir(dir);
         return { dir, ok: result.ok, detail: result.ok ? 'clean' : formatGateHits(result.hits) };
     });
@@ -176,7 +248,7 @@ export function importCassettes(source, dest, overwrite = false) {
     const root = resolve(source);
     if (!existsSync(root))
         throw new Error(`${source} does not exist`);
-    const dirs = findCassetteDirs(root);
+    const dirs = cassetteDirsUnder(root);
     if (dirs.length === 0)
         throw new Error(`no cassette (a dir with ${MANIFEST_FILE}) under ${source}`);
     const plan = [];

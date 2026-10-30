@@ -203,7 +203,11 @@ export async function smokeCopilotCommand(cli: SmokeCopilotCliOptions): Promise<
   }
   console.log(cli.json ? JSON.stringify(report, null, 2) : formatSmokeReport(report));
   const code = smokeExitCode(report);
-  if (cli.record === undefined || code !== 0) return code;
+  if (cli.record === undefined) return code;
+  if (code !== 0) {
+    console.error(`verify skipped (a check failed); run \`omg smoke cassette verify ${cli.record}\` once the cassettes you keep are written`);
+    return code;
+  }
   // Step 2 of the capture (design section 6): gate and replay what was just recorded, free.
   const recorded = (report.checks.filter((c) => c.ok && /^scn\.[^.]+\.record$/.test(c.id)).map((c) => c.id.split('.')[1]));
   const verify = await verifyCassettes(expandHome(cli.record), {

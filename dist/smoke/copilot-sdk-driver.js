@@ -27,10 +27,10 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, gitForWindowsShell, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
 import { excerpt } from './copilot-session-eval.js';
-import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, KNOWN_SCENARIOS, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
 import { withCassette } from './replay/handler.js';
-import { cassetteEnv, finalizeRecording, hasCassette, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, } from './replay/run.js';
+import { cassetteEnv, finalizeRecording, hasCassette, keepFailedParts, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, storedRunOrder, } from './replay/run.js';
 /**
  * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
  * than 1.0.16, which takes it only through `rpc.options.update`): its source
@@ -467,6 +467,7 @@ export async function runSdkTier(input) {
     const isAlive = input.isAlive ?? pidAlive;
     const killTree = input.killTree ?? ((pid) => killProcessTree(pid, input.spawnSync));
     const tape = input.cassette;
+    let runOrder = [];
     let pid;
     let wedged = false;
     try {
@@ -494,7 +495,18 @@ export async function runSdkTier(input) {
         // last. team runs before it, so its worker sessions never meet that route
         // table, and its copied worker logs fall in its own time slice.
         const order = ['team', 'chain'];
-        for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
+        let names = [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))];
+        // One runtime serves every scenario and caches global GETs: a cassette run
+        // keeps one order (the known-scenario order, team and chain last), and a
+        // replay the order its recording stored.
+        if (tape) {
+            const rank = (s) => (order.includes(s) ? KNOWN_SCENARIOS.length + order.indexOf(s) : KNOWN_SCENARIOS.indexOf(s));
+            names = [...names].sort((a, b) => rank(a) - rank(b));
+            if (tape.mode === 'replay')
+                names = storedRunOrder(tape, names) ?? names;
+        }
+        runOrder = names;
+        for (const name of names) {
             if (projectError) {
                 entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
                 continue;
@@ -670,22 +682,32 @@ export async function runSdkTier(input) {
             // A recording of a failed run would only replay the failure.
             const failed = own.filter((c) => !c.ok).map((c) => c.id);
             checks.push(failed.length > 0
-                ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(', ')}); its parts stay in ${scenarioStateDir(tape, entry.name)} until the run's temp dir is removed` }
-                : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run) }));
+                ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(', ')})${keptAt(tape, entry.name)}` }
+                : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run), runOrder }, ran.map((e) => e.name)));
         }
     }
     return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}) };
 }
+/** Where a scenario's unwritten recording was kept, for a check's detail. */
+function keptAt(run, name) {
+    try {
+        const dir = keepFailedParts(run, name);
+        return dir ? `; its recorded parts are kept in ${dir}` : '; nothing was recorded';
+    }
+    catch (err) {
+        return `; its recorded parts could not be kept: ${excerpt(errText(err), 200)}`;
+    }
+}
 /** `scn.<name>.record`: the scenario's parts merged and written as one cassette (gate passed). */
-function recordCheck(run, name, meta) {
+function recordCheck(run, name, meta, ran) {
     const id = `scn.${name}.record`;
     try {
         const cost = { credits: Number(meta.cost.credits.toFixed(3)), premiumRequests: meta.cost.premiumRequests };
-        const written = finalizeRecording(run, name, { ...(meta.model ? { model: meta.model } : {}), maxCredits: meta.maxCredits, cost });
+        const written = finalizeRecording(run, name, { ...(meta.model ? { model: meta.model } : {}), maxCredits: meta.maxCredits, cost, runOrder: meta.runOrder }, { globalsFrom: ran });
         return { id, ok: true, detail: `${written.interactions} interaction(s) in ${written.streams} stream(s) written to ${written.dir}` };
     }
     catch (err) {
-        return { id, ok: false, detail: `not written: ${excerpt(errText(err), 600)}` };
+        return { id, ok: false, detail: `not written: ${excerpt(errText(err), 600)}${keptAt(run, name)}` };
     }
 }
 async function staticChecks(client, input, loaded, bin) {
@@ -699,8 +721,8 @@ async function staticChecks(client, input, loaded, bin) {
                 workingDirectory: input.projectDir,
                 disabledMcpServers: ['github-mcp-server'],
                 excludedTools: [hostSmokeToolName(input.mcpServer)],
-                // A replay client creates no session without a pinned model (no model call follows).
-                ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
+                // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
+                ...(loaded.cassette && input.model ? { model: input.model } : {}),
             }), RPC_TIMEOUT_MS, 'createSession()');
         }
         catch (err) {
@@ -846,7 +868,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
             workingDirectory: input.projectDir,
             disabledMcpServers: ['github-mcp-server'],
             excludedTools: [],
-            ...(loaded.cassette === 'replay' && input.model ? { model: input.model } : {}),
+            ...(loaded.cassette && input.model ? { model: input.model } : {}),
         }), RPC_TIMEOUT_MS, 'canary createSession()');
         const shell = session.rpc.shell;
         if (typeof shell?.executeUserRequested !== 'function')

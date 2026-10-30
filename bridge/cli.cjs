@@ -97061,7 +97061,9 @@ __export(handler_exports, {
   DeltaTracker: () => DeltaTracker,
   RECORD_FAILED_SUFFIX: () => RECORD_FAILED_SUFFIX,
   RECORD_PARTS_DIR: () => RECORD_PARTS_DIR,
+  RECORD_STARTED_SUFFIX: () => RECORD_STARTED_SUFFIX,
   REQUEST_HANDLER_MISSING: () => REQUEST_HANDLER_MISSING,
+  UNSCOPED_STATE_DIR: () => UNSCOPED_STATE_DIR,
   addRecordingDenyLiterals: () => addRecordingDenyLiterals,
   analyzeRequest: () => analyzeRequest,
   createRecordingHandler: () => createRecordingHandler,
@@ -97273,8 +97275,9 @@ function deferred() {
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
     async sendRequest(request, ctx) {
+      const recorder = typeof recorderOf === "function" ? recorderOf(ctx) : recorderOf;
+      if (!recorder) return missResponse(NO_SCENARIO_MISS);
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.clone().text();
-      const recorder = typeof recorderOf === "function" ? recorderOf() : recorderOf;
       const pending = recorder.begin(request.method, body, ctx);
       let response;
       try {
@@ -97294,9 +97297,9 @@ function createRecordingHandler(Base, recorderOf) {
 function createReplayHandler(Base, replayerOf) {
   class ReplayHandler extends Base {
     async sendRequest(request, ctx) {
+      const replayer = typeof replayerOf === "function" ? replayerOf(ctx) : replayerOf;
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.text();
-      const replayer = typeof replayerOf === "function" ? replayerOf() : replayerOf;
-      if (!replayer) return missResponse("omg replay: cassette miss (no cassette scenario selected for this client)");
+      if (!replayer) return missResponse(NO_SCENARIO_MISS);
       return replayer.respond(request.method, body, ctx);
     }
     async openWebSocket() {
@@ -97353,25 +97356,41 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
     cassetteSlot;
     constructor(opts) {
       const slot = { scenario: config2.scenario, stateDir: config2.stateDir, replayer: initialReplayer };
-      const recorders = /* @__PURE__ */ new Map();
-      const recorder = () => {
-        const existing = recorders.get(slot.stateDir);
-        if (existing) return existing;
-        const created = newRecorder(slot.scenario, slot.stateDir);
-        recorders.set(slot.stateDir, created);
-        return created;
+      const sessions = /* @__PURE__ */ new Map();
+      const target = (ctx) => {
+        const pinned = ctx.sessionId ? sessions.get(ctx.sessionId) : void 0;
+        if (pinned) return pinned;
+        const current = { ...slot };
+        if (ctx.sessionId) sessions.set(ctx.sessionId, current);
+        return current;
       };
-      const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, () => slot.replayer);
+      const recorders = /* @__PURE__ */ new Map();
+      const recorder = (ctx) => {
+        const { scenario, stateDir } = target(ctx);
+        if (!scenario && (0, import_path121.basename)(stateDir) === UNSCOPED_STATE_DIR) return null;
+        const existing = recorders.get(stateDir);
+        if (existing) return existing.rec;
+        const part = (0, import_path121.join)(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+        const created = { rec: newRecorder(scenario, stateDir), part };
+        recorders.set(stateDir, created);
+        try {
+          (0, import_fs100.mkdirSync)((0, import_path121.dirname)(part), { recursive: true });
+          (0, import_fs100.writeFileSync)(`${part}${RECORD_STARTED_SUFFIX}`, `${process.pid}
+`);
+        } catch {
+        }
+        return created.rec;
+      };
+      const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
       super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
         this.stop = async () => {
           const errors = await stop();
-          const finished = [...recorders];
+          const finished = [...recorders.values()];
           recorders.clear();
-          for (const [stateDir, rec] of finished) {
-            const part = (0, import_path121.join)(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+          for (const { rec, part } of finished) {
             try {
               await rec.finish(part);
             } catch (err) {
@@ -97384,6 +97403,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
               } catch {
               }
             }
+            (0, import_fs100.rmSync)(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
           }
           return errors;
         };
@@ -97414,7 +97434,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
     module: { ...loaded2.module, CopilotClient: CassetteClient, RuntimeConnection }
   };
 }
-var import_fs100, import_os21, import_path121, REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, RECORD_FAILED_SUFFIX, CassetteConfigError, isRecord9, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts, announced;
+var import_fs100, import_os21, import_path121, REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, RECORD_FAILED_SUFFIX, RECORD_STARTED_SUFFIX, UNSCOPED_STATE_DIR, NO_SCENARIO_MISS, CassetteConfigError, isRecord9, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts, announced;
 var init_handler = __esm({
   "src/smoke/replay/handler.ts"() {
     "use strict";
@@ -97430,6 +97450,9 @@ var init_handler = __esm({
     REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
+    RECORD_STARTED_SUFFIX = ".started";
+    UNSCOPED_STATE_DIR = "_client";
+    NO_SCENARIO_MISS = "omg cassette: miss (no cassette scenario selected for this client)";
     CassetteConfigError = class extends Error {
       name = "CassetteConfigError";
     };
@@ -97613,7 +97636,7 @@ function cassetteEnv(base, run2, dirs, scenario) {
     ...base,
     [CASSETTE_ENV.mode]: run2.mode,
     [CASSETTE_ENV.dir]: run2.mode === "replay" ? (0, import_path122.join)((0, import_path122.resolve)(run2.root), platformTag()) : (0, import_path122.resolve)(run2.root),
-    [CASSETTE_ENV.state]: scenario ? scenarioStateDir(run2, scenario) : (0, import_path122.join)(run2.stateRoot, "_client"),
+    [CASSETTE_ENV.state]: scenario ? scenarioStateDir(run2, scenario) : (0, import_path122.join)(run2.stateRoot, UNSCOPED_STATE_DIR),
     [CASSETTE_ENV.match]: run2.strict ? "strict" : "tolerant",
     [CASSETTE_ENV.dirs]: JSON.stringify(dirs)
   };
@@ -97625,6 +97648,10 @@ function mergeRecordedParts(stateDir, scenario) {
   const partsDir = (0, import_path122.join)(stateDir, RECORD_PARTS_DIR);
   if (!(0, import_fs101.existsSync)(partsDir)) return null;
   const names = (0, import_fs101.readdirSync)(partsDir).sort();
+  const unfinished = names.filter((n) => n.endsWith(RECORD_STARTED_SUFFIX)).map((n) => n.slice(0, -RECORD_STARTED_SUFFIX.length));
+  if (unfinished.length > 0) {
+    throw new Error(`recording part(s) ${unfinished.join(", ")} never finished (the client was not stopped, or its process was killed), refusing to merge`);
+  }
   const failed3 = names.filter((n) => n.endsWith(RECORD_FAILED_SUFFIX));
   if (failed3.length > 0) {
     const why = failed3.map((n) => `${n}: ${(0, import_fs101.readFileSync)((0, import_path122.join)(partsDir, n), "utf-8").trim().slice(0, 300)}`);
@@ -97652,18 +97679,57 @@ function mergeRecordedParts(stateDir, scenario) {
     interactions
   };
 }
-function finalizeRecording(run2, scenario, meta) {
+function recordedGlobals(stateDir) {
+  const partsDir = (0, import_path122.join)(stateDir, RECORD_PARTS_DIR);
+  if (!(0, import_fs101.existsSync)(partsDir)) return [];
+  return (0, import_fs101.readdirSync)(partsDir).sort().filter((n) => (0, import_fs101.statSync)((0, import_path122.join)(partsDir, n)).isDirectory()).flatMap((n) => readCassette((0, import_path122.join)(partsDir, n)).interactions.filter((it) => it.stream === GLOBAL_STREAM));
+}
+function finalizeRecording(run2, scenario, meta, opts = {}) {
   const merged = mergeRecordedParts(scenarioStateDir(run2, scenario), scenario);
   if (!merged || merged.interactions.length === 0) throw new Error("no model request was recorded");
+  const key = (it) => `${it.req.method} ${it.req.path}`;
+  const own2 = new Set(merged.interactions.filter((it) => it.stream === GLOBAL_STREAM).map(key));
+  let globalSeq = own2.size === 0 ? 0 : Math.max(...merged.interactions.filter((it) => it.stream === GLOBAL_STREAM).map((it) => it.seq));
+  const borrowed = [];
+  for (const other of opts.globalsFrom ?? []) {
+    if (other === scenario) continue;
+    for (const it of recordedGlobals(scenarioStateDir(run2, other))) {
+      if (own2.has(key(it)) || borrowed.some((b) => key(b) === key(it))) continue;
+      borrowed.push({ ...it, seq: ++globalSeq });
+    }
+  }
+  const interactions = [...merged.interactions, ...borrowed];
   const manifest = {
     ...merged.manifest,
     ...meta.model ? { model: meta.model } : {},
     ...meta.maxCredits !== void 0 ? { maxCredits: meta.maxCredits } : {},
-    ...meta.cost ? { cost: meta.cost } : {}
+    ...meta.cost ? { cost: meta.cost } : {},
+    ...meta.runOrder ? { runOrder: meta.runOrder } : {}
   };
   const dir = scenarioCassetteDir(run2, scenario);
-  writeCassette(dir, { ...merged, manifest }, { overwrite: run2.overwrite });
-  return { dir, streams: manifest.streams.length, interactions: merged.interactions.length };
+  writeCassette(dir, { ...merged, interactions, manifest }, { overwrite: run2.overwrite });
+  return { dir, streams: manifest.streams.length, interactions: interactions.length };
+}
+function storedRunOrder(run2, scenarios) {
+  for (const scenario of scenarios) {
+    if (!hasCassette(run2, scenario)) continue;
+    const order = readCassette(scenarioCassetteDir(run2, scenario)).manifest.runOrder;
+    if (!order) continue;
+    const rank = (s) => order.includes(s) ? order.indexOf(s) : order.length;
+    return [...scenarios].sort((a, b) => rank(a) - rank(b));
+  }
+  return null;
+}
+function keepFailedParts(run2, scenario) {
+  const parts = (0, import_path122.join)(scenarioStateDir(run2, scenario), RECORD_PARTS_DIR);
+  if (!(0, import_fs101.existsSync)(parts) || (0, import_fs101.readdirSync)(parts).length === 0) return null;
+  const dest = (0, import_path122.join)((0, import_path122.resolve)(run2.root), FAILED_RECORDINGS_DIR, scenario);
+  (0, import_fs101.rmSync)(dest, { recursive: true, force: true });
+  (0, import_fs101.cpSync)(parts, (0, import_path122.join)(dest, RECORD_PARTS_DIR), { recursive: true });
+  return dest;
+}
+function cassetteDirsUnder(root2) {
+  return findCassetteDirs(root2).filter((dir) => (0, import_path122.relative)(root2, dir).split(/[\\/]/)[0] !== FAILED_RECORDINGS_DIR);
 }
 function recordTargetRefusal(run2, scenario) {
   const dir = scenarioCassetteDir(run2, scenario);
@@ -97696,7 +97762,7 @@ function hasCassette(run2, scenario) {
 }
 function gateCassettes(root2) {
   if (!(0, import_fs101.existsSync)(root2)) throw new Error(`${root2} does not exist`);
-  return findCassetteDirs((0, import_path122.resolve)(root2)).map((dir) => {
+  return cassetteDirsUnder((0, import_path122.resolve)(root2)).map((dir) => {
     const result = verifyCassetteDir(dir);
     return { dir, ok: result.ok, detail: result.ok ? "clean" : formatGateHits(result.hits) };
   });
@@ -97714,7 +97780,7 @@ function filesUnder(dir, current = dir) {
 function importCassettes(source, dest, overwrite = false) {
   const root2 = (0, import_path122.resolve)(source);
   if (!(0, import_fs101.existsSync)(root2)) throw new Error(`${source} does not exist`);
-  const dirs = findCassetteDirs(root2);
+  const dirs = cassetteDirsUnder(root2);
   if (dirs.length === 0) throw new Error(`no cassette (a dir with ${MANIFEST_FILE}) under ${source}`);
   const plan = [];
   const problems = [];
@@ -97762,7 +97828,7 @@ ${problems.join("\n")}`);
   for (const { from, to } of plan) (0, import_fs101.cpSync)(from, to, { recursive: true, force: true });
   return { imported: plan.map((p) => p.label), dest: (0, import_path122.resolve)(dest) };
 }
-var import_fs101, import_path122;
+var import_fs101, import_path122, FAILED_RECORDINGS_DIR;
 var init_run = __esm({
   "src/smoke/replay/run.ts"() {
     "use strict";
@@ -97772,6 +97838,7 @@ var init_run = __esm({
     init_cassette();
     init_handler();
     init_matcher();
+    FAILED_RECORDINGS_DIR = "_failed";
   }
 });
 
@@ -98138,6 +98205,7 @@ async function runSdkTier(input) {
   const isAlive = input.isAlive ?? pidAlive;
   const killTree = input.killTree ?? ((pid2) => killProcessTree2(pid2, input.spawnSync));
   const tape = input.cassette;
+  let runOrder = [];
   let pid;
   let wedged = false;
   try {
@@ -98161,7 +98229,14 @@ async function runSdkTier(input) {
     checks.push(...await staticChecks(client, input, loaded2, bin));
     let stopReason;
     const order = ["team", "chain"];
-    for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
+    let names = [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))];
+    if (tape) {
+      const rank = (s) => order.includes(s) ? KNOWN_SCENARIOS.length + order.indexOf(s) : KNOWN_SCENARIOS.indexOf(s);
+      names = [...names].sort((a, b) => rank(a) - rank(b));
+      if (tape.mode === "replay") names = storedRunOrder(tape, names) ?? names;
+    }
+    runOrder = names;
+    for (const name of names) {
       if (projectError) {
         entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
         continue;
@@ -98300,19 +98375,27 @@ async function runSdkTier(input) {
       if (typeof outcome !== "string") replay[entry2.name] = { ok: check2.ok, misses: outcome.misses.length, drift: outcome.drift.length };
     } else if (tape) {
       const failed3 = own2.filter((c) => !c.ok).map((c) => c.id);
-      checks.push(failed3.length > 0 ? { id: `scn.${entry2.name}.record`, ok: false, detail: `not written: the scenario failed (${failed3.join(", ")}); its parts stay in ${scenarioStateDir(tape, entry2.name)} until the run's temp dir is removed` } : recordCheck(tape, entry2.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry2.run) }));
+      checks.push(failed3.length > 0 ? { id: `scn.${entry2.name}.record`, ok: false, detail: `not written: the scenario failed (${failed3.join(", ")})${keptAt(tape, entry2.name)}` } : recordCheck(tape, entry2.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry2.run), runOrder }, ran.map((e) => e.name)));
     }
   }
   return { checks, sdk: sdkInfo, cost: total, events, ...tape?.mode === "replay" ? { replay } : {} };
 }
-function recordCheck(run2, name, meta) {
+function keptAt(run2, name) {
+  try {
+    const dir = keepFailedParts(run2, name);
+    return dir ? `; its recorded parts are kept in ${dir}` : "; nothing was recorded";
+  } catch (err) {
+    return `; its recorded parts could not be kept: ${excerpt(errText2(err), 200)}`;
+  }
+}
+function recordCheck(run2, name, meta, ran) {
   const id = `scn.${name}.record`;
   try {
     const cost = { credits: Number(meta.cost.credits.toFixed(3)), premiumRequests: meta.cost.premiumRequests };
-    const written = finalizeRecording(run2, name, { ...meta.model ? { model: meta.model } : {}, maxCredits: meta.maxCredits, cost });
+    const written = finalizeRecording(run2, name, { ...meta.model ? { model: meta.model } : {}, maxCredits: meta.maxCredits, cost, runOrder: meta.runOrder }, { globalsFrom: ran });
     return { id, ok: true, detail: `${written.interactions} interaction(s) in ${written.streams} stream(s) written to ${written.dir}` };
   } catch (err) {
-    return { id, ok: false, detail: `not written: ${excerpt(errText2(err), 600)}` };
+    return { id, ok: false, detail: `not written: ${excerpt(errText2(err), 600)}${keptAt(run2, name)}` };
   }
 }
 async function staticChecks(client, input, loaded2, bin) {
@@ -98326,8 +98409,8 @@ async function staticChecks(client, input, loaded2, bin) {
         workingDirectory: input.projectDir,
         disabledMcpServers: ["github-mcp-server"],
         excludedTools: [hostSmokeToolName(input.mcpServer)],
-        // A replay client creates no session without a pinned model (no model call follows).
-        ...loaded2.cassette === "replay" && input.model ? { model: input.model } : {}
+        // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
+        ...loaded2.cassette && input.model ? { model: input.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
     } catch (err) {
       return failAll(`static session not created: ${excerpt(errText2(err), 200)}`);
@@ -98435,7 +98518,7 @@ async function sandboxSpawnCanary(loaded2, bin, input, host) {
       workingDirectory: input.projectDir,
       disabledMcpServers: ["github-mcp-server"],
       excludedTools: [],
-      ...loaded2.cassette === "replay" && input.model ? { model: input.model } : {}
+      ...loaded2.cassette && input.model ? { model: input.model } : {}
     }), RPC_TIMEOUT_MS, "canary createSession()");
     const shell = session.rpc.shell;
     if (typeof shell?.executeUserRequested !== "function") return { ok: false, detail: "the SDK has no shell.executeUserRequested RPC, so the spawn canary cannot run (not a pass)" };
@@ -152914,7 +152997,11 @@ async function smokeCopilotCommand(cli) {
   }
   console.log(cli.json ? JSON.stringify(report2, null, 2) : formatSmokeReport(report2));
   const code = smokeExitCode(report2);
-  if (cli.record === void 0 || code !== 0) return code;
+  if (cli.record === void 0) return code;
+  if (code !== 0) {
+    console.error(`verify skipped (a check failed); run \`omg smoke cassette verify ${cli.record}\` once the cassettes you keep are written`);
+    return code;
+  }
   const recorded = report2.checks.filter((c) => c.ok && /^scn\.[^.]+\.record$/.test(c.id)).map((c) => c.id.split(".")[1]);
   const verify = await verifyCassettes(expandHome(cli.record), {
     scenarios: recorded,

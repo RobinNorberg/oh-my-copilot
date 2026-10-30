@@ -20,9 +20,9 @@
  * WebSocket transport is refused in both modes (recordings set
  * `COPILOT_CLI_DISABLE_WEBSOCKET_RESPONSES=1`).
  */
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { homedir, hostname, tmpdir, userInfo } from 'os';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { getRuntimePackageVersion } from '../../lib/version.js';
 import { CASSETTE_ENV, cassetteRuntimeEnv } from '../copilot-session-env.js';
 import { CASSETTE_FORMAT, CASSETTE_VERSION, GLOBAL_STREAM, MANIFEST_FILE, readCassette, writeCassette, } from './cassette.js';
@@ -34,6 +34,15 @@ export const REQUEST_HANDLER_MISSING = 'replay needs @github/copilot-sdk with re
 export const RECORD_PARTS_DIR = 'parts';
 /** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */
 export const RECORD_FAILED_SUFFIX = '.failed';
+/** `<state>/parts/<pid>-<n>.started`: a client recorded and has not stopped yet; left behind by a killed process, so the merge refuses. */
+export const RECORD_STARTED_SUFFIX = '.started';
+/**
+ * The state dir name of a multi-scenario client (the smoke driver's) before
+ * its first `setCassetteScenario`: record and replay both answer its requests
+ * with a 418 miss, so a recording holds nothing a replay could not serve.
+ */
+export const UNSCOPED_STATE_DIR = '_client';
+const NO_SCENARIO_MISS = 'omg cassette: miss (no cassette scenario selected for this client)';
 export class CassetteConfigError extends Error {
     name = 'CassetteConfigError';
 }
@@ -470,9 +479,12 @@ export class CassetteRecorder {
 export function createRecordingHandler(Base, recorderOf) {
     class RecordingHandler extends Base {
         async sendRequest(request, ctx) {
+            // Resolved per request, before any await: a client that runs several scenarios records each into its own state dir.
+            const recorder = typeof recorderOf === 'function' ? recorderOf(ctx) : recorderOf;
+            // Not forwarded, since a replay could not answer it either: a multi-scenario client before its first scenario.
+            if (!recorder)
+                return missResponse(NO_SCENARIO_MISS);
             const body = request.method === 'GET' || request.method === 'HEAD' ? '' : await request.clone().text();
-            // Resolved per request: a client that runs several scenarios records each into its own state dir.
-            const recorder = typeof recorderOf === 'function' ? recorderOf() : recorderOf;
             const pending = recorder.begin(request.method, body, ctx);
             let response;
             try {
@@ -516,11 +528,11 @@ export class CassetteReplayer {
 export function createReplayHandler(Base, replayerOf) {
     class ReplayHandler extends Base {
         async sendRequest(request, ctx) {
+            const replayer = typeof replayerOf === 'function' ? replayerOf(ctx) : replayerOf;
             const body = request.method === 'GET' || request.method === 'HEAD' ? '' : await request.text();
-            const replayer = typeof replayerOf === 'function' ? replayerOf() : replayerOf;
             // A client with no scenario selected (the smoke's static checks) has no cassette to answer from.
             if (!replayer)
-                return missResponse('omg replay: cassette miss (no cassette scenario selected for this client)');
+                return missResponse(NO_SCENARIO_MISS);
             return replayer.respond(request.method, body, ctx);
         }
         async openWebSocket() {
@@ -594,27 +606,48 @@ export function withCassette(loaded, env = process.env, options = {}) {
         cassetteSlot;
         constructor(opts) {
             const slot = { scenario: config.scenario, stateDir: config.stateDir, replayer: initialReplayer };
+            // A session stays with the scenario it first spoke in: a late request of
+            // scenario A after the switch to B is still A's.
+            const sessions = new Map();
+            const target = (ctx) => {
+                const pinned = ctx.sessionId ? sessions.get(ctx.sessionId) : undefined;
+                if (pinned)
+                    return pinned;
+                const current = { ...slot };
+                if (ctx.sessionId)
+                    sessions.set(ctx.sessionId, current);
+                return current;
+            };
             // One recorder per scenario state dir, created on the scenario's first request.
             const recorders = new Map();
-            const recorder = () => {
-                const existing = recorders.get(slot.stateDir);
+            const recorder = (ctx) => {
+                const { scenario, stateDir } = target(ctx);
+                if (!scenario && basename(stateDir) === UNSCOPED_STATE_DIR)
+                    return null;
+                const existing = recorders.get(stateDir);
                 if (existing)
-                    return existing;
-                const created = newRecorder(slot.scenario, slot.stateDir);
-                recorders.set(slot.stateDir, created);
-                return created;
+                    return existing.rec;
+                const part = join(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+                const created = { rec: newRecorder(scenario, stateDir), part };
+                recorders.set(stateDir, created);
+                // Removed by stop(): one left behind means the process died recording, and the merge refuses.
+                try {
+                    mkdirSync(dirname(part), { recursive: true });
+                    writeFileSync(`${part}${RECORD_STARTED_SUFFIX}`, `${process.pid}\n`);
+                }
+                catch { /* stop() reports an unwritable parts dir */ }
+                return created.rec;
             };
-            const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, () => slot.replayer);
+            const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
             super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false } : {}) });
             this.cassetteSlot = slot;
             if (mode === 'record') {
                 const stop = this.stop.bind(this);
                 this.stop = async () => {
                     const errors = await stop();
-                    const finished = [...recorders];
+                    const finished = [...recorders.values()];
                     recorders.clear();
-                    for (const [stateDir, rec] of finished) {
-                        const part = join(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+                    for (const { rec, part } of finished) {
                         try {
                             await rec.finish(part);
                         }
@@ -628,6 +661,7 @@ export function withCassette(loaded, env = process.env, options = {}) {
                             }
                             catch { /* the error is still returned */ }
                         }
+                        rmSync(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
                     }
                     return errors;
                 };

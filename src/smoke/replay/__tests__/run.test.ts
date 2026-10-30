@@ -9,6 +9,7 @@ import {
   addRecordingDenyLiterals,
   RECORD_FAILED_SUFFIX,
   RECORD_PARTS_DIR,
+  RECORD_STARTED_SUFFIX,
   withCassette,
   type CassetteClientControl,
   type CopilotRequestContextLike,
@@ -165,6 +166,38 @@ describe('cassette run: record parts, merge, finalize', () => {
       const merged = mergeRecordedParts(scenarioStateDir(run, name), name)!;
       expect(merged.manifest.streams.map((s) => [s.id, s.session])).toEqual([['s1-root', 1]]);
     }
+  });
+
+  it('before its first scenario a switched client answers 418 without forwarding; a late request of scenario A after the switch stays in A', async () => {
+    const run = newRun('record');
+    const { Base, upstream } = fakeSdkBase();
+    const client = newClient(withCassette(fakeSdk(Base), cassetteEnv({}, run, {})));
+    expect((await drive(client, 'static', 'static prompt')).status).toBe(418);
+    expect((await drive(client, 'static', '', 'GET')).status).toBe(418);
+    expect(upstream).not.toHaveBeenCalled();
+    client.setCassetteScenario('smoke', scenarioStateDir(run, 'smoke'));
+    await drive(client, 'a', 'smoke prompt');
+    client.setCassetteScenario('guardrail', scenarioStateDir(run, 'guardrail'));
+    await drive(client, 'a', 'smoke follow-up'); // session a spoke in smoke first
+    await drive(client, 'b', 'guardrail prompt');
+    expect(await client.stop()).toEqual([]);
+    expect(mergeRecordedParts(scenarioStateDir(run, 'smoke'), 'smoke')!.interactions).toHaveLength(2);
+    expect(mergeRecordedParts(scenarioStateDir(run, 'guardrail'), 'guardrail')!.interactions).toHaveLength(1);
+    expect(existsSync(join(run.stateRoot, '_client', RECORD_PARTS_DIR))).toBe(false);
+  });
+
+  it('a client that recorded and was never stopped (a killed process) leaves a marker the merge refuses', async () => {
+    const run = newRun('record');
+    const { Base } = fakeSdkBase();
+    const killed = newClient(withCassette(fakeSdk(Base), cassetteEnv({}, run, {}, 'team')));
+    await drive(killed, 'k', 'task alpha');
+    await recordScenario(run, 'team', [['task beta']]);
+    const partsDir = join(scenarioStateDir(run, 'team'), RECORD_PARTS_DIR);
+    expect(readdirSync(partsDir).filter((n) => n.endsWith(RECORD_STARTED_SUFFIX))).toHaveLength(1);
+    expect(() => mergeRecordedParts(scenarioStateDir(run, 'team'), 'team')).toThrow(/never finished .*refusing to merge/);
+    expect(await killed.stop()).toEqual([]);
+    expect(readdirSync(partsDir).filter((n) => n.endsWith(RECORD_STARTED_SUFFIX))).toEqual([]);
+    expect(mergeRecordedParts(scenarioStateDir(run, 'team'), 'team')!.manifest.streams).toHaveLength(2);
   });
 });
 

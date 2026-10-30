@@ -21903,9 +21903,9 @@ var init_normalize = __esm({
 });
 
 // src/smoke/replay/handler.ts
-import { existsSync as existsSync39, mkdirSync as mkdirSync11, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync39, mkdirSync as mkdirSync11, rmSync as rmSync5, writeFileSync as writeFileSync10 } from "fs";
 import { homedir as homedir7, hostname, tmpdir as tmpdir6, userInfo as userInfo2 } from "os";
-import { dirname as dirname35, join as join48, resolve as resolve16 } from "path";
+import { basename as basename19, dirname as dirname35, join as join48, resolve as resolve16 } from "path";
 function readCassetteConfig(env) {
   const mode = env[CASSETTE_ENV.mode];
   const dir = env[CASSETTE_ENV.dir];
@@ -22105,8 +22105,9 @@ function deferred() {
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
     async sendRequest(request, ctx) {
+      const recorder = typeof recorderOf === "function" ? recorderOf(ctx) : recorderOf;
+      if (!recorder) return missResponse(NO_SCENARIO_MISS);
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.clone().text();
-      const recorder = typeof recorderOf === "function" ? recorderOf() : recorderOf;
       const pending = recorder.begin(request.method, body, ctx);
       let response;
       try {
@@ -22126,9 +22127,9 @@ function createRecordingHandler(Base, recorderOf) {
 function createReplayHandler(Base, replayerOf) {
   class ReplayHandler extends Base {
     async sendRequest(request, ctx) {
+      const replayer = typeof replayerOf === "function" ? replayerOf(ctx) : replayerOf;
       const body = request.method === "GET" || request.method === "HEAD" ? "" : await request.text();
-      const replayer = typeof replayerOf === "function" ? replayerOf() : replayerOf;
-      if (!replayer) return missResponse("omg replay: cassette miss (no cassette scenario selected for this client)");
+      if (!replayer) return missResponse(NO_SCENARIO_MISS);
       return replayer.respond(request.method, body, ctx);
     }
     async openWebSocket() {
@@ -22185,25 +22186,41 @@ function withCassette(loaded2, env = process.env, options = {}) {
     cassetteSlot;
     constructor(opts) {
       const slot = { scenario: config.scenario, stateDir: config.stateDir, replayer: initialReplayer };
-      const recorders = /* @__PURE__ */ new Map();
-      const recorder = () => {
-        const existing = recorders.get(slot.stateDir);
-        if (existing) return existing;
-        const created = newRecorder(slot.scenario, slot.stateDir);
-        recorders.set(slot.stateDir, created);
-        return created;
+      const sessions = /* @__PURE__ */ new Map();
+      const target = (ctx) => {
+        const pinned = ctx.sessionId ? sessions.get(ctx.sessionId) : void 0;
+        if (pinned) return pinned;
+        const current = { ...slot };
+        if (ctx.sessionId) sessions.set(ctx.sessionId, current);
+        return current;
       };
-      const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, () => slot.replayer);
+      const recorders = /* @__PURE__ */ new Map();
+      const recorder = (ctx) => {
+        const { scenario, stateDir } = target(ctx);
+        if (!scenario && basename19(stateDir) === UNSCOPED_STATE_DIR) return null;
+        const existing = recorders.get(stateDir);
+        if (existing) return existing.rec;
+        const part = join48(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+        const created = { rec: newRecorder(scenario, stateDir), part };
+        recorders.set(stateDir, created);
+        try {
+          mkdirSync11(dirname35(part), { recursive: true });
+          writeFileSync10(`${part}${RECORD_STARTED_SUFFIX}`, `${process.pid}
+`);
+        } catch {
+        }
+        return created.rec;
+      };
+      const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
       super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
         this.stop = async () => {
           const errors = await stop();
-          const finished = [...recorders];
+          const finished = [...recorders.values()];
           recorders.clear();
-          for (const [stateDir, rec] of finished) {
-            const part = join48(stateDir, RECORD_PARTS_DIR, `${process.pid}-${++recordParts}`);
+          for (const { rec, part } of finished) {
             try {
               await rec.finish(part);
             } catch (err) {
@@ -22216,6 +22233,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
               } catch {
               }
             }
+            rmSync5(`${part}${RECORD_STARTED_SUFFIX}`, { force: true });
           }
           return errors;
         };
@@ -22246,7 +22264,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
     module: { ...loaded2.module, CopilotClient: CassetteClient, RuntimeConnection }
   };
 }
-var REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, RECORD_FAILED_SUFFIX, CassetteConfigError, isRecord5, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts, announced;
+var REQUEST_HANDLER_MISSING, RECORD_PARTS_DIR, RECORD_FAILED_SUFFIX, RECORD_STARTED_SUFFIX, UNSCOPED_STATE_DIR, NO_SCENARIO_MISS, CassetteConfigError, isRecord5, DeltaTracker, WS_REFUSED, extraDenyLiterals, CassetteRecorder, CassetteReplayer, replayers, recordParts, announced;
 var init_handler = __esm({
   "src/smoke/replay/handler.ts"() {
     "use strict";
@@ -22259,6 +22277,9 @@ var init_handler = __esm({
     REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
+    RECORD_STARTED_SUFFIX = ".started";
+    UNSCOPED_STATE_DIR = "_client";
+    NO_SCENARIO_MISS = "omg cassette: miss (no cassette scenario selected for this client)";
     CassetteConfigError = class extends Error {
       name = "CassetteConfigError";
     };
@@ -22428,7 +22449,7 @@ var init_handler = __esm({
 });
 
 // src/smoke/replay/run.ts
-import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, statSync as statSync7 } from "fs";
+import { cpSync, existsSync as existsSync40, readdirSync as readdirSync16, readFileSync as readFileSync28, rmSync as rmSync6, statSync as statSync7 } from "fs";
 import { join as join49, relative as relative12, resolve as resolve17 } from "path";
 var init_run = __esm({
   "src/smoke/replay/run.ts"() {
@@ -22443,7 +22464,7 @@ var init_run = __esm({
 // src/smoke/copilot-sdk-driver.ts
 import { spawnSync as nodeSpawnSync } from "child_process";
 import { randomBytes as randomBytes2, randomUUID as randomUUID17 } from "crypto";
-import { existsSync as existsSync41, mkdirSync as mkdirSync12, readdirSync as readdirSync17, readFileSync as readFileSync29, realpathSync as realpathSync10, rmSync as rmSync5, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync41, mkdirSync as mkdirSync12, readdirSync as readdirSync17, readFileSync as readFileSync29, realpathSync as realpathSync10, rmSync as rmSync7, writeFileSync as writeFileSync11 } from "fs";
 import { createRequire as createRequire2 } from "module";
 import { userInfo as userInfo3 } from "os";
 import { dirname as dirname36, isAbsolute as isAbsolute13, join as join50, relative as relative13, resolve as resolve18 } from "path";
@@ -29321,10 +29342,10 @@ import { readdirSync as readdirSync18, readFileSync as readFileSync31, existsSyn
 import { join as join54 } from "path";
 
 // src/planning/artifact-names.ts
-import { basename as basename19 } from "path";
+import { basename as basename20 } from "path";
 var PLANNING_ARTIFACT_TIMESTAMP_PATTERN = /^\d{8}T\d{6}Z$/;
 function legacyTestSpecSlug(fileNameOrPath) {
-  const match = basename19(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
+  const match = basename20(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
   return match?.groups?.slug ?? null;
 }
 function requiredTimestampedTestSpecFileName(prdArtifact) {
@@ -29345,7 +29366,7 @@ function splitTimestampPrefix(rawSlug) {
   };
 }
 function parsePlanningArtifactFileName(fileNameOrPath) {
-  const fileName = basename19(fileNameOrPath);
+  const fileName = basename20(fileNameOrPath);
   const autoresearchDeepInterviewMatch = fileName.match(
     /^deep-interview-autoresearch-(?<slug>.+)\.md$/i
   );
@@ -29409,7 +29430,7 @@ function selectMatchingTestSpecsForPrd(prdPath, testSpecPaths) {
     return [];
   }
   const requiredTimestampedFileName = requiredTimestampedTestSpecFileName(prdArtifact);
-  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename19(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
+  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename20(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
 }
 function selectLatestPlanningArtifactPath(paths) {
   return [...paths].sort(comparePlanningArtifactPaths).at(-1) ?? null;

@@ -60,6 +60,14 @@ export declare const REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk
 export declare const RECORD_PARTS_DIR = "parts";
 /** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */
 export declare const RECORD_FAILED_SUFFIX = ".failed";
+/** `<state>/parts/<pid>-<n>.started`: a client recorded and has not stopped yet; left behind by a killed process, so the merge refuses. */
+export declare const RECORD_STARTED_SUFFIX = ".started";
+/**
+ * The state dir name of a multi-scenario client (the smoke driver's) before
+ * its first `setCassetteScenario`: record and replay both answer its requests
+ * with a 418 miss, so a recording holds nothing a replay could not serve.
+ */
+export declare const UNSCOPED_STATE_DIR = "_client";
 export declare class CassetteConfigError extends Error {
     name: string;
 }
@@ -167,7 +175,7 @@ export declare class CassetteRecorder {
     finish(dir: string): Promise<string[] | null>;
 }
 /** A recording handler: forwards through the SDK's default (`super`), taps the response. */
-export declare function createRecordingHandler(Base: CopilotRequestHandlerCtor, recorderOf: CassetteRecorder | (() => CassetteRecorder)): CopilotRequestHandlerLike;
+export declare function createRecordingHandler(Base: CopilotRequestHandlerCtor, recorderOf: CassetteRecorder | ((ctx: CopilotRequestContextLike) => CassetteRecorder | null)): CopilotRequestHandlerLike;
 /** Answers requests from one cassette; holds no upstream of any kind. */
 export declare class CassetteReplayer {
     private readonly dirs;
@@ -181,7 +189,7 @@ export declare class CassetteReplayer {
  * through it; both hooks are overridden without `super`, and nothing in the
  * class can reach an upstream (section 8.1).
  */
-export declare function createReplayHandler(Base: CopilotRequestHandlerCtor, replayerOf: CassetteReplayer | (() => CassetteReplayer | null)): CopilotRequestHandlerLike;
+export declare function createReplayHandler(Base: CopilotRequestHandlerCtor, replayerOf: CassetteReplayer | ((ctx: CopilotRequestContextLike) => CassetteReplayer | null)): CopilotRequestHandlerLike;
 /** The cassette of a replay run: `<dir>` itself, or `<dir>/<scenario>`. Refuses one from another platform. */
 export declare function loadReplayCassette(config: CassetteConfig): Cassette;
 export interface WithCassetteOptions {
