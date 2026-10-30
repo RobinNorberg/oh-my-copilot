@@ -12,7 +12,11 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
- * - Type: a body `Type:` line first (the navigator's format; `loft` = prototype), else the `wayfinder:<type>` label.
+ * - Type: the `wayfinder:<type>` label and the body `Type:` line (the
+ *   navigator's format; `loft` = prototype). When they disagree the more
+ *   restrictive wins (human beats auto). A body type alone grants auto only on
+ *   a native sub-issue of the map (linking one needs write access); anyone who
+ *   can edit an issue body could otherwise make it auto-claimable.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).

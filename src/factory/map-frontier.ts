@@ -12,7 +12,11 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
- * - Type: a body `Type:` line first (the navigator's format; `loft` = prototype), else the `wayfinder:<type>` label.
+ * - Type: the `wayfinder:<type>` label and the body `Type:` line (the
+ *   navigator's format; `loft` = prototype). When they disagree the more
+ *   restrictive wins (human beats auto). A body type alone grants auto only on
+ *   a native sub-issue of the map (linking one needs write access); anyone who
+ *   can edit an issue body could otherwise make it auto-claimable.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).
@@ -135,15 +139,45 @@ const BODY_TYPES: Record<string, WayfinderTicketType> = {
   task: 'task',
 };
 
-/** The navigator writes the type in the body (`Type: research`); loft is the navigator's name for prototype. */
-function bodyType(body: string): WayfinderTicketType | null {
-  const match = /^\s*(?:[-*]\s*)?\**Type\**\s*[:：]\**\s*`?([A-Za-z]+)`?/im.exec(body);
-  return match ? (BODY_TYPES[match[1].toLowerCase()] ?? null) : null;
+const TYPE_LINE = /^[^\S\r\n]*(?:[-*][^\S\r\n]+)?\**Type\**[^\S\r\n]*[:：]\**[^\S\r\n]*`?([A-Za-z]+)`?(?![\w-])/i;
+const FENCE = /^[^\S\r\n]*(?:```|~~~)/;
+
+/** The more restrictive of two types (human beats auto); a tie keeps `a`. */
+function stricter(a: WayfinderTicketType, b: WayfinderTicketType, labels: string[]): WayfinderTicketType {
+  return gateClassFor(a, labels) === 'auto' && gateClassFor(b, labels) === 'human' ? b : a;
 }
 
-function ticketType(labels: string[], body: string): WayfinderTicketType {
-  const fromBody = bodyType(body);
-  if (fromBody) return fromBody;
+/**
+ * The navigator writes the type in the body (`Type: research` on its own line);
+ * loft is the navigator's name for prototype. Fenced code and quoted lines are
+ * skipped; disagreeing Type lines resolve to the most restrictive.
+ */
+function bodyType(body: string, labels: string[]): WayfinderTicketType | null {
+  let found: WayfinderTicketType | null = null;
+  let fenced = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (FENCE.test(line)) { fenced = !fenced; continue; }
+    if (fenced || /^\s*>/.test(line)) continue;
+    const type = BODY_TYPES[TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? ''];
+    if (type) found = found ? stricter(found, type, labels) : type;
+  }
+  return found;
+}
+
+/**
+ * `trusted`: the ticket is a native sub-issue of the map, so a body type alone
+ * may grant auto. Untrusted, a body type can only make the ticket stricter.
+ */
+function ticketType(labels: string[], body: string, trusted: boolean): WayfinderTicketType {
+  const fromBody = bodyType(body, labels);
+  const fromLabel = labelType(labels);
+  if (fromBody && fromLabel) return stricter(fromBody, fromLabel, labels);
+  if (fromLabel) return fromLabel;
+  if (!fromBody) return 'other';
+  return trusted ? fromBody : stricter(fromBody, 'other', labels);
+}
+
+function labelType(labels: string[]): WayfinderTicketType | null {
   for (const label of labels) {
     switch (label) {
       case 'wayfinder:research': return 'research';
@@ -153,7 +187,7 @@ function ticketType(labels: string[], body: string): WayfinderTicketType {
       default: break;
     }
   }
-  return 'other';
+  return null;
 }
 
 /** Gate class per map #46's decision: only research and explicitly-AFK tasks are auto; everything else human. */
@@ -194,7 +228,7 @@ export function enumerateFrontier(mapNumber: number, records: readonly TicketRec
     const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? 'OPEN') !== 'CLOSED');
     if (blocked) continue;
 
-    const type = ticketType(record.labels, record.body);
+    const type = ticketType(record.labels, record.body, record.nativeParent === mapNumber);
     const ticket: FrontierTicket = {
       number: record.number,
       type,

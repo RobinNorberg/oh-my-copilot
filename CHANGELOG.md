@@ -2,13 +2,11 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-# oh-my-copilot [Unreleased]
-
 ## [Unreleased]
 
 ### Fixed
 
-- **`omg ralph from-map` now reads the navigator's ticket types.** `map-frontier` took types only from `wayfinder:<type>` labels, but `ask-navigator` writes them in the issue body (`Type: research`), so every navigator ticket was human-gated. A body `Type:` line now wins, `loft` counts as `prototype` (human-gated), and labels still work.
+- **`omg ralph from-map` now reads the navigator's ticket types.** `map-frontier` took types only from `wayfinder:<type>` labels, but `ask-navigator` writes them in the issue body (`Type: research`), so every navigator ticket was human-gated. A body `Type: <type>` line is now read (`loft` counts as `prototype`, human-gated) and labels still work; when label and body disagree the more restrictive type wins, and a body type alone grants auto only on a native sub-issue of the map.
 
 
 # oh-my-copilot v5.18.2

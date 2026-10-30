@@ -98,16 +98,54 @@ describe('enumerateFrontier — gate class', () => {
     });
 });
 describe('enumerateFrontier — body Type line', () => {
-    it('reads the navigator body type: research auto, loft human (prototype), label still works', () => {
+    const native = { nativeParent: MAP };
+    it('reads the navigator body type on a native sub-issue: research auto, loft human (prototype), label still works', () => {
         const frontier = enumerateFrontier(MAP, [
-            child(100, 'Type: research\n\nq'),
-            child(101, '**Type:** `loft`\n\nq'),
+            child(100, 'Type: research\n\nq', native),
+            child(101, '**Type:** `loft`\n\nq', native),
             child(102, 'q', { labels: ['wayfinder:research'] }),
-            child(103, 'Type: research', { labels: ['wayfinder:grilling'] }),
             child(104, 'Type: bogus', { labels: ['wayfinder:research'] }),
         ]);
-        expect(frontier.auto.map((t) => t.number)).toEqual([100, 102, 103, 104]);
+        expect(frontier.auto.map((t) => t.number)).toEqual([100, 102, 104]);
         expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[101, 'prototype']]);
+    });
+    it('never lets an untrusted body type grant auto on a label-free ticket', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(110, 'Type: research\n\nq'),
+            child(111, 'Type: grilling\n\nq'),
+        ]);
+        expect(frontier.auto).toEqual([]);
+        expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[110, 'other'], [111, 'grilling']]);
+    });
+    it('takes the more restrictive type when label and body disagree, trusted or not', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(120, 'Type: research', { labels: ['wayfinder:grilling'] }),
+            child(121, 'Type: research', { labels: ['wayfinder:grilling'], ...native }),
+            child(122, 'Type: grilling', { labels: ['wayfinder:research'] }),
+        ]);
+        expect(frontier.auto).toEqual([]);
+        expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[120, 'grilling'], [121, 'grilling'], [122, 'grilling']]);
+    });
+    it('ignores Type lines in fenced code and quotes, across lines, or without a word boundary', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(130, '```\nType: research\n```\n\nq', native),
+            child(131, '~~~md\nType: research\n~~~', native),
+            child(132, '> Type: research', native),
+            child(133, 'Type:\nresearch', native),
+            child(134, 'Type: research-ish', native),
+            child(135, 'Type: researcher', native),
+        ]);
+        expect(frontier.auto).toEqual([]);
+        expect(frontier.human.map((t) => t.type)).toEqual(['other', 'other', 'other', 'other', 'other', 'other']);
+    });
+    it('resolves disagreeing body Type lines to the most restrictive', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(140, 'Type: research\n\nType: loft', native),
+            child(141, 'Type: grilling\n\nType: research', native),
+            child(142, 'Type: research\n\n- **Type:** `research`', native),
+        ]);
+        expect(frontier.auto.map((t) => t.number)).toEqual([142]);
+        expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[140, 'prototype'], [141, 'grilling']]);
     });
 });
 describe('enumerateFrontier — order', () => {
