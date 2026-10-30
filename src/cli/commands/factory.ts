@@ -22,13 +22,12 @@
 import { Command } from 'commander';
 import { integerOption } from '../utils/integer-option.js';
 import chalk from 'chalk';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus, type ChainStatus } from '../../factory/status.js';
 import { canonicalChainSkill, chainSkillStatus, type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/routing.js';
-import { LABEL_PATTERN } from '../../hooks/session-end/spawn-next.js';
-import { getSkillsDir } from '../../features/builtin-skills/skills.js';
+import { chainSkillExists, LABEL_PATTERN } from '../../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
@@ -479,12 +478,6 @@ function readRawRoutes(routesPath: string): RawRoutes {
   return { ok: false, message: `${routesPath} is not a JSON object; fix it by hand or re-run omg factory init --force` };
 }
 
-/** A bundled skill or a project skill (.copilot/skills, .omg/skills, .agents/skills). */
-function skillExists(cwd: string, name: string): boolean {
-  return [getSkillsDir(), join(cwd, '.copilot', 'skills'), join(getOmcRoot(cwd), 'skills'), join(cwd, '.agents', 'skills')]
-    .some((dir) => existsSync(join(dir, name, 'SKILL.md')));
-}
-
 function classifyRoute(cwd: string, key: string, value: unknown): RouteCheckRow {
   const entry = value && typeof value === 'object' && !Array.isArray(value) ? value as { stage?: unknown; skill?: unknown } : {};
   const stage = typeof entry.stage === 'string' ? entry.stage : '';
@@ -506,7 +499,7 @@ function classifyRoute(cwd: string, key: string, value: unknown): RouteCheckRow 
   if (status === 'deprecated') {
     return row(status, key === 'success:intake' ? 'success:intake -> harbor' : 'still spawns; tracker intake belongs to harbor');
   }
-  return skillExists(cwd, name) ? row('ok', '') : row('unknown', 'no bundled or project skill of this name');
+  return chainSkillExists(cwd, skill) ? row('ok', '') : row('unknown', 'halts the chain (route-unknown): no bundled or project skill of this name');
 }
 
 function renderRouteRows(rows: RouteCheckRow[]): string {
@@ -564,6 +557,11 @@ export async function migrateFactoryRoutes(options: {
   const read = readRawRoutes(routesPath);
   if (!read) return { exitCode: 0, message: `no route table at ${routesPath}; nothing to migrate` };
   if (!read.ok) return { exitCode: 1, message: `factory init --migrate refused: ${read.message}` };
+  // The rename below would replace the link with a regular file and silently
+  // detach the table from its real target.
+  if (lstatSync(routesPath).isSymbolicLink()) {
+    return { exitCode: 1, message: `factory init --migrate refused: ${routesPath} is a symlink; migrate its target by hand (omg factory init --check shows the routes)` };
+  }
   const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root, key, value));
   const due = rows.filter(needsMigration);
   if (due.length === 0) return { exitCode: 0, message: `${routesPath}: nothing to migrate` };

@@ -77657,6 +77657,7 @@ __export(spawn_next_exports, {
   LABEL_PATTERN: () => LABEL_PATTERN,
   chainLinkEnv: () => chainLinkEnv,
   chainLinkHost: () => chainLinkHost,
+  chainSkillExists: () => chainSkillExists,
   copilotPluginDirArgs: () => copilotPluginDirArgs,
   defaultSpawnFn: () => defaultSpawnFn,
   executeSpawnNext: () => executeSpawnNext,
@@ -77750,6 +77751,9 @@ function factoryLinkArgv(prompt, sessionId, verifyCommands = [], fixedBashComman
   flags[flags.indexOf("--allowedTools") + 1] = allowedTools;
   return ["-p", prompt, "--session-id", sessionId, ...flags];
 }
+function chainSkillExists(cwd2, name) {
+  return CHAIN_SKILL_NAME.test(name) && [getSkillsDir(), path21.join(cwd2, ".copilot", "skills"), path21.join(getOmcRoot(cwd2), "skills"), path21.join(cwd2, ".agents", "skills")].some((dir) => fs16.existsSync(path21.join(dir, name, "SKILL.md")));
+}
 function validateChainFields(chain) {
   validateSessionId(chain.sessionId);
   if (chain.includeUserSettings !== void 0 && typeof chain.includeUserSettings !== "boolean") {
@@ -77801,6 +77805,15 @@ function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
   validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
+  const skillStatus = chainSkillStatus(directive.skill);
+  if (skillStatus === "captain" || skillStatus === "retired") {
+    throw new Error(`route-retired:${canonicalChainSkill(directive.skill)}: the chain never spawns a ${skillStatus} skill`);
+  }
+  if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
+    throw new Error(`invalid stage/skill: ${directive.stage}/${directive.skill}`);
+  }
+  if (directive.skill === "stop") throw new Error(`terminal route: ${directive.stage} spawns no link`);
+  if (!chainSkillExists(linkCwd, directive.skill)) throw new Error(`route-unknown:${directive.skill}`);
   const handoffPath = path21.join(omcRoot, "handoffs", `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker ? [
     ["gh", ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
@@ -77892,7 +77905,7 @@ function defaultSpawnFn(command, args, ctx) {
   child.unref();
   return child;
 }
-var fs16, path21, import_crypto26, import_child_process25, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, AFK_INCLUDE_USER_SETTINGS_ENV, AFK_SPAWN_FLAGS, COPILOT_AFK_SPAWN_FLAGS, COPILOT_INTERPRETERS, REPO_PATTERN, LABEL_PATTERN;
+var fs16, path21, import_crypto26, import_child_process25, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, AFK_INCLUDE_USER_SETTINGS_ENV, AFK_SPAWN_FLAGS, COPILOT_AFK_SPAWN_FLAGS, COPILOT_INTERPRETERS, REPO_PATTERN, LABEL_PATTERN, CHAIN_SKILL_NAME;
 var init_spawn_next = __esm({
   "src/hooks/session-end/spawn-next.ts"() {
     "use strict";
@@ -77905,6 +77918,7 @@ var init_spawn_next = __esm({
     init_tmux_utils();
     init_host_detection();
     init_chain_tracker();
+    init_skills();
     CHAIN_LINK_ENV = "OMC_CHAIN_LINK";
     LINK_ENV_DROPPED = [CHAIN_LINK_ENV, "COPILOT_AGENT_SESSION_ID"];
     AFK_ALLOWED_TOOLS = [
@@ -77974,6 +77988,7 @@ var init_spawn_next = __esm({
     ]);
     REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
     LABEL_PATTERN = /^[\w.-]+$/;
+    CHAIN_SKILL_NAME = /^[a-z0-9][a-z0-9_-]*$/;
   }
 });
 
@@ -78264,6 +78279,12 @@ function decideChainLink(directory, ledger, ctx) {
   if (directive.skill === "stop") {
     record3("chain-terminal", { stage: directive.stage });
     writeHaltMarker(directory, intentId, `terminal:${directive.stage}`);
+    return null;
+  }
+  if (!chainSkillExists(directory, directive.skill)) {
+    const refusal = `route-unknown:${directive.skill}`;
+    record3(refusal, { stage: directive.stage, skill: directive.skill });
+    writeHaltMarker(directory, intentId, refusal);
     return null;
   }
   const visits = ledger.visits ?? {};
@@ -116425,7 +116446,7 @@ var init_integer_option = __esm({
 // src/factory/watchdog.ts
 function closedAsHandled(decision, outcome) {
   if (typeof decision !== "string") return false;
-  return HANDLED_DECISIONS.has(decision) || decision.startsWith("route-retired:") || decision === "no-route" && outcome === "failed";
+  return HANDLED_DECISIONS.has(decision) || decision.startsWith("route-retired:") || decision.startsWith("route-unknown:") || decision === "no-route" && outcome === "failed";
 }
 function enqueuedSessions(factoryDir) {
   const advanced = /* @__PURE__ */ new Set();
@@ -128789,9 +128810,6 @@ function readRawRoutes(routesPath) {
   }
   return { ok: false, message: `${routesPath} is not a JSON object; fix it by hand or re-run omg factory init --force` };
 }
-function skillExists(cwd2, name) {
-  return [getSkillsDir(), (0, import_path197.join)(cwd2, ".copilot", "skills"), (0, import_path197.join)(getOmcRoot(cwd2), "skills"), (0, import_path197.join)(cwd2, ".agents", "skills")].some((dir) => (0, import_fs170.existsSync)((0, import_path197.join)(dir, name, "SKILL.md")));
-}
 function classifyRoute(cwd2, key, value) {
   const entry2 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const stage = typeof entry2.stage === "string" ? entry2.stage : "";
@@ -128811,7 +128829,7 @@ function classifyRoute(cwd2, key, value) {
   if (status === "deprecated") {
     return row(status, key === "success:intake" ? "success:intake -> harbor" : "still spawns; tracker intake belongs to harbor");
   }
-  return skillExists(cwd2, name) ? row("ok", "") : row("unknown", "no bundled or project skill of this name");
+  return chainSkillExists(cwd2, skill) ? row("ok", "") : row("unknown", "halts the chain (route-unknown): no bundled or project skill of this name");
 }
 function renderRouteRows(rows) {
   const cells = [["route", "skill", "status", "replacement"], ...rows.map((r) => [r.key, r.skill, r.status, r.replacement])];
@@ -128844,6 +128862,9 @@ async function migrateFactoryRoutes(options = {}) {
   const read = readRawRoutes(routesPath);
   if (!read) return { exitCode: 0, message: `no route table at ${routesPath}; nothing to migrate` };
   if (!read.ok) return { exitCode: 1, message: `factory init --migrate refused: ${read.message}` };
+  if ((0, import_fs170.lstatSync)(routesPath).isSymbolicLink()) {
+    return { exitCode: 1, message: `factory init --migrate refused: ${routesPath} is a symlink; migrate its target by hand (omg factory init --check shows the routes)` };
+  }
   const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root2, key, value));
   const due = rows.filter(needsMigration);
   if (due.length === 0) return { exitCode: 0, message: `${routesPath}: nothing to migrate` };
@@ -128900,7 +128921,6 @@ var init_factory = __esm({
     init_status();
     init_routing();
     init_spawn_next();
-    init_skills();
     init_worktree_paths();
     init_project_config_path();
     init_job();

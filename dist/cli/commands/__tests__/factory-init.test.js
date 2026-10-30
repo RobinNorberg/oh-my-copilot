@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, lstatSync, symlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
@@ -191,6 +191,28 @@ describe('migrateFactoryRoutes (init --migrate)', () => {
         expect(result.exitCode).toBe(2);
         expect(result.message).toContain('--yes');
         expect(readFileSync(routesPath(dir), 'utf8')).toBe(raw);
+        expect(backups(dir)).toEqual([]);
+    });
+    it('refuses a symlinked routes file and leaves the link and its target untouched', async () => {
+        const dir = tempDir();
+        const real = join(dir, 'shared-routes.json');
+        const raw = `${JSON.stringify(OLD_TEMPLATE, null, 2)}\n`;
+        writeFileSync(real, raw);
+        mkdirSync(join(dir, '.omg'), { recursive: true });
+        try {
+            symlinkSync(real, routesPath(dir), 'file');
+        }
+        catch (error) {
+            // Windows without Developer Mode cannot create file symlinks.
+            if (error.code === 'EPERM')
+                return;
+            throw error;
+        }
+        const result = await migrateFactoryRoutes({ cwd: dir, yes: true, isTTY: false, now: NOW });
+        expect(result.exitCode).toBe(1);
+        expect(result.message).toMatch(/is a symlink/);
+        expect(lstatSync(routesPath(dir)).isSymbolicLink()).toBe(true);
+        expect(readFileSync(real, 'utf8')).toBe(raw);
         expect(backups(dir)).toEqual([]);
     });
     it('rewrites the old template to the narrow table after writing a .bak of the original', async () => {

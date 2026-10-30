@@ -126,6 +126,8 @@ export declare function factoryLinkArgv(prompt: string, sessionId: string, verif
 linkCwd?: string): string[];
 /** Shared label charset (stage/skill/labels): safe for paths and argv. */
 export declare const LABEL_PATTERN: RegExp;
+/** A bundled skill or a project skill (.copilot/skills, .omg/skills, .agents/skills) the chain may spawn. */
+export declare function chainSkillExists(cwd: string, name: string): boolean;
 /**
  * The chain rides a detached manifest job: every field that lands in a
  * spawned argv or a filesystem path is validated here. An invalid chain is a

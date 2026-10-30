@@ -14,7 +14,7 @@ import {
   sessionEndOutcome,
   factoryStateDir,
 } from '../chain-enqueuer.js';
-import { CHAIN_LINK_ENV } from '../spawn-next.js';
+import { CHAIN_LINK_ENV, executeSpawnNext } from '../spawn-next.js';
 import { acquireChainSlot, releaseChainSlot, readChainStopMarker, DAILY_CHAIN_LIMIT, type ChainSlotPermit } from '../guardrails.js';
 
 const tempRoots: string[] = [];
@@ -105,7 +105,7 @@ describe('planChainEnqueue', () => {
   it('enqueues the chain on a clean exit using the project route table', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     const chain = planChainEnqueue(dir, 'sess-a', 'prompt_input_exit');
     expect(chain).toMatchObject({
       outcome: 'success',
@@ -113,13 +113,13 @@ describe('planChainEnqueue', () => {
       sessionId: 'sess-a',
       intentId: 'intent-a',
       includeUserSettings: false,
-      routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
     });
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', stage: 'spec', intentId: 'intent-a' });
   });
 
   it('uses the originating ledger choice instead of the recovering process environment', () => {
-    const routeTable = { 'success:*': { stage: 'spec', skill: 'spec' } };
+    const routeTable = { 'success:*': { stage: 'spec', skill: 'plan' } };
     const optedIn = tempDir();
     writeLedger(optedIn, 'sess-opted-in', { intentId: 'intent-opted-in', includeUserSettings: true });
     writeProjectRoutes(optedIn, routeTable);
@@ -140,27 +140,27 @@ describe('planChainEnqueue', () => {
 
   it('the project file overrides a ledger copy', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'ledger' } } });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'project', skill: 'project' } });
-    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'project', skill: 'project' } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'review' } } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'project', skill: 'plan' } });
+    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'project', skill: 'plan' } });
   });
 
   it('falls back to a well-formed ledger copy when there is no project file', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'ledger' } } });
-    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'ledger', skill: 'ledger' } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'review' } } });
+    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'ledger', skill: 'review' } });
   });
 
   it('a nested ledger copy does not shadow the project file', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { success: { stage: 'ledger', skill: 'ledger' } } });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'project', skill: 'project' } });
-    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'project', skill: 'project' } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { success: { stage: 'ledger', skill: 'review' } } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'project', skill: 'plan' } });
+    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')?.routeTable).toEqual({ 'success:*': { stage: 'project', skill: 'plan' } });
   });
 
   it('a nested ledger copy with no project file halts loudly, not silently', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { success: { stage: 'ledger', skill: 'ledger' } } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { success: { stage: 'ledger', skill: 'review' } } });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-2)).toMatchObject({ decision: 'malformed-route-table', source: 'ledger' });
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'no-route' });
@@ -169,14 +169,14 @@ describe('planChainEnqueue', () => {
   it('a nested project file is rejected the same way', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
-    writeProjectRoutes(dir, { success: { stage: 'project', skill: 'project' } });
+    writeProjectRoutes(dir, { success: { stage: 'project', skill: 'plan' } });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'no-route' });
   });
 
   it('a stale ledger copy cannot route a stage the project file retired', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'ledger' } } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: 'ledger', skill: 'review' } } });
     writeProjectRoutes(dir, {});
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'no-route' });
@@ -185,7 +185,7 @@ describe('planChainEnqueue', () => {
   it('a headless completion (reason other) routes as success and enqueues the chain', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     const chain = planChainEnqueue(dir, 'sess-a', 'other');
     expect(chain).toMatchObject({ outcome: 'success', reason: 'other', sessionId: 'sess-a', intentId: 'intent-a' });
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', stage: 'spec' });
@@ -211,7 +211,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
       gate: 'intent-accept',
     });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
@@ -223,7 +223,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
       gate: 'spec-approve',
       gateFacts: { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true },
     });
@@ -239,7 +239,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
       gate: 'spec-approve',
     });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
@@ -253,7 +253,7 @@ describe('planChainEnqueue', () => {
       if (permit.allowed) releaseChainSlot(permit as ChainSlotPermit);
     }
     writeLedger(dir, 'sess-a', { intentId: 'intent-cap' });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'guardrail', guardrail: 'daily-cap' });
   });
@@ -262,7 +262,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
       tracker: { repo: 'bad repo; rm', issue: 1, nextLabel: 'x', failedLabel: 'y' },
     });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
@@ -272,7 +272,7 @@ describe('planChainEnqueue', () => {
   it('rejects a ledger whose intentId carries path metacharacters', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: '../../evil' });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     expect(planChainEnqueue(dir, 'sess-a', 'other')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
     // No stop marker may escape the factory dir (or be written at all).
@@ -282,7 +282,7 @@ describe('planChainEnqueue', () => {
 
   it('rejects a ledger route whose stage or skill carries path metacharacters', () => {
     const dir = tempDir();
-    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: '../evil', skill: 'spec' } } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: '../evil', skill: 'plan' } } });
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
 
@@ -306,7 +306,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'failed:clear': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'failed:clear': { stage: 'spec', skill: 'plan' } },
       visits: { spec: 2 },
     });
     expect(planChainEnqueue(dir, 'sess-a', 'clear')).toBeNull();
@@ -318,7 +318,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'failed:clear': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'failed:clear': { stage: 'spec', skill: 'plan' } },
       visits: { spec: 1 },
       maxStageVisits: 3,
     });
@@ -332,7 +332,7 @@ describe('planChainEnqueue', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'failed:clear': { stage: 'spec', skill: 'spec' } },
+      routeTable: { 'failed:clear': { stage: 'spec', skill: 'plan' } },
       visits: { spec: 2 },
       maxStageVisits: 0,
     });
@@ -343,7 +343,7 @@ describe('planChainEnqueue', () => {
   it('carries the ledger stage-visit cap into the enqueued chain', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: 'intent-a', maxStageVisits: 1 });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     expect(planChainEnqueue(dir, 'sess-a', 'other')).toMatchObject({ maxStageVisits: 1, visits: {} });
   });
 });
@@ -447,6 +447,17 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     expect(readDecisions(dir).filter((d) => d.decision === 'chain-link-rejected')).toEqual([]);
   });
 
+  it('a replayed closeout stored before the refusal still spawns nothing for a captain route', () => {
+    const dir = tempDir();
+    const stored = { outcome: 'success', reason: 'complete', routeTable: { 'success:*': { stage: 'launch', skill: 'launch' } }, sessionId: LINK, intentId: 'intent-c' };
+    writeLedger(dir, LINK, copilotLedger({ decision: 'enqueued', hostSessionId: HOST, closedAt: '2026-10-06T00:00:00.000Z', enqueuedChain: stored }));
+    const replayed = planChainEnqueue(dir, HOST, 'complete', env(LINK));
+    expect(replayed).toEqual(stored);
+    const calls: string[] = [];
+    expect(() => executeSpawnNext(replayed!, dir, (command) => { calls.push(command); return { unref() {} }; })).toThrow(/^route-retired:launch/);
+    expect(calls).toEqual([]);
+  });
+
   it('never replays a chain whose hand-off failed, or a non-enqueued closeout', () => {
     const dir = tempDir();
     writeLedger(dir, LINK, copilotLedger());
@@ -485,7 +496,7 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
   it('carries a large stage-visit cap clamped to 99 instead of falling back to 2', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', { intentId: 'intent-a', maxStageVisits: 150, visits: { spec: 50 } });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
     expect(planChainEnqueue(dir, 'sess-a', 'other', env())).toMatchObject({ maxStageVisits: 99 });
   });
   it('does not let OMC_CHAIN_LINK inject a chain: no trusted ledger, no enqueue', () => {
@@ -617,7 +628,7 @@ describe('planChainEnqueue — captain and retired skills fail closed', () => {
 
   it('refuses a hand-edited table that hides a retired skill behind a valid-looking stage', () => {
     const { dir, chain } = refusedChain({
-      success: { stage: 'ignored', skill: 'spec' },
+      success: { stage: 'ignored', skill: 'plan' },
       'success:*': { stage: 'review', skill: 'Launch ', verify: ['npm test'] },
       'failed:*': 'diagnose',
     });
@@ -634,10 +645,23 @@ describe('planChainEnqueue — captain and retired skills fail closed', () => {
     expect(readDecisions(empty.dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
   });
 
-  it('still enqueues an unknown skill name (the runtime refuses by name; init --check flags unknown skills)', () => {
-    const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill: 'launch-review' } });
-    expect(chain).not.toBeNull();
-    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', skill: 'launch-review' });
+  it.each(['launch.', 'launch-review', 'harbr', 'Harbor'])('halts an unknown skill %j with route-unknown and spawns nothing', (skill) => {
+    const { dir, chain } = refusedChain({ 'success:*': { stage: 'next', skill } });
+    expect(chain).toBeNull();
+    const decisions = readDecisions(dir);
+    expect(decisions.at(-1)).toMatchObject({ decision: `route-unknown:${skill}`, stage: 'next', skill });
+    expect(decisions.some((d) => d.decision === 'enqueued')).toBe(false);
+    expect(readChainStopMarker('intent-a', factoryStateDir(dir))).toMatchObject({ reason: `route-unknown:${skill}` });
+  });
+
+  it('enqueues a project skill (.omg/skills/<name>/SKILL.md)', () => {
+    const dir = tempDir();
+    mkdirSync(join(dir, '.omg', 'skills', 'my-stage'), { recursive: true });
+    writeFileSync(join(dir, '.omg', 'skills', 'my-stage', 'SKILL.md'), '# my-stage');
+    writeProjectRoutes(dir, { 'success:*': { stage: 'next', skill: 'my-stage' } });
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a' });
+    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).not.toBeNull();
+    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', skill: 'my-stage' });
   });
 
   it('enqueues a deprecated intent route with a route-deprecated:intent note', () => {

@@ -44,8 +44,13 @@ All notable changes to oh-my-copilot will be documented in this file.
   or to `diagnose` (retired) halts the chain with decision and stop marker
   `route-retired:<skill>` and spawns nothing, whatever the gate says. Case,
   whitespace, a leading `/` and a `plugin:` prefix do not get past it. A
-  route to `intent` still spawns but records `route-deprecated:intent`. The
-  watchdog treats a `route-retired:*` closeout as halted, not stalled.
+  route to `intent` still spawns but records `route-deprecated:intent`. A
+  route to a skill that is neither bundled nor a project skill halts with
+  `route-unknown:<skill>`. The spawn step re-checks every rule, so a job
+  queued or a closeout stored before the upgrade cannot spawn a refused
+  skill either. The watchdog treats `route-retired:*` and `route-unknown:*`
+  closeouts as halted, not stalled. `omg factory init --migrate` refuses a
+  symlinked routes file.
 
 ### Added
 

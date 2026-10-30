@@ -2,11 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
-import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
+import { canonicalChainSkill, chainSkillStatus, decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
 import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
+import { getSkillsDir } from '../../features/builtin-skills/skills.js';
 
 export interface SpawnNextTracker {
   repo: string;
@@ -284,6 +285,20 @@ const REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 export const LABEL_PATTERN = /^[\w.-]+$/;
 
 /**
+ * Spawnable chain skill names: the bundled-skill charset. No dots, case or
+ * prefixes, so a dot-trimming or case-folding filesystem cannot map an
+ * unlisted name (`launch.`) onto a refused skill's directory.
+ */
+const CHAIN_SKILL_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** A bundled skill or a project skill (.copilot/skills, .omg/skills, .agents/skills) the chain may spawn. */
+export function chainSkillExists(cwd: string, name: string): boolean {
+  return CHAIN_SKILL_NAME.test(name)
+    && [getSkillsDir(), path.join(cwd, '.copilot', 'skills'), path.join(getOmcRoot(cwd), 'skills'), path.join(cwd, '.agents', 'skills')]
+      .some((dir) => fs.existsSync(path.join(dir, name, 'SKILL.md')));
+}
+
+/**
  * The chain rides a detached manifest job: every field that lands in a
  * spawned argv or a filesystem path is validated here. An invalid chain is a
  * hard reject (manifest failure), not a partial spawn.
@@ -375,6 +390,17 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: s
   validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
+  // Single choke point before any spawn: a manifest job queued before the
+  // enqueuer refused these routes, or a replayed closeout, lands here too.
+  const skillStatus = chainSkillStatus(directive.skill);
+  if (skillStatus === 'captain' || skillStatus === 'retired') {
+    throw new Error(`route-retired:${canonicalChainSkill(directive.skill)}: the chain never spawns a ${skillStatus} skill`);
+  }
+  if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
+    throw new Error(`invalid stage/skill: ${directive.stage}/${directive.skill}`);
+  }
+  if (directive.skill === 'stop') throw new Error(`terminal route: ${directive.stage} spawns no link`);
+  if (!chainSkillExists(linkCwd, directive.skill)) throw new Error(`route-unknown:${directive.skill}`);
   const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker
     ? [

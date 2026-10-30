@@ -17,7 +17,7 @@ import { join } from 'path';
 import { canonicalChainSkill, chainSkillStatus, decideNextStage, gradeGate, normalizeRouteTable,type ChainOutcome, type GateFacts, type GateName, type RouteTable } from './routing.js';
 import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
 import { verifyCheckEvidence } from './check-evidence.js';
-import { CHAIN_LINK_ENV, stageVisitCap, validateChainFields, LABEL_PATTERN, type ChainLinkHost, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
+import { CHAIN_LINK_ENV, chainSkillExists, stageVisitCap, validateChainFields, LABEL_PATTERN, type ChainLinkHost, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
 export interface ChainLedger {
@@ -463,6 +463,13 @@ function decideChainLink(directory: string, ledger: ChainLedger, ctx: ChainLinkC
   if (directive.skill === 'stop') {
     record('chain-terminal', { stage: directive.stage });
     writeHaltMarker(directory, intentId, `terminal:${directive.stage}`);
+    return null;
+  }
+  // Allowlist after the denylist: only a bundled or project skill spawns.
+  if (!chainSkillExists(directory, directive.skill)) {
+    const refusal = `route-unknown:${directive.skill}`;
+    record(refusal, { stage: directive.stage, skill: directive.skill });
+    writeHaltMarker(directory, intentId, refusal);
     return null;
   }
 

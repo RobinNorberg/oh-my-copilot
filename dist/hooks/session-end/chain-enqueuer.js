@@ -16,7 +16,7 @@ import { join } from 'path';
 import { canonicalChainSkill, chainSkillStatus, decideNextStage, gradeGate, normalizeRouteTable } from './routing.js';
 import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
 import { verifyCheckEvidence } from './check-evidence.js';
-import { CHAIN_LINK_ENV, stageVisitCap, validateChainFields, LABEL_PATTERN } from './spawn-next.js';
+import { CHAIN_LINK_ENV, chainSkillExists, stageVisitCap, validateChainFields, LABEL_PATTERN } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 /**
  * Explicit success allowlist, fail-closed for anything else. Headless sessions
@@ -410,6 +410,13 @@ function decideChainLink(directory, ledger, ctx) {
     if (directive.skill === 'stop') {
         record('chain-terminal', { stage: directive.stage });
         writeHaltMarker(directory, intentId, `terminal:${directive.stage}`);
+        return null;
+    }
+    // Allowlist after the denylist: only a bundled or project skill spawns.
+    if (!chainSkillExists(directory, directive.skill)) {
+        const refusal = `route-unknown:${directive.skill}`;
+        record(refusal, { stage: directive.stage, skill: directive.skill });
+        writeHaltMarker(directory, intentId, refusal);
         return null;
     }
     // Loop cap: this route already visited the next stage too many times
