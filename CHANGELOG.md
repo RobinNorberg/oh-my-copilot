@@ -2,6 +2,28 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`omg factory check --parent <spec>`** checks a spec's children (the
+  GitHub task list `- [ ] #n`, or the Azure DevOps child links) with their
+  readiness. The `--json` shape is unchanged (`schemaVersion` 1).
+- **Forge items carry their parent**: a GitHub `Part of #n` line, or an Azure
+  DevOps parent link (`Hierarchy-Reverse`).
+
+### Changed
+
+- **A dependency whose factory PR merged counts as satisfied.** `omg factory
+  check` no longer reports `depends-on:#n` when issue `#n` is still open but
+  a PR from `factory/issue-<n>` was merged into the base, or its factory run
+  is `merged`. With `ship.base: dev`, `Closes #n` never closed the issue, so
+  dependents stayed blocked until a release. The lookup is one new read:
+  `gh pr list --head factory/issue-<n> --base <base> --state merged --json
+  number`, and on Azure DevOps a pull request search with
+  `searchCriteria.status=completed` and `searchCriteria.targetRefName`
+  (allowed by the ADO guard as a GET only).
+
 # oh-my-copilot v5.18.2
 
 ## [5.18.2] - 2026-10-30

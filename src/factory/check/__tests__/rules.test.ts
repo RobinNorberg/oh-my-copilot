@@ -37,6 +37,10 @@ interface World {
   branches?: string[];
   /** PR ids (dependencies) and their state; viewItem of these throws like gh does for a PR. */
   prStates?: Record<number, 'OPEN' | 'MERGED' | 'CLOSED'>;
+  /** Merged PRs by `<branch> -> <base>`. */
+  merged?: Record<string, number>;
+  /** Branches whose merged-PR lookup throws. */
+  mergedFails?: string[];
   plans?: Record<string, string>;
   itemTypes?: string[];
 }
@@ -63,6 +67,10 @@ function fakeForge(w: World): Forge & { reads: number[] } {
     },
     reviews: {
       findOpenPrForBranch: (branch: string) => w.prs?.[branch],
+      findMergedPrForBranch: (branch: string, base: string) => {
+        if (w.mergedFails?.includes(branch)) throw new Error('gh pr list failed');
+        return w.merged?.[`${branch} -> ${base}`];
+      },
       viewPr: (pr: number) => {
         const state = w.prStates?.[pr];
         if (!state) throw new Error(`no PR ${pr}`);
@@ -80,6 +88,7 @@ function env(w: World): CheckEnv {
     remoteBranch: (branch) => w.branches?.includes(branch) ?? false,
     readPlan: (path) => w.plans?.[path] ?? null,
     planBase: PLAN_BASE,
+    base: 'dev',
   };
 }
 
@@ -135,6 +144,31 @@ const ROWS: Row[] = [
     rule: 'depends-on (an unreadable dependency counts as open)',
     world: { items: [item(1, { dependsOn: [130] })], failing: { 130: new Error('boom') } },
     bucket: 'blocked', reasons: ['depends-on:#130'],
+  },
+  {
+    rule: 'depends-on is satisfied by a factory PR merged into the base while the issue is still open',
+    world: { items: [item(1, { dependsOn: [160] }), item(160)], merged: { 'factory/issue-160 -> dev': 88 } },
+    bucket: 'runnable', reasons: [],
+  },
+  {
+    rule: 'depends-on is not satisfied by a factory PR merged into another base',
+    world: { items: [item(1, { dependsOn: [160] }), item(160)], merged: { 'factory/issue-160 -> main': 88 } },
+    bucket: 'blocked', reasons: ['depends-on:#160'],
+  },
+  {
+    rule: 'depends-on is satisfied by a merged factory run state',
+    world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 160: { phase: 'merged' } } },
+    bucket: 'runnable', reasons: [],
+  },
+  {
+    rule: 'depends-on (a failed merged-PR lookup counts as unsatisfied)',
+    world: { items: [item(1, { dependsOn: [160] }), item(160)], mergedFails: ['factory/issue-160'] },
+    bucket: 'blocked', reasons: ['depends-on:#160'],
+  },
+  {
+    rule: 'children stay open while their factory PR merged (needs-split reads the item state only)',
+    world: { items: [item(1, { children: [161] }), item(161)], merged: { 'factory/issue-161 -> dev': 89 } },
+    bucket: 'blocked', reasons: ['needs-split'],
   },
   { rule: 'needs-split (open children)', world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141)] }, bucket: 'blocked', reasons: ['needs-split'], detail: 'has open children #141' },
   {

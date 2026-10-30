@@ -9,7 +9,7 @@
 
 import { stripAnsi } from '../../utils/string-width.js';
 import type { Forge, ForgeItem, ResolvedForgeConfig } from '../../forge/types.js';
-import type { FactoryPhase } from '../run/state.js';
+import { factoryBranch, type FactoryPhase } from '../run/state.js';
 import { evaluateItem, type CheckBucket, type PlanSource, type RuleLookups, type RuleVerdict } from './rules.js';
 
 export const BUCKET_ORDER: readonly CheckBucket[] = ['runnable', 'needs-plan', 'blocked'];
@@ -36,6 +36,8 @@ export interface CheckEnv {
   remoteBranch(branch: string): boolean;
   readPlan(path: string): string | null;
   planBase: string;
+  /** The integration branch (ship.base) a dependency's factory PR must have merged into. */
+  base: string;
 }
 
 /** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
@@ -75,6 +77,34 @@ function isOpen(forge: Forge, id: number): boolean {
 }
 
 /**
+ * A dependency is satisfied when its factory run merged, the item is closed,
+ * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
+ * base other than the default branch, `Closes #n` never closes the issue
+ * (shipyard ↔ factory design §3.5). A dependency that is a PR is satisfied
+ * once it is not open; anything unreadable is unsatisfied. Check and the
+ * engine share this rule.
+ */
+export function isSatisfied(forge: Forge, id: number, base: string, runState: CheckEnv['runState']): boolean {
+  if (runState(id)?.phase === 'merged') return true;
+  let item: ForgeItem;
+  try {
+    item = forge.tracker.viewItem(id);
+  } catch {
+    try {
+      return forge.reviews.viewPr(id).state !== 'OPEN';
+    } catch {
+      return false;
+    }
+  }
+  if (!item.open) return true;
+  try {
+    return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The result of one item. A GitHub PR id is `wrong-type`; any other failed
  * read (the item, its run state, PR or branch lookup) is `read-failed`, so one
  * bad item never stops the batch.
@@ -89,6 +119,7 @@ export function checkItem(forge: Forge, id: number, env: CheckEnv): CheckResult 
   }
   const look: RuleLookups = {
     isOpen: (other) => isOpen(forge, other),
+    isSatisfied: (dep) => isSatisfied(forge, dep, env.base, env.runState),
     runState: env.runState,
     openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
     remoteBranch: env.remoteBranch,

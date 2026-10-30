@@ -55,6 +55,8 @@ export interface ForgeItem {
     dependsOn: number[];
     /** ADO Hierarchy-Forward; GitHub task-list "- [ ] #n". */
     children: number[];
+    /** GitHub first "Part of #n" line | ADO Hierarchy-Reverse link; absent when the item has none. */
+    parent?: number;
     /** Repository the factory branch and PR live in. */
     repoUrl: string;
 }
@@ -133,6 +135,8 @@ export interface ForgeTracker {
 }
 export interface ForgeReviews {
     findOpenPrForBranch(branch: string): number | undefined;
+    /** A merged PR from `branch` into `base`, if any (a satisfied dependency: base may not be the default branch, so `Closes #n` never fired). */
+    findMergedPrForBranch(branch: string, base: string): number | undefined;
     createDraftPr(o: {
         base: string;
         head: string;

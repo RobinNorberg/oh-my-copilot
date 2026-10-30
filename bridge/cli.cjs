@@ -94224,7 +94224,7 @@ var init_routes = __esm({
         method: "GET",
         apiVersion: STABLE,
         routeParams: ["project", "repositoryId", "pullRequestId"],
-        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "searchCriteria.targetRefName", "$top"]
       }),
       route({
         id: "git.pullRequests.POST",
@@ -94498,7 +94498,9 @@ var init_guard = __esm({
       reasonFilter: /^pullRequest$/,
       queryOrder: /^queueTimeDescending$/,
       "searchCriteria.sourceRefName": /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
-      "searchCriteria.status": /^active$/,
+      "searchCriteria.status": /^(?:active|completed)$/,
+      // A satisfied dependency: a completed (merged) PR into the base.
+      "searchCriteria.targetRefName": /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
       continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/
     };
     MAX_BODY_BYTES = 1024 * 1024;
@@ -120863,6 +120865,10 @@ function ghFindOpenPr(exec3, branch, cwd2) {
   const open9 = ghOpenPrs(exec3, branch, cwd2);
   return Array.isArray(open9) && typeof open9[0]?.number === "number" ? open9[0].number : void 0;
 }
+function ghFindMergedPr(exec3, branch, base, cwd2) {
+  const merged = ghJson(exec3, ["pr", "list", "--head", branch, "--base", base, "--state", "merged", "--json", "number"], cwd2);
+  return Array.isArray(merged) && typeof merged[0]?.number === "number" ? merged[0].number : void 0;
+}
 function ghCreateDraftPr(exec3, o, cwd2) {
   const out = ghRun(exec3, ["pr", "create", "--draft", "--base", o.base, "--head", o.head, "--title", o.title, "--body-file", o.bodyFile], cwd2);
   const m = /\/pull\/(\d+)/.exec(out);
@@ -120893,6 +120899,7 @@ function ghViewPr(exec3, pr, cwd2) {
 function githubReviews(exec3, cwd2) {
   return {
     findOpenPrForBranch: (branch) => ghFindOpenPr(exec3, branch, cwd2),
+    findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec3, branch, base, cwd2),
     createDraftPr: (o) => ghCreateDraftPr(exec3, o, cwd2),
     viewPr: (pr) => ghViewPr(exec3, pr, cwd2),
     prHead: (pr) => ghPrHead(exec3, pr, cwd2),
@@ -121296,6 +121303,18 @@ function adoReviews(ctx) {
       const json = adoJson(
         adoCall(ctx, "git.pullRequests.GET", repoParams(ctx), { "searchCriteria.sourceRefName": `refs/heads/${branch}`, "searchCriteria.status": "active" }),
         `pull requests for ${branch}`
+      );
+      const ids2 = listValue(json).map((p) => isObject4(p) ? p.pullRequestId : void 0).filter((n) => Number.isSafeInteger(n));
+      return ids2[0];
+    },
+    findMergedPrForBranch(branch, base) {
+      const json = adoJson(
+        adoCall(ctx, "git.pullRequests.GET", repoParams(ctx), {
+          "searchCriteria.sourceRefName": `refs/heads/${branch}`,
+          "searchCriteria.status": "completed",
+          "searchCriteria.targetRefName": `refs/heads/${base}`
+        }),
+        `merged pull requests for ${branch} into ${base}`
       );
       const ids2 = listValue(json).map((p) => isObject4(p) ? p.pullRequestId : void 0).filter((n) => Number.isSafeInteger(n));
       return ids2[0];
@@ -122127,6 +122146,7 @@ function adoTracker(ctx, intakeSource2) {
       const state = str3(f["System.State"]) ?? "";
       const category = type && state ? stateCategory(ctx, type, state) : void 0;
       const acceptance = adoHtmlToText(f["Microsoft.VSTS.Common.AcceptanceCriteria"]);
+      const [parent] = linkedIds(item.relations, PARENT);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_workitems/edit/${id}`,
@@ -122145,6 +122165,7 @@ function adoTracker(ctx, intakeSource2) {
         size: num3(f["Microsoft.VSTS.Scheduling.StoryPoints"]) ?? num3(f["Microsoft.VSTS.Scheduling.Effort"]),
         dependsOn: linkedIds(item.relations, DEPENDS_ON),
         children: linkedIds(item.relations, CHILD),
+        ...parent !== void 0 ? { parent } : {},
         repoUrl: ctx.repo.url
       };
     },
@@ -122210,7 +122231,7 @@ function adoTracker(ctx, intakeSource2) {
     }
   };
 }
-var import_fs159, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, REV_CONFLICT, linkedIds, splitTags, num3, failure3;
+var import_fs159, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure3;
 var init_tracker = __esm({
   "src/forge/ado/tracker.ts"() {
     "use strict";
@@ -122222,6 +122243,7 @@ var init_tracker = __esm({
     CLOSED_CATEGORIES = /* @__PURE__ */ new Set(["completed", "removed"]);
     DEPENDS_ON = "System.LinkTypes.Dependency-Reverse";
     CHILD = "System.LinkTypes.Hierarchy-Forward";
+    PARENT = "System.LinkTypes.Hierarchy-Reverse";
     REV_CONFLICT = /\b412\b|TF26071|VS403351|test operation/i;
     linkedIds = (relations, rel) => relations.filter((r) => isObject4(r) && r.rel === rel).map((r) => Number(/\/workItems\/(\d+)$/i.exec(str3(r.url) ?? "")?.[1])).filter((n) => Number.isSafeInteger(n) && n > 0);
     splitTags = (tags) => typeof tags === "string" ? tags.split(";").map((t) => t.trim()).filter(Boolean) : [];
@@ -122509,6 +122531,7 @@ function ghViewItem(exec3, issue2, cwd2) {
   const labels = Array.isArray(v.labels) ? v.labels.map((l) => str5(l?.name)).filter(Boolean) : [];
   const comments2 = Array.isArray(v.comments) ? v.comments : [];
   const size = labels.map((l) => /^size:(\d+)$/i.exec(l)?.[1]).find(Boolean);
+  const parent = /^[^\S\r\n]*part of[^\S\r\n]+#(\d+)\b/im.exec(body)?.[1];
   return {
     id: issue2,
     url,
@@ -122522,6 +122545,7 @@ function ghViewItem(exec3, issue2, cwd2) {
     ...size ? { size: Number(size) } : {},
     dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
     children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
+    ...parent ? { parent: Number(parent) } : {},
     repoUrl: m[1]
   };
 }
@@ -126782,8 +126806,8 @@ function evaluateItem(item, kind, config2, look) {
   const pr = look.openPr(branch);
   if (pr !== void 0) return hit("blocked", "pr-exists", `open PR #${pr} already uses ${branch}`);
   if (look.remoteBranch(branch)) return hit("blocked", "branch-exists", `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
-  const deps = item.dependsOn.filter((d) => look.isOpen(d));
-  if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on open item${deps.length > 1 ? "s" : ""} ${ids(deps)}`);
+  const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
+  if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
   const children = item.children.filter((c) => look.isOpen(c));
   if (children.length > 0) return hit("blocked", "needs-split", `has open children ${ids(children)}`);
   if (kind === "azure-devops" && item.type && SPLIT_TYPES.has(item.type.toLowerCase())) return hit("blocked", "needs-split", `work item type ${item.type} needs splitting`);
@@ -126845,6 +126869,25 @@ function isOpen(forge, id) {
     }
   }
 }
+function isSatisfied(forge, id, base, runState) {
+  if (runState(id)?.phase === "merged") return true;
+  let item;
+  try {
+    item = forge.tracker.viewItem(id);
+  } catch {
+    try {
+      return forge.reviews.viewPr(id).state !== "OPEN";
+    } catch {
+      return false;
+    }
+  }
+  if (!item.open) return true;
+  try {
+    return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
+  } catch {
+    return false;
+  }
+}
 function checkItem(forge, id, env2) {
   let item;
   try {
@@ -126855,6 +126898,7 @@ function checkItem(forge, id, env2) {
   }
   const look = {
     isOpen: (other) => isOpen(forge, other),
+    isSatisfied: (dep) => isSatisfied(forge, dep, env2.base, env2.runState),
     runState: env2.runState,
     openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
     remoteBranch: env2.remoteBranch,
@@ -126894,6 +126938,7 @@ var init_score = __esm({
   "src/factory/check/score.ts"() {
     "use strict";
     init_string_width();
+    init_state6();
     init_rules();
     BUCKET_ORDER = ["runnable", "needs-plan", "blocked"];
     plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
@@ -126911,7 +126956,10 @@ function checkGh(a, marker) {
     return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER5.test(r[7]);
   }
   if (group === "issue" && sub === "edit") return marker !== void 0 && same5(r.slice(1), ["--add-label", marker]) && NUMBER5.test(r[0] ?? "");
-  if (group === "pr" && sub === "list") return r.length === 4 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
+  if (group === "pr" && sub === "list") {
+    if (r.length === 4) return r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
+    return r.length === 8 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--base" && VALUE2(r[3]) && same5(r.slice(4), ["--state", "merged", "--json", "number"]);
+  }
   if (group === "pr" && sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
   if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER5.test(r[5]);
   return false;
@@ -126991,7 +127039,8 @@ function checkEnvFor(exec3, root2, config2, base, baseSha) {
       return r.out.length > 0;
     },
     readPlan: (path30) => baseSha ? readBaseFile(exec3, root2, baseSha, path30) : null,
-    planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`
+    planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
+    base
   };
 }
 function requireLabel(exec3, root2, marker, repo) {
@@ -127060,6 +127109,9 @@ function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, mark
 }
 async function runFactoryCheck(o, deps) {
   const ids2 = o.ids.map(parseItemId);
+  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+  if (parent !== void 0 && ids2.length > 0) throw new CheckUsageError("--parent takes no item ids: it checks the spec's children");
+  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
   const warnings = [];
   let marker;
   let exec3 = checkGuardExec(deps.exec, () => marker);
@@ -127090,9 +127142,9 @@ async function runFactoryCheck(o, deps) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
   }
   const source = config2.intake.source;
-  if (ids2.length === 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --source <spec>, or set factory.intake.source");
+  if (ids2.length === 0 && parent === void 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source");
   if (o.mark && !o.yes && (o.json || !deps.isTTY())) throw new CheckUsageError("--mark needs --yes without an interactive terminal (or with --json)");
-  const wanted = ids2.length > 0 ? ids2 : forge.tracker.queryItems(source, config2.intake.limit);
+  const wanted = ids2.length > 0 ? ids2 : parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
   const items = checkItems(forge, wanted, checkEnvFor(exec3, root2, config2, base, baseSha));
   const m = { marker: config2.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
   if (o.mark) {
@@ -127124,7 +127176,7 @@ async function runFactoryCheck(o, deps) {
       ok: ok2,
       forge: config2.kind,
       repo: config2.repo.url,
-      source: ids2.length > 0 || !source ? null : { ...source },
+      source: ids2.length > 0 || parent !== void 0 || !source ? null : { ...source },
       counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
       items,
       mark: m,
@@ -127203,7 +127255,7 @@ function defaultFactoryCheckDeps(base) {
   };
 }
 function factoryCheckCommand(deps) {
-  return new Command("check").description("Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)").argument("[ids...]", "item ids (GitHub issue numbers or ADO work item ids); default: the intake source").option("--source <spec>", "intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>").option("--limit <n>", "items read from the source (1..200)", integerOption(1, 200)).option("--json", "JSON output (schemaVersion 1)").option("--mark", "add factory.intake.marker to the runnable items (asks first)").option("--yes", "confirm --mark without a prompt").action(async (ids2, o) => {
+  return new Command("check").description("Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)").argument("[ids...]", "item ids (GitHub issue numbers or ADO work item ids); default: the intake source").option("--parent <spec>", "check the children of this spec item (GitHub task list `- [ ] #n` | ADO child links)").option("--source <spec>", "intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>").option("--limit <n>", "items read from the source (1..200)", integerOption(1, 200)).option("--json", "JSON output (schemaVersion 1)").option("--mark", "add factory.intake.marker to the runnable items (asks first)").option("--yes", "confirm --mark without a prompt").action(async (ids2, o) => {
     try {
       process.exitCode = await runFactoryCheck({ ids: ids2, ...o }, deps);
     } catch (error2) {

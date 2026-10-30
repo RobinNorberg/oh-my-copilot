@@ -7,7 +7,7 @@
  * through `forge.tracker`; the open-PR lookup goes through `forge.reviews`.
  */
 import type { Forge, ForgeItem, ResolvedForgeConfig } from '../../forge/types.js';
-import type { FactoryPhase } from '../run/state.js';
+import { type FactoryPhase } from '../run/state.js';
 import { type CheckBucket, type PlanSource } from './rules.js';
 export declare const BUCKET_ORDER: readonly CheckBucket[];
 /** One row of `omg factory check --json` (CHECK_JSON_SCHEMA_VERSION pins the shape). */
@@ -36,12 +36,23 @@ export interface CheckEnv {
     remoteBranch(branch: string): boolean;
     readPlan(path: string): string | null;
     planBase: string;
+    /** The integration branch (ship.base) a dependency's factory PR must have merged into. */
+    base: string;
 }
 /** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
 export declare const plainText: (v: string) => string;
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export declare function itemPriority(item: ForgeItem): number | null;
 export declare function compareResults(a: CheckResult, b: CheckResult): number;
+/**
+ * A dependency is satisfied when its factory run merged, the item is closed,
+ * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
+ * base other than the default branch, `Closes #n` never closes the issue
+ * (shipyard ↔ factory design §3.5). A dependency that is a PR is satisfied
+ * once it is not open; anything unreadable is unsatisfied. Check and the
+ * engine share this rule.
+ */
+export declare function isSatisfied(forge: Forge, id: number, base: string, runState: CheckEnv['runState']): boolean;
 /**
  * The result of one item. A GitHub PR id is `wrong-type`; any other failed
  * read (the item, its run state, PR or branch lookup) is `read-failed`, so one

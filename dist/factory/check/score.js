@@ -7,6 +7,7 @@
  * through `forge.tracker`; the open-PR lookup goes through `forge.reviews`.
  */
 import { stripAnsi } from '../../utils/string-width.js';
+import { factoryBranch } from '../run/state.js';
 import { evaluateItem } from './rules.js';
 export const BUCKET_ORDER = ['runnable', 'needs-plan', 'blocked'];
 /** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
@@ -42,6 +43,38 @@ function isOpen(forge, id) {
     }
 }
 /**
+ * A dependency is satisfied when its factory run merged, the item is closed,
+ * or (still open) a PR from `factory/issue-<n>` merged into `base`: with a
+ * base other than the default branch, `Closes #n` never closes the issue
+ * (shipyard ↔ factory design §3.5). A dependency that is a PR is satisfied
+ * once it is not open; anything unreadable is unsatisfied. Check and the
+ * engine share this rule.
+ */
+export function isSatisfied(forge, id, base, runState) {
+    if (runState(id)?.phase === 'merged')
+        return true;
+    let item;
+    try {
+        item = forge.tracker.viewItem(id);
+    }
+    catch {
+        try {
+            return forge.reviews.viewPr(id).state !== 'OPEN';
+        }
+        catch {
+            return false;
+        }
+    }
+    if (!item.open)
+        return true;
+    try {
+        return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== undefined;
+    }
+    catch {
+        return false;
+    }
+}
+/**
  * The result of one item. A GitHub PR id is `wrong-type`; any other failed
  * read (the item, its run state, PR or branch lookup) is `read-failed`, so one
  * bad item never stops the batch.
@@ -58,6 +91,7 @@ export function checkItem(forge, id, env) {
     }
     const look = {
         isOpen: (other) => isOpen(forge, other),
+        isSatisfied: (dep) => isSatisfied(forge, dep, env.base, env.runState),
         runState: env.runState,
         openPr: (branch) => forge.reviews.findOpenPrForBranch(branch),
         remoteBranch: env.remoteBranch,

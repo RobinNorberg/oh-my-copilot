@@ -29822,7 +29822,7 @@ var init_routes = __esm({
         method: "GET",
         apiVersion: STABLE,
         routeParams: ["project", "repositoryId", "pullRequestId"],
-        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "$top"]
+        queryParams: ["searchCriteria.sourceRefName", "searchCriteria.status", "searchCriteria.targetRefName", "$top"]
       }),
       route({
         id: "git.pullRequests.POST",
@@ -30096,7 +30096,9 @@ var init_guard = __esm({
       reasonFilter: /^pullRequest$/,
       queryOrder: /^queueTimeDescending$/,
       "searchCriteria.sourceRefName": /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
-      "searchCriteria.status": /^active$/,
+      "searchCriteria.status": /^(?:active|completed)$/,
+      // A satisfied dependency: a completed (merged) PR into the base.
+      "searchCriteria.targetRefName": /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
       continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/
     };
     MAX_BODY_BYTES = 1024 * 1024;
@@ -43852,6 +43854,10 @@ function ghFindOpenPr(exec, branch, cwd) {
   const open3 = ghOpenPrs(exec, branch, cwd);
   return Array.isArray(open3) && typeof open3[0]?.number === "number" ? open3[0].number : void 0;
 }
+function ghFindMergedPr(exec, branch, base, cwd) {
+  const merged = ghJson(exec, ["pr", "list", "--head", branch, "--base", base, "--state", "merged", "--json", "number"], cwd);
+  return Array.isArray(merged) && typeof merged[0]?.number === "number" ? merged[0].number : void 0;
+}
 function ghCreateDraftPr(exec, o, cwd) {
   const out = ghRun(exec, ["pr", "create", "--draft", "--base", o.base, "--head", o.head, "--title", o.title, "--body-file", o.bodyFile], cwd);
   const m = /\/pull\/(\d+)/.exec(out);
@@ -43882,6 +43888,7 @@ function ghViewPr(exec, pr, cwd) {
 function githubReviews(exec, cwd) {
   return {
     findOpenPrForBranch: (branch) => ghFindOpenPr(exec, branch, cwd),
+    findMergedPrForBranch: (branch, base) => ghFindMergedPr(exec, branch, base, cwd),
     createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),
     viewPr: (pr) => ghViewPr(exec, pr, cwd),
     prHead: (pr) => ghPrHead(exec, pr, cwd),
@@ -44285,6 +44292,18 @@ function adoReviews(ctx) {
       const json = adoJson(
         adoCall(ctx, "git.pullRequests.GET", repoParams(ctx), { "searchCriteria.sourceRefName": `refs/heads/${branch}`, "searchCriteria.status": "active" }),
         `pull requests for ${branch}`
+      );
+      const ids = listValue(json).map((p) => isObject3(p) ? p.pullRequestId : void 0).filter((n) => Number.isSafeInteger(n));
+      return ids[0];
+    },
+    findMergedPrForBranch(branch, base) {
+      const json = adoJson(
+        adoCall(ctx, "git.pullRequests.GET", repoParams(ctx), {
+          "searchCriteria.sourceRefName": `refs/heads/${branch}`,
+          "searchCriteria.status": "completed",
+          "searchCriteria.targetRefName": `refs/heads/${base}`
+        }),
+        `merged pull requests for ${branch} into ${base}`
       );
       const ids = listValue(json).map((p) => isObject3(p) ? p.pullRequestId : void 0).filter((n) => Number.isSafeInteger(n));
       return ids[0];
@@ -44854,6 +44873,7 @@ function adoTracker(ctx, intakeSource) {
       const state = str3(f["System.State"]) ?? "";
       const category = type && state ? stateCategory(ctx, type, state) : void 0;
       const acceptance = adoHtmlToText(f["Microsoft.VSTS.Common.AcceptanceCriteria"]);
+      const [parent] = linkedIds(item.relations, PARENT);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_workitems/edit/${id}`,
@@ -44872,6 +44892,7 @@ function adoTracker(ctx, intakeSource) {
         size: num3(f["Microsoft.VSTS.Scheduling.StoryPoints"]) ?? num3(f["Microsoft.VSTS.Scheduling.Effort"]),
         dependsOn: linkedIds(item.relations, DEPENDS_ON),
         children: linkedIds(item.relations, CHILD),
+        ...parent !== void 0 ? { parent } : {},
         repoUrl: ctx.repo.url
       };
     },
@@ -44937,7 +44958,7 @@ function adoTracker(ctx, intakeSource) {
     }
   };
 }
-var import_fs76, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, REV_CONFLICT, linkedIds, splitTags, num3, failure;
+var import_fs76, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure;
 var init_tracker = __esm({
   "src/forge/ado/tracker.ts"() {
     "use strict";
@@ -44949,6 +44970,7 @@ var init_tracker = __esm({
     CLOSED_CATEGORIES = /* @__PURE__ */ new Set(["completed", "removed"]);
     DEPENDS_ON = "System.LinkTypes.Dependency-Reverse";
     CHILD = "System.LinkTypes.Hierarchy-Forward";
+    PARENT = "System.LinkTypes.Hierarchy-Reverse";
     REV_CONFLICT = /\b412\b|TF26071|VS403351|test operation/i;
     linkedIds = (relations, rel) => relations.filter((r) => isObject3(r) && r.rel === rel).map((r) => Number(/\/workItems\/(\d+)$/i.exec(str3(r.url) ?? "")?.[1])).filter((n) => Number.isSafeInteger(n) && n > 0);
     splitTags = (tags) => typeof tags === "string" ? tags.split(";").map((t) => t.trim()).filter(Boolean) : [];
@@ -45159,6 +45181,7 @@ function ghViewItem(exec, issue2, cwd) {
   const labels = Array.isArray(v.labels) ? v.labels.map((l) => str5(l?.name)).filter(Boolean) : [];
   const comments2 = Array.isArray(v.comments) ? v.comments : [];
   const size = labels.map((l) => /^size:(\d+)$/i.exec(l)?.[1]).find(Boolean);
+  const parent = /^[^\S\r\n]*part of[^\S\r\n]+#(\d+)\b/im.exec(body)?.[1];
   return {
     id: issue2,
     url,
@@ -45172,6 +45195,7 @@ function ghViewItem(exec, issue2, cwd) {
     ...size ? { size: Number(size) } : {},
     dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
     children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
+    ...parent ? { parent: Number(parent) } : {},
     repoUrl: m[1]
   };
 }
@@ -47895,6 +47919,7 @@ var init_score = __esm({
   "src/factory/check/score.ts"() {
     "use strict";
     init_string_width();
+    init_state5();
     init_rules();
   }
 });

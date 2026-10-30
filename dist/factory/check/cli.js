@@ -1,12 +1,14 @@
 /**
- * `omg factory check [<id>...] [--source <spec>] [--limit n] [--json] [--mark [--yes]]`
+ * `omg factory check [<id>... | --parent <spec> | --source <spec>] [--limit n] [--json] [--mark [--yes]]`
  * (factory forges design §5): bucket intake items as runnable, needs-plan
- * or blocked. Read-only unless `--mark`, which adds `factory.intake.marker`
+ * or blocked; `--parent` checks a spec's children (shipyard ↔ factory
+ * design §3.1). Read-only unless `--mark`, which adds `factory.intake.marker`
  * (a GitHub label or an ADO tag) to the runnable items only, after a TTY
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * open-PR lookup on `factory/issue-<n>`, a dependency's merged factory PR
+ * into the base, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
  * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
  * runGuardedAdo (fail closed without an ADO guard context), and while not
@@ -53,8 +55,12 @@ function checkGh(a, marker) {
     }
     if (group === 'issue' && sub === 'edit')
         return marker !== undefined && same(r.slice(1), ['--add-label', marker]) && NUMBER.test(r[0] ?? '');
-    if (group === 'pr' && sub === 'list')
-        return r.length === 4 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+    if (group === 'pr' && sub === 'list') {
+        if (r.length === 4)
+            return r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+        // A dependency's merged factory PR into the base (isSatisfied).
+        return r.length === 8 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--base' && VALUE(r[3]) && same(r.slice(4), ['--state', 'merged', '--json', 'number']);
+    }
     // A dependency that is a PR: its state.
     if (group === 'pr' && sub === 'view')
         return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -157,6 +163,7 @@ export function checkEnvFor(exec, root, config, base, baseSha) {
         },
         readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
         planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
+        base,
     };
 }
 /** `--mark` on GitHub: the marker label must exist (gh would fail every edit); check never creates it. */
@@ -246,6 +253,11 @@ export function forgeReadExec(exec, config, root, resolveAz = defaultResolveAz, 
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export async function runFactoryCheck(o, deps) {
     const ids = o.ids.map(parseItemId);
+    const parent = o.parent === undefined ? undefined : parseItemId(o.parent);
+    if (parent !== undefined && ids.length > 0)
+        throw new CheckUsageError('--parent takes no item ids: it checks the spec\'s children');
+    if (parent !== undefined && o.source !== undefined)
+        throw new CheckUsageError('--parent and --source are exclusive');
     const warnings = [];
     let marker;
     // The git reads before the forge config is known; az runs only through forgeReadExec below.
@@ -283,11 +295,11 @@ export async function runFactoryCheck(o, deps) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
     const source = config.intake.source;
-    if (ids.length === 0 && !source)
-        throw new CheckUsageError('no item ids and no intake source: pass ids, --source <spec>, or set factory.intake.source');
+    if (ids.length === 0 && parent === undefined && !source)
+        throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');
     if (o.mark && !o.yes && (o.json || !deps.isTTY()))
         throw new CheckUsageError('--mark needs --yes without an interactive terminal (or with --json)');
-    const wanted = ids.length > 0 ? ids : forge.tracker.queryItems(source, config.intake.limit);
+    const wanted = ids.length > 0 ? ids : parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
     const items = checkItems(forge, wanted, checkEnvFor(exec, root, config, base, baseSha));
     const m = { marker: config.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
     if (o.mark) {
@@ -326,7 +338,7 @@ export async function runFactoryCheck(o, deps) {
             ok,
             forge: config.kind,
             repo: config.repo.url,
-            source: ids.length > 0 || !source ? null : { ...source },
+            source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
             items,
             mark: m,

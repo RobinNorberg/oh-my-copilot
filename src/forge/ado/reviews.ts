@@ -76,6 +76,17 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
       return ids[0];
     },
 
+    findMergedPrForBranch(branch: string, base: string): number | undefined {
+      const json = adoJson(
+        adoCall(ctx, 'git.pullRequests.GET', repoParams(ctx), {
+          'searchCriteria.sourceRefName': `refs/heads/${branch}`, 'searchCriteria.status': 'completed', 'searchCriteria.targetRefName': `refs/heads/${base}`,
+        }),
+        `merged pull requests for ${branch} into ${base}`,
+      );
+      const ids = listValue(json).map((p) => (isObject(p) ? p.pullRequestId : undefined)).filter((n): n is number => Number.isSafeInteger(n));
+      return ids[0];
+    },
+
     createDraftPr(o) {
       const text = description(o.bodyFile);
       const body = {
