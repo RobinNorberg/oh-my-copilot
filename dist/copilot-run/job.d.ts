@@ -270,16 +270,33 @@ export declare function filterDriverOverrides(cwd: string, gitDirArgs?: readonly
  * runs no external diff driver, no textconv, no fsmonitor and no filter
  * driver (runHostGit's driver overrides; a driver it cannot override fails
  * the diff, so the summary is null).
+ *
+ * With `ignoredUnderProtected` (a job worktree: a fresh checkout, so an
+ * ignored file there came from the session), ignored files under a protected path count as protected changes too:
+ * a hook the shell plants in an ignored dir (husky's `.husky/_/` ignores
+ * itself) is what unhardened git in the worktree runs.
  */
-export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[]): ChangeSummary | null;
+export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[], ignoredUnderProtected?: boolean): ChangeSummary | null;
 /**
  * The common git dir's files that steer host git, keyed by path relative to
- * it: `config`, `config.worktree`, `hooks/` and `info/` (recursive), and per
- * `worktrees/<id>` its type and `config.worktree`. The sandbox keeps them
- * read-only to the shell, but the built-in file tools write unsandboxed, and
- * a path approved under the worktree can be swapped for a link into the git
- * dir between the approval and the write. Taken before the session and
- * compared after it (sharedGitStateChanges).
+ * it: `config`, `config.worktree`, `commondir` and `gitdir` (git reads
+ * `commondir` in any git dir, so writing one redirects the main checkout's
+ * git to a config and hooks of the writer's choosing), `HEAD`, `hooks/` and
+ * `info/` (recursive), per `worktrees/<id>` its type, `config.worktree`,
+ * `commondir` and `gitdir`, every submodule git dir under `modules/`
+ * (config, hooks, info, alternates: the factory's moduleEntries), and the
+ * branches (`refs/heads/*`, loose or packed) outside the copilot-run job
+ * namespace, whose branches concurrent jobs create and move. The sandbox
+ * keeps them read-only to the shell, but the built-in file tools write
+ * unsandboxed, and a path approved under the worktree can be swapped for a
+ * link into the git dir between the approval and the write. Taken before the
+ * session and compared after it (sharedGitStateChanges).
+ *
+ * Left out: `description` and `logs/` (git never acts on them), `FETCH_HEAD`
+ * (rewritten by any fetch, and read only by an explicit merge of it), and
+ * `objects/` with `objects/info/alternates` (concurrent jobs write objects,
+ * and an object never runs anything; alternates only adds objects to look up).
+ * A reftable repository keeps its refs in `reftable/`, not compared here.
  */
 export declare function sharedGitStateSnapshot(commonGitDir: string): Record<string, string>;
 /**
@@ -289,6 +306,14 @@ export declare function sharedGitStateSnapshot(commonGitDir: string): Record<str
  * `config.worktree` appeared, changed or went, is.
  */
 export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): string[];
+/**
+ * A relative `core.hooksPath` (any config level but the command line) as a
+ * protected dir rule, or null, as git resolves it in `cwd` with `gitDirArgs`
+ * (the job worktree, so an `includeIf "gitdir:..."` rule applies as it does
+ * there). Throws when git cannot tell (an error, or a git older than 2.26
+ * without `--show-scope`): the caller refuses the job rather than miss it.
+ */
+export declare function relativeHooksPathRule(cwd: string, gitDirArgs?: readonly string[]): string | null;
 export declare function defaultCopilotRunDeps(env?: NodeJS.ProcessEnv): CopilotRunDeps;
 export declare class CopilotRunManager {
     private readonly deps;

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cf1e6a5015bdf46b81b01362e0f1694feecc5b8d",
-    "sourceSha256": "24a9c3c30ff36cdccd3d7bba3ae8ec41d4fe7387adf8c427519857cdeb4f951f",
+    "head": "3da31c8106249a3cc6b5f52bf5fb80f4aa87df0e",
+    "sourceSha256": "5112b6d3c76407ff7ed73e29e6cb269a70bbd73065d2c2763248c1c77a689685",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cf1e6a5015bdf46b81b01362e0f1694feecc5b8d",
-  "sourceSha256": "24a9c3c30ff36cdccd3d7bba3ae8ec41d4fe7387adf8c427519857cdeb4f951f",
+  "head": "3da31c8106249a3cc6b5f52bf5fb80f4aa87df0e",
+  "sourceSha256": "5112b6d3c76407ff7ed73e29e6cb269a70bbd73065d2c2763248c1c77a689685",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1910
     },
     "generated": {
-      "distFiles": 7000,
+      "distFiles": 7004,
       "bridgeFiles": 9,
-      "total": 7009
+      "total": 7013
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3671,6 +3671,10 @@
       "dist/forge/__tests__/recording-exec.d.ts.map",
       "dist/forge/__tests__/recording-exec.js",
       "dist/forge/__tests__/recording-exec.js.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
       "dist/forge/ado/__tests__/adapter.test.d.ts",
       "dist/forge/ado/__tests__/adapter.test.d.ts.map",
       "dist/forge/ado/__tests__/adapter.test.js",
@@ -23104,6 +23108,26 @@
         "id": "dist/forge/__tests__/recording-exec.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/recording-exec.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/adapter.test.d.ts",
@@ -74294,6 +74318,16 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/lib/append-no-follow.ts",
         "kind": "imports"
       },
@@ -113309,12 +113343,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9634,
-      "edgeCount": 11310,
-      "importEdgeCount": 9316,
+      "nodeCount": 9638,
+      "edgeCount": 11312,
+      "importEdgeCount": 9318,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "d484efbb33687087a6816ba5dafcf5ae3cb789a9272b20090c60e83a5478e33c",
-  "manifestSha256": "3d838fc82cd56a1a37ac23545719f0d62fdef67d1244962499625800e00b7065"
+  "manifestSha256": "e60ecee08d3a03b8555447a46ce8a51f552d30c5bdef40572ecdf05a3b059009"
 }
