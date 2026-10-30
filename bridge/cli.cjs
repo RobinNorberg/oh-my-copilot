@@ -152438,7 +152438,20 @@ function parseBlocked(body) {
   const hasContent = raw.trim().length > 0;
   return { blockers, malformed: hasContent && blockers.length === 0 };
 }
-function ticketType(labels) {
+var BODY_TYPES = {
+  research: "research",
+  loft: "prototype",
+  prototype: "prototype",
+  grilling: "grilling",
+  task: "task"
+};
+function bodyType(body) {
+  const match = /^\s*(?:[-*]\s*)?\**Type\**\s*[:：]\**\s*`?([A-Za-z]+)`?/im.exec(body);
+  return match ? BODY_TYPES[match[1].toLowerCase()] ?? null : null;
+}
+function ticketType(labels, body) {
+  const fromBody = bodyType(body);
+  if (fromBody) return fromBody;
   for (const label2 of labels) {
     switch (label2) {
       case "wayfinder:research":
@@ -152476,7 +152489,7 @@ function enumerateFrontier(mapNumber, records2) {
     const blockers = [...record3.nativeBlockedBy ?? [], ...parsed2.blockers];
     const blocked2 = blockers.some((blocker) => (stateByNumber.get(blocker) ?? "OPEN") !== "CLOSED");
     if (blocked2) continue;
-    const type = ticketType(record3.labels);
+    const type = ticketType(record3.labels, record3.body);
     const ticket = {
       number: record3.number,
       type,

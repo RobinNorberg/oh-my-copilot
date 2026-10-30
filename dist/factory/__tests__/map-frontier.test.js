@@ -97,6 +97,19 @@ describe('enumerateFrontier — gate class', () => {
         expect(frontier.auto.find((t) => t.number === 100)?.hasCriteria).toBe(true);
     });
 });
+describe('enumerateFrontier — body Type line', () => {
+    it('reads the navigator body type: research auto, loft human (prototype), label still works', () => {
+        const frontier = enumerateFrontier(MAP, [
+            child(100, 'Type: research\n\nq'),
+            child(101, '**Type:** `loft`\n\nq'),
+            child(102, 'q', { labels: ['wayfinder:research'] }),
+            child(103, 'Type: research', { labels: ['wayfinder:grilling'] }),
+            child(104, 'Type: bogus', { labels: ['wayfinder:research'] }),
+        ]);
+        expect(frontier.auto.map((t) => t.number)).toEqual([100, 102, 103, 104]);
+        expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[101, 'prototype']]);
+    });
+});
 describe('enumerateFrontier — order', () => {
     it('orders by ticket number, with an Order override taking precedence', () => {
         const frontier = enumerateFrontier(MAP, [

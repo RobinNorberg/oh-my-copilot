@@ -12,6 +12,7 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
+ * - Type: a body `Type:` line first (the navigator's format; `loft` = prototype), else the `wayfinder:<type>` label.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).

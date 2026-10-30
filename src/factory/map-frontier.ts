@@ -12,6 +12,7 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
+ * - Type: a body `Type:` line first (the navigator's format; `loft` = prototype), else the `wayfinder:<type>` label.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).
@@ -126,7 +127,23 @@ function parseBlocked(body: string): BlockedParse {
   return { blockers, malformed: hasContent && blockers.length === 0 };
 }
 
-function ticketType(labels: string[]): WayfinderTicketType {
+const BODY_TYPES: Record<string, WayfinderTicketType> = {
+  research: 'research',
+  loft: 'prototype',
+  prototype: 'prototype',
+  grilling: 'grilling',
+  task: 'task',
+};
+
+/** The navigator writes the type in the body (`Type: research`); loft is the navigator's name for prototype. */
+function bodyType(body: string): WayfinderTicketType | null {
+  const match = /^\s*(?:[-*]\s*)?\**Type\**\s*[:：]\**\s*`?([A-Za-z]+)`?/im.exec(body);
+  return match ? (BODY_TYPES[match[1].toLowerCase()] ?? null) : null;
+}
+
+function ticketType(labels: string[], body: string): WayfinderTicketType {
+  const fromBody = bodyType(body);
+  if (fromBody) return fromBody;
   for (const label of labels) {
     switch (label) {
       case 'wayfinder:research': return 'research';
@@ -177,7 +194,7 @@ export function enumerateFrontier(mapNumber: number, records: readonly TicketRec
     const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? 'OPEN') !== 'CLOSED');
     if (blocked) continue;
 
-    const type = ticketType(record.labels);
+    const type = ticketType(record.labels, record.body);
     const ticket: FrontierTicket = {
       number: record.number,
       type,
