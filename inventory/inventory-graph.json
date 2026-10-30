@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "aa7492d6801f8d97f0c436124f2997ceff350679",
-    "sourceSha256": "fc70c4e73b08a44820a569c59a88940026ad9fe49dd9e222a199cddd5db319dd",
+    "head": "81031ae2ed5e3e9c2930b7155776975e98b3d4d7",
+    "sourceSha256": "8c214cc4eb2b50d996743400bc223e160bcf55b12f7faed5967f0eabd2ebbe4d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "aa7492d6801f8d97f0c436124f2997ceff350679",
-  "sourceSha256": "fc70c4e73b08a44820a569c59a88940026ad9fe49dd9e222a199cddd5db319dd",
+  "head": "81031ae2ed5e3e9c2930b7155776975e98b3d4d7",
+  "sourceSha256": "8c214cc4eb2b50d996743400bc223e160bcf55b12f7faed5967f0eabd2ebbe4d",
   "counts": {
     "public": {
       "skills": 63,
@@ -75184,6 +75184,16 @@
       },
       {
         "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
@@ -75300,6 +75310,11 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -75430,11 +75445,6 @@
       {
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/heal/heal-evidence.ts",
-        "to": "src/factory/heal/history.ts",
         "kind": "type-imports"
       },
       {
@@ -75456,6 +75466,16 @@
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/heal-evidence.ts",
@@ -75696,6 +75716,11 @@
         "from": "src/factory/heal/run.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/run.ts",
@@ -79764,12 +79789,22 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -112975,11 +113010,11 @@
     ],
     "stats": {
       "nodeCount": 9609,
-      "edgeCount": 11272,
-      "importEdgeCount": 9290,
+      "edgeCount": 11279,
+      "importEdgeCount": 9294,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "3060c6337d5caf28316a2cc2810673ae8a252cc16231f00643d5a3cff386e744",
-  "manifestSha256": "e836f6c655f537989827345edd1360764da9052a1ecaab9fee5d1b4ff5b7457a"
+  "manifestSha256": "9781e06452348ff4741899f30aee5005f22b943674b3e5a5a9691707027d47a9"
 }

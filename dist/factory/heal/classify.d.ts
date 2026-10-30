@@ -6,6 +6,7 @@
  * sha green on one image version and red on another is env-change). The run
  * takes the most severe job class.
  */
+import type { ForgeCi } from '../../forge/types.js';
 import type { FailingTest } from '../../ship/gates.js';
 import { type JobEnv, type ParsedJob } from './logs.js';
 import type { ShaRange } from './history.js';
@@ -103,5 +104,6 @@ export interface ClassifyRunInput {
     range?: ShaRange;
     jobs: readonly ClassifyJobInput[];
 }
-export declare function classifyRun(input: ClassifyRunInput): HealClassification;
+/** `ci`: the forge whose rerun intent is recorded (default GitHub). */
+export declare function classifyRun(input: ClassifyRunInput, ci?: Pick<ForgeCi, 'rerunIntent'>): HealClassification;
 //# sourceMappingURL=classify.d.ts.map
