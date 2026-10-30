@@ -200,11 +200,7 @@ function resolveBundledSkillPrimary(
   // must agree even on case-insensitive filesystems (Windows/macOS), where a
   // case-variant identifier resolves the same directory.
   const foldedInput = agentType.toLowerCase();
-  const stripped = foldedInput.startsWith('oh-my-copilot:')
-    ? foldedInput.slice('oh-my-copilot:'.length)
-    : foldedInput.startsWith('omc:') || foldedInput.startsWith('omg:')
-      ? foldedInput.slice('omc:'.length)
-      : foldedInput;
+  const stripped = foldedInput.replace(/^(?:oh-my-copilot|omc|omg):/, '');
   const skills = createBuiltinSkills();
   const match = skills.find((s) => s.name.toLowerCase() === stripped);
   if (match) {

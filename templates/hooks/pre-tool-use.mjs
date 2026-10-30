@@ -169,7 +169,7 @@ async function confirmSkillModeStates(directory, skillName, sessionId) {
 // a generic "Agent type not found" error.
 // ---------------------------------------------------------------------------
 
-const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:'];
+const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:', 'omg:'];
 const SKILL_IDENTIFIER_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function splitAgentNamespace(subagentType) {

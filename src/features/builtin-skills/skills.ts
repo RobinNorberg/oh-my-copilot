@@ -216,7 +216,7 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
 }
 
 function normalizeSkillNameForRuntimeRendering(skillName: string): string {
-  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^(?:omc|omg):/, '');
 }
 
 export function renderBundledSkillBody(skillName: string, body: string, cliOptions?: OmcCliRenderOptions): string {

@@ -484,7 +484,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 == RULES ==
 - NEVER spawn sub-agents or use the Task tool
 - NEVER run tmux pane/session orchestration commands (for example `tmux split-window`, `tmux new-session`)
-- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$autopilot`, `$ralph`, `omc team ...`, `omx team ...`)
+- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$autopilot`, `$ralph`, `omg team ...`, `omx team ...`)
 - ALWAYS use absolute file paths
 - ALWAYS report progress to "team-lead" through the active team/conversation surface
 - Use direct team/conversation messages with type "message" only -- never "broadcast"

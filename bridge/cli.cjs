@@ -57174,7 +57174,7 @@ function applyDeepInterviewRuntimeSettings(template) {
   ).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default ${threshold})`).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
 }
 function normalizeSkillNameForRuntimeRendering(skillName) {
-  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, "").replace(/^omc:/, "");
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, "").replace(/^(?:omc|omg):/, "");
 }
 function renderBundledSkillBody(skillName, body, cliOptions) {
   const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
@@ -141116,7 +141116,7 @@ function recordSkillTriggerShadow(prompt, fetchFn) {
     fetchFn
   });
 }
-var INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?intent(?=\s|$|[?!.,;:])/i;
+var INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:|omg:)?intent(?=\s|$|[?!.,;:])/i;
 function recordIntentShadow(prompt, fetchFn) {
   return recordJudgment("intent", {
     state: { prompt, mode_name: "intent" },
