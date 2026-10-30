@@ -24,8 +24,10 @@ import { dirname, join } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { parseFailingTests, type FailingTest } from '../../ship/gates.js';
 import type { Exec } from '../../ship/exec.js';
+import { githubCi } from '../../forge/github/ci.js';
+import type { ForgeCi } from '../../forge/types.js';
 import type { HealClassification } from './classify.js';
-import { jobLog, viewRunJobs, type HealJob } from './history.js';
+import type { HealJob } from './history.js';
 import { cleanLine, ENV_FIELDS, type JobEnv } from './logs.js';
 import { capBytes, MAX_EVIDENCE_LINE_CHARS, sanitizeJson, sanitizeLines } from './sanitize.js';
 import { healStateDir } from './state.js';
@@ -261,17 +263,19 @@ export function changedEvidence(root: string, sig8: string, hashes: Readonly<Rec
 /**
  * Re-read the red run's failed jobs and logs (and the green run's same-named
  * jobs) through the heal exec guard, plus the commit subjects of the range.
+ * `ci` builds the forge's CI reads over that guarded exec (default GitHub).
  */
-export function collectEvidence(exec: Exec, root: string, classification: HealClassification, ignoreJobs: readonly string[]): EvidenceInput {
+export function collectEvidence(exec: Exec, root: string, classification: HealClassification, ignoreJobs: readonly string[], ci: (exec: Exec, root: string) => ForgeCi = githubCi): EvidenceInput {
   const c = classification;
-  const red = viewRunJobs(exec, c.firstRed.runId, root)
+  const forgeCi = ci(exec, root);
+  const red = forgeCi.runJobs(c.firstRed.runId)
     .filter((j) => j.conclusion === 'failure' && !ignoreJobs.includes(j.name))
-    .map((job) => ({ job, log: jobLog(exec, job.jobId, root) }));
+    .map((job) => ({ job, log: forgeCi.jobLog(job.jobId) }));
   const green: { name: string; log: string }[] = [];
   if (c.lastGreen) {
     const names = new Set(red.map((r) => r.job.name));
-    for (const j of viewRunJobs(exec, c.lastGreen.runId, root)) {
-      if (names.has(j.name) && j.conclusion === 'success') green.push({ name: j.name, log: jobLog(exec, j.jobId, root) });
+    for (const j of forgeCi.runJobs(c.lastGreen.runId)) {
+      if (names.has(j.name) && j.conclusion === 'success') green.push({ name: j.name, log: forgeCi.jobLog(j.jobId) });
     }
   }
   let commits: string[] = [];
