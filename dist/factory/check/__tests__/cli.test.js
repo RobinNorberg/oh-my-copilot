@@ -192,7 +192,8 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
         await expect(run(exec, { source: 'nope' })).rejects.toThrow(/--source "nope"/);
         await expect(run(exec, { source: 'wiql-query:0b6c0000-0000-0000-0000-000000000000' })).rejects.toThrow(/is for azure-devops/);
         const ado = (cmd, args, opts) => (args.join(' ') === 'remote get-url origin' ? ok('https://dev.azure.com/contoso/Web/_git/web-app\n') : exec(cmd, args, opts));
-        const noAdapter = { createForge: () => { throw new Error('no forge adapter for azure-devops in this build'); } };
+        // The az entry resolves before the adapter is built; a fixed one keeps this independent of the machine's az.
+        const noAdapter = { resolveAz: () => ({ command: 'az', prefix: [], env: {} }), createForge: () => { throw new Error('no forge adapter for azure-devops in this build'); } };
         await expect(run(ado, { ids: ['1'] }, noAdapter)).rejects.toThrow(/no forge adapter for azure-devops/);
         const codes = [];
         for (const [argv, d] of [[['--source', 'nope'], deps(exec)], [['1'], deps(ado, noAdapter)], [['1'], deps(exec)]]) {

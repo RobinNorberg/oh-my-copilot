@@ -11,6 +11,7 @@ import { DEFAULT_SHIP_CONFIG } from '../../ship/config.js';
 import { evaluateGates } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
+import { ADO_PIPELINE_PATHS } from './lane-commit.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
@@ -19,13 +20,18 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
  * in the local object store (the trusted config load fetched and checked it).
  * With an Azure DevOps `forge` the gate read goes through it, its blocking
- * branch policies are reasons too, and the command is its head-pinned PATCH.
+ * branch policies are reasons too, a PR touching the Azure Pipelines
+ * definitions (ADO_PIPELINE_PATHS) needs the owner as PROTECTED_PATHS do, and
+ * the command is its head-pinned PATCH.
  */
 export function mergeDecision(exec, root, ship, view, config, known, forge) {
     const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge);
     const reviewed = latestVerdict(ship)?.sha;
     const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
-    const extraProtected = config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : [];
+    const extraProtected = [
+        ...(config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : []),
+        ...(forge ? ADO_PIPELINE_PATHS : []),
+    ];
     const decision = decideMerge({
         state: ship, pr: view, gate, ...commits,
         changedFiles: listChangedFiles(exec, root, view.baseRefOid, view.headRefOid),

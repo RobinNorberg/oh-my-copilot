@@ -5,7 +5,7 @@
  * Failing tests, blockers and the known-flaky verdict come from
  * src/ship/gates.ts unchanged.
  */
-import { analyzeFailedLog } from '../../ship/gates.js';
+import { ADO_LOG_PREFIX, analyzeFailedLog } from '../../ship/gates.js';
 /** A log longer than this keeps its head (setup lines) and its tail (the failures). */
 export const MAX_LOG_CHARS = 8 * 1024 * 1024;
 const HEAD_CHARS = 512 * 1024;
@@ -21,9 +21,10 @@ export function capLog(log) {
         : log;
     return sized.split(/\r?\n/).map((l) => (l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) : l)).join('\n');
 }
-/** One log line without ANSI codes, the `job<TAB>step<TAB>` prefix and the timestamp. */
+/** One log line without ANSI codes, the GitHub `job<TAB>step<TAB>` prefix or else the Azure Pipelines one, and the timestamp. */
 export function cleanLine(rawLine) {
-    return rawLine.replace(ANSI, '').replace(GH_LOG_PREFIX, '').replace(/^\p{Cf}/u, '');
+    const line = rawLine.replace(ANSI, '');
+    return (GH_LOG_PREFIX.test(line) ? line.replace(GH_LOG_PREFIX, '') : line.replace(ADO_LOG_PREFIX, '')).replace(/^\p{Cf}/u, '');
 }
 export const ENV_FIELDS = ['image', 'imageVersion', 'runnerVersion', 'git', 'node', 'npm'];
 const VERSION = /^[\w.+-]{1,64}$/;
