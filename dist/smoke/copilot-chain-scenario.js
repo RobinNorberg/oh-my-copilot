@@ -37,7 +37,11 @@ export const CHAIN_ACK_TOKEN = 'CHAIN_ACK';
 export function prepareChainProject(projectDir) {
     try {
         mkdirSync(join(getOmcRoot(projectDir), 'state'), { recursive: true });
-        mkdirSync(join(projectDir, 'docs', 'design'), { recursive: true });
+        // The yard faces factory init requires; never clobber a project's own.
+        for (const face of ['CLAUDE.md', 'GLOSSARY.md']) {
+            if (!existsSync(join(projectDir, face)))
+                writeFileSync(join(projectDir, face), `# ${face}\n`, 'utf8');
+        }
     }
     catch (err) {
         return `factory layout: ${err.message}`;

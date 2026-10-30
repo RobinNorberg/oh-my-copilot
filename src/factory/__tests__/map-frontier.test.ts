@@ -117,6 +117,82 @@ describe('enumerateFrontier — gate class', () => {
   });
 });
 
+describe('enumerateFrontier — body Type line', () => {
+  const native = { nativeParent: MAP };
+
+  it('reads the navigator body type on a native sub-issue: research auto, loft human (prototype), label still works', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(100, 'Type: research\n\nq', native),
+      child(101, '**Type:** `loft`\n\nq', native),
+      child(102, 'q', { labels: ['wayfinder:research'] }),
+      child(104, 'Type: bogus', { labels: ['wayfinder:research'] }),
+    ]);
+    expect(frontier.auto.map((t) => t.number)).toEqual([100, 102, 104]);
+    expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[101, 'prototype']]);
+  });
+
+  it('ignores Object.prototype keys as body types', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(120, 'Type: constructor\n\nq', native),
+      child(121, 'Type: __proto__\n\nq', native),
+      child(122, 'Type: toString\n\nq', native),
+    ]);
+    expect(frontier.auto).toEqual([]);
+    expect(frontier.human.map((t) => t.number)).toEqual([120, 121, 122]);
+  });
+
+  it('trusts a native parent only when its repo matches the map repo', () => {
+    const records = [
+      ticket({ number: 130, nativeParent: MAP, nativeParentRepo: 'o/r', labels: ['wayfinder:research'] }),
+      ticket({ number: 131, nativeParent: MAP, nativeParentRepo: 'o/other', labels: ['wayfinder:research'] }),
+      ticket({ number: 132, nativeParent: MAP, nativeParentRepo: null, labels: ['wayfinder:research'] }),
+    ];
+    expect(enumerateFrontier(MAP, records, 'O/R').auto.map((t) => t.number)).toEqual([130]);
+  });
+
+  it('never lets an untrusted body type grant auto on a label-free ticket', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(110, 'Type: research\n\nq'),
+      child(111, 'Type: grilling\n\nq'),
+    ]);
+    expect(frontier.auto).toEqual([]);
+    expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[110, 'other'], [111, 'grilling']]);
+  });
+
+  it('takes the more restrictive type when label and body disagree, trusted or not', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(120, 'Type: research', { labels: ['wayfinder:grilling'] }),
+      child(121, 'Type: research', { labels: ['wayfinder:grilling'], ...native }),
+      child(122, 'Type: grilling', { labels: ['wayfinder:research'] }),
+    ]);
+    expect(frontier.auto).toEqual([]);
+    expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[120, 'grilling'], [121, 'grilling'], [122, 'grilling']]);
+  });
+
+  it('ignores Type lines in fenced code and quotes, across lines, or without a word boundary', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(130, '```\nType: research\n```\n\nq', native),
+      child(131, '~~~md\nType: research\n~~~', native),
+      child(132, '> Type: research', native),
+      child(133, 'Type:\nresearch', native),
+      child(134, 'Type: research-ish', native),
+      child(135, 'Type: researcher', native),
+    ]);
+    expect(frontier.auto).toEqual([]);
+    expect(frontier.human.map((t) => t.type)).toEqual(['other', 'other', 'other', 'other', 'other', 'other']);
+  });
+
+  it('resolves disagreeing body Type lines to the most restrictive', () => {
+    const frontier = enumerateFrontier(MAP, [
+      child(140, 'Type: research\n\nType: loft', native),
+      child(141, 'Type: grilling\n\nType: research', native),
+      child(142, 'Type: research\n\n- **Type:** `research`', native),
+    ]);
+    expect(frontier.auto.map((t) => t.number)).toEqual([142]);
+    expect(frontier.human.map((t) => [t.number, t.type])).toEqual([[140, 'prototype'], [141, 'grilling']]);
+  });
+});
+
 describe('enumerateFrontier — order', () => {
   it('orders by ticket number, with an Order override taking precedence', () => {
     const frontier = enumerateFrontier(MAP, [

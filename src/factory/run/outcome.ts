@@ -29,9 +29,9 @@ const GATE_NOTE = /^awaiting-human: ([^:]+): ([\s\S]*)$/;
 export const outcomeMarker = (kind: 'outcome' | 'rollup', child: number, event: OutcomeEvent, head12: string): string =>
   `<!-- omg-factory-${kind}: #${child} ${event} ${head12} -->`;
 
-/** A trusted comment on the target already carries `marker` (an untrusted copy never suppresses a post). */
+/** A trusted comment on the target ends with `marker` as a whole line (an untrusted or quoted copy never suppresses a post). */
 export function postedBefore(comments: readonly ForgeComment[], marker: string): boolean {
-  return comments.some((c) => c.trusted && c.body.includes(marker));
+  return comments.some((c) => c.trusted && c.body.trimEnd().split('\n').pop()?.trim() === marker);
 }
 
 export function prUrl(forge: ForgeKind, repoUrl: string, pr: number): string {

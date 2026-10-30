@@ -12,6 +12,11 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
+ * - Type: the `wayfinder:<type>` label and the body `Type:` line (the
+ *   navigator's format; `loft` = prototype). When they disagree the more
+ *   restrictive wins (human beats auto). A body type alone grants auto only on
+ *   a native sub-issue of the map (linking one needs write access); anyone who
+ *   can edit an issue body could otherwise make it auto-claimable.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).
@@ -36,6 +41,8 @@ export interface TicketRecord {
     title?: string;
     /** Native parent issue number, when the tracker relation is set. */
     nativeParent?: number | null;
+    /** `owner/name` of the native parent, when the tracker read carried it. */
+    nativeParentRepo?: string | null;
     /** Native blocker issue numbers, when the tracker relation is set. */
     nativeBlockedBy?: number[];
 }
@@ -69,5 +76,5 @@ export declare function gateClassFor(type: WayfinderTicketType, labels: string[]
  * blocker whose state is unknown counts as OPEN (safe: blocked pending
  * verification).
  */
-export declare function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[]): Frontier;
+export declare function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[], mapRepo?: string): Frontier;
 //# sourceMappingURL=map-frontier.d.ts.map

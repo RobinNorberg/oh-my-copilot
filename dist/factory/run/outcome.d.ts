@@ -20,7 +20,7 @@ export interface OutcomePost {
     body: string;
 }
 export declare const outcomeMarker: (kind: "outcome" | "rollup", child: number, event: OutcomeEvent, head12: string) => string;
-/** A trusted comment on the target already carries `marker` (an untrusted copy never suppresses a post). */
+/** A trusted comment on the target ends with `marker` as a whole line (an untrusted or quoted copy never suppresses a post). */
 export declare function postedBefore(comments: readonly ForgeComment[], marker: string): boolean;
 export declare function prUrl(forge: ForgeKind, repoUrl: string, pr: number): string;
 /**

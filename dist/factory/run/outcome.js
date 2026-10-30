@@ -9,9 +9,9 @@
 import { runCredits } from './budget.js';
 const GATE_NOTE = /^awaiting-human: ([^:]+): ([\s\S]*)$/;
 export const outcomeMarker = (kind, child, event, head12) => `<!-- omg-factory-${kind}: #${child} ${event} ${head12} -->`;
-/** A trusted comment on the target already carries `marker` (an untrusted copy never suppresses a post). */
+/** A trusted comment on the target ends with `marker` as a whole line (an untrusted or quoted copy never suppresses a post). */
 export function postedBefore(comments, marker) {
-    return comments.some((c) => c.trusted && c.body.includes(marker));
+    return comments.some((c) => c.trusted && c.body.trimEnd().split('\n').pop()?.trim() === marker);
 }
 export function prUrl(forge, repoUrl, pr) {
     return forge === 'azure-devops' ? `${repoUrl}/pullrequest/${pr}` : `${repoUrl}/pull/${pr}`;

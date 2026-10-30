@@ -12,6 +12,11 @@
  * - Filters: OPEN only; drop if any blocker (native or body-named) is OPEN,
  *   transitively through closed; drop if assigned.
  * - Order: ascending ticket number, overridable by an Order line in the body.
+ * - Type: the `wayfinder:<type>` label and the body `Type:` line (the
+ *   navigator's format; `loft` = prototype). When they disagree the more
+ *   restrictive wins (human beats auto). A body type alone grants auto only on
+ *   a native sub-issue of the map (linking one needs write access); anyone who
+ *   can edit an issue body could otherwise make it auto-claimable.
  * - Gate class: research is auto-executable; a task ticket is auto-executable
  *   only with the AFK opt-in label; grilling, prototype, bare task, and
  *   unknown types are human-gated (the safe direction is the default).
@@ -39,6 +44,8 @@ export interface TicketRecord {
   title?: string;
   /** Native parent issue number, when the tracker relation is set. */
   nativeParent?: number | null;
+  /** `owner/name` of the native parent, when the tracker read carried it. */
+  nativeParentRepo?: string | null;
   /** Native blocker issue numbers, when the tracker relation is set. */
   nativeBlockedBy?: number[];
 }
@@ -126,7 +133,57 @@ function parseBlocked(body: string): BlockedParse {
   return { blockers, malformed: hasContent && blockers.length === 0 };
 }
 
-function ticketType(labels: string[]): WayfinderTicketType {
+const BODY_TYPES: Record<string, WayfinderTicketType> = {
+  research: 'research',
+  loft: 'prototype',
+  prototype: 'prototype',
+  grilling: 'grilling',
+  task: 'task',
+};
+
+const TYPE_LINE = /^[^\S\r\n]*(?:[-*][^\S\r\n]+)?\**Type\**[^\S\r\n]*[:：]\**[^\S\r\n]*`?([A-Za-z]+)`?(?![\w-])/i;
+const FENCE = /^[^\S\r\n]*(?:```|~~~)/;
+
+/** The more restrictive of two types (human beats auto); a tie keeps `a`. */
+function stricter(a: WayfinderTicketType, b: WayfinderTicketType, labels: string[]): WayfinderTicketType {
+  return gateClassFor(a, labels) === 'auto' && gateClassFor(b, labels) === 'human' ? b : a;
+}
+
+/**
+ * The navigator writes the type in the body (`Type: research` on its own line);
+ * loft is the navigator's name for prototype. Fenced code and quoted lines are
+ * skipped; disagreeing Type lines resolve to the most restrictive.
+ */
+function bodyTypeFor(key: string): WayfinderTicketType | undefined {
+  return Object.hasOwn(BODY_TYPES, key) ? BODY_TYPES[key] : undefined;
+}
+
+function bodyType(body: string, labels: string[]): WayfinderTicketType | null {
+  let found: WayfinderTicketType | null = null;
+  let fenced = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (FENCE.test(line)) { fenced = !fenced; continue; }
+    if (fenced || /^\s*>/.test(line)) continue;
+    const type = bodyTypeFor(TYPE_LINE.exec(line)?.[1]?.toLowerCase() ?? '');
+    if (type) found = found ? stricter(found, type, labels) : type;
+  }
+  return found;
+}
+
+/**
+ * `trusted`: the ticket is a native sub-issue of the map, so a body type alone
+ * may grant auto. Untrusted, a body type can only make the ticket stricter.
+ */
+function ticketType(labels: string[], body: string, trusted: boolean): WayfinderTicketType {
+  const fromBody = bodyType(body, labels);
+  const fromLabel = labelType(labels);
+  if (fromBody && fromLabel) return stricter(fromBody, fromLabel, labels);
+  if (fromLabel) return fromLabel;
+  if (!fromBody) return 'other';
+  return trusted ? fromBody : stricter(fromBody, 'other', labels);
+}
+
+function labelType(labels: string[]): WayfinderTicketType | null {
   for (const label of labels) {
     switch (label) {
       case 'wayfinder:research': return 'research';
@@ -136,7 +193,7 @@ function ticketType(labels: string[]): WayfinderTicketType {
       default: break;
     }
   }
-  return 'other';
+  return null;
 }
 
 /** Gate class per map #46's decision: only research and explicitly-AFK tasks are auto; everything else human. */
@@ -156,12 +213,16 @@ export function gateClassFor(type: WayfinderTicketType, labels: string[]): GateC
  * blocker whose state is unknown counts as OPEN (safe: blocked pending
  * verification).
  */
-export function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[]): Frontier {
+export function enumerateFrontier(mapNumber: number, records: readonly TicketRecord[], mapRepo?: string): Frontier {
+  // With a known map repo, a native parent counts only when its repo was read and matches.
+  const nativeChild = (record: TicketRecord): boolean =>
+    record.nativeParent === mapNumber &&
+    (mapRepo === undefined || record.nativeParentRepo?.toLowerCase() === mapRepo.toLowerCase());
   const stateByNumber = new Map<number, TicketState>();
   for (const record of records) stateByNumber.set(record.number, record.state);
 
   const children = records.filter(
-    (record) => record.nativeParent === mapNumber || bodyParentRefs(record.body).includes(mapNumber),
+    (record) => nativeChild(record) || bodyParentRefs(record.body).includes(mapNumber),
   );
 
   const malformedEdges: number[] = [];
@@ -177,7 +238,7 @@ export function enumerateFrontier(mapNumber: number, records: readonly TicketRec
     const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? 'OPEN') !== 'CLOSED');
     if (blocked) continue;
 
-    const type = ticketType(record.labels);
+    const type = ticketType(record.labels, record.body, nativeChild(record));
     const ticket: FrontierTicket = {
       number: record.number,
       type,

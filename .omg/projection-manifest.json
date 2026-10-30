@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "engineVersion": "5.18.2",
+  "sourceRevision": "7ad0ee3fada29d82136cbba8cbce7a84248ce36cc3442811d392412ce1d155a3",
+  "generatedAt": "2026-10-30T21:30:18.898Z",
+  "projections": [
+    {
+      "kind": "claude",
+      "sourcePath": "docs/CLAUDE.md",
+      "outputPath": "CLAUDE.md",
+      "digest": "80d661357552db820461674cff71c2af9fe7116c930a37892ada2b54aa82160e",
+      "byteLength": 6235
+    },
+    {
+      "kind": "claude",
+      "sourcePath": "docs/CLAUDE.md",
+      "outputPath": ".github/CLAUDE.md",
+      "digest": "80d661357552db820461674cff71c2af9fe7116c930a37892ada2b54aa82160e",
+      "byteLength": 6235
+    }
+  ]
+}

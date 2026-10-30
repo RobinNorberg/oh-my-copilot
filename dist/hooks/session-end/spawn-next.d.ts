@@ -2,8 +2,9 @@ import { type ChainOutcome, type RouteTable } from './routing.js';
 export interface SpawnNextTracker {
     repo: string;
     issue: number;
-    nextLabel: string;
-    failedLabel: string;
+    /** Absent for a harbor link: harbor owns the issue's labels. */
+    nextLabel?: string;
+    failedLabel?: string;
 }
 /** How a finished session hands the chain to the next stage. Supplied by the enqueuer in the action payload under `chain`. */
 export interface SpawnNextChain {

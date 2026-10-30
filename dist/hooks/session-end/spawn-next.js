@@ -238,7 +238,10 @@ export function validateChainFields(chain) {
     if (tracker) {
         if (!REPO_PATTERN.test(tracker.repo))
             throw new Error(`invalid tracker repo: ${tracker.repo}`);
-        if (!LABEL_PATTERN.test(tracker.nextLabel) || !LABEL_PATTERN.test(tracker.failedLabel)) {
+        if (!Number.isSafeInteger(tracker.issue) || tracker.issue <= 0)
+            throw new Error(`invalid tracker issue: ${String(tracker.issue)}`);
+        const labelOk = (label) => label === undefined || (typeof label === 'string' && LABEL_PATTERN.test(label));
+        if (!labelOk(tracker.nextLabel) || !labelOk(tracker.failedLabel)) {
             throw new Error(`invalid tracker label: ${tracker.nextLabel}/${tracker.failedLabel}`);
         }
     }
@@ -298,7 +301,7 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
     const trackerCommands = chain.tracker
         ? [
-            ['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
+            ...(chain.tracker.nextLabel ? [['gh', ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)]] : []),
             ['gh', ...issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`)],
         ]
         : [];
@@ -349,7 +352,8 @@ export function executeSpawnNext(chain, directory, spawnFn = defaultSpawnFn) {
         catch { /* never written */ }
         if (chain.tracker) {
             spawnFn('gh', issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, spawnNextAlertComment(chain)));
-            spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
+            if (chain.tracker.failedLabel)
+                spawnFn('gh', issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
         }
         throw error;
     }

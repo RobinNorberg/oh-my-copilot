@@ -5,13 +5,13 @@
  * real factory guard; a comment failure never blocks a transition and the
  * spec body is never edited.
  */
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine } from '../engine.js';
 import { outcomeMarker, outcomePosts, postedBefore } from '../outcome.js';
 import { EngineLedger } from '../ledger.js';
-import { createFactoryState, readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
+import { createFactoryState, factoryStatePath, readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
 import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, PR, REPO_URL, review, testGateConfig } from './fake-lanes.js';
 const SPEC = 12;
 let h;
@@ -163,6 +163,26 @@ describe('outcome and rollup comments (fake gh, real git, real guard)', () => {
         await runFactoryEngine(opts([]));
         expect(posted).toHaveLength(count);
         expect(readFactoryState(h.root, ISSUE).gateComments).toContain(`outcome-done:merged@${head12}`);
+    });
+    it('a marker quoted inside a fenced reason does not suppress a later post', () => {
+        const marker = outcomeMarker('outcome', ISSUE, 'failed', 'abc');
+        const quoted = `Factory run failed.\n\n\`\`\`text\n${marker}\n\`\`\`\n\nDetails.`;
+        expect(postedBefore([{ body: quoted, author: 'o', trusted: true }], marker)).toBe(false);
+        expect(postedBefore([{ body: `Inline ${marker} text`, author: 'o', trusted: true }], marker)).toBe(false);
+        expect(postedBefore([{ body: `text\n\n${marker}\n`, author: 'o', trusted: true }], marker)).toBe(true);
+    });
+    it('a StateTamperedError while recording an outcome post is not downgraded to a warning', async () => {
+        const parked = await runFactoryEngine(opts(happy()));
+        expect(parked.gate?.name).toBe('merge');
+        h.gh.merged = true;
+        commentResult = (n) => {
+            if (n === ISSUE)
+                writeFileSync(factoryStatePath(h.root, ISSUE), '{"tampered":true}');
+            return { status: 0, stdout: '', stderr: '' };
+        };
+        const out = await runFactoryEngine(opts([]));
+        expect(out.gate?.name).toBe('state-tampered');
+        expect(warnings.join('\n')).not.toMatch(/outcome comments failed/);
     });
     it('cancelled: the outcome names the reason and the status command; the rollup line names the phase', async () => {
         await runFactoryEngine(opts(happy()));

@@ -1043,6 +1043,8 @@ class FactoryEngine {
                 this.save((x) => ({ ...x, gateComments: [...(x.gateComments ?? []), done] }));
         }
         catch (error) {
+            if (error instanceof StateTamperedError)
+                throw error;
             this.o.warn?.(`omg factory run: the ${event} outcome comments failed: ${errText(error)}`);
         }
     }
