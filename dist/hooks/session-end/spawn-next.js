@@ -8,6 +8,7 @@ import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 import { getHostCliBinary, getHostCliType } from '../../utils/host-detection.js';
 import { issueAddLabelArgv, issueCommentBodyArgv } from '../../forge/github/chain-tracker.js';
 import { getSkillsDir } from '../../features/builtin-skills/skills.js';
+import { parseFrontmatter } from '../../utils/frontmatter.js';
 /**
  * Env var that carries a factory chain link's identity into a Copilot link.
  * Copilot CLI has no `--session-id`, so the spawner pre-generates the link id,
@@ -231,11 +232,46 @@ export const LABEL_PATTERN = /^[\w.-]+$/;
  * unlisted name (`launch.`) onto a refused skill's directory.
  */
 const CHAIN_SKILL_NAME = /^[a-z0-9][a-z0-9_-]*$/;
-/** A bundled skill or a project skill (.copilot/skills, .omg/skills, .agents/skills) the chain may spawn. */
-export function chainSkillExists(cwd, name) {
-    return CHAIN_SKILL_NAME.test(name)
-        && [getSkillsDir(), path.join(cwd, '.copilot', 'skills'), path.join(getOmcRoot(cwd), 'skills'), path.join(cwd, '.agents', 'skills')]
-            .some((dir) => fs.existsSync(path.join(dir, name, 'SKILL.md')));
+/** A skill's registered name: its SKILL.md frontmatter `name`, else its directory name. */
+function registeredSkillName(skillDir) {
+    try {
+        const name = parseFrontmatter(fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8')).metadata.name?.trim();
+        return name || path.basename(skillDir);
+    }
+    catch {
+        return undefined;
+    }
+}
+function skillRegisteredIn(dir, name) {
+    let entries;
+    try {
+        entries = fs.readdirSync(dir);
+    }
+    catch {
+        return false;
+    }
+    return entries.some((entry) => registeredSkillName(path.join(dir, entry)) === name);
+}
+/**
+ * Resolve a route's skill by its registered (frontmatter) name: a bundled
+ * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
+ * A bundled directory name that registers under another name (`plan` →
+ * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
+ * `slash` is the form the link's host resolves: Copilot CLI registers plugin
+ * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
+ * the bare `/<name>`.
+ */
+export function resolveChainSkill(cwd, name) {
+    if (!CHAIN_SKILL_NAME.test(name))
+        return { ok: false };
+    if (skillRegisteredIn(getSkillsDir(), name)) {
+        return { ok: true, slash: getHostCliType() === 'copilot' ? `/oh-my-copilot:${name}` : `/${name}` };
+    }
+    if ([path.join(cwd, '.copilot', 'skills'), path.join(getOmcRoot(cwd), 'skills'), path.join(cwd, '.agents', 'skills')].some((dir) => skillRegisteredIn(dir, name))) {
+        return { ok: true, slash: `/${name}` };
+    }
+    const registered = registeredSkillName(path.join(getSkillsDir(), name));
+    return registered && registered !== name ? { ok: false, hint: `did you mean ${registered}` } : { ok: false };
 }
 /**
  * The chain rides a detached manifest job: every field that lands in a
@@ -322,8 +358,9 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     }
     if (directive.skill === 'stop')
         throw new Error(`terminal route: ${directive.stage} spawns no link`);
-    if (!chainSkillExists(linkCwd, directive.skill))
-        throw new Error(`route-unknown:${directive.skill}`);
+    const skill = resolveChainSkill(linkCwd, directive.skill);
+    if (!skill.ok)
+        throw new Error(`route-unknown:${directive.skill}${skill.hint ? ` (${skill.hint})` : ''}`);
     const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
     const trackerCommands = chain.tracker
         ? [
@@ -335,7 +372,7 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     return {
         directive,
         handoffPath,
-        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
+        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`${skill.slash} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
         nextSessionId,
         trackerCommands,
     };

@@ -27,7 +27,7 @@ import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus, type ChainStatus } from '../../factory/status.js';
 import { canonicalChainSkill, chainSkillStatus, type ChainSkillStatus, type RouteTable } from '../../hooks/session-end/routing.js';
-import { chainSkillExists, LABEL_PATTERN } from '../../hooks/session-end/spawn-next.js';
+import { LABEL_PATTERN, resolveChainSkill } from '../../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveProjectConfigPath } from '../../config/project-config-path.js';
 import { CopilotRunManager, defaultCopilotRunDeps } from '../../copilot-run/job.js';
@@ -501,7 +501,11 @@ function classifyRoute(cwd: string, key: string, value: unknown): RouteCheckRow 
   if (status === 'deprecated') {
     return row(status, key === 'success:intake' ? 'success:intake -> harbor' : 'still spawns; tracker intake belongs to harbor');
   }
-  return chainSkillExists(cwd, skill) ? row('ok', '') : row('unknown', 'halts the chain (route-unknown): no bundled or project skill of this name');
+  const resolved = resolveChainSkill(cwd, skill);
+  if (resolved.ok) return row('ok', '');
+  return row('unknown', resolved.hint
+    ? `halts the chain (route-unknown): ${resolved.hint}`
+    : 'halts the chain (route-unknown): no bundled or project skill of this name');
 }
 
 function renderRouteRows(rows: RouteCheckRow[]): string {

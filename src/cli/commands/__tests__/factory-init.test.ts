@@ -200,6 +200,14 @@ describe('checkFactoryRoutes (init --check)', () => {
     expect(checkFactoryRoutes(dir).rows[0]).toMatchObject({ status: 'ok' });
   });
 
+  it('checks bundled skills by registered name: plan is unknown with a hint, omc-plan is ok', () => {
+    const dir = tempDir();
+    writeRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' }, 'failed:clear': { stage: 'spec', skill: 'omc-plan' } });
+    const rows = checkFactoryRoutes(dir).rows;
+    expect(rows.find((r) => r.skill === 'plan')).toMatchObject({ status: 'unknown', replacement: expect.stringContaining('did you mean omc-plan') });
+    expect(rows.find((r) => r.skill === 'omc-plan')).toMatchObject({ status: 'ok' });
+  });
+
   it('classifies hand-edited variants by canonical name and flags entries the enqueuer ignores', () => {
     const dir = tempDir();
     writeRoutes(dir, {
@@ -281,7 +289,7 @@ describe('migrateFactoryRoutes (init --migrate)', () => {
 
   it('keeps unrelated routes verbatim and drops case/prefix variants of refused skills', async () => {
     const dir = tempDir();
-    const mine = { stage: 'review', skill: 'review', verify: ['npm test'] };
+    const mine = { stage: 'review', skill: 'omc-review', verify: ['npm test'] };
     writeRoutes(dir, {
       'success:*': mine,
       'failed:*': { stage: 'next', skill: ' /oh-my-copilot:Diagnose' },

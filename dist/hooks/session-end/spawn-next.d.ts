@@ -127,8 +127,23 @@ export declare function factoryLinkArgv(prompt: string, sessionId: string, verif
 linkCwd?: string): string[];
 /** Shared label charset (stage/skill/labels): safe for paths and argv. */
 export declare const LABEL_PATTERN: RegExp;
-/** A bundled skill or a project skill (.copilot/skills, .omg/skills, .agents/skills) the chain may spawn. */
-export declare function chainSkillExists(cwd: string, name: string): boolean;
+export type ChainSkillResolution = {
+    ok: true;
+    slash: string;
+} | {
+    ok: false;
+    hint?: string;
+};
+/**
+ * Resolve a route's skill by its registered (frontmatter) name: a bundled
+ * skill or a project skill (.copilot/skills, .omg/skills, .agents/skills).
+ * A bundled directory name that registers under another name (`plan` →
+ * `omc-plan`) is refused with a hint: the bare `/plan` is a native command.
+ * `slash` is the form the link's host resolves: Copilot CLI registers plugin
+ * skills only as `/oh-my-copilot:<name>`; Claude Code and project skills use
+ * the bare `/<name>`.
+ */
+export declare function resolveChainSkill(cwd: string, name: string): ChainSkillResolution;
 /**
  * The chain rides a detached manifest job: every field that lands in a
  * spawned argv or a filesystem path is validated here. An invalid chain is a

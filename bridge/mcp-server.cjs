@@ -38841,6 +38841,7 @@ var init_spawn_next = __esm({
     init_host_detection();
     init_chain_tracker();
     init_skills();
+    init_frontmatter();
     CHAIN_LINK_ENV = "OMC_CHAIN_LINK";
     LINK_ENV_DROPPED = [CHAIN_LINK_ENV, "COPILOT_AGENT_SESSION_ID"];
     AFK_ALLOWED_TOOLS = [

@@ -143,11 +143,11 @@ describe('planChainEnqueue check-evidence integration', () => {
   function writeAutoPassLedger(directory: string): void {
     writeLedger(directory, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } },
       gate: 'spec-approve',
       gateFacts: GATE_FACTS,
     });
-    writeProjectRoutes(directory, { 'success:*': { stage: 'spec', skill: 'plan' } });
+    writeProjectRoutes(directory, { 'success:*': { stage: 'spec', skill: 'omc-plan' } });
   }
 
   it('flag true with no evidence overrides to false and grades human', () => {
@@ -160,11 +160,11 @@ describe('planChainEnqueue check-evidence integration', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
-      routeTable: { 'success:*': { stage: 'spec', skill: 'plan' } },
+      routeTable: { 'success:*': { stage: 'spec', skill: 'omc-plan' } },
       gate: 'spec-approve',
       gateFacts: { ...GATE_FACTS, mechanicalChecksPassed: false },
     });
-    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'plan' } });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'omc-plan' } });
     writeEvidence(dir, 'sess-a', {
       sessionId: 'sess-a',
       checks: [{ name: 'vitest', passed: true }],

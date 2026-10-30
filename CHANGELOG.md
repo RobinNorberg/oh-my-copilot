@@ -58,7 +58,9 @@ All notable changes to oh-my-copilot will be documented in this file.
   whitespace, a leading `/` and a `plugin:` prefix do not get past it. A
   route to `intent` still spawns but records `route-deprecated:intent`. A
   route to a skill that is neither bundled nor a project skill halts with
-  `route-unknown:<skill>`. The spawn step re-checks every rule, so a job
+  `route-unknown:<skill>`. Skills are matched by their registered (frontmatter)
+  name, so `plan` halts with a `did you mean omc-plan` hint; a bundled skill
+  spawns as `/oh-my-copilot:<name>` on Copilot CLI. The spawn step re-checks every rule, so a job
   queued or a closeout stored before the upgrade cannot spawn a refused
   skill either. The watchdog treats `route-retired:*` and `route-unknown:*`
   closeouts as halted, not stalled. `omg factory init --migrate` refuses a

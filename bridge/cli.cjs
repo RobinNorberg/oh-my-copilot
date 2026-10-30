@@ -77657,7 +77657,6 @@ __export(spawn_next_exports, {
   LABEL_PATTERN: () => LABEL_PATTERN,
   chainLinkEnv: () => chainLinkEnv,
   chainLinkHost: () => chainLinkHost,
-  chainSkillExists: () => chainSkillExists,
   copilotPluginDirArgs: () => copilotPluginDirArgs,
   defaultSpawnFn: () => defaultSpawnFn,
   executeSpawnNext: () => executeSpawnNext,
@@ -77666,6 +77665,7 @@ __export(spawn_next_exports, {
   isCopilotVerifyCommandAllowed: () => isCopilotVerifyCommandAllowed,
   isStageVisitCap: () => isStageVisitCap,
   planSpawnNext: () => planSpawnNext,
+  resolveChainSkill: () => resolveChainSkill,
   spawnNextAlertComment: () => spawnNextAlertComment,
   stageVisitCap: () => stageVisitCap,
   validateChainFields: () => validateChainFields,
@@ -77751,8 +77751,33 @@ function factoryLinkArgv(prompt, sessionId, verifyCommands = [], fixedBashComman
   flags[flags.indexOf("--allowedTools") + 1] = allowedTools;
   return ["-p", prompt, "--session-id", sessionId, ...flags];
 }
-function chainSkillExists(cwd2, name) {
-  return CHAIN_SKILL_NAME.test(name) && [getSkillsDir(), path21.join(cwd2, ".copilot", "skills"), path21.join(getOmcRoot(cwd2), "skills"), path21.join(cwd2, ".agents", "skills")].some((dir) => fs16.existsSync(path21.join(dir, name, "SKILL.md")));
+function registeredSkillName(skillDir) {
+  try {
+    const name = parseFrontmatter(fs16.readFileSync(path21.join(skillDir, "SKILL.md"), "utf8")).metadata.name?.trim();
+    return name || path21.basename(skillDir);
+  } catch {
+    return void 0;
+  }
+}
+function skillRegisteredIn(dir, name) {
+  let entries;
+  try {
+    entries = fs16.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  return entries.some((entry2) => registeredSkillName(path21.join(dir, entry2)) === name);
+}
+function resolveChainSkill(cwd2, name) {
+  if (!CHAIN_SKILL_NAME.test(name)) return { ok: false };
+  if (skillRegisteredIn(getSkillsDir(), name)) {
+    return { ok: true, slash: getHostCliType() === "copilot" ? `/oh-my-copilot:${name}` : `/${name}` };
+  }
+  if ([path21.join(cwd2, ".copilot", "skills"), path21.join(getOmcRoot(cwd2), "skills"), path21.join(cwd2, ".agents", "skills")].some((dir) => skillRegisteredIn(dir, name))) {
+    return { ok: true, slash: `/${name}` };
+  }
+  const registered = registeredSkillName(path21.join(getSkillsDir(), name));
+  return registered && registered !== name ? { ok: false, hint: `did you mean ${registered}` } : { ok: false };
 }
 function validateChainFields(chain) {
   validateSessionId(chain.sessionId);
@@ -77815,7 +77840,8 @@ function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     throw new Error(`invalid stage/skill: ${directive.stage}/${directive.skill}`);
   }
   if (directive.skill === "stop") throw new Error(`terminal route: ${directive.stage} spawns no link`);
-  if (!chainSkillExists(linkCwd, directive.skill)) throw new Error(`route-unknown:${directive.skill}`);
+  const skill = resolveChainSkill(linkCwd, directive.skill);
+  if (!skill.ok) throw new Error(`route-unknown:${directive.skill}${skill.hint ? ` (${skill.hint})` : ""}`);
   const handoffPath = path21.join(omcRoot, "handoffs", `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker ? [
     ...chain.tracker.nextLabel ? [["gh", ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)]] : [],
@@ -77825,7 +77851,7 @@ function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
   return {
     directive,
     handoffPath,
-    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} \u7EE7\u7EED ${directive.stage} \u73AF\uFF1B\u4EA4\u63A5\u4E0A\u4E0B\u6587\uFF1A${path21.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
+    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`${skill.slash} \u7EE7\u7EED ${directive.stage} \u73AF\uFF1B\u4EA4\u63A5\u4E0A\u4E0B\u6587\uFF1A${path21.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
     nextSessionId,
     trackerCommands
   };
@@ -77921,6 +77947,7 @@ var init_spawn_next = __esm({
     init_host_detection();
     init_chain_tracker();
     init_skills();
+    init_frontmatter();
     CHAIN_LINK_ENV = "OMC_CHAIN_LINK";
     LINK_ENV_DROPPED = [CHAIN_LINK_ENV, "COPILOT_AGENT_SESSION_ID"];
     AFK_ALLOWED_TOOLS = [
@@ -78283,9 +78310,10 @@ function decideChainLink(directory, ledger, ctx) {
     writeHaltMarker(directory, intentId, `terminal:${directive.stage}`);
     return null;
   }
-  if (!chainSkillExists(directory, directive.skill)) {
+  const resolved = resolveChainSkill(directory, directive.skill);
+  if (!resolved.ok) {
     const refusal = `route-unknown:${directive.skill}`;
-    record3(refusal, { stage: directive.stage, skill: directive.skill });
+    record3(refusal, { stage: directive.stage, skill: directive.skill, ...resolved.hint ? { hint: resolved.hint } : {} });
     writeHaltMarker(directory, intentId, refusal);
     return null;
   }
@@ -93195,8 +93223,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync175 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync175(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync176 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync176(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -93641,8 +93669,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs18.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync175 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync175(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync176 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync176(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -102719,7 +102747,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename9 } = await import("fs/promises");
-  const { renameSync: renameSync23, readFileSync: readFileSync175, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync23, readFileSync: readFileSync176, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -102800,7 +102828,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync175(outputFile, "utf-8");
+          const raw = readFileSync176(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync23(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -128840,7 +128868,9 @@ function classifyRoute(cwd2, key, value) {
   if (status === "deprecated") {
     return row(status, key === "success:intake" ? "success:intake -> harbor" : "still spawns; tracker intake belongs to harbor");
   }
-  return chainSkillExists(cwd2, skill) ? row("ok", "") : row("unknown", "halts the chain (route-unknown): no bundled or project skill of this name");
+  const resolved = resolveChainSkill(cwd2, skill);
+  if (resolved.ok) return row("ok", "");
+  return row("unknown", resolved.hint ? `halts the chain (route-unknown): ${resolved.hint}` : "halts the chain (route-unknown): no bundled or project skill of this name");
 }
 function renderRouteRows(rows) {
   const cells = [["route", "skill", "status", "replacement"], ...rows.map((r) => [r.key, r.skill, r.status, r.replacement])];
