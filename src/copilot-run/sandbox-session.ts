@@ -22,6 +22,7 @@
 import type { LoadedSdk, SdkClientLike, SdkSessionLike } from '../smoke/copilot-sdk-driver.js';
 import { sdkCreateSessionAcceptsSandbox } from '../smoke/copilot-sdk-driver.js';
 import type { SdkPermissionRequest } from '../team/sdk-policy.js';
+import { errText, withTimeout } from './timeout.js';
 import {
   REVIEW_READ_TOOLS,
   SANDBOX_KILL_ENV,
@@ -173,14 +174,4 @@ export class SessionSandboxController {
     if (sbx.mode === 'detect-only') return null;
     return `sandbox-escaped: ${name ?? 'a tool'} call ${id || '?'} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
   }
-}
-
-const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-  ]).finally(() => clearTimeout(timer));
 }

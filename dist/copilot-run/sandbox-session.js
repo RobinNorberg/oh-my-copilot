@@ -19,6 +19,7 @@
  * (`state`); what an escape or a refusal does to the session is the caller's.
  */
 import { sdkCreateSessionAcceptsSandbox } from '../smoke/copilot-sdk-driver.js';
+import { errText, withTimeout } from './timeout.js';
 import { REVIEW_READ_TOOLS, SANDBOX_KILL_ENV, SANDBOX_SHELL_TOOLS, applySandboxConfig, buildSandboxConfig, probeHostSupport, readEnforcement, unconfirmedMode, } from './sandbox.js';
 /** A rejection for a sandbox bypass request (`requestSandboxBypass` / `requestSandboxPermissive`), else null. */
 export function sandboxBypassDenial(req) {
@@ -151,13 +152,5 @@ export class SessionSandboxController {
             return null;
         return `sandbox-escaped: ${name ?? 'a tool'} call ${id || '?'} ran outside the sandbox (sandboxed: ${String(data.sandboxed)}); the session was stopped`;
     }
-}
-const errText = (err) => (err instanceof Error ? err.message : String(err));
-function withTimeout(promise, ms, label) {
-    let timer;
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-    ]).finally(() => clearTimeout(timer));
 }
 //# sourceMappingURL=sandbox-session.js.map

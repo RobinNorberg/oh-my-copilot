@@ -110,6 +110,7 @@ import {
   type SandboxSettings,
 } from './sandbox.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
+import { errText, withTimeout } from './timeout.js';
 
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
@@ -410,16 +411,7 @@ interface Job {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
-const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const isTerminal = (s: CopilotRunStatus) => s !== 'starting' && s !== 'running';
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-  ]).finally(() => clearTimeout(timer));
-}
 
 /** Wait for `promise` (which never rejects) or `ms`, whichever comes first; the timer is cleared either way. */
 function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {

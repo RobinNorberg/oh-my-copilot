@@ -63,6 +63,7 @@ import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
+import { errText, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TIMEOUT_MS = 60 * 60_000;
 export const DEFAULT_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
@@ -176,15 +177,7 @@ export function resolveStartRef(repoRoot, ref) {
 /** How long the runtime's start identity may take to read (PowerShell on Windows). */
 const IDENTITY_TIMEOUT_MS = 10_000;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
-const errText = (err) => (err instanceof Error ? err.message : String(err));
 const isTerminal = (s) => s !== 'starting' && s !== 'running';
-function withTimeout(promise, ms, label) {
-    let timer;
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms); }),
-    ]).finally(() => clearTimeout(timer));
-}
 /** Wait for `promise` (which never rejects) or `ms`, whichever comes first; the timer is cleared either way. */
 function settleWithin(promise, ms) {
     let timer;
