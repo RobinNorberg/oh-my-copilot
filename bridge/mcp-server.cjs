@@ -40468,7 +40468,8 @@ function parseFailingTests(log) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const rawLine of log.split(/\r?\n/)) {
-    const line = rawLine.replace(ANSI, "").replace(GH_LOG_PREFIX, "");
+    const plain = rawLine.replace(ANSI, "");
+    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, "") : plain.replace(ADO_LOG_PREFIX, "");
     const m = FAIL_LINE.exec(line);
     if (!m) continue;
     const file = m[1].replace(/\\/g, "/");
@@ -40490,7 +40491,8 @@ function logBlockers(log) {
   const errorSteps = /* @__PURE__ */ new Set();
   for (const rawLine of log.split(/\r?\n/)) {
     const step = rawLine.split("	").length >= 3 ? rawLine.split("	")[1] : "";
-    const line = rawLine.replace(ANSI, "").replace(GH_LOG_PREFIX, "");
+    const plain = rawLine.replace(ANSI, "");
+    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, "") : plain.replace(ADO_LOG_PREFIX, "");
     if (UNHANDLED.test(line)) blockers.add("vitest reported unhandled errors");
     if (FAILED_SUITES.test(line)) blockers.add("vitest reported failed suites (collection errors)");
     if (FAIL_LINE.test(line)) testSteps.add(step);
@@ -40611,7 +40613,7 @@ async function watchGates(opts) {
     await opts.sleep(Math.min(config2.pollIntervalSeconds * 1e3, Math.max(0, deadline - opts.now())));
   }
 }
-var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, analysisKey;
+var CHECK_FIELDS, RUN_FIELDS, PASS_STATES, PENDING_STATES, GhChecksError, TRANSIENT_GH_ERROR, OK_CONCLUSIONS, NO_WORKFLOWS_TRIGGERED, ANSI, GH_LOG_PREFIX, ADO_LOG_PREFIX, FAIL_LINE, UNHANDLED, FAILED_SUITES, STEP_ERROR, analysisKey;
 var init_gates = __esm({
   "src/ship/gates.ts"() {
     "use strict";
@@ -40631,6 +40633,7 @@ var init_gates = __esm({
     NO_WORKFLOWS_TRIGGERED = "no-workflows-triggered";
     ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
     GH_LOG_PREFIX = /^[^\t]*\t[^\t]*\t(?:\d{4}-\d\d-\d\dT[\d:.]+Z ?)?/;
+    ADO_LOG_PREFIX = new RegExp("^\\p{Cf}?\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z ", "u");
     FAIL_LINE = /^\s*FAIL\s+(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
     UNHANDLED = /\bUnhandled (?:Errors?|Rejections?)\b/;
     FAILED_SUITES = /\bFailed Suites \d+/;
@@ -41492,6 +41495,23 @@ function buildPolicyState(e, counted) {
   if (e.buildId === void 0 || !counted.has(e.buildId)) return e.status === "queued" ? "QUEUED" : "PENDING";
   return EVALUATION_STATE[e.status] ?? "FAILURE";
 }
+function failedJobId(ctx, buildId) {
+  try {
+    const timeline = adoJson(adoCall(ctx, "build.timeline.GET", { ...projectParams(ctx), buildId: String(buildId) }), `timeline of build ${buildId}`);
+    const newest = /* @__PURE__ */ new Map();
+    for (const r of isObject3(timeline) && Array.isArray(timeline.records) ? timeline.records : []) {
+      const id = isObject3(r) && r.type === "Job" ? str3(r.id) : void 0;
+      if (!id) continue;
+      const key = str3(r.identifier) ?? id;
+      const seen = newest.get(key);
+      if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1)) newest.set(key, r);
+    }
+    const failed = [...newest.values()].find((r) => r.result === "failed");
+    return failed ? `${buildId}:${str3(failed.id)}` : void 0;
+  } catch {
+    return void 0;
+  }
+}
 function adoChecks(ctx) {
   const buildUrl = (id) => `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_build/results?buildId=${id}`;
   function runs(view, head) {
@@ -41528,10 +41548,12 @@ function adoChecks(ctx) {
         seen.set(base, n);
         const state = lagging ? "PENDING" : isBuildPolicy(e) ? buildPolicyState(e, countedIds) : statusPolicyState(e, statuses, iteration);
         const run2 = e.buildId !== void 0 ? counted.get(e.buildId) : void 0;
+        const jobId = state === "FAILURE" && e.isBlocking && e.buildId !== void 0 && isBuildPolicy(e) ? failedJobId(ctx, e.buildId) : void 0;
         return {
           name: n === 1 ? base : `${base} (policy ${e.configId})`,
           state,
           ...e.buildId !== void 0 ? { runId: String(e.buildId), link: buildUrl(e.buildId) } : {},
+          ...jobId ? { jobId } : {},
           ...run2?.workflowName ? { workflow: run2.workflowName } : {},
           event: "pull_request",
           ...e.isBlocking ? {} : { advisory: true }

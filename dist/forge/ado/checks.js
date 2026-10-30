@@ -128,6 +128,32 @@ function buildPolicyState(e, counted) {
         return e.status === 'queued' ? 'QUEUED' : 'PENDING';
     return EVALUATION_STATE[e.status] ?? 'FAILURE';
 }
+/**
+ * The failed job of build `buildId` as a jobLog id (`<buildId>:<record id>`):
+ * the first Job record in timeline order whose newest attempt (per
+ * `identifier`) failed. Undefined when none failed or the timeline cannot be
+ * read; the check stays a failure either way.
+ */
+function failedJobId(ctx, buildId) {
+    try {
+        const timeline = adoJson(adoCall(ctx, 'build.timeline.GET', { ...projectParams(ctx), buildId: String(buildId) }), `timeline of build ${buildId}`);
+        const newest = new Map();
+        for (const r of isObject(timeline) && Array.isArray(timeline.records) ? timeline.records : []) {
+            const id = isObject(r) && r.type === 'Job' ? str(r.id) : undefined;
+            if (!id)
+                continue;
+            const key = str(r.identifier) ?? id;
+            const seen = newest.get(key);
+            if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1))
+                newest.set(key, r);
+        }
+        const failed = [...newest.values()].find((r) => r.result === 'failed');
+        return failed ? `${buildId}:${str(failed.id)}` : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
 export function adoChecks(ctx) {
     const buildUrl = (id) => `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_build/results?buildId=${id}`;
     function runs(view, head) {
@@ -164,10 +190,13 @@ export function adoChecks(ctx) {
                 seen.set(base, n);
                 const state = lagging ? 'PENDING' : isBuildPolicy(e) ? buildPolicyState(e, countedIds) : statusPolicyState(e, statuses, iteration);
                 const run = e.buildId !== undefined ? counted.get(e.buildId) : undefined;
+                // The failed job's log feeds the failing test titles and the known-flaky analysis; advisory checks read none.
+                const jobId = state === 'FAILURE' && e.isBlocking && e.buildId !== undefined && isBuildPolicy(e) ? failedJobId(ctx, e.buildId) : undefined;
                 return {
                     name: n === 1 ? base : `${base} (policy ${e.configId})`,
                     state,
                     ...(e.buildId !== undefined ? { runId: String(e.buildId), link: buildUrl(e.buildId) } : {}),
+                    ...(jobId ? { jobId } : {}),
                     ...(run?.workflowName ? { workflow: run.workflowName } : {}),
                     event: 'pull_request',
                     ...(e.isBlocking ? {} : { advisory: true }),

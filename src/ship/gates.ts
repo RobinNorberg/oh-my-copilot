@@ -233,14 +233,17 @@ export function applyNoWorkflows(report: GateReport, runs: WorkflowRun[], headSh
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 const GH_LOG_PREFIX = /^[^\t]*\t[^\t]*\t(?:\d{4}-\d\d-\d\dT[\d:.]+Z ?)?/;
+/** An Azure Pipelines log line's timestamp (after a byte-order mark on the first line); stripped only when the GitHub prefix is absent. */
+export const ADO_LOG_PREFIX = /^\p{Cf}?\d{4}-\d\d-\d\dT[\d:.]+Z /u;
 const FAIL_LINE = /^\s*FAIL\s+(\S+\.(?:test|spec|bench)\.[cm]?[jt]sx?)(.*)$/;
 
-/** Extract vitest ` FAIL  <file> > <title>` lines from a (GitHub Actions) log. */
+/** Extract vitest ` FAIL  <file> > <title>` lines from a GitHub Actions or Azure Pipelines log. */
 export function parseFailingTests(log: string): FailingTest[] {
   const seen = new Set<string>();
   const out: FailingTest[] = [];
   for (const rawLine of log.split(/\r?\n/)) {
-    const line = rawLine.replace(ANSI, '').replace(GH_LOG_PREFIX, '');
+    const plain = rawLine.replace(ANSI, '');
+    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, '') : plain.replace(ADO_LOG_PREFIX, '');
     const m = FAIL_LINE.exec(line);
     if (!m) continue;
     const file = m[1].replace(/\\/g, '/');
@@ -274,7 +277,8 @@ export function logBlockers(log: string): string[] {
   const errorSteps = new Set<string>();
   for (const rawLine of log.split(/\r?\n/)) {
     const step = rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : '';
-    const line = rawLine.replace(ANSI, '').replace(GH_LOG_PREFIX, '');
+    const plain = rawLine.replace(ANSI, '');
+    const line = GH_LOG_PREFIX.test(plain) ? plain.replace(GH_LOG_PREFIX, '') : plain.replace(ADO_LOG_PREFIX, '');
     if (UNHANDLED.test(line)) blockers.add('vitest reported unhandled errors');
     if (FAILED_SUITES.test(line)) blockers.add('vitest reported failed suites (collection errors)');
     if (FAIL_LINE.test(line)) testSteps.add(step);

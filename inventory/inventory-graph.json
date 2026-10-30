@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "73c4cab883d9da1e0cd58d8b48dae8648af287c8",
-    "sourceSha256": "7242d50d36c3e7217f09083870decf6f7fa61b37c9e69c0ac299f5e550ab87c2",
+    "head": "16b6bf144d32057727cfe40ee8a8f14d200a72c9",
+    "sourceSha256": "2572c858e147369659979bfc1458cd54ab93c4d546d158619e231dda58c0b1fe",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "73c4cab883d9da1e0cd58d8b48dae8648af287c8",
-  "sourceSha256": "7242d50d36c3e7217f09083870decf6f7fa61b37c9e69c0ac299f5e550ab87c2",
+  "head": "16b6bf144d32057727cfe40ee8a8f14d200a72c9",
+  "sourceSha256": "2572c858e147369659979bfc1458cd54ab93c4d546d158619e231dda58c0b1fe",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1882,
-      "total": 1906
+      "srcFiles": 1885,
+      "total": 1909
     },
     "generated": {
       "distFiles": 6980,
@@ -49536,6 +49536,11 @@
         "path": "src/factory/heal/__tests__/fixtures/runs.json"
       },
       {
+        "id": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/logs-ado.test.ts"
+      },
+      {
         "id": "src/factory/heal/__tests__/run.test.ts",
         "kind": "src",
         "path": "src/factory/heal/__tests__/run.test.ts"
@@ -50401,6 +50406,11 @@
         "path": "src/forge/ado/__tests__/exact-head.test.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/failed-jobs.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures.test.ts"
@@ -50469,6 +50479,11 @@
         "id": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/variants/build.timeline.GET.101-attempts.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/variants/build.timeline.GET.101-attempts.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/wit.comments.GET.42.json",
@@ -74918,6 +74933,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/signature.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/heal/__tests__/run.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -79950,6 +79995,51 @@
       {
         "from": "src/forge/ado/__tests__/exact-head.test.ts",
         "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/factory/run/gates-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/gates.ts",
         "kind": "imports"
       },
       {
@@ -112914,12 +113004,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9605,
-      "edgeCount": 11265,
-      "importEdgeCount": 9275,
+      "nodeCount": 9608,
+      "edgeCount": 11280,
+      "importEdgeCount": 9289,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "d30303006b162c78233aa781262d1ae4a6debc7f1a01245d9c2e852e610cfe52",
-  "manifestSha256": "c69d949ba929c2351b1c801ddb6994ce92ddf8b9deec2191f65888a08b4950d3"
+  "inventorySha256": "8bcf52d32dccd79a7d3998f056fca33e1f78230e0f798314ddf738ce462c6e27",
+  "manifestSha256": "3acaea18cc476e1670982d8f0996a551605f11074a06fec73be1d6f6d0bd7911"
 }

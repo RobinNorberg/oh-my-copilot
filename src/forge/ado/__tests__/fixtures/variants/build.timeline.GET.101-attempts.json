@@ -1,0 +1,19 @@
+{
+  "provenance": "synthetic: build 101's timeline after a retry, shaped per https://learn.microsoft.com/en-us/rest/api/azure/devops/build/timeline/get?view=azure-devops-rest-7.1 (attempt, identifier, parentId); unverified live whether superseded attempts appear in the same timeline",
+  "note": "Job E2E failed in attempt 1 and passed in attempt 2; Job Test failed in attempt 1 (log 5) and again in attempt 2 (log 7, build.logs.GET.101-7); Job Lint passed. Records of an older attempt come first, so a reader that ignores attempt picks the wrong job",
+  "route": "build.timeline.GET",
+  "routeParameters": { "project": "Web", "buildId": "101" },
+  "stdout": {
+    "id": "8f1e2d3c-4b5a-4968-8776-655443322110",
+    "changeId": 31,
+    "records": [
+      { "id": "e2e00001-0000-4000-8000-000000000001", "parentId": null, "type": "Job", "name": "E2E", "identifier": "Build.E2E", "attempt": 1, "order": 1, "state": "completed", "result": "failed", "log": { "id": 4, "type": "Container" } },
+      { "id": "7e570001-0000-4000-8000-000000000001", "parentId": null, "type": "Job", "name": "Test", "identifier": "Build.Test", "attempt": 1, "order": 2, "state": "completed", "result": "failed", "log": { "id": 5, "type": "Container" } },
+      { "id": "11a70001-0000-4000-8000-000000000001", "parentId": null, "type": "Job", "name": "Lint", "identifier": "Build.Lint", "attempt": 1, "order": 3, "state": "completed", "result": "succeeded", "log": { "id": 6, "type": "Container" } },
+      { "id": "e2e00002-0000-4000-8000-000000000002", "parentId": null, "type": "Job", "name": "E2E", "identifier": "Build.E2E", "attempt": 2, "order": 1, "state": "completed", "result": "succeeded", "log": { "id": 8, "type": "Container" } },
+      { "id": "7e570002-0000-4000-8000-000000000002", "parentId": null, "type": "Job", "name": "Test", "identifier": "Build.Test", "attempt": 2, "order": 2, "state": "completed", "result": "failed", "log": { "id": 7, "type": "Container" } },
+      { "id": "7a5c0002-0000-4000-8000-000000000002", "parentId": "7e570002-0000-4000-8000-000000000002", "type": "Task", "name": "Run tests", "identifier": null, "attempt": 2, "order": 4, "state": "completed", "result": "failed", "errorCount": 1, "log": { "id": 9, "type": "Container" } },
+      { "id": "c0c00002-0000-4000-8000-000000000002", "parentId": "7e570002-0000-4000-8000-000000000002", "type": "Task", "name": "Checkout", "identifier": null, "attempt": 2, "order": 2, "state": "completed", "result": "succeeded" }
+    ]
+  }
+}

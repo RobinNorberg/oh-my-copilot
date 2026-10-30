@@ -116,7 +116,9 @@ export declare function applyWorkflowRuns(report: GateReport, runs: WorkflowRun[
  * would be pending forever. Reported as a distinct pending reason.
  */
 export declare function applyNoWorkflows(report: GateReport, runs: WorkflowRun[], headSha: string): GateReport;
-/** Extract vitest ` FAIL  <file> > <title>` lines from a (GitHub Actions) log. */
+/** An Azure Pipelines log line's timestamp (after a byte-order mark on the first line); stripped only when the GitHub prefix is absent. */
+export declare const ADO_LOG_PREFIX: RegExp;
+/** Extract vitest ` FAIL  <file> > <title>` lines from a GitHub Actions or Azure Pipelines log. */
 export declare function parseFailingTests(log: string): FailingTest[];
 /** A file-level failure (no title) never matches: it is a collection error, not a flaky test. */
 export declare function isKnownFlaky(test: FailingTest, known: readonly KnownFlakyTest[]): boolean;
