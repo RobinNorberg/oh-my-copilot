@@ -122,7 +122,7 @@ describe('gh argv baseline: src/hooks/session-end/spawn-next.ts executeSpawnNext
   const chain: SpawnNextChain = {
     outcome: 'success',
     reason: 'clear',
-    routeTable: { 'success:clear': { stage: 'launch', skill: 'launch' } },
+    routeTable: { 'success:clear': { stage: 'launch', skill: 'execute' } },
     sessionId: 'sess-1',
     handoffContext: 'context body',
     tracker: { repo: 'owner/repo', issue: 42, nextLabel: 'in-launch', failedLabel: 'failed' },

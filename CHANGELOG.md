@@ -56,12 +56,40 @@ All notable changes to oh-my-copilot will be documented in this file.
   listener (run `omg factory heal scan` manually). `omg factory init
   --no-narrow`, whose full template routed `success:launch` to the same
   missing skill, now refuses (exit 1, nothing written) and points at
-  `omg factory run <issue>`. The default narrow table is unchanged. Interim: an existing
-  `.omg/factory-routes.json` created with the old full template still routes
-  `success:intent` to `launch` and `success:launch` to `diagnose` until the
-  follow-up adds `omg factory init --check/--migrate`; re-run `omg factory init
-  --force` (narrow) to drop them.
+  `omg factory run <issue>`. The default narrow table is unchanged. An existing
+  `.omg/factory-routes.json` created with the old full template no longer
+  spawns those links: the chain refuses them (next entry), and
+  `omg factory init --migrate` removes them.
+- **The SessionEnd chain refuses routes to captain and retired skills.** A
+  route to `launch`, `ask-navigator`, `loft` or `drydock` (human checkpoints)
+  or to `diagnose` (retired) halts the chain with decision and stop marker
+  `route-retired:<skill>` and spawns nothing, whatever the gate says. Case,
+  whitespace, a leading `/` and a `plugin:` prefix do not get past it. A
+  route to `intent` still spawns but records `route-deprecated:intent`. A
+  route to a skill that is neither bundled nor a project skill halts with
+  `route-unknown:<skill>`. Skills are matched by their registered (frontmatter)
+  name, so `plan` halts with a `did you mean omc-plan` hint; a bundled skill
+  spawns as `/oh-my-copilot:<name>` on Copilot CLI. The spawn step re-checks every rule, so a job
+  queued or a closeout stored before the upgrade cannot spawn a refused
+  skill either. The watchdog treats `route-retired:*` and `route-unknown:*`
+  closeouts as halted, not stalled. `omg factory init --migrate` refuses a
+  symlinked routes file.
 - **`omg ralph from-map` now reads the navigator's ticket types.** `map-frontier` took types only from `wayfinder:<type>` labels, but `ask-navigator` writes them in the issue body (`Type: research`), so every navigator ticket was human-gated. A body `Type: <type>` line is now read (`loft` counts as `prototype`, human-gated) and labels still work; when label and body disagree the more restrictive type wins, and a body type alone grants auto only on a native sub-issue of the map.
+
+### Added
+
+- **`omg factory init --check` and `--migrate`.** `--check` prints every
+  route of `.omg/factory-routes.json` with its status and replacement
+  (read-only; exit 1 when a route would halt the chain). `--migrate` writes
+  `factory-routes.json.bak-<UTC timestamp>` first, then drops the captain and
+  retired routes and turns `success:intake` → `intent` into → `harbor`; it
+  asks on a terminal and needs `--yes` without one.
+
+### Changed
+
+- **`omg factory status` is now `omg factory chain status`.** The old name
+  stays as an alias, so scripts keep working; it no longer reads like
+  `omg factory run status <issue>`.
 
 # oh-my-copilot v5.18.2
 

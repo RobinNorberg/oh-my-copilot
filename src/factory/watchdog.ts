@@ -46,7 +46,7 @@ const HANDLED_DECISIONS = new Set(['enqueued', 'chain-terminal', 'chain-loop-cap
 function closedAsHandled(decision: unknown, outcome: unknown): boolean {
   if (typeof decision !== 'string') return false;
   // no-route halts with a stop marker only on a failed outcome.
-  return HANDLED_DECISIONS.has(decision) || (decision === 'no-route' && outcome === 'failed');
+  return HANDLED_DECISIONS.has(decision) || decision.startsWith('route-retired:') || decision.startsWith('route-unknown:') || (decision === 'no-route' && outcome === 'failed');
 }
 
 /** Session ids the enqueuer already advanced ('enqueued' decision records). */

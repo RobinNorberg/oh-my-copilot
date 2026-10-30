@@ -33,6 +33,20 @@ export declare const MAX_VERIFY_COMMAND_LENGTH = 120;
  */
 export declare function normalizeRouteTable(input: unknown): RouteTable | null;
 export declare function decideNextStage(outcome: ChainOutcome, reason: string, table: RouteTable): ChainDirective | null;
+/**
+ * Skills a chain link must never spawn. Captain skills hold human checkpoints
+ * (an AFK link can only stall or rubber-stamp them); retired skills no longer
+ * exist (`diagnose`: CI failures go to `omg factory heal`). `intent` still
+ * spawns but is deprecated: tracker intake is harbor's job.
+ */
+export declare const CAPTAIN_SKILLS: ReadonlySet<string>;
+export declare const RETIRED_SKILLS: ReadonlySet<string>;
+export declare const DEPRECATED_SKILLS: ReadonlySet<string>;
+export type ChainSkillStatus = 'ok' | 'deprecated' | 'captain' | 'retired';
+/** The bare skill name a route names: trimmed, lower-case, without a leading `/` or a `plugin:` prefix. */
+export declare function canonicalChainSkill(skill: string): string;
+/** Classify a route's skill by its canonical name, so case or prefix variants cannot slip past the refusal. */
+export declare function chainSkillStatus(skill: string): ChainSkillStatus;
 export type GateName = 'intent-accept' | 'spec-approve' | 'harbor-review' | 'review-approve';
 export interface GateFacts {
     irreversibleOrExternal: boolean;
