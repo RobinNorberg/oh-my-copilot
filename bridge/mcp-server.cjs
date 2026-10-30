@@ -48311,13 +48311,6 @@ var init_factory_setup = __esm({
 function buildRouteTableNarrow() {
   return { ...INTAKE_ROUTE_TABLE };
 }
-function buildRouteTableFull() {
-  return {
-    "success:intake": { stage: "intent", skill: "intent" },
-    "success:intent": { stage: "launch", skill: "launch" },
-    "success:launch": { stage: "diagnose", skill: "diagnose" }
-  };
-}
 function validateFactoryPrerequisites(cwd) {
   const missing = [];
   if (!(0, import_fs87.existsSync)((0, import_path103.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
@@ -48325,6 +48318,12 @@ function validateFactoryPrerequisites(cwd) {
   return { ok: missing.length === 0, missing };
 }
 function runFactoryInit(options = {}) {
+  if (options.narrow === false) {
+    return {
+      exitCode: 1,
+      message: "factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; CI: failed push runs of ci.yml on the dev branch are queued by the listener (workflow_run) and processed by the next omg factory heal scan; failures on other branches or workflows are no longer acted on by the listener (run omg factory heal scan manually). See the factory section of docs/REFERENCE.md."
+    };
+  }
   const cwd = (0, import_path103.resolve)(options.cwd ?? process.cwd());
   const routesPath = (0, import_path103.join)(getOmcRoot(cwd), "factory-routes.json");
   const prerequisites = validateFactoryPrerequisites(cwd);
@@ -48340,7 +48339,7 @@ function runFactoryInit(options = {}) {
       message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`
     };
   }
-  const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
+  const table = buildRouteTableNarrow();
   try {
     (0, import_fs87.mkdirSync)((0, import_path103.join)(routesPath, ".."), { recursive: true });
     (0, import_fs87.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
@@ -48348,11 +48347,10 @@ function runFactoryInit(options = {}) {
   } catch (error2) {
     return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${error2.message}` };
   }
-  const mode = options.narrow === false ? "full-pipeline widening template" : "narrow starter table";
   const routes = Object.entries(table).map(([key, directive]) => `${key} -> ${directive.stage}/${directive.skill}`).join("; ");
   return {
     exitCode: 0,
-    message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
+    message: `factory init wrote ${routesPath} (narrow starter table): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
   };
 }
 var import_fs87, import_path103;
