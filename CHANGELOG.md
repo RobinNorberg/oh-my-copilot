@@ -14,6 +14,8 @@ All notable changes to oh-my-copilot will be documented in this file.
   `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` for copilot;
   `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` for claude, and `AWS_*` /
   `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is set.
+  In a mixed team, another provider's login is skipped for a worker rather
+  than failing its start.
 
 # oh-my-copilot v5.18.1
 

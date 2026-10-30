@@ -83821,23 +83821,24 @@ function parseEnvPassthrough(value) {
 function isEnabledFlag(value) {
   return typeof value === "string" && value.length > 0 && value !== "0" && value.toLowerCase() !== "false";
 }
-function isProviderPassthroughCredential(key, provider, sourceEnv, platform) {
+function isProviderPassthroughCredential(key, provider, sourceEnv, platform, providerEnv) {
   const name = platform === "win32" ? key.toUpperCase() : key;
   if (PROVIDER_PASSTHROUGH_CREDENTIALS[provider]?.includes(name)) return true;
   if (provider !== "claude") return false;
-  return name.startsWith("AWS_") && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_BEDROCK) || name.startsWith("GOOGLE_") && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_VERTEX);
+  return name.startsWith("AWS_") && isEnabledFlag(providerEnv.CLAUDE_CODE_USE_BEDROCK ?? sourceEnv.CLAUDE_CODE_USE_BEDROCK) || name.startsWith("GOOGLE_") && isEnabledFlag(providerEnv.CLAUDE_CODE_USE_VERTEX ?? sourceEnv.CLAUDE_CODE_USE_VERTEX);
 }
-function assertPassthroughKeyAllowed(key, provider, sourceEnv, platform) {
-  if (!isCredentialEnvKey(key)) return;
-  const providers = provider ? [provider] : Object.keys(PROVIDER_PASSTHROUGH_CREDENTIALS);
-  if (providers.some((candidate) => isProviderPassthroughCredential(key, candidate, sourceEnv, platform))) return;
+function passthroughKeyDisposition(key, provider, sourceEnv, platform, providerEnv = {}) {
+  if (!isCredentialEnvKey(key)) return "forward";
+  if (provider && isProviderPassthroughCredential(key, provider, sourceEnv, platform, providerEnv)) return "forward";
+  const anyProvider = Object.keys(PROVIDER_PASSTHROUGH_CREDENTIALS).some((candidate) => isProviderPassthroughCredential(key, candidate, sourceEnv, platform, providerEnv));
+  if (anyProvider) return provider ? "skip" : "forward";
   throw new Error(
     `worker_launch_env_passthrough_credential: OMC_TEAM_WORKER_ENV_PASSTHROUGH names credential ${key}${provider ? ` for a ${provider} worker` : ""}; remove it. Only a provider's own login passes through (copilot: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN; claude: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, AWS_* with CLAUDE_CODE_USE_BEDROCK, GOOGLE_* with CLAUDE_CODE_USE_VERTEX).`
   );
 }
-function assertEnvPassthroughAllowed(provider, sourceEnv = process.env, platform = process.platform) {
+function assertEnvPassthroughAllowed(provider, sourceEnv = process.env, platform = process.platform, providerEnv = {}) {
   for (const key of parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH)) {
-    assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
+    passthroughKeyDisposition(key, provider, sourceEnv, platform, providerEnv);
   }
 }
 function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough, provider) {
@@ -83866,7 +83867,11 @@ function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform
     if (!isValidEnvironmentKey(key)) throw new Error("worker_launch_env_passthrough_key_invalid");
     if (WORKER_LAUNCH_INTERNAL_ENV_KEYS.has(key)) throw new Error("worker_launch_env_passthrough_key_reserved");
     if (platform === "win32" && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase())) throw new Error("worker_launch_env_passthrough_key_reserved");
-    assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
+    if (passthroughKeyDisposition(key, provider, sourceEnv, platform, normalized) === "skip") {
+      process.stderr.write(`[omc] OMC_TEAM_WORKER_ENV_PASSTHROUGH: ${key} is another provider's login; not forwarded to this ${provider} worker
+`);
+      continue;
+    }
     const value = sourceEnv[key];
     if (typeof value === "string") baseline[key] = value;
   }
@@ -84193,7 +84198,7 @@ function quotePosixShellArgument(value) {
 async function materializeWorkerLaunchTransport(input) {
   const { attempt } = input;
   if (!attemptTransportPathsAreDeterministic(attempt)) throw new Error("worker_launch_transport_paths_invalid");
-  assertEnvPassthroughAllowed(attempt.provider);
+  assertEnvPassthroughAllowed(attempt.provider, process.env, process.platform, input.providerEnv);
   const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
     providerEnv: input.providerEnv,
     releaseAfterSpawn: input.releaseAfterSpawn,
@@ -88103,6 +88108,9 @@ async function spawnWorkerInPane(sessionName2, paneId, config2) {
     if (!isValidTmuxServerIdentity(ownedTmuxIdentity) || await observeTmuxServerIdentity(ownedTmuxIdentity) !== "matching") {
       throw new Error("worker_start_tmux_server_identity_unverified");
     }
+  }
+  if (!config2.launchAttempt && (config2.provider === "copilot" || config2.provider === "claude")) {
+    throw new Error(`worker_launch_attempt_missing:${config2.provider}`);
   }
   if (config2.launchAttempt && config2.launchAttempt.pane_id !== paneId) {
     throw new Error("worker_launch_attempt_pane_mismatch");

@@ -82,7 +82,7 @@ afterEach(async () => {
         await removeFixtureDir(cwd);
     cwd = '';
 });
-async function attempt() {
+async function attempt(provider = 'codex') {
     cwd = await createFixture('worker-launch-ack-');
     return prepareWorkerLaunchAttempt({
         cwd,
@@ -90,7 +90,7 @@ async function attempt() {
         workerName: 'worker-1',
         instanceId: randomUUID(),
         paneId: '%2',
-        provider: 'codex',
+        provider,
         runtimeCliPath: '/runtime-cli.cjs',
     });
 }
@@ -3238,17 +3238,27 @@ describe('worker env passthrough refuses credentials except the provider login',
                 .toThrow('worker_launch_env_passthrough_credential');
         }
     });
-    it('passes ANTHROPIC_API_KEY for claude only and GH_TOKEN for copilot only', () => {
+    it('passes ANTHROPIC_API_KEY to claude only and GH_TOKEN to copilot only, skipping the other', () => {
+        const notice = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY'], 'claude'))
             .toHaveProperty('ANTHROPIC_API_KEY', 'anthropic-secret');
         expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['GH_TOKEN'], 'copilot'))
             .toHaveProperty('GH_TOKEN', 'gh-secret');
-        expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY'], 'copilot'))
-            .toThrow('worker_launch_env_passthrough_credential');
-        expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', ['GH_TOKEN'], 'claude'))
-            .toThrow('worker_launch_env_passthrough_credential');
-        expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY'], 'codex'))
-            .toThrow('worker_launch_env_passthrough_credential');
+        expect(notice).not.toHaveBeenCalled();
+        // A mixed team shares one list: another provider's login is skipped, not refused.
+        const mixed = ['ANTHROPIC_API_KEY', 'GH_TOKEN', 'CUSTOM_SETTING'];
+        const env = { ...sourceEnv, CUSTOM_SETTING: 'custom' };
+        const copilot = buildProviderEnvironment({}, env, 'linux', mixed, 'copilot');
+        expect(copilot).toMatchObject({ GH_TOKEN: 'gh-secret', CUSTOM_SETTING: 'custom' });
+        expect(copilot).not.toHaveProperty('ANTHROPIC_API_KEY');
+        const claude = buildProviderEnvironment({}, env, 'linux', mixed, 'claude');
+        expect(claude).toMatchObject({ ANTHROPIC_API_KEY: 'anthropic-secret', CUSTOM_SETTING: 'custom' });
+        expect(claude).not.toHaveProperty('GH_TOKEN');
+        const codex = buildProviderEnvironment({}, env, 'linux', mixed, 'codex');
+        expect(codex).not.toHaveProperty('ANTHROPIC_API_KEY');
+        expect(codex).not.toHaveProperty('GH_TOKEN');
+        expect(notice).toHaveBeenCalledWith(expect.stringMatching(/ANTHROPIC_API_KEY is another provider's login; not forwarded to this copilot worker/));
+        notice.mockRestore();
         // The pane shell hosts any provider: any provider's login passes there.
         expect(buildProviderEnvironment({}, sourceEnv, 'linux', ['ANTHROPIC_API_KEY', 'GH_TOKEN']))
             .toMatchObject({ ANTHROPIC_API_KEY: 'anthropic-secret', GH_TOKEN: 'gh-secret' });
@@ -3257,7 +3267,11 @@ describe('worker env passthrough refuses credentials except the provider login',
         const bedrock = { ...sourceEnv, CLAUDE_CODE_USE_BEDROCK: '1' };
         expect(buildProviderEnvironment({}, bedrock, 'linux', ['AWS_SECRET_ACCESS_KEY', 'AWS_REGION'], 'claude'))
             .toMatchObject({ AWS_SECRET_ACCESS_KEY: 'aws-secret', AWS_REGION: 'eu-north-1' });
-        expect(() => buildProviderEnvironment({}, bedrock, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'copilot'))
+        const notice = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        expect(buildProviderEnvironment({}, bedrock, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'copilot'))
+            .not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+        notice.mockRestore();
+        expect(() => buildProviderEnvironment({}, sourceEnv, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'copilot'))
             .toThrow('worker_launch_env_passthrough_credential');
         expect(() => buildProviderEnvironment({}, { ...sourceEnv, CLAUDE_CODE_USE_BEDROCK: '0' }, 'linux', ['AWS_SECRET_ACCESS_KEY'], 'claude'))
             .toThrow('worker_launch_env_passthrough_credential');
@@ -3278,16 +3292,27 @@ describe('worker env passthrough refuses credentials except the provider login',
         expect(() => assertEnvPassthroughAllowed('copilot', { OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'COPILOT_GITHUB_TOKEN,CUSTOM_SETTING' }, 'linux'))
             .not.toThrow();
     });
-    it('the supervisor refuses a passthrough credential for its provider', async () => {
+    it('the supervisor refuses a passthrough credential no provider owns', async () => {
         const launchAttempt = await attempt();
         const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, { platform: 'win32' });
-        expect(() => buildWindowsSupervisorInvocation(spec, { ...sourceEnv, OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'GH_TOKEN' }))
+        expect(() => buildWindowsSupervisorInvocation(spec, { ...sourceEnv, OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'NPM_TOKEN' }))
             .toThrow('worker_launch_env_passthrough_credential');
+    });
+    it('the supervisor takes the Bedrock switch from the worker env, not only the pane shell env', async () => {
+        const launchAttempt = await attempt('claude');
+        const providerEnv = { CLAUDE_CODE_USE_BEDROCK: '1' };
+        const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['claude'], cwd, { platform: 'win32', providerEnv });
+        // The pane shell env (env -i + baseline + passthrough) carries no switch.
+        const paneEnv = { ...sourceEnv, OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'AWS_SECRET_ACCESS_KEY,AWS_REGION' };
+        expect(() => buildWindowsSupervisorInvocation(spec, paneEnv)).not.toThrow('worker_launch_env_passthrough_credential');
+        expect(buildProviderEnvironment(spec.provider_env, paneEnv, 'linux', undefined, 'claude'))
+            .toMatchObject({ CLAUDE_CODE_USE_BEDROCK: '1', AWS_SECRET_ACCESS_KEY: 'aws-secret', AWS_REGION: 'eu-north-1' });
+        expect(() => assertEnvPassthroughAllowed('claude', paneEnv, 'linux', providerEnv)).not.toThrow();
     });
     it('the leader refuses before materializing the launch transport', async () => {
         const launchAttempt = await attempt();
-        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'GH_TOKEN');
-        vi.stubEnv('GH_TOKEN', 'gh-secret');
+        vi.stubEnv('OMC_TEAM_WORKER_ENV_PASSTHROUGH', 'NPM_TOKEN');
+        vi.stubEnv('NPM_TOKEN', 'npm-secret');
         await expect(materializeWorkerLaunchTransport({ attempt: launchAttempt, providerArgv: ['codex'], cwd }))
             .rejects.toThrow('worker_launch_env_passthrough_credential');
         expect(existsSync(launchAttempt.bootstrapDescriptorPath)).toBe(false);

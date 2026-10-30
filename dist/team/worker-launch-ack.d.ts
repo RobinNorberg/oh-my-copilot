@@ -99,7 +99,7 @@ export interface MaterializedWorkerLaunchTransport {
     wrapperRelativePath: string;
 }
 /** Refuse, before a launch is delivered, a passthrough list the provider's supervisor would refuse. */
-export declare function assertEnvPassthroughAllowed(provider: CliAgentType, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform): void;
+export declare function assertEnvPassthroughAllowed(provider: CliAgentType, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform, providerEnv?: Record<string, string | undefined>): void;
 export declare function buildProviderEnvironment(providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform, envPassthrough?: readonly string[], provider?: CliAgentType): Record<string, string>;
 /** Read one launch-owned completion marker, or an unbound numeric marker for
  * generic process-wrapper callers that have no worker launch identity. */
