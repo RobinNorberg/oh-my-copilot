@@ -81,6 +81,28 @@ describe('prepare in the engine-owned checkout', () => {
         expect(readShipState(h.root, PR).housekeepingCommits).toEqual([]);
         expect(existsSync(checkoutPath(h.root, ISSUE))).toBe(true);
     });
+    it('a checkout branch rewritten as a symref to main is refused before `worktree add -B`; main does not move', async () => {
+        const mainRef = gitIn(h.root, 'symbolic-ref', 'HEAD');
+        const main = gitIn(h.root, 'rev-parse', mainRef);
+        const common = gitIn(h.root, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+        // Planted after the pre-prepare recheck (the first common-dir read after gh pr ready), as the engine reads the common dir for the branch check.
+        let reads = -1;
+        h.onCall = (call) => {
+            if (call === `gh pr ready ${PR}`)
+                reads = 0;
+            else if (reads >= 0 && call === 'git rev-parse --git-common-dir' && ++reads === 2) {
+                mkdirSync(join(common, 'refs', 'heads', 'omc-team', 'factory-run'), { recursive: true });
+                writeFileSync(join(common, 'refs', 'heads', 'omc-team', 'factory-run', `issue-${ISSUE}`), `ref: ${mainRef}\n`);
+            }
+        };
+        const { done } = run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')]);
+        const out = await done;
+        expect(reads).toBeGreaterThanOrEqual(2);
+        expect(out.gate?.name, out.message).toBe('lane-tampered');
+        expect(out.gate?.reason).toMatch(/omc-team\/factory-run\/issue-\d+ is not a plain commit ref/);
+        expect(h.calls.some((c) => c.startsWith('git worktree add '))).toBe(false);
+        expect(gitIn(h.root, 'rev-parse', mainRef)).toBe(main);
+    });
     it('an inventory-only base conflict is resolved with the base\'s inventory, pushed as housekeeping, and merge still allows the head', async () => {
         before(PREPARE_VIEW, () => moveBase('inventory/graph.json', '{"base":true}\n'));
         const { done } = run([commitFile('inventory/graph.json', '{"lane":true}\n'), review('approve')]);

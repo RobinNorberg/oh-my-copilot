@@ -540,7 +540,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
                 error.message.includes("MODULE_NOT_FOUND") ||
                 error.message.includes("Cannot find module"));
         if (isInstallError) {
-            console.log("[OMC] run /omc-setup to install properly");
+            console.log("[OMC] run /oh-my-copilot:omc-setup to install properly");
         }
         else {
             // Output fallback message to stdout for status line visibility

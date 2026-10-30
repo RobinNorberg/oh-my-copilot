@@ -59,13 +59,42 @@ export declare function resolveDefaultPluginRoot(env?: NodeJS.ProcessEnv): strin
  * no cwd fallback), or null when this code is not running from a plugin tree.
  */
 export declare function resolvePackageRoot(): string | null;
+/**
+ * Cassette env (design .omc/plans/2026-10-29-copilot-replay-design.md,
+ * section 8). `OMG_*`, so the `OMC_*` strip above and every credential scrub
+ * keep them, and child processes (team sdk hosts) inherit them.
+ */
+export declare const CASSETTE_ENV: {
+    readonly dir: "OMG_COPILOT_CASSETTE";
+    readonly mode: "OMG_COPILOT_CASSETTE_MODE";
+    readonly scenario: "OMG_COPILOT_CASSETTE_SCENARIO";
+    readonly state: "OMG_COPILOT_CASSETTE_STATE";
+    /** `strict` or `tolerant` (default): the replay match mode (`--replay-strict`). */
+    readonly match: "OMG_COPILOT_CASSETTE_MATCH";
+    /** JSON `{ PROJECT, HOME, ROOT, REMOTE, TMP }`: the smoke's dirs, turned into path placeholders. */
+    readonly dirs: "OMG_COPILOT_CASSETTE_DIRS";
+};
+/** A dummy HMAC key: without one the runtime never sends a model request, so the replay handler would never see it. */
+export declare const REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";
+export declare function isReplayEnv(env: NodeJS.ProcessEnv): boolean;
+/**
+ * The runtime env of a cassette client: in replay every credential
+ * ({@link isCredentialEnvKey}) and the HMAC key go and the dummy key is set, so
+ * a request that bypassed the handler can neither authenticate nor bill. Both
+ * modes disable WebSocket responses (recordings are HTTP only).
+ */
+export declare function cassetteRuntimeEnv(env: NodeJS.ProcessEnv, mode: 'record' | 'replay'): NodeJS.ProcessEnv;
 export interface SessionEnvOptions {
     /** Tier 1 session (adds {@link SESSION_SET_ENV}); false for the tier 0 list commands. */
     session?: boolean;
     /** A stored login was copied into the home: drop {@link LOGIN_SHADOWING_TOKENS}. */
     hasLogin?: boolean;
 }
-/** Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. */
+/**
+ * Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. In replay
+ * ({@link isReplayEnv}) every credential and the HMAC key are dropped too; the
+ * cassette vars stay.
+ */
 export declare function buildSessionEnv(base: NodeJS.ProcessEnv, home: string, opts?: SessionEnvOptions): NodeJS.ProcessEnv;
 /**
  * Copy only the login identity (`loggedInUsers`, `lastLoggedInUser`) from the

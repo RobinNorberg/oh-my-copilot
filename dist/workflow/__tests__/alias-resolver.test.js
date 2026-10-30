@@ -156,6 +156,8 @@ describe('alias-resolver — warnings once/session + diagnostics', () => {
     it('normalization strips prefixes and punctuation', () => {
         expect(normalizeWorkflowInput('/ralph ')).toBe('ralph');
         expect(normalizeWorkflowInput(' /omc:autopilot!')).toBe('autopilot');
+        expect(normalizeWorkflowInput(' /omg:autopilot!')).toBe('autopilot');
+        expect(normalizeWorkflowInput('omg:ralph')).toBe('ralph');
         expect(normalizeWorkflowInput('Release.')).toBe('release');
     });
 });

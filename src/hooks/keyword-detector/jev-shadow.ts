@@ -50,7 +50,7 @@ export function recordSkillTriggerShadow(
  * skills/intent/SKILL.md frontmatter sets disable-model-invocation, so an
  * explicit `/intent` (optionally namespaced) is the only trigger surface.
  */
-const INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?intent(?=\s|$|[?!.,;:])/i;
+const INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:|omg:)?intent(?=\s|$|[?!.,;:])/i;
 
 /**
  * Point "intent" (ticket 02): the detector's existing trigger answer decides

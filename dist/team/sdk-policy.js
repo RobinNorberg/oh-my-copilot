@@ -6,7 +6,7 @@
  * and removes tools up front with {@link buildSdkExcludedTools}.
  */
 import { lstatSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 /**
  * git's global options before the subcommand: `-C <dir>`, `-c <k=v>`, the long
@@ -150,6 +150,69 @@ function existingWriteTargetDenial(p) {
         return 'write target is not a regular file';
     return st.nlink > 1 ? 'write target has more than one hard link' : null;
 }
+/**
+ * Why a link on the way from its root to `p` is refused, or null: each
+ * existing segment below the root (as given, else its realpath) is lstat'ed,
+ * and a symlink or junction must resolve under one of `roots`; a dangling one
+ * is refused. {@link canon} judges the same through realpath; this names the
+ * planted link. Approval cannot close the window between it and the write
+ * (a link swapped in after), which the copilot_run job's common git dir
+ * snapshot covers.
+ */
+export function linkSegmentDenial(p, roots, platform = process.platform) {
+    const abs = resolve(p);
+    for (const root of roots) {
+        let base = resolve(root);
+        let rel = relative(base, abs);
+        if (rel.startsWith('..') || isAbsolute(rel)) {
+            try {
+                base = realpathSync.native(root);
+            }
+            catch {
+                continue;
+            }
+            rel = relative(base, abs);
+            if (rel.startsWith('..') || isAbsolute(rel))
+                continue;
+        }
+        let cur = base;
+        for (const seg of rel.split(/[\\/]+/).filter(Boolean)) {
+            cur = join(cur, seg);
+            let st;
+            try {
+                st = lstatSync(cur);
+            }
+            catch {
+                return null;
+            }
+            if (!st.isSymbolicLink())
+                continue;
+            let real;
+            try {
+                real = realpathSync.native(cur);
+            }
+            catch {
+                return `write through a dangling link ${cur}`;
+            }
+            if (!roots.some((r) => isUnderRoot(real, r, platform)))
+                return `write through a link ${cur} that resolves outside the worktree and team state (${real})`;
+        }
+        return null;
+    }
+    return null;
+}
+/**
+ * True when `p` names a git dir or gitfile, or an NTFS alternate data stream:
+ * a segment that, case-folded with trailing dots and spaces stripped (Win32
+ * drops them), is `.git` or an 8.3 short name `git~<n>`, or any `:` past a
+ * drive letter (`.git::$DATA`, `foo:stream`). Applied on every platform.
+ */
+export function namesGitPath(p) {
+    return p.replace(/^(?:[\\/]{2}[?.][\\/])?[A-Za-z]:/, '').split(/[\\/]+/).some((seg) => {
+        const s = seg.replace(/[. ]+$/, '').toLowerCase();
+        return s === '.git' || /^git~\d+$/.test(s) || seg.includes(':');
+    });
+}
 /** The request's path, unresolved as given. */
 function rawRequestPath(req) {
     for (const key of ['resolvedPath', 'path', 'fileName']) {
@@ -245,9 +308,15 @@ export function decideSdkPermission(req, ctx) {
                 if (disagree)
                     return { approve: false, reason: `write ${disagree}: ${path}` };
                 for (const q of paths) {
+                    const link = linkSegmentDenial(q, [ctx.cwd, ctx.stateRoot], platform);
+                    if (link)
+                        return { approve: false, reason: link };
                     if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
                         return { approve: false, reason: `write outside worktree and team state: ${q}` };
                     }
+                    // The file tools run outside any sandbox: a rewritten gitfile or git config is executed by the next git.
+                    if (namesGitPath(q) || namesGitPath(canon(q, platform)))
+                        return { approve: false, reason: `write into .git (a git dir, gitfile, short name or data stream): ${q}` };
                     const target = existingWriteTargetDenial(q);
                     if (target)
                         return { approve: false, reason: `${target}: ${q}` };

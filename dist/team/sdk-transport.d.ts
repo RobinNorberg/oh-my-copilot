@@ -166,7 +166,10 @@ export declare const HOST_CREDENTIAL_ENV: readonly ["COPILOT_GITHUB_TOKEN", "GH_
  * ({@link hostCredentialHandoff}).
  */
 export declare function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
-/** The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`. */
+/**
+ * The one-line JSON the host reads from stdin: {@link HOST_CREDENTIAL_ENV} values present in `env`; none in a
+ * cassette replay, whose hosts run credential-free (replay design section 8.2).
+ */
 export declare function hostCredentialHandoff(env: NodeJS.ProcessEnv): string;
 export declare function spawnDetachedHost(cliPath: string, specPath: string, logPath: string, cwd: string, env?: NodeJS.ProcessEnv): number | undefined;
 /**

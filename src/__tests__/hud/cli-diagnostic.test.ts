@@ -145,7 +145,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
     expect(output).toContain('[OMC] HUD v4.10.1');
     expect(output).toContain('preset: focused');
-    expect(output).not.toContain('run /omc-setup to install properly');
+    expect(output).not.toContain('run /oh-my-copilot:omc-setup to install properly');
   });
 
   it('shows HUD script as MISSING when omg-hud.mjs does not exist', async () => {

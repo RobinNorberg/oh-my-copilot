@@ -1252,13 +1252,13 @@ var init_worker_canonicalization = __esm({
 });
 
 // src/team/monitor.ts
-var import_fs22, import_promises3, import_path24;
+var import_fs25, import_promises3, import_path27;
 var init_monitor = __esm({
   "src/team/monitor.ts"() {
     "use strict";
-    import_fs22 = require("fs");
+    import_fs25 = require("fs");
     import_promises3 = require("fs/promises");
-    import_path24 = require("path");
+    import_path27 = require("path");
     init_types();
     init_contracts();
     init_state_paths();
@@ -1277,14 +1277,14 @@ __export(bridge_entry_exports, {
   validateConfigPath: () => validateConfigPath
 });
 module.exports = __toCommonJS(bridge_entry_exports);
-var import_fs31 = require("fs");
-var import_path33 = require("path");
+var import_fs34 = require("fs");
+var import_path36 = require("path");
 var import_os8 = require("os");
 
 // src/team/mcp-team-bridge.ts
 var import_child_process8 = require("child_process");
-var import_fs30 = require("fs");
-var import_path32 = require("path");
+var import_fs33 = require("fs");
+var import_path35 = require("path");
 
 // src/team/fs-utils.ts
 var import_fs = require("fs");
@@ -1342,17 +1342,17 @@ function validateResolvedPath(resolvedPath, expectedBase) {
 init_worktree_paths();
 
 // src/team/task-file-ops.ts
-var import_fs24 = require("fs");
-var import_path26 = require("path");
+var import_fs27 = require("fs");
+var import_path29 = require("path");
 init_worktree_paths();
 init_config_dir();
 
 // src/team/tmux-session.ts
-var import_fs23 = require("fs");
+var import_fs26 = require("fs");
 var import_crypto6 = require("crypto");
 var import_child_process7 = require("child_process");
 var import_util3 = require("util");
-var import_path25 = require("path");
+var import_path28 = require("path");
 var import_os7 = require("os");
 
 // src/cli/tmux-utils.ts
@@ -2482,7 +2482,7 @@ var CANONICAL_WORKFLOW_SLASH_SKILLS = [
   "self-improve"
 ];
 var WORKFLOW_SLASH_PATTERN = new RegExp(
-  "^\\s*/(?:oh-my-copilot:|omc:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
+  "^\\s*/(?:oh-my-copilot:|omc:|omg:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
   "i"
 );
 var PATH_SEGMENT_CHARS = "[\\w.\\-\\u3000-\\u9FFF\\uAC00-\\uD7AF\\u0400-\\u04FF\\u0600-\\u06FF\\u0900-\\u097F\\u0E00-\\u0E7F\\u1000-\\u109F]";
@@ -2889,6 +2889,224 @@ var import_os6 = require("os");
 var import_fs20 = require("fs");
 var import_path22 = require("path");
 
+// src/smoke/copilot-session-env.ts
+var import_fs23 = require("fs");
+var import_path25 = require("path");
+var import_url4 = require("url");
+
+// src/smoke/copilot-sdk-scenarios.ts
+var import_fs22 = require("fs");
+var import_path24 = require("path");
+
+// src/budget/ledger.ts
+init_worktree_paths();
+init_config_dir();
+var MAX_SCAN_BYTES = 8 * 1024 * 1024;
+var TAIL_BYTES = 64 * 1024;
+var EPOCH = (/* @__PURE__ */ new Date(0)).toISOString();
+
+// src/smoke/copilot-session-eval.ts
+var import_fs21 = require("fs");
+var import_path23 = require("path");
+var SMOKE_TOKEN = "SMOKE_OK";
+
+// src/smoke/copilot-sdk-scenarios.ts
+var FACTORY_RUN_SCENARIOS = ["factory-run", "factory-run-fix"];
+var SANDBOX_LANE_SCENARIO = "sandbox-lane";
+var CLI_SCENARIOS = ["continuation", "prompt-context", "events", "ultragoal"];
+var ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
+var OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
+var KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
+var DELEGATE_AGENT = "oh-my-copilot:architect";
+var SDK_PACKAGE = "@github/copilot-sdk";
+var SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+var NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
+var NO_WRITE_TOOLS = ["create", "edit"];
+var denyAll = () => false;
+var GUARDRAIL_COMMAND = /^\s*git\s+push\s+(--force|-f)\s+origin\s+main\s*$/;
+function samePathKey(p, platform) {
+  let out = (0, import_path24.resolve)(p);
+  try {
+    out = import_fs22.realpathSync.native(out);
+  } catch {
+  }
+  return canon(out, platform);
+}
+function isUnder(p, root, platform) {
+  const child = samePathKey(p, platform);
+  const parent = samePathKey(root, platform);
+  return child === parent || child.startsWith(`${parent.replace(/\/$/, "")}/`);
+}
+function requestCwd(req) {
+  for (const key of ["cwd", "workingDirectory", "resolvedWorkingDirectory"]) {
+    if (typeof req[key] === "string" && req[key]) return req[key];
+  }
+  return void 0;
+}
+function permitGuardrailPush(req, ctx) {
+  if (req.kind !== "shell" || !GUARDRAIL_COMMAND.test(String(req.fullCommandText ?? ""))) return false;
+  const cwd = requestCwd(req);
+  const platform = ctx.platform ?? process.platform;
+  return cwd === void 0 || samePathKey(cwd, platform) === samePathKey(ctx.projectDir, platform);
+}
+function permitScopedRead(req, ctx) {
+  if (req.kind !== "read") return false;
+  if (typeof req.path !== "string" || !req.path) return true;
+  const platform = ctx.platform ?? process.platform;
+  return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
+}
+var FILETOOLS_DIR = "filetools";
+var FILETOOLS_FILES = {
+  notes: `${FILETOOLS_DIR}/notes.txt`,
+  created: `${FILETOOLS_DIR}/new/created.txt`,
+  /**
+   * Picked up by post-tool-directory-context-injector.mjs (README.md, not
+   * AGENTS.md: Copilot loads AGENTS.md itself). The injector sends each
+   * README once per session, so the read (view of notes.txt) and the write
+   * (creating created.txt) each get their own.
+   */
+  context: `${FILETOOLS_DIR}/README.md`,
+  writeContext: `${FILETOOLS_DIR}/new/README.md`
+};
+var FILETOOLS_MARKER = "Context marker:";
+function permitProjectFiles(req, ctx) {
+  const platform = ctx.platform ?? process.platform;
+  const target = req.kind === "read" ? req.path : req.kind === "write" ? req.resolvedPath ?? req.fileName : void 0;
+  return typeof target === "string" && !!target && isUnder((0, import_path24.resolve)(ctx.projectDir, target), ctx.projectDir, platform);
+}
+var PROMPT_CONTEXT_PREFIX = "OMG-PROMPT-CONTEXT:";
+var EVENTS_MISSING_FILE = "omg-missing-probe.txt";
+var EVENTS_SHELL_TOKEN = "omg-events-probe";
+var FACTORY_RUN_FILE = "greet.txt";
+var FACTORY_RUN_ISSUE_BODY = [
+  `Add a file ${FACTORY_RUN_FILE} at the repository root.`,
+  "",
+  "## Acceptance criteria",
+  "",
+  `- ${FACTORY_RUN_FILE} exists at the repository root and its first line is exactly: hi`,
+  "- One commit, no other file changed. There is no test suite in this repository: do not add one."
+].join("\n");
+var SCENARIOS = {
+  smoke: {
+    name: "smoke",
+    prompt: `Reply with exactly: ${SMOKE_TOKEN}. Do not use tools.`,
+    excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+    permit: denyAll
+  },
+  guardrail: {
+    name: "guardrail",
+    prompt: "Run the shell command: git push --force origin main \u2014 then report the exact result.",
+    excludedTools: [...NO_WRITE_TOOLS],
+    // Our preToolUse hook denies before any permission prompt. Should it not,
+    // only this exact push is approved, and the remote is a local bare repo
+    // (scn.guardrail.no_push then fails).
+    permit: permitGuardrailPush
+  },
+  skill: {
+    name: "skill",
+    prompt: "Use the /oh-my-copilot:plan skill to outline a two-step plan for adding a README. Keep it under 5 lines.",
+    excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+    permit: permitScopedRead
+    // loading SKILL.md is a read request
+  },
+  delegate: {
+    name: "delegate",
+    prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
+    excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
+    permit: permitScopedRead
+  },
+  // The fixture (FILETOOLS_FILES) and the probe plugin are written by the driver.
+  filetools: {
+    name: "filetools",
+    prompt: [
+      `Use only your file tools, never a shell, and touch no file outside the ${FILETOOLS_DIR} directory.`,
+      `1. View ${FILETOOLS_FILES.notes}.`,
+      `2. Edit ${FILETOOLS_FILES.notes} so that the line "status: draft" reads "status: done".`,
+      `3. Create ${FILETOOLS_FILES.created} containing exactly the line "created".`,
+      `Do not open any other file. Then, if context added during these steps contained lines starting with "${FILETOOLS_MARKER}", repeat each of them verbatim; otherwise reply NO MARKER.`
+    ].join("\n"),
+    excludedTools: ["powershell", "shell"],
+    permit: permitProjectFiles
+  },
+  // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
+  // factory link (copilot-chain-scenario.ts) under the AFK profile.
+  chain: {
+    name: "chain",
+    prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
+    excludedTools: [],
+    permit: denyAll
+  },
+  // Not an SDK session of the driver: the prompt is the `omg team` task, a
+  // numbered list that decomposes into one task per worker
+  // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+  team: {
+    name: "team",
+    prompt: [
+      "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
+      "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
+    ].join("\n"),
+    excludedTools: [],
+    permit: denyAll
+  },
+  // Not an SDK session: the prompt is the scripted issue's body, which the
+  // engine turns into the lane prompts (copilot-factory-run-scenario.ts).
+  "factory-run": {
+    name: "factory-run",
+    prompt: FACTORY_RUN_ISSUE_BODY,
+    excludedTools: [],
+    permit: denyAll
+  },
+  "factory-run-fix": {
+    name: "factory-run-fix",
+    prompt: FACTORY_RUN_ISSUE_BODY,
+    excludedTools: [],
+    permit: denyAll
+  },
+  // Not an SDK session of the driver: copilot_run lanes with their own policy
+  // and per-lane prompts (copilot-sandbox-lane-scenario.ts); this is the write lane's.
+  "sandbox-lane": {
+    name: "sandbox-lane",
+    prompt: "Run the sandbox probe command you are given, once, then reply with its last output line.",
+    excludedTools: [],
+    permit: denyAll
+  },
+  // The CLI scenarios are headless `copilot` sessions (copilot-cli-scenarios.ts);
+  // their permissions are CLI flags (CLI_SCENARIO_PERMISSIONS), not `permit`.
+  continuation: {
+    name: "continuation",
+    prompt: "Reply with exactly the word started and nothing else. Do not call any tools.",
+    excludedTools: [],
+    permit: denyAll
+  },
+  "prompt-context": {
+    name: "prompt-context",
+    prompt: `If your context contains a line that starts with "${PROMPT_CONTEXT_PREFIX}", reply with exactly the token that follows it on that line and nothing else; otherwise reply NO MARKER. Do not call any tools.`,
+    excludedTools: [],
+    permit: denyAll
+  },
+  events: {
+    name: "events",
+    prompt: [
+      "Do these two steps in order, then answer with one short line:",
+      `1. Use the view tool to read the file ${EVENTS_MISSING_FILE} in the current directory (it does not exist; that is expected).`,
+      `2. Run the shell command: echo ${EVENTS_SHELL_TOKEN}`
+    ].join("\n"),
+    excludedTools: [],
+    permit: denyAll
+  },
+  ultragoal: {
+    name: "ultragoal",
+    prompt: 'Use the view tool once to read the file README.md in the current directory. Then answer with one short line. If you later receive any message that starts with "[", reply with exactly the word acknowledged and nothing else, and do not call any tool.',
+    excludedTools: [],
+    permit: denyAll
+  }
+};
+var NO_CASSETTE_SCENARIOS = ["chain", ...CLI_SCENARIOS];
+function canon(p, platform = process.platform) {
+  const out = (0, import_path24.resolve)(p).split(import_path24.sep).join("/");
+  return platform === "win32" ? out.toLowerCase() : out;
+}
+
 // src/team/worker-launch-ack.ts
 var WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV = "OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED";
 var WORKER_LAUNCH_INTERNAL_ENV_KEYS = /* @__PURE__ */ new Set([
@@ -2901,8 +3119,8 @@ var WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "Sy
 
 // src/team/recovery-request-store.ts
 var import_crypto5 = require("crypto");
-var import_fs21 = require("fs");
-var import_path23 = require("path");
+var import_fs24 = require("fs");
+var import_path26 = require("path");
 init_types2();
 init_state_paths();
 init_process_identity_lock();
@@ -2936,22 +3154,22 @@ function acquireTaskLock(teamName, taskId, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS2;
   const dir = canonicalTasksDir(teamName, opts?.cwd);
   ensureDirWithMode(dir);
-  const lockPath = (0, import_path26.join)(dir, `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.lock`);
+  const lockPath = (0, import_path29.join)(dir, `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.lock`);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const fd = (0, import_fs24.openSync)(lockPath, import_fs24.constants.O_CREAT | import_fs24.constants.O_EXCL | import_fs24.constants.O_WRONLY, 384);
+      const fd = (0, import_fs27.openSync)(lockPath, import_fs27.constants.O_CREAT | import_fs27.constants.O_EXCL | import_fs27.constants.O_WRONLY, 384);
       const payload = JSON.stringify({
         pid: process.pid,
         workerName: opts?.workerName ?? "",
         timestamp: Date.now()
       });
-      (0, import_fs24.writeSync)(fd, payload, null, "utf-8");
+      (0, import_fs27.writeSync)(fd, payload, null, "utf-8");
       return { fd, path: lockPath };
     } catch (err) {
       if (err && typeof err === "object" && "code" in err && err.code === "EEXIST") {
         if (attempt === 0 && isLockStale2(lockPath, staleLockMs)) {
           try {
-            (0, import_fs24.unlinkSync)(lockPath);
+            (0, import_fs27.unlinkSync)(lockPath);
           } catch {
           }
           continue;
@@ -2965,21 +3183,21 @@ function acquireTaskLock(teamName, taskId, opts) {
 }
 function releaseTaskLock(handle) {
   try {
-    (0, import_fs24.closeSync)(handle.fd);
+    (0, import_fs27.closeSync)(handle.fd);
   } catch {
   }
   try {
-    (0, import_fs24.unlinkSync)(handle.path);
+    (0, import_fs27.unlinkSync)(handle.path);
   } catch {
   }
 }
 function isLockStale2(lockPath, staleLockMs) {
   try {
-    const stat = (0, import_fs24.statSync)(lockPath);
+    const stat = (0, import_fs27.statSync)(lockPath);
     const ageMs = Date.now() - stat.mtimeMs;
     if (ageMs < staleLockMs) return false;
     try {
-      const raw = (0, import_fs24.readFileSync)(lockPath, "utf-8");
+      const raw = (0, import_fs27.readFileSync)(lockPath, "utf-8");
       const payload = JSON.parse(raw);
       if (payload.pid && isProcessAlive(payload.pid)) return false;
     } catch {
@@ -2998,37 +3216,37 @@ function sanitizeTaskId(taskId) {
 function canonicalTasksDir(teamName, cwd) {
   const root = cwd ?? process.cwd();
   const dir = getTaskStoragePath(root, sanitizeName(teamName));
-  validateResolvedPath(dir, (0, import_path26.join)(getOmcRoot(root), "state", "team"));
+  validateResolvedPath(dir, (0, import_path29.join)(getOmcRoot(root), "state", "team"));
   return dir;
 }
 function legacyTasksDir(teamName) {
   const claudeConfigDir = getCopilotConfigDir();
   const dir = getLegacyTaskStoragePath(claudeConfigDir, sanitizeName(teamName));
-  validateResolvedPath(dir, (0, import_path26.join)(claudeConfigDir, "tasks"));
+  validateResolvedPath(dir, (0, import_path29.join)(claudeConfigDir, "tasks"));
   return dir;
 }
 function resolveTaskPathForRead(teamName, taskId, cwd) {
   const safeTaskId = sanitizeTaskId(taskId);
   const canonicalDir = canonicalTasksDir(teamName, cwd);
-  const canonical = (0, import_path26.join)(canonicalDir, `${normalizeTaskFileStem(safeTaskId)}.json`);
-  if ((0, import_fs24.existsSync)(canonical)) return canonical;
-  const legacyCanonical = (0, import_path26.join)(canonicalDir, `${safeTaskId}.json`);
-  if ((0, import_fs24.existsSync)(legacyCanonical)) return legacyCanonical;
-  const legacy = (0, import_path26.join)(legacyTasksDir(teamName), `${safeTaskId}.json`);
-  if ((0, import_fs24.existsSync)(legacy)) return legacy;
+  const canonical = (0, import_path29.join)(canonicalDir, `${normalizeTaskFileStem(safeTaskId)}.json`);
+  if ((0, import_fs27.existsSync)(canonical)) return canonical;
+  const legacyCanonical = (0, import_path29.join)(canonicalDir, `${safeTaskId}.json`);
+  if ((0, import_fs27.existsSync)(legacyCanonical)) return legacyCanonical;
+  const legacy = (0, import_path29.join)(legacyTasksDir(teamName), `${safeTaskId}.json`);
+  if ((0, import_fs27.existsSync)(legacy)) return legacy;
   return canonical;
 }
 function resolveTaskPathForWrite(teamName, taskId, cwd) {
-  return (0, import_path26.join)(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.json`);
+  return (0, import_path29.join)(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.json`);
 }
 function failureSidecarPath(teamName, taskId, cwd) {
-  return (0, import_path26.join)(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.failure.json`);
+  return (0, import_path29.join)(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.failure.json`);
 }
 function readTask(teamName, taskId, opts) {
   const filePath = resolveTaskPathForRead(teamName, taskId, opts?.cwd);
-  if (!(0, import_fs24.existsSync)(filePath)) return null;
+  if (!(0, import_fs27.existsSync)(filePath)) return null;
   try {
-    const raw = (0, import_fs24.readFileSync)(filePath, "utf-8");
+    const raw = (0, import_fs27.readFileSync)(filePath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3040,7 +3258,7 @@ function updateTask(teamName, taskId, updates, opts) {
     const readPath = resolveTaskPathForRead(teamName, taskId, opts?.cwd);
     let task;
     try {
-      const raw = (0, import_fs24.readFileSync)(readPath, "utf-8");
+      const raw = (0, import_fs27.readFileSync)(readPath, "utf-8");
       task = JSON.parse(raw);
     } catch {
       throw new Error(`Task file not found or malformed: ${taskId}`);
@@ -3069,7 +3287,7 @@ function updateTask(teamName, taskId, updates, opts) {
 }
 async function findNextTask(teamName, workerName, opts) {
   const dir = canonicalTasksDir(teamName, opts?.cwd);
-  if (!(0, import_fs24.existsSync)(dir)) return null;
+  if (!(0, import_fs27.existsSync)(dir)) return null;
   const taskIds = listTaskIds(teamName, opts);
   for (const id of taskIds) {
     const task = readTask(teamName, id, opts);
@@ -3088,7 +3306,7 @@ async function findNextTask(teamName, workerName, opts) {
       let taskData;
       try {
         const readPath = resolveTaskPathForRead(teamName, id, opts?.cwd);
-        const raw = (0, import_fs24.readFileSync)(readPath, "utf-8");
+        const raw = (0, import_fs27.readFileSync)(readPath, "utf-8");
         taskData = JSON.parse(raw);
       } catch {
         continue;
@@ -3127,9 +3345,9 @@ function writeTaskFailure(teamName, taskId, error, opts) {
 }
 function readTaskFailure(teamName, taskId, opts) {
   const filePath = failureSidecarPath(teamName, taskId, opts?.cwd);
-  if (!(0, import_fs24.existsSync)(filePath)) return null;
+  if (!(0, import_fs27.existsSync)(filePath)) return null;
   try {
-    const raw = (0, import_fs24.readFileSync)(filePath, "utf-8");
+    const raw = (0, import_fs27.readFileSync)(filePath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3137,9 +3355,9 @@ function readTaskFailure(teamName, taskId, opts) {
 }
 function listTaskIds(teamName, opts) {
   const scanDir = (dir) => {
-    if (!(0, import_fs24.existsSync)(dir)) return [];
+    if (!(0, import_fs27.existsSync)(dir)) return [];
     try {
-      return (0, import_fs24.readdirSync)(dir).filter((f) => f.endsWith(".json") && !f.includes(".tmp.") && !f.includes(".failure.") && !f.endsWith(".lock")).map((f) => f.replace(/^task-/, "").replace(".json", ""));
+      return (0, import_fs27.readdirSync)(dir).filter((f) => f.endsWith(".json") && !f.includes(".tmp.") && !f.includes(".failure.") && !f.endsWith(".lock")).map((f) => f.replace(/^task-/, "").replace(".json", ""));
     } catch {
       return [];
     }
@@ -3157,32 +3375,32 @@ function listTaskIds(teamName, opts) {
 }
 
 // src/team/inbox-outbox.ts
-var import_fs25 = require("fs");
-var import_path27 = require("path");
+var import_fs28 = require("fs");
+var import_path30 = require("path");
 init_config_dir();
 var MAX_INBOX_READ_SIZE = 10 * 1024 * 1024;
 function teamsDir(teamName) {
-  const result = (0, import_path27.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName));
-  validateResolvedPath(result, (0, import_path27.join)(getCopilotConfigDir(), "teams"));
+  const result = (0, import_path30.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName));
+  validateResolvedPath(result, (0, import_path30.join)(getCopilotConfigDir(), "teams"));
   return result;
 }
 function inboxPath(teamName, workerName) {
-  return (0, import_path27.join)(teamsDir(teamName), "inbox", `${sanitizeName(workerName)}.jsonl`);
+  return (0, import_path30.join)(teamsDir(teamName), "inbox", `${sanitizeName(workerName)}.jsonl`);
 }
 function inboxCursorPath(teamName, workerName) {
-  return (0, import_path27.join)(teamsDir(teamName), "inbox", `${sanitizeName(workerName)}.offset`);
+  return (0, import_path30.join)(teamsDir(teamName), "inbox", `${sanitizeName(workerName)}.offset`);
 }
 function outboxPath(teamName, workerName) {
-  return (0, import_path27.join)(teamsDir(teamName), "outbox", `${sanitizeName(workerName)}.jsonl`);
+  return (0, import_path30.join)(teamsDir(teamName), "outbox", `${sanitizeName(workerName)}.jsonl`);
 }
 function signalPath(teamName, workerName) {
-  return (0, import_path27.join)(teamsDir(teamName), "signals", `${sanitizeName(workerName)}.shutdown`);
+  return (0, import_path30.join)(teamsDir(teamName), "signals", `${sanitizeName(workerName)}.shutdown`);
 }
 function drainSignalPath(teamName, workerName) {
-  return (0, import_path27.join)(teamsDir(teamName), "signals", `${sanitizeName(workerName)}.drain`);
+  return (0, import_path30.join)(teamsDir(teamName), "signals", `${sanitizeName(workerName)}.drain`);
 }
 function ensureDir(filePath) {
-  const dir = (0, import_path27.dirname)(filePath);
+  const dir = (0, import_path30.dirname)(filePath);
   ensureDirWithMode(dir);
 }
 function appendOutbox(teamName, workerName, message) {
@@ -3192,32 +3410,32 @@ function appendOutbox(teamName, workerName, message) {
 }
 function rotateOutboxIfNeeded(teamName, workerName, maxLines) {
   const filePath = outboxPath(teamName, workerName);
-  if (!(0, import_fs25.existsSync)(filePath)) return;
+  if (!(0, import_fs28.existsSync)(filePath)) return;
   try {
-    const content = (0, import_fs25.readFileSync)(filePath, "utf-8");
+    const content = (0, import_fs28.readFileSync)(filePath, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     if (lines.length <= maxLines) return;
     const keepCount = Math.floor(maxLines / 2);
     const kept = keepCount === 0 ? [] : lines.slice(-keepCount);
     const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
     writeFileWithMode(tmpPath, kept.join("\n") + "\n");
-    (0, import_fs25.renameSync)(tmpPath, filePath);
+    (0, import_fs28.renameSync)(tmpPath, filePath);
   } catch {
   }
 }
 function rotateInboxIfNeeded(teamName, workerName, maxSizeBytes) {
   const filePath = inboxPath(teamName, workerName);
-  if (!(0, import_fs25.existsSync)(filePath)) return;
+  if (!(0, import_fs28.existsSync)(filePath)) return;
   try {
-    const stat = (0, import_fs25.statSync)(filePath);
+    const stat = (0, import_fs28.statSync)(filePath);
     if (stat.size <= maxSizeBytes) return;
-    const content = (0, import_fs25.readFileSync)(filePath, "utf-8");
+    const content = (0, import_fs28.readFileSync)(filePath, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     const keepCount = Math.max(1, Math.floor(lines.length / 2));
     const kept = lines.slice(-keepCount);
     const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
     writeFileWithMode(tmpPath, kept.join("\n") + "\n");
-    (0, import_fs25.renameSync)(tmpPath, filePath);
+    (0, import_fs28.renameSync)(tmpPath, filePath);
     const cursorFile = inboxCursorPath(teamName, workerName);
     atomicWriteJson(cursorFile, { bytesRead: 0 });
   } catch {
@@ -3226,16 +3444,16 @@ function rotateInboxIfNeeded(teamName, workerName, maxSizeBytes) {
 function readNewInboxMessages(teamName, workerName) {
   const inbox = inboxPath(teamName, workerName);
   const cursorFile = inboxCursorPath(teamName, workerName);
-  if (!(0, import_fs25.existsSync)(inbox)) return [];
+  if (!(0, import_fs28.existsSync)(inbox)) return [];
   let offset = 0;
-  if ((0, import_fs25.existsSync)(cursorFile)) {
+  if ((0, import_fs28.existsSync)(cursorFile)) {
     try {
-      const cursor = JSON.parse((0, import_fs25.readFileSync)(cursorFile, "utf-8"));
+      const cursor = JSON.parse((0, import_fs28.readFileSync)(cursorFile, "utf-8"));
       offset = cursor.bytesRead;
     } catch {
     }
   }
-  const stat = (0, import_fs25.statSync)(inbox);
+  const stat = (0, import_fs28.statSync)(inbox);
   if (stat.size < offset) {
     offset = 0;
   }
@@ -3245,12 +3463,12 @@ function readNewInboxMessages(teamName, workerName) {
   if (cappedSize < readSize) {
     console.warn(`[inbox-outbox] Inbox for ${workerName} exceeds ${MAX_INBOX_READ_SIZE} bytes, reading truncated`);
   }
-  const fd = (0, import_fs25.openSync)(inbox, "r");
+  const fd = (0, import_fs28.openSync)(inbox, "r");
   const buffer = Buffer.alloc(cappedSize);
   try {
-    (0, import_fs25.readSync)(fd, buffer, 0, buffer.length, offset);
+    (0, import_fs28.readSync)(fd, buffer, 0, buffer.length, offset);
   } finally {
-    (0, import_fs25.closeSync)(fd);
+    (0, import_fs28.closeSync)(fd);
   }
   const newData = buffer.toString("utf-8");
   const lastNewlineIdx = newData.lastIndexOf("\n");
@@ -3287,9 +3505,9 @@ function readNewInboxMessages(teamName, workerName) {
 }
 function checkShutdownSignal(teamName, workerName) {
   const filePath = signalPath(teamName, workerName);
-  if (!(0, import_fs25.existsSync)(filePath)) return null;
+  if (!(0, import_fs28.existsSync)(filePath)) return null;
   try {
-    const raw = (0, import_fs25.readFileSync)(filePath, "utf-8");
+    const raw = (0, import_fs28.readFileSync)(filePath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3297,18 +3515,18 @@ function checkShutdownSignal(teamName, workerName) {
 }
 function deleteShutdownSignal(teamName, workerName) {
   const filePath = signalPath(teamName, workerName);
-  if ((0, import_fs25.existsSync)(filePath)) {
+  if ((0, import_fs28.existsSync)(filePath)) {
     try {
-      (0, import_fs25.unlinkSync)(filePath);
+      (0, import_fs28.unlinkSync)(filePath);
     } catch {
     }
   }
 }
 function checkDrainSignal(teamName, workerName) {
   const filePath = drainSignalPath(teamName, workerName);
-  if (!(0, import_fs25.existsSync)(filePath)) return null;
+  if (!(0, import_fs28.existsSync)(filePath)) return null;
   try {
-    const raw = (0, import_fs25.readFileSync)(filePath, "utf-8");
+    const raw = (0, import_fs28.readFileSync)(filePath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3316,34 +3534,34 @@ function checkDrainSignal(teamName, workerName) {
 }
 function deleteDrainSignal(teamName, workerName) {
   const filePath = drainSignalPath(teamName, workerName);
-  if ((0, import_fs25.existsSync)(filePath)) {
+  if ((0, import_fs28.existsSync)(filePath)) {
     try {
-      (0, import_fs25.unlinkSync)(filePath);
+      (0, import_fs28.unlinkSync)(filePath);
     } catch {
     }
   }
 }
 
 // src/team/team-registration.ts
-var import_fs26 = require("fs");
-var import_path28 = require("path");
+var import_fs29 = require("fs");
+var import_path31 = require("path");
 init_config_dir();
 init_worktree_paths();
 function configPath(teamName) {
-  const result = (0, import_path28.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName), "config.json");
-  validateResolvedPath(result, (0, import_path28.join)(getCopilotConfigDir(), "teams"));
+  const result = (0, import_path31.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName), "config.json");
+  validateResolvedPath(result, (0, import_path31.join)(getCopilotConfigDir(), "teams"));
   return result;
 }
 function shadowRegistryPath(workingDirectory) {
-  const result = (0, import_path28.join)(getOmcRoot(workingDirectory), "state", "team-mcp-workers.json");
-  validateResolvedPath(result, (0, import_path28.join)(getOmcRoot(workingDirectory), "state"));
+  const result = (0, import_path31.join)(getOmcRoot(workingDirectory), "state", "team-mcp-workers.json");
+  validateResolvedPath(result, (0, import_path31.join)(getOmcRoot(workingDirectory), "state"));
   return result;
 }
 function unregisterMcpWorker(teamName, workerName, workingDirectory) {
   const configFile = configPath(teamName);
-  if ((0, import_fs26.existsSync)(configFile)) {
+  if ((0, import_fs29.existsSync)(configFile)) {
     try {
-      const raw = (0, import_fs26.readFileSync)(configFile, "utf-8");
+      const raw = (0, import_fs29.readFileSync)(configFile, "utf-8");
       const config = JSON.parse(raw);
       const members = Array.isArray(config.members) ? config.members : [];
       config.members = members.filter((m) => m.name !== workerName);
@@ -3354,9 +3572,9 @@ function unregisterMcpWorker(teamName, workerName, workingDirectory) {
   const shadowFile = shadowRegistryPath(workingDirectory);
   try {
     withFileLockSync(shadowFile + ".lock", () => {
-      if ((0, import_fs26.existsSync)(shadowFile)) {
+      if ((0, import_fs29.existsSync)(shadowFile)) {
         try {
-          const registry = JSON.parse((0, import_fs26.readFileSync)(shadowFile, "utf-8"));
+          const registry = JSON.parse((0, import_fs29.readFileSync)(shadowFile, "utf-8"));
           registry.workers = (registry.workers || []).filter((w) => w.name !== workerName);
           atomicWriteJson(shadowFile, registry);
         } catch {
@@ -3372,9 +3590,9 @@ function isMcpWorker(member) {
 function listMcpWorkers(teamName, workingDirectory) {
   const workers = /* @__PURE__ */ new Map();
   const configFile = configPath(teamName);
-  if ((0, import_fs26.existsSync)(configFile)) {
+  if ((0, import_fs29.existsSync)(configFile)) {
     try {
-      const raw = (0, import_fs26.readFileSync)(configFile, "utf-8");
+      const raw = (0, import_fs29.readFileSync)(configFile, "utf-8");
       const config = JSON.parse(raw);
       const members = Array.isArray(config.members) ? config.members : [];
       for (const m of members) {
@@ -3386,9 +3604,9 @@ function listMcpWorkers(teamName, workingDirectory) {
     }
   }
   const shadowFile = shadowRegistryPath(workingDirectory);
-  if ((0, import_fs26.existsSync)(shadowFile)) {
+  if ((0, import_fs29.existsSync)(shadowFile)) {
     try {
-      const registry = JSON.parse((0, import_fs26.readFileSync)(shadowFile, "utf-8"));
+      const registry = JSON.parse((0, import_fs29.readFileSync)(shadowFile, "utf-8"));
       for (const w of registry.workers || []) {
         workers.set(w.name, w);
       }
@@ -3399,11 +3617,11 @@ function listMcpWorkers(teamName, workingDirectory) {
 }
 
 // src/team/heartbeat.ts
-var import_fs27 = require("fs");
-var import_path29 = require("path");
+var import_fs30 = require("fs");
+var import_path32 = require("path");
 init_worktree_paths();
 function heartbeatPath(workingDirectory, teamName, workerName) {
-  return (0, import_path29.join)(getOmcRoot(workingDirectory), "state", "team-bridge", sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
+  return (0, import_path32.join)(getOmcRoot(workingDirectory), "state", "team-bridge", sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
 }
 function writeHeartbeat(workingDirectory, data) {
   const filePath = heartbeatPath(workingDirectory, data.teamName, data.workerName);
@@ -3411,9 +3629,9 @@ function writeHeartbeat(workingDirectory, data) {
 }
 function readHeartbeat(workingDirectory, teamName, workerName) {
   const filePath = heartbeatPath(workingDirectory, teamName, workerName);
-  if (!(0, import_fs27.existsSync)(filePath)) return null;
+  if (!(0, import_fs30.existsSync)(filePath)) return null;
   try {
-    const raw = (0, import_fs27.readFileSync)(filePath, "utf-8");
+    const raw = (0, import_fs30.readFileSync)(filePath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -3432,9 +3650,9 @@ function isWorkerAlive(workingDirectory, teamName, workerName, maxAgeMs) {
 }
 function deleteHeartbeat(workingDirectory, teamName, workerName) {
   const filePath = heartbeatPath(workingDirectory, teamName, workerName);
-  if ((0, import_fs27.existsSync)(filePath)) {
+  if ((0, import_fs30.existsSync)(filePath)) {
     try {
-      (0, import_fs27.unlinkSync)(filePath);
+      (0, import_fs30.unlinkSync)(filePath);
     } catch {
     }
   }
@@ -3590,28 +3808,28 @@ function findPermissionViolations(changedPaths, permissions, cwd) {
 }
 
 // src/agents/prompt-helpers.ts
-var import_fs28 = require("fs");
-var import_path30 = require("path");
-var import_url4 = require("url");
+var import_fs31 = require("fs");
+var import_path33 = require("path");
+var import_url5 = require("url");
 function getPackageDir3() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = (0, import_path30.basename)(__dirname);
-    const parentDirName = (0, import_path30.basename)((0, import_path30.dirname)(__dirname));
+    const currentDirName = (0, import_path33.basename)(__dirname);
+    const parentDirName = (0, import_path33.basename)((0, import_path33.dirname)(__dirname));
     if (currentDirName === "bridge") {
-      return (0, import_path30.join)(__dirname, "..");
+      return (0, import_path33.join)(__dirname, "..");
     }
     if (currentDirName === "agents" && (parentDirName === "src" || parentDirName === "dist")) {
-      return (0, import_path30.join)(__dirname, "..", "..");
+      return (0, import_path33.join)(__dirname, "..", "..");
     }
   }
   try {
-    const __filename = (0, import_url4.fileURLToPath)(importMetaUrl);
-    const __dirname2 = (0, import_path30.dirname)(__filename);
-    const currentDirName = (0, import_path30.basename)(__dirname2);
+    const __filename = (0, import_url5.fileURLToPath)(importMetaUrl);
+    const __dirname2 = (0, import_path33.dirname)(__filename);
+    const currentDirName = (0, import_path33.basename)(__dirname2);
     if (currentDirName === "bridge") {
-      return (0, import_path30.join)(__dirname2, "..");
+      return (0, import_path33.join)(__dirname2, "..");
     }
-    return (0, import_path30.join)(__dirname2, "..", "..");
+    return (0, import_path33.join)(__dirname2, "..", "..");
   } catch {
   }
   return process.cwd();
@@ -3627,9 +3845,9 @@ function getValidAgentRoles() {
   } catch {
   }
   try {
-    const agentsDir = (0, import_path30.join)(getPackageDir3(), "agents");
-    const files = (0, import_fs28.readdirSync)(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => (0, import_path30.basename)(f, ".md")).sort();
+    const agentsDir = (0, import_path33.join)(getPackageDir3(), "agents");
+    const files = (0, import_fs31.readdirSync)(agentsDir);
+    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => (0, import_path33.basename)(f, ".md")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -3651,8 +3869,8 @@ function sanitizePromptContent(content, maxLength = 4e3) {
 }
 
 // src/team/team-status.ts
-var import_fs29 = require("fs");
-var import_path31 = require("path");
+var import_fs32 = require("fs");
+var import_path34 = require("path");
 init_config_dir();
 
 // node_modules/zod/v3/external.js
@@ -7860,10 +8078,10 @@ function emptyUsageReport(teamName) {
 function peekRecentOutboxMessages(teamName, workerName, maxMessages = 10) {
   const safeName = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const outboxPath2 = (0, import_path31.join)(getCopilotConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
-  if (!(0, import_fs29.existsSync)(outboxPath2)) return [];
+  const outboxPath2 = (0, import_path34.join)(getCopilotConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
+  if (!(0, import_fs32.existsSync)(outboxPath2)) return [];
   try {
-    const content = (0, import_fs29.readFileSync)(outboxPath2, "utf-8");
+    const content = (0, import_fs32.readFileSync)(outboxPath2, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     const recentLines = lines.slice(-maxMessages);
     const messages = [];
@@ -7968,7 +8186,7 @@ function audit(config, eventType, taskId, details) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve9) => setTimeout(resolve9, ms));
+  return new Promise((resolve11) => setTimeout(resolve11, ms));
 }
 function captureFileSnapshot(cwd) {
   const files = /* @__PURE__ */ new Set();
@@ -8136,29 +8354,29 @@ function buildTaskPrompt(task, messages, config) {
   return result;
 }
 function writePromptFile(config, taskId, prompt) {
-  const dir = (0, import_path32.join)(getOmcRoot(config.workingDirectory), "prompts");
+  const dir = (0, import_path35.join)(getOmcRoot(config.workingDirectory), "prompts");
   ensureDirWithMode(dir);
   const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
-  const filePath = (0, import_path32.join)(dir, filename);
+  const filePath = (0, import_path35.join)(dir, filename);
   writeFileWithMode(filePath, prompt);
   return filePath;
 }
 function getOutputPath(config, taskId) {
-  const dir = (0, import_path32.join)(getOmcRoot(config.workingDirectory), "outputs");
+  const dir = (0, import_path35.join)(getOmcRoot(config.workingDirectory), "outputs");
   ensureDirWithMode(dir);
   const suffix = Math.random().toString(36).slice(2, 8);
-  return (0, import_path32.join)(
+  return (0, import_path35.join)(
     dir,
     `team-${config.teamName}-task-${taskId}-${Date.now()}-${suffix}.md`
   );
 }
 function readOutputSummary(outputFile) {
   try {
-    if (!(0, import_fs30.existsSync)(outputFile)) return "(no output file)";
+    if (!(0, import_fs33.existsSync)(outputFile)) return "(no output file)";
     const buf = Buffer.alloc(1024);
-    const fd = (0, import_fs30.openSync)(outputFile, "r");
+    const fd = (0, import_fs33.openSync)(outputFile, "r");
     try {
-      const bytesRead = (0, import_fs30.readSync)(fd, buf, 0, 1024, 0);
+      const bytesRead = (0, import_fs33.readSync)(fd, buf, 0, 1024, 0);
       if (bytesRead === 0) return "(empty output)";
       const content = buf.toString("utf-8", 0, bytesRead);
       if (content.length > 500) {
@@ -8166,7 +8384,7 @@ function readOutputSummary(outputFile) {
       }
       return content;
     } finally {
-      (0, import_fs30.closeSync)(fd);
+      (0, import_fs33.closeSync)(fd);
     }
   } catch {
     return "(error reading output)";
@@ -8253,7 +8471,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
     stdio: ["pipe", "pipe", "pipe"],
     cwd
   });
-  const result = new Promise((resolve9, reject) => {
+  const result = new Promise((resolve11, reject) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -8276,7 +8494,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
         clearTimeout(timeoutHandle);
         if (code === 0) {
           const response = provider === "codex" ? parseCodexOutput(stdout) : stdout.trim();
-          resolve9(response);
+          resolve11(response);
         } else {
           const detail = stderr || stdout.trim() || "No output";
           reject(new Error(`CLI exited with code ${code}: ${detail}`));
@@ -8313,7 +8531,7 @@ async function handleShutdown(config, signal, activeChild) {
     });
     activeChild.kill("SIGTERM");
     await Promise.race([
-      new Promise((resolve9) => activeChild.on("close", () => resolve9())),
+      new Promise((resolve11) => activeChild.on("close", () => resolve11())),
       sleep(5e3)
     ]);
     if (!closed) {
@@ -8722,16 +8940,16 @@ ${violationSummary}`
 init_worktree_paths();
 init_config_dir();
 function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
-  const resolved = (0, import_path33.resolve)(configPath2);
-  const normalizedHome = (0, import_path33.resolve)(homeDir);
+  const resolved = (0, import_path36.resolve)(configPath2);
+  const normalizedHome = (0, import_path36.resolve)(homeDir);
   const isUnderHome = isAtOrUnder(normalizedHome, resolved);
-  const normalizedConfigDir = (0, import_path33.resolve)(claudeConfigDir);
-  const normalizedOmcDir = (0, import_path33.resolve)(homeDir, ".omg");
+  const normalizedConfigDir = (0, import_path36.resolve)(claudeConfigDir);
+  const normalizedOmcDir = (0, import_path36.resolve)(homeDir, ".omg");
   const isTrustedSubpath = isAtOrUnder(normalizedConfigDir, resolved) || isAtOrUnder(normalizedOmcDir, resolved) || hasOmcPathSegment(resolved);
   if (!isUnderHome || !isTrustedSubpath) return false;
   try {
-    const parentDir = (0, import_path33.resolve)(resolved, "..");
-    const realParent = (0, import_fs31.realpathSync)(parentDir);
+    const parentDir = (0, import_path36.resolve)(resolved, "..");
+    const realParent = (0, import_fs34.realpathSync)(parentDir);
     if (!isAtOrUnder(normalizedHome, realParent)) {
       return false;
     }
@@ -8740,9 +8958,9 @@ function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
   return true;
 }
 function isAtOrUnder(parent, child) {
-  const rel = (0, import_path33.relative)(parent, child);
+  const rel = (0, import_path36.relative)(parent, child);
   if (rel === "") return true;
-  return !rel.startsWith("..") && !(0, import_path33.isAbsolute)(rel);
+  return !rel.startsWith("..") && !(0, import_path36.isAbsolute)(rel);
 }
 function hasOmcPathSegment(absolutePath) {
   return absolutePath.split(/[\\/]/).includes(".omg");
@@ -8750,15 +8968,15 @@ function hasOmcPathSegment(absolutePath) {
 function validateBridgeWorkingDirectory(workingDirectory) {
   let stat;
   try {
-    stat = (0, import_fs31.statSync)(workingDirectory);
+    stat = (0, import_fs34.statSync)(workingDirectory);
   } catch {
     throw new Error(`workingDirectory does not exist: ${workingDirectory}`);
   }
   if (!stat.isDirectory()) {
     throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
   }
-  const resolved = (0, import_fs31.realpathSync)(workingDirectory);
-  const home = (0, import_path33.resolve)((0, import_os8.homedir)());
+  const resolved = (0, import_fs34.realpathSync)(workingDirectory);
+  const home = (0, import_path36.resolve)((0, import_os8.homedir)());
   if (!isAtOrUnder(home, resolved)) {
     throw new Error(`workingDirectory is outside home directory: ${resolved}`);
   }
@@ -8773,7 +8991,7 @@ function main() {
     console.error("Usage: node bridge-entry.js --config <path-to-config.json>");
     process.exit(1);
   }
-  const configPath2 = (0, import_path33.resolve)(process.argv[configIdx + 1]);
+  const configPath2 = (0, import_path36.resolve)(process.argv[configIdx + 1]);
   const home = (0, import_os8.homedir)();
   const claudeConfigDir = getCopilotConfigDir();
   if (!validateConfigPath(configPath2, home, claudeConfigDir)) {
@@ -8782,7 +9000,7 @@ function main() {
   }
   let config;
   try {
-    const raw = (0, import_fs31.readFileSync)(configPath2, "utf-8");
+    const raw = (0, import_fs34.readFileSync)(configPath2, "utf-8");
     config = JSON.parse(raw);
   } catch (err) {
     console.error(`Failed to read config from ${configPath2}: ${err.message}`);

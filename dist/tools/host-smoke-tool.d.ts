@@ -11,7 +11,9 @@
  * - `pluginRoot` must be the package root this server runs from (compared by
  *   realpath) unless OMC_SMOKE_ALLOW_ANY_ROOT=1;
  * - tier 1 (a live, billed session) and tier 2 with any scenario need
- *   OMC_SMOKE_ALLOW_LIVE=1; tier 2 with `scenarios: []` is free and ungated.
+ *   OMC_SMOKE_ALLOW_LIVE=1; tier 2 with `scenarios: []` is free and ungated, and so is
+ *   tier 2 with `replay` (every model request answered from recorded cassettes, no
+ *   credentials). Recording is CLI-only (`omg smoke copilot --record`).
  *
  * The smoke library is loaded lazily so listing tools never pays its import cost.
  */
@@ -28,6 +30,8 @@ declare const hostSmokeSchema: {
     timeoutMs: z.ZodOptional<z.ZodNumber>;
     keepHome: z.ZodOptional<z.ZodBoolean>;
     delegate: z.ZodOptional<z.ZodBoolean>;
+    replay: z.ZodOptional<z.ZodString>;
+    replayStrict: z.ZodOptional<z.ZodBoolean>;
 };
 export declare const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema>;
 export {};

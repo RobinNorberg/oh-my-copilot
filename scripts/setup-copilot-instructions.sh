@@ -4,7 +4,7 @@
 #
 # Handles: version extraction, backup, download, marker stripping, merge, version reporting.
 # For global mode, defaults to overwrite; preserve mode keeps the user's base
-# copilot-instructions.md and writes OMC content to a companion file for `omc` launch.
+# copilot-instructions.md and writes OMC content to a companion file for `omg` launch.
 
 set -euo pipefail
 

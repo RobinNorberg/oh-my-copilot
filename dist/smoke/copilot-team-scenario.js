@@ -43,8 +43,8 @@ function pidAlive(pid) {
 function pathKey(env) {
     return Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
 }
-/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap. */
-export function teamLeaderEnv(base, bin, budget) {
+/** The leader env: the Copilot host signal, copilot on PATH, detached worktrees, the per-host credit cap, the worker model when pinned. */
+export function teamLeaderEnv(base, bin, budget, model) {
     const key = pathKey(base);
     const env = {
         ...base,
@@ -53,6 +53,7 @@ export function teamLeaderEnv(base, bin, budget) {
         OMC_RUNTIME_V2: '1',
         OMC_TEAM_WORKTREE_MODE: 'detached',
         OMC_TEAM_SDK_MAX_CREDITS: String(Math.max(1, Math.floor(budget / 2))),
+        ...(model ? { OMC_TEAM_SDK_MODEL: model } : {}),
     };
     // A measurement knob for the launch path (1 = serial), passed through when set.
     if (process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY)
@@ -178,14 +179,14 @@ export async function runTeamScenario(input) {
     const budgetMs = Math.max(input.timeoutMs, TEAM_BUDGET_MS);
     const started = now();
     const deadline = started + budgetMs;
-    const env = teamLeaderEnv(input.env, input.bin, input.budget);
+    const env = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
     const cli = join(input.root, 'bridge', 'cli.cjs');
     const spawnFn = input.spawn ?? nodeSpawn;
     const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env, timeoutMs });
     const base = {
         name: 'team',
         timeoutMs: budgetMs,
-        model: 'sdk workers (team.sdk.model, else runtime auto)',
+        model: input.model ? `sdk workers on ${input.model}` : 'sdk workers (team.sdk.model, else runtime auto)',
         maxCredits: input.maxCredits,
         budget: input.budget,
         capped: false,

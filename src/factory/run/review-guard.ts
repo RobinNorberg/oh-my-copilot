@@ -191,7 +191,7 @@ function worktreeEntries(commonDir: string, ids: readonly string[]): Record<stri
 }
 
 /** Every submodule git dir under `modules/` (module names may hold slashes; submodules nest); a non-directory entry is kept as such. */
-function moduleEntries(commonDir: string): Record<string, string> {
+export function moduleEntries(commonDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (dir: string, rel: string) => {
     const oddDir = notADirectory(dir);

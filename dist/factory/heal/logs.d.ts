@@ -13,7 +13,7 @@ export declare const MAX_LOG_CHARS: number;
 export declare const MAX_LINE_CHARS = 4000;
 /** Cap the log's size and its line lengths; the result is what every parser sees. */
 export declare function capLog(log: string): string;
-/** One log line without ANSI codes, the `job<TAB>step<TAB>` prefix and the timestamp. */
+/** One log line without ANSI codes, the GitHub `job<TAB>step<TAB>` prefix or else the Azure Pipelines one, and the timestamp. */
 export declare function cleanLine(rawLine: string): string;
 export interface JobEnv {
     image?: string;

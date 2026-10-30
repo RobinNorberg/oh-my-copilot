@@ -35,9 +35,18 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
     email: "omg-factory@oh-my-copilot.invalid";
 }>;
 /**
+ * Where Azure Pipelines definitions conventionally live: the CI that gates an
+ * ADO PR. A lane may not change them (a red build could turn green), and on
+ * Azure DevOps a PR touching them needs the owner (merge-policy.ts).
+ */
+export declare const ADO_PIPELINE_PATHS: readonly string[];
+/**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
- * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows;
+ * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
+ * tasks other agents and editors run from a checkout, `.husky/` the git hooks
+ * husky installs.
  */
 export declare const LANE_PROTECTED_PATHS: readonly string[];
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';

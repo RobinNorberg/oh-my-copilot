@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "df6b975f44d44432a068291d1a583c5d51602b01",
-    "sourceSha256": "7fb5a950e550d50db97700aaff5c42534396c0ee529e5acd6cee5d50ebe654c8",
+    "head": "508478661a9e7021740df28baa0e5c4aa9be6609",
+    "sourceSha256": "fe8c388c97acc2e1f9841e7d2a3ee2a191d825bd15ed22472fe31a64a8d18a85",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "df6b975f44d44432a068291d1a583c5d51602b01",
-  "sourceSha256": "7fb5a950e550d50db97700aaff5c42534396c0ee529e5acd6cee5d50ebe654c8",
+  "head": "508478661a9e7021740df28baa0e5c4aa9be6609",
+  "sourceSha256": "fe8c388c97acc2e1f9841e7d2a3ee2a191d825bd15ed22472fe31a64a8d18a85",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1880,
-      "total": 1904
+      "srcFiles": 1902,
+      "total": 1926
     },
     "generated": {
-      "distFiles": 6980,
+      "distFiles": 7064,
       "bridgeFiles": 9,
-      "total": 6989
+      "total": 7073
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -829,7 +829,10 @@
       "tests/fixtures/prompt-projection/transaction-backup-rollback.json"
     ],
     "scriptFiles": [
+      "scripts/ado-acceptance.mjs",
+      "scripts/ado-capture.mjs",
       "scripts/ado-fixture-diff.mjs",
+      "scripts/ado-fixture-import.mjs",
       "scripts/audit-multirepo-e2e.mjs",
       "scripts/budget-guard.mjs",
       "scripts/build-bridge-entry.mjs",
@@ -874,6 +877,7 @@
       "scripts/keyword-detector.mjs",
       "scripts/lib/agent-model-config.mjs",
       "scripts/lib/atomic-write.mjs",
+      "scripts/lib/backlog-to-workitems.mjs",
       "scripts/lib/bounded-git-timeout.mjs",
       "scripts/lib/cache-occupancy.mjs",
       "scripts/lib/child-session.cjs",
@@ -952,6 +956,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/spikes/request-handler-probe.mjs",
       "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
@@ -2708,6 +2713,10 @@
       "dist/cli/commands/__tests__/ship-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/ship-cli.test.js",
       "dist/cli/commands/__tests__/ship-cli.test.js.map",
+      "dist/cli/commands/__tests__/smoke-cassette.test.d.ts",
+      "dist/cli/commands/__tests__/smoke-cassette.test.d.ts.map",
+      "dist/cli/commands/__tests__/smoke-cassette.test.js",
+      "dist/cli/commands/__tests__/smoke-cassette.test.js.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.js",
@@ -2954,6 +2963,10 @@
       "dist/copilot-run/__tests__/job.test.d.ts.map",
       "dist/copilot-run/__tests__/job.test.js",
       "dist/copilot-run/__tests__/job.test.js.map",
+      "dist/copilot-run/__tests__/sandbox-session.test.d.ts",
+      "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map",
+      "dist/copilot-run/__tests__/sandbox-session.test.js",
+      "dist/copilot-run/__tests__/sandbox-session.test.js.map",
       "dist/copilot-run/__tests__/sandbox.test.d.ts",
       "dist/copilot-run/__tests__/sandbox.test.d.ts.map",
       "dist/copilot-run/__tests__/sandbox.test.js",
@@ -2966,10 +2979,18 @@
       "dist/copilot-run/names.d.ts.map",
       "dist/copilot-run/names.js",
       "dist/copilot-run/names.js.map",
+      "dist/copilot-run/sandbox-session.d.ts",
+      "dist/copilot-run/sandbox-session.d.ts.map",
+      "dist/copilot-run/sandbox-session.js",
+      "dist/copilot-run/sandbox-session.js.map",
       "dist/copilot-run/sandbox.d.ts",
       "dist/copilot-run/sandbox.d.ts.map",
       "dist/copilot-run/sandbox.js",
       "dist/copilot-run/sandbox.js.map",
+      "dist/copilot-run/timeout.d.ts",
+      "dist/copilot-run/timeout.d.ts.map",
+      "dist/copilot-run/timeout.js",
+      "dist/copilot-run/timeout.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -3002,6 +3023,10 @@
       "dist/factory/check/__tests__/ado.test.d.ts.map",
       "dist/factory/check/__tests__/ado.test.js",
       "dist/factory/check/__tests__/ado.test.js.map",
+      "dist/factory/check/__tests__/cli-ado.test.d.ts",
+      "dist/factory/check/__tests__/cli-ado.test.d.ts.map",
+      "dist/factory/check/__tests__/cli-ado.test.js",
+      "dist/factory/check/__tests__/cli-ado.test.js.map",
       "dist/factory/check/__tests__/cli.test.d.ts",
       "dist/factory/check/__tests__/cli.test.d.ts.map",
       "dist/factory/check/__tests__/cli.test.js",
@@ -3034,6 +3059,10 @@
       "dist/factory/heal/__tests__/debug.test.d.ts.map",
       "dist/factory/heal/__tests__/debug.test.js",
       "dist/factory/heal/__tests__/debug.test.js.map",
+      "dist/factory/heal/__tests__/logs-ado.test.d.ts",
+      "dist/factory/heal/__tests__/logs-ado.test.d.ts.map",
+      "dist/factory/heal/__tests__/logs-ado.test.js",
+      "dist/factory/heal/__tests__/logs-ado.test.js.map",
       "dist/factory/heal/__tests__/run.test.d.ts",
       "dist/factory/heal/__tests__/run.test.d.ts.map",
       "dist/factory/heal/__tests__/run.test.js",
@@ -3142,6 +3171,10 @@
       "dist/factory/run/__tests__/lane.test.d.ts.map",
       "dist/factory/run/__tests__/lane.test.js",
       "dist/factory/run/__tests__/lane.test.js.map",
+      "dist/factory/run/__tests__/merge-policy.test.d.ts",
+      "dist/factory/run/__tests__/merge-policy.test.d.ts.map",
+      "dist/factory/run/__tests__/merge-policy.test.js",
+      "dist/factory/run/__tests__/merge-policy.test.js.map",
       "dist/factory/run/__tests__/plan-rules.test.d.ts",
       "dist/factory/run/__tests__/plan-rules.test.d.ts.map",
       "dist/factory/run/__tests__/plan-rules.test.js",
@@ -3654,6 +3687,10 @@
       "dist/forge/__tests__/recording-exec.d.ts.map",
       "dist/forge/__tests__/recording-exec.js",
       "dist/forge/__tests__/recording-exec.js.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
       "dist/forge/ado/__tests__/adapter.test.d.ts",
       "dist/forge/ado/__tests__/adapter.test.d.ts.map",
       "dist/forge/ado/__tests__/adapter.test.js",
@@ -3666,6 +3703,10 @@
       "dist/forge/ado/__tests__/exact-head.test.d.ts.map",
       "dist/forge/ado/__tests__/exact-head.test.js",
       "dist/forge/ado/__tests__/exact-head.test.js.map",
+      "dist/forge/ado/__tests__/failed-jobs.test.d.ts",
+      "dist/forge/ado/__tests__/failed-jobs.test.d.ts.map",
+      "dist/forge/ado/__tests__/failed-jobs.test.js",
+      "dist/forge/ado/__tests__/failed-jobs.test.js.map",
       "dist/forge/ado/__tests__/fixtures.d.ts",
       "dist/forge/ado/__tests__/fixtures.d.ts.map",
       "dist/forge/ado/__tests__/fixtures.js",
@@ -6584,6 +6625,54 @@
       "dist/smoke/process-utils.d.ts.map",
       "dist/smoke/process-utils.js",
       "dist/smoke/process-utils.js.map",
+      "dist/smoke/replay/__tests__/cassette.test.d.ts",
+      "dist/smoke/replay/__tests__/cassette.test.d.ts.map",
+      "dist/smoke/replay/__tests__/cassette.test.js",
+      "dist/smoke/replay/__tests__/cassette.test.js.map",
+      "dist/smoke/replay/__tests__/handler.test.d.ts",
+      "dist/smoke/replay/__tests__/handler.test.d.ts.map",
+      "dist/smoke/replay/__tests__/handler.test.js",
+      "dist/smoke/replay/__tests__/handler.test.js.map",
+      "dist/smoke/replay/__tests__/matcher.test.d.ts",
+      "dist/smoke/replay/__tests__/matcher.test.d.ts.map",
+      "dist/smoke/replay/__tests__/matcher.test.js",
+      "dist/smoke/replay/__tests__/matcher.test.js.map",
+      "dist/smoke/replay/__tests__/normalize.test.d.ts",
+      "dist/smoke/replay/__tests__/normalize.test.d.ts.map",
+      "dist/smoke/replay/__tests__/normalize.test.js",
+      "dist/smoke/replay/__tests__/normalize.test.js.map",
+      "dist/smoke/replay/__tests__/redact.test.d.ts",
+      "dist/smoke/replay/__tests__/redact.test.d.ts.map",
+      "dist/smoke/replay/__tests__/redact.test.js",
+      "dist/smoke/replay/__tests__/redact.test.js.map",
+      "dist/smoke/replay/__tests__/run.test.d.ts",
+      "dist/smoke/replay/__tests__/run.test.d.ts.map",
+      "dist/smoke/replay/__tests__/run.test.js",
+      "dist/smoke/replay/__tests__/run.test.js.map",
+      "dist/smoke/replay/cassette.d.ts",
+      "dist/smoke/replay/cassette.d.ts.map",
+      "dist/smoke/replay/cassette.js",
+      "dist/smoke/replay/cassette.js.map",
+      "dist/smoke/replay/handler.d.ts",
+      "dist/smoke/replay/handler.d.ts.map",
+      "dist/smoke/replay/handler.js",
+      "dist/smoke/replay/handler.js.map",
+      "dist/smoke/replay/matcher.d.ts",
+      "dist/smoke/replay/matcher.d.ts.map",
+      "dist/smoke/replay/matcher.js",
+      "dist/smoke/replay/matcher.js.map",
+      "dist/smoke/replay/normalize.d.ts",
+      "dist/smoke/replay/normalize.d.ts.map",
+      "dist/smoke/replay/normalize.js",
+      "dist/smoke/replay/normalize.js.map",
+      "dist/smoke/replay/redact.d.ts",
+      "dist/smoke/replay/redact.d.ts.map",
+      "dist/smoke/replay/redact.js",
+      "dist/smoke/replay/redact.js.map",
+      "dist/smoke/replay/run.d.ts",
+      "dist/smoke/replay/run.d.ts.map",
+      "dist/smoke/replay/run.js",
+      "dist/smoke/replay/run.js.map",
       "dist/team/__tests__/ack-timeout-env.test.d.ts",
       "dist/team/__tests__/ack-timeout-env.test.d.ts.map",
       "dist/team/__tests__/ack-timeout-env.test.js",
@@ -18291,6 +18380,26 @@
         "path": "dist/cli/commands/__tests__/ship-cli.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/smoke-cassette.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-cassette.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-cassette.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-cassette.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-cassette.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-cassette.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-cassette.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-cassette.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts"
@@ -19521,6 +19630,26 @@
         "path": "dist/copilot-run/__tests__/job.test.js.map"
       },
       {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/sandbox-session.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/sandbox-session.test.js.map"
+      },
+      {
         "id": "dist/copilot-run/__tests__/sandbox.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/sandbox.test.d.ts"
@@ -19581,6 +19710,26 @@
         "path": "dist/copilot-run/names.js.map"
       },
       {
+        "id": "dist/copilot-run/sandbox-session.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.js"
+      },
+      {
+        "id": "dist/copilot-run/sandbox-session.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/sandbox-session.js.map"
+      },
+      {
         "id": "dist/copilot-run/sandbox.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/sandbox.d.ts"
@@ -19599,6 +19748,26 @@
         "id": "dist/copilot-run/sandbox.js.map",
         "kind": "generated-dist",
         "path": "dist/copilot-run/sandbox.js.map"
+      },
+      {
+        "id": "dist/copilot-run/timeout.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/timeout.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/timeout.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.js"
+      },
+      {
+        "id": "dist/copilot-run/timeout.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/timeout.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -19761,6 +19930,26 @@
         "path": "dist/factory/check/__tests__/ado.test.js.map"
       },
       {
+        "id": "dist/factory/check/__tests__/cli-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli-ado.test.js"
+      },
+      {
+        "id": "dist/factory/check/__tests__/cli-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/check/__tests__/cli-ado.test.js.map"
+      },
+      {
         "id": "dist/factory/check/__tests__/cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/check/__tests__/cli.test.d.ts"
@@ -19919,6 +20108,26 @@
         "id": "dist/factory/heal/__tests__/debug.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/heal/__tests__/debug.test.js.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/logs-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/logs-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/logs-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/logs-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/logs-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/logs-ado.test.js"
+      },
+      {
+        "id": "dist/factory/heal/__tests__/logs-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/heal/__tests__/logs-ado.test.js.map"
       },
       {
         "id": "dist/factory/heal/__tests__/run.test.d.ts",
@@ -20459,6 +20668,26 @@
         "id": "dist/factory/run/__tests__/lane.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/lane.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/merge-policy.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/merge-policy.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/merge-policy.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/merge-policy.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/merge-policy.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/merge-policy.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/merge-policy.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/merge-policy.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/plan-rules.test.d.ts",
@@ -23021,6 +23250,26 @@
         "path": "dist/forge/__tests__/recording-exec.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/adapter.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/adapter.test.d.ts"
@@ -23079,6 +23328,26 @@
         "id": "dist/forge/ado/__tests__/exact-head.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/exact-head.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/failed-jobs.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/failed-jobs.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/failed-jobs.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/failed-jobs.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/failed-jobs.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/failed-jobs.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/failed-jobs.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/failed-jobs.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/fixtures.d.ts",
@@ -37671,6 +37940,246 @@
         "path": "dist/smoke/process-utils.js.map"
       },
       {
+        "id": "dist/smoke/replay/__tests__/cassette.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/cassette.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/cassette.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/cassette.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/cassette.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/cassette.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/cassette.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/cassette.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/handler.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/handler.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/matcher.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/matcher.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/normalize.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/normalize.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/normalize.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/normalize.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/normalize.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/normalize.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/normalize.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/normalize.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/redact.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/redact.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/redact.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/redact.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/redact.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/redact.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/redact.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/redact.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/run.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/run.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/run.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/run.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/run.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/run.test.js"
+      },
+      {
+        "id": "dist/smoke/replay/__tests__/run.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/__tests__/run.test.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/cassette.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/cassette.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/cassette.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/cassette.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/cassette.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/cassette.js"
+      },
+      {
+        "id": "dist/smoke/replay/cassette.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/cassette.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/handler.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/handler.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/handler.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.js"
+      },
+      {
+        "id": "dist/smoke/replay/handler.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/handler.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.js"
+      },
+      {
+        "id": "dist/smoke/replay/matcher.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/matcher.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/normalize.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/normalize.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/normalize.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/normalize.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/normalize.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/normalize.js"
+      },
+      {
+        "id": "dist/smoke/replay/normalize.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/normalize.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/redact.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/redact.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/redact.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/redact.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/redact.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/redact.js"
+      },
+      {
+        "id": "dist/smoke/replay/redact.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/redact.js.map"
+      },
+      {
+        "id": "dist/smoke/replay/run.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/run.d.ts"
+      },
+      {
+        "id": "dist/smoke/replay/run.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/run.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/replay/run.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/run.js"
+      },
+      {
+        "id": "dist/smoke/replay/run.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/replay/run.js.map"
+      },
+      {
         "id": "dist/team/__tests__/ack-timeout-env.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/ack-timeout-env.test.d.ts"
@@ -45381,9 +45890,24 @@
         "path": "research/hephaestus-vs-deep-executor-comparison.md"
       },
       {
+        "id": "scripts/ado-acceptance.mjs",
+        "kind": "script",
+        "path": "scripts/ado-acceptance.mjs"
+      },
+      {
+        "id": "scripts/ado-capture.mjs",
+        "kind": "script",
+        "path": "scripts/ado-capture.mjs"
+      },
+      {
         "id": "scripts/ado-fixture-diff.mjs",
         "kind": "script",
         "path": "scripts/ado-fixture-diff.mjs"
+      },
+      {
+        "id": "scripts/ado-fixture-import.mjs",
+        "kind": "script",
+        "path": "scripts/ado-fixture-import.mjs"
       },
       {
         "id": "scripts/audit-multirepo-e2e.mjs",
@@ -45604,6 +46128,11 @@
         "id": "scripts/lib/atomic-write.mjs",
         "kind": "script",
         "path": "scripts/lib/atomic-write.mjs"
+      },
+      {
+        "id": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "script",
+        "path": "scripts/lib/backlog-to-workitems.mjs"
       },
       {
         "id": "scripts/lib/bounded-git-timeout.mjs",
@@ -45994,6 +46523,11 @@
         "id": "scripts/smoke-multirepo.mjs",
         "kind": "script",
         "path": "scripts/smoke-multirepo.mjs"
+      },
+      {
+        "id": "scripts/spikes/request-handler-probe.mjs",
+        "kind": "script",
+        "path": "scripts/spikes/request-handler-probe.mjs"
       },
       {
         "id": "scripts/stale-run-reporter.mjs",
@@ -49031,6 +49565,11 @@
         "path": "src/cli/commands/__tests__/ship-cli.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/smoke-cassette.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
@@ -49346,6 +49885,11 @@
         "path": "src/copilot-run/__tests__/job.test.ts"
       },
       {
+        "id": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "kind": "src",
+        "path": "src/copilot-run/__tests__/sandbox-session.test.ts"
+      },
+      {
         "id": "src/copilot-run/__tests__/sandbox.test.ts",
         "kind": "src",
         "path": "src/copilot-run/__tests__/sandbox.test.ts"
@@ -49361,9 +49905,19 @@
         "path": "src/copilot-run/names.ts"
       },
       {
+        "id": "src/copilot-run/sandbox-session.ts",
+        "kind": "src",
+        "path": "src/copilot-run/sandbox-session.ts"
+      },
+      {
         "id": "src/copilot-run/sandbox.ts",
         "kind": "src",
         "path": "src/copilot-run/sandbox.ts"
+      },
+      {
+        "id": "src/copilot-run/timeout.ts",
+        "kind": "src",
+        "path": "src/copilot-run/timeout.ts"
       },
       {
         "id": "src/factory/__tests__/check-run.test.ts",
@@ -49404,6 +49958,11 @@
         "id": "src/factory/check/__tests__/ado.test.ts",
         "kind": "src",
         "path": "src/factory/check/__tests__/ado.test.ts"
+      },
+      {
+        "id": "src/factory/check/__tests__/cli-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/cli-ado.test.ts"
       },
       {
         "id": "src/factory/check/__tests__/cli.test.ts",
@@ -49529,6 +50088,11 @@
         "id": "src/factory/heal/__tests__/fixtures/runs.json",
         "kind": "src",
         "path": "src/factory/heal/__tests__/fixtures/runs.json"
+      },
+      {
+        "id": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/heal/__tests__/logs-ado.test.ts"
       },
       {
         "id": "src/factory/heal/__tests__/run.test.ts",
@@ -49664,6 +50228,11 @@
         "id": "src/factory/run/__tests__/lane.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/lane.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/merge-policy.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/merge-policy.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/plan-rules.test.ts",
@@ -50376,6 +50945,11 @@
         "path": "src/forge/__tests__/recording-exec.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/acceptance-scripts.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/adapter.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/adapter.test.ts"
@@ -50389,6 +50963,11 @@
         "id": "src/forge/ado/__tests__/exact-head.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/exact-head.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/failed-jobs.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures.test.ts",
@@ -50459,6 +51038,11 @@
         "id": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/policy.evaluations.PATCH.requeue.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/variants/build.timeline.GET.101-attempts.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/variants/build.timeline.GET.101-attempts.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/wit.comments.GET.42.json",
@@ -54346,6 +54930,66 @@
         "path": "src/smoke/process-utils.ts"
       },
       {
+        "id": "src/smoke/replay/__tests__/cassette.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/cassette.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/handler.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/handler.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/matcher.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/matcher.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/normalize.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/normalize.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/redact.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/redact.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/__tests__/run.test.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/__tests__/run.test.ts"
+      },
+      {
+        "id": "src/smoke/replay/cassette.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/cassette.ts"
+      },
+      {
+        "id": "src/smoke/replay/handler.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/handler.ts"
+      },
+      {
+        "id": "src/smoke/replay/matcher.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/matcher.ts"
+      },
+      {
+        "id": "src/smoke/replay/normalize.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/normalize.ts"
+      },
+      {
+        "id": "src/smoke/replay/redact.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/redact.ts"
+      },
+      {
+        "id": "src/smoke/replay/run.ts",
+        "kind": "src",
+        "path": "src/smoke/replay/run.ts"
+      },
+      {
         "id": "src/team/__tests__/ack-timeout-env.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/ack-timeout-env.test.ts"
@@ -57018,6 +57662,61 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-capture.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/ado-fixture-diff.mjs",
         "to": "dist/forge/ado/record.js",
         "kind": "imports"
@@ -57034,6 +57733,31 @@
       },
       {
         "from": "scripts/ado-fixture-diff.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "dist/forge/ado/redact.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "dist/forge/ado/routes.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-fixture-import.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -59389,6 +60113,31 @@
       },
       {
         "from": "scripts/smoke-multirepo.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/spikes/request-handler-probe.mjs",
         "to": "external:node:url",
         "kind": "imports"
       },
@@ -71298,6 +72047,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/cli/commands/smoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/copilot-smoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/copilot-smoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/replay/normalize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-cassette.test.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -72604,6 +73408,11 @@
       },
       {
         "from": "src/cli/commands/smoke.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/smoke.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -72626,6 +73435,11 @@
         "from": "src/cli/commands/smoke.ts",
         "to": "src/smoke/copilot-smoke.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/smoke.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/team.ts",
@@ -73853,6 +74667,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/sandbox-session.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/copilot-run/__tests__/sandbox.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -73939,6 +74803,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/copilot-run/sandbox-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
@@ -73946,6 +74815,21 @@
         "from": "src/copilot-run/job.ts",
         "to": "src/copilot-run/sandbox.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/factory/run/review-guard.ts",
+        "kind": "imports"
       },
       {
         "from": "src/copilot-run/job.ts",
@@ -74036,6 +74920,36 @@
         "from": "src/copilot-run/job.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/sandbox-session.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/copilot-run/sandbox.ts",
@@ -74423,6 +75337,56 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/cli-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/check/__tests__/cli.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -74544,12 +75508,32 @@
       },
       {
         "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
         "to": "src/forge/ado/guard.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/check/cli.ts",
         "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/forge/ado/index.ts",
         "kind": "type-imports"
       },
       {
@@ -74838,6 +75822,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/factory/heal/signature.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/__tests__/logs-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/heal/__tests__/run.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -75044,6 +76058,16 @@
       },
       {
         "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/classify.ts",
         "to": "src/ship/gates.ts",
         "kind": "type-imports"
       },
@@ -75160,6 +76184,11 @@
       {
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -75290,11 +76319,6 @@
       {
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/history.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/heal/heal-evidence.ts",
-        "to": "src/factory/heal/history.ts",
         "kind": "type-imports"
       },
       {
@@ -75316,6 +76340,16 @@
         "from": "src/factory/heal/heal-evidence.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/github/ci.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/heal-evidence.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/heal-evidence.ts",
@@ -75556,6 +76590,11 @@
         "from": "src/factory/heal/run.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/run.ts",
@@ -76129,6 +77168,11 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.sandbox.test.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
@@ -76380,6 +77424,51 @@
       {
         "from": "src/factory/run/__tests__/lane.test.ts",
         "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/merge-policy.test.ts",
+        "to": "src/ship/state.ts",
         "kind": "type-imports"
       },
       {
@@ -76700,6 +77789,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/copilot-run/job.ts",
         "kind": "imports"
       },
       {
@@ -77054,6 +78148,11 @@
       },
       {
         "from": "src/factory/run/lane-commit.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/lane-commit.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -77115,6 +78214,11 @@
       {
         "from": "src/factory/run/ledger.ts",
         "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/factory/run/lane-commit.ts",
         "kind": "imports"
       },
       {
@@ -79624,12 +80728,22 @@
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/factory/heal/state.ts",
         "kind": "imports"
       },
       {
         "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
         "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.heal.test.ts",
+        "to": "src/forge/github/ci.ts",
         "kind": "imports"
       },
       {
@@ -79738,6 +80852,61 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-acceptance.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-capture.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/ado-fixture-import.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/adapter.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -79815,6 +80984,51 @@
       {
         "from": "src/forge/ado/__tests__/exact-head.test.ts",
         "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/factory/run/gates-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/failed-jobs.test.ts",
+        "to": "src/ship/gates.ts",
         "kind": "imports"
       },
       {
@@ -98863,6 +100077,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -99513,6 +100747,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-sdk-scenarios.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -99724,6 +100983,21 @@
       },
       {
         "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
       },
@@ -99781,6 +101055,401 @@
         "from": "src/smoke/process-utils.ts",
         "to": "external:child_process",
         "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/cassette.test.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/handler.test.ts",
+        "to": "src/team/sdk-host.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/matcher.test.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/normalize.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/normalize.test.ts",
+        "to": "src/smoke/replay/normalize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/normalize.test.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/redact.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/redact.test.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/__tests__/run.test.ts",
+        "to": "src/smoke/replay/run.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/cassette.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/cassette.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/cassette.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/cassette.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/cassette.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/lib/version.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/normalize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/handler.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/matcher.ts",
+        "to": "src/lib/append-no-follow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/normalize.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/normalize.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/normalize.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/redact.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/redact.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/cassette.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/matcher.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/replay/run.ts",
+        "to": "src/smoke/replay/redact.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/ack-timeout-env.test.ts",
@@ -104564,6 +106233,11 @@
       },
       {
         "from": "src/team/__tests__/worker-launch-ack.test.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-ack.test.ts",
         "to": "src/team/worker-launch-ack.ts",
         "kind": "imports"
       },
@@ -107174,6 +108848,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/smoke/replay/handler.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
@@ -108240,6 +109919,11 @@
       {
         "from": "src/team/worker-launch-ack.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/worker-launch-ack.ts",
+        "to": "src/smoke/copilot-session-env.ts",
         "kind": "imports"
       },
       {
@@ -112779,12 +114463,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9603,
-      "edgeCount": 11240,
-      "importEdgeCount": 9258,
+      "nodeCount": 9714,
+      "edgeCount": 11448,
+      "importEdgeCount": 9420,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "34e394b574adf9c13be39c1a1dc069a428d2559cf0cedda90eb43484048d67ab",
-  "manifestSha256": "936ea921070284102fb50a0bee81ca7962fb31b38b177896f471d1ece2d5f379"
+  "inventorySha256": "7d51b686bf3ef52a3146f666685664e4fee393808edae598819e5f50848b3d0c",
+  "manifestSha256": "243c15221382a6638dc93790788c889944f31fe3fa2e0683e6c40732752d60bf"
 }

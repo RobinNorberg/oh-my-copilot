@@ -28,6 +28,7 @@ import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
+import type { ForgeCi } from '../../forge/types.js';
 import type { Exec } from '../../ship/exec.js';
 import { RUNTIME_MIN_MAX_CREDITS } from '../run/budget.js';
 import { factoryGuardExec, hardenedGitExec } from '../run/exec.js';
@@ -80,6 +81,8 @@ export interface HealRunDeps {
   env?: NodeJS.ProcessEnv;
   /** Where the unconfined-lane warning goes (default console.error). */
   warn?: (message: string) => void;
+  /** Builds the forge's CI reads over the heal-guarded exec for the evidence (default GitHub Actions). */
+  ci?: (exec: Exec, root: string) => ForgeCi;
 }
 
 /**
@@ -376,7 +379,7 @@ export async function runHeal(o: HealRunOptions, deps: HealRunDeps): Promise<Hea
     throw new HealRunRefused(`the first red commit ${c.firstRed.sha.slice(0, 12)} is not on origin/${o.base}; a debugger lane only starts at integration-branch code (fetch origin first)`);
   }
 
-  const bundle: EvidenceBundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs));
+  const bundle: EvidenceBundle = buildEvidence(collectEvidence(healExec, o.root, c, o.config.ignoreJobs, deps.ci));
   const delimiter = (deps.delimiter ?? newDelimiter)();
   const prompt = debugPrompt(c, bundle, delimiter);
   if (o.dryRun) {

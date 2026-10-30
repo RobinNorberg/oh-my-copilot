@@ -12,7 +12,8 @@ import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
-import { commitLaneWork, ENGINE_COMMIT_IDENTITY, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
+import { protectedChanges } from '../../../ship/merge.js';
+import { commitLaneWork, ENGINE_COMMIT_IDENTITY, LANE_PROTECTED_PATHS, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
 import { readFactoryState } from '../state.js';
 import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, noCommit, remoteHead, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
 
@@ -215,6 +216,21 @@ describe('commitLaneWork', () => {
     expect(gitIn(h.root, 'rev-parse', `refs/heads/${branch}`)).toBe(start);
   });
 
+  it('refuses a lane branch rewritten as a symref after the lane ended; main does not move', () => {
+    const { worktree, start, branch } = laneTree('cr-symref');
+    // A copilot_run job worktree's HEAD is detached (the session commits on it).
+    gitIn(worktree, 'checkout', '-q', '--detach');
+    const mainRef = gitIn(h.root, 'symbolic-ref', 'HEAD');
+    const main = gitIn(h.root, 'rev-parse', mainRef);
+    const common = gitIn(h.root, 'rev-parse', '--path-format=absolute', '--git-common-dir');
+    writeFileSync(join(common, 'refs', 'heads', ...branch.split('/')), `ref: ${mainRef}\n`);
+    writeFileSync(join(worktree, 'a.ts'), 'a\n');
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: false, refusal: 'escaped' });
+    expect((res as { reason: string }).reason).toMatch(/symbolic|plain commit id/);
+    expect(gitIn(h.root, 'rev-parse', mainRef)).toBe(main);
+  });
+
   it('refuses a worktree whose git links were never recorded, and never commits the lane\'s runtime state', () => {
     const unrecorded = join(h.dir, 'cr-unrecorded');
     const start = gitIn(h.root, 'rev-parse', 'HEAD');
@@ -359,7 +375,7 @@ describe('commitLaneWork', () => {
   });
 
   it('refuses the lane-protected paths (agent instructions, hooks, skills, CI) and resets the index', () => {
-    for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
+    for (const path of ['AGENTS.md', 'CLAUDE.md', '.github/copilot-instructions.md', '.github/dependabot.yml', '.copilot/hooks/hooks.json', '.claude/settings.json','.vscode/tasks.json', '.mcp.json', '.husky/pre-commit', '.omg/skills/s/SKILL.md', '.omc/skills/s/SKILL.md']) {
       const { worktree, start, branch } = laneTree(`cr-p-${path.replace(/[^a-z]/gi, '')}`);
       // The harness repository ignores .omg/: a repository that commits its skills does not.
       writeFileSync(join(worktree, '.gitignore'), '');
@@ -369,5 +385,19 @@ describe('commitLaneWork', () => {
       expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(path) });
       expect(gitIn(worktree, 'diff', '--cached', '--name-only'), path).toBe('');
     }
+  });
+
+  it('refuses the Azure Pipelines definitions (the CI that gates an ADO PR), in any case', () => {
+    for (const path of ['azure-pipelines.yml', 'Azure-Pipelines.YAML', '.azure-pipelines/ci.yml', '.azuredevops/pull_request_template.md', '.Pipelines/build.yml']) {
+      const { worktree, start, branch } = laneTree(`cr-ado-${path.replace(/[^a-z]/gi, '')}`);
+      mkdirSync(join(worktree, path, '..'), { recursive: true });
+      writeFileSync(join(worktree, path), 'x\n');
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(path) });
+      expect(gitIn(worktree, 'diff', '--cached', '--name-only'), path).toBe('');
+    }
+    // The Win32 forms protectedChanges normalizes (trailing dots and spaces, `\`, `.` segments) hit too.
+    expect(protectedChanges(['azure-pipelines.yml.', 'AZURE-PIPELINES.YAML ', '.azure-pipelines.\\ci.yml', './.pipelines/x.yml', 'src/azure-pipelines.yml'], LANE_PROTECTED_PATHS))
+      .toEqual(['azure-pipelines.yml.', 'AZURE-PIPELINES.YAML ', '.azure-pipelines.\\ci.yml', './.pipelines/x.yml']);
   });
 });

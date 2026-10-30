@@ -2,6 +2,213 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.18.2
+
+## [5.18.2] - 2026-10-30
+
+Fork **v5.18.2** (from v5.18.1) is a security and fix release for factory
+lanes, `copilot_run` jobs and pane team workers, with Azure DevOps parity
+fixes and the groundwork for Copilot record/replay smokes. A lane's file
+tools can no longer write a worktree's `.git`, the common git dir is
+snapshotted and checked after each job, job branches can no longer be turned
+into a symref that moves `main`, and pane workers refuse credential-named
+passthrough variables. One gap is accepted and remains: Copilot's built-in
+file write and edit tools still run outside the sandbox, so a race between
+the write check and the write is still an arbitrary-file-write window. The
+git dir snapshot detects tampering; it is not a boundary. Like v5.18.1, this
+release was published without the live Copilot smoke (the account's Copilot
+quota is exhausted). No recorded cassettes ship yet, so the replay path is
+covered by unit tests with a fake client only.
+
+### Security
+
+- **SDK sessions can no longer write `.git` through the file tools.** The
+  built-in file tools run outside the OS sandbox, and the permission handler
+  approved any write under the worktree. A factory lane (or an SDK team
+  worker) could rewrite the worktree's `.git` gitfile to name a git dir with
+  `core.fsmonitor`, which the next unhardened git run by the runtime or a
+  plugin hook executed outside the sandbox. A write to any path with a `.git`
+  segment is now refused:
+  - as given and after resolving links;
+  - case-folded, with trailing dots and spaces stripped;
+  - including 8.3 short names (`GIT~1`) and NTFS alternate data streams (any
+    `:` past the drive letter).
+
+  The permission handler also refuses a write through a link segment that
+  resolves outside the worktree, or that dangles when it decides.
+- **A file-tool write swapped into the common git dir is detected and fails
+  the job.** The sandboxed shell could replace an approved dir with a
+  junction to the common git dir before the unsandboxed file tool wrote,
+  planting `core.fsmonitor` in the repository config. `copilot_run` now
+  snapshots the common git dir before the session and fails the job as
+  `sandbox-escaped` on any change, without moving its branch. The snapshot
+  covers:
+  - `config`, `config.worktree`, `commondir`, `gitdir`, `HEAD`, `hooks/` and
+    `info/`;
+  - the `worktrees/<id>` entries with their `config.worktree`, `commondir`,
+    `gitdir` and `HEAD` (except the HEADs of jobs running alongside);
+  - the submodule git dirs under `modules/`;
+  - every branch, the job branches included, which the manager tracks as it
+    creates, moves and deletes them.
+
+  A worktree job whose change summary git cannot produce fails, and the
+  factory parks such a lane at `protected-paths` instead of committing it.
+
+  **Known gap (accepted).** This is a detector, not a fix. Copilot's built-in
+  file write and edit tools still run outside the sandbox, so the window
+  between approval and the write remains an arbitrary-file-write primitive: a
+  lane that wins the junction race can write anywhere you can, such as a
+  shell profile or the startup folder. The runtime's own git may also read a
+  planted common config during the session, before the check runs.
+- **Job branches can no longer move `main` through a symref.**
+  - A `copilot_run` job's branch moves with `update-ref --no-deref`, and only
+    while it is still a plain commit id. A lane that rewrote it as
+    `ref: refs/heads/main` could otherwise move main to its unreviewed
+    commits.
+  - The factory prepare checkout used `git worktree add -B`, which writes
+    through a symbolic ref, so a checkout branch
+    (`omc-team/factory-run/issue-N`) rewritten as `ref: refs/heads/main` moved
+    main. The engine now refuses a checkout branch that is not a plain commit
+    ref and parks at `lane-tampered`.
+  - An ended `copilot_run` job's attached worktree HEAD is no longer accepted
+    as the new baseline. The live jobs that ignored the ended job's HEAD adopt
+    its value only when it is detached; a `ref:` HEAD keeps the old baseline,
+    so their shared git state check reports it.
+- **Lane-protected paths gain `.claude/`, `.vscode/`, `.mcp.json` and
+  `.husky/`.** A lane change there parks at `protected-paths`, like `.github/`
+  and `.copilot/`, and a factory lane's file tools may no longer write them.
+  - Every job refuses file-tool writes under a relative `core.hooksPath`, read
+    as git resolves it in the job worktree. A job whose `core.hooksPath` git
+    cannot read refuses to start.
+  - The change summary now also lists ignored files under these paths, so a
+    hook the shell plants in husky's self-ignoring `.husky/_/` parks the
+    lane.
+
+  These refusals gate the file tools only: the sandboxed shell can still
+  write these paths during the session.
+- **The lane sandbox denies more credentials and sockets.** When the host
+  reports `denied_paths`, these are denied:
+  - in the home: `.config/gh`, `.aws`, `.npmrc`, `.docker`, `.kube`,
+    `.netrc`, `.cargo/credentials(.toml)`, `.gnupg`, `.pypirc` and
+    `.config/gcloud`;
+  - on Linux and macOS also `/run/user/<uid>`, the Docker and Podman sockets
+    and the `SSH_AUTH_SOCK` directory (only the socket when it sits directly
+    in `/tmp` or another sticky world-writable dir; never a dir that holds a
+    tool dir).
+- **Pane team workers no longer pass credentials through
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH`.** A credential-named variable in the list
+  (an AWS secret, `NPM_TOKEN`, `SSH_AUTH_SOCK` and the like) fails the worker
+  start with `worker_launch_env_passthrough_credential`, reported by the
+  leader before the pane runs anything. Only the provider's own login passes:
+  - copilot: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`;
+  - claude: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, and `AWS_*` /
+    `GOOGLE_*` when `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` is
+    set.
+
+  In a mixed team, another provider's login is skipped for a worker rather
+  than failing its start.
+
+### Added
+
+- **Copilot record/replay groundwork for `omg smoke copilot`.** Tier 2
+  scenarios can be recorded once and replayed for free. No cassettes ship
+  yet.
+  - `omg smoke copilot --record <dir> [--record-overwrite]` and
+    `--replay <dir> [--replay-strict]` (each implies tier 2). Replay pins the
+    model the cassettes were recorded with, never falls through to live, and
+    skips a scenario that has no cassette. Recording is refused under `CI`,
+    without `--model`, into `fixtures/cassettes`, or onto an existing
+    cassette without `--record-overwrite`. `copilot -p` scenarios are
+    refused in both modes. Every check runs before any spend.
+  - `omg smoke cassette verify <dir> [--gate-only]` runs the redaction gate
+    and a free replay; `omg smoke cassette import <dir> [--to <dir>]
+    [--overwrite]` imports verified cassettes. A passing `--record` runs
+    verify on its new cassettes at once.
+  - The runtime's model requests go through the SDK `requestHandler` seam
+    (`@github/copilot-sdk` >= 1.0.16, required in replay). Replay strips
+    credentials, sets a dummy `COPILOT_HMAC_KEY`, never calls upstream, and
+    answers a miss with 418. WebSocket transport is refused in both modes.
+  - The cassette format (v1) fails closed: the writer runs the redaction gate
+    over the serialized text and writes nothing when a secret, a
+    non-allowlisted header or a deny-set literal remains. A cassette carrying
+    a `REDACTION-FAILED` marker, an unknown version or a symlink is refused.
+  - The matcher binds each live stream to a recording by prompt digest,
+    serves strictly in order, claims streams across processes, and reports
+    misses and drift (drift fails only under `--replay-strict`).
+- `omg:` is accepted beside `omc:` when oh-my-copilot normalizes a skill or
+  agent name the model emits (for example `omg:plan` in a Skill call), in
+  delegation enforcement, alias resolution and keyword detection. Copilot CLI
+  itself registers plugin skills only as `/oh-my-copilot:<skill>`; a typed
+  `/omg:…` or `/omc:…` gets Copilot's "Unknown command".
+- Azure DevOps live acceptance and capture scripts for maintainers
+  (`scripts/ado-acceptance.mjs`, `scripts/ado-capture.mjs`,
+  `scripts/ado-fixture-import.mjs`; see "Live acceptance on Azure DevOps" in
+  REFERENCE.md). Not yet run against a real organization.
+
+### Changed
+
+- **Sandboxed `copilot_run` and factory lanes keep proxy and CA settings.**
+  `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`,
+  `SSL_CERT_FILE` and `SSL_CERT_DIR` stay in the runtime env, so the runtime
+  reaches Copilot behind a proxy or a private CA.
+  - The `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` bundle files themselves
+    (not their dirs) and each `SSL_CERT_DIR` entry are granted read-only.
+  - A cert dir that is a root or holds the home is not granted, and a CA path
+    that does not resolve is dropped, both with a note, instead of failing
+    the sandbox config.
+  - A proxy URL with credentials is not stripped; the job records a note,
+    because the lane shell inherits it.
+- **One factory engine per repository.** A second `omg factory run` (or
+  ci-heal run) on a repository where another engine is live refuses with a
+  message naming that run, instead of tripping the first run's shared git
+  state checks and failing its lanes. A dead engine's lock on this host is
+  taken over.
+- `omg factory heal` reads CI history through the forge's CI interface
+  (`ForgeCi`) instead of calling `gh` directly. No behavior change on GitHub;
+  this is the seam for Azure DevOps heal.
+
+### Fixed
+
+- **`omg factory check` works on Azure DevOps.** The command built its az
+  guard without the forge repo and the az entry, so every az call on a real
+  ADO repository was refused ("no Azure DevOps forge is configured for this
+  run"). The az entry is now resolved once; the guard and the adapter both
+  get it.
+- **Factory lanes may not edit Azure Pipelines definitions.** A write lane
+  could change `azure-pipelines.yml` (or `.azure-pipelines/`,
+  `.azuredevops/`, `.pipelines/`), the CI that gates its own PR, and turn a
+  red build green. These paths are now lane-protected, and on Azure DevOps a
+  PR touching them needs the owner. The paths are protected for lanes on
+  GitHub repositories too (intended: a repository may run both CIs).
+  `omg ship`'s protected paths are unchanged.
+- **Failing tests and known-flaky entries apply to Azure DevOps builds.** A
+  failed blocking build check now names its failed job (the newest attempt),
+  and Azure Pipelines log timestamps are stripped before parsing.
+  - The ci-fix lane gets the failing test titles, known-flaky entries apply,
+    and heal signatures name the failing tests instead of collapsing every
+    failure into the step's `##[error]` line.
+  - A build with more than one failed job names none: one job's known-flaky
+    log never excuses another's real failure.
+  - An `##[error]` in another step of an Azure Pipelines log (split on
+    `##[section]Starting:`) still blocks the known-flaky verdict.
+  - The known-flaky suggestion on Azure DevOps points at the build to
+    re-queue instead of `gh run rerun`.
+- **Azure CLI resolution accepts the current MSI layout.** An MSI that ships
+  only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer
+  does, is accepted. Before, every live ADO az call refused with "not the MSI
+  layout".
+- **Skill names and setup hints match the shipped plugin.**
+  - The shipped `copilot-instructions.md` skill list and keyword triggers
+    match the Tier-0 workflows; retired entries (`ultrawork`, `cccg`,
+    `ultraqa`, `sciomc` and similar) are removed. The setup script uses `omg`
+    launch wording.
+  - Autopilot, cancel and team guidance no longer point at the retired
+    `/omc-teams`; autopilot suggests `omg team` or `/oh-my-copilot:team`.
+  - Setup hints (session start, HUD diagnostic, README) use
+    `/oh-my-copilot:omc-setup`, `/oh-my-copilot:omc-gh-triage` and
+    `/oh-my-copilot:omc-ado-sprint`; the plugin update hint uses the
+    `copilot plugin` commands.
+
 # oh-my-copilot v5.18.1
 
 ## [5.18.1] - 2026-10-29

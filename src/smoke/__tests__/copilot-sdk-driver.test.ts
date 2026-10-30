@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { PassThrough } from 'stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseJsonl, type CopilotEvent } from '../copilot-session-eval.js';
 import { spawnSync } from 'child_process';
 import {
@@ -14,6 +14,7 @@ import {
   resolveShimTarget,
   runSdkTier,
   runtimeCreditCap,
+  scenarioPlaceholderDirs,
   satisfiesSdkRange,
   sandboxCanaryCommand,
   sandboxCanaryLaunched,
@@ -28,6 +29,9 @@ import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTo
 import { LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke, type SmokeDeps } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
 import type { SpawnFn, SpawnSyncFn } from '../process-utils.js';
+import { readCassette } from '../replay/cassette.js';
+import { withCassette } from '../replay/handler.js';
+import { cassetteEnv, gateCassettes, importCassettes, platformTag, type CassetteRun } from '../replay/run.js';
 
 const FIXTURES = join(__dirname, 'fixtures');
 const fixtureEvents = (name: Scenario): CopilotEvent[] => parseJsonl(readFileSync(join(FIXTURES, `tier2-${name}-events.jsonl`), 'utf-8')).events;
@@ -82,6 +86,14 @@ interface FakeOptions {
   enforcement?: unknown;
   /** `session.rpc.shell.executeUserRequested` answer and the completion's `sandboxed` (unset: no such RPC). */
   shellExec?: (command: string) => { result: Record<string, unknown>; sandboxed?: boolean };
+  /** Model requests each prompt sends through the client's cassette request handler, when it has one (default 1). */
+  requests?: number;
+  /**
+   * As the runtime does: listModels() and the first prompt GET /models through
+   * the cassette handler (no session) until one answer succeeds, then cache it
+   * for the client's life; a failed listModels() throws.
+   */
+  globalGet?: boolean;
 }
 
 /** Re-stamp a fixture log's ISO timestamps to `iso` (the driver windows lines by time). */
@@ -107,10 +119,22 @@ function scenarioOf(prompt: string): Scenario {
 function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord } {
   const rec: FakeRecord = { ops: [], sessions: [], permissions: [] };
   let n = 0;
+  let clientOptions: SdkClientOptions;
   const sentAt: Partial<Record<Scenario, string>> = {};
+  let modelsCached = false;
+  const fetchModels = async (): Promise<boolean> => {
+    const handler = clientOptions.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
+    if (modelsCached || !handler) return true;
+    const url = 'https://api.githubcopilot.com/models';
+    const response = await handler.sendRequest(new Request(url), { transport: 'http', url, headers: {} });
+    await response.text();
+    modelsCached = response.status === 200;
+    return modelsCached;
+  };
   class FakeClient {
     cliProcess: { pid: number } | null = opts.pid ? { pid: opts.pid } : null;
     constructor(options: SdkClientOptions) {
+      clientOptions = options;
       rec.clientOptions = options;
       rec.connection = options.connection as FakeRecord['connection'];
     }
@@ -129,7 +153,10 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
       sandbox: { getHostSupport: async () => opts.hostSupport ?? { supported: false, reason: 'fake host', capabilities: [{ name: 'shell', supported: false }] } },
     };
     async getStatus() { return { version: '1.0.91', protocolVersion: 3 }; }
-    async listModels() { return (opts.models ?? ['auto']).map((id) => ({ id })); }
+    async listModels() {
+      if (opts.globalGet && !(await fetchModels())) throw new Error('models: 418');
+      return (opts.models ?? ['auto']).map((id) => ({ id }));
+    }
     async deleteSession(id: string) { rec.ops.push(`delete:${id}`); }
     async createSession(config: SdkSessionConfig): Promise<SdkSessionLike> {
       const id = `s${++n}`;
@@ -148,6 +175,15 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
           for (const kind of ['read', 'shell', 'write']) {
             const decision = await config.onPermissionRequest({ kind, fullCommandText: 'git push --force origin main' }, { sessionId: id });
             rec.permissions.push({ scenario, kind, decision: decision.kind });
+          }
+          // What the runtime does with a cassette client: every model request goes through its request handler.
+          const handler = clientOptions.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
+          if (opts.globalGet) await fetchModels();
+          for (let i = 0; handler && i < (opts.requests ?? 1); i++) {
+            const url = 'https://api.githubcopilot.com/chat/completions';
+            const messages = [{ role: 'user', content: prompt }, ...Array.from({ length: i }, (_, k) => ({ role: 'user', content: `step ${k + 1}` }))];
+            const request = new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: config.model, messages }) });
+            await (await handler.sendRequest(request, { sessionId: id, transport: 'http', url, headers: {} })).text();
           }
           sentAt[scenario] = new Date().toISOString();
           if (opts.hang?.includes(scenario)) return 'm1';
@@ -765,6 +801,114 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     const result = await runSdkTier(input(fresh.loaded, { scenarios: ['smoke'], bin: bad, platform: 'win32' }));
     expect(byId(result.checks)['sdk.runtime'].detail).toMatch(/is a shell shim whose \.js\/\.exe target could not be resolved; pass --copilot-bin/);
     expect(fresh.rec.ops).toEqual([]);
+  });
+});
+
+describe('runSdkTier with a cassette (fake SDK, fake upstream)', () => {
+  const answer = { id: 'c1', choices: [{ index: 0, message: { role: 'assistant', content: 'SMOKE_OK' }, finish_reason: 'stop' }] };
+
+  /** The fake SDK plus a request-handler base whose default "forwards" to a spy (the record upstream). */
+  function cassetteSdk(requests: number, opts: FakeOptions = {}) {
+    const { loaded, rec } = fakeSdk({ requests, ...opts });
+    const upstream = vi.fn(async () => new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } }));
+    class Base {
+      async sendRequest(): Promise<Response> { return upstream(); }
+      async openWebSocket(): Promise<unknown> { throw new Error('no ws'); }
+    }
+    loaded.module.CopilotRequestHandler = Base as unknown as CopilotSdkModule['CopilotRequestHandler'];
+    return { loaded, upstream, rec };
+  }
+
+  async function runWith(run: CassetteRun, requests: number, scenarios: Scenario[] = ['smoke'], opts: FakeOptions = {}) {
+    const { loaded, upstream, rec } = cassetteSdk(requests, opts);
+    const base = input(null);
+    const env = cassetteEnv(base.env, run, scenarioPlaceholderDirs(base));
+    const result = await runSdkTier(input(null, { scenarios, model: 'gpt-5-mini', env, cassette: run, loadSdk: async () => withCassette(loaded, env) }));
+    // The scenarios in the order their prompts ran.
+    const ran = [...new Set(rec.permissions.map((p) => p.scenario))];
+    return { result, upstream, ran, check: (id: string) => result.checks.find((c) => c.id === id) };
+  }
+
+  const cassetteRun = (mode: CassetteRun['mode'], root: string, state: string): CassetteRun => ({ mode, root, stateRoot: join(parent, state), strict: false, overwrite: false });
+
+  it('records the pre-scenario calls as misses and a runtime-cached global GET, then replays in the stored order and in any subset', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const root = join(parent, 'cassettes-order');
+    // Input order differs from both the canonical order and the sorted order `cassette verify` passes.
+    const recorded = await runWith(cassetteRun('record', root, 'state-order-record'), 1, ['guardrail', 'smoke'], { globalGet: true });
+    expect(recorded.result.checks.filter((c) => !c.ok)).toEqual([]);
+    expect(recorded.ran).toEqual(['smoke', 'guardrail']);
+    // listModels() before any scenario got the 418 a replay gives it, never the upstream: GET /models once (in smoke, then cached) + two prompts.
+    expect(recorded.upstream).toHaveBeenCalledTimes(3);
+    expect(existsSync(join(parent, 'state-order-record', '_client', 'parts'))).toBe(false);
+    const globals = (name: string) => readCassette(join(root, platformTag(), name)).interactions.filter((it) => it.stream === 'global').map((it) => `${it.req.method} ${it.req.path}`);
+    expect(globals('smoke')).toEqual(['GET /models']);
+    expect(globals('guardrail')).toEqual(['GET /models']); // copied: the runtime had it cached
+    expect(readCassette(join(root, platformTag(), 'guardrail')).manifest.runOrder).toEqual(['smoke', 'guardrail']);
+
+    // What `omg smoke cassette verify` passes (sorted dir names) replays in the stored order.
+    const verified = await runWith(cassetteRun('replay', root, 'state-order-verify'), 1, ['guardrail', 'smoke'], { globalGet: true });
+    expect(verified.upstream).not.toHaveBeenCalled();
+    expect(verified.ran).toEqual(['smoke', 'guardrail']);
+    expect(verified.result.checks.filter((c) => !c.ok)).toEqual([]);
+    expect(verified.result.replay).toEqual({ smoke: { ok: true, misses: 0, drift: 0 }, guardrail: { ok: true, misses: 0, drift: 0 } });
+
+    const alone = await runWith(cassetteRun('replay', root, 'state-order-alone'), 1, ['guardrail'], { globalGet: true });
+    expect(alone.upstream).not.toHaveBeenCalled();
+    expect(alone.result.checks.filter((c) => !c.ok)).toEqual([]);
+    write.mockRestore();
+  });
+
+  it('a scenario whose own checks fail is not written; its parts are kept under <record>/_failed/<scenario>, which verify and import skip', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const root = join(parent, 'cassettes-failed');
+    const recorded = await runWith(cassetteRun('record', root, 'state-failed-record'), 1, ['smoke', 'guardrail'], { events: { guardrail: fixtureEvents('smoke') } });
+    expect(recorded.check('scn.smoke.record')?.ok).toBe(true);
+    const kept = join(root, '_failed', 'guardrail');
+    expect(recorded.check('scn.guardrail.record')).toMatchObject({ ok: false, detail: expect.stringContaining(`not written: the scenario failed (`) });
+    expect(recorded.check('scn.guardrail.record')?.detail).toContain(`its recorded parts are kept in ${kept}`);
+    const parts = readdirSync(join(kept, 'parts'));
+    expect(parts).toHaveLength(1);
+    expect(readCassette(join(kept, 'parts', parts[0])).manifest.scenario).toBe('guardrail');
+    expect(gateCassettes(root).map((g) => g.dir)).toEqual([join(root, platformTag(), 'smoke')]);
+    expect(importCassettes(root, join(parent, 'fixtures-failed')).imported).toEqual([`${platformTag()}/smoke`]);
+    write.mockRestore();
+  });
+
+  it('records a scenario, then replays it free; the replay check fails on a miss and on an unconsumed stream', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const root = join(parent, 'cassettes');
+    const record: CassetteRun = { mode: 'record', root, stateRoot: join(parent, 'state-record'), strict: false, overwrite: false };
+    const recorded = await runWith(record, 2);
+    expect(recorded.upstream).toHaveBeenCalledTimes(2);
+    expect(recorded.result.checks.filter((c) => !c.ok)).toEqual([]);
+    expect(recorded.check('scn.smoke.record')?.detail).toMatch(/2 interaction\(s\) in 1 stream\(s\) written to/);
+    expect(write.mock.calls.map((c) => String(c[0])).join('')).toContain(`omg smoke: recording smoke to ${join(root, platformTag(), 'smoke')}`);
+    write.mockRestore();
+    const cassette = readCassette(join(root, platformTag(), 'smoke'));
+    expect(cassette.manifest).toMatchObject({ scenario: 'smoke', model: 'gpt-5-mini', maxCredits: 30 });
+
+    const replay = (name: string): CassetteRun => ({ mode: 'replay', root, stateRoot: join(parent, `state-${name}`), strict: false, overwrite: false });
+    const served = await runWith(replay('full'), 2);
+    expect(served.upstream).not.toHaveBeenCalled();
+    expect(served.result.checks.filter((c) => !c.ok)).toEqual([]);
+    expect(served.check('scn.smoke.replay')).toMatchObject({ ok: true, detail: expect.stringMatching(/served all 1 recorded stream\(s\), 0 misses/) });
+    expect(served.result.replay).toEqual({ smoke: { ok: true, misses: 0, drift: 0 } });
+
+    const extra = await runWith(replay('extra'), 3);
+    expect(extra.upstream).not.toHaveBeenCalled();
+    expect(extra.check('scn.smoke.replay')).toMatchObject({ ok: false, detail: expect.stringMatching(/1 miss\(es\)/), evidence: expect.stringContaining('stream exhausted') });
+
+    const short = await runWith(replay('short'), 1);
+    expect(short.check('scn.smoke.replay')).toMatchObject({ ok: false, detail: expect.stringMatching(/not fully consumed: s1-root/) });
+  });
+
+  it('a scenario without a cassette is skipped and fails its replay check, never run live', async () => {
+    const run: CassetteRun = { mode: 'replay', root: join(parent, 'empty'), stateRoot: join(parent, 'state-empty'), strict: false, overwrite: false };
+    const { result, upstream, check } = await runWith(run, 1);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(check('scn.smoke.replay')).toEqual({ id: 'scn.smoke.replay', ok: false, detail: `no cassette for ${platformTag()}/smoke` });
+    expect(result.checks.find((c) => c.id === 'scn.smoke.reply')?.detail).toBe(`no cassette for ${platformTag()}/smoke`);
   });
 });
 

@@ -31,8 +31,9 @@
  */
 
 import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
+import { jobRefProblem } from '../../copilot-run/job.js';
 import { OmcPaths } from '../../lib/worktree-paths.js';
 import { protectedChanges } from '../../ship/merge.js';
 import { EMPTY_TREE, runHostGit, worktreeGitDirArgs } from '../../team/git-worktree.js';
@@ -51,11 +52,21 @@ const MAX_WALK_ENTRIES = 200_000;
 const MAX_WALK_DEPTH = 64;
 
 /**
+ * Where Azure Pipelines definitions conventionally live: the CI that gates an
+ * ADO PR. A lane may not change them (a red build could turn green), and on
+ * Azure DevOps a PR touching them needs the owner (merge-policy.ts).
+ */
+export const ADO_PIPELINE_PATHS: readonly string[] = ['azure-pipelines.yml', 'azure-pipelines.yaml', '.azure-pipelines/', '.azuredevops/', '.pipelines/'];
+
+/**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
- * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows;
+ * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
+ * tasks other agents and editors run from a checkout, `.husky/` the git hooks
+ * husky installs.
  */
-export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md'];
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.husky/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md', ...ADO_PIPELINE_PATHS];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
 
@@ -262,6 +273,12 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     if (hardLinked.length > 0) return refuse('escaped', `the lane staged hard-linked files (their content may come from outside the worktree): ${hardLinked.slice(0, 5).join(', ')}`);
     const hit = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...(input.extraProtected ?? [])]);
     if (hit.length > 0) return refuse('protected', `the lane changed merge-rule or lane-protected paths: ${hit.join(', ')}`);
+    if (input.branch) {
+      // The job has ended, but a loose ref rewritten since as `ref: refs/heads/main` (or a link) would make update-ref move main.
+      const common = resolve(input.repoRoot, runHostGit(input.repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'], GIT_TIMEOUT_MS).trim());
+      const problem = jobRefProblem(common, input.repoRoot, `refs/heads/${input.branch}`);
+      if (problem) return refuse('escaped', `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
+    }
     const tree = git(['write-tree']);
     if (!HEX.test(tree)) return { ok: false, refusal: 'error', reason: `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}` };
     if (tree === git(['rev-parse', '--verify', '--quiet', `${input.start}^{tree}`])) {
@@ -274,7 +291,7 @@ export function commitLaneWork(input: LaneCommitInput): LaneCommitResult {
     if (input.branch) {
       const ref = `refs/heads/${input.branch}`;
       const at = runHostGit(input.repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], GIT_TIMEOUT_MS).trim();
-      if (at === input.start) runHostGit(input.repoRoot, ['update-ref', '-m', 'omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
+      if (at === input.start) runHostGit(input.repoRoot, ['update-ref', '--no-deref', '-m','omg factory run: the engine commit of the lane', ref, sha, input.start], GIT_TIMEOUT_MS);
       else notes.push(`the lane branch ${input.branch} is at ${at.slice(0, 12) || '(none)'}, not the lane start; it was left there`);
     }
     return { ok: true, sha, files, notes };

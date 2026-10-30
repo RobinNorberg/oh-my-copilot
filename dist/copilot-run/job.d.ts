@@ -270,12 +270,76 @@ export declare function filterDriverOverrides(cwd: string, gitDirArgs?: readonly
  * runs no external diff driver, no textconv, no fsmonitor and no filter
  * driver (runHostGit's driver overrides; a driver it cannot override fails
  * the diff, so the summary is null).
+ *
+ * With `ignoredUnderProtected` (a job worktree: a fresh checkout, so an
+ * ignored file there came from the session), ignored files under a protected path count as protected changes too:
+ * a hook the shell plants in an ignored dir (husky's `.husky/_/` ignores
+ * itself) is what unhardened git in the worktree runs.
  */
-export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[]): ChangeSummary | null;
+export declare function summarizeChanges(cwd: string, base: string | null, extraProtected?: readonly string[], gitDirArgs?: readonly string[], ignoredUnderProtected?: boolean): ChangeSummary | null;
+/**
+ * Why the job's branch `ref` is not a plain sha ref, or null. A loose ref
+ * the file tools rewrote as `ref: refs/heads/main` makes rev-parse read
+ * main and a dereferencing update-ref move main; a link or junction on the
+ * way, or a non-regular file, points the ref elsewhere. A ref only in
+ * `packed-refs` is plain (packed refs hold no symrefs).
+ */
+export declare function jobRefProblem(commonGitDir: string | null, repoRoot: string, ref: string): string | null;
+/**
+ * The common git dir's files that steer host git, keyed by path relative to
+ * it: `config`, `config.worktree`, `commondir` and `gitdir` (git reads
+ * `commondir` in any git dir, so writing one redirects the main checkout's
+ * git to a config and hooks of the writer's choosing), `HEAD`, `hooks/` and
+ * `info/` (recursive), per `worktrees/<id>` its type, `config.worktree`,
+ * `commondir`, `gitdir` and `HEAD` (another checkout's branch), every
+ * submodule git dir under `modules/` (config, hooks, info, alternates: the
+ * factory's moduleEntries), and the branches (`refs/heads/*`, loose or
+ * packed), the job branches included: the manager updates every live job's
+ * snapshot when it creates, moves or deletes one (expectJobRef). The sandbox
+ * keeps them read-only to the shell, but the built-in file tools write
+ * unsandboxed, and a path approved under the worktree can be swapped for a
+ * link into the git dir between the approval and the write. Taken before the
+ * session and compared after it (sharedGitStateChanges).
+ *
+ * Left out: `description` and `logs/` (git never acts on them), `FETCH_HEAD`
+ * (rewritten by any fetch, and read only by an explicit merge of it), and
+ * `objects/` with `objects/info/alternates` (concurrent jobs write objects,
+ * and an object never runs anything; alternates only adds objects to look up).
+ * A reftable repository keeps its refs in `reftable/`, not compared here.
+ */
+export declare function sharedGitStateSnapshot(commonGitDir: string): Record<string, string>;
+/**
+ * What changed between two sharedGitStateSnapshot results, as paths relative
+ * to the common git dir. A `worktrees/<id>` entry another job added or removed
+ * meanwhile is not a change; a kept entry that changed type, or whose
+ * `config.worktree` appeared, changed or went, is. Keys in `ignore` (the
+ * HEADs of job worktrees whose sessions run meanwhile) are no change.
+ *
+ * Keys in `owned` (the job branches and worktree HEADs of the caller's
+ * manager, whose expected values it keeps) compare exactly. Other processes
+ * run their own jobs in the same repository (a second Copilot session, `omg
+ * factory run`), so outside `owned` a job branch that stays absent or a plain
+ * commit id, and another worktree's HEAD that ends detached, are no change;
+ * a symref, link, non-regular file or extra content in a job branch is, and
+ * so is a HEAD that came to point at a different ref. Residual: a lane can
+ * repoint another process's finished job branch to a different plain commit
+ * undetected here; that process's manager reports it (branchMismatch).
+ */
+export declare function sharedGitStateChanges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>, ignore?: ReadonlySet<string>, owned?: ReadonlySet<string>): string[];
+/**
+ * A relative `core.hooksPath` (any config level but the command line) as a
+ * protected dir rule, or null, as git resolves it in `cwd` with `gitDirArgs`
+ * (the job worktree, so an `includeIf "gitdir:..."` rule applies as it does
+ * there). Throws when git cannot tell (an error, or a git older than 2.26
+ * without `--show-scope`): the caller refuses the job rather than miss it.
+ */
+export declare function relativeHooksPathRule(cwd: string, gitDirArgs?: readonly string[]): string | null;
 export declare function defaultCopilotRunDeps(env?: NodeJS.ProcessEnv): CopilotRunDeps;
 export declare class CopilotRunManager {
     private readonly deps;
     private readonly jobs;
+    /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
+    private readonly owned;
     constructor(deps: CopilotRunDeps);
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input: CopilotRunStartInput, options?: CopilotRunStartOptions): CopilotRunSnapshot;
@@ -293,20 +357,32 @@ export declare class CopilotRunManager {
     cleanup(jobId: string): CopilotRunSnapshot & {
         cleanup: string;
     };
+    /**
+     * A job branch this manager created, moved or deleted (null): the value
+     * every live job's common git dir snapshot expects from now on, so the
+     * manager's own ref writes are no change and any other write to a job
+     * branch (a lane retargeting another job's branch) is.
+     */
+    /**
+     * Why a finished job's branch no longer holds the commit the job left it
+     * at (branchCommit), or null (also once it is gone). A lane of another
+     * process can repoint it to a plain commit that lane's own check does not
+     * flag (sharedGitStateChanges), so the owner checks before anyone merges it.
+     */
+    private branchMismatch;
+    /**
+     * A job that ended: its worktree HEAD stops moving, so the live jobs that
+     * ignored it compare it from its value now on. Only a detached HEAD (what
+     * the session leaves) becomes the new baseline; an attached or otherwise
+     * changed one keeps the old baseline, so the live jobs' check reports it.
+     */
+    private releaseWorktreeHead;
+    private expectJobRef;
     private find;
     /** Ledger record `job.ledgerKey` (default `copilot-run:<jobId>`); fail-open. False when the lock was busy (retry later). */
     private recordBudget;
     /** Drive the session to its end and tear it down; returns the final status. */
     private run;
-    /**
-     * Probe the host and set `job.sandbox` (§5). Returns the config to apply
-     * when the host supports the sandbox (the mode stays the unconfirmed one
-     * until confirmSandbox), else null with the final mode: `detect-only` when
-     * the sandbox is switched off, otherwise the fail-closed mode.
-     */
-    private decideSandbox;
-    /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
-    private confirmSandbox;
     private snapshot;
 }
 //# sourceMappingURL=job.d.ts.map
