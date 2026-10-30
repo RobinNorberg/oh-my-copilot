@@ -41949,10 +41949,11 @@ function githubCi(exec, cwd) {
   return {
     listRuns: (o) => listRuns(exec, { ...o, cwd }),
     runJobs: (runId) => viewRunJobs(exec, runId, cwd),
-    jobLog: (jobId) => jobLog(exec, jobId, cwd)
+    jobLog: (jobId) => jobLog(exec, jobId, cwd),
+    rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER3, HEX403, str4;
+var RUN_LIST_FIELDS, NUMBER3, HEX403, str4, githubRerunIntent;
 var init_ci = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
@@ -41961,6 +41962,7 @@ var init_ci = __esm({
     NUMBER3 = /^\d{1,20}$/;
     HEX403 = /^[0-9a-f]{40}$/;
     str4 = (v) => typeof v === "string" ? v : "";
+    githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
   }
 });
 
@@ -45112,6 +45114,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
 var init_classify = __esm({
   "src/factory/heal/classify.ts"() {
     "use strict";
+    init_ci();
     init_logs();
   }
 });
@@ -45201,7 +45204,7 @@ var init_heal_evidence = __esm({
     import_path92 = require("path");
     init_atomic_write();
     init_gates();
-    init_history();
+    init_ci();
     init_logs();
     init_sanitize();
     init_state3();
@@ -45268,6 +45271,7 @@ var init_cli = __esm({
     init_esm();
     init_file_lock();
     init_config2();
+    init_ci();
     init_classify();
     init_config4();
     init_history();
