@@ -704,7 +704,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         error.message.includes("Cannot find module"));
 
     if (isInstallError) {
-      console.log("[OMC] run /omc-setup to install properly");
+      console.log("[OMC] run /oh-my-copilot:omc-setup to install properly");
     } else {
       // Output fallback message to stdout for status line visibility
       console.log("[OMC] HUD error - check stderr");

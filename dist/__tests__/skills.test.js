@@ -606,6 +606,15 @@ describe('Builtin Skills', () => {
             expect(rendered).not.toContain('ambiguity ≤ 20%');
             expect(rendered).not.toContain('"ambiguityThreshold": 0.2,');
         });
+        it('renders the deep-interview threshold for the omg: namespaced skill name', () => {
+            const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-omg-'));
+            tempDirs.push(profileDir);
+            process.env.COPILOT_HOME = profileDir;
+            writeFileSync(join(profileDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.17 } } }));
+            clearSkillsCache();
+            const rendered = renderBundledSkillBody('omg:deep-interview', '"threshold": 0.2,');
+            expect(rendered).toContain('"threshold": 0.17,');
+        });
         it('renders deep-interview summary-gate hardening while preserving AskUserQuestion transport', () => {
             const skill = getBuiltinSkill('deep-interview');
             expect(skill).toBeDefined();

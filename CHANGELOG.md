@@ -44,6 +44,13 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Fixed
 
 - Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
+- Shipped `copilot-instructions.md` skill list and keyword triggers match the Tier-0 workflows (retired `ultrawork`, `cccg`, `ultraqa`, `sciomc` and similar entries removed); `omg` launch wording in the setup script.
+- Autopilot, cancel, and team guidance no longer point at the retired `/omc-teams`; autopilot suggests `omg team` or `/oh-my-copilot:team`.
+- Setup hints (session start, HUD diagnostic, README) use `/oh-my-copilot:omc-setup`, `/oh-my-copilot:omc-gh-triage`, and `/oh-my-copilot:omc-ado-sprint`; the plugin update hint uses the `copilot plugin` commands.
+
+### Added
+
+- `omg:` is accepted as a short skill namespace beside `omc:` (for example `/omg:ralph`) in workflow alias resolution, delegation enforcement, and keyword detection.
 
 # oh-my-copilot v5.18.1
 

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0b79bd2daa01dbd218f500b160e623198a363fce",
-    "sourceSha256": "98c95be85f1e3aa01402d3831b16905dedf69cffa899340b4cc60fd95ffb7343",
+    "head": "ead335b2838e00d94699147c8f6ff19349b8326f",
+    "sourceSha256": "592155e3182d59365c3b3c1903919683de04c796573b5f191336ec5ccbc81bc7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0b79bd2daa01dbd218f500b160e623198a363fce",
-  "sourceSha256": "98c95be85f1e3aa01402d3831b16905dedf69cffa899340b4cc60fd95ffb7343",
+  "head": "ead335b2838e00d94699147c8f6ff19349b8326f",
+  "sourceSha256": "592155e3182d59365c3b3c1903919683de04c796573b5f191336ec5ccbc81bc7",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1915
     },
     "generated": {
-      "distFiles": 7016,
+      "distFiles": 7020,
       "bridgeFiles": 9,
-      "total": 7025
+      "total": 7029
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3683,6 +3683,10 @@
       "dist/forge/__tests__/recording-exec.d.ts.map",
       "dist/forge/__tests__/recording-exec.js",
       "dist/forge/__tests__/recording-exec.js.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+      "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
       "dist/forge/ado/__tests__/adapter.test.d.ts",
       "dist/forge/ado/__tests__/adapter.test.d.ts.map",
       "dist/forge/ado/__tests__/adapter.test.js",
@@ -23180,6 +23184,26 @@
         "id": "dist/forge/__tests__/recording-exec.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/recording-exec.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/acceptance-scripts.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/adapter.test.d.ts",
@@ -113630,12 +113654,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9655,
+      "nodeCount": 9659,
       "edgeCount": 11350,
       "importEdgeCount": 9347,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "485bbe0fd741d12775409837b66335426b98698f15324dd693aceeddadf54e32",
-  "manifestSha256": "330fbc0d8f74097acde039bd9e2cc1896ad73d6078b7f82048595ef5457d216a"
+  "manifestSha256": "53ba284eda5f7b49cc0bf7e09e36dad9d2b71af3bbc0766447e6322e5fafdfc5"
 }

@@ -171,7 +171,7 @@ function applyDeepInterviewRuntimeSettings(template) {
         .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
 }
 function normalizeSkillNameForRuntimeRendering(skillName) {
-    return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
+    return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^(?:omc|omg):/, '');
 }
 export function renderBundledSkillBody(skillName, body, cliOptions) {
     const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);

@@ -192,7 +192,7 @@ dependent failure and retry it in the same session.
 4. Only after Team clear succeeds, inspect linked Ralph and clear it with the
    same session id (`state_read(mode="ralph", session_id="<session_id>")` then
    `state_clear(mode="ralph", session_id="<session_id>")`). For legacy
-   `omg team` / `/omc-teams` workers, run the
+   `omg team` workers, run the
    captured team-name orphan scan after state cleanup; native Team has no
    `TeamDelete`.
 
