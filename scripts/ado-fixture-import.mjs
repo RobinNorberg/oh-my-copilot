@@ -12,11 +12,15 @@
  *   `User <n>`, identity descriptors `<kind>.descriptor<n>`.
  * - The org becomes `contoso`, the project `Web`, the repository `web-app`,
  *   in every string (avatar and `_links` URLs included).
+ * - Self-hosted agent and machine names become `agent<n>`, user profile
+ *   paths name `user`, and agent `_work` paths start at `C:\agent\_work`
+ *   or `/agent/_work`.
  * - GUIDs are remapped consistently across the whole import, keeping the GUID
  *   shape; the ADO policy type ids (global constants) are kept.
  *
  * A file that still matches a PAT shape, `AZDO`, one of the names, a real
- * display name or a non-example.com email after scrubbing refuses the whole
+ * display name, a non-example.com email, an agent or machine name, a user
+ * profile path or an agent `_work` path after scrubbing refuses the whole
  * import, and nothing is written. Files are added, never replaced: the docs
  * samples keep their provenance, and live files sit in their own directory
  * because adoFixtureExec refuses two fixtures for one call. A fixture whose
@@ -48,6 +52,18 @@ const keepEmail = (m) => /@example\.com$/i.test(m) || /^git@/i.test(m);
 const DESCRIPTOR = /\b(aad|msa|aadgp|vssgp|svc|s2s|bnd|win)\.([A-Za-z0-9_-]{8,})/g;
 const CLASSIC_PAT = /(?<![A-Za-z0-9])[a-z2-7]{52}(?![A-Za-z0-9])/;
 const AZDO_PAT = /(?<![A-Za-z0-9])(?=[A-Za-z0-9]{84}(?![A-Za-z0-9]))[A-Za-z0-9]*AZDO[A-Za-z0-9]*/;
+/**
+ * A self-hosted agent on a maintainer's machine: its agent and machine names
+ * (timeline `workerName`, the log's "Agent name: '…'" lines, the AGENT_* and
+ * COMPUTERNAME variables), user profile paths and the agent's `_work` path.
+ * Separators are `[\\/]+` so the checks also read JSON-escaped text.
+ */
+const HOST_KEY = /^(worker|agent|machine|computer)name$/i;
+const HOST_TEXT = [/\bAgent (?:machine )?name: '([^'\r\n]+)'/g, /\b(?:AGENT_NAME|AGENT_MACHINENAME|COMPUTERNAME)['"]?\s*[:=]\s*['"]?([^'"\s,;]+)/g];
+const SCRUBBED_HOST = /^agent\d+$/;
+const WORK_DIR = /(?:\b[A-Za-z]:|(?<![\w.:\\/-]))(?:[\\/]+[^\\/\s'"`<>|]+?)*?[\\/]+_work(?=[\\/]|$)/g;
+const LEFT_WORK_DIR = /(?<![\\/]agent[\\/]*)[\\/]_work(?=[\\/]|$)/;
+const USER_HOME = [/\b([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/\s'"`<>|:*?]+)/g, /(?<![\w.:\\/-])([\\/]+(?:home|Users)[\\/]+)([^\\/\s'"`<>]+)/g];
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** `name` as a whole token: not inside a longer name of letters, digits, `-` or `_`. */
@@ -72,6 +88,9 @@ export function createScrubber({ org, project, repo, redact }) {
   const person = (name) => `User ${n(people, name)}`;
   // A name this short would hit ordinary words in free text.
   const learnPerson = (name) => name.trim().length >= 3 && person(name);
+  const hosts = new Map();
+  const host = (name) => `agent${n(hosts, name)}`;
+  const learnHost = (name) => name.trim().length >= 3 && !SCRUBBED_HOST.test(name) && host(name);
   const names = [[project, SCRUBBED_PROJECT], [repo, SCRUBBED_REPO], [org, SCRUBBED_ORG]]
     .filter(([real, fake], i, all) => real.toLowerCase() !== fake.toLowerCase() && all.findIndex(([r]) => r.toLowerCase() === real.toLowerCase()) === i)
     .sort((a, b) => b[0].length - a[0].length);
@@ -79,6 +98,10 @@ export function createScrubber({ org, project, repo, redact }) {
   const string = (s) => {
     let out = redact(s);
     for (const [real, fake] of [...people.keys()].map((p) => [p, person(p)]).sort((a, b) => b[0].length - a[0].length)) out = out.split(real).join(fake);
+    // The _work path first: it often sits under the profile path.
+    out = out.replace(WORK_DIR, (m) => (m.includes('\\') ? 'C:\\agent\\_work' : '/agent/_work'));
+    for (const re of USER_HOME) out = out.replace(re, (_m, prefix) => `${prefix}user`);
+    for (const [real, fake] of [...hosts.keys()].map((h) => [h, host(h)]).sort((a, b) => b[0].length - a[0].length)) out = out.replace(token(real), fake);
     out = out.replace(EMAIL, (m) => (keepEmail(m) ? m : userEmail(m)));
     out = out.replace(DESCRIPTOR, (_m, kind, value) => `${kind}.descriptor${n(descriptors, `${kind}.${value}`)}`);
     out = out.replace(GUID, (m) => {
@@ -95,8 +118,13 @@ export function createScrubber({ org, project, repo, redact }) {
 
   /** First pass over every file: learn the people (identity refs, git authors) so free text loses their names too. */
   const learn = (value) => {
+    if (typeof value === 'string') {
+      for (const re of HOST_TEXT) for (const m of value.matchAll(re)) learnHost(m[1]);
+      return;
+    }
     if (Array.isArray(value)) return value.forEach(learn);
     if (!isObject(value)) return;
+    for (const [k, v] of Object.entries(value)) if (HOST_KEY.test(k) && typeof v === 'string') learnHost(v);
     if (typeof value.displayName === 'string' && (typeof value.uniqueName === 'string' || typeof value.descriptor === 'string')) learnPerson(value.displayName);
     if (typeof value.name === 'string' && typeof value.email === 'string') learnPerson(value.name);
     Object.values(value).forEach(learn);
@@ -123,6 +151,10 @@ export function createScrubber({ org, project, repo, redact }) {
     if (/AZDO/.test(text)) return 'it contains AZDO';
     for (const [real] of names) if (token(real).test(text)) return `it still names ${JSON.stringify(real)}`;
     for (const real of people.keys()) if (text.includes(real)) return 'it still names a person';
+    for (const real of hosts.keys()) if (token(real).test(text)) return 'it still names an agent or machine';
+    for (const re of HOST_TEXT) for (const m of text.matchAll(re)) if (!SCRUBBED_HOST.test(m[1])) return 'it still names an agent or machine';
+    for (const re of USER_HOME) for (const m of text.matchAll(re)) if (m[2] !== 'user') return 'it still holds a user profile path';
+    if (LEFT_WORK_DIR.test(text)) return 'it still holds an agent _work path';
     const email = (text.match(EMAIL) ?? []).find((m) => !keepEmail(m));
     if (email) return 'it still holds a real email address';
     return undefined;
@@ -182,7 +214,7 @@ export function planImport(sourceDir, { org, project, repo, redact, routes, into
       else entries.push({ rel, kind: 'json', parsed });
     } else skipped.push({ rel, why: 'not a fixture or text log' });
   }
-  for (const e of entries) scrub.learn(e.kind === 'json' ? e.parsed : '');
+  for (const e of entries) scrub.learn(e.kind === 'json' ? e.parsed : e.raw);
   const writes = entries.map((e) => {
     const text = e.kind === 'json' ? `${JSON.stringify(scrub.json(e.parsed), null, 2)}\n` : scrub.text(e.raw);
     const why = scrub.problem(text);

@@ -80,9 +80,17 @@ export function assertReadOnly(azArgs) {
   if (azArgs.length === 1 && a === '--version') return;
   if (a === 'extension' && b === 'show') return;
   if (a !== 'devops' || b !== 'invoke') throw new Error(`ado-capture runs GETs only; refused az ${azArgs.join(' ')}`);
-  const method = azArgs.indexOf('--http-method');
-  if (method >= 0 && String(azArgs[method + 1]).toUpperCase() !== 'GET') throw new Error(`ado-capture runs GETs only; refused --http-method ${azArgs[method + 1]}`);
-  if (azArgs.includes('--in-file')) throw new Error('ado-capture never sends a body (--in-file)');
+  // Every spelling argparse accepts: `--flag value`, `--flag=value` and a prefix abbreviation.
+  const spells = (name, flag) => name === flag || (name.length > 2 && flag.startsWith(name));
+  azArgs.forEach((arg, i) => {
+    if (typeof arg !== 'string' || !arg.startsWith('--')) return;
+    const eq = arg.indexOf('=');
+    const name = eq < 0 ? arg : arg.slice(0, eq);
+    if (spells(name, '--in-file')) throw new Error(`ado-capture never sends a body (${arg})`);
+    if (!spells(name, '--http-method')) return;
+    const value = eq < 0 ? azArgs[i + 1] : arg.slice(eq + 1);
+    if (name !== '--http-method' || String(value).toUpperCase() !== 'GET') throw new Error(`ado-capture runs GETs only; refused ${name} ${value}`);
+  });
 }
 
 const kv = (o) => Object.keys(o).sort().map((k) => `${k}=${o[k]}`).join('&');

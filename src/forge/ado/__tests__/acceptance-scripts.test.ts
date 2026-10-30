@@ -5,7 +5,7 @@
  * every spawn is a fake that fails the test when a dry run calls it.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -134,6 +134,8 @@ function context(o: Record<string, unknown>, answer?: (call: Call) => { status: 
   return { ctx, lines, calls };
 }
 const azArgs = (call: Call) => call.args.slice(ENTRY.prefix.length);
+/** What azArgv appends to every azure-devops extension command. */
+const J = ['--detect', 'false', '--output', 'json'];
 
 describe('scripts/ado-acceptance.mjs cleanup guard', () => {
   const m = { runId: RUN, project: { name: RUN, id: PROJECT_ID } };
@@ -158,12 +160,12 @@ describe('scripts/ado-acceptance.mjs cleanup guard', () => {
     manifest(home);
     mkdirSync(join(home, RUN, 'repo', 'src'), { recursive: true });
     mkdirSync(join(home, RUN, 'recorded'), { recursive: true });
-    const o = acceptance.parseAcceptanceArgs(['--phase', 'cleanup', '--run', RUN, '--home', home]);
+    const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
     const { ctx, calls } = context(o, (c) => (azArgs(c)[2] === 'show' ? { status: 0, stdout: JSON.stringify({ id: PROJECT_ID, name: RUN }) } : { status: 0, stdout: '' }));
     acceptance.runPhases(ctx);
     expect(calls.map(azArgs)).toEqual([
-      ['devops', 'project', 'show', '--project', PROJECT_ID, '--org', ORG],
-      ['devops', 'project', 'delete', '--id', PROJECT_ID, '--org', ORG, '--yes'],
+      ['devops', 'project', 'show', '--project', PROJECT_ID, '--org', ORG, ...J],
+      ['devops', 'project', 'delete', '--id', PROJECT_ID, '--org', ORG, '--yes', ...J],
     ]);
     expect(existsSync(join(home, RUN, 'repo'))).toBe(false);
     expect(existsSync(join(home, RUN, 'recorded'))).toBe(true);
@@ -173,20 +175,98 @@ describe('scripts/ado-acceptance.mjs cleanup guard', () => {
   it('never deletes when the shown project is another one, or the manifest name lacks the prefix', () => {
     const home = freshDir('home');
     manifest(home);
-    const o = acceptance.parseAcceptanceArgs(['--phase', 'cleanup', '--run', RUN, '--home', home]);
+    const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
     const shownOther = context(o, () => ({ status: 0, stdout: JSON.stringify({ id: PROJECT_ID, name: 'Web' }) }));
     expect(() => acceptance.runPhases(shownOther.ctx)).toThrow(/is named "Web"/);
     expect(shownOther.calls.map((c) => azArgs(c)[2])).toEqual(['show']);
 
     const bad = freshDir('home');
     manifest(bad, { project: { name: 'Web', id: PROJECT_ID } });
-    const noPrefix = context(acceptance.parseAcceptanceArgs(['--phase', 'cleanup', '--run', RUN, '--home', bad]), () => ({ status: 0, stdout: '{}' }));
+    const noPrefix = context(acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', bad]), () => ({ status: 0, stdout: '{}' }));
     expect(() => acceptance.runPhases(noPrefix.ctx)).toThrow(/not this run's omg-acc-/);
     expect(noPrefix.calls).toEqual([]);
 
-    const other = context(acceptance.parseAcceptanceArgs(['--phase', 'cleanup', '--run', RUN, '--home', home, '--project-id', '3411ebc1-d5aa-464f-9615-0b527bc66719']), () => ({ status: 0, stdout: '{}' }));
+    const other = context(acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home, '--project-id', '3411ebc1-d5aa-464f-9615-0b527bc66719']), () => ({ status: 0, stdout: '{}' }));
     expect(() => acceptance.runPhases(other.ctx)).toThrow(/not the project id in the manifest/);
     expect(other.calls).toEqual([]);
+  });
+});
+
+describe('scripts/ado-acceptance.mjs az output and cleanup hardening', () => {
+  it('asks every az call for JSON, and the extension commands for --detect false', () => {
+    expect(acceptance.azArgv(['--version'])).toEqual(['--version']);
+    expect(acceptance.azArgv(['account', 'show'])).toEqual(['account', 'show', '--output', 'json']);
+    expect(acceptance.azArgv(['extension', 'show', '--name', 'azure-devops'])).toEqual(['extension', 'show', '--name', 'azure-devops', '--output', 'json']);
+    for (const group of ['devops', 'repos', 'boards', 'pipelines']) expect(acceptance.azArgv([group, 'x'])).toEqual([group, 'x', ...J]);
+  });
+
+  it('refuses to delete when az devops project show prints no JSON (a table output default)', () => {
+    const home = freshDir('home');
+    manifest(home, { project: { name: RUN, id: '3411ebc1-d5aa-464f-9615-0b527bc66719' } });
+    const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
+    const table = context(o, () => ({ status: 0, stdout: `ID                                    Name\n------------------------------------  ----\n${PROJECT_ID}  Production\n` }));
+    expect(() => acceptance.runPhases(table.ctx)).toThrow(/no readable project/);
+    expect(table.calls.map((c) => azArgs(c)[2])).toEqual(['show']);
+    expect(() => acceptance.assertCleanupAllowed({ runId: RUN, project: { name: RUN, id: PROJECT_ID } }, { shown: null })).toThrow(/no readable project/);
+  });
+
+  it('needs --org for cleanup and refuses a manifest of another org', () => {
+    expect(() => acceptance.parseAcceptanceArgs(['--phase', 'cleanup', '--run', RUN])).toThrow(/--org is required/);
+    const home = freshDir('home');
+    manifest(home);
+    const other = context(acceptance.parseAcceptanceArgs(['--org', 'https://dev.azure.com/other-org', '--phase', 'cleanup', '--run', RUN, '--home', home]), () => ({ status: 0, stdout: '{}' }));
+    expect(() => acceptance.runPhases(other.ctx)).toThrow(/is in https:\/\/dev\.azure\.com\/contoso-acc, not https:\/\/dev\.azure\.com\/other-org/);
+    expect(other.calls).toEqual([]);
+  });
+
+  it('refuses before any az call when <home>/<runId> is a junction or symlink, and leaves its target alone', () => {
+    const home = freshDir('home');
+    manifest(home);
+    const target = freshDir('not-ours');
+    mkdirSync(join(target, 'repo', 'src'), { recursive: true });
+    writeFileSync(join(target, 'repo', 'src', 'keep.txt'), 'keep', 'utf8');
+    symlinkSync(target, join(home, RUN), process.platform === 'win32' ? 'junction' : 'dir');
+    const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
+    const linked = context(o, () => ({ status: 0, stdout: JSON.stringify({ id: PROJECT_ID, name: RUN }) }));
+    expect(() => acceptance.runPhases(linked.ctx)).toThrow(/refusing to remove .* is a link/);
+    expect(linked.calls).toEqual([]);
+    expect(readFileSync(join(target, 'repo', 'src', 'keep.txt'), 'utf8')).toBe('keep');
+  });
+});
+
+describe('scripts/ado-acceptance.mjs heal-drill', () => {
+  const SHA = 'a'.repeat(40);
+  const drill = (withLanes: boolean, healRunStatus = 0) => {
+    const home = freshDir('home');
+    manifest(home);
+    mkdirSync(join(home, RUN, 'repo'), { recursive: true });
+    const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'heal-drill', '--run', RUN, '--home', home, ...(withLanes ? ['--with-lanes'] : [])]);
+    const { ctx, calls } = context(o, (c) => {
+      if (c.cmd === 'git') return { status: 0, stdout: c.args.includes('rev-parse') ? `${SHA}\n` : '' };
+      if (c.cmd === ENTRY.command) {
+        if (azArgs(c)[0] === 'pipelines') return { status: 0, stdout: JSON.stringify([{ id: 9, sourceVersion: SHA, status: 'completed', result: 'failed' }]) };
+        return { status: 0, stdout: '{}' };
+      }
+      const omg = c.args.slice(1).join(' ');
+      if (omg === 'factory heal scan --json') return { status: 0, stdout: JSON.stringify({ entries: [{ sig8: 'abcdef12' }] }) };
+      if (omg === 'factory heal run abcdef12') return { status: healRunStatus, stdout: '' };
+      return { status: 0, stdout: '{}' };
+    });
+    acceptance.runPhases(ctx);
+    return calls.map((c) => (c.cmd === 'git' ? `git ${c.args.slice(2).join(' ')}` : c.cmd === ENTRY.command ? `az ${azArgs(c).join(' ')}` : `omg ${c.args.slice(1).join(' ')}`));
+  };
+  const policy = (enabled: string) => `az repos policy build update --id 3 --enabled ${enabled} --project ${RUN} --org ${ORG} ${J.join(' ')}`;
+
+  it('switches the blocking policy off around each push to main and on again right after', () => {
+    const seq = drill(false).filter((l) => l.startsWith('git push') || l.includes('policy build update'));
+    expect(seq).toEqual([policy('false'), 'git push origin main', policy('true'), policy('false'), 'git push origin main', policy('true')]);
+  });
+
+  it('runs the billed heal run before approve with --with-lanes, and never approves without lanes or after a failed run', () => {
+    const heal = (seq: string[]) => seq.filter((l) => l.startsWith('omg factory heal run') || l.startsWith('omg factory heal approve'));
+    expect(heal(drill(true))).toEqual(['omg factory heal run abcdef12 --dry-run', 'omg factory heal run abcdef12', 'omg factory heal approve abcdef12']);
+    expect(heal(drill(false))).toEqual(['omg factory heal run abcdef12 --dry-run']);
+    expect(() => drill(true, 1)).toThrow(/heal-drill: 1 of/);
   });
 });
 
@@ -210,14 +290,14 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
   it('prints the exact az argv of the create phase, with the Windows python entry', () => {
     const lines = dryLines(['--org', ORG, '--source', source, '--phase', 'create'], join(freshDir('dry'), 'acceptance'));
     const az = (args: string[]) => `[dry-run] az: ${JSON.stringify([ENTRY.command, ...ENTRY.prefix, ...args])} (env AZ_INSTALLER=MSI)`;
-    expect(lines).toContain(az(['devops', 'project', 'create', '--name', RUN, '--org', ORG, '--process', 'Agile', '--visibility', 'private', '--source-control', 'git']));
-    expect(lines).toContain(az(['pipelines', 'create', '--name', 'ci', '--repository', RUN, '--repository-type', 'tfsgit', '--branch', 'main', '--yml-path', 'azure-pipelines.yml', '--skip-first-run', 'true', '--project', RUN, '--org', ORG]));
+    expect(lines).toContain(az(['devops', 'project', 'create', '--name', RUN, '--org', ORG, '--process', 'Agile', '--visibility', 'private', '--source-control', 'git', ...J]));
+    expect(lines).toContain(az(['pipelines', 'create', '--name', 'ci', '--repository', RUN, '--repository-type', 'tfsgit', '--branch', 'main', '--yml-path', 'azure-pipelines.yml', '--skip-first-run', 'true', '--project', RUN, '--org', ORG, ...J]));
     expect(lines).toContain(az([
       'boards', 'work-item', 'create', '--type', 'User Story', '--title', 'EXC-006 Camera shake',
       '--description', '<p>Depends on: none. Wave 8: the only call site of <code>updateCamera</code> is <code>src/app.ts</code>.</p>',
-      '--fields', 'Microsoft.VSTS.Common.AcceptanceCriteria=<ul><li><code>updateCamera</code> takes the frame\'s events.</li></ul>', 'System.Tags=factory', '--project', RUN, '--org', ORG,
+      '--fields', 'Microsoft.VSTS.Common.AcceptanceCriteria=<ul><li><code>updateCamera</code> takes the frame\'s events.</li></ul>', 'System.Tags=factory', '--project', RUN, '--org', ORG, ...J,
     ]));
-    expect(lines).toContain(az(['boards', 'work-item', 'relation', 'add', '--id', '<wi:EXC-009>', '--relation-type', 'predecessor', '--target-id', '<wi:EXC-001>', '--org', ORG]));
+    expect(lines).toContain(az(['boards', 'work-item', 'relation', 'add', '--id', '<wi:EXC-009>', '--relation-type', 'predecessor', '--target-id', '<wi:EXC-001>', '--org', ORG, ...J]));
     // The manifest is written before each create.
     const firstWrite = lines.findIndex((l) => l.startsWith('[dry-run] write') && l.includes(`${RUN}.json`));
     expect(firstWrite).toBeGreaterThanOrEqual(0);
@@ -229,8 +309,8 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
     manifest(home);
     mkdirSync(join(home, RUN, 'repo'), { recursive: true });
     const before = readFileSync(join(home, `${RUN}.json`), 'utf8');
-    const lines = dryLines(['--phase', 'cleanup', '--run', RUN], home);
-    expect(lines).toContain(`[dry-run] az: ${JSON.stringify([ENTRY.command, ...ENTRY.prefix, 'devops', 'project', 'delete', '--id', PROJECT_ID, '--org', ORG, '--yes'])} (env AZ_INSTALLER=MSI)`);
+    const lines = dryLines(['--org', ORG, '--phase', 'cleanup', '--run', RUN], home);
+    expect(lines).toContain(`[dry-run] az: ${JSON.stringify([ENTRY.command, ...ENTRY.prefix, 'devops', 'project', 'delete', '--id', PROJECT_ID, '--org', ORG, '--yes', ...J])} (env AZ_INSTALLER=MSI)`);
     expect(readFileSync(join(home, `${RUN}.json`), 'utf8')).toBe(before);
     expect(existsSync(join(home, RUN, 'repo'))).toBe(true);
   });
@@ -242,6 +322,7 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
     expect(omg.some((l) => l.includes('"factory","run","<first runnable id>","--dry-run"'))).toBe(true);
     expect(omg.some((l) => /"factory","run","[^"]+"\]/.test(l))).toBe(false);
     expect(omg.some((l) => l.includes('"approve"') || l.includes('"poll"'))).toBe(false);
+    expect(omg.some((l) => /"heal","run","[^"]+"]/.test(l))).toBe(false);
   });
 });
 
@@ -276,10 +357,14 @@ describe('scripts/ado-acceptance.mjs create', () => {
     acceptance.runPhases(ctx);
     expect(pendingAtCreate).toBe('project');
     const m = JSON.parse(readFileSync(manifestFile, 'utf8'));
-    expect(m).toMatchObject({ runId: RUN, project: { name: RUN, id: PROJECT_ID }, pipeline: { id: 100 }, policy: { id: 101 }, workItems: { 'EXC-001': 102, 'EXC-006': 103, 'EXC-009': 104 }, pending: null, createdDone: true });
+    expect(m).toMatchObject({ runId: RUN, project: { name: RUN, id: PROJECT_ID }, pipeline: { id: 100 }, policy: { id: 105 }, workItems: { 'EXC-001': 101, 'EXC-006': 102, 'EXC-009': 103 }, pending: null, createdDone: true });
     const git = calls.filter((c) => c.cmd === 'git').map((c) => c.args.slice(2).join(' '));
     expect(git).toContain('push origin refs/remotes/origin/fix/v1-review:refs/heads/fix/v1-review');
     expect(git.every((g) => !/--force|\s-f\b|\+refs/.test(g))).toBe(true);
+    // A blocking policy on main refuses direct pushes: it comes after the last one.
+    const lastPush = calls.map((c) => c.cmd === 'git' && c.args.includes('push')).lastIndexOf(true);
+    const policyAt = calls.findIndex((c) => c.cmd === ENTRY.command && azArgs(c).slice(0, 4).join(' ') === 'repos policy build create');
+    expect(policyAt).toBeGreaterThan(lastPush);
     expect(readFileSync(join(home, RUN, 'repo', 'azure-pipelines.yml'), 'utf8')).toContain('pool:\n  name: Default\n');
     const omg = calls.find((c) => c.cmd === process.execPath);
     expect(omg?.args.slice(1)).toEqual(['factory', 'setup', '--forge', 'azure-devops', '--org', 'contoso-acc', '--project', RUN, '--repo', RUN, '--intake', `area-tag:${RUN}#factory`, '--progress', join(home, RUN, 'progress.json'), '--yes', '--json']);
@@ -322,6 +407,12 @@ describe('scripts/ado-capture.mjs', () => {
     expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--in-file', 'x'])).toThrow(/never sends a body/);
     expect(() => assertReadOnly(['devops', 'project', 'delete', '--id', 'x'])).toThrow(/GETs only/);
     expect(() => assertReadOnly(['repos', 'create', '--name', 'x'])).toThrow(/GETs only/);
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--http-method=POST'])).toThrow(/GETs only/);
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--http-method=get'])).not.toThrow();
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--http-method', 'GET', '--http-method', 'DELETE'])).toThrow(/GETs only/);
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--http-meth', 'GET'])).toThrow(/GETs only/);
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--in-file=x'])).toThrow(/never sends a body/);
+    expect(() => assertReadOnly(['devops', 'invoke', '--area', 'git', '--in-f', 'x'])).toThrow(/never sends a body/);
   });
 
   it('pins the same area, resource and api-version as routes.ts for every shared route', () => {
@@ -429,6 +520,44 @@ describe('scripts/ado-fixture-import.mjs', () => {
     expect(f.stdout.repository.url).toContain(f.stdout.repository.id);
     expect(f.stdout.repository.project.id).not.toBe(f.stdout.repository.id);
     expect(() => parseAdoFixture('live.json', text)).not.toThrow();
+  });
+
+  it('scrubs self-hosted agent details: agent and machine names, profile paths and the agent _work path', () => {
+    const timeline = live({
+      route: 'build.timeline.GET',
+      routeParameters: { project: RUN, buildId: '9' },
+      stdout: { records: [{ name: 'npm run check', workerName: 'ROBIN-DESKTOP' }], note: 'ran on ROBIN-DESKTOP in C:\\Users\\robin\\agent\\_work\\1\\s' },
+    });
+    const dir = writeCapture({
+      'm/build.timeline.GET.a.json': timeline,
+      'm/logs-text/build-9-log-1.txt': [
+        "Agent name: 'robin-agent'",
+        "Agent machine name: 'ROBIN-DESKTOP'",
+        'Working directory C:\\Users\\robin\\agent\\_work\\1\\s and D:\\agents\\a1\\_work\\_temp',
+        'npm cache /home/robin/.npm, tool /Users/robin/bin, COMPUTERNAME=ROBIN-DESKTOP',
+      ].join('\n'),
+    });
+    const into = join(freshDir('into'), 'live');
+    const plan = planImport(dir, options(into));
+    const text = plan.writes.map((w: { text: string }) => w.text).join('\n');
+    for (const leak of ['ROBIN-DESKTOP', 'robin-agent', 'robin', 'agents\\a1']) expect(text).not.toContain(leak);
+    const log = plan.writes.find((w: { path: string }) => w.path.endsWith('.txt')).text;
+    expect(log).toContain("Agent machine name: 'agent");
+    expect(log).toContain('Working directory C:\\agent\\_work\\1\\s and C:\\agent\\_work\\_temp');
+    expect(log).toContain('npm cache /home/user/.npm, tool /Users/user/bin, COMPUTERNAME=agent');
+    const timelineFile = plan.writes.find((w: { path: string }) => w.path.endsWith('.json'));
+    expect(JSON.parse(timelineFile.text).stdout).toEqual({ records: [{ name: 'npm run check', workerName: 'agent1' }], note: 'ran on agent1 in C:\\agent\\_work\\1\\s' });
+  });
+
+  it('refuses a file whose agent details survive scrubbing', () => {
+    const scrub = createScrubber({ org: 'contoso-acc', project: RUN, repo: RUN, redact: (s: string) => s });
+    expect(scrub.problem("Agent name: 'robin-agent'")).toMatch(/agent or machine/);
+    expect(scrub.problem('at C:\\Users\\robin\\x')).toMatch(/user profile path/);
+    expect(scrub.problem(JSON.stringify({ p: 'C:\\Users\\robin\\x' }))).toMatch(/user profile path/);
+    expect(scrub.problem('at D:\\a1\\_work\\1')).toMatch(/_work path/);
+    expect(scrub.problem(JSON.stringify({ p: 'C:\\agent\\_work\\1', u: 'C:\\Users\\user\\x', a: "Agent name: 'agent1'" }))).toBeUndefined();
+    scrub.learn({ workerName: 'ROBIN-DESKTOP' });
+    expect(scrub.problem('built on ROBIN-DESKTOP')).toMatch(/agent or machine/);
   });
 
   it('maps one GUID to one replacement across files', () => {

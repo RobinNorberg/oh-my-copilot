@@ -17,8 +17,9 @@
  * - `--dry-run` prints the exact argv of every command and every file it
  *   would write, and runs and writes nothing (not even read-only commands).
  * - Nothing spends Copilot credits without `--with-lanes`.
- * - `cleanup` deletes only the project id in this run's manifest, after
- *   `az devops project show` confirms its `omg-acc-` name. The project is
+ * - `cleanup` needs `--org` equal to the manifest's org and deletes only the
+ *   project id in this run's manifest, after `az devops project show`
+ *   (JSON) confirms its `omg-acc-` name. The project is
  *   soft-deleted and restorable for 28 days.
  * - The agent pool defaults to the self-hosted pool `Default` (free, one
  *   job); `--hosted` uses Microsoft-hosted `ubuntu-latest`, which needs the org
@@ -96,7 +97,8 @@ export function parseAcceptanceArgs(argv, home = join(homedir(), '.omg', 'accept
   }
   const needsSource = ['all', 'preflight', 'create'].includes(o.phase);
   if (o.org !== undefined) o.orgName = orgNameOf(o.org);
-  else if (needsSource) throw new Error('--org is required');
+  // cleanup never trusts the manifest's org alone: --org must name it too.
+  else if (needsSource || o.phase === 'cleanup') throw new Error('--org is required');
   if (needsSource && !o.source) throw new Error('--source is required (a local clone of the test repository)');
   return o;
 }
@@ -155,7 +157,8 @@ export function assertCleanupAllowed(manifest, { requestedId, shown } = {}) {
   if (typeof id !== 'string' || !GUID.test(id)) throw new Error(`cleanup refused: the manifest records no project id for ${name}`);
   if (requestedId !== undefined && requestedId.toLowerCase() !== id.toLowerCase()) throw new Error(`cleanup refused: ${requestedId} is not the project id in the manifest of ${name}`);
   if (shown !== undefined) {
-    if (!shown || String(shown.id).toLowerCase() !== id.toLowerCase()) throw new Error(`cleanup refused: az devops project show returned another project than ${id}`);
+    if (!shown || typeof shown !== 'object') throw new Error(`cleanup refused: az devops project show returned no readable project for ${id}`);
+    if (String(shown.id).toLowerCase() !== id.toLowerCase()) throw new Error(`cleanup refused: az devops project show returned another project than ${id}`);
     if (shown.name !== name) throw new Error(`cleanup refused: project ${id} is named ${JSON.stringify(shown.name)}, not ${name}`);
   }
   return id;
@@ -220,6 +223,19 @@ export function latestRunId(home) {
   return readdirSync(home).filter((n) => RUN_ID.test(n.replace(/\.json$/, '')) && n.endsWith('.json')).map((n) => n.slice(0, -5)).sort().at(-1);
 }
 
+/** The azure-devops extension's command groups: they take `--detect`. */
+const DEVOPS_GROUPS = new Set(['devops', 'repos', 'boards', 'pipelines']);
+
+/**
+ * Every az call reads JSON whatever the user's `az config` output default,
+ * and the extension commands never pick the org up from git config, as
+ * src/forge/ado/invoke.ts does. `az --version` prints text only.
+ */
+export function azArgv(args) {
+  if (args[0] === '--version') return args;
+  return [...args, ...(DEVOPS_GROUPS.has(args[0]) ? ['--detect', 'false'] : []), '--output', 'json'];
+}
+
 /**
  * The side-effect boundary: every spawn and file write goes through here,
  * and in dry-run mode each one is printed, never done. `deps`: spawn
@@ -243,7 +259,7 @@ export function createContext(o, deps) {
     if (res.status !== 0 && !allowFail) throw new Error(`exit ${res.status} from ${shown.slice(0, 300)}\n${redact(res.stderr).trim().slice(0, 2000)}`);
     return res;
   };
-  ctx.az = (args, opts = {}) => ctx.exec('az', deps.azEntry.command, [...deps.azEntry.prefix, ...args], { ...opts, env: { ...deps.azEntry.env, ...opts.env } });
+  ctx.az = (args, opts = {}) => ctx.exec('az', deps.azEntry.command, [...deps.azEntry.prefix, ...azArgv(args)],{ ...opts, env: { ...deps.azEntry.env, ...opts.env } });
   ctx.git = (args, opts) => ctx.exec('git', 'git', args, opts);
   ctx.node = (script, args, opts) => ctx.exec('node', process.execPath, [join(ROOT, 'scripts', script), ...args], opts);
   ctx.omg = (args, opts = {}) => ctx.exec('omg', process.execPath, [join(ROOT, 'bin', 'oh-my-copilot.js'), ...args], { ...opts, env: { OMG_ADO_RECORD_DIR: join(ctx.manifest.runDir, 'recorded'), ...opts.env } });
@@ -300,7 +316,7 @@ export function preflight(ctx) {
   if (!existsSync(join(o.source, 'BACKLOG.md'))) problems.push(`${o.source}: no BACKLOG.md`);
   const pools = ctx.az(['pipelines', 'pool', 'list', '--org', o.org], { allowFail: true, placeholder: [] });
   ctx.log(poolAdvice(o.pool, o.dryRun ? undefined : pools.json));
-  if (o.withLanes) ctx.log('Copilot: --with-lanes runs one factory run (implement + review, maybe fix/ci-fix lanes) and, in heal-drill, one heal debugger lane; check your Copilot premium-request quota first.');
+  if (o.withLanes) ctx.log('Copilot: --with-lanes runs one factory run (implement + review, maybe fix/ci-fix lanes) and, in heal-drill, one heal debugger lane and then the approved ci-heal run (implement + review lanes); check your Copilot premium-request quota first.');
   else ctx.log('Copilot: no lane runs without --with-lanes (0 credits).');
   if (!existsSync(join(ROOT, 'dist', 'forge', 'ado', 'az-binary.js'))) problems.push('no OMC build: run npm run build first');
   if (problems.length && o.dryRun) ctx.log(`[dry-run] preflight would fail:\n- ${problems.join('\n- ')}`);
@@ -350,12 +366,6 @@ export function create(ctx) {
   pending('pipeline');
   const pipeline = ctx.az(['pipelines', 'create', '--name', 'ci', '--repository', runId, '--repository-type', 'tfsgit', '--branch', 'main', '--yml-path', 'azure-pipelines.yml', '--skip-first-run', 'true', ...scope], { placeholder: { id: '<definitionId>' } });
   m.pipeline = { id: pipeline.json?.id };
-  pending('policy');
-  const policy = ctx.az([
-    'repos', 'policy', 'build', 'create', '--blocking', 'true', '--branch', 'main', '--build-definition-id', String(m.pipeline.id), '--display-name', 'ci', '--enabled', 'true',
-    '--manual-queue-only', 'false', '--queue-on-source-update-only', 'true', '--repository-id', String(m.repo.id), '--valid-duration', '720', ...scope,
-  ], { placeholder: { id: '<policyId>' } });
-  m.policy = { id: policy.json?.id };
   pending(null);
 
   const relation = predecessorRelation(ctx.az(['boards', 'work-item', 'relation', 'list-type', ...org], { placeholder: [{ name: 'Predecessor' }] }).json);
@@ -382,6 +392,17 @@ export function create(ctx) {
   git('add', '.copilot/omg.jsonc');
   git('commit', '-m', 'chore: omg factory config for the live acceptance run');
   git('push', 'origin', 'main');
+
+  // The blocking build policy comes after the last direct push: a branch with
+  // required policies refuses direct pushes without bypass permission
+  // (https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies?view=azure-devops#faq).
+  pending('policy');
+  const policy = ctx.az([
+    'repos', 'policy', 'build', 'create', '--blocking', 'true', '--branch', 'main', '--build-definition-id', String(m.pipeline.id), '--display-name', 'ci', '--enabled', 'true',
+    '--manual-queue-only', 'false', '--queue-on-source-update-only', 'true', '--repository-id', String(m.repo.id), '--valid-duration', '720', ...scope,
+  ], { placeholder: { id: '<policyId>' } });
+  m.policy = { id: policy.json?.id };
+  pending(null);
   m.createdDone = true;
   ctx.saveManifest();
   ctx.log(`created ${runId}: project ${m.project.id}, ${items.length} work items, pipeline ${m.pipeline.id}`);
@@ -442,10 +463,22 @@ export function healDrill(ctx) {
   const m = requireManifest(ctx);
   const cwd = repoDirOf(m);
   const git = (...args) => ctx.git(['-C', cwd, ...args]);
+  // main carries a blocking build policy, which refuses direct pushes without
+  // bypass permission; the drill switches it off around each push only.
+  // https://learn.microsoft.com/en-us/cli/azure/repos/policy/build?view=azure-cli-latest#az-repos-policy-build-update
+  const pushWithPolicyOff = () => {
+    const policy = (enabled) => ctx.az(['repos', 'policy', 'build', 'update', '--id', String(m.policy.id), '--enabled', enabled, '--project', m.project.name, '--org', orgOf(m)], { placeholder: { id: m.policy.id } });
+    policy('false');
+    try {
+      git('push', 'origin', 'main');
+    } finally {
+      policy('true');
+    }
+  };
   ctx.write(join(cwd, DRILL_TEST), DRILL_SOURCE);
   git('add', DRILL_TEST);
   git('commit', '-m', 'test: heal drill, a failing test on purpose (omg live acceptance)');
-  git('push', 'origin', 'main');
+  pushWithPolicyOff();
   const sha = ctx.git(['-C', cwd, 'rev-parse', 'HEAD'], { placeholder: '<drill sha>' }).stdout.trim();
   const results = [];
   try {
@@ -459,11 +492,16 @@ export function healDrill(ctx) {
     if (!sig8) results.push({ what: 'heal scan classified the red build', ok: false });
     else {
       step(`omg factory heal run ${sig8} --dry-run`, ctx.omg(['factory', 'heal', 'run', sig8, '--dry-run'], { cwd, allowFail: true }));
-      if (o.withLanes) step(`omg factory heal approve ${sig8}`, ctx.omg(['factory', 'heal', 'approve', sig8], { cwd, allowFail: true }));
+      // approve needs the debugger lane's diagnosis, so only a real heal run (Copilot credits) leads to it.
+      if (o.withLanes) {
+        const run = ctx.omg(['factory', 'heal', 'run', sig8], { cwd, allowFail: true });
+        step(`omg factory heal run ${sig8}`, run);
+        if (run.status === 0) step(`omg factory heal approve ${sig8}`, ctx.omg(['factory', 'heal', 'approve', sig8], { cwd, allowFail: true }));
+      }
     }
   } finally {
     git('revert', '--no-edit', sha);
-    git('push', 'origin', 'main');
+    pushWithPolicyOff();
   }
   return report(ctx, 'heal-drill', results);
 }
@@ -481,22 +519,37 @@ export function captureFixtures(ctx) {
   ctx.log(diff.stdout.trim());
 }
 
+/**
+ * Refuses when `<home>/<runId>` or its `repo/` is a symlink, a junction or
+ * any other reparse point: the clone's real path must be the one under the
+ * real `home`.
+ */
+export function assertNoLink(home, runId) {
+  const runDir = join(home, runId);
+  const repoDir = join(runDir, 'repo');
+  for (const p of [runDir, repoDir]) if (lstatSync(p).isSymbolicLink()) throw new Error(`refusing to remove ${repoDir}: ${p} is a link`);
+  const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const expected = join(realpathSync.native(home), runId, 'repo');
+  if (fold(realpathSync.native(repoDir)) !== fold(expected)) throw new Error(`refusing to remove ${repoDir}: it resolves to ${realpathSync.native(repoDir)}, not ${expected}`);
+}
+
 export function cleanup(ctx) {
   const { o } = ctx;
+  // parseAcceptanceArgs requires --org for cleanup and requireManifest refuses a manifest of another org.
   const m = requireManifest(ctx);
   const id = assertCleanupAllowed(m, { requestedId: o.projectId });
+  // Only this run's clone, and never through a link: a symlink or junction at <home>/<runId> or its repo/ points at what is not ours.
+  const repoDir = repoDirOf(m);
+  if (resolve(m.runDir) !== resolve(o.home, m.runId)) throw new Error(`refusing to remove ${repoDir}: the manifest's run directory is not ${join(o.home, m.runId)}`);
+  const removeRepo = existsSync(repoDir);
+  if (removeRepo) assertNoLink(o.home, m.runId);
   const shown = ctx.az(['devops', 'project', 'show', '--project', id, '--org', orgOf(m)], { placeholder: { id, name: m.project.name } }).json;
-  assertCleanupAllowed(m, { requestedId: o.projectId, shown });
+  // A show that is not JSON refuses, never skips the check.
+  assertCleanupAllowed(m, { requestedId: o.projectId, shown: shown ?? null });
   ctx.az(['devops', 'project', 'delete', '--id', id, '--org', orgOf(m), '--yes']);
   m.deletedAt = ctx.now().toISOString();
   ctx.saveManifest();
-  // Only this run's clone, and never through a link (a junction's target is not ours).
-  const repoDir = repoDirOf(m);
-  if (resolve(m.runDir) !== resolve(o.home, m.runId)) throw new Error(`refusing to remove ${repoDir}: the manifest's run directory is not ${join(o.home, m.runId)}`);
-  if (existsSync(repoDir)) {
-    if (lstatSync(repoDir).isSymbolicLink()) throw new Error(`refusing to remove ${repoDir}: it is a link`);
-    ctx.rm(repoDir);
-  }
+  if (removeRepo) ctx.rm(repoDir);
   ctx.log(`deleted project ${m.project.name} (${id}); it is restorable for 28 days (Organization settings > Projects).`);
   ctx.log(m.trustedAuthorsAdded?.length ? `remove these trustedAuthors from your user config: ${m.trustedAuthorsAdded.join(', ')}` : 'no trustedAuthors were added by this run.');
 }
@@ -508,7 +561,7 @@ export function runPhases(ctx) {
     ctx.log(`\n== ${phase}${ctx.o.dryRun ? ' (dry run)' : ''}`);
     PHASE_FNS[phase](ctx);
   }
-  if (ctx.o.phase === 'all' && ctx.manifest) ctx.log(`\nnext: --phase heal-drill --run ${ctx.manifest.runId} (needs an agent), then --phase cleanup --run ${ctx.manifest.runId}`);
+  if (ctx.o.phase === 'all' && ctx.manifest) ctx.log(`\nnext: --phase heal-drill --run ${ctx.manifest.runId} (needs an agent), then --phase cleanup --org ${ctx.manifest.org} --run ${ctx.manifest.runId}`);
 }
 
 async function main() {
