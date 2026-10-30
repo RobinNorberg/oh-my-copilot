@@ -4,6 +4,31 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`omg factory check` works on Azure DevOps.** The command built its az
+  guard without the forge repo and the az entry, so every az call on a real
+  ADO repository was refused ("no Azure DevOps forge is configured for this
+  run"). The az entry is now resolved once; the guard and the adapter both
+  get it.
+- **Factory lanes may not edit Azure Pipelines definitions.** A write lane
+  could change `azure-pipelines.yml` (or `.azure-pipelines/`, `.azuredevops/`,
+  `.pipelines/`), the CI that gates its own PR, and turn a red build green.
+  These paths are now lane-protected, and on Azure DevOps a PR touching them
+  needs the owner. The paths are protected for lanes on GitHub repositories
+  too (intended: a repository may run both CIs). `omg ship`'s protected
+  paths are unchanged.
+- **Failing tests and known-flaky entries apply to Azure DevOps builds.** A
+  failed blocking build check now names its failed job (the newest attempt),
+  and Azure Pipelines log timestamps are stripped before parsing. The ci-fix
+  lane gets the failing test titles, known-flaky entries apply, and heal
+  signatures name the failing tests instead of collapsing every failure into
+  the step's `##[error]` line. A build with more than one failed job names
+  none (one job's known-flaky log never excuses another's real failure), an
+  `##[error]` in another step of an Azure Pipelines log (split on
+  `##[section]Starting:`) still blocks the known-flaky verdict, and the
+  known-flaky suggestion on Azure DevOps points at the build to re-queue
+  instead of `gh run rerun`.
 ### Security
 
 - **SDK sessions can no longer write `.git` through the file tools.** The built-in file tools run outside the OS sandbox, and the permission handler approved any write under the worktree, so a factory lane (or an SDK team worker) could rewrite the worktree's `.git` gitfile to name a git dir with `core.fsmonitor`, which the next unhardened git run by the runtime or a plugin hook executed outside the sandbox. A write to any path with a `.git` segment is now refused, as given and after resolving links, case-folded, with trailing dots and spaces stripped, 8.3 short names (`GIT~1`) and NTFS alternate data streams (any `:` past the drive letter) included.

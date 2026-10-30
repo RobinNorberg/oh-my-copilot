@@ -12,7 +12,8 @@ import type { CopilotRunSandboxState } from '../../../copilot-run/sandbox.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { runFactoryEngine, type FactoryEngineOptions } from '../engine.js';
-import { commitLaneWork, ENGINE_COMMIT_IDENTITY, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
+import { protectedChanges } from '../../../ship/merge.js';
+import { commitLaneWork, ENGINE_COMMIT_IDENTITY, LANE_PROTECTED_PATHS, laneCommitMessage, outsideWorktree } from '../lane-commit.js';
 import { readFactoryState } from '../state.js';
 import { FakeLanes, FakeProcesses, gitIn, harness, ISSUE, noCommit, remoteHead, review, testGateConfig, type Harness, type LaneScript } from './fake-lanes.js';
 
@@ -369,5 +370,19 @@ describe('commitLaneWork', () => {
       expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(path) });
       expect(gitIn(worktree, 'diff', '--cached', '--name-only'), path).toBe('');
     }
+  });
+
+  it('refuses the Azure Pipelines definitions (the CI that gates an ADO PR), in any case', () => {
+    for (const path of ['azure-pipelines.yml', 'Azure-Pipelines.YAML', '.azure-pipelines/ci.yml', '.azuredevops/pull_request_template.md', '.Pipelines/build.yml']) {
+      const { worktree, start, branch } = laneTree(`cr-ado-${path.replace(/[^a-z]/gi, '')}`);
+      mkdirSync(join(worktree, path, '..'), { recursive: true });
+      writeFileSync(join(worktree, path), 'x\n');
+      const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: h.root, branch, message: 'x' });
+      expect(res, path).toMatchObject({ ok: false, refusal: 'protected', reason: expect.stringContaining(path) });
+      expect(gitIn(worktree, 'diff', '--cached', '--name-only'), path).toBe('');
+    }
+    // The Win32 forms protectedChanges normalizes (trailing dots and spaces, `\`, `.` segments) hit too.
+    expect(protectedChanges(['azure-pipelines.yml.', 'AZURE-PIPELINES.YAML ', '.azure-pipelines.\\ci.yml', './.pipelines/x.yml', 'src/azure-pipelines.yml'], LANE_PROTECTED_PATHS))
+      .toEqual(['azure-pipelines.yml.', 'AZURE-PIPELINES.YAML ', '.azure-pipelines.\\ci.yml', './.pipelines/x.yml']);
   });
 });
