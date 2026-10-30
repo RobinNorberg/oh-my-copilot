@@ -39,6 +39,9 @@ const NOT_SECRET_SUFFIX = String.raw `(?!_(?:count|version|policy|length|len|lim
 const SECRET_NAME = String.raw `[A-Za-z0-9]*?(?:api[_-]?key|private[_-]?key|secret|password|passwd|passphrase|pwd|token)${NOT_SECRET_SUFFIX}(?:_[A-Za-z0-9]+)*`;
 const UNQUOTED_CHAR = String.raw `[^\s"'\x60\\,;&|<>(){}\[\]]`;
 const UNQUOTED_VALUE = `${UNQUOTED_CHAR}{8,}`;
+// SECRET_NAME with `_` also spelled `%5F`, for percent-encoded text.
+const PCT_US = '(?:_|%5F)';
+const PCT_SECRET_NAME = String.raw `[A-Za-z0-9]*?(?:api(?:${PCT_US}|-)?key|private(?:${PCT_US}|-)?key|secret|password|passwd|passphrase|pwd|token)(?!${PCT_US}(?:count|version|policy|length|len|limit|type|size|id|name|file|path|url|endpoint|expires?|expiry|ttl)(?![A-Za-z0-9]))(?:${PCT_US}[A-Za-z0-9]+)*`;
 // A plain number or a version string is never a secret value (`token_count: 12345678`, `v2.0.1-beta`).
 const PLAIN_VALUE = String.raw `(?!(?:\d+|v?\d+(?:\.\d+)+(?:[-+][A-Za-z0-9.]+)?)(?!${UNQUOTED_CHAR}))`;
 /**
@@ -82,6 +85,22 @@ const TOKEN_RULES = [
         name: 'generic',
         pattern: new RegExp(String.raw `((?<![\w-])--(?:[A-Za-z0-9]+-)*${SECRET_NAME}[ \t]+)(?![<$-])${PLAIN_VALUE}${UNQUOTED_VALUE}`, 'gi'),
     },
+    // A JSON key holding a long number, bare or quoted (`"token": 12345678901234567890`); the rules above skip plain numbers.
+    {
+        name: 'generic',
+        pattern: new RegExp(String.raw `((?<![A-Za-z0-9])${SECRET_NAME}\\*["']\s*:\s*(?:\\*["'])?)\d{8,}(?![\d.])`, 'gi'),
+    },
+    // Percent-encoded name and `=` (`client%5Fsecret%3D...`: a query string or form body encoded once more).
+    {
+        name: 'generic',
+        pattern: new RegExp(String.raw `((?:(?<![A-Za-z0-9])|(?<=%5F))${PCT_SECRET_NAME}%3D)(?![<$])(?:[A-Za-z0-9._~+-]|%[0-9A-F]{2}){8,}`, 'gi'),
+    },
+    // Cookie headers in text; the value must hold a `name=value` pair, so prose like "Cookie: chocolate chip" stays.
+    { name: 'cookie', pattern: /(\b(?:Set-)?Cookie:[ \t]*)(?![<$])(?=[^\r\n"\\]*=)[^\r\n"\\]{8,}/gi },
+    // Azure storage and Service Bus connection strings.
+    { name: 'azure-key', pattern: /(\b(?:AccountKey|SharedAccessKey)=)[A-Za-z0-9+/]{16,}={0,2}/gi },
+    // A SAS signature in a query string (`?sv=...&sig=...`).
+    { name: 'sas-sig', pattern: /([?&;]sig=)(?:[A-Za-z0-9+/=]|%[0-9A-F]{2}){16,}/gi },
 ];
 // `icon@2x.png` is a retina asset name, not an address.
 const EMAIL = /\b[A-Za-z0-9._%+-]+@(?![0-9]+x\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
@@ -89,28 +108,61 @@ const EMAIL = /\b[A-Za-z0-9._%+-]+@(?![0-9]+x\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)
 const RESERVED_EMAIL = /@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|example|invalid|test|localhost)$/i;
 // `git@github.com:owner/repo` is a transport, not a person.
 const TRANSPORT_EMAIL = /^git@/i;
-/**
- * Absolute paths under some user's home in any spelling (plain, forward-slash,
- * JSON-escaped): rule 6's fallback on the record side, a gate hit when found later.
- * The home segment must not be a placeholder this module wrote.
- */
-const USER_HOME_PATHS = [
-    // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
-    // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
-    // spelling (`C:\Users/name`), so the user name never survives a mixed path.
-    /\b[A-Za-z]:(\\+|\/)Users(?:\1|\\+|\/)(?!<user>)[^\\/\s"'<>|:*?]+(?:(?:\1|\/)[^\\/\s"'<>|:*?]+)*/gi,
-    // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`).
-    /\b[A-Za-z]%3A(?:%5C|%2F|\/)Users(?:%5C|%2F|\/)(?!<user>)(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+(?:(?:%5C|%2F|\/)(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+)*/gi,
-    // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    /(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)[^/\s"'\\<>|:*?]+(?:\/[^/\s"'\\<>|:*?]+)*/g,
-];
-/** Length of the `<root>/Users/<name>` head of a {@link USER_HOME_PATHS} match. */
-function userHomeHeadLength(match) {
-    return /^(?:[A-Za-z]:(\\+|\/)Users(?:\1|\\+|\/)[^\\/]+|[A-Za-z]%3A(?:%5C|%2F|\/)Users(?:%5C|%2F|\/)(?:[^\\/%]|%(?!5C|2F)[0-9A-F]{2})+|\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/[^\\/]+)/i.exec(match)?.[0].length ?? match.length;
-}
 // One path segment character (no separators, quotes, whitespace or reserved Windows characters).
 const SEGMENT_CHAR = String.raw `[^\\/\s"'<>|:*?]`;
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// One user-home path segment per spelling: Windows (plain or JSON-escaped), percent-encoded, POSIX.
+const WIN_SEG = `${SEGMENT_CHAR}+`;
+const PCT_SEG = String.raw `(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+`;
+const POSIX_SEG = String.raw `[^/\s"'\\<>|:*?]+`;
+const PCT_SEP = String.raw `(?:%5C|%2F|\/)`;
+/**
+ * Absolute paths under a user's home in any spelling (plain, forward-slash,
+ * JSON-escaped, percent-encoded, UNC admin share): rule 6's fallback on the
+ * record side, a gate hit when found later. `win`, `pct` and `posix` match the
+ * user name in each spelling; named group `head` is the `<root>/Users/<name>`
+ * part. The home segment must not be a placeholder this module wrote.
+ */
+function userHomePatterns(win, pct, posix, posixFlags) {
+    return [
+        // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
+        // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
+        // spelling (`C:\Users/name`), so the user name never survives a mixed path. `\\host\c$` is a root too.
+        new RegExp(String.raw `(?<head>(?:\b[A-Za-z]:|(?:\\{2,}|\/\/)[\w.-]+(?:\\+|\/)[A-Za-z]\$)(?<sep>\\+|\/)Users(?:\k<sep>|\\+|\/)(?!<user>)${win})(?:(?:\k<sep>|\/)${WIN_SEG})*`, 'gi'),
+        // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
+        new RegExp(String.raw `(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct})(?:${PCT_SEP}${PCT_SEG})*`, 'gi'),
+        // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
+        new RegExp(String.raw `(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix})(?:\/${POSIX_SEG})*`, posixFlags),
+    ];
+}
+// A user name may hold spaces (`C:\Users\Robin Norberg\proj`) when a separator follows it.
+const spaced = (seg, sep) => `(?:${seg}(?: ${seg})+(?=${sep})|${seg})`;
+const USER_HOME_PATHS = userHomePatterns(spaced(WIN_SEG, String.raw `[\\/]`), PCT_SEG, spaced(POSIX_SEG, '/'), 'g');
+/**
+ * User-home paths of the known user name in every spelling, spaces included
+ * (`C:\Users\Robin Norberg` at the end of a text has no separator to anchor
+ * the generic rule). Applied before the generic {@link USER_HOME_PATHS}.
+ */
+function knownUserHomePatterns(user) {
+    if (!user || user.length < 3)
+        return [];
+    const end = `(?!${SEGMENT_CHAR})`;
+    const plain = `${escapeRegExp(user)}${end}`;
+    const encoded = encodeURIComponent(user);
+    const pct = `(?:${escapeRegExp(encoded)}|${escapeRegExp(encoded.replace(/%20/g, '+'))})${end}`;
+    return userHomePatterns(plain, pct, plain, 'gi');
+}
+/** Replace each user-home path with `${USERHOME}` plus its tail. */
+function replaceUserHomes(text, patterns, onHit) {
+    let out = text;
+    for (const pattern of patterns) {
+        out = out.replace(pattern, (match, ...rest) => {
+            onHit('path.USERHOME');
+            return placeholderPath('USERHOME', match, rest.at(-1).head.length);
+        });
+    }
+    return out;
+}
 const jsonEscape = (s) => JSON.stringify(s).slice(1, -1);
 /** The spellings a literal can take inside text that holds JSON, longest first. */
 function escapedVariants(literal) {
@@ -202,9 +254,13 @@ function parseJson(text) {
 export function sseBlocks(text) {
     return text.split(/\r?\n\r?\n/).filter((block) => block.trim() !== '');
 }
+/** The raw `data:` payload of one SSE block (its `data:` lines joined). */
+export function sseDataText(block) {
+    return block.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).replace(/^ /, '')).join('\n');
+}
 /** The parsed `data:` payload of one SSE block (undefined when it is not JSON, e.g. `[DONE]`). */
 export function sseData(block) {
-    const data = block.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).replace(/^ /, '')).join('\n');
+    const data = sseDataText(block);
     return data ? parseJson(data) : undefined;
 }
 /** The block with its `data:` lines replaced by one line holding `value`. */
@@ -238,11 +294,19 @@ function deltaStreams(events) {
                     return;
                 const delta = choice.delta;
                 const key = `choice:${choice.index ?? i}`;
-                for (const field of Object.keys(delta))
+                for (const [field, inner] of Object.entries(delta)) {
                     if (field !== 'role')
                         add(`${key}:${field}`, event, delta, field);
+                    // Nested text fields (`delta.audio.transcript`).
+                    if (field !== 'tool_calls' && isRecord(inner))
+                        for (const sub of Object.keys(inner))
+                            add(`${key}:${field}.${sub}`, event, inner, sub);
+                }
                 if (!Array.isArray(delta.tool_calls))
                     return;
+                // Copilot always sends `index`; a call without one is keyed by its array position, which is right for
+                // one call at a time only. Two index-less calls interleaved chunk by chunk are neither redacted nor caught
+                // by the gate's structural pass (their pieces alternate in every join); the format does not occur.
                 delta.tool_calls.forEach((call, j) => {
                     if (isRecord(call) && isRecord(call.function))
                         add(`${key}:tool:${call.index ?? j}`, event, call.function, 'arguments');
@@ -252,13 +316,14 @@ function deltaStreams(events) {
         if (typeof value.type === 'string' && value.type.endsWith('.delta')) {
             add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(':'), event, value, 'delta');
         }
-        // SDK session events (`assistant.message_delta` `deltaContent`, `assistant.tool_call_delta` `inputDelta`, ...),
-        // per message, tool call or reasoning id.
-        if (typeof value.type === 'string' && value.type.endsWith('_delta') && isRecord(value.data)) {
+        // SDK session events streamed in pieces (`assistant.message_delta` `deltaContent`, `assistant.tool_call_delta`
+        // `inputDelta`, `tool.execution_partial_result` `partialOutput`, `tool.execution_progress` `progressMessage`, ...):
+        // every string field, per message, tool call or reasoning id.
+        if (typeof value.type === 'string' && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord(value.data)) {
             const data = value.data;
             const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(':');
             for (const field of Object.keys(data))
-                if (/delta/i.test(field))
+                if (!/Id$/.test(field))
                     add(`${value.type}:${ids}:${field}`, event, data, field);
         }
     });
@@ -384,12 +449,7 @@ export class Redactor {
             out = out.replace(pattern, (_m, keep) => { this.count(name); return `${typeof keep === 'string' ? keep : ''}<redacted:${name}>`; });
         }
         out = substitutePaths(out, this.dirs, this.count);
-        for (const pattern of USER_HOME_PATHS) {
-            out = out.replace(pattern, (match) => {
-                this.count('path.USERHOME');
-                return placeholderPath('USERHOME', match, userHomeHeadLength(match));
-            });
-        }
+        out = replaceUserHomes(out, [...knownUserHomePatterns(this.identity.user), ...USER_HOME_PATHS], this.count);
         out = out.replace(EMAIL, (email) => {
             if (!isRedactableEmail(email))
                 return email;
@@ -496,9 +556,10 @@ export function scanForSecrets(text, options = {}) {
             push(name, m.index, m[0]);
         }
     }
-    for (const pattern of USER_HOME_PATHS)
+    for (const pattern of [...knownUserHomePatterns(options.identity?.user), ...USER_HOME_PATHS]) {
         for (const m of text.matchAll(pattern))
             push('path.USERHOME', m.index, m[0]);
+    }
     for (const m of text.matchAll(EMAIL))
         if (isRedactableEmail(m[0]))
             push('email', m.index, m[0]);

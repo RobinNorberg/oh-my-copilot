@@ -71,6 +71,8 @@ export declare function isAllowedResponseHeader(key: string): boolean;
 export declare function filterResponseHeaders(headers: Record<string, string>): Record<string, string>;
 /** The event blocks of an SSE stream, without the blank line ending each. Pass the chunks joined: a chunk boundary may fall anywhere. */
 export declare function sseBlocks(text: string): string[];
+/** The raw `data:` payload of one SSE block (its `data:` lines joined). */
+export declare function sseDataText(block: string): string;
 /** The parsed `data:` payload of one SSE block (undefined when it is not JSON, e.g. `[DONE]`). */
 export declare function sseData(block: string): unknown;
 /**

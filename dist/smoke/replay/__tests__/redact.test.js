@@ -380,4 +380,74 @@ describe('review fixes round 4 (#349): SDK delta events', () => {
         expect(new Redactor().redactEvents(events)).toEqual(events);
     });
 });
+describe('review fixes round 5 (#349)', () => {
+    const split = (text, cuts) => [0, ...cuts].map((at, i, all) => text.slice(at, all[i + 1]));
+    const sdkEvents = (type, field, parts) => parts.map((part, i) => ({ type, id: `e${i}`, ephemeral: true, data: { toolCallId: 't1', [field]: part } }));
+    const joinedOf = (events, field) => events.map((e) => e.data[field]).join('');
+    it('redactEvents redacts a path and token split across tool.execution_partial_result events', () => {
+        const parts = ['Directory: C:\\Us', `ers\\norbe\\proj\nGH_TOKEN=ghp_${'a'.repeat(20)}`, `${'b'.repeat(16)}\n`];
+        const out = new Redactor().redactEvents(sdkEvents('tool.execution_partial_result', 'partialOutput', parts));
+        expect(joinedOf(out, 'partialOutput')).toBe('Directory: ${USERHOME}/proj\nGH_TOKEN=<redacted:github-token>\n');
+        expect(out.every((e) => e.data.toolCallId === 't1')).toBe(true);
+    });
+    it('redactEvents redacts a password split across tool.execution_progress events', () => {
+        const out = new Redactor().redactEvents(sdkEvents('tool.execution_progress', 'progressMessage', split('set password=hunter2hunter2 now', [19])));
+        expect(joinedOf(out, 'progressMessage')).toBe('set password=<redacted:generic> now');
+    });
+    it('redactResponse joins nested Chat Completions delta.audio.transcript', () => {
+        const chunks = split('say password=hunter2hunter2 ok', [19]).map((transcript) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { audio: { transcript } } }] })}\n\n`);
+        const out = new Redactor().redactResponse({ status: 200, headers: {}, kind: 'sse', chunks });
+        if (out.kind !== 'sse')
+            throw new Error('kind changed');
+        const joined = out.chunks.map((c) => JSON.parse(/^data: (.*)$/m.exec(c)[1]).choices[0].delta.audio.transcript).join('');
+        expect(joined).toBe('say password=<redacted:generic> ok');
+    });
+    it.each([
+        ['backslashes', 'C:\\Users\\Robin Norberg\\proj', '${USERHOME}/proj'],
+        ['JSON-escaped', 'C:\\\\Users\\\\Robin Norberg\\\\proj', '${USERHOME}/proj'],
+        ['forward slashes', 'C:/Users/Robin Norberg/proj', '${USERHOME}/proj'],
+        ['macOS', '/Users/Robin Norberg/proj', '${USERHOME}/proj'],
+    ])('a user name with a space does not leak: %s', (_name, text, redacted) => {
+        expect(new Redactor().redact(text)).toBe(redacted);
+        expect(new Set(scanForSecrets(text).map((h) => h.rule))).toEqual(new Set(['path.USERHOME']));
+    });
+    it.each([
+        ['at the end of the text', 'cd C:\\Users\\Robin Norberg', 'cd ${USERHOME}'],
+        ['JSON-escaped, at the end', '"C:\\\\Users\\\\Robin Norberg"', '"${USERHOME}"'],
+        ['percent-encoded', 'file:///C%3A/Users/Robin%20Norberg', 'file:///${USERHOME}'],
+        ['macOS, at the end', 'cd /Users/Robin Norberg', 'cd ${USERHOME}'],
+    ])('the known user name with a space is replaced as a home path first: %s', (_name, text, redacted) => {
+        const identity = { user: 'Robin Norberg' };
+        expect(new Redactor({ identity }).redact(text)).toBe(redacted);
+        expect(scanForSecrets(text, { identity }).map((h) => h.rule)).toContain('path.USERHOME');
+    });
+    it.each([
+        ['cookie', 'Cookie: session=abcd1234abcd1234efgh', 'Cookie: <redacted:cookie>'],
+        ['cookie', 'Set-Cookie: sid=abcd1234abcd1234; Path=/; HttpOnly', 'Set-Cookie: <redacted:cookie>'],
+        ['azure-key', 'DefaultEndpointsProtocol=https;AccountName=x;AccountKey=abcd1234abcd1234abcd1234==;', 'DefaultEndpointsProtocol=https;AccountName=x;AccountKey=<redacted:azure-key>;'],
+        ['azure-key', 'Endpoint=sb://x/;SharedAccessKeyName=root;SharedAccessKey=abcd1234abcd1234abcd=', 'Endpoint=sb://x/;SharedAccessKeyName=root;SharedAccessKey=<redacted:azure-key>'],
+        ['sas-sig', 'https://x.blob.core.windows.net/c?sv=2020&sig=AbCdEfGh1234%2BxyZ%3D', 'https://x.blob.core.windows.net/c?sv=2020&sig=<redacted:sas-sig>'],
+        ['generic', '{"token": 12345678901234567890}', '{"token": <redacted:generic>}'],
+        ['generic', '{"token":"12345678901234567890"}', '{"token":"<redacted:generic>"}'],
+        ['generic', 'body=client%5Fsecret%3Dabcd1234abcd1234', 'body=client%5Fsecret%3D<redacted:generic>'],
+        ['generic', 'q=api%5Fkey%3Dabcd1234abcd1234&x=1', 'q=api%5Fkey%3D<redacted:generic>&x=1'],
+        ['path.USERHOME', 'p=%2Fhome%2Fnorbe%2Fproj', 'p=${USERHOME}/proj'],
+        ['path.USERHOME', 'p=%2FUsers%2Fnorbe%2Fproj', 'p=${USERHOME}/proj'],
+        ['path.USERHOME', '\\\\host\\c$\\Users\\norbe\\x', '${USERHOME}/x'],
+    ])('detector %s: %s', (rule, text, redacted) => {
+        expect(new Redactor().redact(text)).toBe(redacted);
+        expect(scanForSecrets(text).map((h) => h.rule)).toContain(rule);
+    });
+    it.each([
+        'Cookie: chocolate chip',
+        '{"max_tokens": 12345678}',
+        '{"prompt_tokens":123456789}',
+        '{"token_count": 12345678}',
+        'see sig=short',
+        'token%5Fcount%3D12345678',
+    ])('leaves %s alone', (text) => {
+        expect(new Redactor().redact(text)).toBe(text);
+        expect(scanForSecrets(text)).toEqual([]);
+    });
+});
 //# sourceMappingURL=redact.test.js.map

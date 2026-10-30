@@ -312,4 +312,43 @@ describe('review fixes round 4 (#349): the gate reassembles SDK delta events', (
         expect(gateFiles(eventsFile(new Redactor().redactEvents(events)))).toEqual([]);
     });
 });
+describe('review fixes round 5 (#349): the structural backstop', () => {
+    const eventsFile = (events) => new Map([['events/s1.jsonl', events.map((e) => `${JSON.stringify(e)}\n`).join('')]]);
+    const line = (res) => new Map([[INTERACTIONS_FILE, `${JSON.stringify({ stream: 's1', seq: 1, res })}\n`]]);
+    const PATH_PARTS = ['Directory: C:\\Us', 'ers\\norbe\\proj\n'];
+    const PASSWORD_PARTS = ['set password=hunt', 'er2hunter2 now'];
+    const partialResults = () => PATH_PARTS.map((partialOutput, i) => ({ type: 'tool.execution_partial_result', id: `e${i}`, data: { toolCallId: 't1', partialOutput } }));
+    it('finds a path split across tool.execution_partial_result events', () => {
+        expect(gateFiles(eventsFile(partialResults())).map((h) => h.rule)).toContain('path.USERHOME');
+    });
+    it('finds a password split across tool.execution_progress events', () => {
+        const events = PASSWORD_PARTS.map((progressMessage, i) => ({ type: 'tool.execution_progress', id: `e${i}`, data: { toolCallId: 't1', progressMessage } }));
+        expect(gateFiles(eventsFile(events)).map((h) => h.rule)).toContain('generic');
+    });
+    it('finds a split in an event and field no reassembly rule names', () => {
+        const events = PATH_PARTS.map((piece, i) => ({ type: 'foo.bar_chunk', id: `e${i}`, timestamp: `2026-10-30T00:00:0${i}Z`, data: { piece } }));
+        expect(gateFiles(eventsFile(events)).map((h) => h.rule)).toContain('path.USERHOME');
+    });
+    it('finds a split in an unknown field interleaved with another stream, per toolCallId', () => {
+        const events = [
+            { type: 'foo.bar_chunk', data: { toolCallId: 'a', piece: PASSWORD_PARTS[0] } },
+            { type: 'foo.bar_chunk', data: { toolCallId: 'b', piece: 'unrelated text' } },
+            { type: 'foo.bar_chunk', data: { toolCallId: 'a', piece: PASSWORD_PARTS[1] } },
+        ];
+        expect(gateFiles(eventsFile(events)).map((h) => h.rule)).toContain('generic');
+    });
+    it('finds a split in an unknown field of SSE events and WebSocket messages', () => {
+        const chunks = PATH_PARTS.map((piece) => `data: ${JSON.stringify({ kind: 'mystery', payload: { piece } })}\n\n`);
+        expect(gateFiles(line({ status: 200, headers: {}, kind: 'sse', chunks })).map((h) => h.rule)).toContain('path.USERHOME');
+        const messages = PASSWORD_PARTS.map((piece) => ({ dir: 'in', data: JSON.stringify({ kind: 'mystery', piece }) }));
+        expect(gateFiles(line({ status: 101, headers: {}, kind: 'ws', messages })).map((h) => h.rule)).toContain('generic');
+    });
+    it('finds a split across non-JSON SSE payloads', () => {
+        const chunks = PATH_PARTS.map((piece) => `data: ${piece.replace('\n', '')}\n\n`);
+        expect(gateFiles(line({ status: 200, headers: {}, kind: 'sse', chunks })).map((h) => h.rule)).toContain('path.USERHOME');
+    });
+    it('passes partial-result events once the Redactor rewrote them', () => {
+        expect(gateFiles(eventsFile(new Redactor().redactEvents(partialResults())))).toEqual([]);
+    });
+});
 //# sourceMappingURL=cassette.test.js.map

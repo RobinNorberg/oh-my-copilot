@@ -20,7 +20,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
-import { isAllowedResponseHeader, reassembledDeltas, REQUEST_HEADER_ALLOW, scanForSecrets, sseBlocks, sseData, wsData, } from './redact.js';
+import { isAllowedResponseHeader, reassembledDeltas, REQUEST_HEADER_ALLOW, scanForSecrets, sseBlocks, sseData, sseDataText, wsData, } from './redact.js';
 export const CASSETTE_FORMAT = 'omg-copilot-cassette';
 export const CASSETTE_VERSION = 1;
 export const MANIFEST_FILE = 'manifest.json';
@@ -304,10 +304,55 @@ function decodedStrings(value, out, depth = 0) {
     }
 }
 /**
+ * The structural backstop: what a field split over several events forms,
+ * whatever the field is called. Joins (with "", so any cut is undone) the
+ * string leaves of all events in order, and of each leaf path (`data.partialOutput`)
+ * across events, also per event type and per `data.*Id` value (toolCallId,
+ * messageId, ...), so interleaved streams come apart. A join across unrelated
+ * fields can only cause a false refusal, never a leak.
+ */
+function structuralJoins(events) {
+    const all = [];
+    const groups = new Map();
+    const push = (key, leaf) => {
+        const group = groups.get(key);
+        if (group)
+            group.push(leaf);
+        else
+            groups.set(key, [leaf]);
+    };
+    for (const event of events) {
+        const type = isRecord(event) && typeof event.type === 'string' ? event.type : '';
+        const data = isRecord(event) && isRecord(event.data) ? event.data : {};
+        const ids = Object.entries(data).filter(([k, v]) => /Id$/.test(k) && typeof v === 'string').map(([k, v]) => `${k}=${v}`);
+        const visit = (value, path) => {
+            if (typeof value === 'string') {
+                all.push(value);
+                for (const scope of ['', type, ...ids, ...ids.map((id) => `${type}\0${id}`)])
+                    push(`${scope}\0${path}`, value);
+            }
+            else if (Array.isArray(value)) {
+                value.forEach((v, i) => visit(v, `${path}[${i}]`));
+            }
+            else if (isRecord(value)) {
+                for (const [k, v] of Object.entries(value))
+                    visit(v, `${path}.${k}`);
+            }
+        };
+        visit(event, '');
+    }
+    const out = new Set([all.join('')]);
+    for (const group of groups.values())
+        if (group.length > 1)
+            out.add(group.join(''));
+    return [...out];
+}
+/**
  * The texts only a whole streamed response shows (an interaction's `res`):
- * an SSE response's chunks joined, and each streamed field joined from its
- * deltas (SSE events or WebSocket messages), so a secret split across chunks
- * is found. Keyed on the shape, not on `res.kind`: a mislabeled response is scanned too.
+ * an SSE response's chunks joined, each streamed field joined from its
+ * deltas (SSE events or WebSocket messages), and the {@link structuralJoins}
+ * of its events, so a secret split across chunks is found. Keyed on the
+ * shape, not on `res.kind`: a mislabeled response is scanned too.
  */
 function streamTexts(value) {
     const res = isRecord(value) ? value.res : undefined;
@@ -315,10 +360,14 @@ function streamTexts(value) {
         return [];
     if (Array.isArray(res.chunks)) {
         const raw = res.chunks.filter((c) => typeof c === 'string').join('');
-        return [raw, ...reassembledDeltas(sseBlocks(raw).map(sseData))];
+        const blocks = sseBlocks(raw);
+        // A payload that is not JSON joins as its raw text.
+        return [raw, ...reassembledDeltas(blocks.map(sseData)), ...structuralJoins(blocks.map((b) => sseData(b) ?? sseDataText(b)))];
     }
     if (Array.isArray(res.messages)) {
-        return reassembledDeltas(wsData(res.messages.filter((m) => isRecord(m) && typeof m.data === 'string')));
+        const messages = res.messages.filter((m) => isRecord(m) && typeof m.data === 'string');
+        const events = wsData(messages);
+        return [...reassembledDeltas(events), ...structuralJoins(events.map((e, i) => e ?? messages[i].data))];
     }
     return [];
 }
@@ -359,11 +408,15 @@ export function gateFiles(files, options = {}) {
                 decodedStrings(text, strings);
             scanned.push([strings, line]);
         }
-        // Delta events split one field over many lines (SDK `assistant.message_delta`): join them across the file (line 0).
+        // Delta events split one field over many lines (SDK `assistant.message_delta`): join them across the file (line 0),
+        // and for event files every field structurally, whatever its name.
         if (file.endsWith('.jsonl')) {
             const strings = [];
             for (const joined of reassembledDeltas(values))
                 decodedStrings(joined, strings);
+            if (file.startsWith(`${EVENTS_DIR}/`))
+                for (const joined of structuralJoins(values))
+                    decodedStrings(joined, strings);
             scanned.push([strings, 0]);
         }
         for (const [strings, line] of scanned) {
