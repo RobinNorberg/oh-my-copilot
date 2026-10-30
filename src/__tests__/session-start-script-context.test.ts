@@ -1683,7 +1683,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
     expect(output.systemMessage).toContain('[OMC UPDATE AVAILABLE]');
     expect(output.systemMessage).toContain('v4.15.4');
     expect(output.systemMessage).not.toContain('4.15.5');
-    expect(output.systemMessage).toContain('/plugin marketplace update omc && /omc-setup');
+    expect(output.systemMessage).toContain('copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc (shell), then /oh-my-copilot:omc-setup');
     expect(output.systemMessage).not.toContain('/update');
   });
 

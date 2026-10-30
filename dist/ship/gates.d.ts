@@ -12,7 +12,7 @@
  */
 import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
-import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
+import type { ForgeChecks, ForgeKind, ForgeReviews } from '../forge/types.js';
 /**
  * The forge reads of a gate evaluation (factory forges design §2): the PR
  * head and its checks, runs, logs and reruns. Omitted = GitHub through the
@@ -22,6 +22,8 @@ import type { ForgeChecks, ForgeReviews } from '../forge/types.js';
 export interface GateForge {
     checks: ForgeChecks;
     reviews: Pick<ForgeReviews, 'prHead'>;
+    /** Picks the rerun hint in flaky suggestions; omitted = GitHub. */
+    kind?: ForgeKind;
 }
 export declare const CHECK_FIELDS = "name,state,bucket,link,workflow,event,startedAt,completedAt";
 export interface GhCheck {
@@ -116,7 +118,9 @@ export declare function applyWorkflowRuns(report: GateReport, runs: WorkflowRun[
  * would be pending forever. Reported as a distinct pending reason.
  */
 export declare function applyNoWorkflows(report: GateReport, runs: WorkflowRun[], headSha: string): GateReport;
-/** Extract vitest ` FAIL  <file> > <title>` lines from a (GitHub Actions) log. */
+/** An Azure Pipelines log line's timestamp (after a byte-order mark on the first line); stripped only when the GitHub prefix is absent. */
+export declare const ADO_LOG_PREFIX: RegExp;
+/** Extract vitest ` FAIL  <file> > <title>` lines from a GitHub Actions or Azure Pipelines log. */
 export declare function parseFailingTests(log: string): FailingTest[];
 /** A file-level failure (no title) never matches: it is a collection error, not a flaky test. */
 export declare function isKnownFlaky(test: FailingTest, known: readonly KnownFlakyTest[]): boolean;
@@ -124,6 +128,8 @@ export declare function isKnownFlaky(test: FailingTest, known: readonly KnownFla
  * Evidence in a job log that the job did not fail only because of its failing
  * tests: vitest unhandled errors, failed suites (collection errors), or an
  * `##[error]` in a step that printed no FAIL line (a non-test step failed).
+ * The step is the GitHub log's second tab column, or on an Azure Pipelines
+ * log the last `##[section]Starting:` marker.
  */
 export declare function logBlockers(log: string): string[];
 export declare function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[], jobId?: string): FlakyAnalysis;
@@ -132,7 +138,7 @@ export declare function analyzeFailedLog(check: string, runId: string | undefine
  * required check is a known-flaky failure (matched by job id); a run is
  * rerunnable only when all its required jobs are finished.
  */
-export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]): GateReport;
+export declare function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[], kind?: ForgeKind): GateReport;
 /** Run `gh pr checks <pr> --json ...`; "no checks reported" is an empty list (the GitHub forge's checks). */
 export declare function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[];
 /** The PR head sha from `gh pr view <pr> --json headRefOid`. */

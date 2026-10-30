@@ -8,6 +8,31 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - Sandboxed `copilot_run` and factory lanes keep `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` in the runtime env, so the runtime reaches Copilot behind a proxy or a private CA. The `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` bundle files themselves (not their dirs) and each `SSL_CERT_DIR` entry are granted read-only; a cert dir that is a root or holds the home is not granted, and a CA path that does not resolve is dropped, both with a note, instead of failing the sandbox config. A proxy URL with credentials is not stripped; the job records a note, because the lane shell inherits it.
 
+### Fixed
+
+- **`omg factory check` works on Azure DevOps.** The command built its az
+  guard without the forge repo and the az entry, so every az call on a real
+  ADO repository was refused ("no Azure DevOps forge is configured for this
+  run"). The az entry is now resolved once; the guard and the adapter both
+  get it.
+- **Factory lanes may not edit Azure Pipelines definitions.** A write lane
+  could change `azure-pipelines.yml` (or `.azure-pipelines/`, `.azuredevops/`,
+  `.pipelines/`), the CI that gates its own PR, and turn a red build green.
+  These paths are now lane-protected, and on Azure DevOps a PR touching them
+  needs the owner. The paths are protected for lanes on GitHub repositories
+  too (intended: a repository may run both CIs). `omg ship`'s protected
+  paths are unchanged.
+- **Failing tests and known-flaky entries apply to Azure DevOps builds.** A
+  failed blocking build check now names its failed job (the newest attempt),
+  and Azure Pipelines log timestamps are stripped before parsing. The ci-fix
+  lane gets the failing test titles, known-flaky entries apply, and heal
+  signatures name the failing tests instead of collapsing every failure into
+  the step's `##[error]` line. A build with more than one failed job names
+  none (one job's known-flaky log never excuses another's real failure), an
+  `##[error]` in another step of an Azure Pipelines log (split on
+  `##[section]Starting:`) still blocks the known-flaky verdict, and the
+  known-flaky suggestion on Azure DevOps points at the build to re-queue
+  instead of `gh run rerun`.
 ### Security
 
 - **Pane team workers no longer pass credentials through
@@ -23,6 +48,13 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Fixed
 
 - Azure CLI resolution accepts an MSI that ships only `azure\cli\__main__.pyc` (no `__main__.py`), as the current installer does; before, every live ADO az call refused with "not the MSI layout".
+- Shipped `copilot-instructions.md` skill list and keyword triggers match the Tier-0 workflows (retired `ultrawork`, `cccg`, `ultraqa`, `sciomc` and similar entries removed); `omg` launch wording in the setup script.
+- Autopilot, cancel, and team guidance no longer point at the retired `/omc-teams`; autopilot suggests `omg team` or `/oh-my-copilot:team`.
+- Setup hints (session start, HUD diagnostic, README) use `/oh-my-copilot:omc-setup`, `/oh-my-copilot:omc-gh-triage`, and `/oh-my-copilot:omc-ado-sprint`; the plugin update hint uses the `copilot plugin` commands.
+
+### Added
+
+- `omg:` is accepted as a short skill namespace beside `omc:` (for example `/omg:ralph`) in workflow alias resolution, delegation enforcement, and keyword detection.
 
 # oh-my-copilot v5.18.1
 

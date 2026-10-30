@@ -183,7 +183,7 @@ function readAgentDefinitionModel(subagentType) {
 // identifier, and forbids closest-match substitution.
 // ---------------------------------------------------------------------------
 
-const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:'];
+const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:', 'omg:'];
 const SKILL_IDENTIFIER_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function splitAgentNamespace(subagentType) {

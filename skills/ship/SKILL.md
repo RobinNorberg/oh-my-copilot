@@ -120,13 +120,13 @@ Known limits:
 
 1. **Implement (executor lane).** Skip with `--pr <n>` when the PR exists.
    Copilot CLI host, headless:
-   `omc team 1:copilot:executor --transport sdk "<executor brief>"`.
+   `omg team 1:copilot:executor --transport sdk "<executor brief>"`.
    In-session: `Task(subagent_type="oh-my-copilot:executor", prompt="<executor brief>")`.
    The lane pushes a branch and opens a draft PR to the base branch.
 2. **Start the run:** `omc ship init <pr> --implementer <lane-name>`.
    Record the head sha you hand to the reviewer: `git rev-parse HEAD`.
 3. **Review (independent lane).** Give it the reviewer brief below.
-   Headless: `omc team 1:copilot:verifier --transport sdk "<reviewer brief>"`
+   Headless: `omg team 1:copilot:verifier --transport sdk "<reviewer brief>"`
    (the sdk transport rejects the code-reviewer/critic roles; verifier runs).
    In-session: `Task(subagent_type="oh-my-copilot:verifier", ...)` or
    `oh-my-copilot:code-reviewer`. Then record what it said:
