@@ -122643,7 +122643,8 @@ function evaluateItem(item, kind, config2, look) {
   if (run2 && TERMINAL_FACTORY_PHASES.includes(run2.phase)) {
     return hit("blocked", `run-finished:${run2.phase}`, `the factory run is ${run2.phase} and is not restarted; see omg factory run status ${item.id}`);
   }
-  if (run2) {
+  const parkedOnDeps = run2?.phase === "intake" && run2.gate?.name === "blocked-by";
+  if (run2 && !parkedOnDeps) {
     const at = run2.gate ? `${run2.phase}/${run2.gate.name}` : run2.phase;
     return hit("blocked", `run-active:${at}`, `a factory run is active (${at}); see omg factory run status ${item.id}`);
   }
@@ -122653,6 +122654,7 @@ function evaluateItem(item, kind, config2, look) {
   const merged = look.mergedPr(branch);
   if (merged !== void 0) return hit("blocked", "merged", `PR #${merged} from ${branch} already merged into the base`);
   if (look.remoteBranch(branch)) return hit("blocked", "branch-exists", `origin/${branch} exists without an open PR; the engine would stop at head-moved-externally`);
+  if (item.dependsOn.includes(item.id)) return hit("blocked", "blocked-by:self", `#${item.id} depends on itself; remove the Depends on / Blocked by line naming it`);
   const deps = item.dependsOn.filter((d) => !look.isSatisfied(d));
   if (deps.length > 0) return hit("blocked", `depends-on:${ids(deps)}`, `depends on unfinished item${deps.length > 1 ? "s" : ""} ${ids(deps)} (open, no merged factory PR)`);
   const children = item.children.filter((c) => look.isOpen(c));
@@ -122719,22 +122721,26 @@ function isOpen(forge, id) {
 }
 function isSatisfied(forge, id, base, runState) {
   if (runState(id)?.phase === "merged") return true;
+  const unreadable = (error2) => {
+    if (error2 instanceof FactorySafetyError) throw error2;
+    return false;
+  };
   let item;
   try {
     item = forge.tracker.viewItem(id);
-  } catch {
-    if (forge.kind === "azure-devops") return false;
+  } catch (error2) {
+    if (forge.kind === "azure-devops") return unreadable(error2);
     try {
       return forge.reviews.viewPr(id).state === "MERGED";
-    } catch {
-      return false;
+    } catch (prError) {
+      return unreadable(error2 instanceof FactorySafetyError ? error2 : prError);
     }
   }
   if (!item.open) return true;
   try {
     return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
-  } catch {
-    return false;
+  } catch (error2) {
+    return unreadable(error2);
   }
 }
 function checkItem(forge, id, env2) {
@@ -122759,6 +122765,7 @@ function checkItem(forge, id, env2) {
   try {
     v = evaluateItem(item, forge.kind, env2.config, look);
   } catch (error2) {
+    if (error2 instanceof FactorySafetyError) throw error2;
     return { ...failed(id, "read-failed", `#${id} could not be checked: ${messageOf(error2)}`), title: plainText(item.title), url: plainText(item.url), priority: itemPriority(item) };
   }
   return {
@@ -122788,6 +122795,7 @@ var init_score = __esm({
   "src/factory/check/score.ts"() {
     "use strict";
     init_string_width();
+    init_exec2();
     init_state6();
     init_rules();
     BUCKET_ORDER = ["runnable", "needs-plan", "blocked"];
@@ -124323,6 +124331,11 @@ var init_engine = __esm({
        */
       blockedBy(dependsOn, repoUrl) {
         if (dependsOn.length === 0) return false;
+        if (dependsOn.includes(this.o.issue)) {
+          this.save((s) => ({ ...s, repoUrl }));
+          this.gate("blocked-by", `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+          return true;
+        }
         const forge = this.forge ?? { kind: "github", tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
         const runState = (id) => {
           try {

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ADO_ITEM_TYPES, DEFAULT_CHECK_CONFIG } from '../../../forge/config.js';
 import { GhCommandError } from '../../../forge/github/gh.js';
 import { acceptanceItems, acceptanceSection, isVague } from '../rules.js';
-import { checkItems, factoryCheckPreview, itemPriority, plainText } from '../score.js';
+import { FactorySafetyError } from '../../run/exec.js';
+import { checkItems, factoryCheckPreview, isSatisfied, itemPriority, plainText } from '../score.js';
 const AC = '## Acceptance criteria\n- `omg factory check --json` prints schemaVersion 1\n- exit code 2 on a bad id\n';
 const PLAN_BASE = 'origin/dev at 0123456789ab';
 function item(id, over = {}) {
@@ -142,6 +143,22 @@ const ROWS = [
         bucket: 'runnable', reasons: [],
     },
     {
+        rule: 'a run parked at intake/blocked-by whose dependency merged is runnable again (run --next resumes it)',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 1: { phase: 'intake', gate: { name: 'blocked-by' } } }, merged: { 'factory/issue-160 -> dev': 88 } },
+        bucket: 'runnable', reasons: [],
+    },
+    {
+        rule: 'a run parked at intake/blocked-by stays blocked while its dependency is unfinished',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 1: { phase: 'intake', gate: { name: 'blocked-by' } } } },
+        bucket: 'blocked', reasons: ['depends-on:#160'],
+    },
+    { rule: 'run-active (intake parked at another gate)', world: { items: [item(1)], runs: { 1: { phase: 'intake', gate: { name: 'pr-exists' } } } }, bucket: 'blocked', reasons: ['run-active:intake/pr-exists'] },
+    {
+        rule: 'blocked-by:self (an item that depends on itself)',
+        world: { items: [item(7, { dependsOn: [7] })] },
+        bucket: 'blocked', reasons: ['blocked-by:self'], detail: '#7 depends on itself; remove the Depends on / Blocked by line naming it',
+    },
+    {
         rule: 'depends-on (a failed merged-PR lookup counts as unsatisfied)',
         world: { items: [item(1, { dependsOn: [160] }), item(160)], mergedFails: ['factory/issue-160'] },
         bucket: 'blocked', reasons: ['depends-on:#160'],
@@ -233,6 +250,17 @@ describe('omg factory check rules (forges §5)', () => {
         expect(results.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[2, 'runnable', []], [1, 'blocked', ['read-failed']]]);
         const lookup = checkItems({ ...fakeForge({ items: [item(3)] }), reviews: { findOpenPrForBranch: () => { throw new Error('gh pr list failed'); } } }, [3], env({ items: [] }));
         expect(lookup[0]).toMatchObject({ id: 3, title: 'item 3', bucket: 'blocked', reasons: ['read-failed'], detail: '#3 could not be checked: gh pr list failed' });
+    });
+    it('a guard refusal (FactorySafetyError) in a dependency lookup is rethrown, never read as unsatisfied', () => {
+        const refusal = new FactorySafetyError('omg factory check refuses `gh pr list`: test');
+        const forge = fakeForge({ items: [item(1, { dependsOn: [160] }), item(160)] });
+        const refusing = { ...forge, reviews: { ...forge.reviews, findMergedPrForBranch: () => { throw refusal; } } };
+        expect(() => isSatisfied(refusing, 160, 'dev', () => null)).toThrow(refusal);
+        expect(() => checkItems(refusing, [1], env({ items: [] }))).toThrow(refusal);
+        const adoRefusing = { ...forge, kind: 'azure-devops', tracker: { viewItem: () => { throw refusal; } } };
+        expect(() => isSatisfied(adoRefusing, 160, 'dev', () => null)).toThrow(refusal);
+        const ghRefusing = { ...forge, tracker: { viewItem: () => { throw refusal; } } };
+        expect(() => isSatisfied(ghRefusing, 160, 'dev', () => null)).toThrow(refusal);
     });
     it('AC section helpers', () => {
         expect(acceptanceSection('intro\n### Acceptance Criteria\n- a\n1. b\n## Next\n- c')).toBe('- a\n1. b');

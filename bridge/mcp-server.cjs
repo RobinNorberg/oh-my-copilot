@@ -45321,28 +45321,33 @@ var init_rules = __esm({
 // src/factory/check/score.ts
 function isSatisfied(forge, id, base, runState) {
   if (runState(id)?.phase === "merged") return true;
+  const unreadable = (error2) => {
+    if (error2 instanceof FactorySafetyError) throw error2;
+    return false;
+  };
   let item;
   try {
     item = forge.tracker.viewItem(id);
-  } catch {
-    if (forge.kind === "azure-devops") return false;
+  } catch (error2) {
+    if (forge.kind === "azure-devops") return unreadable(error2);
     try {
       return forge.reviews.viewPr(id).state === "MERGED";
-    } catch {
-      return false;
+    } catch (prError) {
+      return unreadable(error2 instanceof FactorySafetyError ? error2 : prError);
     }
   }
   if (!item.open) return true;
   try {
     return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
-  } catch {
-    return false;
+  } catch (error2) {
+    return unreadable(error2);
   }
 }
 var init_score = __esm({
   "src/factory/check/score.ts"() {
     "use strict";
     init_string_width();
+    init_exec2();
     init_state5();
     init_rules();
   }
@@ -46733,6 +46738,11 @@ var init_engine = __esm({
        */
       blockedBy(dependsOn, repoUrl) {
         if (dependsOn.length === 0) return false;
+        if (dependsOn.includes(this.o.issue)) {
+          this.save((s) => ({ ...s, repoUrl }));
+          this.gate("blocked-by", `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+          return true;
+        }
         const forge = this.forge ?? { kind: "github", tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
         const runState = (id) => {
           try {

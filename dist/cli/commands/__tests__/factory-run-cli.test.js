@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryCommand, factoryRunCommand } from '../factory.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
+import { EXIT_AWAITING_HUMAN } from '../../../factory/run/engine.js';
 import { factoryCancelRequested, factoryRepoOwnerPath, readFactoryState } from '../../../factory/run/state.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { commitFile, FakeLanes, harness, ISSUE, review, testGateConfig } from '../../../factory/run/__tests__/fake-lanes.js';
@@ -153,6 +154,21 @@ describe('omg factory run CLI', () => {
             out = [];
             expect(await cli(nextDeps(), '--next', '--parent', '100')).toBe(0);
             expect(out.join('\n')).toMatch(/nothing runnable \(0 runnable, 0 needs-plan, 2 blocked\)/);
+        });
+        it('an item parked at blocked-by is picked and resumed once its dependency\'s factory PR merged', async () => {
+            const ac = '## Acceptance criteria\n\n- `greet()` returns hi\n';
+            items = { [ISSUE]: { body: `Blocked by #4\n\n${ac}` }, 4: {} };
+            listed = [ISSUE];
+            lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+            expect(await cli(nextDeps(), String(ISSUE))).toBe(EXIT_AWAITING_HUMAN);
+            expect(readFactoryState(h.root, ISSUE)).toMatchObject({ phase: 'intake', gate: { name: 'blocked-by' } });
+            out = [];
+            expect(await cli(nextDeps(), '--next', '--json')).toBe(0);
+            expect(JSON.parse(out.join('\n'))).toMatchObject({ next: null, counts: { blocked: 1 } });
+            merged = ['factory/issue-4'];
+            out = [];
+            expect(await cli(nextDeps(), '--next', '--json')).toBe(0);
+            expect(JSON.parse(out.join('\n'))).toMatchObject({ next: ISSUE, gate: { name: 'merge' }, state: { issue: ISSUE } });
         });
         it('the per-repository run lock still refuses a second engine', async () => {
             items = { 7: {} };

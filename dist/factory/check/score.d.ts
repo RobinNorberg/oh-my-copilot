@@ -57,8 +57,9 @@ export interface DependencyForge {
  * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
  * satisfied once merged (closed unmerged is not); on ADO a failed work-item
  * read never falls back to the PR with that number (separate id namespaces).
- * Anything unreadable is unsatisfied. The engine's blocked-by intake gate
- * shares this rule (engine.ts), so check and run cannot drift.
+ * Anything unreadable is unsatisfied, but a guard refusal (FactorySafetyError)
+ * is rethrown: it is a bug, never an unfinished dependency. The engine's
+ * blocked-by intake gate shares this rule (engine.ts), so check and run cannot drift.
  */
 export declare function isSatisfied(forge: DependencyForge, id: number, base: string, runState: CheckEnv['runState']): boolean;
 /**

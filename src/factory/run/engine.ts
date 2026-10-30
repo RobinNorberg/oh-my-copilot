@@ -1185,6 +1185,11 @@ class FactoryEngine {
    */
   private blockedBy(dependsOn: readonly number[], repoUrl: string): boolean {
     if (dependsOn.length === 0) return false;
+    if (dependsOn.includes(this.o.issue!)) {
+      this.save((s) => ({ ...s, repoUrl }));
+      this.gate('blocked-by', `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+      return true;
+    }
     const forge: DependencyForge = this.forge ?? { kind: 'github', tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
     const runState = (id: number) => {
       try { return readFactoryState(this.o.root, id); } catch { return null; }

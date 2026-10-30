@@ -226,6 +226,13 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             expect(out.gate?.name).toBe('merge');
             expect(lanes.started).toHaveLength(2);
         });
+        it('a self-dependency parks at blocked-by naming blocked-by:self, without reading any dependency', async () => {
+            h.gh.issue.body = `Blocked by #${ISSUE}\n\n## Acceptance criteria\n\n- greet() returns hi\n`;
+            const out = await run([], { exec: depExec() }).done;
+            expect(out.gate?.name).toBe('blocked-by');
+            expect(out.gate?.reason).toContain('blocked-by:self');
+            expect(h.calls.some((c) => c.includes(`factory/issue-${ISSUE} --base`))).toBe(false);
+        });
         it('a closed dependency is satisfied: the run starts at once', async () => {
             dep.state = 'CLOSED';
             const out = await run([commitFile('a.ts'), review('approve')], { exec: depExec() }).done;

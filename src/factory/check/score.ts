@@ -9,6 +9,7 @@
 
 import { stripAnsi } from '../../utils/string-width.js';
 import type { Forge, ForgeItem, ForgeReviews, ForgeTracker, ResolvedForgeConfig } from '../../forge/types.js';
+import { FactorySafetyError } from '../run/exec.js';
 import { factoryBranch, type FactoryPhase } from '../run/state.js';
 import { evaluateItem, type CheckBucket, type PlanSource, type RuleLookups, type RuleVerdict } from './rules.js';
 
@@ -95,27 +96,32 @@ export interface DependencyForge {
  * (shipyard ↔ factory design §3.5). A dependency that is a GitHub PR is
  * satisfied once merged (closed unmerged is not); on ADO a failed work-item
  * read never falls back to the PR with that number (separate id namespaces).
- * Anything unreadable is unsatisfied. The engine's blocked-by intake gate
- * shares this rule (engine.ts), so check and run cannot drift.
+ * Anything unreadable is unsatisfied, but a guard refusal (FactorySafetyError)
+ * is rethrown: it is a bug, never an unfinished dependency. The engine's
+ * blocked-by intake gate shares this rule (engine.ts), so check and run cannot drift.
  */
 export function isSatisfied(forge: DependencyForge, id: number, base: string, runState: CheckEnv['runState']): boolean {
   if (runState(id)?.phase === 'merged') return true;
+  const unreadable = (error: unknown): false => {
+    if (error instanceof FactorySafetyError) throw error;
+    return false;
+  };
   let item: ForgeItem;
   try {
     item = forge.tracker.viewItem(id);
-  } catch {
-    if (forge.kind === 'azure-devops') return false;
+  } catch (error) {
+    if (forge.kind === 'azure-devops') return unreadable(error);
     try {
       return forge.reviews.viewPr(id).state === 'MERGED';
-    } catch {
-      return false;
+    } catch (prError) {
+      return unreadable(error instanceof FactorySafetyError ? error : prError);
     }
   }
   if (!item.open) return true;
   try {
     return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== undefined;
-  } catch {
-    return false;
+  } catch (error) {
+    return unreadable(error);
   }
 }
 
@@ -146,6 +152,7 @@ export function checkItem(forge: Forge, id: number, env: CheckEnv): CheckResult 
   try {
     v = evaluateItem(item, forge.kind, env.config, look);
   } catch (error) {
+    if (error instanceof FactorySafetyError) throw error;
     return { ...failed(id, 'read-failed', `#${id} could not be checked: ${messageOf(error)}`), title: plainText(item.title), url: plainText(item.url), priority: itemPriority(item) };
   }
   return {
