@@ -95,12 +95,36 @@ describe('Redactor rule 4: token patterns', () => {
     expect(JSON.parse(plain)).toEqual({ password: '<redacted:generic>', api_key: '<redacted:generic>' });
     const escaped = redactor.redact(JSON.stringify(JSON.stringify({ secret: 'abcdefghijkl' })));
     expect(JSON.parse(JSON.parse(escaped))).toEqual({ secret: '<redacted:generic>' });
-    expect(redactor.redact('SECRET=topsecretvalue1')).toBe('SECRET=topsecretvalue1'); // unquoted: not the generic rule
     expect(redactor.redact("secret='abcdefghij'")).toBe("secret='<redacted:generic>'");
   });
-  it('leaves short generic values and ordinary text alone', () => {
-    const text = 'password: "short", the secret of a good test is no secret at all';
+  it.each([
+    ['env file', 'SECRET=topsecretvalue1\nDB_PASSWORD=hunter2hunter2', 'SECRET=<redacted:generic>\nDB_PASSWORD=<redacted:generic>'],
+    ['CLI flag =', 'login --password=hunter2hunter2 --user x', 'login --password=<redacted:generic> --user x'],
+    ['CLI flag space', 'gh auth --with-token abcdefgh1234 && omg --api-key k-12345678', 'gh auth --with-token <redacted:generic> && omg --api-key <redacted:generic>'],
+    ['YAML', 'db:\n  password: hunter2hunter2\n  client_secret: s3cr3t-value-x', 'db:\n  password: <redacted:generic>\n  client_secret: <redacted:generic>'],
+  ])('unquoted assignments: %s', (_label, text, expected) => {
+    expect(new Redactor().redact(text)).toBe(expected);
+    expect(scanForSecrets(text).length).toBeGreaterThan(0);
+    expect(scanForSecrets(expected)).toEqual([]);
+  });
+  it.each([
+    'password: "short", the secret of a good test is no secret at all',
+    'Enter your password: requirements are listed below. The token: authorization happens later.',
+    'set password=$DB_PASS or token=${TOKEN}; see --token-file /etc/x and --password-stdin',
+    'Basic instructions apply; a basic understanding of tokens helps.',
+  ])('leaves ordinary text alone: %s', (text) => {
     expect(new Redactor().redact(text)).toBe(text);
+    expect(scanForSecrets(text)).toEqual([]);
+  });
+  it('Basic and Bearer credentials anywhere in text', () => {
+    const basic = Buffer.from('x-access-token:ghs_xxxxxxxx').toString('base64');
+    const text = `git -c http.extraheader="AUTHORIZATION: basic ${basic}" fetch; curl -H 'Authorization: Basic ${basic}' -H "Authorization: Bearer tok_123456789"`;
+    const out = new Redactor().redact(text);
+    expect(out).not.toContain(basic);
+    expect(out).not.toContain('tok_123456789');
+    expect(out).toContain('basic <redacted:basic-auth>');
+    expect(scanForSecrets(text).map((h) => h.rule)).toEqual(expect.arrayContaining(['basic-auth', 'bearer']));
+    expect(scanForSecrets(out)).toEqual([]);
   });
 });
 

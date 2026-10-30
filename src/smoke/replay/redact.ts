@@ -72,6 +72,10 @@ interface PatternRule {
 
 // Placeholders this module writes; the generic rule must not flag its own output.
 const PLACEHOLDER_VALUE = String.raw`(?!<(?:secret|redacted:[\w.-]+)>)`;
+// A secret-bearing name, possibly ending a longer identifier (`client_secret`, `AWS_SECRET_ACCESS_KEY`).
+const SECRET_NAME = String.raw`(?:api[_-]?key|secret|password|passwd|token)(?:_[A-Za-z0-9]+)*`;
+const UNQUOTED_CHAR = String.raw`[^\s"'\x60\\,;&|<>(){}\[\]]`;
+const UNQUOTED_VALUE = `${UNQUOTED_CHAR}{8,}`;
 
 /**
  * Rule 4 token patterns, plus the private-key block. Each match is replaced
@@ -87,11 +91,27 @@ const TOKEN_RULES: readonly PatternRule[] = [
   { name: 'jwt', pattern: /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g },
   { name: 'bearer', pattern: /\bBearer\s+(?!<redacted:)[^\s"'\\]+/gi },
   { name: 'aws-key', pattern: /\bAKIA[0-9A-Z]{16}\b/g },
+  // Needs a digit or base64 symbol, so "Basic instructions" stays.
+  { name: 'basic-auth', pattern: /(\bBasic\s+)(?=[A-Za-z0-9+/]*[0-9+/=])[A-Za-z0-9+/]{12,}={0,2}/gi },
   {
     name: 'generic',
     // The name may end a longer identifier (`client_secret`, `AWS_SECRET_ACCESS_KEY`) and quotes may be escaped any
     // number of times; the value never takes the backslashes of its closing quote, so escaped JSON stays valid.
-    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])(?:api[_-]?key|secret|password|token)(?:_[A-Za-z0-9]+)*(?:\\*["'])?\s*[:=]\s*\\*["'])${PLACEHOLDER_VALUE}(?:[^"'\\]|\\+(?![\\"'])){8,}`, 'gi'),
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}(?:\\*["'])?\s*[:=]\s*\\*["'])${PLACEHOLDER_VALUE}(?:[^"'\\]|\\+(?![\\"'])){8,}`, 'gi'),
+  },
+  // Unquoted values: env files and `--flag=value` (`=`), YAML (`name: value`, which must hold a digit or symbol so
+  // prose like "password: requirements" stays) and `--flag value`. A `$VAR` reference or a placeholder is not a value.
+  {
+    name: 'generic',
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}[ \t]*=[ \t]*)(?![<$])${UNQUOTED_VALUE}`, 'gi'),
+  },
+  {
+    name: 'generic',
+    pattern: new RegExp(String.raw`((?<![A-Za-z0-9])${SECRET_NAME}:[ \t]*)(?![<$])(?=${UNQUOTED_CHAR}*[0-9+/=_])${UNQUOTED_VALUE}`, 'gi'),
+  },
+  {
+    name: 'generic',
+    pattern: new RegExp(String.raw`((?<![\w-])--(?:[A-Za-z0-9]+-)*${SECRET_NAME}[ \t]+)(?![<$-])${UNQUOTED_VALUE}`, 'gi'),
   },
 ];
 
@@ -384,7 +404,15 @@ export function scanForSecrets(text: string, options: ScanOptions = {}): SecretH
       }
     }
   }
-  for (const { name, pattern } of TOKEN_RULES) for (const m of text.matchAll(pattern)) push(name, m.index, m[0]);
+  const tokenStart = hits.length;
+  for (const { name, pattern } of TOKEN_RULES) {
+    for (const m of text.matchAll(pattern)) {
+      // `GH_TOKEN=ghp_...` is one finding: the specific rule's, not also the generic assignment's.
+      const end = m.index + m[0].length;
+      if (name === 'generic' && hits.slice(tokenStart).some((h) => h.rule !== 'generic' && h.index >= m.index && h.index < end)) continue;
+      push(name, m.index, m[0]);
+    }
+  }
   for (const pattern of USER_HOME_PATHS) for (const m of text.matchAll(pattern)) push('path.USERHOME', m.index, m[0]);
   for (const m of text.matchAll(EMAIL)) if (isRedactableEmail(m[0])) push('email', m.index, m[0]);
   for (const [rule, value] of Object.entries(options.identity ?? {}) as Array<[keyof RedactionIdentity, string | undefined]>) {
