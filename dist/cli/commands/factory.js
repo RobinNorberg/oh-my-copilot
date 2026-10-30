@@ -5,7 +5,7 @@
  * (smee.io / cloudflared / direct) live outside the OMC boundary: the daemon
  * only receives already-unpacked webhook events as POSTs and does the OMC-side
  * work itself (HMAC verification, repo whitelist, intake label gate, routing
- * through the shared pure function, headless intent session spawn).
+ * through the shared pure function, headless harbor session spawn).
  *
  * `omg factoryinit` — seeds the project route table (`.omg/factory-routes.json`,
  * the single source of truth the SessionEnd chain enqueuer reads) and validates
@@ -269,7 +269,7 @@ export function factoryCommand() {
     cmd.addCommand(factorySetupCommand());
     cmd
         .command('listen')
-        .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions')
+        .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless harbor sessions')
         .option('--port <n>', 'port to listen on (transport adapters forward here)', integerOption(0, 65535), 7788)
         .option('--host <addr>', 'host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)', '127.0.0.1')
         .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
@@ -344,7 +344,7 @@ export function factoryCommand() {
 }
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the
- * single intake -> intent hop. Everything after a completed intent session
+ * single intake -> harbor hop. Everything after a completed harbor session
  * halts (`no-route`) until the project deliberately widens the table.
  */
 export function buildRouteTableNarrow() {
@@ -352,15 +352,17 @@ export function buildRouteTableNarrow() {
 }
 /**
  * Factory prerequisites, checked loudly before anything is written:
- * harbor needs the OMC state root (`.omg/state/`) and the shipyard layout
- * needs `docs/design/`.
+ * harbor needs the OMC state root (`.omg/state/`) and the yard's two day-one
+ * faces drydock seeds (`CLAUDE.md` + `GLOSSARY.md`).
  */
 export function validateFactoryPrerequisites(cwd) {
     const missing = [];
     if (!existsSync(join(getOmcRoot(cwd), 'state')))
         missing.push('.omg/state/');
-    if (!existsSync(join(cwd, 'docs', 'design')))
-        missing.push('docs/design/');
+    for (const face of ['CLAUDE.md', 'GLOSSARY.md']) {
+        if (!existsSync(join(cwd, face)))
+            missing.push(face);
+    }
     return { ok: missing.length === 0, missing };
 }
 /**
@@ -383,7 +385,7 @@ export function runFactoryInit(options = {}) {
     if (!prerequisites.ok) {
         return {
             exitCode: 1,
-            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`,
+            message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`,
         };
     }
     if (existsSync(routesPath) && !options.force) {

@@ -77744,7 +77744,9 @@ function validateChainFields(chain) {
   const tracker = chain.tracker;
   if (tracker) {
     if (!REPO_PATTERN.test(tracker.repo)) throw new Error(`invalid tracker repo: ${tracker.repo}`);
-    if (!LABEL_PATTERN.test(tracker.nextLabel) || !LABEL_PATTERN.test(tracker.failedLabel)) {
+    if (!Number.isSafeInteger(tracker.issue) || tracker.issue <= 0) throw new Error(`invalid tracker issue: ${String(tracker.issue)}`);
+    const labelOk = (label2) => label2 === void 0 || typeof label2 === "string" && LABEL_PATTERN.test(label2);
+    if (!labelOk(tracker.nextLabel) || !labelOk(tracker.failedLabel)) {
       throw new Error(`invalid tracker label: ${tracker.nextLabel}/${tracker.failedLabel}`);
     }
   }
@@ -77789,7 +77791,7 @@ function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
   if (!directive) return null;
   const handoffPath = path21.join(omcRoot, "handoffs", `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker ? [
-    ["gh", ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)],
+    ...chain.tracker.nextLabel ? [["gh", ...issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.nextLabel)]] : [],
     ["gh", ...issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, `\u94FE\u5DF2\u63A8\u8FDB\u5230 ${directive.stage}\uFF0C\u4EA4\u63A5\u4E0A\u4E0B\u6587\uFF1A${path21.basename(handoffPath)}`)]
   ] : [];
   const nextSessionId = (0, import_crypto26.randomUUID)();
@@ -77833,7 +77835,7 @@ function executeSpawnNext(chain, directory, spawnFn = defaultSpawnFn) {
     }
     if (chain.tracker) {
       spawnFn("gh", issueCommentBodyArgv(chain.tracker.repo, chain.tracker.issue, spawnNextAlertComment(chain)));
-      spawnFn("gh", issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
+      if (chain.tracker.failedLabel) spawnFn("gh", issueAddLabelArgv(chain.tracker.repo, chain.tracker.issue, chain.tracker.failedLabel));
     }
     throw error2;
   }
@@ -116481,14 +116483,14 @@ function flagStall(stall, deps) {
   const tracker = stall.tracker;
   if (tracker) {
     const spawner = deps.spawner ?? defaultSpawnFn;
-    spawner("gh", issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_NEED_INFO_LABEL));
+    spawner("gh", issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_FOR_MAINTAINER_LABEL));
     spawner("gh", issueCommentBodyArgv(tracker.repo, tracker.issue, stallAlertComment(stall)));
     return;
   }
   const audit = deps.audit ?? defaultAudit(deps.cwd);
   audit({ kind: "stalled", intentId: stall.intentId, session: stall.session, stage: stall.stage, stalledForMs: stall.stalledForMs });
 }
-var fs25, import_path170, DEFAULT_STALL_THRESHOLD_MS, HARBOR_NEED_INFO_LABEL, LEDGER_FILE_PATTERN, HANDLED_DECISIONS;
+var fs25, import_path170, DEFAULT_STALL_THRESHOLD_MS, HARBOR_FOR_MAINTAINER_LABEL, LEDGER_FILE_PATTERN, HANDLED_DECISIONS;
 var init_watchdog = __esm({
   "src/factory/watchdog.ts"() {
     "use strict";
@@ -116498,7 +116500,7 @@ var init_watchdog = __esm({
     init_spawn_next();
     init_worktree_paths();
     DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1e3;
-    HARBOR_NEED_INFO_LABEL = "harbor:need-info";
+    HARBOR_FOR_MAINTAINER_LABEL = "harbor:for-maintainer";
     LEDGER_FILE_PATTERN = /^chain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/i;
     HANDLED_DECISIONS = /* @__PURE__ */ new Set(["enqueued", "chain-terminal", "chain-loop-capped", "human-gate"]);
   }
@@ -116681,13 +116683,17 @@ function routeTrackerEvent(event, whitelist, table = INTAKE_ROUTE_TABLE) {
   for (const l of event.issue?.labels ?? []) if (l.name) labels.add(l.name);
   const labeled = (event.action === "labeled" || event.action === "opened") && labels.has(INTAKE_LABEL);
   if (!labeled) return { kind: "discarded", reason: `no ${INTAKE_LABEL} label (action: ${event.action ?? "?"})` };
+  const issueNumber = event.issue?.number;
+  if (issueNumber !== void 0 && !(typeof issueNumber === "number" && Number.isSafeInteger(issueNumber) && issueNumber > 0)) {
+    return { kind: "discarded", reason: INVALID_ISSUE_NUMBER };
+  }
   const directive = decideNextStage("success", "intake", table);
   if (!directive) return { kind: "discarded", reason: "route table has no intake directive" };
-  return { kind: "routed", directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
+  return { kind: "routed", directive, issueNumber, issueUrl: event.issue?.html_url };
 }
-function buildIntentPrompt(directive, issueNumber, issueUrl) {
-  const target = issueUrl ?? `(issue #${issueNumber ?? "?"})`;
-  return `/${directive.skill} \u5904\u7406 tracker \u8FDB\u8D27\uFF1A${target}\u3002\u8FFD\u95EE\u4EE5 issue \u8BC4\u8BBA\u56DE\u8D34\uFF1B\u56DE\u5199\u5951\u7EA6\uFF1Adocs/intents/<slug>/ = \u5185\u5BB9\uFF0Cissue \u8BC4\u8BBA = \u8BB0\u5F55\u6307\u9488\uFF0C\u6807\u7B7E\u8F6C needs-review\u3002`;
+function buildHarborPrompt(directive, issueNumber, issueUrl) {
+  const target = issueNumber !== void 0 ? `#${issueNumber}` : issueUrl ?? "#?";
+  return `/oh-my-copilot:${directive.skill} look at ${target}`;
 }
 function issueUrlMatchesRepo(issueUrl, repo) {
   if (!issueUrl) return true;
@@ -116759,6 +116765,7 @@ function processEvent(event, config2, deps = {}) {
     return { status: outcome.status, kind: "rejected", detail: outcome.reason };
   }
   if (outcome.kind === "discarded") {
+    if (outcome.reason === INVALID_ISSUE_NUMBER) audit({ kind: "discarded", reason: outcome.reason });
     return { status: 204, kind: "discarded", detail: outcome.reason };
   }
   const repo = event.repository?.full_name ?? "";
@@ -116770,8 +116777,9 @@ function processEvent(event, config2, deps = {}) {
   return spawnChainLink({
     intentId,
     directive: outcome.directive,
-    prompt: buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
-    tracker: outcome.issueNumber !== void 0 ? { repo, issue: outcome.issueNumber, nextLabel: "needs-review", failedLabel: "failed" } : void 0,
+    prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+    // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
+    tracker: outcome.issueNumber !== void 0 ? { repo, issue: outcome.issueNumber } : void 0,
     routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },
     config: config2,
     deps,
@@ -116896,7 +116904,7 @@ function hasWorkflowRun(event) {
 function hasCheckSuite(event) {
   return event.check_suite !== void 0;
 }
-var import_crypto43, import_http, import_fs146, import_path172, INTAKE_LABEL, INTAKE_ROUTE_TABLE, CI_FAILURE_DISCARD_REASON, HEAL_WORKFLOW_PATH, DEFAULT_HEAL_BRANCH, ISSUE_URL_PATTERN, MAX_BODY_BYTES2;
+var import_crypto43, import_http, import_fs146, import_path172, INTAKE_LABEL, INTAKE_ROUTE_TABLE, CI_FAILURE_DISCARD_REASON, HEAL_WORKFLOW_PATH, DEFAULT_HEAL_BRANCH, INVALID_ISSUE_NUMBER, ISSUE_URL_PATTERN, MAX_BODY_BYTES2;
 var init_listener = __esm({
   "src/factory/listener.ts"() {
     "use strict";
@@ -116912,10 +116920,11 @@ var init_listener = __esm({
     init_file_lock();
     init_state4();
     INTAKE_LABEL = "intake";
-    INTAKE_ROUTE_TABLE = { "success:intake": { stage: "intent", skill: "intent" } };
+    INTAKE_ROUTE_TABLE = { "success:intake": { stage: "harbor", skill: "harbor" } };
     CI_FAILURE_DISCARD_REASON = "CI failures are healed from workflow_run";
     HEAL_WORKFLOW_PATH = ".github/workflows/ci.yml";
     DEFAULT_HEAL_BRANCH = "dev";
+    INVALID_ISSUE_NUMBER = "invalid issue number";
     ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
     MAX_BODY_BYTES2 = 1024 * 1024;
   }
@@ -128653,7 +128662,7 @@ function factoryCommand() {
     forgeKind: (root2) => originForgeKind(factoryGuardExec(defaultExec), root2)
   }));
   cmd.addCommand(factorySetupCommand());
-  cmd.command("listen").description("Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions").option("--port <n>", "port to listen on (transport adapters forward here)", integerOption(0, 65535), 7788).option("--host <addr>", "host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)", "127.0.0.1").requiredOption("--repo <names>", "repository whitelist, comma-separated owner/name").option("--cwd <dir>", "repository whose .omg state root the daemon writes to", process.cwd()).action((options) => {
+  cmd.command("listen").description("Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless harbor sessions").option("--port <n>", "port to listen on (transport adapters forward here)", integerOption(0, 65535), 7788).option("--host <addr>", "host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)", "127.0.0.1").requiredOption("--repo <names>", "repository whitelist, comma-separated owner/name").option("--cwd <dir>", "repository whose .omg state root the daemon writes to", process.cwd()).action((options) => {
     const forgeRefusal = listenForgeRefusal(defaultExec, (0, import_path197.resolve)(options.cwd), userConfigLayers().trustedUser);
     if (forgeRefusal) {
       console.error(source_default.red(forgeRefusal));
@@ -128712,7 +128721,9 @@ function buildRouteTableNarrow() {
 function validateFactoryPrerequisites(cwd2) {
   const missing = [];
   if (!(0, import_fs170.existsSync)((0, import_path197.join)(getOmcRoot(cwd2), "state"))) missing.push(".omg/state/");
-  if (!(0, import_fs170.existsSync)((0, import_path197.join)(cwd2, "docs", "design"))) missing.push("docs/design/");
+  for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
+    if (!(0, import_fs170.existsSync)((0, import_path197.join)(cwd2, face))) missing.push(face);
+  }
   return { ok: missing.length === 0, missing };
 }
 function runFactoryInit(options = {}) {
@@ -128728,7 +128739,7 @@ function runFactoryInit(options = {}) {
   if (!prerequisites.ok) {
     return {
       exitCode: 1,
-      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`
+      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`
     };
   }
   if ((0, import_fs170.existsSync)(routesPath) && !options.force) {
@@ -128808,7 +128819,10 @@ var init_factory = __esm({
 function prepareChainProject(projectDir) {
   try {
     (0, import_fs171.mkdirSync)((0, import_path198.join)(getOmcRoot(projectDir), "state"), { recursive: true });
-    (0, import_fs171.mkdirSync)((0, import_path198.join)(projectDir, "docs", "design"), { recursive: true });
+    for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
+      if (!(0, import_fs171.existsSync)((0, import_path198.join)(projectDir, face))) (0, import_fs171.writeFileSync)((0, import_path198.join)(projectDir, face), `# ${face}
+`, "utf8");
+    }
   } catch (err) {
     return `factory layout: ${err.message}`;
   }

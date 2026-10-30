@@ -23,7 +23,8 @@ import { withFileLockSync } from '../lib/file-lock.js';
 import { enqueueWebhookRun, healStateDir } from './heal/state.js';
 
 export const INTAKE_LABEL = 'intake';
-export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'intent', skill: 'intent' } };
+/** Tracker intake is harbor's job (verify, desk, signed dispositions); intent needs a live contributor. */
+export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'harbor', skill: 'harbor' } };
 
 /** Why a failed check suite starts nothing: heal owns CI via workflow_run. */
 const CI_FAILURE_DISCARD_REASON = 'CI failures are healed from workflow_run';
@@ -108,16 +109,22 @@ export function routeTrackerEvent(
   for (const l of event.issue?.labels ?? []) if (l.name) labels.add(l.name);
   const labeled = (event.action === 'labeled' || event.action === 'opened') && labels.has(INTAKE_LABEL);
   if (!labeled) return { kind: 'discarded', reason: `no ${INTAKE_LABEL} label (action: ${event.action ?? '?'})` };
+  const issueNumber: unknown = event.issue?.number;
+  if (issueNumber !== undefined && !(typeof issueNumber === 'number' && Number.isSafeInteger(issueNumber) && issueNumber > 0)) {
+    return { kind: 'discarded', reason: INVALID_ISSUE_NUMBER };
+  }
   const directive = decideNextStage('success', 'intake', table);
   if (!directive) return { kind: 'discarded', reason: 'route table has no intake directive' };
-  return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
+  return { kind: 'routed', directive, issueNumber: issueNumber as number | undefined, issueUrl: event.issue?.html_url };
 }
 
-export function buildIntentPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string {
-  const target = issueUrl ?? `(issue #${issueNumber ?? '?'})`;
-  return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
+/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
+export function buildHarborPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string {
+  const target = issueNumber !== undefined ? `#${issueNumber}` : issueUrl ?? '#?';
+  return `/oh-my-copilot:${directive.skill} look at ${target}`;
 }
 
+const INVALID_ISSUE_NUMBER = 'invalid issue number';
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 
 function issueUrlMatchesRepo(issueUrl: string | undefined, repo: string): boolean {
@@ -247,6 +254,7 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
     return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
   }
   if (outcome.kind === 'discarded') {
+    if (outcome.reason === INVALID_ISSUE_NUMBER) audit({ kind: 'discarded', reason: outcome.reason });
     return { status: 204, kind: 'discarded', detail: outcome.reason };
   }
 
@@ -260,10 +268,9 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   return spawnChainLink({
     intentId,
     directive: outcome.directive,
-    prompt: buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
-    tracker: outcome.issueNumber !== undefined
-      ? { repo, issue: outcome.issueNumber, nextLabel: 'needs-review', failedLabel: 'failed' }
-      : undefined,
+    prompt: buildHarborPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+    // No labels: harbor owns the issue's labels. The pointer lets the watchdog flag a stall.
+    tracker: outcome.issueNumber !== undefined ? { repo, issue: outcome.issueNumber } : undefined,
     routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },
     config,
     deps,

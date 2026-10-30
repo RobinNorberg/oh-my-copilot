@@ -13,6 +13,7 @@ import { type Server } from 'http';
 import { type ChainDirective, type RouteTable } from '../hooks/session-end/routing.js';
 import { type SpawnContext } from '../hooks/session-end/spawn-next.js';
 export declare const INTAKE_LABEL = "intake";
+/** Tracker intake is harbor's job (verify, desk, signed dispositions); intent needs a live contributor. */
 export declare const INTAKE_ROUTE_TABLE: RouteTable;
 /** GitHub issue webhook payload subset the daemon needs. */
 export interface TrackerEvent {
@@ -93,7 +94,8 @@ export type RouteOutcome = {
 };
 /** Pure intake decision: whitelist -> label gate -> shared routing seam. */
 export declare function routeTrackerEvent(event: TrackerEvent, whitelist: ReadonlyArray<string>, table?: RouteTable): RouteOutcome;
-export declare function buildIntentPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string;
+/** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
+export declare function buildHarborPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string;
 export interface ListenerConfig {
     port: number;
     secret: string;
