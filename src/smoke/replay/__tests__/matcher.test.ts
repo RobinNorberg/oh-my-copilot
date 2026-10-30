@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawn } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
@@ -100,6 +100,29 @@ describe('ReplayMatcher: in-order serving', () => {
     expect(summarizeReplayState(dir, cassette())).toMatchObject({ unclaimed: ['s2', 's3'], unconsumed: [] });
   });
 
+  it('reports the last recorded seq of an exhausted stream, not the cursor', () => {
+    const sparse: MatcherCassette = {
+      manifest: { streams: [{ id: 'g', promptDigest: 'p-implement', session: 1, agent: 'root', interactions: 2 }] },
+      interactions: [interaction('g', 10, { deltaDigest: 'd1' }), interaction('g', 20, { deltaDigest: 'd1' })],
+    };
+    const m = new ReplayMatcher({ cassette: sparse, stateDir: stateDir(), mode: 'strict' });
+    expect([1, 2].map(() => m.match(live(1)).seq)).toEqual([10, 20]);
+    expect(m.match(live(1))).toMatchObject({ kind: 'miss', stream: 'g', seq: 20, reason: 'stream exhausted' });
+  });
+
+  it('answers a miss with a status the runtime does not retry', () => {
+    expect(MISS_STATUS).toBe(418);
+  });
+
+  it('serves a text response like any other kind', () => {
+    const texty: MatcherCassette = {
+      manifest: { streams: [{ id: 't', promptDigest: 'p-implement', session: 1, agent: 'root', interactions: 1 }] },
+      interactions: [{ ...interaction('t', 1), res: { status: 200, kind: 'text', body: 'plain' } }],
+    };
+    const r = new ReplayMatcher({ cassette: texty, stateDir: stateDir(), mode: 'strict' }).match(live(1));
+    expect(r.kind === 'hit' && r.interaction.res).toEqual({ status: 200, kind: 'text', body: 'plain' });
+  });
+
   it('keeps one cursor per live stream: interleaved sessions do not disturb each other', () => {
     const dir = stateDir();
     const m = matcher('strict', dir);
@@ -159,6 +182,17 @@ describe('ReplayMatcher: strict vs tolerant (design section 4)', () => {
     expect(jsonl(join(dir, 'drift.jsonl')).map((d) => `${d.stream}:${d.kind}`)).toEqual(['s2:fallback', 's3:fallback']);
   });
 
+  it('tolerant: session ordinals are allocated across matchers (processes) sharing the state dir', () => {
+    const dir = stateDir();
+    const a = matcher('tolerant', dir);
+    const b = matcher('tolerant', dir);
+    expect(a.match(live(1))).toMatchObject({ kind: 'hit', stream: 's1' });
+    // The second session lives in another sdk host: its ordinal is 2, so it falls back to s2.
+    expect(b.match(live(1, { sessionId: 'sess-B', promptDigest: 'p-review-v2' }))).toMatchObject({ kind: 'hit', stream: 's2' });
+    expect(readdirSync(join(dir, 'sessions')).sort()).toEqual(['1', '2']);
+    expect(JSON.parse(readFileSync(join(dir, 'sessions', '2'), 'utf8')).sessionId).toBe('sess-B');
+  });
+
   it('strict: an unknown prompt is a miss, no fallback', () => {
     const r = matcher('strict').match(live(1, { promptDigest: 'p-implement-v2' }));
     expect(r).toMatchObject({ kind: 'miss', stream: '-', reason: 'no stream with promptDigest p-implement-v2' });
@@ -190,15 +224,28 @@ describe('ReplayMatcher: expectsToolResults', () => {
 });
 
 describe('ReplayMatcher: global stream', () => {
-  it('serves non-conversation requests by method + path, repeating the last answer', () => {
+  it('serves non-conversation requests by method + path; a GET repeats the last answer as drift', () => {
     const dir = stateDir();
     const m = matcher('strict', dir);
     const models = (r: ReturnType<ReplayMatcher['match']>) => (r.kind === 'hit' ? r.interaction.res.body : r.reason);
     const req = { sessionId: 'sess-A', method: 'GET', path: '/models', transport: 'http' };
     expect([1, 2, 3].map(() => models(m.match(req)))).toEqual([{ data: ['a'] }, { data: ['b'] }, { data: ['b'] }]);
+    expect(jsonl(join(dir, 'drift.jsonl'))).toEqual([{ stream: GLOBAL_STREAM, seq: 2, kind: 'global-repeat', detail: 'GET /models served 3 times, recorded 2' }]);
     // A global request neither binds nor claims a stream.
     expect(readdirSync(join(dir, 'claims'))).toEqual([]);
     expect(m.match({ ...req, path: '/user' })).toMatchObject({ kind: 'miss', stream: GLOBAL_STREAM, reason: 'no global interaction for GET /user' });
+  });
+});
+
+describe('ReplayMatcher: global POST', () => {
+  it('misses once a non-GET global interaction is used up', () => {
+    const dir = stateDir();
+    const c = cassette();
+    c.interactions.push({ stream: GLOBAL_STREAM, seq: 3, req: { method: 'POST', path: '/telemetry', transport: 'http' }, res: { status: 204, kind: 'json' } });
+    const m = new ReplayMatcher({ cassette: c, stateDir: dir, mode: 'tolerant' });
+    const req = { sessionId: 'sess-A', method: 'POST', path: '/telemetry', transport: 'http' };
+    expect(m.match(req)).toMatchObject({ kind: 'hit', seq: 3 });
+    expect(m.match(req)).toMatchObject({ kind: 'miss', stream: GLOBAL_STREAM, seq: 3, reason: 'global stream exhausted for POST /telemetry' });
   });
 });
 
@@ -279,11 +326,25 @@ describe('ReplayMatcher: miss log', () => {
     expect(summary).toMatchObject({ unclaimed: ['s2', 's3'], unconsumed: ['s1'] });
   });
 
-  it('refuses to append through a non-file at the log path', () => {
+  it('refuses to append through a non-file at the log path and answers a miss instead of throwing', () => {
     const dir = stateDir();
-    // A directory planted at the miss log path.
-    mkdirSync(join(dir, 'misses.jsonl'));
+    // A directory planted at the served log path.
+    mkdirSync(join(dir, 'served.jsonl'));
     const m = matcher('strict', dir);
-    expect(() => m.match(live(1, { promptDigest: 'p-unknown' }))).toThrow();
+    const r = m.match(live(1));
+    expect(r).toMatchObject({ kind: 'miss', status: MISS_STATUS, reason: 'replay state: served.jsonl is not a regular file' });
+    // The failed append did not consume the interaction.
+    rmSync(join(dir, 'served.jsonl'), { recursive: true });
+    expect(m.match(live(1))).toMatchObject({ kind: 'hit', seq: 1 });
+  });
+
+  it('summarizes past a torn final line, but not a torn line in the middle', () => {
+    const dir = stateDir();
+    const m = matcher('strict', dir);
+    m.match(live(1, { promptDigest: 'p-unknown' }));
+    appendFileSync(join(dir, 'misses.jsonl'), '{"stream":"s1","se');
+    expect(summarizeReplayState(dir, cassette()).misses).toHaveLength(1);
+    appendFileSync(join(dir, 'misses.jsonl'), '\n{"stream":"-","seq":0}\n');
+    expect(() => summarizeReplayState(dir, cassette())).toThrow();
   });
 });

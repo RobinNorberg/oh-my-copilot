@@ -8,16 +8,17 @@
  * tolerant mode only, by `(session ordinal, agent path)`. Binding claims the
  * recorded stream with an exclusive file under `<state>/claims/`, so matchers
  * in separate processes (team sdk hosts) never replay the same recording.
- * Interactions are then served strictly in order per stream. Requests with no
- * prompt (for example `GET /models`) are served from the `global` stream by
- * method + path.
+ * Session ordinals are allocated across processes the same way, with
+ * exclusive files under `<state>/sessions/`. Interactions are then served
+ * strictly in order per stream. Requests with no prompt (for example
+ * `GET /models`) are served from the `global` stream by method + path.
  *
  * The matcher works on digests the caller already computed (normalization
  * and redaction live in the cassette library); it never sees a full request
  * body and never forwards anything.
  */
 
-import { closeSync, mkdirSync, readFileSync, writeSync } from 'fs';
+import { closeSync, mkdirSync, readFileSync, readdirSync, writeSync } from 'fs';
 import { join } from 'path';
 import { appendFileNoFollow, openAppendExclusive } from '../../lib/append-no-follow.js';
 
@@ -52,7 +53,7 @@ export interface CassetteRequest {
 export interface CassetteResponse {
   status: number;
   headers?: Record<string, string>;
-  kind: 'sse' | 'json' | 'ws';
+  kind: 'sse' | 'json' | 'text' | 'ws';
   chunks?: string[];
   body?: unknown;
   messages?: Array<{ dir: 'in' | 'out'; data: string }>;
@@ -93,7 +94,7 @@ export interface LiveRequest {
 
 export type MatchMode = 'strict' | 'tolerant';
 
-export type DriftKind = 'fallback' | 'delta' | 'model';
+export type DriftKind = 'fallback' | 'delta' | 'model' | 'global-repeat';
 
 export interface DriftEntry {
   stream: string;
@@ -112,13 +113,20 @@ export interface MissEntry {
 
 export type MatchResult =
   | { kind: 'hit'; stream: string; seq: number; interaction: CassetteInteraction; drift: DriftEntry[] }
-  | { kind: 'miss'; stream: string; seq: number; reason: string; status: 599; body: string };
+  | { kind: 'miss'; stream: string; seq: number; reason: string; status: typeof MISS_STATUS; body: string };
 
 export const GLOBAL_STREAM = 'global';
-export const MISS_STATUS = 599;
+/**
+ * 418, not the design's 599: OpenAI-style clients retry 408, 409, 429 and
+ * every 5xx with backoff, which would turn a miss into slow retries instead of
+ * an immediate turn failure. 418 is in no retry set and never comes from the
+ * real API, so a miss cannot be mistaken for an upstream answer.
+ */
+export const MISS_STATUS = 418;
 const EXCERPT_CHARS = 400;
 
 const CLAIMS_DIR = 'claims';
+const SESSIONS_DIR = 'sessions';
 const MISSES_FILE = 'misses.jsonl';
 const DRIFT_FILE = 'drift.jsonl';
 const SERVED_FILE = 'served.jsonl';
@@ -158,6 +166,7 @@ export class ReplayMatcher {
     }
     for (const list of this.byStream.values()) list.sort((a, b) => a.seq - b.seq);
     mkdirSync(join(this.stateDir, CLAIMS_DIR), { recursive: true });
+    mkdirSync(join(this.stateDir, SESSIONS_DIR), { recursive: true });
     // Created up front: on Windows two processes creating a log at the same
     // moment makes appendFileNoFollow refuse the loser's first line.
     for (const file of [MISSES_FILE, DRIFT_FILE, SERVED_FILE]) {
@@ -169,7 +178,17 @@ export class ReplayMatcher {
     }
   }
 
+  /** Never throws: a failure to read or write the replay state is answered as a miss. */
   match(req: LiveRequest): MatchResult {
+    try {
+      return this.matchOrThrow(req);
+    } catch (err) {
+      const reason = `replay state: ${(err as Error).message}`;
+      return { kind: 'miss', stream: '-', seq: 0, reason, status: MISS_STATUS, body: `omg replay: cassette miss (-/0: ${reason})` };
+    }
+  }
+
+  private matchOrThrow(req: LiveRequest): MatchResult {
     if (req.promptDigest === undefined) return this.matchGlobal(req);
     const key = liveKey(req.sessionId, req.agentId);
     const path = this.trackAgent(req);
@@ -186,7 +205,7 @@ export class ReplayMatcher {
     }
     const id = bound.stream.id;
     const it = bound.queue[bound.cursor];
-    if (!it) return this.miss(req, id, bound.cursor, 'stream exhausted', drift);
+    if (!it) return this.miss(req, id, bound.queue[bound.queue.length - 1]?.seq ?? 0, 'stream exhausted', drift);
     const r = it.req;
     if (r.method !== req.method || r.path !== req.path || r.transport !== req.transport) {
       return this.miss(req, id, it.seq, `expected ${r.method} ${r.path} (${r.transport}), got ${req.method} ${req.path} (${req.transport})`, drift);
@@ -205,22 +224,34 @@ export class ReplayMatcher {
       if (this.mode === 'strict') return this.miss(req, id, it.seq, `model ${req.model ?? '-'} differs from recorded ${r.model ?? '-'}`, drift);
       drift.push({ stream: id, seq: it.seq, kind: 'model', detail: `recorded ${r.model ?? '-'}, live ${req.model ?? '-'}` });
     }
-    bound.cursor += 1;
+    // Logged before the cursor moves: a failed append is a miss and must not consume the interaction.
     this.served(id, it.seq);
     this.logDrift(drift);
+    bound.cursor += 1;
     return { kind: 'hit', stream: id, seq: it.seq, interaction: it, drift };
   }
 
-  /** Non-conversation requests: in recorded order per method + path; the last answer repeats once they run out. */
+  /**
+   * Non-conversation requests: in recorded order per method + path. Once they
+   * run out, a GET or HEAD repeats the last answer (logged as `global-repeat`
+   * drift); any other method misses, as an exhausted stream does.
+   */
   private matchGlobal(req: LiveRequest): MatchResult {
     const key = `${req.method} ${req.path}`;
     const list = (this.byStream.get(GLOBAL_STREAM) ?? []).filter((it) => it.req.method === req.method && it.req.path === req.path);
     if (list.length === 0) return this.miss(req, GLOBAL_STREAM, 0, `no global interaction for ${key}`);
     const cursor = this.globalCursors.get(key) ?? 0;
-    const it = list[Math.min(cursor, list.length - 1)];
-    this.globalCursors.set(key, cursor + 1);
+    const drift: DriftEntry[] = [];
+    let it = list[cursor];
+    if (!it) {
+      it = list[list.length - 1];
+      if (req.method !== 'GET' && req.method !== 'HEAD') return this.miss(req, GLOBAL_STREAM, it.seq, `global stream exhausted for ${key}`);
+      drift.push({ stream: GLOBAL_STREAM, seq: it.seq, kind: 'global-repeat', detail: `${key} served ${cursor + 1} times, recorded ${list.length}` });
+    }
     this.served(GLOBAL_STREAM, it.seq);
-    return { kind: 'hit', stream: GLOBAL_STREAM, seq: it.seq, interaction: it, drift: [] };
+    this.logDrift(drift);
+    this.globalCursors.set(key, cursor + 1);
+    return { kind: 'hit', stream: GLOBAL_STREAM, seq: it.seq, interaction: it, drift };
   }
 
   private bind(req: LiveRequest, path: string): { bound: Bound; fallback: boolean } | { reason: string } {
@@ -263,7 +294,7 @@ export class ReplayMatcher {
 
   /** Records the session ordinal and agent path of the request's live stream; returns the agent path. */
   private trackAgent(req: LiveRequest): string {
-    if (!this.sessionOrdinals.has(req.sessionId)) this.sessionOrdinals.set(req.sessionId, this.sessionOrdinals.size + 1);
+    if (!this.sessionOrdinals.has(req.sessionId)) this.sessionOrdinals.set(req.sessionId, this.allocateOrdinal(req.sessionId));
     const key = liveKey(req.sessionId, req.agentId);
     const known = this.agentPaths.get(key);
     if (known) return known;
@@ -276,6 +307,31 @@ export class ReplayMatcher {
     }
     this.agentPaths.set(key, path);
     return path;
+  }
+
+  /**
+   * Next free session ordinal across every process of the run: the first n for
+   * which `<state>/sessions/<n>` can be created exclusively. The recorder must
+   * allocate ordinals the same way, so a recorded `session` means the same
+   * thing for a team whose sessions live in several sdk hosts.
+   */
+  private allocateOrdinal(sessionId: string): number {
+    const dir = join(this.stateDir, SESSIONS_DIR);
+    for (let n = readdirSync(dir).length + 1; ; n += 1) {
+      let fd: number;
+      try {
+        fd = openAppendExclusive(join(dir, String(n)));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
+        throw err;
+      }
+      try {
+        writeSync(fd, `${JSON.stringify({ pid: process.pid, sessionId })}\n`);
+      } finally {
+        closeSync(fd);
+      }
+      return n;
+    }
   }
 
   private miss(req: LiveRequest, stream: string, seq: number, reason: string, drift: DriftEntry[] = []): MatchResult {
@@ -295,7 +351,7 @@ export class ReplayMatcher {
 
   private append(file: string, value: unknown): void {
     if (!appendFileNoFollow(join(this.stateDir, file), `${JSON.stringify(value)}\n`)) {
-      throw new Error(`replay state ${file}: not a regular file`);
+      throw new Error(`${file} is not a regular file`);
     }
   }
 }
@@ -363,5 +419,16 @@ function readJsonl<T>(file: string): T[] {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
-  return text.split('\n').filter((line) => line.trim() !== '').map((line) => JSON.parse(line) as T);
+  const lines = text.split('\n');
+  // Text after the last newline may be a line another process is still writing: kept if it parses, dropped if torn.
+  const tail = lines.pop() ?? '';
+  const out = lines.filter((line) => line.trim() !== '').map((line) => JSON.parse(line) as T);
+  if (tail.trim() !== '') {
+    try {
+      out.push(JSON.parse(tail) as T);
+    } catch {
+      // torn final line
+    }
+  }
+  return out;
 }
