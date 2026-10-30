@@ -208,13 +208,13 @@ To run autopilot implementation through the tmux CLI team runtime and prefer Cur
 With that config, the execution stage must launch executor-style work through:
 
 ```sh
-omc team 1:cursor "<implementation task>"
+omg team 1:cursor "<implementation task>"
 ```
 
-or the Claude Code slash compatibility surface:
+or the `team` skill from a Copilot CLI session:
 
 ```text
-/omc-teams 1:cursor "<implementation task>"
+/oh-my-copilot:team 1:cursor "<implementation task>"
 ```
 
 Limitations:

@@ -200,11 +200,7 @@ function resolveBundledSkillPrimary(
   // must agree even on case-insensitive filesystems (Windows/macOS), where a
   // case-variant identifier resolves the same directory.
   const foldedInput = agentType.toLowerCase();
-  const stripped = foldedInput.startsWith('oh-my-copilot:')
-    ? foldedInput.slice('oh-my-copilot:'.length)
-    : foldedInput.startsWith('omc:')
-      ? foldedInput.slice('omc:'.length)
-      : foldedInput;
+  const stripped = foldedInput.replace(/^(?:oh-my-copilot|omc|omg):/, '');
   const skills = createBuiltinSkills();
   const match = skills.find((s) => s.name.toLowerCase() === stripped);
   if (match) {
@@ -215,7 +211,7 @@ function resolveBundledSkillPrimary(
   // (e.g. Claude Code's built-in `Plan` vs the skills/plan dir registering
   // omc-plan) are never mistaken for skills (issue #3667 P1, JS/TS parity).
   const wasNamespaced = typeof originalSubagentType === 'string'
-    && /^(?:oh-my-copilot|omc):/i.test(originalSubagentType.trim());
+    && /^(?:oh-my-copilot|omc|omg):/i.test(originalSubagentType.trim());
   if (!wasNamespaced) {
     return null;
   }

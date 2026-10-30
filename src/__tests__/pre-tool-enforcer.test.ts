@@ -2934,12 +2934,15 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
     it('denies the plugin-namespaced plan identifier while preserving bare plan', () => {
       const namespaced = runTask('oh-my-copilot:plan', 'Task', {}, { USER_TYPE: '' });
       const omcAlias = runTask('omc:plan', 'Task', {}, { USER_TYPE: '' });
+      const omgAlias = runTask('omg:plan', 'Task', {}, { USER_TYPE: '' });
       const bare = runTask('plan', 'Task', {}, { USER_TYPE: '' });
 
       expect((namespaced.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
       expect(denyReason(namespaced)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
       expect((omcAlias.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
       expect(denyReason(omcAlias)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+      expect((omgAlias.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(omgAlias)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
       expect((bare.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
     });
 
