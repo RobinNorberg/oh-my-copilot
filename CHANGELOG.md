@@ -2,6 +2,18 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **The listener no longer starts a billed session for a nonexistent
+  `diagnose` skill on CI failures.** A failed `check_suite` webhook is now
+  an audited `204` discard ("CI failures are healed from workflow_run"); red
+  CI reaches the heal queue through `workflow_run` only. `omg factory init
+  --no-narrow`, whose full template routed `success:launch` to the same
+  missing skill, now refuses (exit 1, nothing written) and points at
+  `omg factory run <issue>`. The default narrow table is unchanged.
+
 # oh-my-copilot v5.18.2
 
 ## [5.18.2] - 2026-10-30

@@ -921,6 +921,8 @@ omg progress status --dir <dir> --json          # latest event and state per age
 
 `omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory status [--json]` is the read-only chain audit. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
 
+`omg factory init` seeds only the narrow starter table (`success:intake` → `intent`). `--no-narrow`, which seeded the full `intake → intent → launch → diagnose` template, is retired: it exits 1 and writes nothing, because launch needs a live captain and no `diagnose` skill exists. Run launch in a session and deliver each issue with `omg factory run <issue>`. The listener answers a failed `check_suite` webhook with an audited `204` discard (`CI failures are healed from workflow_run`) and never starts a session; red CI reaches the heal queue through `workflow_run` (see `omg factory heal`).
+
 #### Factory chains on Copilot
 
 Each link has a chain-link id and a ledger `.omg/state/factory/chain-<id>.json`, written by whoever spawns the link (the listener for the first link, the SessionEnd worker for later ones). The SessionEnd hook must find that ledger, so the link id has to reach the ending session:

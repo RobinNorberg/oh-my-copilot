@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
-import { buildRouteTableFull, buildRouteTableNarrow, runFactoryInit, validateFactoryPrerequisites, } from '../factory.js';
+import { buildRouteTableNarrow, runFactoryInit, validateFactoryPrerequisites, } from '../factory.js';
 import { readProjectRoutes } from '../../../hooks/session-end/chain-enqueuer.js';
 const tempRoots = [];
 /** Isolated git repo: getOmcRoot resolves `.omc` inside it, like the real project. */
@@ -30,12 +30,9 @@ describe('buildRouteTableNarrow', () => {
         expect(buildRouteTableNarrow()).toEqual({ 'success:intake': { stage: 'intent', skill: 'intent' } });
     });
 });
-describe('buildRouteTableFull', () => {
-    it('widens the starter loop into the intent -> launch -> diagnose progression', () => {
-        const table = buildRouteTableFull();
-        expect(table['success:intake']).toEqual({ stage: 'intent', skill: 'intent' });
-        expect(table['success:intent']).toEqual({ stage: 'launch', skill: 'launch' });
-        expect(table['success:launch']).toEqual({ stage: 'diagnose', skill: 'diagnose' });
+describe('retired full-pipeline template', () => {
+    it('is no longer exported', async () => {
+        expect('buildRouteTableFull' in (await import('../factory.js'))).toBe(false);
     });
 });
 describe('validateFactoryPrerequisites', () => {
@@ -59,12 +56,25 @@ describe('runFactoryInit', () => {
         expect(JSON.parse(readFileSync(routesPath(dir), 'utf8'))).toEqual(buildRouteTableNarrow());
         expect(readProjectRoutes(dir)).toEqual(buildRouteTableNarrow());
     });
-    it('writes the full widening template with narrow: false', () => {
+    it('refuses narrow: false (--no-narrow) with a pointer to the integration design and writes nothing', () => {
         const dir = tempDir();
         seedPrerequisites(dir);
         const result = runFactoryInit({ cwd: dir, narrow: false });
-        expect(result.exitCode).toBe(0);
-        expect(JSON.parse(readFileSync(routesPath(dir), 'utf8'))).toEqual(buildRouteTableFull());
+        expect(result.exitCode).toBe(1);
+        expect(result.message).toContain('--no-narrow');
+        expect(result.message).toContain('diagnose');
+        expect(result.message).toContain('omg factory run <issue>');
+        expect(result.message).toContain('shipyard-factory-integration-design');
+        expect(existsSync(routesPath(dir))).toBe(false);
+    });
+    it('refuses narrow: false even with --force and leaves an existing table untouched', () => {
+        const dir = tempDir();
+        seedPrerequisites(dir);
+        const existing = { 'success:*': { stage: 'mine', skill: 'mine' } };
+        writeFileSync(routesPath(dir), JSON.stringify(existing), 'utf8');
+        const result = runFactoryInit({ cwd: dir, narrow: false, force: true });
+        expect(result.exitCode).toBe(1);
+        expect(JSON.parse(readFileSync(routesPath(dir), 'utf8'))).toEqual(existing);
     });
     it('refuses to overwrite an existing table (content untouched) and --force replaces it', () => {
         const dir = tempDir();

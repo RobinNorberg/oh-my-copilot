@@ -4,9 +4,10 @@
  * Resident intake daemon: transport adapters (smee/cloudflared/direct) live
  * outside the OMC boundary — the daemon only receives already-unpacked
  * webhook events as POSTs. It verifies the HMAC signature, enforces the repo
- * whitelist, applies the intake label gate (tracker issues) or the completed
- * CI failure gate (check-suite webhooks), and routes through the shared
- * routing pure function (T1 seam). v1 processes events serially.
+ * whitelist, applies the intake label gate (tracker issues) and routes through
+ * the shared routing pure function (T1 seam). Check-suite webhooks are audited
+ * and discarded; red CI reaches the heal queue through workflow_run. v1
+ * processes events serially.
  */
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { createServer } from 'http';
@@ -21,10 +22,8 @@ import { withFileLockSync } from '../lib/file-lock.js';
 import { enqueueWebhookRun, healStateDir } from './heal/state.js';
 export const INTAKE_LABEL = 'intake';
 export const INTAKE_ROUTE_TABLE = { 'success:intake': { stage: 'intent', skill: 'intent' } };
-/** CI check-suite failures feed the diagnose stage of the same chain. */
-export const CI_ROUTE_TABLE = { 'failed:ci': { stage: 'diagnose', skill: 'diagnose' } };
-/** A check-suite head_branch admitted into a diagnose prompt. */
-export const HEAD_BRANCH_PATTERN = /^[\w./-]{1,200}$/;
+/** Why a failed check suite starts nothing: heal owns CI via workflow_run. */
+const CI_FAILURE_DISCARD_REASON = 'CI failures are healed from workflow_run';
 /** The workflow whose red dev push runs may heal (fixed, like the poller's). */
 export const HEAL_WORKFLOW_PATH = '.github/workflows/ci.yml';
 export const DEFAULT_HEAL_BRANCH = 'dev';
@@ -83,32 +82,9 @@ export function routeTrackerEvent(event, whitelist, table = INTAKE_ROUTE_TABLE) 
         return { kind: 'discarded', reason: 'route table has no intake directive' };
     return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
 }
-/**
- * Pure CI intake decision: whitelist -> completed/failure gate -> shared
- * routing seam. Same outcome shape as routeTrackerEvent so the listener
- * dispatches both webhook kinds uniformly.
- */
-export function routeCheckFailure(event, whitelist, table = CI_ROUTE_TABLE) {
-    const repo = event.repository?.full_name;
-    if (!repo || !whitelist.includes(repo)) {
-        return { kind: 'rejected', status: 403, reason: `repository outside whitelist: ${repo ?? '(missing)'}` };
-    }
-    const failed = event.action === 'completed' && event.check_suite?.conclusion === 'failure';
-    if (!failed) {
-        return { kind: 'discarded', reason: `not a failed check run (action: ${event.action ?? '?'}, conclusion: ${event.check_suite?.conclusion ?? '?'})` };
-    }
-    const directive = decideNextStage('failed', 'ci', table);
-    if (!directive)
-        return { kind: 'discarded', reason: 'route table has no ci directive' };
-    return { kind: 'routed', directive };
-}
 export function buildIntentPrompt(directive, issueNumber, issueUrl) {
     const target = issueUrl ?? `(issue #${issueNumber ?? '?'})`;
     return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
-}
-export function buildDiagnosePrompt(directive, repo, branch) {
-    const target = branch ? `${repo}@${branch}` : repo;
-    return `/${directive.skill} 处理 CI 失败：${target}。诊断失败原因并尝试修复；无法自动修复时留下诊断结论并停住（needs-human）。`;
 }
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 function issueUrlMatchesRepo(issueUrl, repo) {
@@ -223,34 +199,24 @@ export function processEvent(event, config, deps = {}) {
         audit,
     });
 }
-/** Orchestrates one CI check-suite event: same guardrail/ledger/AFK flow, no tracker. */
+/**
+ * One CI check-suite event. It never spawns a session: a failure is an
+ * audited discard, because heal owns CI through workflow_run (the retired
+ * route spawned a billed session for a `diagnose` skill that does not exist).
+ */
 export function processCheckFailureEvent(event, config, deps = {}) {
     const audit = deps.audit ?? defaultAudit(config.cwd);
-    const outcome = routeCheckFailure(event, config.whitelist);
-    if (outcome.kind === 'rejected') {
-        audit({ kind: 'rejected', status: outcome.status, reason: outcome.reason });
-        return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
+    const repo = event.repository?.full_name;
+    if (!repo || !config.whitelist.includes(repo)) {
+        const reason = `repository outside whitelist: ${repo ?? '(missing)'}`;
+        audit({ kind: 'rejected', status: 403, reason });
+        return { status: 403, kind: 'rejected', detail: reason };
     }
-    if (outcome.kind === 'discarded') {
-        return { status: 204, kind: 'discarded', detail: outcome.reason };
+    if (event.action !== 'completed' || event.check_suite?.conclusion !== 'failure') {
+        return { status: 204, kind: 'discarded', detail: `not a failed check run (action: ${event.action ?? '?'}, conclusion: ${event.check_suite?.conclusion ?? '?'})` };
     }
-    const repo = event.repository?.full_name ?? '';
-    const branch = event.check_suite?.head_branch;
-    // The branch name is pusher-controlled and lands in the session prompt.
-    if (branch !== undefined && !HEAD_BRANCH_PATTERN.test(branch)) {
-        audit({ kind: 'rejected', status: 422, reason: 'invalid head_branch', branch: branch.slice(0, 200) });
-        return { status: 422, kind: 'rejected', detail: 'invalid head_branch' };
-    }
-    const intentId = `${repo}:ci:${branch ?? 'unknown'}`.replace(/[^\w.-]/g, '-');
-    return spawnChainLink({
-        intentId,
-        directive: outcome.directive,
-        prompt: buildDiagnosePrompt(outcome.directive, repo, branch),
-        routedAuditFields: { target: branch ? `${repo}@${branch}` : repo },
-        config,
-        deps,
-        audit,
-    });
+    audit({ kind: 'discarded', reason: CI_FAILURE_DISCARD_REASON, repo });
+    return { status: 204, kind: 'discarded', detail: CI_FAILURE_DISCARD_REASON };
 }
 function defaultEnqueueHeal(cwd, runId) {
     return withFileLockSync(join(healStateDir(cwd), 'scan.lock'), () => enqueueWebhookRun(cwd, runId, new Date()), { timeoutMs: 5_000 });
