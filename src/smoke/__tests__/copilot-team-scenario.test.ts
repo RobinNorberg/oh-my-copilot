@@ -167,6 +167,9 @@ describe('team scenario helpers', () => {
     expect(env).toMatchObject({ COPILOT_CLI: '1', OMC_RUNTIME_V2: '1', OMC_TEAM_WORKTREE_MODE: 'detached', OMC_TEAM_SDK_MAX_CREDITS: '3' });
     expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
     expect(env.OMC_TEAM_WORKER).toBeUndefined();
+    expect(env.OMC_TEAM_SDK_MODEL).toBeUndefined();
+    // A cassette pins the worker model (the leader reads OMC_TEAM_SDK_MODEL).
+    expect(teamLeaderEnv({ PATH: 'existing' }, join(dir, 'copilot.cmd'), 7, 'gpt-5-mini').OMC_TEAM_SDK_MODEL).toBe('gpt-5-mini');
   });
 
   it('lastJsonObject skips noise and takes the last object line', () => {

@@ -10,8 +10,9 @@
  * - record: a pass-through tap. Each request is forwarded by the SDK's own
  *   default, the response is teed, redacted (redact.ts) and kept in memory;
  *   `client.stop()` writes the recording through {@link writeCassette}, which
- *   gates it and writes nothing if a secret survived. One part per client,
- *   under `<state>/parts/`; the smoke merges the parts (PR 4).
+ *   gates it and writes nothing if a secret survived. One part per client and scenario,
+ *   under `<state>/parts/` (`<pid>-<n>.failed` when it could not be written);
+ *   the smoke merges them (replay/run.ts).
  * - replay: never forwards. The handler class overrides both SDK hooks without
  *   calling `super` and holds no upstream: every request is answered from the
  *   cassette through {@link ReplayMatcher}, a miss with HTTP 418.
@@ -49,10 +50,24 @@ export interface CassetteConfig {
     /** `OMG_COPILOT_CASSETTE_STATE`: shared by every process of one run (claims, ordinals, logs, record parts). */
     stateDir: string;
     scenario?: string;
+    /** `OMG_COPILOT_CASSETTE_MATCH` (replay only). */
+    matchMode?: MatchMode;
+    /** `OMG_COPILOT_CASSETTE_DIRS`: placeholder dirs on top of TMP and USERHOME. */
+    dirs?: PlaceholderDirs;
 }
 export declare const REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
 /** Per-client recordings, `<state>/parts/<pid>-<n>`, merged by the smoke. */
 export declare const RECORD_PARTS_DIR = "parts";
+/** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */
+export declare const RECORD_FAILED_SUFFIX = ".failed";
+/** `<state>/parts/<pid>-<n>.started`: a client recorded and has not stopped yet; left behind by a killed process, so the merge refuses. */
+export declare const RECORD_STARTED_SUFFIX = ".started";
+/**
+ * The state dir name of a multi-scenario client (the smoke driver's) before
+ * its first `setCassetteScenario`: record and replay both answer its requests
+ * with a 418 miss, so a recording holds nothing a replay could not serve.
+ */
+export declare const UNSCOPED_STATE_DIR = "_client";
 export declare class CassetteConfigError extends Error {
     name: string;
 }
@@ -160,7 +175,7 @@ export declare class CassetteRecorder {
     finish(dir: string): Promise<string[] | null>;
 }
 /** A recording handler: forwards through the SDK's default (`super`), taps the response. */
-export declare function createRecordingHandler(Base: CopilotRequestHandlerCtor, recorder: CassetteRecorder): CopilotRequestHandlerLike;
+export declare function createRecordingHandler(Base: CopilotRequestHandlerCtor, recorderOf: CassetteRecorder | ((ctx: CopilotRequestContextLike) => CassetteRecorder | null)): CopilotRequestHandlerLike;
 /** Answers requests from one cassette; holds no upstream of any kind. */
 export declare class CassetteReplayer {
     private readonly dirs;
@@ -174,19 +189,32 @@ export declare class CassetteReplayer {
  * through it; both hooks are overridden without `super`, and nothing in the
  * class can reach an upstream (section 8.1).
  */
-export declare function createReplayHandler(Base: CopilotRequestHandlerCtor, replayer: CassetteReplayer): CopilotRequestHandlerLike;
+export declare function createReplayHandler(Base: CopilotRequestHandlerCtor, replayerOf: CassetteReplayer | ((ctx: CopilotRequestContextLike) => CassetteReplayer | null)): CopilotRequestHandlerLike;
 /** The cassette of a replay run: `<dir>` itself, or `<dir>/<scenario>`. Refuses one from another platform. */
 export declare function loadReplayCassette(config: CassetteConfig): Cassette;
 export interface WithCassetteOptions {
-    /** Dirs turned into placeholders (on top of TMP and USERHOME). */
+    /** Dirs turned into placeholders (on top of TMP, USERHOME and the env's `OMG_COPILOT_CASSETTE_DIRS`). */
     dirs?: PlaceholderDirs;
     matchMode?: MatchMode;
+}
+/** What a cassette client adds to the SDK client. */
+export interface CassetteClientControl {
+    /** The marker callers test instead of re-reading the env. */
+    readonly cassette: CassetteMode;
+    /**
+     * Record or replay this client's next requests as `scenario`, with that
+     * scenario's state dir: for the smoke driver, whose one client runs several
+     * scenarios. Every other client takes its scenario from the env. Throws when
+     * the scenario's cassette cannot be replayed.
+     */
+    setCassetteScenario(scenario: string, stateDir: string): void;
 }
 /**
  * The SDK with a client that records or replays every model request, per the
  * cassette env; `loaded` unchanged when that env is unset. Throws (never a
  * plain client) when the env is invalid, the cassette cannot be read, or the
- * SDK has no `CopilotRequestHandler`.
+ * SDK has no `CopilotRequestHandler`. The returned SDK and its clients carry
+ * the mode as `cassette`.
  */
 export declare function withCassette(loaded: LoadedSdk, env?: NodeJS.ProcessEnv, options?: WithCassetteOptions): LoadedSdk;
 export {};

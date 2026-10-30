@@ -7,10 +7,12 @@
  * crashes (then `ok:false` with one `cli.error` check).
  */
 
-import { resolve } from 'path';
+import { homedir } from 'os';
+import { join, resolve } from 'path';
 import { colors } from '../utils/formatting.js';
 import {
   ALL_SCENARIOS,
+  cassetteOptionsError,
   KNOWN_SCENARIOS,
   MIN_MAX_CREDITS,
   runCopilotSmoke,
@@ -20,6 +22,7 @@ import {
   type SmokeTier,
 } from '../../smoke/copilot-smoke.js';
 import { SDK_MISSING_DETAIL } from '../../smoke/copilot-sdk-scenarios.js';
+import { gateCassettes, importCassettes, platformTag, writeSelfVerify } from '../../smoke/replay/run.js';
 
 export interface SmokeCopilotCliOptions {
   tier?: string;
@@ -33,7 +36,18 @@ export interface SmokeCopilotCliOptions {
   scenario?: string;
   /** Tier 2 with no scenarios: SDK static checks only, zero model calls. */
   sdkStatic?: boolean;
+  /** Tier 2: record the scenarios' model requests under this dir (billed). */
+  record?: string;
+  recordOverwrite?: boolean;
+  /** Tier 2: replay the scenarios from the cassettes under this dir (free). */
+  replay?: string;
+  replayStrict?: boolean;
   json?: boolean;
+}
+
+/** A leading `~` as the home dir: PowerShell passes `~/omg-cassettes` to a native command unexpanded. */
+export function expandHome(dir: string): string {
+  return dir === '~' || /^~[\\/]/.test(dir) ? join(homedir(), dir.slice(2)) : dir;
 }
 
 function parsePositiveInt(value: string | undefined, flag: string): number | undefined {
@@ -60,8 +74,8 @@ export function parseScenarios(raw: string): Scenario[] {
   return out;
 }
 
-export function toSmokeOptions(cli: SmokeCopilotCliOptions): Partial<SmokeOptions> {
-  const wantsTier2 = cli.sdkStatic === true || cli.scenario !== undefined;
+export function toSmokeOptions(cli: SmokeCopilotCliOptions, env: NodeJS.ProcessEnv = process.env): Partial<SmokeOptions> {
+  const wantsTier2 = cli.sdkStatic === true || cli.scenario !== undefined || cli.record !== undefined || cli.replay !== undefined;
   const tierRaw = cli.tier ?? (wantsTier2 ? '2' : '0');
   if (tierRaw !== '0' && tierRaw !== '1' && tierRaw !== '2') {
     throw new Error(`--tier must be 0, 1 or 2, got ${JSON.stringify(tierRaw)}`);
@@ -76,7 +90,7 @@ export function toSmokeOptions(cli: SmokeCopilotCliOptions): Partial<SmokeOption
   }
   // Tier 2 without --scenario/--sdk-static leaves `scenarios` unset: the library default applies.
   const scenarios: Scenario[] | undefined = cli.sdkStatic ? [] : cli.scenario !== undefined ? parseScenarios(cli.scenario) : undefined;
-  return {
+  const options: Partial<SmokeOptions> = {
     tier,
     ...(cli.pluginRoot ? { pluginRoot: cli.pluginRoot } : {}),
     ...(cli.model ? { model: cli.model } : {}),
@@ -85,7 +99,14 @@ export function toSmokeOptions(cli: SmokeCopilotCliOptions): Partial<SmokeOption
     keepHome: cli.keepHome ?? false,
     delegate: cli.delegate ?? false,
     ...(scenarios !== undefined ? { scenarios } : {}),
+    ...(cli.record !== undefined ? { record: expandHome(cli.record) } : {}),
+    ...(cli.recordOverwrite ? { recordOverwrite: true } : {}),
+    ...(cli.replay !== undefined ? { replay: expandHome(cli.replay) } : {}),
+    ...(cli.replayStrict ? { replayStrict: true } : {}),
   };
+  const refusal = cassetteOptionsError(options, env);
+  if (refusal) throw new Error(refusal);
+  return options;
 }
 
 /** A failed check that only says "could not run": missing binary, missing SDK peer, or a dependent skip. */
@@ -181,5 +202,95 @@ export async function smokeCopilotCommand(cli: SmokeCopilotCliOptions): Promise<
     return 1;
   }
   console.log(cli.json ? JSON.stringify(report, null, 2) : formatSmokeReport(report));
-  return smokeExitCode(report);
+  const code = smokeExitCode(report);
+  if (cli.record === undefined) return code;
+  if (code !== 0) {
+    console.error(`verify skipped (a check failed); run \`omg smoke cassette verify ${cli.record}\` once the cassettes you keep are written`);
+    return code;
+  }
+  // Step 2 of the capture (design section 6): gate and replay what was just recorded, free.
+  const recorded = (report.checks.filter((c) => c.ok && /^scn\.[^.]+\.record$/.test(c.id)).map((c) => c.id.split('.')[1]));
+  const verify = await verifyCassettes(expandHome(cli.record), {
+    scenarios: recorded,
+    ...(cli.pluginRoot ? { pluginRoot: cli.pluginRoot } : {}),
+    ...(cli.timeout !== undefined ? { timeoutMs: parsePositiveInt(cli.timeout, '--timeout') } : {}),
+  });
+  console.error(verify.lines.join('\n'));
+  return verify.ok ? 0 : 1;
+}
+
+export interface VerifyCassettesOptions {
+  /** Replay only these scenarios (default: every cassette for this machine under the root). */
+  scenarios?: string[];
+  pluginRoot?: string;
+  timeoutMs?: number;
+  /** The redaction gate only, no replay. */
+  gateOnly?: boolean;
+  /** Test seam (default runCopilotSmoke). */
+  runSmoke?: typeof runCopilotSmoke;
+}
+
+/**
+ * `omg smoke cassette verify <dir>`: the redaction gate over every cassette
+ * under `dir` (a failure writes REDACTION-FAILED into that cassette), then a
+ * replay of this machine's cassettes that passed, credential-free; each
+ * replayed cassette's manifest gets `selfVerify`.
+ */
+export async function verifyCassettes(root: string, opts: VerifyCassettesOptions = {}): Promise<{ ok: boolean; lines: string[] }> {
+  const lines: string[] = [];
+  const gate = gateCassettes(root);
+  if (gate.length === 0) return { ok: false, lines: [`no cassette (a dir with manifest.json) under ${root}`] };
+  for (const g of gate) lines.push(`${g.ok ? colors.green('✓') : colors.red('✗')} gate ${g.dir}${g.ok ? '' : `\n${g.detail}`}`);
+  const gateOk = gate.every((g) => g.ok);
+  if (opts.gateOnly) return { ok: gateOk, lines };
+  const mine = resolve(root, platformTag());
+  const passed = new Map(gate.filter((g) => g.ok && resolve(g.dir, '..') === mine).map((g) => [g.dir.slice(mine.length + 1), g.dir]));
+  const scenarios = [...passed.keys()].filter((s) => (KNOWN_SCENARIOS as readonly string[]).includes(s) && (!opts.scenarios || opts.scenarios.includes(s))) as Scenario[];
+  if (scenarios.length === 0) {
+    lines.push(`no cassette for ${platformTag()} to replay under ${root}`);
+    return { ok: gateOk, lines };
+  }
+  const report = await (opts.runSmoke ?? runCopilotSmoke)({
+    tier: 2,
+    scenarios,
+    replay: root,
+    ...(opts.pluginRoot ? { pluginRoot: opts.pluginRoot } : {}),
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+  });
+  lines.push(formatSmokeReport(report));
+  for (const scenario of scenarios) {
+    const result = report.replay?.[scenario];
+    if (result) writeSelfVerify(passed.get(scenario) as string, result);
+  }
+  return { ok: gateOk && report.ok, lines };
+}
+
+export async function smokeCassetteVerifyCommand(dir: string, cli: { pluginRoot?: string; timeout?: string; gateOnly?: boolean }): Promise<number> {
+  try {
+    const result = await verifyCassettes(expandHome(dir), {
+      ...(cli.pluginRoot ? { pluginRoot: cli.pluginRoot } : {}),
+      ...(cli.timeout !== undefined ? { timeoutMs: parsePositiveInt(cli.timeout, '--timeout') } : {}),
+      ...(cli.gateOnly ? { gateOnly: true } : {}),
+    });
+    console.log(result.lines.join('\n'));
+    return result.ok ? 0 : 1;
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
+}
+
+/** Where `omg smoke cassette import` copies to by default: the repo's replay fixtures. */
+export const CASSETTE_FIXTURES_DIR = join('src', 'smoke', '__tests__', 'fixtures', 'cassettes');
+
+export function smokeCassetteImportCommand(dir: string, cli: { to?: string; overwrite?: boolean }): number {
+  try {
+    const result = importCassettes(expandHome(dir), expandHome(cli.to ?? CASSETTE_FIXTURES_DIR), !!cli.overwrite);
+    for (const label of result.imported) console.log(`imported ${label} -> ${join(result.dest, label)}`);
+    console.log('Review the diff before committing; nothing was committed.');
+    return 0;
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
 }

@@ -69,6 +69,10 @@ export declare const CASSETTE_ENV: {
     readonly mode: "OMG_COPILOT_CASSETTE_MODE";
     readonly scenario: "OMG_COPILOT_CASSETTE_SCENARIO";
     readonly state: "OMG_COPILOT_CASSETTE_STATE";
+    /** `strict` or `tolerant` (default): the replay match mode (`--replay-strict`). */
+    readonly match: "OMG_COPILOT_CASSETTE_MATCH";
+    /** JSON `{ PROJECT, HOME, ROOT, REMOTE, TMP }`: the smoke's dirs, turned into path placeholders. */
+    readonly dirs: "OMG_COPILOT_CASSETTE_DIRS";
 };
 /** A dummy HMAC key: without one the runtime never sends a model request, so the replay handler would never see it. */
 export declare const REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";

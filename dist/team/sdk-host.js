@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
-import { buildSessionEnv, isCredentialEnvKey, isReplayEnv, loginIdentity } from '../smoke/copilot-session-env.js';
+import { buildSessionEnv, isCredentialEnvKey, loginIdentity } from '../smoke/copilot-session-env.js';
 import { runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { hostGitHardeningArgs } from './git-worktree.js';
 import { loadWorkerLaunchAttempt } from './worker-launch-ack.js';
@@ -526,8 +526,8 @@ export async function runSdkHost(spec, deps) {
     }
     const hasLogin = ident.loggedInUsers !== undefined;
     const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin);
-    // Replay answers every model request from the cassette and runs credential-free (design section 8.2).
-    if (!hasLogin && !gitHubToken && !isReplayEnv(deps.env)) {
+    // Replay answers every model request from the cassette and runs credential-free (design section 8.2); the SDK says so.
+    if (!hasLogin && !gitHubToken && loaded.cassette !== 'replay') {
         return fail('start_failed', 'an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login');
     }
     writeOmgShims(files.bin, spec.omg_cli_path, spec.node_path);

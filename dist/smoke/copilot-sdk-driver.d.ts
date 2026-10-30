@@ -21,7 +21,9 @@
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
-import { type CopilotRequestHandlerCtor } from './replay/handler.js';
+import { type CassetteMode, type CopilotRequestHandlerCtor } from './replay/handler.js';
+import { type CassetteRun } from './replay/run.js';
+import type { PlaceholderDirs } from './replay/redact.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
 import type { runCliScenario } from './copilot-cli-scenarios.js';
 import type { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
@@ -114,6 +116,8 @@ export interface SdkClientLike {
             getHostSupport?(): Promise<unknown>;
         };
     };
+    /** A cassette client (withCassette) only: record or replay the next requests as `scenario`. */
+    setCassetteScenario?(scenario: string, stateDir: string): void;
 }
 /**
  * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
@@ -158,6 +162,8 @@ export interface LoadedSdk {
     version: string | null;
     /** Where it resolved from: `node resolution` or the package dir under a global prefix. */
     from: string;
+    /** Set by withCassette: every client of this SDK records or replays. Test this, not the env. */
+    cassette?: CassetteMode;
 }
 /** Resolves the SDK, or null when it is not installed. */
 export type LoadSdkFn = () => Promise<LoadedSdk | null>;
@@ -256,6 +262,12 @@ export interface SdkTierInput {
     runFactory: typeof runFactoryRunScenario;
     /** The `sandbox-lane` scenario's runner ({@link runSandboxLaneScenario}, copilot_run lanes in the OS sandbox), injected by the smoke entry. */
     runSandbox: typeof runSandboxLaneScenario;
+    /**
+     * `--record`/`--replay`: `env` already carries the cassette env (no
+     * scenario) and `loadSdk` applied it. Each scenario then runs with its own
+     * cassette state, and gets a `scn.<name>.record` or `scn.<name>.replay` check.
+     */
+    cassette?: CassetteRun;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];
@@ -269,7 +281,20 @@ export interface SdkTierResult {
     /** Per scenario JSONL event capture, under the home dir. */
     events: Partial<Record<Scenario, string>>;
     skipped?: string;
+    /** `--replay`: per scenario, its `scn.<name>.replay` verdict and counts (the cassette's `selfVerify`). */
+    replay?: Partial<Record<Scenario, {
+        ok: boolean;
+        misses: number;
+        drift: number;
+    }>>;
 }
+/**
+ * The smoke dirs a scenario's cassette turns into placeholders. The factory
+ * scenarios work in their own repository beside the sandbox project
+ * (copilot-factory-run-scenario.ts); TMP is the run's temp parent, so every
+ * path under it is stable across runs.
+ */
+export declare function scenarioPlaceholderDirs(input: Pick<SdkTierInput, 'root' | 'home' | 'projectDir' | 'remoteDir'>, name?: Scenario): PlaceholderDirs;
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";

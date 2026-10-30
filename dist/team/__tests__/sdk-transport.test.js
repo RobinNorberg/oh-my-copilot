@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildSdkExcludedTools, decideSdkPermission } from '../sdk-policy.js';
 import { prependPath, readDoorbell, readHostCredentials, runSdkHost } from '../sdk-host.js';
 import { ledgerPath, readLedger } from '../../budget/ledger.js';
-import { hostSpawnEnv, isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkWorkerFiles, spawnDetachedHost, stopSdkHost, } from '../sdk-transport.js';
+import { hostCredentialHandoff, hostSpawnEnv, isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkWorkerFiles, spawnDetachedHost, stopSdkHost, } from '../sdk-transport.js';
 import { awaitWorkerLaunchAcknowledgement, loadWorkerLaunchAttempt, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, } from '../worker-launch-ack.js';
 import { teamStateRoot } from '../state-paths.js';
 import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
@@ -828,6 +828,22 @@ describe('sdk host', () => {
             expect(readSdkSession(stateRoot, WORKER)?.last_error).toMatch(/stored Copilot login .* or COPILOT_GITHUB_TOKEN/);
             expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
         });
+        it('the login requirement is skipped for a replay SDK (its marker), not for the replay env alone', async () => {
+            const replayEnv = { [pathKey]: '/usr/bin', OMG_COPILOT_CASSETTE_MODE: 'replay' };
+            const refused = await newAttempt();
+            const plain = fakeSdk();
+            const refusedHost = await hostWithLeader(refused, deps(plain.loaded, { env: replayEnv }), async () => { });
+            expect(await refusedHost).toBe('start_failed');
+            expect(plain.rec.ops).toEqual([]);
+            const attempt = await newAttempt();
+            const { loaded, rec } = fakeSdk();
+            const host = await hostWithLeader(attempt, deps({ ...loaded, cassette: 'replay' }, { env: { [pathKey]: '/usr/bin' } }), async () => {
+                await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+                ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+            });
+            expect(await host).toBe('stopped');
+            expect(rec.sessions[0]?.gitHubToken).toBeUndefined();
+        });
     });
     it('a missing SDK fails the launch with a terminal record and an install hint', async () => {
         const attempt = await newAttempt();
@@ -1182,6 +1198,12 @@ describe('host credential handoff', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     }, 20_000);
+    it('hostCredentialHandoff hands over the Copilot tokens, and none in a cassette replay', () => {
+        const env = { PATH: '/bin', COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g', NPM_TOKEN: 'n' };
+        expect(JSON.parse(hostCredentialHandoff(env))).toEqual({ COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g' });
+        expect(hostCredentialHandoff({ ...env, OMG_COPILOT_CASSETTE_MODE: 'replay' })).toBe('{}\n');
+        expect(JSON.parse(hostCredentialHandoff({ ...env, OMG_COPILOT_CASSETTE_MODE: 'record' }))).toEqual({ COPILOT_GITHUB_TOKEN: 'c', GH_TOKEN: 'g' });
+    });
     it('hostSpawnEnv drops credentials and keeps the rest', () => {
         expect(hostSpawnEnv({ PATH: '/bin', OMC_X: '1', github_token: 't', NPM_TOKEN: 'n', JAVA_HOME: '/jdk' })).toEqual({ PATH: '/bin', OMC_X: '1', JAVA_HOME: '/jdk' });
     });

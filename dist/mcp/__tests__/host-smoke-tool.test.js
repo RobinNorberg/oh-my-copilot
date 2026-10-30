@@ -116,6 +116,20 @@ describe('host_smoke MCP tool', () => {
         }
         expect(runCopilotSmoke).not.toHaveBeenCalled();
     });
+    it('replays the package cassette fixtures without OMC_SMOKE_ALLOW_LIVE; other cassette dirs need it', async () => {
+        runCopilotSmoke.mockResolvedValue(fakeReport(true));
+        const fixtures = join(PACKAGE_ROOT, 'src', 'smoke', '__tests__', 'fixtures', 'cassettes');
+        const result = await hostSmokeTool.handler({ tier: 2, scenarios: ['factory-run'], replay: fixtures, replayStrict: true });
+        expect(result.isError).toBeUndefined();
+        expect(runCopilotSmoke).toHaveBeenCalledWith({ tier: 2, scenarios: ['factory-run'], replay: fixtures, replayStrict: true });
+        runCopilotSmoke.mockClear();
+        const elsewhere = await hostSmokeTool.handler({ tier: 2, scenarios: ['smoke'], replay: tmpdir() });
+        expect(elsewhere.isError).toBe(true);
+        expect(elsewhere.content[0].text).toMatch(/outside this package's cassette fixtures/);
+        expect(runCopilotSmoke).not.toHaveBeenCalled();
+        vi.stubEnv('OMC_SMOKE_ALLOW_LIVE', '1');
+        expect((await hostSmokeTool.handler({ tier: 2, scenarios: ['smoke'], replay: tmpdir() })).isError).toBeUndefined();
+    });
     it('expands "all" and dedupes scenarios at tier 2 when opted in', async () => {
         vi.stubEnv('OMC_SMOKE_ALLOW_LIVE', '1');
         runCopilotSmoke.mockResolvedValue(fakeReport(true));
