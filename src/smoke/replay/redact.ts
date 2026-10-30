@@ -269,8 +269,8 @@ function withSseData(block: string, value: unknown): string {
 interface DeltaSlot { event: number; holder: Record<string, unknown>; field: string }
 
 /**
- * The streamed text fields of a response's parsed events (SSE payloads or
- * WebSocket messages), each as its deltas in order: Chat Completions
+ * The streamed text fields of parsed events (SSE payloads, WebSocket
+ * messages or SDK session events), each as its deltas in order: Chat Completions
  * `choices[i].delta.<field>` and `choices[i].delta.tool_calls[j].function.arguments`,
  * and every Responses API `*.delta` event (`response.output_text.delta`,
  * `response.function_call_arguments.delta`, ...) per item and part.
@@ -299,6 +299,13 @@ function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
     }
     if (typeof value.type === 'string' && value.type.endsWith('.delta')) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(':'), event, value, 'delta');
+    }
+    // SDK session events (`assistant.message_delta` `deltaContent`, `assistant.tool_call_delta` `inputDelta`, ...),
+    // per message, tool call or reasoning id.
+    if (typeof value.type === 'string' && value.type.endsWith('_delta') && isRecord(value.data)) {
+      const data = value.data;
+      const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(':');
+      for (const field of Object.keys(data)) if (/delta/i.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
   return [...streams.values()];
@@ -489,6 +496,17 @@ export class Redactor {
       case 'json': return { ...res, headers, body: this.redactValue(res.body) };
       case 'text': return { ...res, headers, body: this.redact(res.body) };
     }
+  }
+
+  /**
+   * Redact a stream's SDK session events for disk (`events/<stream>.jsonl`).
+   * Delta events (`assistant.message_delta`, `assistant.tool_call_delta`, ...)
+   * are redacted per message as their joined text, as {@link redactResponse} does.
+   */
+  redactEvents<T>(events: readonly T[]): T[] {
+    const copy = events.map((e) => structuredClone(e));
+    this.redactDeltas(copy);
+    return copy.map((e) => this.redactValue(e));
   }
 
   /** Redact each split streamed field as its joined text, in place; returns the numbers of the events it rewrote. */

@@ -307,3 +307,22 @@ describe('review fixes round 3 (#349): the gate reassembles streams', () => {
     expect(gateFiles(line({ chunks })).map((h) => h.rule)).toContain('generic');
   });
 });
+
+describe('review fixes round 4 (#349): the gate reassembles SDK delta events', () => {
+  const split = (text: string, cuts: readonly number[]) => [0, ...cuts].map((at, i, all) => text.slice(at, all[i + 1]));
+  const eventsFile = (events: unknown[]) => new Map([['events/s1.jsonl', events.map((e) => `${JSON.stringify(e)}\n`).join('')]]);
+
+  it('finds a password split across assistant.message_delta events', () => {
+    const events = split('set password=hunter2hunter2 now', [19]).map((deltaContent) => ({ type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent } }));
+    expect(gateFiles(eventsFile(events)).map((h) => h.rule)).toContain('generic');
+  });
+  it('finds a path split across assistant.tool_call_delta events', () => {
+    const args = JSON.stringify({ path: 'C:\\Users\\norbe\\proj\\a.ts' });
+    const events = split(args, [14, 22]).map((inputDelta) => ({ type: 'assistant.tool_call_delta', data: { toolCallId: 'call_1', inputDelta } }));
+    expect(gateFiles(eventsFile(events)).map((h) => h.rule)).toContain('path.USERHOME');
+  });
+  it('passes the events once the Redactor rewrote them', () => {
+    const events = split('set password=hunter2hunter2 now', [19]).map((deltaContent) => ({ type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent } }));
+    expect(gateFiles(eventsFile(new Redactor().redactEvents(events)))).toEqual([]);
+  });
+});

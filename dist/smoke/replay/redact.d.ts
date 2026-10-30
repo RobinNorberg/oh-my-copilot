@@ -123,6 +123,12 @@ export declare class Redactor {
      * fall inside an event); replay serves the one stored response either way.
      */
     redactResponse(res: CassetteResponse): CassetteResponse;
+    /**
+     * Redact a stream's SDK session events for disk (`events/<stream>.jsonl`).
+     * Delta events (`assistant.message_delta`, `assistant.tool_call_delta`, ...)
+     * are redacted per message as their joined text, as {@link redactResponse} does.
+     */
+    redactEvents<T>(events: readonly T[]): T[];
     /** Redact each split streamed field as its joined text, in place; returns the numbers of the events it rewrote. */
     private redactDeltas;
     /** Redact every string (values and keys) in a JSON-shaped value. */

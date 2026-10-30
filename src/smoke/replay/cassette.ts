@@ -416,12 +416,24 @@ export function gateFiles(files: ReadonlyMap<string, string>, options: GateOptio
     // .jsonl: one document per line; .json: the whole file (line 0, the decoded value has no line of its own).
     const documents = file.endsWith('.jsonl') ? text.split('\n').map((t, i) => [t, i + 1] as const)
       : file.endsWith('.json') ? [[text, 0] as const] : [];
+    const values: unknown[] = [];
+    const scanned: Array<readonly [string[], number]> = [];
     for (const [doc, line] of documents) {
       let value: unknown;
       try { value = JSON.parse(doc); } catch { continue; }
+      values.push(value);
       const strings: string[] = [];
       decodedStrings(value, strings);
       for (const text of streamTexts(value)) decodedStrings(text, strings);
+      scanned.push([strings, line]);
+    }
+    // Delta events split one field over many lines (SDK `assistant.message_delta`): join them across the file (line 0).
+    if (file.endsWith('.jsonl')) {
+      const strings: string[] = [];
+      for (const joined of reassembledDeltas(values)) decodedStrings(joined, strings);
+      scanned.push([strings, 0]);
+    }
+    for (const [strings, line] of scanned) {
       for (const s of strings) {
         for (const hit of scanForSecrets(s, scan)) {
           const key = `\0${hit.rule}\0${hit.masked}`;

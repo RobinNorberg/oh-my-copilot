@@ -375,3 +375,32 @@ describe('review fixes round 3 (#349)', () => {
     expect(set).toEqual(new Set(['reallysecretvalue']));
   });
 });
+
+describe('review fixes round 4 (#349): SDK delta events', () => {
+  const split = (text: string, cuts: readonly number[]) => [0, ...cuts].map((at, i, all) => text.slice(at, all[i + 1]));
+  const messageDeltas = (text: string, cuts: readonly number[]) => split(text, cuts).map((deltaContent, i) => ({
+    type: 'assistant.message_delta', data: { messageId: 'm1', deltaContent }, ephemeral: true, id: `e${i}`,
+  }));
+  const toolDeltas = (text: string, cuts: readonly number[]) => split(text, cuts).map((inputDelta, i) => ({
+    type: 'assistant.tool_call_delta', data: { toolCallId: 'call_1', toolName: 'view', inputDelta }, ephemeral: true, id: `t${i}`,
+  }));
+  const joinedOf = (events: unknown[], field: 'deltaContent' | 'inputDelta') =>
+    events.map((e) => (e as { data: Record<string, string> }).data[field]).join('');
+
+  it('redactEvents redacts a password split across assistant.message_delta events', () => {
+    const events = messageDeltas('set password=hunter2hunter2 now', [19]);
+    expect(events.some((e) => e.data.deltaContent.includes('hunter2hunter2'))).toBe(false);
+    const out = new Redactor().redactEvents(events);
+    expect(joinedOf(out, 'deltaContent')).toBe('set password=<redacted:generic> now');
+  });
+  it('redactEvents redacts a path split across assistant.tool_call_delta events', () => {
+    const events = toolDeltas(JSON.stringify({ path: 'C:\\Users\\norbe\\proj\\a.ts' }), [14, 22]);
+    const out = new Redactor().redactEvents(events);
+    expect(JSON.parse(joinedOf(out, 'inputDelta'))).toEqual({ path: '${USERHOME}/proj/a.ts' });
+  });
+  it('redactEvents keeps deltas of different messages apart', () => {
+    const events = [...messageDeltas('set password=', []), ...messageDeltas('hunter2hunter2', [])];
+    events[1].data.messageId = 'm2';
+    expect(new Redactor().redactEvents(events)).toEqual(events);
+  });
+});
