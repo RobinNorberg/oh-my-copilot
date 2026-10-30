@@ -1,0 +1,17 @@
+{
+  "provenance": "synthetic: completed (merged) pull request search by source and target branch, shaped like the git/pullRequests GET docs sample",
+  "route": "git.pullRequests.GET",
+  "routeParameters": {
+    "project": "Web",
+    "repositoryId": "web-app"
+  },
+  "queryParameters": {
+    "searchCriteria.sourceRefName": "refs/heads/factory/issue-45",
+    "searchCriteria.status": "completed",
+    "searchCriteria.targetRefName": "refs/heads/main"
+  },
+  "stdout": {
+    "value": [],
+    "count": 0
+  }
+}

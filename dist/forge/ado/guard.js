@@ -51,7 +51,9 @@ const QUERY_VALUE = {
     artifactId: /^vstfs:\/\/\/CodeReview\/CodeReviewId\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[1-9]\d{0,9}$/i,
     includeNotApplicable: /^(?:true|false)$/, format: /^markdown$/, order: /^(?:asc|desc)$/,
     branchName: /^refs\/pull\/[1-9]\d{0,9}\/merge$/, reasonFilter: /^pullRequest$/, queryOrder: /^queueTimeDescending$/,
-    'searchCriteria.sourceRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u, 'searchCriteria.status': /^active$/,
+    'searchCriteria.sourceRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u, 'searchCriteria.status': /^(?:active|completed)$/,
+    // A satisfied dependency: a completed (merged) PR into the base.
+    'searchCriteria.targetRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
     continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/,
 };
 const MAX_BODY_BYTES = 1024 * 1024;

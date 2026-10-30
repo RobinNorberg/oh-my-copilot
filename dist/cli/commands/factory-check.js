@@ -44,6 +44,7 @@ export function factoryCheckCommand(deps) {
     return new Command('check')
         .description('Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)')
         .argument('[ids...]', 'item ids (GitHub issue numbers or ADO work item ids); default: the intake source')
+        .option('--parent <spec>', 'check the children of this spec item (GitHub task list `- [ ] #n` | ADO child links)')
         .option('--source <spec>', 'intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>')
         .option('--limit <n>', 'items read from the source (1..200)', integerOption(1, 200))
         .option('--json', 'JSON output (schemaVersion 1)')

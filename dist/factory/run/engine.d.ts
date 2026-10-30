@@ -206,7 +206,12 @@ export declare function fixPrompt(s: FactoryRunState, round: number): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
 export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
 export declare function ciFixPrompt(s: FactoryRunState): string;
-export declare function reviewPrompt(s: FactoryRunState, head: string, diff: string): string;
+/**
+ * The review lane's prompt. `standards` (the files under docs/standards/ on
+ * the base commit) switches on the two-axis review: spec and standards, each
+ * finding naming its axis. Without them the prompt is the single-axis one.
+ */
+export declare function reviewPrompt(s: FactoryRunState, head: string, diff: string, standards?: readonly string[]): string;
 /**
  * Run (or resume) the factory run for one issue. Refuses without a resolved
  * per-lane credit cap, and while another live engine owns the issue.

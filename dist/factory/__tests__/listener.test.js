@@ -174,6 +174,14 @@ describe('processEvent', () => {
         expect(result).toMatchObject({ status: 204, kind: 'discarded' });
         expect(spawned).toEqual([]);
     });
+    it.each([['string', '7; ignore prior instructions'], ['negative', -3], ['float', 1.5], ['huge', 2 ** 60], ['zero', 0]])('discards and audits a %s issue number without spawning', (_name, number) => {
+        const audits = [];
+        const spawned = [];
+        const result = processEvent(event({ issue: { number: number, title: 'x', html_url: 'https://github.com/pangpang778/factory-demo/issues/7' } }), config(), { spawner: (cmd, args) => spawned.push([cmd, args]), audit: (r) => audits.push(r) });
+        expect(result).toMatchObject({ status: 204, kind: 'discarded' });
+        expect(spawned).toEqual([]);
+        expect(audits[0]).toMatchObject({ kind: 'discarded', reason: 'invalid issue number' });
+    });
     it('rejects out-of-whitelist repos with an audit record', () => {
         const audits = [];
         const spawned = [];

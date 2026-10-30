@@ -14,7 +14,8 @@
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
- *   prompt's diff (no external diff driver, no textconv).
+ *   prompt's diff (no external diff driver, no textconv) and its standards
+ *   files (`ls-tree` of docs/standards/ at the base commit).
  * - Every engine git command runs hardened (hardenedGitExec): no hooks and no
  *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
  *   even if the tamper check missed it.
@@ -101,6 +102,9 @@ function factoryGit(a, protectedBranches) {
             return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
         case 'diff':
             return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
+        case 'ls-tree':
+            // Two-axis review: the standards files on the base commit.
+            return r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']) ? true : null;
         case 'rev-list':
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
             return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;

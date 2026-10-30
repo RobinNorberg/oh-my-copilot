@@ -238,6 +238,8 @@ export function validateChainFields(chain) {
     if (tracker) {
         if (!REPO_PATTERN.test(tracker.repo))
             throw new Error(`invalid tracker repo: ${tracker.repo}`);
+        if (!Number.isSafeInteger(tracker.issue) || tracker.issue <= 0)
+            throw new Error(`invalid tracker issue: ${String(tracker.issue)}`);
         const labelOk = (label) => label === undefined || (typeof label === 'string' && LABEL_PATTERN.test(label));
         if (!labelOk(tracker.nextLabel) || !labelOk(tracker.failedLabel)) {
             throw new Error(`invalid tracker label: ${tracker.nextLabel}/${tracker.failedLabel}`);

@@ -36,6 +36,7 @@ export function ghViewItem(exec, issue, cwd) {
     const labels = Array.isArray(v.labels) ? v.labels.map((l) => str(l?.name)).filter(Boolean) : [];
     const comments = Array.isArray(v.comments) ? v.comments : [];
     const size = labels.map((l) => /^size:(\d+)$/i.exec(l)?.[1]).find(Boolean);
+    const parent = /^[^\S\r\n]*part of[^\S\r\n]+#(\d+)\b/im.exec(body)?.[1];
     return {
         id: issue,
         url,
@@ -49,6 +50,7 @@ export function ghViewItem(exec, issue, cwd) {
         ...(size ? { size: Number(size) } : {}),
         dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
         children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
+        ...(parent ? { parent: Number(parent) } : {}),
         repoUrl: m[1],
     };
 }

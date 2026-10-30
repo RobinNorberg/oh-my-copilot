@@ -109,9 +109,13 @@ export function routeTrackerEvent(
   for (const l of event.issue?.labels ?? []) if (l.name) labels.add(l.name);
   const labeled = (event.action === 'labeled' || event.action === 'opened') && labels.has(INTAKE_LABEL);
   if (!labeled) return { kind: 'discarded', reason: `no ${INTAKE_LABEL} label (action: ${event.action ?? '?'})` };
+  const issueNumber: unknown = event.issue?.number;
+  if (issueNumber !== undefined && !(typeof issueNumber === 'number' && Number.isSafeInteger(issueNumber) && issueNumber > 0)) {
+    return { kind: 'discarded', reason: INVALID_ISSUE_NUMBER };
+  }
   const directive = decideNextStage('success', 'intake', table);
   if (!directive) return { kind: 'discarded', reason: 'route table has no intake directive' };
-  return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
+  return { kind: 'routed', directive, issueNumber: issueNumber as number | undefined, issueUrl: event.issue?.html_url };
 }
 
 /** Harbor's own single-ship form, as the Copilot plugin registers the skill; harbor writes the tracker in English. */
@@ -120,6 +124,7 @@ export function buildHarborPrompt(directive: ChainDirective, issueNumber?: numbe
   return `/oh-my-copilot:${directive.skill} look at ${target}`;
 }
 
+const INVALID_ISSUE_NUMBER = 'invalid issue number';
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 
 function issueUrlMatchesRepo(issueUrl: string | undefined, repo: string): boolean {
@@ -249,6 +254,7 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
     return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
   }
   if (outcome.kind === 'discarded') {
+    if (outcome.reason === INVALID_ISSUE_NUMBER) audit({ kind: 'discarded', reason: outcome.reason });
     return { status: 204, kind: 'discarded', detail: outcome.reason };
   }
 

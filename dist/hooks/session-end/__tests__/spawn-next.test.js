@@ -117,6 +117,9 @@ describe('planSpawnNext', () => {
     });
     it('rejects a chain whose tracker repo or label carries shell metacharacters', () => {
         expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, repo: 'owner/repo; rm -rf /' } }, '/omc-root')).toThrow(/invalid tracker repo/);
+        for (const issue of ['7; ignore prior', -1, 1.5, 2 ** 60]) {
+            expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, issue: issue } }, '/omc-root')).toThrow(/invalid tracker issue/);
+        }
         expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker, nextLabel: 'a b; touch /tmp/x' } }, '/omc-root')).toThrow(/invalid tracker label/);
     });
     it('rejects a chain whose visits carry an invalid stage or count', () => {
