@@ -3,7 +3,9 @@
  * the exact ordered gh sequence of `src/factory/heal/history.ts` (listRuns,
  * viewRunJobs, jobLog) as `omg factory heal scan` (runHealScan) and the
  * evidence collection of `heal run` (collectEvidence) issue it, recorded below
- * healGuardExec. Recorded run and job fixtures of the heal tests.
+ * healGuardExec. Recorded run and job fixtures of the heal tests. Since ADO
+ * parity PR C1 heal reads through ForgeCi (githubCi); `heal scan --dry-run`
+ * and `heal run --dry-run` are recorded too, and the sequences are unchanged.
  */
 import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'fs';
@@ -16,8 +18,10 @@ import { runHealScan } from '../../factory/heal/cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../../factory/heal/config.js';
 import { collectEvidence } from '../../factory/heal/heal-evidence.js';
 import { healGuardExec } from '../../factory/heal/history.js';
-import { listHealStates } from '../../factory/heal/state.js';
+import { runHeal, writeHealScanRecord } from '../../factory/heal/run.js';
+import { foldSignature, listHealStates, writeHealState } from '../../factory/heal/state.js';
 import type { Exec } from '../../ship/exec.js';
+import { githubCi } from '../github/ci.js';
 import { recordingExec } from './recording-exec.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,6 +60,7 @@ function world(push: RunFixture[], pr: RunFixture[]): Exec {
       if (args[0] === 'cat-file') return ok('');
       if (args[0] === 'rev-list') return ok('0\n');
       if (args[0] === 'diff') return ok('');
+      if (args[0] === 'merge-base') return ok('');
     }
     if (cmd === 'gh' && args[1] === 'list') return ok(JSON.stringify((args.includes('push') ? push : pr).map(({ jobs: _jobs, ...r }) => r)));
     if (cmd === 'gh' && args[1] === 'view' && args[4] === 'jobs') return ok(JSON.stringify({ jobs: all.find((r) => String(r.databaseId) === args[2])!.jobs }));
@@ -101,5 +106,56 @@ describe('gh argv baseline: src/factory/heal/history.ts', () => {
     const r = recordingExec(fixtures(), { '<root>': root }, ['gh']);
     collectEvidence(healGuardExec(r.exec), root, state.classification, DEFAULT_HEAL_CONFIG.ignoreJobs);
     expect(r.calls).toEqual([jobs(40542274776), log(122329975951), jobs(40584638028), log(122472747061)]);
+  });
+
+  it('heal scan --dry-run: the same reads as a writing scan', () => {
+    const r = recordingExec(fixtures(), { '<root>': root }, ['gh']);
+    runHealScan({ exec: r.exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: true, warn: () => {}, ledgerDir: join(root, '.omg', 'test-ledger') });
+    expect(r.calls).toEqual([
+      `gh ["run","list","--branch","dev","--workflow","ci.yml","--event","push","--json","${RUN_FIELDS}","--limit","30"] cwd=<root>`,
+      `gh ["run","list","--workflow","ci.yml","--event","pull_request","--json","${RUN_FIELDS}","--limit","30"] cwd=<root>`,
+      jobs(40584652986),
+      jobs(40551187199), log(500),
+      jobs(40542274776), log(122329975951),
+      jobs(40584638028), log(122472747061),
+    ]);
+  });
+
+  it('heal run --dry-run evidence: the red run\'s jobs and failed job logs, then the green run\'s', async () => {
+    const ledgerDir = join(root, '.omg', 'test-ledger');
+    runHealScan({ exec: fixtures(), root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: false, warn: () => {}, ledgerDir });
+    // The fixture signature is seen on PR runs only; a debugger lane needs it as a dev push signature.
+    const [scanned] = listHealStates(root);
+    const { state } = foldSignature(null, { classification: scanned.classification, runId: scanned.classification.firstRed.runId, source: 'push' }, [], { day: '2026-10-28', healRuns: 0, debugLanes: 0, credits: 0 }, DEFAULT_HEAL_CONFIG, NOW);
+    writeHealState(root, state);
+    writeHealScanRecord(ledgerDir, root, state);
+    const r = recordingExec(fixtures(), { '<root>': root }, ['gh']);
+    const outcome = await runHeal(
+      { root, base: 'dev', sig8: state.sig8, config: DEFAULT_HEAL_CONFIG, dryRun: true, lockTimeoutMs: 2_000 },
+      { exec: r.exec, lanes: () => { throw new Error('a dry run starts no lane'); }, ledgerDir, now: () => NOW, warn: () => {} },
+    );
+    expect(outcome.exitCode).toBe(0);
+    expect(r.calls).toEqual([jobs(40542274776), log(122329975951), jobs(40584638028), log(122472747061)]);
+  });
+});
+
+describe('heal reads through ForgeCi', () => {
+  it('an injected ForgeCi carries the reads and the recorded rerun intent, over the heal-guarded exec', () => {
+    const r = recordingExec(world([run(40584638028)], [run(40542274776), SECOND_PR, run(40584652986)]), { '<root>': root }, ['gh']);
+    const seen: Exec[] = [];
+    runHealScan({
+      exec: r.exec, root, base: 'dev', config: DEFAULT_HEAL_CONFIG, now: NOW, dryRun: false, warn: () => {}, ledgerDir: join(root, '.omg', 'test-ledger'),
+      ci: (exec, cwd) => { seen.push(exec); return { ...githubCi(exec, cwd), rerunIntent: (id) => `rerun build ${id} by hand` }; },
+    });
+    const [state] = listHealStates(root);
+    expect(state.rerunIntents.map((i) => i.command)).toEqual(['rerun build 40542274776 by hand']);
+    expect(r.calls.length).toBeGreaterThan(0);
+    // The factory gets the guarded exec: a rerun through it is refused before it reaches gh.
+    expect(() => seen[0]('gh', ['run', 'rerun', '40542274776', '--failed'])).toThrow();
+    expect(r.calls.some((c) => c.includes('"rerun"'))).toBe(false);
+  });
+
+  it('githubCi records the same rerun command heal always printed', () => {
+    expect(githubCi(() => { throw new Error('no exec'); }).rerunIntent('40542274776')).toBe('gh run rerun 40542274776 --failed');
   });
 });

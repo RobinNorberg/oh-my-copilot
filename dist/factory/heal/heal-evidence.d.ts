@@ -19,8 +19,9 @@
  */
 import { type FailingTest } from '../../ship/gates.js';
 import type { Exec } from '../../ship/exec.js';
+import type { ForgeCi } from '../../forge/types.js';
 import type { HealClassification } from './classify.js';
-import { type HealJob } from './history.js';
+import type { HealJob } from './history.js';
 export declare const EVIDENCE_LIMITS: Readonly<{
     failureLines: 200;
     failureFiles: 10;
@@ -91,6 +92,7 @@ export declare function changedEvidence(root: string, sig8: string, hashes: Read
 /**
  * Re-read the red run's failed jobs and logs (and the green run's same-named
  * jobs) through the heal exec guard, plus the commit subjects of the range.
+ * `ci` builds the forge's CI reads over that guarded exec (default GitHub).
  */
-export declare function collectEvidence(exec: Exec, root: string, classification: HealClassification, ignoreJobs: readonly string[]): EvidenceInput;
+export declare function collectEvidence(exec: Exec, root: string, classification: HealClassification, ignoreJobs: readonly string[], ci?: (exec: Exec, root: string) => ForgeCi): EvidenceInput;
 //# sourceMappingURL=heal-evidence.d.ts.map
