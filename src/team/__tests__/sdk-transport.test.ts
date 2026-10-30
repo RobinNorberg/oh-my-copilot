@@ -162,6 +162,32 @@ describe('sdk permission policy', () => {
     }
   });
 
+  // A rewritten `.git` gitfile points the runtime's unsandboxed git at a worker-written config (core.fsmonitor).
+  it.each(['win32', 'linux'] as const)('refuses a file-tool write to any .git segment, in every spelling (%s)', (platform) => {
+    writeFileSync(join(worktree, '.git'), 'gitdir: /elsewhere\n');
+    const c = { ...ctx(), platform };
+    for (const fileName of [
+      join(worktree, '.git'), '.git', join(worktree, '.GIT', 'config'), join(worktree, 'sub', '.git'), '.git/config',
+      `${worktree}\\GIT~1\\x`, `${worktree}/git~12/x`, join(worktree, '.git::$DATA'), join(worktree, 'foo:stream'),
+      join(worktree, '.git.'), `${join(worktree, '.git')} `, `${join(worktree, '.git')}. .`, join(worktree, '.git.', 'config'),
+      join(stateRoot, '.git', 'config'),
+    ]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, c), fileName).toMatchObject({ approve: false, reason: expect.stringMatching(/\.git/) });
+    }
+    for (const fileName of [join(worktree, '.gitignore'), join(worktree, '.github', 'x'), join(worktree, '.gitattributes'), join(worktree, 'src', 'git.ts')]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, c).approve, fileName).toBe(true);
+    }
+  });
+
+  it('refuses a write that resolves into a .git dir through a planted link', () => {
+    mkdirSync(join(worktree, 'sub', '.git'), { recursive: true });
+    writeFileSync(join(worktree, 'sub', '.git', 'config'), '');
+    symlinkSync(join(worktree, 'sub', '.git'), join(worktree, 'd'), 'junction');
+    for (const fileName of [join(worktree, 'd', 'config'), join(worktree, 'd', 'hooks', 'pre-commit')]) {
+      expect(decideSdkPermission({ kind: 'write', fileName }, ctx()), fileName).toMatchObject({ approve: false, reason: expect.stringMatching(/\.git/) });
+    }
+  });
+
   // A hard link needs no privilege on Windows (NTFS); realpath cannot see it.
   it('refuses a write to a hard-linked or non-regular existing target', () => {
     const outside = mkdtempSync(join(tmpdir(), 'sdk-team-outside-'));

@@ -1073,6 +1073,8 @@ export class CopilotRunManager {
                 settings,
                 hostCommits: job.hostCommits,
                 toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+                uid: process.getuid?.(),
+                sshAuthSock: deps.env.SSH_AUTH_SOCK,
             }, host);
             job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: 'not confirmed yet' };
             return config;

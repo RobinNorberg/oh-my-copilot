@@ -94974,6 +94974,12 @@ function existingWriteTargetDenial(p) {
   if (!st.isFile()) return "write target is not a regular file";
   return st.nlink > 1 ? "write target has more than one hard link" : null;
 }
+function namesGitPath(p) {
+  return p.replace(/^(?:[\\/]{2}[?.][\\/])?[A-Za-z]:/, "").split(/[\\/]+/).some((seg) => {
+    const s = seg.replace(/[. ]+$/, "").toLowerCase();
+    return s === ".git" || /^git~\d+$/.test(s) || seg.includes(":");
+  });
+}
 function rawRequestPath(req) {
   for (const key of ["resolvedPath", "path", "fileName"]) {
     const value = req[key];
@@ -95053,6 +95059,7 @@ function decideSdkPermission(req, ctx) {
           if (!isUnderRoot(q, ctx.cwd, platform) && !isUnderRoot(q, ctx.stateRoot, platform)) {
             return { approve: false, reason: `write outside worktree and team state: ${q}` };
           }
+          if (namesGitPath(q) || namesGitPath(canon2(q, platform))) return { approve: false, reason: `write into .git (a git dir, gitfile, short name or data stream): ${q}` };
           const target = existingWriteTargetDenial(q);
           if (target) return { approve: false, reason: `${target}: ${q}` };
         }
@@ -95289,7 +95296,38 @@ function buildSandboxConfig(profile, ctx, host) {
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...nm ? [nm] : [], ...tools, ...settings.extraReadonlyPaths]
   };
   if (host.capabilities.denied_paths === true) {
-    filesystem.deniedPaths = [".ssh", ".gitconfig", ".omg", ".copilot", ".azure", ".git-credentials", (0, import_node_path26.join)(".config", "git", "credentials"), (0, import_node_path26.join)(".cache", "git", "credential")].map((p) => (0, import_node_path26.join)(ctx.realHome, p));
+    filesystem.deniedPaths = [
+      ".ssh",
+      ".gitconfig",
+      ".omg",
+      ".copilot",
+      ".azure",
+      ".git-credentials",
+      (0, import_node_path26.join)(".config", "git", "credentials"),
+      (0, import_node_path26.join)(".cache", "git", "credential"),
+      (0, import_node_path26.join)(".config", "gh"),
+      ".aws",
+      ".npmrc",
+      ".docker",
+      ".kube",
+      ".netrc",
+      (0, import_node_path26.join)(".cargo", "credentials"),
+      (0, import_node_path26.join)(".cargo", "credentials.toml"),
+      ".gnupg",
+      ".pypirc",
+      (0, import_node_path26.join)(".config", "gcloud")
+    ].map((p) => (0, import_node_path26.join)(ctx.realHome, p));
+    if (ctx.platform !== "win32") {
+      const grants = [...filesystem.readwritePaths, ctx.realHome];
+      const sockets = [
+        ...ctx.uid !== void 0 ? [`/run/user/${ctx.uid}`] : [],
+        "/var/run/docker.sock",
+        "/run/docker.sock",
+        "/run/podman",
+        ...ctx.sshAuthSock && import_node_path26.posix.isAbsolute(ctx.sshAuthSock) ? [import_node_path26.posix.dirname(ctx.sshAuthSock)] : []
+      ];
+      filesystem.deniedPaths.push(...sockets.filter((s) => s !== "/" && !grants.some((g) => isUnderRoot(g, s, ctx.platform))));
+    }
   }
   const network = settings.writeNetwork === "registry" ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === "win32" } : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
@@ -116124,7 +116162,9 @@ var init_job = __esm({
             platform: deps.platform,
             settings,
             hostCommits: job.hostCommits,
-            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform)
+            toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+            uid: process.getuid?.(),
+            sshAuthSock: deps.env.SSH_AUTH_SOCK
           }, host);
           job.sandbox = { ...base, mode: unconfirmedMode(job.profile, settings), reason: "not confirmed yet" };
           return config2;
@@ -119819,7 +119859,7 @@ var init_lane_commit = __esm({
     RUNTIME_STATE_DIRS = ["state", "sessions"].map((d) => `${OmcPaths.ROOT}/${d}`);
     MAX_WALK_ENTRIES = 2e5;
     MAX_WALK_DEPTH = 64;
-    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
+    LANE_PROTECTED_PATHS = [".github/", ".copilot/", ".claude/", ".vscode/", ".mcp.json", ".omg/skills/", ".omc/skills/", "AGENTS.md", "CLAUDE.md"];
     errText4 = (err) => err instanceof Error ? err.message : String(err);
     CI_SKIP = /\[\s*(?:(?:skip|no)[\s-]+(?:ci|actions)|(?:ci|actions)[\s-]+skip)\s*\]/gi;
     TRAILER = /^[A-Za-z0-9-]+\s*:(?:\s|$)/;

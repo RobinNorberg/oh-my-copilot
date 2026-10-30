@@ -201,6 +201,10 @@ export interface SandboxPolicyContext {
   hostCommits?: boolean;
   /** The node and git install dirs a lane launches from (laneToolPaths), granted read-only. */
   toolPaths?: string[];
+  /** The account's uid (Linux/macOS): `/run/user/<uid>` holds its D-Bus, systemd and agent sockets. */
+  uid?: number;
+  /** The engine's SSH_AUTH_SOCK: the agent socket's dir is denied (Linux/macOS). */
+  sshAuthSock?: string;
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
@@ -322,9 +326,24 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
-    // Git's plaintext credential stores (~/.git-credentials, XDG) and the credential-cache daemon's socket dir.
-    filesystem.deniedPaths = ['.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential')]
-      .map((p) => join(ctx.realHome, p));
+    // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the
+    // gh, cloud, registry, container and signing credentials.
+    filesystem.deniedPaths = [
+      '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
+      join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
+      '.gnupg', '.pypirc', join('.config', 'gcloud'),
+    ].map((p) => join(ctx.realHome, p));
+    if (ctx.platform !== 'win32') {
+      // Sockets that run commands for the caller outside the sandbox: the user's runtime dir (D-Bus, systemd, agents),
+      // the container daemons and the SSH agent. Never a dir that holds a grant (the root, the home, a parent of either).
+      const grants = [...filesystem.readwritePaths, ctx.realHome];
+      const sockets = [
+        ...(ctx.uid !== undefined ? [`/run/user/${ctx.uid}`] : []),
+        '/var/run/docker.sock', '/run/docker.sock', '/run/podman',
+        ...(ctx.sshAuthSock && posix.isAbsolute(ctx.sshAuthSock) ? [posix.dirname(ctx.sshAuthSock)] : []),
+      ];
+      filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !grants.some((g) => isUnderRoot(g, s, ctx.platform))));
+    }
   }
   const network: SandboxConfig['userPolicy']['network'] = settings.writeNetwork === 'registry'
     ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }

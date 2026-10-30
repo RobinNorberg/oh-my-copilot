@@ -2,6 +2,14 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **SDK sessions can no longer write `.git` through the file tools.** The built-in file tools run outside the OS sandbox, and the permission handler approved any write under the worktree, so a factory lane (or an SDK team worker) could rewrite the worktree's `.git` gitfile to name a git dir with `core.fsmonitor`, which the next unhardened git run by the runtime or a plugin hook executed outside the sandbox. A write to any path with a `.git` segment is now refused, as given and after resolving links, case-folded, with trailing dots and spaces stripped, 8.3 short names (`GIT~1`) and NTFS alternate data streams (any `:` past the drive letter) included.
+- **Lane-protected paths gain `.claude/`, `.vscode/` and `.mcp.json`.** A lane change there parks at `protected-paths`, like `.github/` and `.copilot/`.
+- **The lane sandbox denies more credentials and sockets.** When the host reports `denied_paths`, the home's `.config/gh`, `.aws`, `.npmrc`, `.docker`, `.kube`, `.netrc`, `.cargo/credentials(.toml)`, `.gnupg`, `.pypirc` and `.config/gcloud` are denied, and on Linux and macOS also `/run/user/<uid>`, the Docker and Podman sockets and the `SSH_AUTH_SOCK` directory.
+
 # oh-my-copilot v5.18.1
 
 ## [5.18.1] - 2026-10-29

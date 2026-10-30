@@ -53,9 +53,11 @@ const MAX_WALK_DEPTH = 64;
 /**
  * Paths a write lane may not change, on top of ship's PROTECTED_PATHS (which
  * `omg ship` keeps as it is): agent instructions, hooks, skills and CI.
- * `.github/` covers `.github/copilot-instructions.md` and the workflows.
+ * `.github/` covers `.github/copilot-instructions.md` and the workflows;
+ * `.claude/`, `.mcp.json` and `.vscode/` hold the hooks, MCP servers and
+ * tasks other agents and editors run from a checkout.
  */
-export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md'];
+export const LANE_PROTECTED_PATHS: readonly string[] = ['.github/', '.copilot/', '.claude/', '.vscode/', '.mcp.json', '.omg/skills/', '.omc/skills/', 'AGENTS.md', 'CLAUDE.md'];
 
 export type LaneCommitRefusal = 'moved' | 'gitlink' | 'escaped' | 'protected' | 'empty' | 'error';
 

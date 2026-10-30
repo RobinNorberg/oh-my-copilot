@@ -77,6 +77,13 @@ export declare function isUnderRoot(p: string, root: string, platform?: NodeJS.P
  * `x`, but the kernel follows the link `l` first and climbs from its target.
  */
 export declare function hasDotDotSegment(p: string): boolean;
+/**
+ * True when `p` names a git dir or gitfile, or an NTFS alternate data stream:
+ * a segment that, case-folded with trailing dots and spaces stripped (Win32
+ * drops them), is `.git` or an 8.3 short name `git~<n>`, or any `:` past a
+ * drive letter (`.git::$DATA`, `foo:stream`). Applied on every platform.
+ */
+export declare function namesGitPath(p: string): boolean;
 /** `shell(<prefix>)` entries of `workerDenyTools`, as command prefixes. */
 export declare function shellDenyPrefixes(denyTools?: readonly string[]): string[];
 export declare function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyContext): SdkPermissionDecision;
