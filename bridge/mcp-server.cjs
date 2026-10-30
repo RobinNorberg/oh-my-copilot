@@ -41033,7 +41033,7 @@ function resolveAzEntry(deps) {
   }
   const python = import_path81.win32.resolve(import_path81.win32.dirname(azCmd), "..", "python.exe");
   const cliPackage = import_path81.win32.resolve(import_path81.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !deps.isFile(import_path81.win32.join(cliPackage, "__main__.py"))) {
+  if (!deps.isFile(python) || !(deps.isFile(import_path81.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path81.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
