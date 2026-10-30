@@ -13,7 +13,7 @@
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
  *   pinned to the configured repository, with a body file from the caller's
- *   own directory and labels from its allowlist. Never close, delete,
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
  *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
@@ -43,9 +43,11 @@ export interface TrackerWriteContext {
     repo: string;
     /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
     bodyDir: string;
-    /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` never passes. */
+    /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. */
     labels: readonly string[];
 }
+/** The most characters a tracker write's body file may hold. */
+export declare const MAX_TRACKER_BODY_CHARS = 65536;
 /**
  * Throws FactorySafetyError unless the command is a factory shape or a
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
@@ -56,7 +58,8 @@ export interface TrackerWriteContext {
 export declare function assertFactoryCommand(cmd: string, args: string[], extraProtected?: readonly string[], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void;
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
- * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
+ * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
 export declare function factoryGuardExec(exec: Exec, extraProtected?: () => readonly string[], ado?: () => AdoGuardContext | undefined, writes?: () => TrackerWriteContext | undefined): Exec;

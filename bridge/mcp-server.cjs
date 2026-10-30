@@ -40724,7 +40724,41 @@ function isProgressLabelEdit(r) {
 function isBodyFile(s, ctx) {
   if (!isFile2(s) || !(0, import_path81.isAbsolute)(s) || !(0, import_path81.isAbsolute)(ctx.bodyDir)) return false;
   const rel = (0, import_path81.relative)((0, import_path81.resolve)(ctx.bodyDir), (0, import_path81.resolve)(s));
-  return rel.length > 0 && !rel.startsWith("..") && !(0, import_path81.isAbsolute)(rel) && !/[\\/]/.test(rel);
+  return rel.length > 0 && !rel.startsWith("..") && !(0, import_path81.isAbsolute)(rel) && !/[\\/:]/.test(rel);
+}
+function trackerBodyFileArg(args) {
+  if (args[0] !== "issue") return void 0;
+  if (args[1] === "create" && args[6] === "--body-file") return 7;
+  if (args[1] === "edit" && args[3] === "--repo" && args[7] === "--body-file") return 8;
+  return void 0;
+}
+function readTrackerBody(path15, fail2) {
+  let reason;
+  try {
+    const before = (0, import_fs65.lstatSync)(path15, { bigint: true });
+    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n) {
+      reason = "--body-file must be a regular file with one link (no symlink, junction or hardlink)";
+    } else {
+      const fd = (0, import_fs65.openSync)(path15, "r");
+      try {
+        const opened = (0, import_fs65.fstatSync)(fd, { bigint: true });
+        if (!opened.isFile() || opened.nlink !== 1n || opened.dev !== before.dev || opened.ino !== before.ino) {
+          reason = "--body-file changed while it was checked";
+        } else if (opened.size > BigInt(MAX_TRACKER_BODY_CHARS * 4)) {
+          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+        } else {
+          const raw = (0, import_fs65.readFileSync)(fd);
+          if (raw.toString("utf8").length <= MAX_TRACKER_BODY_CHARS) return raw;
+          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+        }
+      } finally {
+        (0, import_fs65.closeSync)(fd);
+      }
+    }
+  } catch (error2) {
+    reason = `cannot read --body-file: ${error2 instanceof Error ? error2.message : String(error2)}`;
+  }
+  throw fail2(reason);
 }
 function isLabelPairs(r, order, ctx) {
   if (r.length % 2 !== 0 || r.length / 2 > MAX_WRITE_LABELS) return false;
@@ -40844,8 +40878,21 @@ function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes) 
 function factoryGuardExec(exec, extraProtected = () => [], ado = () => void 0, writes = () => void 0) {
   return (cmd, args, opts) => {
     if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), "factory", adoRefusal(cmd, args));
-    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, writes());
-    return exec(cmd, args, opts);
+    const ctx = writes();
+    assertFactoryCommand(cmd, args, extraProtected(), opts?.env, void 0, ctx);
+    const at = ctx && cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "") === "gh" ? trackerBodyFileArg(args) : void 0;
+    if (at === void 0) return exec(cmd, args, opts);
+    const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(" ")}\`: ${reason}`));
+    const dir = (0, import_fs65.mkdtempSync)((0, import_path81.join)((0, import_os14.tmpdir)(), "omg-gh-body-"));
+    try {
+      const owned = (0, import_path81.join)(dir, "body.md");
+      (0, import_fs65.writeFileSync)(owned, body, { mode: 384, flag: "wx" });
+      const rewritten = [...args];
+      rewritten[at] = owned;
+      return exec(cmd, rewritten, opts);
+    } finally {
+      (0, import_fs65.rmSync)(dir, { recursive: true, force: true });
+    }
   };
 }
 function gitHardeningArgs(hooksDir) {
@@ -40861,11 +40908,12 @@ function hardenedGitExec(exec, hooksDir) {
     return exec(cmd, [...gitHardeningArgs(hooksDir), ...args], opts);
   };
 }
-var import_fs65, import_path81, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH2, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, adoRefusal;
+var import_fs65, import_os14, import_path81, FACTORY_BRANCH_PREFIX, FactorySafetyError, NUMBER2, JSON_FIELDS2, BRANCH2, REPO_PATH, FOR_EACH_REF_FORMAT, CHECKOUT_BRANCH, isBranch2, isFile2, isTitle, same2, FACTORY_LABEL, KEY_SEARCH, MAX_WRITE_LABELS, isWriteLabel, MAX_TRACKER_BODY_CHARS, adoRefusal;
 var init_exec2 = __esm({
   "src/factory/run/exec.ts"() {
     "use strict";
     import_fs65 = require("fs");
+    import_os14 = require("os");
     import_path81 = require("path");
     init_guard();
     init_exec();
@@ -40884,12 +40932,13 @@ var init_exec2 = __esm({
     CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
     isBranch2 = (s) => typeof s === "string" && BRANCH2.test(s) && !s.includes("..") && !s.endsWith("/") && !s.endsWith(".lock");
     isFile2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
-    isTitle = (s) => typeof s === "string" && s.length > 0 && s.length <= 256 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
+    isTitle = (s) => typeof s === "string" && s.length > 0 && s.length <= 256 && !s.startsWith("-") && !/[\p{Cc}\p{Cf}]/u.test(s);
     same2 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
     KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
     MAX_WRITE_LABELS = 4;
-    isWriteLabel = (s, ctx) => typeof s === "string" && ctx.labels.includes(s) && !s.toLowerCase().startsWith("factory:") && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+    isWriteLabel = (s, ctx) => typeof s === "string" && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+    MAX_TRACKER_BODY_CHARS = 65536;
     adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factory run refuses \`${cmd.replace(/\\/g, "/").split("/").pop()} ${args.join(" ")}\`: ${reason}`);
   }
 });
@@ -41002,7 +41051,7 @@ function moduleEntries(commonDir) {
 }
 function globalConfigFiles(env = process.env) {
   if (env.GIT_CONFIG_GLOBAL?.trim()) return [(0, import_path82.resolve)(env.GIT_CONFIG_GLOBAL)];
-  const home = env.HOME?.trim() || (0, import_os14.homedir)();
+  const home = env.HOME?.trim() || (0, import_os15.homedir)();
   const xdg = env.XDG_CONFIG_HOME?.trim() || (0, import_path82.join)(home, ".config");
   return [(0, import_path82.join)(home, ".gitconfig"), (0, import_path82.join)(xdg, "git", "config")];
 }
@@ -41037,7 +41086,7 @@ function safeFileHash(path15) {
   }
 }
 function globalConfigHash(repoConfigs, env = process.env, excludesFile) {
-  const home = env.HOME?.trim() || (0, import_os14.homedir)();
+  const home = env.HOME?.trim() || (0, import_os15.homedir)();
   const seen = /* @__PURE__ */ new Map();
   const follow = (file, depth) => {
     if (depth > MAX_INCLUDE_DEPTH) return;
@@ -41238,13 +41287,13 @@ function verifyReviewWorktree(result, head, commonDir) {
   if (status) problems.push("the lane worktree is not clean (modified, deleted or untracked files)");
   return problems;
 }
-var import_crypto19, import_fs66, import_os14, import_path82, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha, NOT_A_DIR, MAX_INCLUDE_DEPTH;
+var import_crypto19, import_fs66, import_os15, import_path82, SnapshotError, SENSITIVE_IGNORED, STATUS_SKIPPED, sha, NOT_A_DIR, MAX_INCLUDE_DEPTH;
 var init_review_guard = __esm({
   "src/factory/run/review-guard.ts"() {
     "use strict";
     import_crypto19 = require("crypto");
     import_fs66 = require("fs");
-    import_os14 = require("os");
+    import_os15 = require("os");
     import_path82 = require("path");
     init_exec();
     init_git_worktree();
@@ -42865,7 +42914,7 @@ var init_budget = __esm({
 
 // src/factory/run/ledger.ts
 function defaultLedgerDir(env = process.env) {
-  const base = env.OMC_STATE_DIR?.trim() ? (0, import_path83.resolve)(env.OMC_STATE_DIR) : (0, import_path83.join)((0, import_os15.homedir)(), ".omg");
+  const base = env.OMC_STATE_DIR?.trim() ? (0, import_path83.resolve)(env.OMC_STATE_DIR) : (0, import_path83.join)((0, import_os16.homedir)(), ".omg");
   return (0, import_path83.join)(base, "factory-ledger");
 }
 function ledgerFilePath(dir, root, key) {
@@ -42879,13 +42928,13 @@ function emptyHooksDir2(dir) {
 function currentBytes(path15) {
   return (0, import_fs67.existsSync)(path15) ? (0, import_fs67.readFileSync)(path15) : null;
 }
-var import_crypto20, import_fs67, import_os15, import_path83, LedgerError, sha256, EngineLedger;
+var import_crypto20, import_fs67, import_os16, import_path83, LedgerError, sha256, EngineLedger;
 var init_ledger2 = __esm({
   "src/factory/run/ledger.ts"() {
     "use strict";
     import_crypto20 = require("crypto");
     import_fs67 = require("fs");
-    import_os15 = require("os");
+    import_os16 = require("os");
     import_path83 = require("path");
     init_atomic_write();
     LedgerError = class extends Error {
@@ -43239,13 +43288,13 @@ function claimOwner(path15, now, deps, busy, run2) {
   };
   return { release, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto21, import_fs68, import_os16, import_path84, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, runSlug, runLabel, isStr2, isCount3, defaultOwnerDeps;
+var import_crypto21, import_fs68, import_os17, import_path84, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, runSlug, runLabel, isStr2, isCount3, defaultOwnerDeps;
 var init_state5 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
     import_crypto21 = require("crypto");
     import_fs68 = require("fs");
-    import_os16 = require("os");
+    import_os17 = require("os");
     import_path84 = require("path");
     init_atomic_write();
     init_file_lock();
@@ -43283,7 +43332,7 @@ var init_state5 = __esm({
     runLabel = (key) => typeof key === "number" ? `#${key}` : key;
     isStr2 = (v) => typeof v === "string";
     isCount3 = (v) => Number.isInteger(v) && v >= 0;
-    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os16.hostname)(), isAlive: isProcessAlive });
+    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os17.hostname)(), isAlive: isProcessAlive });
   }
 });
 
@@ -44262,7 +44311,7 @@ function adoCall(ctx, routeId, routeParameters, queryParameters = {}, body) {
   try {
     let inFile;
     if (body !== void 0) {
-      dir = (0, import_fs72.mkdtempSync)((0, import_path88.join)((0, import_os17.tmpdir)(), "omg-ado-"));
+      dir = (0, import_fs72.mkdtempSync)((0, import_path88.join)((0, import_os18.tmpdir)(), "omg-ado-"));
       inFile = (0, import_path88.join)(dir, "body.json");
       (0, import_fs72.writeFileSync)(inFile, JSON.stringify(body), { encoding: "utf8", mode: 384 });
     }
@@ -44288,12 +44337,12 @@ function adoJson(call, what) {
   const detail = call.stderr || (call.status === 0 ? "stdout is not JSON" : `az exited ${call.status}`);
   throw new Error(`${what} failed: ${detail}`);
 }
-var import_fs72, import_os17, import_path88, repoParams, projectParams, isObject3, listValue, str3;
+var import_fs72, import_os18, import_path88, repoParams, projectParams, isObject3, listValue, str3;
 var init_invoke = __esm({
   "src/forge/ado/invoke.ts"() {
     "use strict";
     import_fs72 = require("fs");
-    import_os17 = require("os");
+    import_os18 = require("os");
     import_path88 = require("path");
     init_guard();
     init_redact2();
@@ -45064,16 +45113,16 @@ function createAzureDevOpsForge(exec, cwd, config2, options) {
     tracker: adoTracker(ctx, config2.intake.source),
     reviews: adoReviews(ctx),
     checks: adoChecks(ctx),
-    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path91.join)((0, import_os18.homedir)(), ".omg", "forge"), untrustedRoots }),
+    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path91.join)((0, import_os19.homedir)(), ".omg", "forge"), untrustedRoots }),
     capabilities: { heal: false, projectsV2: false, boardColumns: true, webhookIntake: false }
   };
 }
-var import_fs77, import_os18, import_path91, progressValues, progressStates, progressColumns;
+var import_fs77, import_os19, import_path91, progressValues, progressStates, progressColumns;
 var init_ado = __esm({
   "src/forge/ado/index.ts"() {
     "use strict";
     import_fs77 = require("fs");
-    import_os18 = require("os");
+    import_os19 = require("os");
     import_path91 = require("path");
     init_az_binary();
     init_checks2();
@@ -49438,7 +49487,7 @@ async function runSandboxLaneScenario(input) {
   const probe = commitProbe(repo);
   if ("error" in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
   const nonce = (0, import_crypto30.randomBytes)(6).toString("hex");
-  const tempDir = input.tempDir ?? (0, import_os19.tmpdir)();
+  const tempDir = input.tempDir ?? (0, import_os20.tmpdir)();
   const hostRecord = await (input.probeHost ?? (() => probeSandboxHost(input, repo)))();
   if (!hostRecord.supported) {
     const evidence2 = {
@@ -49457,7 +49506,7 @@ async function runSandboxLaneScenario(input) {
     };
     return { ...base, events: [], idle: false, timedOut: false, error: `host unsupported: ${excerpt(hostRecord.reason ?? "no reason", 200)}`, sandbox: evidence2 };
   }
-  const realHome = input.realHome ?? (0, import_os19.userInfo)().homedir;
+  const realHome = input.realHome ?? (0, import_os20.userInfo)().homedir;
   const shared = input.sharedDir ?? defaultSharedDir(input.env);
   const canaryName = `omg-canary-${nonce}`;
   const outside = {
@@ -49595,14 +49644,14 @@ async function runSandboxLaneScenario(input) {
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto30, import_fs92, import_http2, import_os19, import_path108, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote;
+var import_crypto30, import_fs92, import_http2, import_os20, import_path108, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
     import_crypto30 = require("crypto");
     import_fs92 = require("fs");
     import_http2 = require("http");
-    import_os19 = require("os");
+    import_os20 = require("os");
     import_path108 = require("path");
     init_job();
     init_sandbox2();
@@ -50014,7 +50063,7 @@ function extractJsonArray(text3) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs94.mkdtempSync)((0, import_path110.join)((0, import_os20.tmpdir)(), prefix));
+  return (0, import_fs94.mkdtempSync)((0, import_path110.join)((0, import_os21.tmpdir)(), prefix));
 }
 function removeDir(path15) {
   if (!path15) return;
@@ -50388,7 +50437,7 @@ function prepareCassetteRun(opts, env) {
     strict: !!opts.replayStrict,
     overwrite: !!opts.recordOverwrite
   };
-  readCassetteConfig(cassetteEnv(env, { ...run2, stateRoot: (0, import_os20.tmpdir)() }, {}));
+  readCassetteConfig(cassetteEnv(env, { ...run2, stateRoot: (0, import_os21.tmpdir)() }, {}));
   const scenarios = opts.scenarios ?? DEFAULT_SCENARIOS;
   if (run2.mode === "record") {
     const taken = scenarios.map((s) => recordTargetRefusal(run2, s)).filter((r) => r !== null);
@@ -50461,7 +50510,7 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: "skipped" });
   } else {
     const bin = resolution.bin;
-    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os20.tmpdir)());
+    const res = runCopilotSync(ctx, bin, ["--version"], ctx.env, (0, import_os21.tmpdir)());
     version2 = parseCopilotVersion(String(res.stdout ?? ""));
     const binaryOk = res.status === 0 && version2 !== null;
     checks.push({
@@ -50564,14 +50613,14 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process24, import_crypto31, import_fs94, import_os20, import_path110, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process24, import_crypto31, import_fs94, import_os21, import_path110, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process24 = require("child_process");
     import_crypto31 = require("crypto");
     import_fs94 = require("fs");
-    import_os20 = require("os");
+    import_os21 = require("os");
     import_path110 = require("path");
     init_tmux_utils();
     init_config_dir();
@@ -50811,17 +50860,17 @@ var init_copilot_run_tools = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path112, import_os21, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path112, import_os22, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
     import_path112 = require("path");
-    import_os21 = require("os");
+    import_os22 = require("os");
     init_config_dir();
     init_worktree_paths();
     init_debug_flag();
     USER_SKILLS_DIR = (0, import_path112.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path112.join)((0, import_os21.homedir)(), ".omg", "skills");
+    GLOBAL_SKILLS_DIR = (0, import_path112.join)((0, import_os22.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
     PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path112.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
@@ -51169,17 +51218,17 @@ function formatSkillOutput(skills) {
   }
   return lines3.join("\n");
 }
-var import_path115, import_os22, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path115, import_os23, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
     import_path115 = require("path");
-    import_os22 = require("os");
+    import_os23 = require("os");
     init_config_dir();
     init_loader2();
     init_constants3();
-    ALLOWED_BOUNDARIES = [process.cwd(), (0, import_os22.homedir)()];
+    ALLOWED_BOUNDARIES = [process.cwd(), (0, import_os23.homedir)()];
     loadLocalSchema = {
       projectRoot: external_exports.string().max(500).optional().describe("Project root directory (defaults to cwd)")
     };

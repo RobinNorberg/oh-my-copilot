@@ -4,9 +4,10 @@
  * through the factory guard with enqueue's TrackerWriteContext, so every
  * recorded line is also a shape the guard passes.
  */
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { factoryGuardExec, type TrackerWriteContext } from '../../factory/run/exec.js';
 import type { Exec } from '../../ship/exec.js';
@@ -17,6 +18,8 @@ import { recordingExec } from './recording-exec.js';
 
 const CWD = join(tmpdir(), 'omg-baseline-repo');
 const BODIES = join(tmpdir(), 'omg-baseline-bodies');
+/** The guard runs gh with its own copy of the body file (a fresh omg-gh-body-* dir): one stable name for it. */
+const guardCopy = (calls: string[]) => calls.map((c) => c.replace(/"[^"]*omg-gh-body-[^"]*"/g, '"<guard-copy>"'));
 const config = {
   kind: 'github',
   repo: { kind: 'github', host: 'github.com', owner: 'o', name: 'r', url: 'https://github.com/o/r' },
@@ -37,11 +40,17 @@ function tracker(answer: (args: string[]) => string) {
 }
 
 describe('gh argv baseline: tracker writes', () => {
+  beforeAll(() => {
+    mkdirSync(BODIES, { recursive: true });
+    for (const name of ['auth-token-refresh.md', 'token-store-port.md', 'b.md']) writeFileSync(join(BODIES, name), 'Body\n');
+  });
+  afterAll(() => rmSync(BODIES, { recursive: true, force: true }));
+
   it('createItem: issue create with --repo, --title, --body-file and the labels', () => {
     const { t, calls } = tracker(() => 'Creating issue in o/r\n\nhttps://github.com/o/r/issues/77\n');
     expect(t.createItem!({ title: 'Refresh tokens', bodyFile: join(BODIES, 'auth-token-refresh.md'), labels: ['factory', 'priority:p1'] })).toBe(77);
-    expect(calls).toEqual([
-      'gh ["issue","create","--repo","github.com/o/r","--title","Refresh tokens","--body-file","<bodies>/auth-token-refresh.md","--label","factory","--label","priority:p1"] cwd=<cwd>',
+    expect(guardCopy(calls)).toEqual([
+      'gh ["issue","create","--repo","github.com/o/r","--title","Refresh tokens","--body-file","<guard-copy>","--label","factory","--label","priority:p1"] cwd=<cwd>',
     ]);
   });
 
@@ -54,9 +63,9 @@ describe('gh argv baseline: tracker writes', () => {
     const { t, calls } = tracker(() => 'https://github.com/o/r/issues/77\n');
     t.updateItem!(77, { title: 'Refresh tokens', bodyFile: join(BODIES, 'auth-token-refresh.md'), addLabels: ['priority:p0'], removeLabels: ['priority:p1'] });
     t.updateItem!(78, { title: 'Store port', bodyFile: join(BODIES, 'token-store-port.md'), addLabels: [], removeLabels: [] });
-    expect(calls).toEqual([
-      'gh ["issue","edit","77","--repo","github.com/o/r","--title","Refresh tokens","--body-file","<bodies>/auth-token-refresh.md","--add-label","priority:p0","--remove-label","priority:p1"] cwd=<cwd>',
-      'gh ["issue","edit","78","--repo","github.com/o/r","--title","Store port","--body-file","<bodies>/token-store-port.md"] cwd=<cwd>',
+    expect(guardCopy(calls)).toEqual([
+      'gh ["issue","edit","77","--repo","github.com/o/r","--title","Refresh tokens","--body-file","<guard-copy>","--add-label","priority:p0","--remove-label","priority:p1"] cwd=<cwd>',
+      'gh ["issue","edit","78","--repo","github.com/o/r","--title","Store port","--body-file","<guard-copy>"] cwd=<cwd>',
     ]);
   });
 

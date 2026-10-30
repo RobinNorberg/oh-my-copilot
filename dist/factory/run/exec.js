@@ -13,7 +13,7 @@
  *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
  *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
  *   pinned to the configured repository, with a body file from the caller's
- *   own directory and labels from its allowlist. Never close, delete,
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
  *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
@@ -26,8 +26,9 @@
  *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
  *   even if the tamper check missed it.
  */
-import { existsSync, readdirSync } from 'fs';
-import { isAbsolute, relative, resolve } from 'path';
+import { closeSync, existsSync, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -47,7 +48,8 @@ export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
 const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
 const isBranch = (s) => typeof s === 'string' && BRANCH.test(s) && !s.includes('..') && !s.endsWith('/') && !s.endsWith('.lock');
 const isFile = (s) => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
-const isTitle = (s) => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
+/** One line of visible text: no control or format characters (tab, newline, NUL, bidi overrides such as RLO). */
+const isTitle = (s) => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\p{Cc}\p{Cf}]/u.test(s);
 const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
 /** A progress label of the factory family (factory forges design §7): `factory:<stage>`. */
 const FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
@@ -78,12 +80,68 @@ function isProgressLabelEdit(r) {
 const KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
 /** At most this many labels on one write (an intake label and a priority, plus the old priority removed). */
 const MAX_WRITE_LABELS = 4;
-const isWriteLabel = (s, ctx) => typeof s === 'string' && ctx.labels.includes(s) && !s.toLowerCase().startsWith('factory:') && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+const isWriteLabel = (s, ctx) => typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
 function isBodyFile(s, ctx) {
     if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir))
         return false;
     const rel = relative(resolve(ctx.bodyDir), resolve(s));
-    return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/]/.test(rel);
+    // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
+    return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
+}
+/** The most characters a tracker write's body file may hold. */
+export const MAX_TRACKER_BODY_CHARS = 65536;
+/**
+ * The argv index of a passed tracker write's `--body-file` value (create 7,
+ * edit 8); undefined for every other shape. Call only after the guard passed.
+ */
+function trackerBodyFileArg(args) {
+    if (args[0] !== 'issue')
+        return undefined;
+    if (args[1] === 'create' && args[6] === '--body-file')
+        return 7;
+    if (args[1] === 'edit' && args[3] === '--repo' && args[7] === '--body-file')
+        return 8;
+    return undefined;
+}
+/**
+ * Read a tracker write's body file as the guard's own bytes: a regular file
+ * with one link (no symlink, junction or hardlink), the same file when opened
+ * as when checked, at most MAX_TRACKER_BODY_CHARS characters.
+ */
+function readTrackerBody(path, fail) {
+    let reason;
+    try {
+        const before = lstatSync(path, { bigint: true });
+        if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n) {
+            reason = '--body-file must be a regular file with one link (no symlink, junction or hardlink)';
+        }
+        else {
+            const fd = openSync(path, 'r');
+            try {
+                const opened = fstatSync(fd, { bigint: true });
+                if (!opened.isFile() || opened.nlink !== 1n || opened.dev !== before.dev || opened.ino !== before.ino) {
+                    reason = '--body-file changed while it was checked';
+                }
+                else if (opened.size > BigInt(MAX_TRACKER_BODY_CHARS * 4)) {
+                    // UTF-8 spends at most 4 bytes per character: a larger file cannot fit.
+                    reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+                }
+                else {
+                    const raw = readFileSync(fd);
+                    if (raw.toString('utf8').length <= MAX_TRACKER_BODY_CHARS)
+                        return raw;
+                    reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
+                }
+            }
+            finally {
+                closeSync(fd);
+            }
+        }
+    }
+    catch (error) {
+        reason = `cannot read --body-file: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    throw fail(reason);
 }
 /** `<flag> <label>` pairs, the flags' runs in `order`, every label allowlisted and used once. */
 function isLabelPairs(r, order, ctx) {
@@ -249,15 +307,32 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, w
 }
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
- * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
+ * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
  * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
 export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined) {
     return (cmd, args, opts) => {
         if (isAdoCommand(cmd))
             return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
-        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, writes());
-        return exec(cmd, args, opts);
+        const ctx = writes();
+        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx);
+        const at = ctx && cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
+        if (at === undefined)
+            return exec(cmd, args, opts);
+        // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
+        const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
+        const dir = mkdtempSync(join(tmpdir(), 'omg-gh-body-'));
+        try {
+            const owned = join(dir, 'body.md');
+            writeFileSync(owned, body, { mode: 0o600, flag: 'wx' });
+            const rewritten = [...args];
+            rewritten[at] = owned;
+            return exec(cmd, rewritten, opts);
+        }
+        finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     };
 }
 /** Prepended to every hardened git command, after the guard checked the plain shape. */

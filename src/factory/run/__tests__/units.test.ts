@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -356,8 +356,143 @@ describe('tracker write shapes (omg factory enqueue only)', () => {
     const exec = factoryGuardExec(() => ({ status: 0, stdout: '', stderr: '' }), () => [], () => undefined, () => writes);
     expect(() => exec('gh', CREATE)).toThrow(FactorySafetyError);
     writes = ctx;
-    expect(exec('gh', CREATE).status).toBe(0);
+    mkdirSync(bodyDir, { recursive: true });
+    writeFileSync(body, 'Body\n');
+    try {
+      expect(exec('gh', CREATE).status).toBe(0);
+    } finally {
+      rmSync(bodyDir, { recursive: true, force: true });
+    }
     expect(() => exec('gh', ['api', 'repos/o/r'])).toThrow(FactorySafetyError);
+  });
+
+  it.each<[string, string]>([
+    ['a tab', 'a\tb'],
+    ['a carriage return', 'a\rb'],
+    ['a bidi override (RLO)', 'fix ‮gnp.exe'],
+    ['a zero-width space', 'a​b'],
+    ['a leading dash', '-x'],
+  ])('refuses a title with %s', (_name, title) => {
+    refused(CREATE.map((a) => (a === 'Refresh tokens' ? title : a)));
+  });
+
+  it('refuses an NTFS alternate data stream as the body file', () => {
+    refused(CREATE.map((a) => (a === body ? `${body}:s` : a)));
+    refused(CREATE.map((a) => (a === body ? join(bodyDir, 'b.md::$DATA') : a)));
+  });
+
+  it('refuses a harbor:* label even when the caller allowlisted it, in any case', () => {
+    for (const label of ['harbor:accepted', 'Harbor:Accepted', 'HARBOR:x']) {
+      const loose: TrackerWriteContext = { ...ctx, labels: [label] };
+      expect(() => assertFactoryCommand('gh', [...CREATE, '--label', label], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+      expect(() => assertFactoryCommand('gh', [...EDIT, '--remove-label', label], [], undefined, undefined, loose)).toThrow(FactorySafetyError);
+    }
+  });
+});
+
+describe('tracker write body file (factoryGuardExec owns a copy)', () => {
+  let dir: string;
+  let bodies: string;
+  let ctx: TrackerWriteContext;
+  const create = (file: string) => ['issue', 'create', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', file];
+  const edit = (file: string) => ['issue', 'edit', '12', '--repo', 'github.com/o/r', '--title', 'T', '--body-file', file];
+  /** A guarded exec whose fake gh records the argv and the body file's content at run time. */
+  const guarded = () => {
+    const runs: { args: string[]; body: string }[] = [];
+    const exec = factoryGuardExec((_cmd, args) => {
+      runs.push({ args, body: readFileSync(args[args.indexOf('--body-file') + 1], 'utf8') });
+      return { status: 0, stdout: '', stderr: '' };
+    }, () => [], () => undefined, () => ctx);
+    return { exec, runs };
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'omg-body-guard-'));
+    bodies = join(dir, 'bodies');
+    mkdirSync(bodies);
+    ctx = { repo: 'github.com/o/r', bodyDir: bodies, labels: ['factory'] };
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([['create', create], ['edit', edit]] as const)('%s runs gh with a guard-owned copy, removed afterwards', (_name, shape) => {
+    const file = join(bodies, 'b.md');
+    writeFileSync(file, 'Body ✓\n');
+    const { exec, runs } = guarded();
+    expect(exec('gh', shape(file)).status).toBe(0);
+    expect(runs).toHaveLength(1);
+    const copy = runs[0].args[runs[0].args.indexOf('--body-file') + 1];
+    expect(copy).not.toBe(file);
+    expect(copy).toMatch(/omg-gh-body-/);
+    expect(runs[0].args).toEqual(shape(copy));
+    expect(runs[0].body).toBe('Body ✓\n');
+    expect(existsSync(copy)).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('Body ✓\n');
+  });
+
+  it('accepts exactly 65536 characters and refuses one more', () => {
+    const file = join(bodies, 'b.md');
+    writeFileSync(file, 'é'.repeat(65536));
+    const { exec, runs } = guarded();
+    expect(exec('gh', create(file)).status).toBe(0);
+    writeFileSync(file, 'x'.repeat(65537));
+    expect(() => exec('gh', create(file))).toThrow(/longer than 65536 characters/);
+    writeFileSync(file, 'x'.repeat(65536 * 4 + 1));
+    expect(() => exec('gh', create(file))).toThrow(/longer than 65536 characters/);
+    expect(runs).toHaveLength(1);
+  });
+
+  it('refuses a missing body file', () => {
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'none.md')))).toThrow(/cannot read --body-file/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a directory as the body file', () => {
+    mkdirSync(join(bodies, 'd.md'));
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'd.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a hardlinked body file', () => {
+    const outside = join(dir, 'secret.txt');
+    writeFileSync(outside, 'secret');
+    linkSync(outside, join(bodies, 'b.md'));
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'b.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a symlinked body file', (t) => {
+    const outside = join(dir, 'secret.txt');
+    writeFileSync(outside, 'secret');
+    try {
+      symlinkSync(outside, join(bodies, 'b.md'), 'file');
+    } catch {
+      t.skip(); // Windows without the symlink privilege
+    }
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'b.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('refuses a body file behind a junction', () => {
+    const outside = join(dir, 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'secret.txt'), 'secret');
+    // A junction (Windows) or a directory symlink (POSIX) named like a body file.
+    symlinkSync(outside, join(bodies, 'j.md'), 'junction');
+    const { exec, runs } = guarded();
+    expect(() => exec('gh', create(join(bodies, 'j.md')))).toThrow(/regular file with one link/);
+    expect(runs).toEqual([]);
+  });
+
+  it('commands other than the tracker writes run with their argv unchanged', () => {
+    const seen: string[][] = [];
+    const exec = factoryGuardExec((_cmd, args) => (seen.push(args), { status: 0, stdout: '', stderr: '' }), () => [], () => undefined, () => ctx);
+    const comment = ['issue', 'comment', '12', '--body-file', join(bodies, 'none.md')];
+    exec('gh', comment);
+    expect(seen).toEqual([comment]);
   });
 });
 
