@@ -13,6 +13,7 @@ import { absPath, TeamPaths } from './state-paths.js';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLock } from '../lib/file-lock.js';
 import { checkHostLoadGate } from '../lib/host-load-gate.js';
+import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
 import { gzipSync } from 'node:zlib';
 
 const WORKER_LAUNCH_SCHEMA_VERSION = 1 as const;
@@ -299,11 +300,68 @@ function parseEnvPassthrough(value: string | undefined): string[] {
   return value.split(',').map(k => k.trim()).filter(k => k.length > 0);
 }
 
+/** A provider's own login: the only credentials OMC_TEAM_WORKER_ENV_PASSTHROUGH may forward. */
+const PROVIDER_PASSTHROUGH_CREDENTIALS: Partial<Record<CliAgentType, readonly string[]>> = {
+  copilot: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'],
+  claude: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'],
+};
+
+function isEnabledFlag(value: string | undefined): boolean {
+  return typeof value === 'string' && value.length > 0 && value !== '0' && value.toLowerCase() !== 'false';
+}
+
+function isProviderPassthroughCredential(
+  key: string,
+  provider: CliAgentType,
+  sourceEnv: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): boolean {
+  const name = platform === 'win32' ? key.toUpperCase() : key;
+  if (PROVIDER_PASSTHROUGH_CREDENTIALS[provider]?.includes(name)) return true;
+  if (provider !== 'claude') return false;
+  return (name.startsWith('AWS_') && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_BEDROCK))
+    || (name.startsWith('GOOGLE_') && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_VERTEX));
+}
+
+/**
+ * Refuse a credential-named passthrough key unless it is the provider's own
+ * login. Without a provider (the pane shell, which hosts any provider) any
+ * provider's login passes; the supervisor checks again for the actual provider.
+ */
+function assertPassthroughKeyAllowed(
+  key: string,
+  provider: CliAgentType | undefined,
+  sourceEnv: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): void {
+  if (!isCredentialEnvKey(key)) return;
+  const providers = provider ? [provider] : Object.keys(PROVIDER_PASSTHROUGH_CREDENTIALS) as CliAgentType[];
+  if (providers.some(candidate => isProviderPassthroughCredential(key, candidate, sourceEnv, platform))) return;
+  throw new Error(
+    `worker_launch_env_passthrough_credential: OMC_TEAM_WORKER_ENV_PASSTHROUGH names credential ${key}`
+    + `${provider ? ` for a ${provider} worker` : ''}; remove it. Only a provider's own login passes through`
+    + ' (copilot: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN; claude: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN,'
+    + ' AWS_* with CLAUDE_CODE_USE_BEDROCK, GOOGLE_* with CLAUDE_CODE_USE_VERTEX).',
+  );
+}
+
+/** Refuse, before a launch is delivered, a passthrough list the provider's supervisor would refuse. */
+export function assertEnvPassthroughAllowed(
+  provider: CliAgentType,
+  sourceEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  for (const key of parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH)) {
+    assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
+  }
+}
+
 export function buildProviderEnvironment(
   providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined,
   sourceEnv: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   envPassthrough?: readonly string[],
+  provider?: CliAgentType,
 ): Record<string, string> {
   const normalized = normalizeProviderEnvironment(providerEnv, platform);
   const baseline: Record<string, string> = {};
@@ -336,6 +394,7 @@ export function buildProviderEnvironment(
     if (!isValidEnvironmentKey(key)) throw new Error('worker_launch_env_passthrough_key_invalid');
     if (WORKER_LAUNCH_INTERNAL_ENV_KEYS.has(key)) throw new Error('worker_launch_env_passthrough_key_reserved');
     if (platform === 'win32' && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase())) throw new Error('worker_launch_env_passthrough_key_reserved');
+    assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
     const value = sourceEnv[key];
     if (typeof value === 'string') baseline[key] = value;
   }
@@ -822,6 +881,9 @@ export async function materializeWorkerLaunchTransport(input: {
 }): Promise<MaterializedWorkerLaunchTransport> {
   const { attempt } = input;
   if (!attemptTransportPathsAreDeterministic(attempt)) throw new Error('worker_launch_transport_paths_invalid');
+  // The supervisor re-reads the passthrough list for this provider once the
+  // pane is live; refusing here reports it from the leader before delivery.
+  assertEnvPassthroughAllowed(attempt.provider);
   const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
     providerEnv: input.providerEnv,
     releaseAfterSpawn: input.releaseAfterSpawn,
@@ -1904,7 +1966,7 @@ function buildBootstrapProviderEnvironment(
   platform: NodeJS.Platform,
 ): NodeJS.ProcessEnv {
   return {
-    ...buildProviderEnvironment(spec.provider_env, sourceEnv, platform),
+    ...buildProviderEnvironment(spec.provider_env, sourceEnv, platform, undefined, spec.provider),
     ...(typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === 'string'
       || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === 'string'
       ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: '1' }

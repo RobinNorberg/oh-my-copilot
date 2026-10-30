@@ -711,6 +711,14 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
+#### Pane worker env
+
+Pane workers are not sandboxed; their env is hygiene, not a boundary.
+
+- The pane shell starts from `env -i` plus a fixed baseline, then sources your shell rc. The provider is launched by a supervisor that rebuilds its env from an allowlist (`PATH`, `HOME`, `TEMP`/`TMP`, `TERM`/`COLORTERM`, and the Windows system variables on Windows) plus the worker env, so the tmux server env and rc exports reach the provider only through that allowlist and the passthrough list below.
+- `OMC_TEAM_WORKER_ENV_PASSTHROUGH=NAME,NAME` forwards more variables to the provider. Credential-named variables (tokens, keys, passwords, `SSH_AUTH_SOCK`, `GIT_CONFIG*` and the like) are refused, and the start fails with `worker_launch_env_passthrough_credential`. Only the provider's own login passes: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` for copilot workers; `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` for claude workers, plus `AWS_*` when `CLAUDE_CODE_USE_BEDROCK` is set and `GOOGLE_*` when `CLAUDE_CODE_USE_VERTEX` is set. In a mixed team every worker must accept the list, so a claude login in it fails the copilot workers.
+- A pane Copilot worker gets the leader's `COPILOT_HOME`, and with it the leader's stored Copilot login, plugins and `deniedUrls`. That is inherent to pane workers; use SDK workers for a worker with its own home.
+
 #### Headless SDK workers (`--transport sdk`, the default under Copilot CLI)
 
 `omg team 2:copilot "<task>"` runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).

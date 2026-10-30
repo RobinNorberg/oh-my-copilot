@@ -10,6 +10,7 @@ import { absPath, TeamPaths } from './state-paths.js';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLock } from '../lib/file-lock.js';
 import { checkHostLoadGate } from '../lib/host-load-gate.js';
+import { isCredentialEnvKey } from '../smoke/copilot-session-env.js';
 import { gzipSync } from 'node:zlib';
 const WORKER_LAUNCH_SCHEMA_VERSION = 1;
 const DEFAULT_ACK_TIMEOUT_MS = 8_000;
@@ -147,7 +148,46 @@ function parseEnvPassthrough(value) {
     // Split by comma and trim each key
     return value.split(',').map(k => k.trim()).filter(k => k.length > 0);
 }
-export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough) {
+/** A provider's own login: the only credentials OMC_TEAM_WORKER_ENV_PASSTHROUGH may forward. */
+const PROVIDER_PASSTHROUGH_CREDENTIALS = {
+    copilot: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'],
+    claude: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'],
+};
+function isEnabledFlag(value) {
+    return typeof value === 'string' && value.length > 0 && value !== '0' && value.toLowerCase() !== 'false';
+}
+function isProviderPassthroughCredential(key, provider, sourceEnv, platform) {
+    const name = platform === 'win32' ? key.toUpperCase() : key;
+    if (PROVIDER_PASSTHROUGH_CREDENTIALS[provider]?.includes(name))
+        return true;
+    if (provider !== 'claude')
+        return false;
+    return (name.startsWith('AWS_') && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_BEDROCK))
+        || (name.startsWith('GOOGLE_') && isEnabledFlag(sourceEnv.CLAUDE_CODE_USE_VERTEX));
+}
+/**
+ * Refuse a credential-named passthrough key unless it is the provider's own
+ * login. Without a provider (the pane shell, which hosts any provider) any
+ * provider's login passes; the supervisor checks again for the actual provider.
+ */
+function assertPassthroughKeyAllowed(key, provider, sourceEnv, platform) {
+    if (!isCredentialEnvKey(key))
+        return;
+    const providers = provider ? [provider] : Object.keys(PROVIDER_PASSTHROUGH_CREDENTIALS);
+    if (providers.some(candidate => isProviderPassthroughCredential(key, candidate, sourceEnv, platform)))
+        return;
+    throw new Error(`worker_launch_env_passthrough_credential: OMC_TEAM_WORKER_ENV_PASSTHROUGH names credential ${key}`
+        + `${provider ? ` for a ${provider} worker` : ''}; remove it. Only a provider's own login passes through`
+        + ' (copilot: COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN; claude: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN,'
+        + ' AWS_* with CLAUDE_CODE_USE_BEDROCK, GOOGLE_* with CLAUDE_CODE_USE_VERTEX).');
+}
+/** Refuse, before a launch is delivered, a passthrough list the provider's supervisor would refuse. */
+export function assertEnvPassthroughAllowed(provider, sourceEnv = process.env, platform = process.platform) {
+    for (const key of parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH)) {
+        assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
+    }
+}
+export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough, provider) {
     const normalized = normalizeProviderEnvironment(providerEnv, platform);
     const baseline = {};
     for (const key of SAFE_BASELINE_ENV_KEYS) {
@@ -186,6 +226,7 @@ export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, p
             throw new Error('worker_launch_env_passthrough_key_reserved');
         if (platform === 'win32' && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase()))
             throw new Error('worker_launch_env_passthrough_key_reserved');
+        assertPassthroughKeyAllowed(key, provider, sourceEnv, platform);
         const value = sourceEnv[key];
         if (typeof value === 'string')
             baseline[key] = value;
@@ -626,6 +667,9 @@ export async function materializeWorkerLaunchTransport(input) {
     const { attempt } = input;
     if (!attemptTransportPathsAreDeterministic(attempt))
         throw new Error('worker_launch_transport_paths_invalid');
+    // The supervisor re-reads the passthrough list for this provider once the
+    // pane is live; refusing here reports it from the leader before delivery.
+    assertEnvPassthroughAllowed(attempt.provider);
     const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
         providerEnv: input.providerEnv,
         releaseAfterSpawn: input.releaseAfterSpawn,
@@ -1706,7 +1750,7 @@ async function waitForBootstrapDecision(spec) {
 }
 function buildBootstrapProviderEnvironment(spec, sourceEnv, platform) {
     return {
-        ...buildProviderEnvironment(spec.provider_env, sourceEnv, platform),
+        ...buildProviderEnvironment(spec.provider_env, sourceEnv, platform, undefined, spec.provider),
         ...(typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === 'string'
             || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === 'string'
             ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: '1' }
