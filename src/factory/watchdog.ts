@@ -20,7 +20,8 @@ import { defaultSpawnFn, type SpawnNextTracker } from '../hooks/session-end/spaw
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export const DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1000;
-export const HARBOR_NEED_INFO_LABEL = 'harbor:need-info';
+/** A stall needs the maintainer; `harbor:need-info` would read as "waiting on the reporter". */
+export const HARBOR_FOR_MAINTAINER_LABEL = 'harbor:for-maintainer';
 
 /** Ledgers are only ever named after a spawned uuid session id. */
 const LEDGER_FILE_PATTERN = /^chain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/i;
@@ -146,12 +147,12 @@ export function stallAlertComment(stall: StalledLink): string {
   return `链已停住：${stall.stage} 环会话 ${stall.session} 已 ${minutes} 分钟未推进（预写 ledger 未被接管），需人工检查。`;
 }
 
-/** One-shot alert for a stalled link: tracker issue gets the harbor:need-info label + comment, otherwise audit trail. */
+/** One-shot alert for a stalled link: tracker issue gets the harbor:for-maintainer label + comment, otherwise audit trail. */
 export function flagStall(stall: StalledLink, deps: WatchdogDeps): void {
   const tracker = stall.tracker;
   if (tracker) {
     const spawner = deps.spawner ?? defaultSpawnFn;
-    spawner('gh', issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_NEED_INFO_LABEL));
+    spawner('gh', issueAddLabelArgv(tracker.repo, tracker.issue, HARBOR_FOR_MAINTAINER_LABEL));
     spawner('gh', issueCommentBodyArgv(tracker.repo, tracker.issue, stallAlertComment(stall)));
     return;
   }

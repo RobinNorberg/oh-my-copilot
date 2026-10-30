@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a322bf33b6f39d623cf05813a2afac4f8361e4fd",
-    "sourceSha256": "a5736060fadb984966612b1cc519610d5af0aef7ec8307f0e74266545fcb9d42",
+    "head": "0c9931653004f52110e33cd99ee524e597b6cf59",
+    "sourceSha256": "d3bbb2c915e11103cbce2d53fd52f876d5631087eb84bbe1cec0449de679ce66",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a322bf33b6f39d623cf05813a2afac4f8361e4fd",
-  "sourceSha256": "a5736060fadb984966612b1cc519610d5af0aef7ec8307f0e74266545fcb9d42",
+  "head": "0c9931653004f52110e33cd99ee524e597b6cf59",
+  "sourceSha256": "d3bbb2c915e11103cbce2d53fd52f876d5631087eb84bbe1cec0449de679ce66",
   "counts": {
     "public": {
       "skills": 63,
@@ -8660,6 +8660,11 @@
         "path": ".claude-plugin/plugin.json"
       },
       {
+        "id": ".claude/settings.local.json",
+        "kind": "other",
+        "path": ".claude/settings.local.json"
+      },
+      {
         "id": ".clawhip/project.json",
         "kind": "other",
         "path": ".clawhip/project.json"
@@ -8883,6 +8888,11 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
+      },
+      {
+        "id": ".omg/projection-manifest.json",
+        "kind": "other",
+        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -72914,17 +72924,7 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/hooks/session-end/routing.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/hooks/session-end/routing.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/factory.ts",
-        "to": "src/hooks/session-end/spawn-next.ts",
-        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -78934,6 +78934,11 @@
       {
         "from": "src/factory/watchdog.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "src/cli/commands/intake.ts",
         "kind": "imports"
       },
       {
@@ -90869,11 +90874,6 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/cli/tmux-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/session-end/spawn-next.ts",
-        "to": "src/features/builtin-skills/skills.ts",
         "kind": "imports"
       },
       {
@@ -114513,12 +114513,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9721,
-      "edgeCount": 11451,
-      "importEdgeCount": 9423,
+      "nodeCount": 9723,
+      "edgeCount": 11449,
+      "importEdgeCount": 9421,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ad63db9cbdafe1f8d74bdb50d26a03759f817e0b6fbd01caa91698539ba5c1b1",
-  "manifestSha256": "d5a3b20eddb830a4669026382cb1e6f2f92e906566c942294ce545d665180471"
+  "inventorySha256": "4a273b53ad689801660d3dffb2452934cf9426848fd7a9ba6862f844a25b4143",
+  "manifestSha256": "7508ccf2dc3511ba7e857808248e6e7d530c651118195b69bb6a760e21d5293f"
 }

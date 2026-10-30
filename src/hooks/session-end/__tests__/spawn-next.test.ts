@@ -78,6 +78,12 @@ describe('planSpawnNext', () => {
     expect(withoutTracker?.trackerCommands).toEqual([]);
   });
 
+  it('comments but writes no label for a label-less tracker (harbor owns the labels)', () => {
+    const plan = planSpawnNext({ ...chain, tracker: { repo: 'owner/repo', issue: 42 } }, '/omc-root');
+    expect(plan?.trackerCommands).toHaveLength(1);
+    expect(plan?.trackerCommands[0]?.slice(0, 6)).toEqual(['gh', 'issue', 'comment', '42', '--repo', 'owner/repo']);
+  });
+
   it('appends the AFK permission profile to the spawn argv', () => {
     const plan = planSpawnNext(chain, '/omc-root');
     for (const flag of AFK_SPAWN_FLAGS) expect(plan?.spawnArgv).toContain(flag);
@@ -127,6 +133,9 @@ describe('planSpawnNext', () => {
 
   it('rejects a chain whose tracker repo or label carries shell metacharacters', () => {
     expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker!, repo: 'owner/repo; rm -rf /' } }, '/omc-root')).toThrow(/invalid tracker repo/);
+    for (const issue of ['7; ignore prior', -1, 1.5, 2 ** 60]) {
+      expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker!, issue: issue as number } }, '/omc-root')).toThrow(/invalid tracker issue/);
+    }
     expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker!, nextLabel: 'a b; touch /tmp/x' } }, '/omc-root')).toThrow(/invalid tracker label/);
   });
 
@@ -302,6 +311,25 @@ describe('executeSpawnNext', () => {
       expect(comment?.[1].join(' ')).toContain('无自动重试');
       const label = ghCalls.find(([, args]) => args.includes('edit'));
       expect(label?.[1].join(' ')).toContain('failed');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('alerts a label-less tracker with a comment only when spawning fails', () => {
+    const calls = sessions();
+    const failingSpawn: SpawnFn = (command, args) => {
+      if (command === 'claude') throw new Error('spawn-failure');
+      calls.push([command, args]);
+      return { unref() {} };
+    };
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
+    try {
+      expect(() => executeSpawnNext({ ...chain, tracker: { repo: 'owner/repo', issue: 42 } }, directory, failingSpawn)).toThrow('spawn-failure');
+      const ghCalls = calls.filter(([command]) => command === 'gh');
+      expect(ghCalls).toHaveLength(1);
+      expect(ghCalls[0][1]).toContain('comment');
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

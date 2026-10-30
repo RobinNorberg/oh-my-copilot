@@ -36,8 +36,8 @@ describe('loadMapRecords', () => {
     const gh = fakeGh(
       {
         46: ghView({ labels: [{ name: 'wayfinder:map' }] }),
-        50: ghView({ number: 50, labels: ['wayfinder:research', { name: 'agents' }], parent: { number: 46 }, body: '## Acceptance criteria\n\n- [ ] x' }),
-        51: ghView({ number: 51, labels: [{ name: 'wayfinder:grilling' }], parent: { number: 46 }, blockedBy: { nodes: [{ number: 50, state: 'OPEN' }] }, body: 'q' }),
+        50: ghView({ number: 50, labels: ['wayfinder:research', { name: 'agents' }], parent: { number: 46, url: 'https://github.com/o/r/issues/46' }, body: '## Acceptance criteria\n\n- [ ] x' }),
+        51: ghView({ number: 51, labels: [{ name: 'wayfinder:grilling' }], parent: { number: 46, url: 'https://github.com/o/r/issues/46' }, blockedBy: { nodes: [{ number: 50, state: 'OPEN' }] }, body: 'q' }),
       },
       JSON.stringify([
         { number: 50, state: 'OPEN', labels: [{ name: 'wayfinder:research' }], assignees: [], body: '## Parent\n\n[o/r#46](https://github.com/o/r/issues/46)' },
@@ -48,6 +48,7 @@ describe('loadMapRecords', () => {
     const byNumber = new Map(records.map((r) => [r.number, r]));
     expect(byNumber.get(50)?.labels).toEqual(['wayfinder:research', 'agents']);
     expect(byNumber.get(50)?.nativeParent).toBe(46);
+    expect(byNumber.get(50)?.nativeParentRepo).toBe('o/r');
     expect(byNumber.get(51)?.nativeBlockedBy).toEqual([50]);
   });
 
@@ -55,7 +56,7 @@ describe('loadMapRecords', () => {
     const gh = fakeGh(
       {
         46: ghView({}),
-        60: ghView({ number: 60, labels: ['wayfinder:research'], parent: { number: 46 }, body: '## Blocked by\n\n- [#61](https://github.com/o/r/issues/61)' }),
+        60: ghView({ number: 60, labels: ['wayfinder:research'], parent: { number: 46, url: 'https://github.com/o/r/issues/46' }, body: '## Blocked by\n\n- [#61](https://github.com/o/r/issues/61)' }),
         61: ghView({ number: 61, state: 'CLOSED', labels: ['wayfinder:research'] }),
       },
       JSON.stringify([{ number: 60, state: 'OPEN', labels: [{ name: 'wayfinder:research' }], assignees: [], body: '## Parent\n\n[o/r#46](https://github.com/o/r/issues/46)' }]),

@@ -4,7 +4,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
-import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall, type StalledLink } from './watchdog.js';
+import { DEFAULT_STALL_THRESHOLD_MS, HARBOR_FOR_MAINTAINER_LABEL, detectStalledLinks, flagStall, type StalledLink } from './watchdog.js';
+import { checkOrCreateHarborLabels } from '../cli/commands/intake.js';
 
 const tempRoots: string[] = [];
 
@@ -150,21 +151,32 @@ describe('flagStall', () => {
     stage: 'intent',
     stalledForMs: 45 * 60_000,
   };
-  const tracker = { repo: 'acme/widget', issue: 12, nextLabel: 'factory:plan', failedLabel: 'factory:failed' };
+  const tracker = { repo: 'acme/widget', issue: 12 };
 
-  it('labels and comments the tracker issue with harbor:need-info when a tracker is present', () => {
+  it('labels and comments the tracker issue with harbor:for-maintainer when a tracker is present', () => {
     const calls: Array<{ cmd: string; args: string[] }> = [];
     flagStall({ ...stall, tracker }, { cwd: tempDir(), spawner: (cmd, args) => { calls.push({ cmd, args }); } });
 
     expect(calls).toHaveLength(2);
     expect(calls[0]).toEqual({
       cmd: 'gh',
-      args: ['issue', 'edit', '12', '--repo', 'acme/widget', '--add-label', 'harbor:need-info'],
+      args: ['issue', 'edit', '12', '--repo', 'acme/widget', '--add-label', 'harbor:for-maintainer'],
     });
     expect(calls[1].cmd).toBe('gh');
     expect(calls[1].args.slice(0, 5)).toEqual(['issue', 'comment', '12', '--repo', 'acme/widget']);
     expect(calls[1].args[5]).toBe('--body');
     expect(calls[1].args[6]).toContain('intent');
+  });
+
+  it('uses a harbor label that harbor label setup creates', () => {
+    const created: string[] = [];
+    const check = checkOrCreateHarborLabels(tempDir(), (_cmd, args) => {
+      if (args[1] === 'list') return { status: 0, stdout: '[]', stderr: '' };
+      created.push(args[2]);
+      return { status: 0, stdout: '', stderr: '' };
+    });
+    expect(check).toEqual({ ok: true });
+    expect(created).toContain(HARBOR_FOR_MAINTAINER_LABEL);
   });
 
   it('appends a stalled record to the audit trail when there is no tracker', () => {
