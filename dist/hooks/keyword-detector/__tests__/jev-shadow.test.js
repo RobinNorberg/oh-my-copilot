@@ -127,5 +127,12 @@ describe('keyword-detector shadow judgment points', () => {
         expect(intentResult.answer).toBe(true);
         expect(intentResult.source).toBe('twin');
     });
+    it('twin recognizes the omg: namespaced /intent slash form', async () => {
+        process.env.TYPESAFE_API_KEY = 'test-key-123';
+        process.env.OMC_JEV = 'intent';
+        const intent = stubFetch({ noul: false });
+        const result = await recordIntentShadow(`/omg:${INTENT_PROMPT.slice(1)}`, intent.fetchFn);
+        expect(result.answer).toBe(true);
+    });
 });
 //# sourceMappingURL=jev-shadow.test.js.map

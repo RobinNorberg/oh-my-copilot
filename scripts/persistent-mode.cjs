@@ -500,7 +500,7 @@ const PASTED_ECHO_PROMPT_SENTINEL = "(prompt omitted: pasted system echo)";
 
 function isAutopilotRoutingEchoPrompt(promptText) {
   return /^\[MAGIC KEYWORDS?(?: DETECTED)?:\s*AUTOPILOT\s*\]\s*$/i.test(promptText) ||
-    /^\/(?:oh-my-copilot:|omc:)?autopilot(?:\s+execute)?\s*$/i.test(promptText) ||
+    /^\/(?:oh-my-copilot:|omc:|omg:)?autopilot(?:\s+execute)?\s*$/i.test(promptText) ||
     promptText === PASTED_ECHO_PROMPT_SENTINEL;
 }
 

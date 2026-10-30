@@ -96,7 +96,7 @@ export const KEYWORD_PRIORITY: KeywordType[] = [
 ];
 
 const RETIRED_WORKFLOW_SLASH_PATTERN =
-  /^\s*\/(?:oh-my-copilot:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
+  /^\s*\/(?:oh-my-copilot:|omc:|omg:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
 
 export function isRetiredWorkflowSlashInvocation(text: string): boolean {
   return RETIRED_WORKFLOW_SLASH_PATTERN.test(text);
@@ -139,7 +139,7 @@ const SLASH_SKILL_TO_KEYWORD_TYPE: Partial<
 };
 
 const WORKFLOW_SLASH_PATTERN = new RegExp(
-  '^\\s*/(?:oh-my-copilot:|omc:)?(' +
+  '^\\s*/(?:oh-my-copilot:|omc:|omg:)?(' +
     CANONICAL_WORKFLOW_SLASH_SKILLS
       .map((skill) => skill.replace(/-/g, '\\-'))
       .join('|') +
@@ -159,7 +159,7 @@ export interface ExplicitWorkflowSlashInvocation {
 /**
  * Parse an explicit workflow slash invocation at the start of a prompt.
  *
- * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
+ * Recognizes `/<skill>`, `/omc:<skill>`, `/omg:<skill>`, and `/oh-my-copilot:<skill>` for
  * the canonical workflow skill list. Code fences and inline backticks are
  * stripped first so quoted commands do not match. The trailing lookahead
  * (whitespace, end-of-text, or punctuation) prevents file paths like
@@ -903,7 +903,7 @@ export function detectKeywordsWithType(
   // Check for an explicit canonical workflow slash invocation BEFORE sanitization.
   // The general sanitizer strips bare `/word` tokens as file paths, so bare
   // commands like `/ralph fix auth` would otherwise never match. This must be
-  // robust to surrounding whitespace, namespace prefixes (`/omc:`,
+  // robust to surrounding whitespace, namespace prefixes (`/omc:`, `/omg:`,
   // `/oh-my-copilot:`), and code-fence/backtick wrapping (handled inside
   // the parser via removeCodeBlocks).
   const explicitSlash = parseExplicitWorkflowSlashInvocation(text);
