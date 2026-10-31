@@ -24,43 +24,26 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
-> **v5.12.1** is the first npm release of v5.12.0 (tagged, not published) and fixes a SessionStart `update-check.json` key-order race. **v5.12.0** ports upstream `dev` through faedfd200 (upstream v5.7.0 to v5.7.6): `omg ask muse`, the `claudeMdEnabled` opt-out, PostToolUse file-context injectors only for file tools, and sturdier frontmatter and glob matching; the retired `merge_readiness_*` MCP tools are removed ([migration note](docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed)).
-> **v5.11.0** adds five `copilot_run_*` MCP tools that delegate a task to a headless Copilot session in its own git worktree (opt-in with `OMG_COPILOT_RUN_ALLOW=1`; [reference](docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot)).
-> **v5.10.0** adds a budget governor (`omg budget`; it now only reports AI Credits and no longer enforces, see the [budget change](docs/MIGRATION.md#unreleased-budget-unit-is-ai-credits)), the `omg ship` merge-gate engine and skill, a Copilot `notification` hook for permission prompts and `ask_user`, opt-in in-process SDK tools for sdk team workers, and ports upstream `dev` through 7cb577e94 with narrower permission auto-approval ([changelog](CHANGELOG.md)).
-> **v5.9.0** runs `omg team` on headless SDK workers by default under the Copilot CLI, dispatches Copilot hooks per event (12 entries), reads `.copilot/omg.jsonc` everywhere, adds a daily upstream drift bot, and ports upstream `dev` through a720eabd0 ([migration note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default)).
-> **v5.8.1** ports upstream oh-my-claudecode `dev` through ef9a44f0e: a cheaper HUD cache wrapper, HUD support for `TaskCreate`/`TaskUpdate` todos and an effort-level element, a pasted-echo autopilot fix, a detached-session format fix, and ralph's `hardMaxIterations` enforced in the Stop hook scripts ([migration note](docs/MIGRATION.md#v580--v581-ralph-hard-max-in-the-stop-hook)).
-> **v5.8.0** adds an experimental headless team transport (`omg team --transport sdk`), factory chains and faster hooks on Copilot, and a Copilot smoke job in CI ([migration note](docs/MIGRATION.md#v570--v580-sdk-team-transport)).
-> **v5.7.0** adds `omg smoke copilot` and the `host_smoke` MCP tool, a headless smoke check against the real Copilot CLI ([migration note](docs/MIGRATION.md#v562--v570-smoke-harness)).
-> **v5.6.1** brings the software factory, headless intake and `omg ralph afk` to Copilot under a scoped AFK permission profile ([upgrade guide](docs/MIGRATION.md#v550--v561-fork-upgrade-guide)).
-> **v5.5.0** makes the fork a native GitHub Copilot CLI plugin (hooks, agents,
-> `copilot` team workers) and renames `COPILOT_CONFIG_DIR` to `COPILOT_HOME`.
-> **v5.0.0** rebased the fork onto upstream oh-my-claudecode v5.0.2 and renamed the
-> CLI to **`omg`**. Runtime state moved to `.omg/` and configuration to
-> `.copilot/omg.jsonc`. Upgrading? Read the
-> [Migration Guide](docs/MIGRATION.md).
+> **What's new:** see the [changelog](CHANGELOG.md) and the [releases page](https://github.com/RobinNorberg/oh-my-copilot/releases).
 
 ## Quick Start
 
 ```bash
-# Step 1: Install (inside a Copilot CLI session)
-/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
-/plugin install oh-my-copilot@omc
-# or from your shell
+# Step 1: Install the plugin (from your shell)
 copilot plugin marketplace add RobinNorberg/oh-my-copilot
 copilot plugin install oh-my-copilot@omc
 # plus the terminal CLI (omg)
 npm i -g oh-my-copilot@latest
 
 # Step 2: Setup
-/oh-my-copilot:omc-setup  # inside a session
-omg setup         # or from your terminal
+/oh-my-copilot:omc-setup  # inside a Copilot CLI session
+omg setup                 # or from your terminal
 
-# Step 3: Build something
-/autopilot "build a todo-app"
+# Step 3: Build something (inside a session)
+/oh-my-copilot:autopilot build a todo-app
 # or just describe it
 autopilot: build a todo-app
 
@@ -70,8 +53,11 @@ autopilot: build a todo-app
 > **Requirements:** Node.js on PATH (every hook runs `node`; under Copilot a
 > hook that cannot start blocks the tool call). The host config directory is
 > `~/.copilot`, or `$COPILOT_HOME` when set; OMC follows Copilot's own
-> variable. Update with `copilot plugin update oh-my-copilot@omc`; uninstall
-> with `copilot plugin uninstall oh-my-copilot@omc`.
+> variable. Update with
+> `copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc`,
+> then run `/oh-my-copilot:omc-setup` again. Uninstall with
+> `copilot plugin uninstall oh-my-copilot@omc`.
+> [Getting Started](docs/GETTING-STARTED.md) covers every install path.
 
 > **Known npm warning:** `npm i -g oh-my-copilot@latest` may print `deprecated prebuild-install@7.1.3`.
 > This comes from the `better-sqlite3` native-addon dependency
@@ -86,10 +72,25 @@ autopilot: build a todo-app
 If you're uncertain about requirements, have a vague idea, or want to micromanage the design:
 
 ```
-/deep-interview "I want to build a todo-app"
+/oh-my-copilot:deep-interview I want to build a todo-app
 ```
 
 The deep interview uses Socratic questioning to clarify your thinking before any code is written.
+
+### The core loop: plan → execute → review → verify
+
+This loop covers most work. Each step is a separate pass, so the reviewer never
+grades its own code.
+
+| Step       | Category | Invocation                  | Example                                                           |
+| ---------- | -------- | --------------------------- | ----------------------------------------------------------------- |
+| 1. Plan    | ![planning](https://img.shields.io/badge/planning-orange) | `/oh-my-copilot:omc-plan`   | `/oh-my-copilot:omc-plan add rate limiting to the public API`     |
+| 2. Execute | ![execution](https://img.shields.io/badge/execution-green) | `/oh-my-copilot:execute`    | `/oh-my-copilot:execute implement the approved rate-limit plan`   |
+| 3. Review  | ![review](https://img.shields.io/badge/review-purple) | `/oh-my-copilot:omc-review` | `/oh-my-copilot:omc-review src/api/`                              |
+| 4. Verify  | ![verify](https://img.shields.io/badge/verify-purple) | `/oh-my-copilot:verify`     | `/oh-my-copilot:verify requests over the limit get a 429`         |
+
+Plan and review carry an `omc-` prefix: bare `/review` is Copilot CLI's own
+command, not OMC's.
 
 ---
 
@@ -107,83 +108,195 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 ---
 
-## Workflows & Magic Keywords
+## Using the Skills
 
-The canonical Tier-0 workflow is `plan → execute → review → verify`. Natural
-language works fine without memorizing anything; these are the shortcuts for
-power users.
+Skills run inside a Copilot CLI session as `/oh-my-copilot:<skill>`. That is
+the only form Copilot CLI registers: `/omc:…` or a bare `/plan` gets Copilot's
+"Unknown command" reply and never reaches OMC. Natural language works too:
+describe the task and OMC picks the workflow.
 
-| Invocation                 | Category      | Effect                                          | Example                                        |
-| -------------------------- | ------------- | ----------------------------------------------- | ---------------------------------------------- |
-| `/team`                    | orchestration | Canonical Team orchestration                    | `/team 3:executor "fix all TypeScript errors"` |
-| `/ask <provider>`          | orchestration | Delegate to another CLI (claude, codex, gemini, antigravity, grok, cursor) | `/ask codex "security analysis"` |
-| `omg team` (terminal)      | orchestration | tmux CLI workers across providers               | `omg team 2:codex "security review"`           |
-| `/plan` / `ralplan`        | planning      | Planning / iterative planning consensus         | `ralplan this feature`                         |
-| `/deep-interview`          | planning      | Socratic requirements clarification             | `/deep-interview "vague idea"`                 |
-| `/execute`                 | execution     | Carry an approved plan through to verified code | `/execute "refactor auth"`                     |
-| `/autopilot` / `autopilot` | execution     | Full autonomous execution                       | `autopilot: build a todo app`                  |
-| `/ralph` / `ralph`         | execution     | Persistence mode                                | `ralph: refactor auth`                         |
-| `/ultragoal`               | execution     | Durable multi-goal workflow with checkpoints    | `/ultragoal create-goals --brief "..."`        |
-| `/self-improve`            | execution     | Autonomous evolutionary code improvement        | `/self-improve the parser module`              |
-| `/skillify`                | execution     | Extract a reusable skill from the session       | `/skillify this workflow`                      |
-| `/review` / `/deep-review` | analysis      | Code review / multi-pass review                 | `/review this PR`                              |
-| `/critique`                | analysis      | Pre-push adversarial critique                   | `/critique my changes`                         |
-| `/verify`                  | analysis      | Evidence-based completion checks                | `/verify the fix`                              |
-| `/trace`                   | analysis      | Evidence-driven causal tracing                  | `/trace why auth is broken`                    |
-| `/debug`                   | analysis      | Session/repo diagnostics                        | `/debug why hooks aren't firing`               |
-| `/discover`                | analysis      | Parallel codebase quality scan                  | `/discover src/hooks/`                         |
-| `/deepinit`                | analysis      | Deep codebase init with AGENTS.md               | `/deepinit`                                    |
-| `deepsearch`               | analysis      | Codebase-focused search routing                 | `deepsearch for auth middleware`               |
-| `ultrathink`               | analysis      | Deep reasoning mode                             | `ultrathink about this architecture`           |
-| `tdd`, `test first`        | analysis      | TDD workflow enforcement                        | `tdd: implement password validation`           |
-| `deslop`, `anti-slop`      | analysis      | AI code slop cleanup (opt-in review lane)       | `deslop the auth module`                       |
-| `/omc-gh-*` skills         | github        | Setup, triage, PR review, auto-review, projects | `/oh-my-copilot:omc-gh-triage`                 |
-| `/omc-ado-*` skills        | devops        | Azure DevOps setup, sprint, triage, PR review   | `/oh-my-copilot:omc-ado-sprint`                |
-| `/hud`                     | utility       | Configure status line display                   | `/hud setup`                                   |
-| `/remember`                | utility       | Save reusable project knowledge                 | `/remember this pattern`                       |
-| `/wiki`                    | utility       | Persistent markdown knowledge base              | `/wiki add auth architecture notes`            |
-| `cancelomc`, `stopomc`     | utility       | Stop active OMC modes                           | `stopomc`                                      |
+### All skills by purpose
+
+![planning](https://img.shields.io/badge/planning-orange) **Planning**
+
+| Invocation                        | Category | Use it when…                                                  |
+| --------------------------------- | -------- | ------------------------------------------------------------- |
+| `/oh-my-copilot:deep-interview`   | ![planning](https://img.shields.io/badge/planning-orange) | the idea is vague and you want questions before any code      |
+| `/oh-my-copilot:ralplan`          | ![planning](https://img.shields.io/badge/planning-orange) | a plan needs planner/architect/critic consensus before a big run |
+| `/oh-my-copilot:research`         | ![planning](https://img.shields.io/badge/planning-orange) | you need a sourced answer to an open question                 |
+| `/oh-my-copilot:external-context` | ![planning](https://img.shields.io/badge/planning-orange) | you need parallel lookups in external documentation           |
+
+![execution](https://img.shields.io/badge/execution-green) **Building**
+
+| Invocation                 | Category | Use it when…                                                                 |
+| -------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `/oh-my-copilot:autopilot` | ![execution](https://img.shields.io/badge/execution-green) | you want idea → working code without hand-holding                            |
+| `/oh-my-copilot:tdd`       | ![execution](https://img.shields.io/badge/execution-green) | you want test-first, one red/green step at a time                            |
+| `/oh-my-copilot:ship`      | ![execution](https://img.shields.io/badge/execution-green) | a task or open PR (`--pr <n>`) should reach merge-ready with independent review and CI gates |
+| `/oh-my-copilot:pr`        | ![execution](https://img.shields.io/badge/execution-green) | you need a PR body built from the session's evidence                         |
+
+![review](https://img.shields.io/badge/review-purple) **Review and verification**
+
+| Invocation                           | Category | Use it when…                                                       |
+| ------------------------------------ | -------- | ------------------------------------------------------------------ |
+| `/oh-my-copilot:deep-review`         | ![review](https://img.shields.io/badge/review-purple) | a change needs multi-pass security, quality and structure review   |
+| `/oh-my-copilot:critique`            | ![review](https://img.shields.io/badge/review-purple) | you want unpushed commits challenged before you push               |
+| `/oh-my-copilot:ai-slop-cleaner`     | ![review](https://img.shields.io/badge/review-purple) | AI-written code needs deletion-first cleanup (`--review` reports only) |
+| `/oh-my-copilot:discover`            | ![review](https://img.shields.io/badge/review-purple) | you want a prioritized improvement backlog for a codebase or folder |
+| `/oh-my-copilot:architecture-survey` | ![review](https://img.shields.io/badge/review-purple) | you want ranked refactoring candidates without code edits          |
+| `/oh-my-copilot:trace`               | ![review](https://img.shields.io/badge/review-purple) | a bug has several plausible causes to test against evidence        |
+| `/oh-my-copilot:debug`               | ![review](https://img.shields.io/badge/review-purple) | OMC itself misbehaves (hooks, state, sessions)                     |
+| `/oh-my-copilot:visual-verdict`      | ![review](https://img.shields.io/badge/review-purple) | a screenshot must match a reference design                         |
+
+![loops](https://img.shields.io/badge/loops-yellow) **Autonomous loops**
+
+| Invocation                        | Category | Use it when…                                                     |
+| --------------------------------- | -------- | ---------------------------------------------------------------- |
+| `/oh-my-copilot:ralph`            | ![loops](https://img.shields.io/badge/loops-yellow) | a task must keep going until a reviewer verifies it complete     |
+| `/oh-my-copilot:ultragoal`        | ![loops](https://img.shields.io/badge/loops-yellow) | the work spans several ordered goals and sessions                |
+| `/oh-my-copilot:autoresearch`     | ![loops](https://img.shields.io/badge/loops-yellow) | one mission should improve under a strict evaluator and a time limit |
+
+![orchestration](https://img.shields.io/badge/orchestration-blue) **Teams and delivery**
+
+| Invocation              | Category | Use it when…                                                                                   |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `/oh-my-copilot:team`   | ![orchestration](https://img.shields.io/badge/orchestration-blue) | N agents should split a task on a shared task list: `/oh-my-copilot:team 3:executor fix all TypeScript errors` |
+| `/oh-my-copilot:ask`    | ![orchestration](https://img.shields.io/badge/orchestration-blue) | you want a second opinion from claude, codex, gemini, antigravity, grok, cursor or muse        |
+
+For headless runs from the terminal, see `omg team`, `omg factory` and
+`omg ship` under [Terminal CLI](#terminal-cli).
+
+![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) **GitHub and Azure DevOps**
+
+| GitHub                              | Azure DevOps                         | Category | Use it when…                                                |
+| ----------------------------------- | ------------------------------------ | -------- | ----------------------------------------------------------- |
+| `/oh-my-copilot:omc-gh-setup`       | `/oh-my-copilot:omc-ado-setup`       | ![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) | connecting the project, or the connection broke             |
+| `/oh-my-copilot:omc-gh-triage`      | `/oh-my-copilot:omc-ado-triage`      | ![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) | you want a health overview: work items, PRs, CI, security alerts |
+| `/oh-my-copilot:omc-gh-review`      | `/oh-my-copilot:omc-ado-review`      | ![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) | you review a PR interactively                               |
+| `/oh-my-copilot:omc-gh-auto-review` | `/oh-my-copilot:omc-ado-auto-review` | ![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) | you want AI comments posted on PRs where you are a reviewer |
+| `/oh-my-copilot:omc-gh-project`     | `/oh-my-copilot:omc-ado-sprint`      | ![github](https://img.shields.io/badge/github-black) ![azure devops](https://img.shields.io/badge/azure_devops-0078D4) | you manage a Projects (v2) board / sprint iterations and capacity |
+
+![setup](https://img.shields.io/badge/setup-lightgray) **Setup and maintenance**
+
+| Invocation                               | Category | Use it when…                                                         |
+| ---------------------------------------- | -------- | -------------------------------------------------------------------- |
+| `/oh-my-copilot:omc-setup`               | ![setup](https://img.shields.io/badge/setup-lightgray) | after install and after every plugin update                          |
+| `/oh-my-copilot:omc-doctor`              | ![setup](https://img.shields.io/badge/setup-lightgray) | the install looks broken                                             |
+| `/oh-my-copilot:hud`                     | ![setup](https://img.shields.io/badge/setup-lightgray) | you want to change the status line                                   |
+| `/oh-my-copilot:configure-notifications` | ![setup](https://img.shields.io/badge/setup-lightgray) | you want Telegram, Discord or Slack alerts                           |
+| `/oh-my-copilot:cancel`                  | ![setup](https://img.shields.io/badge/setup-lightgray) | you need to stop an active mode (ralph, autopilot, team, ultragoal)  |
+| `/oh-my-copilot:skill`                   | ![setup](https://img.shields.io/badge/setup-lightgray) | you want to list, add, edit or remove local skills                   |
+| `/oh-my-copilot:skillify`                | ![setup](https://img.shields.io/badge/setup-lightgray) | a workflow from this session should become a reusable skill          |
+| `/oh-my-copilot:release`                 | ![setup](https://img.shields.io/badge/setup-lightgray) | you release your own repo (OMC's own releases use maintainer-only `omg release`) |
+
+![utility](https://img.shields.io/badge/utility-lightgray) **Knowledge and utilities**
+
+| Invocation                                | Category | Use it when…                                                   |
+| ----------------------------------------- | -------- | -------------------------------------------------------------- |
+| `/oh-my-copilot:remember`                 | ![utility](https://img.shields.io/badge/utility-lightgray) | something learned belongs in project memory, notepad or docs   |
+| `/oh-my-copilot:wiki`                     | ![utility](https://img.shields.io/badge/utility-lightgray) | you want a persistent markdown knowledge base across sessions  |
+| `/oh-my-copilot:deepinit`                 | ![utility](https://img.shields.io/badge/utility-lightgray) | a codebase needs hierarchical `AGENTS.md` docs                 |
+| `/oh-my-copilot:project-session-manager`  | ![utility](https://img.shields.io/badge/utility-lightgray) | each issue or PR should get its own worktree (alias `psm`)     |
+| `/oh-my-copilot:session-flow`             | ![utility](https://img.shields.io/badge/utility-lightgray) | a long session lost the thread and you need a map of it        |
+| `/oh-my-copilot:diagram`                  | ![utility](https://img.shields.io/badge/utility-lightgray) | an explanation needs the smallest visual: tree, Mermaid or diff |
+
+<details>
+<summary><img src="https://img.shields.io/badge/shipyard-teal" alt="shipyard"> <b>Shipyard (governed delivery)</b></summary>
+
+These assume a repo set up with `/oh-my-copilot:drydock`.
+
+| Invocation                     | Category | Use it when…                                                         |
+| ------------------------------ | -------- | -------------------------------------------------------------------- |
+| `/oh-my-copilot:drydock`       | ![shipyard](https://img.shields.io/badge/shipyard-teal) | a repo needs the shared shipyard harness (`--check` audits drift)    |
+| `/oh-my-copilot:launch`        | ![shipyard](https://img.shields.io/badge/shipyard-teal) | a mission should go through spec → tickets → governed execution      |
+| `/oh-my-copilot:harbor`        | ![shipyard](https://img.shields.io/badge/shipyard-teal) | incoming issues and PRs need their claims verified before you decide |
+| `/oh-my-copilot:intent`        | ![shipyard](https://img.shields.io/badge/shipyard-teal) | a support or ops problem report must become a requirements brief     |
+| `/oh-my-copilot:ask-navigator` | ![shipyard](https://img.shields.io/badge/shipyard-teal) | the destination is unclear and you want a map of decisions first     |
+| `/oh-my-copilot:loft`          | ![shipyard](https://img.shields.io/badge/shipyard-teal) | a design question needs a throwaway prototype to settle              |
+| `/oh-my-copilot:map`           | ![shipyard](https://img.shields.io/badge/shipyard-teal) | you know the job but not which skill owns it                         |
+| `/oh-my-copilot:refit`         | ![shipyard](https://img.shields.io/badge/shipyard-teal) | you want a retrospective across past sessions with proposed fixes    |
+
+</details>
+
+<details>
+<summary><img src="https://img.shields.io/badge/discipline-gray" alt="discipline"> <b>Writing disciplines (loaded by other skills)</b></summary>
+
+Other skills load these; invoke one directly to apply it to your own work.
+
+| Invocation                                | Category | Use it when…                                    |
+| ----------------------------------------- | -------- | ----------------------------------------------- |
+| `/oh-my-copilot:minimal-code-discipline`  | ![discipline](https://img.shields.io/badge/discipline-gray) | you want the shortest correct diff, reuse first |
+| `/oh-my-copilot:minimal-prose-discipline` | ![discipline](https://img.shields.io/badge/discipline-gray) | you want terse, filler-free replies             |
+| `/oh-my-copilot:agent-doc-discipline`     | ![discipline](https://img.shields.io/badge/discipline-gray) | you write docs that agents will read            |
+
+</details>
+
+<details>
+<summary><img src="https://img.shields.io/badge/loops-yellow" alt="loops"> <b>Advanced loops</b></summary>
+
+| Invocation                        | Category | Use it when…                                                   |
+| --------------------------------- | -------- | -------------------------------------------------------------- |
+| `/oh-my-copilot:graph`            | ![loops](https://img.shields.io/badge/loops-yellow) | a pipeline should run as a declarative DAG with crash recovery |
+| `/oh-my-copilot:ralph-experiment` | ![loops](https://img.shields.io/badge/loops-yellow) | you want hypothesis-driven experiments with git checkpoints    |
+| `/oh-my-copilot:self-improve`     | ![loops](https://img.shields.io/badge/loops-yellow) | you want tournament-style evolutionary improvement of code     |
+
+</details>
+
+The [Full Reference](docs/REFERENCE.md#skills-63-total) lists every skill with
+its arguments.
+
+### Magic keywords
+
+Type these in a normal prompt; no slash needed.
+
+| Keyword                                      | Category | Starts             |
+| -------------------------------------------- | -------- | ------------------ |
+| `autopilot`, `build me an app`, `end to end` | ![execution](https://img.shields.io/badge/execution-green) | autopilot          |
+| `ralph`                                      | ![loops](https://img.shields.io/badge/loops-yellow) | ralph              |
+| `ralplan`                                    | ![planning](https://img.shields.io/badge/planning-orange) | ralplan            |
+| `deep interview`                             | ![planning](https://img.shields.io/badge/planning-orange) | deep-interview     |
+| `ultragoal`                                  | ![loops](https://img.shields.io/badge/loops-yellow) | ultragoal          |
+| `deslop`, `anti-slop`                        | ![review](https://img.shields.io/badge/review-purple) | ai-slop-cleaner    |
+| `tdd`, `test first`                          | ![execution](https://img.shields.io/badge/execution-green) | tdd                |
+| `code review`, `security review`             | ![review](https://img.shields.io/badge/review-purple) | review mode        |
+| `ultrathink`, `think hard`                   | ![analysis](https://img.shields.io/badge/analysis-purple) | extended reasoning |
+| `deepsearch`, `search the codebase`          | ![analysis](https://img.shields.io/badge/analysis-purple) | codebase search    |
+| `deep-analyze`                               | ![analysis](https://img.shields.io/badge/analysis-purple) | analysis mode      |
+| `wiki`                                       | ![utility](https://img.shields.io/badge/utility-lightgray) | wiki               |
+| `cancelomc`, `stopomc`                       | ![setup](https://img.shields.io/badge/setup-lightgray) | cancel             |
 
 **Notes:**
 
 - **Informational filtering**: asking "what is ralph?" won't trigger execution — only actionable uses activate keywords.
-- v5 retired the legacy workflow names (`ultrawork`, `swarm`, `pipeline`, `deep-dive`, and friends) outright — the
-  [Migration Guide](docs/MIGRATION.md) has the full replacement table.
+- Team mode never starts from a keyword; use `/oh-my-copilot:team`.
+- v5 retired the legacy workflow names (`ultrawork`, `ultraqa`, `ultrapilot`, `swarm`, `pipeline`, `ccg`, `sciomc`,
+  `deep-dive`, and friends) outright — the [Migration Guide](docs/MIGRATION.md) has the full replacement table.
 
 ---
 
-## Orchestration between agents
+## Terminal CLI
 
-### Team Mode
+The `omg` binary covers setup and the headless workflows:
 
-**Team** is the canonical orchestration surface. It runs a staged pipeline:
+| Command                                                  | What it does                                                         |
+| -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `omg setup`, `omg update`, `omg doctor`                  | install, update and diagnose OMC                                     |
+| `omg team 3:copilot "fix failing tests"`                 | run a team of workers: headless SDK workers in a Copilot CLI session, tmux panes elsewhere |
+| `omg ask codex "identify architecture risks"`            | ask another AI CLI and save the answer as an artifact                |
+| `omg factory setup` / `check` / `run <issue>`            | configure the software factory, bucket intake items, drive one issue to a merge-ready PR |
+| `omg ship status <pr>`                                   | show a ship run's review verdicts and gate state                     |
+| `omg smoke copilot`                                      | load-check the plugin in a real Copilot CLI                          |
+| `omg budget`                                             | show the AI Credits ledger                                           |
 
-`team-plan → team-prd → team-exec → team-verify → team-fix (loop)`
+`omg --help` lists everything; the [CLI reference](docs/REFERENCE.md#cli-commands-askteamsession) has the details.
 
-```bash
-/team 3:executor "fix all TypeScript errors"
-```
-
-### Provider Advisor
-
-Fan a question out to other AI CLIs and let your session synthesize the results:
-
-```bash
-/ask claude "review this migration plan"
-/ask codex "identify architecture risks"
-/ask antigravity "propose UI polish ideas"
-```
-
-### OMG Team Mode
-
-`omg team` spawns real tmux CLI workers for cross-model tasks:
+### Team workers
 
 ```bash
-omg team 1:claude "review the database module for sql issues"
+omg team 3:copilot "fix failing tests"
 omg team 2:codex "review the auth module for security issues"
-omg team 2:antigravity "redesign UI components for accessibility"
-omg team status auth-review
-omg team shutdown auth-review
+omg team status fix-failing-tests
+omg team shutdown fix-failing-tests
 ```
 
 [Team worktree mode docs →](docs/TEAM-WORKTREE-MODE.md)
@@ -212,7 +325,8 @@ omg team shutdown auth-review
 
 ### Platform & tmux
 
-OMC features like `omg team` and rate-limit detection require **tmux**:
+Pane-based `omg team` workers (the default outside a Copilot CLI session, and
+for non-Copilot providers) and `omg wait` rate-limit auto-resume require **tmux**:
 
 | Platform       | tmux provider                                          | Install                 |
 | -------------- | ------------------------------------------------------ | ----------------------- |
@@ -242,25 +356,13 @@ Only Copilot CLI is required — the others are optional and add cross-provider 
 
 ---
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=RobinNorberg%2Foh-my-copilot&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&legend=top-left" />
- </picture>
-</a>
-
----
-
 ## Credits
 
 oh-my-copilot is a downstream fork of
 [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by
 [Yeachan Heo](https://github.com/Yeachan-Heo), who created and leads the
-orchestration engine this project builds on. v5 tracks upstream v5.0.2. If you
-work primarily in Claude Code, use the original — and consider
+orchestration engine this project builds on. The fork regularly ports upstream
+`dev`. If you work primarily in Claude Code, use the original — and consider
 [sponsoring him](https://github.com/sponsors/Yeachan-Heo).
 
 **Also inspired by:** [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [Superpowers](https://github.com/obra/superpowers) • [get-shit-done](https://github.com/gsd-build/get-shit-done) • [Ouroboros](https://github.com/Q00/ouroboros) • [BMAD](https://github.com/bmad-code-org/BMAD-METHOD)
