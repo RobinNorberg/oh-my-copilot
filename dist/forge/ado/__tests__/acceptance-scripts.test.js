@@ -8,11 +8,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { parseTicketFile } from '../../../factory/enqueue.js';
 import { redactAdoSecrets } from '../redact.js';
 import { ADO_ROUTES } from '../routes.js';
 import { parseAdoFixture } from './fixtures.js';
 // @ts-expect-error Script source is intentionally JavaScript-only.
-import { backlogToWorkItems, inlineHtml, parseBacklog } from '../../../../scripts/lib/backlog-to-workitems.mjs';
+import { backlogToTicketFile, inlineHtml, parseBacklog } from '../../../../scripts/lib/backlog-to-workitems.mjs';
 // @ts-expect-error Script source is intentionally JavaScript-only.
 import * as acceptance from '../../../../scripts/ado-acceptance.mjs';
 // @ts-expect-error Script source is intentionally JavaScript-only.
@@ -78,18 +79,27 @@ describe('scripts/lib/backlog-to-workitems.mjs', () => {
         expect(tickets[1].dependsOn).toEqual([]);
         expect(tickets[2].dependsOn).toEqual(['EXC-007', 'EXC-001']);
     });
-    it('builds escaped HTML fields and reports dependencies the backlog does not define', () => {
-        const { items, unknown } = backlogToWorkItems(BACKLOG);
-        expect(items[0]).toMatchObject({
-            key: 'EXC-001',
+    it('builds the enqueue ticket file: lower-case keys, blockedBy keys the backlog defines, unknown dependencies reported', () => {
+        const { file, unknown } = backlogToTicketFile(BACKLOG, 500);
+        expect(file).toMatchObject({ schemaVersion: 1, spec: 500 });
+        expect(file.tickets[0]).toEqual({
+            key: 'exc-001',
             title: 'EXC-001 Fuel gauge',
-            descriptionHtml: '<p>Depends on: none.</p>',
+            body: 'Depends on: none.',
+            acceptance: [
+                'Add `fuel` (0..`EXCAVATOR.fuelCapacity`) to `ExcavatorState`.',
+                'At zero fuel the excavator cannot drive; delivered >= required & <done>.',
+                'Tests: drain rate, empty-tank immobility, refuel pickup.',
+            ],
+            blockedBy: [],
         });
-        expect(items[0].acceptanceHtml).toBe('<ul><li>Add <code>fuel</code> (0..<code>EXCAVATOR.fuelCapacity</code>) to <code>ExcavatorState</code>.</li>'
-            + '<li>At zero fuel the excavator cannot drive; delivered &gt;= required &amp; &lt;done&gt;.</li>'
-            + '<li>Tests: drain rate, empty-tank immobility, refuel pickup.</li></ul>');
+        expect(file.tickets[2]).toMatchObject({ key: 'exc-009', blockedBy: ['exc-001'] });
         expect(unknown).toEqual(['EXC-009 depends on EXC-007, which BACKLOG.md does not define']);
         expect(inlineHtml('`<script>` & "x"')).toBe('<code>&lt;script&gt;</code> &amp; &quot;x&quot;');
+    });
+    it('writes a ticket file that omg factory enqueue accepts', () => {
+        const { file } = backlogToTicketFile(BACKLOG, 500);
+        expect(parseTicketFile(file, 12)).toMatchObject({ spec: 500, tickets: file.tickets });
     });
     it('refuses a duplicate ticket and a ticket without acceptance criteria', () => {
         expect(() => parseBacklog('## EXC-001 A\n- [ ] x\n## EXC-001 B\n- [ ] y\n')).toThrow(/appears twice/);
@@ -103,25 +113,38 @@ const ENTRY = { command: 'C:\\CLI2\\python.exe', prefix: ['-IBm', 'azure.cli'], 
 function manifest(home, over = {}) {
     const m = {
         schemaVersion: 1, runId: RUN, org: ORG, source: 'C:/src', runDir: join(home, RUN), pool: { kind: 'self-hosted', name: 'Default' },
-        project: { name: RUN, id: PROJECT_ID }, repo: { name: RUN, id: 'r', url: 'u' }, pipeline: { id: 7 }, policy: { id: 3 }, workItems: { 'EXC-001': 41 }, trustedAuthorsAdded: [],
+        project: { name: RUN, id: PROJECT_ID }, repo: { name: RUN, id: 'r', url: 'u' }, pipeline: { id: 7 }, policy: { id: 3 },
+        spec: { id: 40, createdBy: 'robin@contoso.example' }, tickets: { 'exc-001': { id: 41, blockedBy: [] }, 'exc-009': { id: 43, blockedBy: ['exc-001'] } }, trustedAuthorsAdded: [],
         ...over,
     };
     mkdirSync(home, { recursive: true });
     writeFileSync(join(home, `${RUN}.json`), JSON.stringify(m), 'utf8');
     return m;
 }
-function context(o, answer) {
+const USER_CONFIG = 'C:\\Users\\robin\\.copilot\\omg.jsonc';
+function context(o, answer, extra = {}) {
     const lines = [];
     const calls = [];
+    const asked = [];
     const spawn = (cmd, args) => {
         calls.push({ cmd, args });
         if (!answer)
             throw new Error(`spawned in a dry run: ${cmd} ${args.join(' ')}`);
         return { stderr: '', ...answer({ cmd, args }) };
     };
-    const ctx = acceptance.createContext(o, { spawn, azEntry: ENTRY, log: (l) => lines.push(l), now: () => new Date('2026-10-29T12:00:00Z'), env: {} });
-    return { ctx, lines, calls };
+    const confirm = (q) => {
+        asked.push(q);
+        lines.push(`asked: ${q}`);
+        if (!extra.confirm)
+            throw new Error(`asked in a dry run: ${q}`);
+        return extra.confirm(q);
+    };
+    const userConfig = { path: USER_CONFIG, trustedAuthors: () => extra.trustedAuthors ?? [] };
+    const ctx = acceptance.createContext(o, { spawn, azEntry: ENTRY, log: (l) => lines.push(l), now: () => new Date('2026-10-29T12:00:00Z'), env: {}, confirm, userConfig });
+    return { ctx, lines, calls, asked };
 }
+/** An omg call's argv after bin/oh-my-copilot.js. */
+const omgArgs = (call) => call.args.slice(1);
 const azArgs = (call) => call.args.slice(ENTRY.prefix.length);
 /** What azArgv appends to every azure-devops extension command. */
 const J = ['--detect', 'false', '--output', 'json'];
@@ -214,7 +237,7 @@ describe('scripts/ado-acceptance.mjs az output and cleanup hardening', () => {
 });
 describe('scripts/ado-acceptance.mjs heal-drill', () => {
     const SHA = 'a'.repeat(40);
-    const drill = (withLanes, healRunStatus = 0) => {
+    const drill = (withLanes, healRunStatus = 0, completedPrs = '[]') => {
         const home = freshDir('home');
         manifest(home);
         mkdirSync(join(home, RUN, 'repo'), { recursive: true });
@@ -225,6 +248,8 @@ describe('scripts/ado-acceptance.mjs heal-drill', () => {
             if (c.cmd === ENTRY.command) {
                 if (azArgs(c)[0] === 'pipelines')
                     return { status: 0, stdout: JSON.stringify([{ id: 9, sourceVersion: SHA, status: 'completed', result: 'failed' }]) };
+                if (azArgs(c).slice(0, 3).join(' ') === 'repos pr list')
+                    return { status: 0, stdout: completedPrs };
                 return { status: 0, stdout: '{}' };
             }
             const omg = c.args.slice(1).join(' ');
@@ -248,6 +273,10 @@ describe('scripts/ado-acceptance.mjs heal-drill', () => {
         expect(heal(drill(false))).toEqual(['omg factory heal run abcdef12 --dry-run']);
         expect(() => drill(true, 1)).toThrow(/heal-drill: 1 of/);
     });
+    it('asks az for completed PRs of the run and fails when there is one (the factory never merges)', () => {
+        expect(() => drill(true, 0, JSON.stringify([{ pullRequestId: 12, status: 'completed' }]))).toThrow(/heal-drill: 1 of/);
+        expect(drill(true).filter((l) => l.startsWith('az repos pr list'))).toEqual([`az repos pr list --status completed --repository ${RUN} --project ${RUN} --org ${ORG} ${J.join(' ')}`]);
+    });
 });
 describe('scripts/ado-acceptance.mjs --dry-run', () => {
     const source = freshDir('source');
@@ -258,7 +287,7 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
         expect(calls).toEqual([]);
         return lines;
     };
-    it.each(['preflight', 'create', 'exercise', 'heal-drill', 'capture', 'cleanup', 'all'])('--phase %s prints argv, spawns nothing and writes nothing', (phase) => {
+    it.each(['preflight', 'create', 'enqueue', 'exercise', 'heal-drill', 'capture', 'cleanup', 'all'])('--phase %s prints argv, spawns nothing and writes nothing', (phase) => {
         const home = join(freshDir('dry'), 'acceptance');
         const lines = dryLines(['--org', ORG, '--source', source, '--phase', phase, '--with-lanes'], home);
         expect(lines.some((l) => l.startsWith('[dry-run] '))).toBe(true);
@@ -270,11 +299,12 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
         expect(lines).toContain(az(['devops', 'project', 'create', '--name', RUN, '--org', ORG, '--process', 'Agile', '--visibility', 'private', '--source-control', 'git', ...J]));
         expect(lines).toContain(az(['pipelines', 'create', '--name', 'ci', '--repository', RUN, '--repository-type', 'tfsgit', '--branch', 'main', '--yml-path', 'azure-pipelines.yml', '--skip-first-run', 'true', '--project', RUN, '--org', ORG, ...J]));
         expect(lines).toContain(az([
-            'boards', 'work-item', 'create', '--type', 'User Story', '--title', 'EXC-006 Camera shake',
-            '--description', '<p>Depends on: none. Wave 8: the only call site of <code>updateCamera</code> is <code>src/app.ts</code>.</p>',
-            '--fields', 'Microsoft.VSTS.Common.AcceptanceCriteria=<ul><li><code>updateCamera</code> takes the frame\'s events.</li></ul>', 'System.Tags=factory', '--project', RUN, '--org', ORG, ...J,
+            'boards', 'work-item', 'create', '--type', 'Feature', '--title', `${RUN} spec: the BACKLOG.md tickets`,
+            '--description', '<p>omg live acceptance spec: the <code>BACKLOG.md</code> tickets of the test repository, enqueued as its children with <code>omg factory enqueue</code>.</p>',
+            '--project', RUN, '--org', ORG, ...J,
         ]));
-        expect(lines).toContain(az(['boards', 'work-item', 'relation', 'add', '--id', '<wi:EXC-009>', '--relation-type', 'predecessor', '--target-id', '<wi:EXC-001>', '--org', ORG, ...J]));
+        // The tickets are enqueue's job: create makes no other work item and no link.
+        expect(lines.filter((l) => l.includes('"work-item"'))).toHaveLength(1);
         // The manifest is written before each create.
         const firstWrite = lines.findIndex((l) => l.startsWith('[dry-run] write') && l.includes(`${RUN}.json`));
         expect(firstWrite).toBeGreaterThanOrEqual(0);
@@ -293,11 +323,30 @@ describe('scripts/ado-acceptance.mjs --dry-run', () => {
     it('spends no Copilot credits without --with-lanes: no factory run without --dry-run, no heal approve', () => {
         const home = join(freshDir('dry'), 'acceptance');
         const lines = [...dryLines(['--org', ORG, '--phase', 'exercise'], home), ...dryLines(['--org', ORG, '--phase', 'heal-drill'], home)];
-        const omg = lines.filter((l) => l.startsWith('[dry-run] omg: '));
-        expect(omg.some((l) => l.includes('"factory","run","<first runnable id>","--dry-run"'))).toBe(true);
-        expect(omg.some((l) => /"factory","run","[^"]+"\]/.test(l))).toBe(false);
-        expect(omg.some((l) => l.includes('"approve"') || l.includes('"poll"'))).toBe(false);
-        expect(omg.some((l) => /"heal","run","[^"]+"]/.test(l))).toBe(false);
+        const omg = lines.filter((l) => l.startsWith('[dry-run] omg: ')).map((l) => JSON.parse(l.slice('[dry-run] omg: '.length).replace(/ \(cwd .*$/, '')).slice(2));
+        expect(omg).toContainEqual(['factory', 'run', '--next', '--parent', '<specId>', '--dry-run', '--json']);
+        expect(omg.filter((a) => a[1] === 'run' && !a.includes('--dry-run'))).toEqual([]);
+        expect(omg.some((a) => a.includes('approve') || a.includes('poll'))).toBe(false);
+    });
+    it('prints the enqueue flow in order: the user-config write, enqueue --dry-run, the signature, enqueue, the re-run', () => {
+        const home = join(freshDir('dry'), 'acceptance');
+        const lines = dryLines(['--org', ORG, '--source', source, '--phase', 'enqueue'], home);
+        const tickets = join(home, `${acceptance.RUN_PREFIX}000000000000`, 'tickets.json');
+        const at = (pred) => lines.findIndex(pred);
+        const write = at((l) => l.startsWith(`user-scope write: ${USER_CONFIG}\n  factory.forge.azureDevOps.trustedAuthors: [] -> ["<spec creator uniqueName>"]`));
+        const ask = at((l) => l.startsWith('[dry-run] would ask: Add <spec creator uniqueName> to factory.forge.azureDevOps.trustedAuthors'));
+        const setup = at((l) => l.includes('"--trusted-author","<spec creator uniqueName>","--scope","user","--yes","--json"'));
+        const dry = at((l) => l.includes(JSON.stringify(['factory', 'enqueue', '--spec', '<specId>', '--file', tickets, '--dry-run', '--json']).slice(1, -1)));
+        const sign = at((l) => l.startsWith('[dry-run] would ask: Signature (launch C3): enqueue these 3 tickets as children of spec #<specId>?'));
+        const real = at((l) => l.includes(JSON.stringify(['factory', 'enqueue', '--spec', '<specId>', '--file', tickets, '--json']).slice(1, -1)));
+        expect([write, ask, setup, dry, sign, real].every((i) => i >= 0)).toBe(true);
+        expect(write < ask && ask < setup && setup < dry && dry < sign && sign < real).toBe(true);
+        expect(lines.slice(real + 1).some((l) => l.includes('"--dry-run","--json"') && l.includes('"enqueue"'))).toBe(true);
+        expect(lines.some((l) => l.startsWith(`[dry-run] write ${tickets} (`))).toBe(true);
+        // Without --source there is no BACKLOG.md to read: the dry run says so and still prints every argv.
+        const bare = dryLines(['--org', ORG, '--phase', 'enqueue'], join(freshDir('dry'), 'acceptance'));
+        expect(bare.some((l) => l.includes('pass --source to preview the ticket file'))).toBe(true);
+        expect(bare.filter((l) => l.includes('"enqueue","--spec"'))).toHaveLength(3);
     });
 });
 describe('scripts/ado-acceptance.mjs create', () => {
@@ -307,6 +356,7 @@ describe('scripts/ado-acceptance.mjs create', () => {
         const home = join(freshDir('live'), 'acceptance');
         const manifestFile = join(home, `${RUN}.json`);
         let pendingAtCreate;
+        let pendingAtSpec;
         let nextId = 100;
         const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--source', source, '--phase', 'create', '--home', home]);
         const { ctx, calls } = context(o, (c) => {
@@ -327,14 +377,17 @@ describe('scripts/ado-acceptance.mjs create', () => {
             }
             if (cmd.startsWith('repos show'))
                 return { status: 0, stdout: JSON.stringify({ id: 'b7a1c1a4-0000-4000-8000-000000000001', remoteUrl: `https://contoso-acc@dev.azure.com/contoso-acc/${RUN}/_git/${RUN}` }) };
-            if (cmd.startsWith('boards work-item relation list-type'))
-                return { status: 0, stdout: JSON.stringify([{ name: 'Parent' }, { name: 'Predecessor' }]) };
+            if (cmd === 'boards work-item create --type') {
+                pendingAtSpec = JSON.parse(readFileSync(manifestFile, 'utf8')).pending;
+                return { status: 0, stdout: JSON.stringify({ id: nextId++, fields: { 'System.CreatedBy': { displayName: 'Robin', uniqueName: 'robin@contoso.example' } } }) };
+            }
             return { status: 0, stdout: JSON.stringify({ id: nextId++ }) };
         });
         acceptance.runPhases(ctx);
         expect(pendingAtCreate).toBe('project');
+        expect(pendingAtSpec).toBe('spec');
         const m = JSON.parse(readFileSync(manifestFile, 'utf8'));
-        expect(m).toMatchObject({ runId: RUN, project: { name: RUN, id: PROJECT_ID }, pipeline: { id: 100 }, policy: { id: 105 }, workItems: { 'EXC-001': 101, 'EXC-006': 102, 'EXC-009': 103 }, pending: null, createdDone: true });
+        expect(m).toMatchObject({ runId: RUN, project: { name: RUN, id: PROJECT_ID }, pipeline: { id: 100 }, spec: { id: 101, createdBy: 'robin@contoso.example' }, policy: { id: 102 }, tickets: {}, trustedAuthorsAdded: [], pending: null, createdDone: true });
         const git = calls.filter((c) => c.cmd === 'git').map((c) => c.args.slice(2).join(' '));
         expect(git).toContain('push origin refs/remotes/origin/fix/v1-review:refs/heads/fix/v1-review');
         expect(git.every((g) => !/--force|\s-f\b|\+refs/.test(g))).toBe(true);
@@ -345,6 +398,205 @@ describe('scripts/ado-acceptance.mjs create', () => {
         expect(readFileSync(join(home, RUN, 'repo', 'azure-pipelines.yml'), 'utf8')).toContain('pool:\n  name: Default\n');
         const omg = calls.find((c) => c.cmd === process.execPath);
         expect(omg?.args.slice(1)).toEqual(['factory', 'setup', '--forge', 'azure-devops', '--org', 'contoso-acc', '--project', RUN, '--repo', RUN, '--intake', `area-tag:${RUN}#factory`, '--progress', join(home, RUN, 'progress.json'), '--yes', '--json']);
+    });
+});
+describe('scripts/ado-acceptance.mjs enqueue', () => {
+    const ROWS = (action, ids) => ['exc-001', 'exc-006', 'exc-009'].map((key, i) => ({ key, id: ids[i], action, bucket: null, reasons: [], markCandidate: true }));
+    const setupRun = (over = {}) => {
+        const home = freshDir('home');
+        manifest(home, { tickets: {}, ...over });
+        mkdirSync(join(home, RUN, 'repo'), { recursive: true });
+        writeFileSync(join(home, RUN, 'repo', 'BACKLOG.md'), BACKLOG, 'utf8');
+        return home;
+    };
+    const run = (home, extra, enqueueAnswer) => {
+        const manifests = [];
+        let dryRuns = 0;
+        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'enqueue', '--run', RUN, '--home', home]);
+        const t = context(o, (c) => {
+            const a = omgArgs(c);
+            manifests.push(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8')));
+            const custom = enqueueAnswer?.(a);
+            if (custom)
+                return custom;
+            if (a[1] === 'setup')
+                return { status: 0, stdout: '{}' };
+            if (a.includes('--dry-run')) {
+                dryRuns += 1;
+                return { status: 0, stdout: JSON.stringify({ ok: true, dryRun: true, items: dryRuns === 1 ? ROWS('created', [null, null, null]) : ROWS('unchanged', [41, 42, 43]) }) };
+            }
+            return { status: 0, stdout: JSON.stringify({ ok: true, dryRun: false, items: ROWS('created', [41, 42, 43]), mark: { marker: 'factory-ready', marked: [41, 42], alreadyMarked: [], failed: [] } }) };
+        }, extra);
+        return { ...t, manifests, run: () => acceptance.runPhases(t.ctx) };
+    };
+    const tickets = (home) => join(home, RUN, 'tickets.json');
+    it('prints and confirms the trustedAuthors write, records it first, then enqueues: --dry-run, the signature, enqueue, a re-run', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: () => true, trustedAuthors: ['alice@contoso.example'] });
+        r.run();
+        const enqueue = ['factory', 'enqueue', '--spec', '40', '--file', tickets(home)];
+        expect(r.calls.map(omgArgs)).toEqual([
+            ['factory', 'setup', '--forge', 'azure-devops', '--org', 'contoso-acc', '--project', RUN, '--repo', RUN, '--intake', `area-tag:${RUN}#factory`, '--progress', join(home, RUN, 'progress.json'),
+                '--trusted-author', 'alice@contoso.example,robin@contoso.example', '--scope', 'user', '--yes', '--json'],
+            [...enqueue, '--dry-run', '--json'],
+            [...enqueue, '--json'],
+            [...enqueue, '--dry-run', '--json'],
+        ]);
+        expect(r.asked).toEqual([
+            `Add robin@contoso.example to factory.forge.azureDevOps.trustedAuthors in ${USER_CONFIG}?`,
+            'Signature (launch C3): enqueue these 3 tickets as children of spec #40?',
+        ]);
+        const shown = r.lines.findIndex((l) => l === `user-scope write: ${USER_CONFIG}\n  factory.forge.azureDevOps.trustedAuthors: ["alice@contoso.example"] -> ["alice@contoso.example","robin@contoso.example"]\n  robin@contoso.example created spec #40; enqueue trusts only these uniqueNames. Cleanup lists what this run added; it never removes it.`);
+        expect(shown).toBeGreaterThanOrEqual(0);
+        expect(shown).toBeLessThan(r.lines.findIndex((l) => l.startsWith('asked: Add')));
+        // The manifest names the added author before the user config is written, and the pending enqueue before the real one.
+        expect(r.manifests[0]).toMatchObject({ trustedAuthorsAdded: ['robin@contoso.example'] });
+        expect(r.manifests[2]).toMatchObject({ pending: 'enqueue' });
+        expect(JSON.parse(readFileSync(tickets(home), 'utf8'))).toEqual(backlogToTicketFile(BACKLOG, 40).file);
+        expect(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8'))).toMatchObject({
+            pending: null, trustedAuthorsAdded: ['robin@contoso.example'],
+            tickets: { 'exc-001': { id: 41, blockedBy: [] }, 'exc-006': { id: 42, blockedBy: [] }, 'exc-009': { id: 43, blockedBy: ['exc-001'] } },
+        });
+        expect(r.lines.filter((l) => l.startsWith('PASS'))).toHaveLength(4);
+    });
+    it('writes nothing to the user config and enqueues nothing when the trust is declined', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: () => false });
+        expect(r.run).toThrow(/not confirmed: .* is unchanged/);
+        expect(r.calls).toEqual([]);
+        expect(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8')).trustedAuthorsAdded).toEqual([]);
+    });
+    it('skips the user-config write when the creator is already trusted (uniqueNames fold case)', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: () => true, trustedAuthors: ['ROBIN@contoso.example'] });
+        r.run();
+        expect(r.calls.map((c) => omgArgs(c)[1])).toEqual(['enqueue', 'enqueue', 'enqueue']);
+        expect(r.asked).toEqual(['Signature (launch C3): enqueue these 3 tickets as children of spec #40?']);
+        expect(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8')).trustedAuthorsAdded).toEqual([]);
+    });
+    it('runs only the dry run when the signature is declined', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: (q) => q.startsWith('Add ') });
+        expect(r.run).toThrow(/enqueue not signed: nothing written/);
+        expect(r.calls.map(omgArgs).map((a) => `${a[1]}${a.includes('--dry-run') ? ' --dry-run' : ''}`)).toEqual(['setup', 'enqueue --dry-run']);
+    });
+    it('stops on an enqueue refusal with enqueue\'s own error', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: () => true, trustedAuthors: ['robin@contoso.example'] }, (a) => (a[1] === 'enqueue' ? { status: 2, stdout: JSON.stringify({ ok: false, error: 'ticket file: duplicate key exc-001' }) } : undefined));
+        expect(r.run).toThrow(/omg factory enqueue --dry-run exited 2: ticket file: duplicate key exc-001/);
+        expect(r.asked).toEqual([]);
+    });
+    it('refuses a run made before the enqueue flow (no spec work item)', () => {
+        const home = setupRun({ spec: undefined });
+        expect(run(home, { confirm: () => true }).run).toThrow(/has no spec work item/);
+    });
+    it('cleanup lists the trustedAuthors this run added and the user config they are in', () => {
+        const home = freshDir('home');
+        manifest(home, { trustedAuthorsAdded: ['robin@contoso.example'] });
+        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
+        const { ctx, lines } = context(o, (c) => (azArgs(c)[2] === 'show' ? { status: 0, stdout: JSON.stringify({ id: PROJECT_ID, name: RUN }) } : { status: 0, stdout: '' }));
+        acceptance.runPhases(ctx);
+        expect(lines).toContain(`this run added robin@contoso.example to factory.forge.azureDevOps.trustedAuthors in ${USER_CONFIG}; cleanup never edits the user config, so remove them there yourself if they should not stay trusted.`);
+    });
+});
+describe('scripts/ado-acceptance.mjs exercise', () => {
+    const ITEMS_BEFORE = [{ id: 41, bucket: 'runnable', reasons: [] }, { id: 43, bucket: 'blocked', reasons: ['depends-on:#41'] }];
+    const ITEMS_AFTER = [{ id: 41, bucket: 'blocked', reasons: ['run-active:merge'] }, { id: 43, bucket: 'blocked', reasons: ['depends-on:#41'] }];
+    const RECORDED = [
+        { route: 'git.pullRequests.POST', exitCode: 0, requestBody: { isDraft: true, workItemRefs: [{ id: '41' }] }, stdout: {} },
+        { route: 'policy.evaluations.GET', exitCode: 0, stdout: { value: [] } },
+        { route: 'git.pullRequests.GET', exitCode: 0, stdout: { status: 'active' } },
+        { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '41' }, stdout: {} },
+        { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '41' }, requestBody: { text: 'Factory run for #41 is awaiting a human: **merge** (phase merge).' }, stdout: {} },
+        { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '40' }, requestBody: { text: '- #41 ready to merge: https://dev.azure.com/contoso-acc/x/_git/x/pullrequest/5\n\n<!-- omg-factory-rollup: #41 ready-to-merge 0123456789ab -->\n' }, stdout: {} },
+    ];
+    const exercise = (withLanes, recorded = RECORDED, completed = '[]') => {
+        const home = freshDir('home');
+        manifest(home);
+        mkdirSync(join(home, RUN, 'recorded'), { recursive: true });
+        recorded.forEach((f, i) => writeFileSync(join(home, RUN, 'recorded', `${i}.json`), JSON.stringify(f), 'utf8'));
+        let parentChecks = 0;
+        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'exercise', '--run', RUN, '--home', home, ...(withLanes ? ['--with-lanes'] : [])]);
+        const t = context(o, (c) => {
+            if (c.cmd === ENTRY.command)
+                return { status: 0, stdout: completed };
+            const a = omgArgs(c).join(' ');
+            if (a === 'factory check --parent 40 --json')
+                return { status: 0, stdout: JSON.stringify({ items: parentChecks++ === 0 ? ITEMS_BEFORE : ITEMS_AFTER }) };
+            if (a === 'factory run --next --parent 40 --dry-run --json')
+                return { status: 0, stdout: JSON.stringify({ ok: true, next: 41, message: 'dry run' }) };
+            if (a === 'factory run --next --parent 40 --json')
+                return { status: 0, stdout: JSON.stringify({ ok: true, next: 41, message: 'awaiting-human: merge: ready. Resume with omg factory run 41.' }) };
+            return { status: 0, stdout: '{}' };
+        });
+        return { ...t, run: () => acceptance.runPhases(t.ctx) };
+    };
+    it('checks the spec, picks with run --next --parent, and asserts ordering, write-back and no completed PR', () => {
+        const r = exercise(true);
+        r.run();
+        expect(r.calls.filter((c) => c.cmd !== ENTRY.command).map((c) => omgArgs(c).join(' '))).toEqual([
+            'factory check --json',
+            'factory check --parent 40 --json',
+            'factory board --json',
+            'factory run --next --parent 40 --dry-run --json',
+            'factory run --next --parent 40 --json',
+            'factory poll --once --json',
+            'factory check --parent 40 --json',
+        ]);
+        expect(r.calls.filter((c) => c.cmd === ENTRY.command).map(azArgs)).toEqual([['repos', 'pr', 'list', '--status', 'completed', '--repository', RUN, '--project', RUN, '--org', ORG, ...J]]);
+        expect(r.lines.filter((l) => l.startsWith('FAIL'))).toEqual([]);
+        expect(r.lines).toEqual(expect.arrayContaining([
+            'PASS  the 1 ticket(s) with a predecessor are blocked by it (depends-on)',
+            'PASS  run --next picked #41, a runnable ticket without an open predecessor',
+            'PASS  the spec #40 got the rollup line "- #41 ready to merge"',
+            'PASS  #41 is no longer runnable while its PR waits for the human merge',
+            'PASS  no PR of the run reached completed (the factory never merges)',
+        ]));
+    });
+    it('runs no real factory run without --with-lanes, and still asserts the ordering', () => {
+        const r = exercise(false);
+        r.run();
+        const omg = r.calls.filter((c) => c.cmd !== ENTRY.command).map((c) => omgArgs(c).join(' '));
+        expect(omg.filter((a) => a.startsWith('factory run'))).toEqual(['factory run --next --parent 40 --dry-run --json']);
+        expect(r.lines).toContain('PASS  run --next picked #41, a runnable ticket without an open predecessor');
+    });
+    it('fails when a PR of the run is completed or the rollup line is missing', () => {
+        expect(exercise(true, RECORDED, JSON.stringify([{ pullRequestId: 5 }])).run).toThrow(/exercise: 1 of/);
+        expect(exercise(true, RECORDED.slice(0, -1)).run).toThrow(/exercise: 1 of/);
+    });
+});
+describe('scripts/ado-acceptance.mjs flow assertions', () => {
+    const TICKETS = { 'exc-001': { id: 41, blockedBy: [] }, 'exc-007': { id: 42, blockedBy: [] }, 'exc-009': { id: 43, blockedBy: ['exc-007', 'exc-001'] } };
+    const what = (results) => results.filter((r) => !r.ok).map((r) => r.what);
+    it('orderingAssertions: a ticket must be blocked by each of its predecessors, and --next must pick a runnable one', () => {
+        const rows = [{ id: 41, bucket: 'runnable', reasons: [] }, { id: 42, bucket: 'runnable', reasons: [] }, { id: 43, bucket: 'blocked', reasons: ['depends-on:#42,#41'] }];
+        expect(what(acceptance.orderingAssertions({ items: rows }, TICKETS, 41))).toEqual([]);
+        expect(what(acceptance.orderingAssertions({ items: rows }, TICKETS, 43))).toEqual(['run --next picked #43, a runnable ticket without an open predecessor']);
+        expect(what(acceptance.orderingAssertions({ items: [rows[0], rows[1], { id: 43, bucket: 'blocked', reasons: ['depends-on:#42'] }] }, TICKETS))).toEqual(['the 1 ticket(s) with a predecessor are blocked by it (depends-on)']);
+        expect(what(acceptance.orderingAssertions({ items: [rows[0], rows[1], { id: 43, bucket: 'runnable', reasons: [] }] }, TICKETS))).toEqual(['the 1 ticket(s) with a predecessor are blocked by it (depends-on)']);
+        expect(what(acceptance.orderingAssertions({ items: rows.slice(1) }, TICKETS))).toEqual(['check --parent lists all 3 tickets']);
+        expect(what(acceptance.orderingAssertions({ items: rows }, TICKETS, null))).toEqual(['run --next picked #null, a runnable ticket without an open predecessor']);
+    });
+    it('enqueueAssertions: planned, ids, marked, and an unchanged re-run', () => {
+        const file = { tickets: [{ key: 'exc-001' }, { key: 'exc-009' }] };
+        const dry = { ok: true, dryRun: true, items: [{ key: 'exc-001', id: null, action: 'created' }, { key: 'exc-009', id: null, action: 'created' }] };
+        const real = { ok: true, dryRun: false, items: [{ key: 'exc-001', id: 41, action: 'created' }, { key: 'exc-009', id: 43, action: 'created' }], mark: { marked: [41], alreadyMarked: [], failed: [] } };
+        const again = { ok: true, dryRun: true, items: [{ key: 'exc-001', id: 41, action: 'unchanged' }, { key: 'exc-009', id: 43, action: 'unchanged' }] };
+        expect(what(acceptance.enqueueAssertions(file, dry, real, again))).toEqual([]);
+        const changed = { ...again, items: [again.items[0], { ...again.items[1], action: 'updated' }] };
+        expect(what(acceptance.enqueueAssertions(file, dry, { ...real, mark: { marked: [], alreadyMarked: [], failed: [{ id: 41, error: 'x' }] } }, changed))).toEqual([
+            'the mark step marked the runnable tickets', 'an enqueue re-run (--dry-run) finds every ticket unchanged',
+        ]);
+    });
+    it('outcomeAssertions: the merge gate comment, the rollup line on the spec, and no spec edit', () => {
+        const posts = [
+            { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '41' }, requestBody: { text: 'Factory run for #41 is awaiting a human: **merge** (phase merge).' } },
+            { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '40' }, requestBody: { text: '- #41 ready to merge: https://x/pr/5' } },
+        ];
+        expect(what(acceptance.outcomeAssertions(posts, '40', 41))).toEqual([]);
+        expect(what(acceptance.outcomeAssertions([{ ...posts[0], exitCode: 1 }, posts[1], { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '40' } }], '40', 41))).toEqual([
+            '#41 got the merge gate comment', 'the spec #40 itself is never edited',
+        ]);
     });
 });
 describe('scripts/ado-acceptance.mjs options and assertions', () => {

@@ -4,11 +4,20 @@
  * throwaway Agile project per run, named `omg-acc-<yyyymmddHHMM>` (UTC):
  *
  *   node scripts/ado-acceptance.mjs --org https://dev.azure.com/<org> --source C:/Code/ExcavatorTrek
- *     [--phase preflight|create|exercise|heal-drill|capture|cleanup|all] [--run <runId>]
- *     [--pool <self-hosted pool> | --hosted] [--with-lanes] [--project-id <guid>] [--dry-run]
+ *     [--phase preflight|create|enqueue|exercise|heal-drill|capture|cleanup|all] [--run <runId>]
+ *     [--pool <self-hosted pool> | --hosted] [--with-lanes] [--project-id <guid>] [--yes] [--dry-run]
  *
- * - `all` runs preflight, create, exercise and capture. `heal-drill` (it
- *   needs a working agent and design PR C3) and `cleanup` run only by name.
+ * - `all` runs preflight, create, enqueue, exercise and capture. `heal-drill`
+ *   (it needs a working agent and design PR C3) and `cleanup` run only by name.
+ * - The shipyard–factory flow (2026-10-30 integration design §3): `create`
+ *   makes the spec work item, `enqueue` adds its creator to the user config's
+ *   `factory.forge.azureDevOps.trustedAuthors` (printed, then confirmed) and
+ *   hands the BACKLOG.md tickets to `omg factory enqueue` (`--dry-run` first,
+ *   then for real once the dry run is signed), and `exercise` runs
+ *   `omg factory run --next --parent <spec>`. `--yes` gives both
+ *   confirmations without a prompt.
+ * - No PR ever reaches `completed`: the factory never merges, and exercise
+ *   and heal-drill assert it with `az repos pr list --status completed`.
  * - Later phases use `--run <runId>`, or the newest manifest.
  * - The manifest `~/.omg/acceptance/<runId>.json` records every created id
  *   and is written before each create. The clone, the progress file, the OMC
@@ -33,18 +42,20 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { backlogToWorkItems } from './lib/backlog-to-workitems.mjs';
+import { backlogToTicketFile, inlineHtml } from './lib/backlog-to-workitems.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const RUN_PREFIX = 'omg-acc-';
 const RUN_ID = /^omg-acc-\d{12}$/;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const PHASES = ['preflight', 'create', 'exercise', 'heal-drill', 'capture', 'cleanup'];
-export const ALL_PHASES = ['preflight', 'create', 'exercise', 'capture'];
+export const PHASES = ['preflight', 'create', 'enqueue', 'exercise', 'heal-drill', 'capture', 'cleanup'];
+export const ALL_PHASES = ['preflight', 'create', 'enqueue', 'exercise', 'capture'];
+/** The spec work item's type: a Feature is never in the intake (check buckets it needs-split). */
+export const SPEC_TYPE = 'Feature';
 export const DEFAULT_POOL = 'Default';
 /** The heal drill's failing test, removed again by a revert commit. */
 export const DRILL_TEST = 'src/omg-acceptance-drill.test.ts';
@@ -66,7 +77,7 @@ export function orgNameOf(orgUrl) {
 }
 
 export function parseAcceptanceArgs(argv, home = join(homedir(), '.omg', 'acceptance')) {
-  const o = { phase: 'all', withLanes: false, dryRun: false, home, pool: { kind: 'self-hosted', name: DEFAULT_POOL } };
+  const o = { phase: 'all', withLanes: false, dryRun: false, yes: false, home, pool: { kind: 'self-hosted', name: DEFAULT_POOL } };
   let poolName, hosted = false;
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -84,6 +95,7 @@ export function parseAcceptanceArgs(argv, home = join(homedir(), '.omg', 'accept
     else if (flag === '--project-id') o.projectId = value();
     else if (flag === '--home') o.home = resolve(value());
     else if (flag === '--dry-run') o.dryRun = true;
+    else if (flag === '--yes') o.yes = true;
     else throw new Error(`unknown flag ${flag}`);
   }
   if (o.phase !== 'all' && !PHASES.includes(o.phase)) throw new Error(`--phase must be one of ${[...PHASES, 'all'].join(', ')}`);
@@ -164,13 +176,6 @@ export function assertCleanupAllowed(manifest, { requestedId, shown } = {}) {
   return id;
 }
 
-/** The predecessor link type's name from `az boards work-item relation list-type`. */
-export function predecessorRelation(types) {
-  const found = (Array.isArray(types) ? types : []).find((t) => typeof t?.name === 'string' && t.name.toLowerCase() === 'predecessor');
-  if (!found) throw new Error('the org has no "Predecessor" work item relation type (az boards work-item relation list-type)');
-  return found.name.toLowerCase();
-}
-
 /** Deep search: the first value of `key` on an object that passes `pick`. */
 function findDeep(value, pick) {
   if (Array.isArray(value)) {
@@ -189,7 +194,6 @@ function findDeep(value, pick) {
   return undefined;
 }
 
-export const firstRunnable = (checkJson) => findDeep(checkJson, (o) => (o.bucket === 'runnable' && o.id !== undefined ? String(o.id) : undefined));
 export const firstSig8 = (scanJson) => findDeep(scanJson, (o) => (typeof o.sig8 === 'string' && /^[0-9a-f]{8}$/.test(o.sig8) ? o.sig8 : undefined));
 
 /** The design's `exercise` assertions over the OMC recording and the run's output. */
@@ -205,6 +209,76 @@ export function exerciseAssertions(recorded, runOutput, itemId) {
     { what: 'no PR PATCH other than {isDraft:false}', ok: recorded.filter((f) => f.route === 'git.pullRequests.PATCH').every((f) => JSON.stringify(f.requestBody) === '{"isDraft":false}') },
     { what: 'progress moved the work item', ok: of('wit.workItems.PATCH').length > 0 },
   ];
+}
+
+/**
+ * `enqueue`'s assertions: the dry run plans every ticket of the file, the
+ * real run gives each one an id and marks the runnable ones, and a second
+ * dry run finds every ticket unchanged (idempotent by shipyard-key).
+ */
+export function enqueueAssertions(file, dry, real, again) {
+  const keys = file.tickets.map((t) => t.key);
+  const rows = (json) => new Map((Array.isArray(json?.items) ? json.items : []).map((r) => [r.key, r]));
+  const planned = rows(dry);
+  const done = rows(real);
+  const rerun = rows(again);
+  return [
+    { what: `enqueue --dry-run plans all ${keys.length} tickets and writes nothing`, ok: dry?.ok === true && dry?.dryRun === true && keys.every((k) => planned.has(k)) },
+    { what: 'enqueue gives every ticket a work item id', ok: real?.ok === true && keys.every((k) => Number.isInteger(done.get(k)?.id) && ['created', 'updated', 'unchanged'].includes(done.get(k)?.action)) },
+    { what: 'the mark step marked the runnable tickets', ok: Array.isArray(real?.mark?.marked) && real.mark.marked.length + (real.mark.alreadyMarked?.length ?? 0) > 0 && (real.mark.failed?.length ?? 0) === 0 },
+    { what: 'an enqueue re-run (--dry-run) finds every ticket unchanged', ok: keys.every((k) => rerun.get(k)?.action === 'unchanged') },
+  ];
+}
+
+/**
+ * `omg factory check --parent <spec>` against the enqueued tickets
+ * (`{ key: { id, blockedBy: [keys] } }`): every ticket is a child of the spec,
+ * a ticket with an open predecessor is blocked by exactly that one
+ * (`depends-on:#n,...`), and `picked` (run --next) was runnable.
+ */
+export function orderingAssertions(checkJson, tickets, picked) {
+  const rows = new Map((Array.isArray(checkJson?.items) ? checkJson.items : []).map((r) => [String(r.id), r]));
+  const all = Object.values(tickets);
+  const waiting = all.filter((t) => t.blockedBy.length > 0);
+  const blockedBy = (t) => {
+    const r = rows.get(String(t.id));
+    const named = r?.bucket === 'blocked' && typeof r.reasons?.[0] === 'string' && r.reasons[0].startsWith('depends-on:') ? r.reasons[0].slice('depends-on:'.length).split(',') : [];
+    return t.blockedBy.every((k) => tickets[k] && named.includes(`#${tickets[k].id}`));
+  };
+  const results = [
+    { what: `check --parent lists all ${all.length} tickets`, ok: all.length > 0 && all.every((t) => rows.has(String(t.id))) },
+    { what: `the ${waiting.length} ticket(s) with a predecessor are blocked by it (depends-on)`, ok: waiting.every(blockedBy) },
+  ];
+  if (picked !== undefined) {
+    const r = rows.get(String(picked));
+    results.push({ what: `run --next picked #${picked}, a runnable ticket without an open predecessor`, ok: r?.bucket === 'runnable' && !waiting.some((t) => String(t.id) === String(picked)) });
+  }
+  return results;
+}
+
+/**
+ * The tracker write-back of a run parked at the human merge (integration
+ * design §3.6): the item's merge gate comment, the spec's rollup line for
+ * the item, and no edit of the spec work item.
+ */
+export function outcomeAssertions(recorded, specId, itemId) {
+  const ok = (f) => f.exitCode === undefined || f.exitCode === 0;
+  const comments = (id) => recorded.filter((f) => f.route === 'wit.comments.POST' && ok(f) && String(f.routeParameters?.workItemId) === String(id)).map((f) => String(f.requestBody?.text ?? ''));
+  return [
+    { what: `#${itemId} got the merge gate comment`, ok: comments(itemId).some((t) => t.includes('awaiting a human: **merge**')) },
+    { what: `the spec #${specId} got the rollup line "- #${itemId} ready to merge"`, ok: comments(specId).some((t) => t.includes(`- #${itemId} ready to merge:`)) },
+    { what: `the spec #${specId} itself is never edited`, ok: !recorded.some((f) => f.route === 'wit.workItems.PATCH' && String(f.routeParameters?.id) === String(specId)) },
+  ];
+}
+
+/**
+ * The factory never merges: no PR of the run's repository is `completed`.
+ * https://learn.microsoft.com/en-us/cli/azure/repos/pr?view=azure-cli-latest#az-repos-pr-list
+ */
+function noCompletedPr(ctx, m) {
+  const res = ctx.az(['repos', 'pr', 'list', '--status', 'completed', '--repository', m.repo.name, '--project', m.project.name, '--org', orgOf(m)], { placeholder: [] });
+  const completed = Array.isArray(res.json) ? res.json.map((p) => p?.pullRequestId) : undefined;
+  return { what: `no PR of the run reached completed (the factory never merges)${completed?.length ? `; completed: ${completed.join(', ')}` : ''}`, ok: Array.isArray(completed) && completed.length === 0 };
 }
 
 const parseMaybe = (text) => {
@@ -239,12 +313,21 @@ export function azArgv(args) {
 /**
  * The side-effect boundary: every spawn and file write goes through here,
  * and in dry-run mode each one is printed, never done. `deps`: spawn
- * (spawnSync's shape), azEntry, log, now, sleep(ms), redact, env, runLimits.
+ * (spawnSync's shape), azEntry, log, now, sleep(ms), redact, env, runLimits,
+ * confirm(question) → boolean (`--yes` answers yes; a dry run never asks),
+ * userConfig `{ path, trustedAuthors() }` (the user config at its default
+ * location, read only).
  */
 export function createContext(o, deps) {
   const log = deps.log ?? console.log;
   const redact = deps.redact ?? ((s) => s);
-  const ctx = { o, log, manifest: undefined, now: deps.now ?? (() => new Date()), sleep: deps.sleep ?? (() => {}), env: deps.env ?? process.env, runLimits: deps.runLimits };
+  const userConfig = deps.userConfig ?? { path: '<user config>', trustedAuthors: () => [] };
+  const ctx = { o, log, manifest: undefined, now: deps.now ?? (() => new Date()), sleep: deps.sleep ?? (() => {}), env: deps.env ?? process.env, runLimits: deps.runLimits, userConfig };
+  ctx.confirm = (question) => {
+    if (o.dryRun) return (log(`[dry-run] would ask: ${question}`), true);
+    if (o.yes) return (log(`${question} yes (--yes)`), true);
+    return Boolean(deps.confirm?.(question));
+  };
   ctx.exec = (label, cmd, args, { cwd, env, placeholder, allowFail = false } = {}) => {
     const shown = `${label}: ${JSON.stringify([cmd, ...args])}${cwd ? ` (cwd ${cwd})` : ''}${env && Object.keys(env).length ? ` (env ${Object.keys(env).map((k) => `${k}=${env[k]}`).join(' ')})` : ''}`;
     if (o.dryRun) {
@@ -292,13 +375,25 @@ function requireManifest(ctx) {
   ctx.manifest = {
     runId: placeholderId, org: o.org ?? 'https://dev.azure.com/<org>', source: o.source ?? '<source>', runDir: join(o.home, placeholderId), pool: o.pool,
     project: { name: placeholderId, id: '00000000-0000-0000-0000-000000000000' }, repo: { name: placeholderId, id: '<repoId>', url: '<repoUrl>' },
-    pipeline: { id: '<definitionId>' }, policy: { id: '<policyId>' }, workItems: {}, trustedAuthorsAdded: [],
+    pipeline: { id: '<definitionId>' }, policy: { id: '<policyId>' }, spec: { id: '<specId>', createdBy: '<spec creator uniqueName>' }, tickets: {}, trustedAuthorsAdded: [],
   };
   return ctx.manifest;
 }
 
 const orgOf = (m) => m.org;
 const repoDirOf = (m) => join(m.runDir, 'repo');
+
+/** `omg factory setup` for the run's repository; `extra` goes before the confirmation flags. */
+const setupArgs = (m, extra = []) => [
+  'factory', 'setup', '--forge', 'azure-devops', '--org', m.org.replace(/^https:\/\/dev\.azure\.com\//, ''), '--project', m.project.name, '--repo', m.repo.name,
+  '--intake', `area-tag:${m.project.name}#factory`, '--progress', join(m.runDir, 'progress.json'), ...extra, '--yes', '--json',
+];
+
+/** The spec work item of a run made before the enqueue flow is missing: such a run cannot take the later phases. */
+function requireSpec(m) {
+  if (m.spec?.id === undefined || m.spec?.id === null) throw new Error(`run ${m.runId} has no spec work item (it predates the enqueue flow); start a new run with --phase create`);
+  return m.spec;
+}
 
 export function preflight(ctx) {
   const { o } = ctx;
@@ -318,6 +413,7 @@ export function preflight(ctx) {
   ctx.log(poolAdvice(o.pool, o.dryRun ? undefined : pools.json));
   if (o.withLanes) ctx.log('Copilot: --with-lanes runs one factory run (implement + review, maybe fix/ci-fix lanes) and, in heal-drill, one heal debugger lane and then the approved ci-heal run (implement + review lanes); check your Copilot premium-request quota first.');
   else ctx.log('Copilot: no lane runs without --with-lanes (0 credits).');
+  ctx.log('User config: enqueue adds the spec creator to factory.forge.azureDevOps.trustedAuthors after it prints the change and you confirm (or --yes); cleanup lists it and never removes it.');
   if (!existsSync(join(ROOT, 'dist', 'forge', 'ado', 'az-binary.js'))) problems.push('no OMC build: run npm run build first');
   if (problems.length && o.dryRun) ctx.log(`[dry-run] preflight would fail:\n- ${problems.join('\n- ')}`);
   else if (problems.length) throw new Error(`preflight failed:\n- ${problems.join('\n- ')}`);
@@ -331,7 +427,7 @@ export function create(ctx) {
   const repoDir = join(runDir, 'repo');
   const m = (ctx.manifest = {
     schemaVersion: 1, runId, org: o.org, source: o.source, runDir, pool: o.pool, createdAt: ctx.now().toISOString(),
-    project: { name: runId }, repo: { name: runId }, pipeline: null, policy: null, workItems: {}, pending: null, trustedAuthorsAdded: [],
+    project: { name: runId }, repo: { name: runId }, pipeline: null, policy: null, spec: null, tickets: {}, pending: null, trustedAuthorsAdded: [],
   });
   const pending = (what) => {
     m.pending = what;
@@ -368,27 +464,19 @@ export function create(ctx) {
   m.pipeline = { id: pipeline.json?.id };
   pending(null);
 
-  const relation = predecessorRelation(ctx.az(['boards', 'work-item', 'relation', 'list-type', ...org], { placeholder: [{ name: 'Predecessor' }] }).json);
-  // A dry run has no clone; it reads the same file from the source (read-only).
-  const { items, unknown } = backlogToWorkItems(ctx.read(join(o.dryRun ? o.source : repoDir, 'BACKLOG.md')));
-  for (const u of unknown) ctx.log(`note: ${u}`);
-  for (const item of items) {
-    pending(`work item ${item.key}`);
-    const created = ctx.az([
-      'boards', 'work-item', 'create', '--type', 'User Story', '--title', item.title, '--description', item.descriptionHtml,
-      '--fields', `Microsoft.VSTS.Common.AcceptanceCriteria=${item.acceptanceHtml}`, 'System.Tags=factory', ...scope,
-    ], { placeholder: { id: `<wi:${item.key}>` } });
-    m.workItems[item.key] = created.json?.id;
-    pending(null);
-  }
-  for (const item of items) {
-    const targets = item.dependsOn.map((k) => m.workItems[k]).filter((id) => id !== undefined);
-    if (targets.length) ctx.az(['boards', 'work-item', 'relation', 'add', '--id', String(m.workItems[item.key]), '--relation-type', relation, '--target-id', targets.join(','), ...org]);
-  }
+  // The spec (launch Phase 2): the parent the enqueued tickets link to. No factory tag, so it is not intake.
+  pending('spec');
+  const spec = ctx.az([
+    'boards', 'work-item', 'create', '--type', SPEC_TYPE, '--title', `${runId} spec: the BACKLOG.md tickets`,
+    '--description', `<p>${inlineHtml('omg live acceptance spec: the `BACKLOG.md` tickets of the test repository, enqueued as its children with `omg factory enqueue`.')}</p>`, ...scope,
+  ], { placeholder: { id: '<specId>', fields: { 'System.CreatedBy': { uniqueName: '<spec creator uniqueName>' } } } });
+  const createdBy = spec.json?.fields?.['System.CreatedBy'];
+  m.spec = { id: spec.json?.id, createdBy: typeof createdBy === 'string' ? createdBy : createdBy?.uniqueName };
+  if (m.spec.id === undefined) throw new Error('created the spec work item but could not read its id');
+  pending(null);
 
-  const progress = join(runDir, 'progress.json');
-  ctx.write(progress, `${JSON.stringify(AGILE_PROGRESS, null, 2)}\n`);
-  ctx.omg(['factory', 'setup', '--forge', 'azure-devops', '--org', o.orgName, '--project', runId, '--repo', runId, '--intake', `area-tag:${runId}#factory`, '--progress', progress, '--yes', '--json'], { cwd: repoDir });
+  ctx.write(join(runDir, 'progress.json'), `${JSON.stringify(AGILE_PROGRESS, null, 2)}\n`);
+  ctx.omg(setupArgs(m), { cwd: repoDir });
   git('add', '.copilot/omg.jsonc');
   git('commit', '-m', 'chore: omg factory config for the live acceptance run');
   git('push', 'origin', 'main');
@@ -405,8 +493,74 @@ export function create(ctx) {
   pending(null);
   m.createdDone = true;
   ctx.saveManifest();
-  ctx.log(`created ${runId}: project ${m.project.id}, ${items.length} work items, pipeline ${m.pipeline.id}`);
-  ctx.log(`trustedAuthors: none added. To accept your omg-plan: comments, add your uniqueName to factory.forge.azureDevOps.trustedAuthors in the user config yourself (omg factory setup --trusted-author <you> --scope user).`);
+  ctx.log(`created ${runId}: project ${m.project.id}, spec work item ${m.spec.id} (created by ${m.spec.createdBy ?? 'unknown'}), pipeline ${m.pipeline.id}`);
+  ctx.log('trustedAuthors: none added yet; the enqueue phase asks before it adds the spec creator to the user config.');
+}
+
+/**
+ * Trust the spec's creator: on Azure DevOps enqueue (and check) trust only
+ * the uniqueNames in the user config's factory.forge.azureDevOps.trustedAuthors.
+ * The write is printed and confirmed first, and the manifest records the
+ * name before it is written, so cleanup can list it.
+ */
+function trustSpecCreator(ctx, m) {
+  const author = requireSpec(m).createdBy;
+  if (typeof author !== 'string' || !author) throw new Error(`the manifest records no creator of spec #${m.spec.id}`);
+  const path = ctx.userConfig.path;
+  const current = ctx.userConfig.trustedAuthors();
+  if (current.some((a) => a.toLowerCase() === author.toLowerCase())) return ctx.log(`ok    ${author} is already in factory.forge.azureDevOps.trustedAuthors (${path})`);
+  const next = [...current, author];
+  ctx.log([
+    `user-scope write: ${path}`,
+    `  factory.forge.azureDevOps.trustedAuthors: ${JSON.stringify(current)} -> ${JSON.stringify(next)}`,
+    `  ${author} created spec #${m.spec.id}; enqueue trusts only these uniqueNames. Cleanup lists what this run added; it never removes it.`,
+  ].join('\n'));
+  if (!ctx.confirm(`Add ${author} to factory.forge.azureDevOps.trustedAuthors in ${path}?`)) {
+    throw new Error(`not confirmed: ${path} is unchanged. Add ${author} there yourself, or rerun with --yes`);
+  }
+  m.trustedAuthorsAdded = [...new Set([...(m.trustedAuthorsAdded ?? []), author])];
+  ctx.saveManifest();
+  ctx.omg(setupArgs(m, ['--trusted-author', next.join(','), '--scope', 'user']), { cwd: repoDirOf(m) });
+}
+
+/** One `omg factory enqueue` call; a refusal (exit 2) or failure throws with enqueue's own error. */
+function enqueueCall(ctx, m, file, extra, placeholder) {
+  const res = ctx.omg(['factory', 'enqueue', '--spec', String(m.spec.id), '--file', file, ...extra, '--json'], { cwd: repoDirOf(m), allowFail: true, placeholder });
+  if (res.status !== 0) throw new Error(`omg factory enqueue ${extra.join(' ')} exited ${res.status}: ${res.json?.error ?? res.stderr.trim().slice(0, 2000)}`);
+  return res.json;
+}
+
+/**
+ * launch's hand-off (integration design §3.2): the BACKLOG.md tickets as a
+ * ticket file of the spec, `enqueue --dry-run`, the signature (the dry run
+ * is shown, then confirmed), the real enqueue, and a second dry run that
+ * must find every ticket unchanged.
+ */
+export function enqueue(ctx) {
+  const { o } = ctx;
+  const m = requireManifest(ctx);
+  requireSpec(m);
+  trustSpecCreator(ctx, m);
+  // A dry run has no clone; it reads the same file from the source (read-only).
+  const backlog = join(o.dryRun ? o.source ?? m.source : repoDirOf(m), 'BACKLOG.md');
+  if (o.dryRun && !existsSync(backlog)) ctx.log(`[dry-run] no ${backlog}: pass --source to preview the ticket file (the real run reads the clone's BACKLOG.md)`);
+  const { file, unknown } = o.dryRun && !existsSync(backlog) ? { file: { schemaVersion: 1, spec: m.spec.id, tickets: [] }, unknown: [] } : backlogToTicketFile(ctx.read(backlog), Number(m.spec.id));
+  for (const u of unknown) ctx.log(`note: ${u}`);
+  const ticketFile = join(m.runDir, 'tickets.json');
+  ctx.write(ticketFile, `${JSON.stringify(file, null, 2)}\n`);
+
+  const dry = enqueueCall(ctx, m, ticketFile, ['--dry-run'], { ok: true, dryRun: true, items: [] });
+  if (!o.dryRun) for (const r of dry?.items ?? []) ctx.log(`plan  ${r.key} ${r.id === null ? '(new)' : `#${r.id}`} ${r.action}${r.planned?.links?.length ? ` links ${r.planned.links.join(', ')}` : ''}`);
+  if (!ctx.confirm(`Signature (launch C3): enqueue these ${file.tickets.length} tickets as children of spec #${m.spec.id}?`)) throw new Error('enqueue not signed: nothing written');
+  m.pending = 'enqueue';
+  ctx.saveManifest();
+  const real = enqueueCall(ctx, m, ticketFile, [], { ok: true, dryRun: false, items: [], mark: { marked: [] } });
+  const byKey = new Map(file.tickets.map((t) => [t.key, t]));
+  m.tickets = Object.fromEntries((real?.items ?? []).filter((r) => byKey.has(r.key)).map((r) => [r.key, { id: r.id, blockedBy: byKey.get(r.key).blockedBy }]));
+  m.pending = null;
+  ctx.saveManifest();
+  const again = enqueueCall(ctx, m, ticketFile, ['--dry-run'], { ok: true, dryRun: true, items: [] });
+  return report(ctx, 'enqueue', enqueueAssertions(file, dry, real, again));
 }
 
 export function exercise(ctx) {
@@ -415,24 +569,39 @@ export function exercise(ctx) {
   const cwd = repoDirOf(m);
   const results = [];
   const step = (what, res) => results.push({ what, ok: res.status === 0 });
-  const check = ctx.omg(['factory', 'check', '--json'], { cwd, allowFail: true, placeholder: { items: [{ id: '<first runnable id>', bucket: 'runnable' }] } });
-  step('omg factory check --json', check);
+  const spec = String(requireSpec(m).id);
+  const tickets = m.tickets ?? {};
+  if (!o.dryRun && Object.keys(tickets).length === 0) throw new Error(`run ${m.runId} has no enqueued tickets; run --phase enqueue first`);
+  step('omg factory check --json', ctx.omg(['factory', 'check', '--json'], { cwd, allowFail: true, placeholder: { items: [] } }));
+  const checkParent = () => ctx.omg(['factory', 'check', '--parent', spec, '--json'], { cwd, allowFail: true, placeholder: { items: [] } });
+  const before = checkParent();
+  step(`omg factory check --parent ${spec} --json`, before);
   step('omg factory board --json', ctx.omg(['factory', 'board', '--json'], { cwd, allowFail: true, placeholder: {} }));
-  const first = firstRunnable(check.json);
-  if (!first) results.push({ what: 'a runnable work item', ok: false });
-  else {
-    step(`omg factory run ${first} --dry-run`, ctx.omg(['factory', 'run', first, '--dry-run'], { cwd, allowFail: true }));
-    if (o.withLanes) {
-      const loaded = o.dryRun || !ctx.runLimits ? undefined : ctx.runLimits(cwd);
-      ctx.log(`Copilot spend for this run is capped by factory.run: ${loaded ? JSON.stringify(loaded.limits) : '(the limits omg factory run resolves)'}`);
-      const run = ctx.omg(['factory', 'run', first], { cwd, allowFail: true });
-      step(`omg factory run ${first}`, run);
-      step('omg factory poll --once --json', ctx.omg(['factory', 'poll', '--once', '--json'], { cwd, allowFail: true, placeholder: {} }));
-      const recordedDir = join(m.runDir, 'recorded');
-      const recorded = o.dryRun || !existsSync(recordedDir) ? [] : readdirSync(recordedDir).filter((n) => n.endsWith('.json')).map((n) => JSON.parse(readFileSync(join(recordedDir, n), 'utf8')));
-      if (!o.dryRun) results.push(...exerciseAssertions(recorded, `${run.stdout}\n${run.stderr}`, first));
-    } else ctx.log('no lanes: pass --with-lanes to run the factory for real (spends Copilot credits)');
-  }
+  const next = ['factory', 'run', '--next', '--parent', spec];
+  const dry = ctx.omg([...next, '--dry-run', '--json'], { cwd, allowFail: true, placeholder: { next: '<next runnable id>' } });
+  step(`omg factory run --next --parent ${spec} --dry-run`, dry);
+  const picked = dry.json?.next ?? undefined;
+  if (!o.dryRun) results.push(...orderingAssertions(before.json, tickets, picked ?? null));
+  if (o.withLanes) {
+    const loaded = o.dryRun || !ctx.runLimits ? undefined : ctx.runLimits(cwd);
+    ctx.log(`Copilot spend for this run is capped by factory.run: ${loaded ? JSON.stringify(loaded.limits) : '(the limits omg factory run resolves)'}`);
+    const run = ctx.omg([...next, '--json'], { cwd, allowFail: true });
+    step(`omg factory run --next --parent ${spec}`, run);
+    const ran = run.json?.next;
+    step('omg factory poll --once --json', ctx.omg(['factory', 'poll', '--once', '--json'], { cwd, allowFail: true, placeholder: {} }));
+    const after = checkParent();
+    step(`omg factory check --parent ${spec} --json (after the run)`, after);
+    const recordedDir = join(m.runDir, 'recorded');
+    const recorded = o.dryRun || !existsSync(recordedDir) ? [] : readdirSync(recordedDir).filter((n) => n.endsWith('.json')).map((n) => JSON.parse(readFileSync(join(recordedDir, n), 'utf8')));
+    if (!o.dryRun) {
+      results.push({ what: `the real run took the dry run's pick #${picked}`, ok: ran !== undefined && String(ran) === String(picked) });
+      results.push(...exerciseAssertions(recorded, `${run.stdout}\n${run.stderr}`, ran), ...outcomeAssertions(recorded, spec, ran));
+      const row = (Array.isArray(after.json?.items) ? after.json.items : []).find((r) => String(r.id) === String(ran));
+      results.push({ what: `#${ran} is no longer runnable while its PR waits for the human merge`, ok: row?.bucket === 'blocked' });
+      results.push(...orderingAssertions(after.json, tickets));
+    }
+  } else ctx.log('no lanes: pass --with-lanes to run the factory for real (spends Copilot credits)');
+  results.push(noCompletedPr(ctx, m));
   return report(ctx, 'exercise', results);
 }
 
@@ -499,6 +668,7 @@ export function healDrill(ctx) {
         if (run.status === 0) step(`omg factory heal approve ${sig8}`, ctx.omg(['factory', 'heal', 'approve', sig8], { cwd, allowFail: true }));
       }
     }
+    results.push(noCompletedPr(ctx, m));
   } finally {
     git('revert', '--no-edit', sha);
     pushWithPolicyOff();
@@ -508,7 +678,8 @@ export function healDrill(ctx) {
 
 export function captureFixtures(ctx) {
   const m = requireManifest(ctx);
-  const ids = Object.values(m.workItems ?? {}).filter((id) => /^\d+$/.test(String(id)));
+  // The spec and its enqueued tickets (`workItems`: runs made before the enqueue flow).
+  const ids = [m.spec?.id, ...Object.values(m.tickets ?? {}).map((t) => t.id), ...Object.values(m.workItems ?? {})].filter((id) => /^\d+$/.test(String(id)));
   ctx.node('ado-capture.mjs', [
     '--org', orgOf(m), '--project', m.project.name, '--repo', m.repo.name, '--moment', `acceptance-${runIdAt(ctx.now()).slice(RUN_PREFIX.length)}`,
     '--out', join(m.runDir, 'capture'), ...(ids.length ? ['--work-items', ids.join(',')] : []),
@@ -551,10 +722,12 @@ export function cleanup(ctx) {
   ctx.saveManifest();
   if (removeRepo) ctx.rm(repoDir);
   ctx.log(`deleted project ${m.project.name} (${id}); it is restorable for 28 days (Organization settings > Projects).`);
-  ctx.log(m.trustedAuthorsAdded?.length ? `remove these trustedAuthors from your user config: ${m.trustedAuthorsAdded.join(', ')}` : 'no trustedAuthors were added by this run.');
+  ctx.log(m.trustedAuthorsAdded?.length
+    ? `this run added ${m.trustedAuthorsAdded.join(', ')} to factory.forge.azureDevOps.trustedAuthors in ${ctx.userConfig.path}; cleanup never edits the user config, so remove them there yourself if they should not stay trusted.`
+    : 'no trustedAuthors were added by this run.');
 }
 
-const PHASE_FNS = { preflight, create, exercise, 'heal-drill': healDrill, capture: captureFixtures, cleanup };
+const PHASE_FNS = { preflight, create, enqueue, exercise, 'heal-drill': healDrill, capture: captureFixtures, cleanup };
 
 export function runPhases(ctx) {
   for (const phase of ctx.o.phase === 'all' ? ALL_PHASES : [ctx.o.phase]) {
@@ -564,17 +737,38 @@ export function runPhases(ctx) {
   if (ctx.o.phase === 'all' && ctx.manifest) ctx.log(`\nnext: --phase heal-drill --run ${ctx.manifest.runId} (needs an agent), then --phase cleanup --org ${ctx.manifest.org} --run ${ctx.manifest.runId}`);
 }
 
+/** A y/N question on the terminal; no terminal (or a read error) is a no. */
+function confirmOnTty(question) {
+  if (!process.stdin.isTTY) {
+    console.log(`${question} no: stdin is not a terminal (pass --yes to confirm)`);
+    return false;
+  }
+  process.stdout.write(`${question} [y/N] `);
+  const buf = Buffer.alloc(256);
+  let answer = '';
+  try {
+    while (!answer.includes('\n')) {
+      const n = readSync(0, buf, 0, buf.length, null);
+      if (n === 0) break;
+      answer += buf.toString('utf8', 0, n);
+    }
+  } catch {
+    return false;
+  }
+  return /^\s*y(es)?\s*$/i.test(answer);
+}
+
 async function main() {
   let o;
   try {
     o = parseAcceptanceArgs(process.argv.slice(2));
   } catch (error) {
     console.error(`ado-acceptance: ${error.message}`);
-    console.error('usage: node scripts/ado-acceptance.mjs --org https://dev.azure.com/<org> --source <clone> [--phase preflight|create|exercise|heal-drill|capture|cleanup|all] [--run <runId>] [--pool <name> | --hosted] [--with-lanes] [--dry-run]');
+    console.error('usage: node scripts/ado-acceptance.mjs --org https://dev.azure.com/<org> --source <clone> [--phase preflight|create|enqueue|exercise|heal-drill|capture|cleanup|all] [--run <runId>] [--pool <name> | --hosted] [--with-lanes] [--yes] [--dry-run]');
     process.exit(2);
   }
   const dist = (p) => import(pathToFileURL(join(ROOT, 'dist', p)).href);
-  let azEntry, redact, runLimits;
+  let azEntry, redact, runLimits, userConfig;
   try {
     const { resolveAzEntry } = await dist('forge/ado/az-binary.js');
     ({ redactAdoSecrets: redact } = await dist('forge/ado/redact.js'));
@@ -584,11 +778,19 @@ async function main() {
       untrustedRoots: [o.home, ...(o.source ? [o.source] : [])],
     });
     const { resolveFactoryRunLimits } = await dist('factory/run/budget.js');
-    const { userConfigLayers } = await dist('ship/config.js');
+    const { trustedUserConfigPath, userConfigLayers } = await dist('ship/config.js');
     const { parseJsonc } = await dist('utils/jsonc.js');
     runLimits = (repoDir) => {
       const file = join(repoDir, '.copilot', 'omg.jsonc');
       return resolveFactoryRunLimits(userConfigLayers().trustedUser, existsSync(file) ? parseJsonc(readFileSync(file, 'utf8')) : undefined);
+    };
+    // The only layer the factory reads trustedAuthors from (src/forge/config.ts).
+    userConfig = {
+      path: trustedUserConfigPath(),
+      trustedAuthors: () => {
+        const list = userConfigLayers().trustedUser?.factory?.forge?.azureDevOps?.trustedAuthors;
+        return Array.isArray(list) ? list.filter((a) => typeof a === 'string') : [];
+      },
     };
   } catch (error) {
     if (!o.dryRun) {
@@ -598,7 +800,7 @@ async function main() {
     console.log(`[dry-run] az entry unresolved (${error.message}); showing argv as plain az`);
     azEntry = { command: 'az', prefix: [], env: {} };
   }
-  const ctx = createContext(o, { spawn: spawnSync, azEntry, redact, runLimits, sleep: (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) });
+  const ctx = createContext(o, { spawn: spawnSync, azEntry, redact, runLimits, userConfig, confirm: confirmOnTty, sleep: (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) });
   try {
     runPhases(ctx);
   } catch (error) {
