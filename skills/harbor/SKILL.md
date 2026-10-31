@@ -98,17 +98,17 @@ Inspection produces facts; the desk produces decisions. Each pending item carrie
 
 A ruling that answers scope questions returns the ship to the desk for re-disposition; answers land in the sheet. Signed-but-failed executions keep the original decision, record the failure, and either recover within the authorization or surface as `for-maintainer`. **Once a ship is accepted and actually received by `execute`/`launch`, delivery state lives in that pipeline — harbor stops tracking it. An accepted issue nobody has claimed stays visible in the harbor queue.**
 
-**Factory handoff.** When a factory is configured, an accepted issue is handed over by its `omg factory check <n> --json` result. Harbor recommends the next skill to the captain and never invokes it:
+**Factory handoff.** When a factory is configured, an accepted issue is handed over by its `omg factory check <n> --json` result. Harbor recommends the next skill to the captain and never invokes it. Harbor never runs `omg factory enqueue`: enqueue writes children and marks them, and that write belongs to launch's C3, where the captain signs the dry run.
 
 | Check result | Route |
 |---|---|
-| `runnable`, or `needs-plan` and the work is one slice an engineer can specify | `omg factory enqueue` with a one-ticket file whose `spec` is the issue (format: `/oh-my-copilot:launch` Phase 3, factory handoff): enqueue creates one child that carries the acceptance criteria and never writes them into the issue. Show the `--dry-run` output in the signed proposal; the signature covers the child, the intake label, and the mark step. Enqueue exits 2 when the issue's author is not an OWNER, MEMBER or COLLABORATOR — then route to launch, which opens its own spec. |
+| `runnable`, or `needs-plan` and the work is one slice an engineer can specify | `/oh-my-copilot:launch` with the issue as its spec: launch's Phase 3 factory handoff enqueues a one-ticket file whose `spec` is the issue, and the captain signs that dry run at C3 |
 | `needs-plan`, several slices, clear | `/oh-my-copilot:launch` with the signed decisions as its mission brief |
 | `needs-plan`, the requirements belong to a non-engineer | `/oh-my-copilot:intent`, linking the issue as the intent's source |
 | `needs-plan`, foggy (fog test Q1 or Q2 fails) | `harbor:needs-exploration` + `/oh-my-copilot:ask-navigator` |
 | `blocked` with `too-big` or `needs-split` | `/oh-my-copilot:launch` |
 
-Once enqueue has run, delivery state lives in the factory: harbor never writes `factory:*` labels and stops tracking the ship. The docket may show one read-only line counting accepted ships by factory bucket.
+Once launch has enqueued the work, delivery state lives in the factory: harbor never writes `factory:*` labels and stops tracking the ship. The docket may show one read-only line counting accepted ships by factory bucket.
 
 **Questionnaire exit.** When a decision cannot be ruled from the docket because its answer belongs to humans who are not the maintainer at the desk — a direction question, a policy exception, a choice between owners — harbor does not become a relay: it produces a **decision questionnaire** under the existing Proposal record. One questionnaire carries every open sub-question, each with its options, the consequence of each, and harbor's recommendation; it is posted on the ship for the humans who own the answer, and the ship waits at `need-decision` with the questionnaire linked. Answers fold back in as signed decisions; unanswered sub-questions never gate ships that did not ask them.
 

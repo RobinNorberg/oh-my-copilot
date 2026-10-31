@@ -133,14 +133,14 @@ The shipyard skills decide **what and why**, with the captain signing. `omg fact
 
 | Stage | Owner | The captain signs | Code enforces |
 | --- | --- | --- | --- |
-| Intake | `harbor` (the factory listener starts `look at #<n>`) | accept / reject, standing rules | `omg factory check <n> --json` as a read-only fact |
+| Intake | `harbor` (the factory listener starts `look at #<n>`); routes accepted work, a single slice included, to `launch` and never runs `enqueue` | accept / reject, standing rules | `omg factory check <n> --json` as a read-only fact |
 | Requirements | `intent` / `ask-navigator` / `loft` | intent accept, W1/W2, loft reaction | — |
 | Spec + tickets | `launch` Phases 1–3 | C2, C3 on the `omg factory enqueue --dry-run` output | `enqueue`: schema, cycles, idempotency by `shipyard-key:`; the mark step |
 | Delivery | `omg factory run --next --parent <spec>` | every merge, every `awaiting-human` gate | lanes, sandbox, budget, gates, one engine per repository |
 | CI repair on the base | `omg factory heal` | `heal approve`, the merge | classification, caps |
 | Closeout | `launch` Phase 5 | C5 | `omg factory check --parent <spec> --json` shows every child closed or merged |
 
-Launch picks factory mode when `omg factory check --parent <spec>` works on a GitHub forge with `factory.intake.source` set; otherwise, or with `--team`, it delivers through Team as before. Harbor and the navigator stay GitHub-only this cycle, and `enqueue` supports GitHub only. The legacy SessionEnd chain is frozen to one `intake → harbor` hop; `omg factory init --check` reports old routes and `--migrate` rewrites them.
+Launch picks factory mode when `omg factory check --parent <spec>` works on a GitHub forge; otherwise, or with `--team`, it delivers through Team as before. Harbor and the navigator stay GitHub-only this cycle, and `enqueue` supports GitHub only. The legacy SessionEnd chain is frozen to one `intake → harbor` hop; `omg factory init --check` reports old routes and `--migrate` rewrites them.
 
 ## When to reach for what
 
