@@ -68,6 +68,7 @@ export interface AdoHeal {
     guard: () => AdoGuardContext;
     forge: () => FactoryForgeInput;
 }
+export declare const HEAL_PIPELINE_MISSING = "omg factory heal on Azure DevOps needs factory.heal.pipeline: { \"definitionId\": <build definition id> } in the base branch's .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI";
 /**
  * The Azure DevOps heal wiring (ADO parity design §3.5-§3.6). The guard
  * context and the ForgeCi are built from the same trusted `config` and az
@@ -118,6 +119,13 @@ export declare function runHealScan(opts: ScanOpts): ScanResult;
 /** Text from CI logs, lane output or a state file, safe for the terminal: control and format characters become spaces. */
 export declare const termSafe: (v: unknown) => string;
 export declare function renderHealState(s: HealSignatureState): string;
+/** The CI reads of `heal scan` and `heal run`: the Azure DevOps forge's with its guard context, else GitHub's (deps.ci or the default). */
+export declare const ciDeps: (deps: Pick<HealDeps, "ci">, ado: AdoHeal | undefined) => {
+    ci?: (exec: Exec, root: string) => ForgeCi;
+    ado?: () => AdoGuardContext;
+};
+/** adoHeal over a resolved forge config; refused unless it is Azure DevOps naming factory.heal.pipeline (`heal` and the poll heal tick). */
+export declare function adoHealFor(config: ResolvedForgeConfig, resolveAz: () => AzEntry, root: string): AdoHeal;
 /** `omg factory heal scan|status|run` (experimental; no GitHub writes). */
 export declare function healCommand(deps: HealDeps): Command;
 export {};

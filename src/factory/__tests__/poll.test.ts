@@ -17,7 +17,8 @@ import type { ForgeFactory } from '../../forge/types.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
-import type { ScanResult } from '../heal/cli.js';
+import { HEAL_PIPELINE_MISSING, type ScanResult } from '../heal/cli.js';
+import { adoConfig } from '../../forge/ado/__tests__/world.js';
 import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
 import { healStateDir } from '../heal/state.js';
@@ -220,10 +221,10 @@ describe('omg factory poll on GitHub', () => {
     expect(ticks()[0]).toMatchObject({ heal: { ran: false, reason: 'not here' }, errors: [] });
   });
 
-  it('the default heal scan refuses on Azure DevOps (until heal runs there)', () => {
+  it('the default heal scan on Azure DevOps without factory.heal.pipeline refuses with heal scan\'s message before any command', () => {
     const exec: Exec = () => { throw new Error('no command runs'); };
-    const heal = defaultPollHealScan(exec, () => { throw new Error('no config read'); }, join(root, 'ledger'));
-    expect(() => heal({ root, base: 'dev', kind: 'azure-devops', now: new Date(NOW), warn: () => {} })).toThrow(HealRunRefused);
+    const heal = defaultPollHealScan(exec, () => { throw new Error('no config read'); }, join(root, 'ledger'), () => { throw new Error('no az entry'); });
+    expect(() => heal({ root, base: 'dev', kind: 'azure-devops', forge: adoConfig(), now: new Date(NOW), warn: () => {} })).toThrow(new HealRunRefused(HEAL_PIPELINE_MISSING));
   });
 
   it('owner lock: a second poller is refused; a dead owner is taken over and released', async () => {

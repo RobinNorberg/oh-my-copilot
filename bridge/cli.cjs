@@ -127956,9 +127956,12 @@ function healForge(deps, root2) {
   if (!deps.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
   const { config: config2, warnings } = deps.forge(root2, deps.base(root2));
   for (const w of warnings) console.error(source_default.yellow(termSafe(w)));
+  return adoHealFor(config2, () => (deps.resolveAz ?? defaultResolveAz)(root2), root2);
+}
+function adoHealFor(config2, resolveAz, root2) {
   if (config2.kind !== "azure-devops") throw new HealRunRefused(`the origin is on Azure DevOps, but the forge config resolves to ${config2.kind}`);
   if (!config2.heal?.pipeline) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-  return adoHeal(config2, () => (deps.resolveAz ?? defaultResolveAz)(root2), root2);
+  return adoHeal(config2, resolveAz, root2);
 }
 function healRoot(deps) {
   const root2 = checkoutRoot(deps);
@@ -130423,12 +130426,16 @@ function engineBusy(root2, me) {
     return true;
   }
 }
-function defaultPollHealScan(exec3, config2, ledgerDir) {
+function defaultPollHealScan(exec3, config2, ledgerDir, resolveAz = defaultResolveAz) {
   return (o) => {
-    if (o.kind === "azure-devops") throw new HealRunRefused("omg factory heal scan does not run on Azure DevOps yet; the heal tick is skipped");
+    let ado;
+    if (o.kind === "azure-devops") {
+      if (!o.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
+      ado = adoHealFor(o.forge, () => resolveAz(o.root), o.root);
+    }
     const heal = config2(o.root);
     for (const w of heal.warnings) o.warn(w);
-    return runHealScan({ exec: exec3, root: o.root, base: o.base, config: heal.config, now: o.now, dryRun: false, warn: o.warn, ledgerDir });
+    return runHealScan({ exec: exec3, root: o.root, base: o.base, config: heal.config, now: o.now, dryRun: false, warn: o.warn, ledgerDir, ...ciDeps({}, ado) });
   };
 }
 function autoStartTimeoutMs(limits) {
@@ -130562,10 +130569,10 @@ async function pollTick(ctx) {
   }
   let heal;
   if (!ctx.heal) heal = { ran: false, reason: "--no-heal" };
-  else if (!forge.capabilities.heal) heal = { ran: false, reason: "the forge has no heal capability (Azure DevOps: set factory.heal.pipeline)" };
+  else if (!forge.capabilities.heal) heal = { ran: false, reason: forge.kind === "azure-devops" ? HEAL_PIPELINE_MISSING : "the forge has no heal capability" };
   else {
     try {
-      const r = ctx.healScan({ root: root2, base: ctx.base, kind: forge.kind, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
+      const r = ctx.healScan({ root: root2, base: ctx.base, kind: forge.kind, forge: config2, now: new Date(ctx.now()), warn: (m) => warnings.push(plainText(m)) });
       heal = { ran: true, entries: r.entries.length, recorded: r.entries.filter((e) => e.recorded).length, queued: r.queued };
     } catch (error2) {
       if (error2 instanceof ShipSafetyError) throw error2;

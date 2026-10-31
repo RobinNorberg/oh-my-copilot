@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- `omg factory poll`'s heal tick now runs on Azure DevOps. With `factory.heal.pipeline` set, it classifies red builds of that pipeline through `omg factory heal scan`'s own wiring: the `read` policy, GETs only, `definitions` pinned to the configured pipeline. It writes heal state and the ledger as `heal scan` does. Without a pipeline the tick is skipped with `heal scan`'s message.
+
 # oh-my-copilot v5.19.0
 
 ## [5.19.0] - 2026-10-31

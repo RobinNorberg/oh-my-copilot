@@ -3,22 +3,25 @@
  * createForge over the adapter's fixture world, so the CLI builds the az
  * read guard itself. The PR tick counts active and pending human threads
  * (system threads and the factory's own, by its hidden marker, are left out), a completed PR prints the resume hint
- * and reads no threads, the heal tick is gated on capabilities.heal,
+ * and reads no threads, the heal tick is gated on capabilities.heal and
+ * classifies factory.heal.pipeline's red builds through heal scan's wiring,
  * TF400733 marks the tick rate-limited, and every az call is a GET or the
  * WIQL query.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adoFixtureExec, loadAdoFixtures, parseAdoFixture, type AdoFixture } from '../../forge/ado/__tests__/fixtures.js';
+import { ADO_FIXTURE_DIR, adoFixtureExec, loadAdoFixtures, parseAdoFixture, type AdoFixture } from '../../forge/ado/__tests__/fixtures.js';
 import { POSIX_ENTRY, REPO, variant } from '../../forge/ado/__tests__/world.js';
 import { ADO_RATE_LIMITED, ADO_TRANSIENT_ERROR } from '../../forge/ado/checks.js';
 import { ADO_FACTORY_COMMENT_MARKER, parseAdoThreads } from '../../forge/ado/reviews.js';
 import { createForge } from '../../forge/index.js';
 import type { Exec, ExecResult } from '../../ship/exec.js';
-import type { ScanResult } from '../heal/cli.js';
+import { HEAL_PIPELINE_MISSING, type ScanResult } from '../heal/cli.js';
+import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
+import { listHealStates } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo } from '../run/state.js';
 import { defaultPollHealScan, pollStatePath, runFactoryPoll, type FactoryPollDeps, type FactoryPollOptions, type PollAutoStart, type PollHealScan, type PollTick } from '../poll.js';
 
@@ -62,9 +65,11 @@ function world(fixtures: readonly AdoFixture[] = withPeek42(loadAdoFixtures()), 
     if (cmd === 'git') {
       if (a === 'rev-parse --show-toplevel') return ok(`${root}\n`);
       if (a === 'remote get-url origin') return ok(`${REPO.url}\n`);
-      if (a === 'fetch origin dev') return ok();
-      if (a === 'rev-parse --verify refs/remotes/origin/dev') return ok(`${SHA}\n`);
+      if (a === 'fetch origin dev' || a === 'fetch origin main') return ok();
+      if (a === 'rev-parse --verify refs/remotes/origin/dev' || a === 'rev-parse --verify refs/remotes/origin/main') return ok(`${SHA}\n`);
       if (a === `cat-file -e ${SHA}^{commit}`) return ok();
+      // The heal scan's commits of builds 204 and 205 are not fetched.
+      if (args[0] === 'cat-file') return { status: 1, stdout: '', stderr: 'not fetched' };
       if (args[0] === 'ls-remote') return ok('');
       if (args[0] === 'show') return { status: 128, stdout: '', stderr: `fatal: path does not exist in '${SHA}'` };
       throw new Error(`unscripted git ${a}`);
@@ -100,6 +105,23 @@ const poll = (exec: Exec, o: FactoryPollOptions = {}, over: Partial<FactoryPollD
 const tick = (): PollTick => JSON.parse(out.at(-1)!) as PollTick;
 const flag = (args: readonly string[], f: string) => args[args.indexOf(f) + 1];
 const routeOf = (args: readonly string[]) => `${flag(args, '--area')}.${flag(args, '--resource')}.${args.includes('--http-method') ? flag(args, '--http-method') : 'GET'}`;
+
+/** heal-ado.test.ts's builds on main: red 205 (build 101's retried timeline and its Test log) and green 204. */
+function withHealBuilds(fixtures: AdoFixture[]): AdoFixture[] {
+  const attempts = parseAdoFixture('build.timeline.GET.101-attempts.json', readFileSync(join(ADO_FIXTURE_DIR, 'variants', 'build.timeline.GET.101-attempts.json'), 'utf8'));
+  const log = fixtures.find((f) => f.name === 'build.logs.GET.101-7.json')!;
+  const forBuild = (f: AdoFixture, buildId: string, edit: (stdout: any) => unknown = (x) => x): AdoFixture => ({
+    ...f, name: `${f.name}@${buildId}`, provenance: `synthetic: ${f.name} as build ${buildId}`,
+    routeParameters: { ...f.routeParameters, buildId }, stdout: edit(structuredClone(f.stdout)),
+  });
+  return [
+    ...fixtures,
+    forBuild(attempts, '205'),
+    forBuild(log, '205'),
+    forBuild(attempts, '204', (t) => ({ ...t, records: t.records.filter((r: any) => r.attempt === 2).map((r: any) => ({ ...r, result: 'succeeded' })) })),
+    forBuild(log, '204', () => ({ count: 1, value: ['2026-10-29T09:10:00.0000000Z ##[section]Finishing: Run tests'] })),
+  ];
+}
 
 /** Work item 42 in review with PR 17. */
 function seedReview(): void {
@@ -148,16 +170,39 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
     expect(w.az.filter((a) => flag(a, '--http-method') === 'POST').map(routeOf)).toEqual(['wit.wiql.POST']);
   });
 
-  it('heal: with factory.heal.pipeline the tick calls the scan; the default scan is refused on ADO and only skips', async () => {
+  it('heal: with factory.heal.pipeline the tick calls the scan with the forge config; without it the default scan is skipped with heal scan\'s message', async () => {
     const user = { factory: { ...USER.factory, heal: { pipeline: { definitionId: 7 } } } };
-    const calls: string[] = [];
-    const fake: PollHealScan = (o) => { calls.push(o.kind); return { base: o.base, dryRun: false, entries: [], queued: 0 } satisfies ScanResult; };
+    const calls: Array<[string, number | undefined]> = [];
+    const fake: PollHealScan = (o) => { calls.push([o.kind, o.forge?.heal?.pipeline?.definitionId]); return { base: o.base, dryRun: false, entries: [], queued: 0 } satisfies ScanResult; };
     expect(await poll(world().exec, { once: true, json: true }, { trustedUser: () => user, healScan: fake })).toBe(0);
-    expect(calls).toEqual(['azure-devops']);
+    expect(calls).toEqual([['azure-devops', 7]]);
     expect(tick().heal).toEqual({ ran: true, entries: 0, recorded: 0, queued: 0 });
-    const healScan = defaultPollHealScan(() => { throw new Error('no command runs'); }, () => { throw new Error('no config read'); }, join(root, 'ledger'));
-    expect(await poll(world().exec, { once: true, json: true }, { trustedUser: () => user, healScan })).toBe(0);
-    expect(tick()).toMatchObject({ heal: { ran: false, reason: expect.stringContaining('does not run on Azure DevOps yet') }, errors: [] });
+    const healScan = defaultPollHealScan(() => { throw new Error('no command runs'); }, () => { throw new Error('no config read'); }, join(root, 'ledger'), () => { throw new Error('no az entry'); });
+    expect(await poll(world().exec, { once: true, json: true }, { healScan })).toBe(0);
+    expect(tick()).toMatchObject({ heal: { ran: false, reason: HEAL_PIPELINE_MISSING }, errors: [] });
+  });
+
+  it('heal: the default scan classifies the red individualCI build 205 of pipeline 9 through GETs pinned to it, and records it', async () => {
+    const user = { factory: { ...USER.factory, heal: { pipeline: { definitionId: 9 } } } };
+    const w = world(withHealBuilds(loadAdoFixtures()));
+    const healScan = defaultPollHealScan(w.exec, () => ({ config: DEFAULT_HEAL_CONFIG, warnings: [] }), join(root, '.omg', 'test-ledger'), () => POSIX_ENTRY);
+    // heal-ado.test.ts's clock: build 310 (a PR build) is outside the PR window.
+    const now = () => Date.parse('2026-11-05T00:00:00Z');
+    expect(await poll(w.exec, { once: true, json: true, intake: false, prs: false }, { base: () => 'main', trustedUser: () => user, healScan, now })).toBe(0);
+    const t = tick();
+    expect(t.errors).toEqual([]);
+    expect(t.heal).toMatchObject({ ran: true, recorded: 1 });
+    const [state] = listHealStates(root);
+    expect(state).toMatchObject({ source: 'push', seenRuns: ['205'] });
+    expect(state.classification.firstRed).toEqual({ runId: '205', sha: 'd'.repeat(40) });
+    expect(state.classification.jobs.map((j) => j.job)).toEqual(['Test']);
+    // Read-only toward the forge: every az call is a GET, and every build list names pipeline 9.
+    expect(w.az.map(routeOf)).toContain('build.builds.GET');
+    for (const r of w.az.map(routeOf)) expect(r, r).toMatch(/\.GET$/);
+    const listed = w.az.filter((a) => a.some((v) => v.startsWith('definitions=')));
+    expect(listed.length).toBeGreaterThan(0);
+    for (const a of listed) expect(a).toContain('definitions=9');
+    expect(w.az.some((a) => a.some((v) => /retry/i.test(v)))).toBe(false);
   });
 
   it('TF400733 marks the tick rate-limited, and a --once tick with a failed read exits 1', async () => {

@@ -83,7 +83,7 @@ export interface AdoHeal {
   forge: () => FactoryForgeInput;
 }
 
-const HEAL_PIPELINE_MISSING = 'omg factory heal on Azure DevOps needs factory.heal.pipeline: { "definitionId": <build definition id> } in the base branch\'s .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI';
+export const HEAL_PIPELINE_MISSING = 'omg factory heal on Azure DevOps needs factory.heal.pipeline: { "definitionId": <build definition id> } in the base branch\'s .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI';
 
 /**
  * The Azure DevOps heal wiring (ADO parity design §3.5-§3.6). The guard
@@ -407,7 +407,7 @@ function engineDeps(deps: HealDeps, ado: AdoHeal | undefined): HealEngineDeps {
 }
 
 /** The CI reads of `heal scan` and `heal run`: the Azure DevOps forge's with its guard context, else GitHub's (deps.ci or the default). */
-const ciDeps = (deps: HealDeps, ado: AdoHeal | undefined): { ci?: (exec: Exec, root: string) => ForgeCi; ado?: () => AdoGuardContext } =>
+export const ciDeps = (deps: Pick<HealDeps, 'ci'>, ado: AdoHeal | undefined): { ci?: (exec: Exec, root: string) => ForgeCi; ado?: () => AdoGuardContext } =>
   ado ? { ci: ado.ci, ado: ado.guard } : deps.ci ? { ci: deps.ci } : {};
 
 /** The checkout (`heal status` and `close` read and write only heal state: no forge). */
@@ -427,9 +427,14 @@ function healForge(deps: HealDeps, root: string): AdoHeal | undefined {
   if (!deps.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
   const { config, warnings } = deps.forge(root, deps.base(root));
   for (const w of warnings) console.error(chalk.yellow(termSafe(w)));
+  return adoHealFor(config, () => (deps.resolveAz ?? defaultResolveAz)(root), root);
+}
+
+/** adoHeal over a resolved forge config; refused unless it is Azure DevOps naming factory.heal.pipeline (`heal` and the poll heal tick). */
+export function adoHealFor(config: ResolvedForgeConfig, resolveAz: () => AzEntry, root: string): AdoHeal {
   if (config.kind !== 'azure-devops') throw new HealRunRefused(`the origin is on Azure DevOps, but the forge config resolves to ${config.kind}`);
   if (!config.heal?.pipeline) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
-  return adoHeal(config, () => (deps.resolveAz ?? defaultResolveAz)(root), root);
+  return adoHeal(config, resolveAz, root);
 }
 
 function healRoot(deps: HealDeps): { root: string; ado?: AdoHeal } {
