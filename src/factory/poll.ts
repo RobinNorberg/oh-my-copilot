@@ -14,12 +14,24 @@
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
- * A tick never spawns a session or a lane and never writes to the tracker or
+ * Steps 1-4 never spawn a session or a lane and never write to the tracker or
  * the forge: every forge call goes through check's read guard with no marker
  * (openReadForge), and the heal scan through the heal guard. It writes local
  * state only: the poll file, its audit and heal state. The tick result says
- * whether the repository was idle (no engine owner, no run in flight): the
- * seam an intake auto-start plugs into; poll itself starts nothing.
+ * whether the repository was idle (no engine owner, no run in flight).
+ *
+ * 5. auto-start (`factory.intake.autoStart`, trusted layers only, default
+ *    off; shipyard-factory design D7): after an idle tick whose intake read
+ *    succeeded and was not rate-limited (a broken run state is never idle),
+ *    with budget headroom (PollBudget), and once poll's atomic claim of the
+ *    engine's repo owner lock succeeds (a refusal skips the tick), poll starts one
+ *    `omg factory run --next --json` and waits for it. It runs as a child
+ *    `omg` process, not in-process: the run gets the engine's own guard,
+ *    lock, limits, forge config and signal handling exactly as if the user
+ *    had typed it, and none of it leaks into the tick's read guard (which
+ *    refuses `omg`, so a tick still cannot spawn). It never starts the
+ *    listener chain, `heal run` or `heal approve`, and at most one run per
+ *    tick.
  *
  * One poller per repository (the owner pid in the poll file, under its lock).
  * SIGINT / SIGTERM end the loop after the current tick. A rate-limited tick
@@ -31,8 +43,11 @@
  * 5 incompatible (as `omg factory check`).
  */
 
+import { spawn } from 'child_process';
 import { appendFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { loadBudgetSettings } from '../budget/governor.js';
+import { ledgerPath, ledgerTotals, readLedger } from '../budget/ledger.js';
 import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
@@ -47,8 +62,9 @@ import type { CheckBucket } from './check/rules.js';
 import type { HealConfig } from './heal/config.js';
 import { runHealScan, type ScanResult } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
+import { resolveFactoryRunLimits } from './run/budget.js';
 import {
-  defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
+  acquireFactoryRepoOwner, defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
 } from './run/state.js';
 
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
@@ -179,6 +195,69 @@ export function defaultPollHealScan(exec: Exec, config: (root: string) => { conf
   };
 }
 
+/** The auto-start: run `omg factory run --next` to its end; `next` is the item it took (null: nothing runnable). Never rejects. */
+export type PollAutoStart = (o: { root: string }) => Promise<{ exitCode: number; next: number | null; message: string }>;
+
+/** Null when there is budget headroom for one more run; otherwise why not. */
+export type PollBudget = (root: string) => string | null;
+
+/** The child's JSON stdout is the run outcome (state included); more than this is not parsed. */
+const AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
+
+/** The run key of poll's claim on the repo owner lock: no item is picked yet (0 is never an issue number). */
+const AUTO_START_CLAIM: FactoryRunKey = 0;
+
+/**
+ * The production auto-start: a child `omg factory run --next --json` (the
+ * same node and CLI entry as this poller) in the repository root, stdin
+ * closed, stderr shared (the run's progress shows), stdout parsed for the
+ * outcome. A signal to the console reaches the run too, which stops after
+ * its current poll as when typed by hand.
+ */
+export function defaultPollAutoStart(entry: string | undefined = process.argv[1]): PollAutoStart {
+  return ({ root }) => new Promise((resolve) => {
+    if (!entry) {
+      resolve({ exitCode: 1, next: null, message: 'cannot locate the omg CLI entry to start omg factory run --next' });
+      return;
+    }
+    let stdout = '';
+    const child = spawn(process.execPath, [entry, 'factory', 'run', '--next', '--json'], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true });
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (d: string) => { if (stdout.length < AUTO_START_MAX_STDOUT) stdout += d; });
+    child.on('error', (error) => resolve({ exitCode: 1, next: null, message: `omg factory run --next did not start: ${message(error)}` }));
+    child.on('close', (code, signal) => {
+      let outcome: { next?: unknown; message?: unknown; error?: unknown } = {};
+      try {
+        outcome = JSON.parse(stdout) as typeof outcome;
+      } catch { /* reported below */ }
+      const next = Number.isSafeInteger(outcome.next) && (outcome.next as number) > 0 ? outcome.next as number : null;
+      const text = typeof outcome.message === 'string' ? outcome.message : typeof outcome.error === 'string' ? outcome.error : `no outcome on stdout${signal ? ` (ended by ${signal})` : ''}`;
+      resolve({ exitCode: code ?? 1, next, message: text });
+    });
+  });
+}
+
+/**
+ * The production budget check, reusing the factory's and the governor's own:
+ * the `factory.run` limits must resolve (`omg factory run` refuses without a
+ * valid per-lane AI-credit cap), and the AI credits used must be below
+ * `budget.softLimit` when one is set (the only period budget; the governor
+ * only warns a human, but an unattended start stops at it).
+ */
+export function defaultPollBudget(limits: (root: string) => unknown): PollBudget {
+  return (root) => {
+    try {
+      limits(root);
+      const { settings } = loadBudgetSettings(root);
+      if (!settings.enabled || settings.softLimit === undefined) return null;
+      const used = ledgerTotals(readLedger(ledgerPath(root))).credits;
+      return used >= settings.softLimit ? `the AI credits used (${used.toFixed(2)}) reached budget.softLimit ${settings.softLimit} (omg budget status)` : null;
+    } catch (error) {
+      return message(error);
+    }
+  };
+}
+
 export interface PollPr {
   id: FactoryRunKey;
   pr: number;
@@ -203,6 +282,8 @@ export interface PollTick {
   board: Array<{ stage: BoardStage | 'outside'; row: BoardRow }>;
   /** No engine owns the repository and no run is in flight (a parked run is not): an auto-start could begin one. */
   idle: boolean;
+  /** factory.intake.autoStart: why no run started, or the `omg factory run --next` it started (the item it took, null when nothing was runnable). */
+  autoStart: { started: false; reason: string } | { started: true; next: number | null; exitCode: number; message: string };
   rateLimited: boolean;
   errors: string[];
   warnings: string[];
@@ -221,6 +302,8 @@ export interface PollContext {
   intake: boolean;
   prs: boolean;
   healScan: PollHealScan;
+  autoStart: PollAutoStart;
+  budget: PollBudget;
   owner: OwnerDeps;
   now: () => number;
   /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
@@ -232,8 +315,12 @@ const message = (error: unknown): string => plainText(error instanceof Error ? e
 
 const resumeHint = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
 
-/** One tick. Never spawns, never writes to the tracker or forge; a guard refusal propagates (a bug, not an unreadable item). */
-export function pollTick(ctx: PollContext): PollTick {
+/**
+ * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
+ * guard refusal propagates (a bug, not an unreadable item). Step 5 is the
+ * auto-start, outside the read guard.
+ */
+export async function pollTick(ctx: PollContext): Promise<PollTick> {
   const { forge, config, root } = ctx;
   const at = new Date(ctx.now()).toISOString();
   const errors: string[] = [];
@@ -290,7 +377,7 @@ export function pollTick(ctx: PollContext): PollTick {
   }
 
   // 3. PRs (and the idle seam): the runs in flight.
-  const { runs } = readRuns(root, warnings);
+  const { runs, broken } = readRuns(root, warnings);
   const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
   const prs: PollPr[] = [];
   if (ctx.prs) {
@@ -318,7 +405,10 @@ export function pollTick(ctx: PollContext): PollTick {
       prs.push(row);
     }
   }
-  const idle = !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
+  const locked = engineBusy(root, ctx.owner);
+  // A run state that is unreadable or fails its integrity seal may hide a run in flight: never idle.
+  const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+  const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
 
   // 4. board: the rows that changed.
   const board: PollTick['board'] = [];
@@ -335,9 +425,41 @@ export function pollTick(ctx: PollContext): PollTick {
   }
 
   const rateLimited = [...errors, ...warnings].some((m) => ADO_RATE_LIMITED.test(m));
+
+  // 5. auto-start: at most one run, on an idle tick only.
+  let autoStart: PollTick['autoStart'];
+  const blocked = !config.intake.autoStart ? 'factory.intake.autoStart is off'
+    : locked ? 'the run lock is held: an engine runs in this repository'
+      : unsound ? 'a run state is unreadable or fails its integrity check'
+          : !idle ? 'a run is in flight'
+            : !intake.ran ? `no intake read this tick (${intake.reason})`
+              : rateLimited ? 'the tick was rate-limited'
+                : null;
+  if (blocked) autoStart = { started: false, reason: blocked };
+  else {
+    let reason = ctx.budget(root);
+    if (!reason) {
+      // `idle` is advisory: claim the engine's repo owner lock atomically (as an engine would); a refusal skips this
+      // tick. It is released for the child, whose own claim at start is the binding one: an engine that slips in
+      // between makes that claim refuse, so two engines never run.
+      try {
+        acquireFactoryRepoOwner(root, AUTO_START_CLAIM, at, ctx.owner).release();
+      } catch (error) {
+        reason = `the run lock is held: ${message(error)}`;
+      }
+    }
+    if (reason) autoStart = { started: false, reason: plainText(reason) };
+    else {
+      audit(root, { kind: 'auto-start' }, at);
+      const r = await ctx.autoStart({ root });
+      audit(root, { kind: 'auto-start-done', next: r.next, exitCode: r.exitCode }, new Date(ctx.now()).toISOString());
+      autoStart = { started: true, next: r.next, exitCode: r.exitCode, message: plainText(r.message) };
+    }
+  }
+
   return {
     schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-    heal, intake, prs, board, idle, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+    heal, intake, prs, board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
   };
 }
 
@@ -351,6 +473,7 @@ export function renderTick(t: PollTick): string {
     else if (p.threads) lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads} open human thread(s)`);
   }
   for (const b of t.board) lines.push(`  ${b.stage.toUpperCase()}${b.stage === 'backlog' ? backlogLine(b.row) : runLine(b.row, prefix)}`);
+  if (t.autoStart.started) lines.push(`  auto-start: omg factory run --next ${t.autoStart.next === null ? 'found nothing runnable' : `took #${t.autoStart.next}`}, exit ${t.autoStart.exitCode}: ${t.autoStart.message}`);
   return lines.join('\n');
 }
 
@@ -367,6 +490,9 @@ export interface FactoryPollOptions {
 /** board's deps plus the heal tick, the owner identity, the wait and the stop signals. */
 export type FactoryPollDeps = FactoryBoardDeps & {
   healScan: PollHealScan;
+  /** factory.intake.autoStart's start (default defaultPollAutoStart) and budget check (default defaultPollBudget over the `factory.run` limits of trustedUser and projectConfig). */
+  autoStart?: PollAutoStart;
+  budget?: PollBudget;
   owner?: OwnerDeps;
   /** Waits `ms` or until `wake` aborts. */
   sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
@@ -408,12 +534,15 @@ export async function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDep
   const ctx: PollContext = {
     forge: read.forge, config: read.config, root: read.root, base: read.base, exec: read.exec, baseSha: read.baseSha,
     heal: o.heal !== false, intake: o.intake !== false, prs: o.prs !== false,
-    healScan: deps.healScan, owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
+    healScan: deps.healScan,
+    autoStart: deps.autoStart ?? defaultPollAutoStart(),
+    budget: deps.budget ?? defaultPollBudget((root) => resolveFactoryRunLimits(deps.trustedUser(), deps.projectConfig(root))),
+    owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
   };
   let interval = base;
   try {
     for (;;) {
-      const t = pollTick(ctx);
+      const t = await pollTick(ctx);
       if (!o.once) {
         interval = nextInterval(interval, base, t.rateLimited);
         t.nextIntervalMs = interval;

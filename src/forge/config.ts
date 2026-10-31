@@ -12,7 +12,8 @@
  * | forge.azureDevOps.trustedAuthors   | user only                            | ignored, warned            |
  * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
  * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
- * | intake.*, check.*                  | project -> user -> base -> defaults  | allowed                    |
+ * | intake.autoStart (poll starts runs)| user -> base                         | ignored, warned on a diff  |
+ * | intake.* (the rest), check.*       | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
  * that disagrees with the origin remote is refused (`forge-mismatch`).
@@ -361,6 +362,16 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
   if (pPipeline !== undefined && !same(pPipeline, bPipeline)) {
     warnings.push(`omg factory: ignoring factory.heal.pipeline from the working-tree project config; it is read only from the user config or ${baseSource}`);
   }
+  // intake.autoStart lets omg factory poll start billed runs: user -> base only (shipyard-factory design D7).
+  const bAuto = factoryBlock(base, 'intake', baseSource).autoStart;
+  const uAuto = factoryBlock(trustedUser, 'intake', 'user config').autoStart;
+  const pAuto = factoryBlock(project, 'intake', 'project config').autoStart;
+  if (pAuto !== undefined && !same(pAuto, bAuto)) {
+    warnings.push(`omg factory: ignoring factory.intake.autoStart from the working-tree project config; it is read only from the user config or ${baseSource}`);
+  }
+  const autoStart = uAuto ?? bAuto;
+  if (autoStart !== undefined && typeof autoStart !== 'boolean') throw new ForgeConfigError('invalid', `${source}: factory.intake.autoStart must be true or false`);
+
   const pipelineRaw = uPipeline ?? bPipeline;
   let heal: ResolvedForgeConfig['heal'];
   if (pipelineRaw !== undefined && pipelineRaw !== null) {
@@ -379,7 +390,7 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
       kind,
       repo: remote,
       ...(azureDevOps ? { azureDevOps } : {}),
-      intake: resolveIntake(intake, kind),
+      intake: { ...resolveIntake(intake, kind), ...(autoStart === true ? { autoStart } : {}) },
       check: resolveCheck(check),
       progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),
       ...(heal ? { heal } : {}),

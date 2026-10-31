@@ -145,6 +145,23 @@ describe('resolveForgeConfig: trust layering (design §3)', () => {
         expect(config.check).toEqual({ maxAcceptanceItems: 6, maxSize: 5, maxBodyChars: 9000 });
         expect(warnings).toEqual([]);
     });
+    it('intake.autoStart: off by default; user over base; the working tree is ignored with a warning', () => {
+        const auto = (u, b, p, url = GH) => resolveForgeConfig(u, b, p, url);
+        expect(auto(undefined, undefined).config.intake.autoStart).toBeUndefined();
+        for (const url of [GH, ADO]) {
+            expect(auto(f({ intake: { autoStart: true } }), undefined, undefined, url).config.intake.autoStart, url).toBe(true);
+            expect(auto(undefined, f({ intake: { autoStart: true } }), undefined, url).config.intake.autoStart, url).toBe(true);
+        }
+        expect(auto(f({ intake: { autoStart: false } }), f({ intake: { autoStart: true } })).config.intake.autoStart).toBeUndefined();
+        const wt = auto(undefined, undefined, f({ intake: { autoStart: true, limit: 7 } }));
+        expect(wt.config.intake).toMatchObject({ limit: 7 });
+        expect(wt.config.intake.autoStart).toBeUndefined();
+        expect(wt.warnings).toEqual([expect.stringContaining('ignoring factory.intake.autoStart from the working-tree project config')]);
+        // The committed file checked out unchanged is no warning.
+        const same = auto(undefined, f({ intake: { autoStart: true } }), f({ intake: { autoStart: true } }));
+        expect([same.config.intake.autoStart, same.warnings]).toEqual([true, []]);
+        expect(code(() => auto(f({ intake: { autoStart: 'yes' } }), undefined))).toBe('invalid');
+    });
 });
 describe('resolveForgeConfig: config can pin, never redirect', () => {
     it.each([

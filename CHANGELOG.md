@@ -6,6 +6,20 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 
+- **`factory.intake.autoStart` for `omg factory poll`.** One key for GitHub
+  and Azure DevOps, off by default. When it is on, an idle tick starts one
+  `omg factory run --next --json` as a child `omg` process and waits for it.
+  The tick must be idle, with a successful intake read and no rate limit. A
+  run state that is unreadable or fails its integrity seal makes the tick not
+  idle. `idle` is only advisory: right before the start, poll claims the
+  engine's run lock atomically, and a refusal skips the tick. There must
+  also be budget headroom: the `factory.run` limits resolve, and the AI
+  credits are below `budget.softLimit` when one is set. The tick JSON
+  (`autoStart`), the text output and the poll audit record whether a run
+  started, the item it took and its exit code. Poll never starts the listener
+  chain, `heal run` or `heal approve`. The key is read only from the user
+  config and the base branch's `.copilot/omg.jsonc`. A working-tree value is
+  ignored with a warning, as with `factory.progress`.
 - **`omg factory poll`.** A foreground polling loop for GitHub and Azure
   DevOps, for where webhooks cannot reach (ADO service hooks need a public
   endpoint). Each tick runs the heal scan (only with the heal capability;

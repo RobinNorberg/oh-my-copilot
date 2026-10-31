@@ -15,7 +15,7 @@ import { createForge } from '../../forge/index.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
-import { acquirePoller, defaultPollHealScan, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, runFactoryPoll, } from '../poll.js';
+import { acquirePoller, defaultPollHealScan, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, defaultPollAutoStart, defaultPollBudget, runFactoryPoll, } from '../poll.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const T0 = '2026-10-31T10:00:00.000Z';
@@ -306,6 +306,143 @@ describe('omg factory poll on GitHub', () => {
         expect(ticks()[0].intake).toEqual({ ran: false, reason: 'no intake source (factory.intake.source)' });
         expect(ticks()[0].board.map((b) => [b.stage, b.row.id])).toEqual([['outside', 4]]);
         expect(w.calls.some((c) => c.startsWith('gh issue'))).toBe(false);
+    });
+});
+describe('omg factory poll: factory.intake.autoStart', () => {
+    const ON = { factory: { intake: { autoStart: true } } };
+    /** A fake engine: records each start, optionally leaves a run behind. */
+    function engine(r = {}) {
+        const starts = [];
+        const autoStart = async (o) => {
+            starts.push(o.root);
+            r.after?.();
+            return { exitCode: r.exitCode ?? 0, next: r.next === undefined ? 1 : r.next, message: 'parked at awaiting-human: merge' };
+        };
+        return { starts, autoStart };
+    }
+    const on = (e, over = {}) => ({ trustedUser: () => ON, projectConfig: () => LABEL, autoStart: e.autoStart, budget: () => null, ...over });
+    it('is off by default: an idle tick starts nothing', async () => {
+        const e = engine();
+        expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined }))).toBe(0);
+        expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: false, reason: 'factory.intake.autoStart is off' } });
+        expect(e.starts).toEqual([]);
+    });
+    it('a working-tree key is ignored with a warning', async () => {
+        const e = engine();
+        const project = { factory: { intake: { ...LABEL.factory.intake, autoStart: true } } };
+        expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined, projectConfig: () => project }))).toBe(0);
+        expect(ticks()[0].autoStart).toEqual({ started: false, reason: 'factory.intake.autoStart is off' });
+        expect(err.join('\n')).toContain('ignoring factory.intake.autoStart from the working-tree project config');
+        expect(e.starts).toEqual([]);
+    });
+    it('on an idle tick it starts one run --next and reports the item and the exit code (JSON and text)', async () => {
+        const e = engine({ exitCode: 3, next: 1 });
+        const budget = [];
+        expect(await poll(scripted().exec, { once: true, json: true }, on(e, { budget: (r) => { budget.push(r); return null; } }))).toBe(0);
+        expect(ticks()[0]).toMatchObject({ idle: true, autoStart: { started: true, next: 1, exitCode: 3, message: 'parked at awaiting-human: merge' } });
+        expect([e.starts, budget]).toEqual([[root], [root]]);
+        const audit = readFileSync(pollAuditPath(root), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        expect(audit.filter((a) => a.kind.startsWith('auto-start')).map((a) => [a.kind, a.next, a.exitCode])).toEqual([['auto-start', undefined, undefined], ['auto-start-done', 1, 3]]);
+        out.length = 0;
+        expect(await poll(scripted().exec, { once: true }, on(engine({ next: null })))).toBe(0);
+        expect(out.join('\n')).toContain('auto-start: omg factory run --next found nothing runnable, exit 0');
+        out.length = 0;
+        expect(await poll(scripted().exec, { once: true }, on(e))).toBe(0);
+        expect(out.join('\n')).toContain('auto-start: omg factory run --next took #1, exit 3: parked at awaiting-human: merge');
+    });
+    it('starts only on an idle tick with a successful, unthrottled intake read', async () => {
+        const e = engine();
+        save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
+        await poll(scripted().exec, { once: true, json: true, prs: false }, on(e));
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run is in flight' } });
+        rmSync(factoryStatePath(root, 5));
+        await poll(scripted().exec, { once: true, json: true, intake: false }, on(e));
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'no intake read this tick (--no-intake)' });
+        await poll(scripted().exec, { once: true, json: true }, on(e, { projectConfig: () => undefined }));
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'no intake read this tick (no intake source (factory.intake.source))' });
+        // A parked run keeps the tick idle; its PR read is throttled.
+        seedParked();
+        const limited = scripted({ onCall: (cmd, args) => (cmd === 'gh' && args[0] === 'pr' && args[1] === 'view' ? { status: 1, stdout: '', stderr: 'HTTP 429: Too Many Requests' } : undefined) });
+        await poll(limited.exec, { once: true, json: true }, on(e));
+        expect(ticks().at(-1)).toMatchObject({ idle: true, intake: { ran: true }, rateLimited: true, autoStart: { started: false, reason: 'the tick was rate-limited' } });
+        expect(e.starts).toEqual([]);
+    });
+    it('not started while the run lock is held or without budget headroom', async () => {
+        const e = engine();
+        const owner = () => writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
+        const busy = { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99 };
+        mkdirSync(factoryStateDir(root), { recursive: true });
+        owner();
+        expect(await poll(scripted().exec, { once: true, json: true }, on(e, { owner: busy }))).toBe(0);
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'the run lock is held: an engine runs in this repository' });
+        rmSync(factoryRepoOwnerPath(root));
+        // idle is advisory: an engine that claims the lock during the board step (after the idle check; the items are
+        // seen, so the board reads first) makes poll's own claim refuse at start time; the tick is skipped, not failed.
+        let views = 0;
+        const late = scripted({ onCall: (cmd, args) => { if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'view' && ++views === 1)
+                owner(); return undefined; } });
+        expect(await poll(late.exec, { once: true, json: true, prs: false }, on(e, { owner: busy }))).toBe(0);
+        expect(ticks().at(-1)).toMatchObject({ idle: true, errors: [], autoStart: { started: false, reason: expect.stringMatching(/^the run lock is held: another omg factory engine runs in this repository \(4, pid 99/) } });
+        expect(JSON.parse(readFileSync(factoryRepoOwnerPath(root), 'utf8'))).toMatchObject({ pid: 99, run: '4' });
+        rmSync(factoryRepoOwnerPath(root));
+        // A successful claim is released before the start, so the run's own claim (the binding one) can take it.
+        let held = 'unread';
+        const check = async () => { held = existsSync(factoryRepoOwnerPath(root)); return { exitCode: 0, next: null, message: 'nothing runnable' }; };
+        expect(await poll(scripted().exec, { once: true, json: true }, on({ autoStart: check }))).toBe(0);
+        expect([ticks().at(-1).autoStart.started, held]).toEqual([true, false]);
+        expect(await poll(scripted().exec, { once: true, json: true }, on(e, { budget: () => 'the AI credits used (9.00) reached budget.softLimit 5' }))).toBe(0);
+        expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'the AI credits used (9.00) reached budget.softLimit 5' });
+        expect(e.starts).toEqual([]);
+    });
+    it('a broken run state (failing its integrity check) is never idle and starts nothing', async () => {
+        const e = engine();
+        const s = moveTo(issueRun(6), 'implement', 'plan ok', T0);
+        mkdirSync(factoryStateDir(root), { recursive: true });
+        writeFileSync(factoryStatePath(root, 6), JSON.stringify({ ...s, phase: 'merged', integrity: computeFactoryIntegrity(s) }));
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+        writeFileSync(factoryStatePath(root, 6), '{ not json');
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+        expect(e.starts).toEqual([]);
+    });
+    it('at most one run per tick: the started run in flight keeps the next tick from starting another', async () => {
+        const e = engine({ after: () => save(moveTo(issueRun(1), 'implement', 'lane lost', T0)) });
+        let stop = () => { };
+        let sleeps = 0;
+        const code = await poll(scripted().exec, { json: true, prs: false }, on(e, {
+            onStop: (h) => { stop = h; return () => { }; },
+            sleep: async () => { if (++sleeps === 2)
+                stop(); },
+        }));
+        expect(code).toBe(0);
+        expect(e.starts).toHaveLength(1);
+        expect(ticks().map((t) => t.autoStart.started)).toEqual([true, false]);
+        expect(ticks()[1].autoStart).toEqual({ started: false, reason: 'a run is in flight' });
+    });
+    it('defaultPollBudget: the factory.run limits must resolve, and the AI credits stay below budget.softLimit', () => {
+        mkdirSync(join(root, '.copilot'), { recursive: true });
+        writeFileSync(join(root, '.copilot', 'omg.jsonc'), JSON.stringify({ budget: { softLimit: 5 } }));
+        mkdirSync(join(root, '.omg', 'state'), { recursive: true });
+        const ledger = (credits) => writeFileSync(join(root, '.omg', 'state', 'budget-ledger.json'), JSON.stringify({
+            version: 1, since: T0, sessions: { s1: { credits, premiumRequests: 0, source: 'measured', detail: 'x', updatedAt: T0 } }, teams: {}, notified: {},
+        }));
+        ledger(4.5);
+        const budget = defaultPollBudget(() => ({}));
+        expect(budget(root)).toBeNull();
+        ledger(5);
+        expect(budget(root)).toMatch(/AI credits used \(5\.00\) reached budget\.softLimit 5/);
+        expect(defaultPollBudget(() => { throw new Error('omg factory run refuses to start: no per-lane AI-credit cap is resolved'); })(root)).toMatch(/no per-lane AI-credit cap/);
+    });
+    it('defaultPollAutoStart: a child `<entry> factory run --next --json` in the root; the outcome is read from its stdout', async () => {
+        const script = join(root, 'fake-omg.cjs');
+        writeFileSync(script, 'process.stdout.write(JSON.stringify({ ok: false, next: 7, message: process.argv.slice(2).join(" ") + " @ " + process.cwd() }, null, 2)); process.exit(3);\n');
+        const r = await defaultPollAutoStart(script)({ root });
+        expect(r).toMatchObject({ exitCode: 3, next: 7 });
+        expect(r.message).toMatch(/^factory run --next --json @ /);
+        writeFileSync(script, 'process.stdout.write("garbage"); process.exit(1);\n');
+        expect(await defaultPollAutoStart(script)({ root })).toEqual({ exitCode: 1, next: null, message: 'no outcome on stdout' });
+        expect(await defaultPollAutoStart('')({ root })).toMatchObject({ exitCode: 1, next: null });
     });
 });
 //# sourceMappingURL=poll.test.js.map
