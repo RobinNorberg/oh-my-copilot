@@ -43,4 +43,10 @@ export function boardColumnWiql(columnField, column, itemTypes) {
         throw new WiqlError(`refused board column field ${JSON.stringify(columnField)}`);
     return query(['[System.TeamProject] = @project', `[${columnField}] = ${literal(column)}`, ...typeFilter(itemTypes)]);
 }
+/** enqueue's findByKey: the work items whose description holds the `shipyard-key: <spec>/` footer phrase (shipyard-factory design §3.4). */
+export function shipyardKeyWiql(spec) {
+    if (!Number.isSafeInteger(spec) || spec <= 0)
+        throw new WiqlError(`refused spec id ${JSON.stringify(spec)}`);
+    return `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.Description] CONTAINS ${literal(`shipyard-key: ${spec}/`)} ORDER BY [System.Id] ASC`;
+}
 //# sourceMappingURL=wiql.js.map

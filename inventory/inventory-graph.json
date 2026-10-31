@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d1eefd461e4ba1e335c9f8d7b1d1899f175b34e2",
-    "sourceSha256": "a6d0e1e13cf33b39630e01eb49de2c9e3e8b0cef9e512c764a759ca39f59a7d1",
+    "head": "207acc8eef9324989462d5654c17f864f78859ec",
+    "sourceSha256": "b51a3a5096fab0b4cfd6a4d44e3a7626db3c86896d5f4d65492c67fb7fa9fa1e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d1eefd461e4ba1e335c9f8d7b1d1899f175b34e2",
-  "sourceSha256": "a6d0e1e13cf33b39630e01eb49de2c9e3e8b0cef9e512c764a759ca39f59a7d1",
+  "head": "207acc8eef9324989462d5654c17f864f78859ec",
+  "sourceSha256": "b51a3a5096fab0b4cfd6a4d44e3a7626db3c86896d5f4d65492c67fb7fa9fa1e",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1914,
-      "total": 1938
+      "srcFiles": 1918,
+      "total": 1942
     },
     "generated": {
-      "distFiles": 7084,
+      "distFiles": 7092,
       "bridgeFiles": 9,
-      "total": 7093
+      "total": 7101
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3763,6 +3763,10 @@
       "dist/forge/ado/__tests__/routes.test.d.ts.map",
       "dist/forge/ado/__tests__/routes.test.js",
       "dist/forge/ado/__tests__/routes.test.js.map",
+      "dist/forge/ado/__tests__/tracker-writes.test.d.ts",
+      "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map",
+      "dist/forge/ado/__tests__/tracker-writes.test.js",
+      "dist/forge/ado/__tests__/tracker-writes.test.js.map",
       "dist/forge/ado/__tests__/wiql.test.d.ts",
       "dist/forge/ado/__tests__/wiql.test.d.ts.map",
       "dist/forge/ado/__tests__/wiql.test.js",
@@ -3823,6 +3827,10 @@
       "dist/forge/ado/wiql.d.ts.map",
       "dist/forge/ado/wiql.js",
       "dist/forge/ado/wiql.js.map",
+      "dist/forge/body-file.d.ts",
+      "dist/forge/body-file.d.ts.map",
+      "dist/forge/body-file.js",
+      "dist/forge/body-file.js.map",
       "dist/forge/config.d.ts",
       "dist/forge/config.d.ts.map",
       "dist/forge/config.js",
@@ -23660,6 +23668,26 @@
         "path": "dist/forge/ado/__tests__/routes.test.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/wiql.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/wiql.test.d.ts"
@@ -23958,6 +23986,26 @@
         "id": "dist/forge/ado/wiql.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/wiql.js.map"
+      },
+      {
+        "id": "dist/forge/body-file.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.d.ts"
+      },
+      {
+        "id": "dist/forge/body-file.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.d.ts.map"
+      },
+      {
+        "id": "dist/forge/body-file.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.js"
+      },
+      {
+        "id": "dist/forge/body-file.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.js.map"
       },
       {
         "id": "dist/forge/config.d.ts",
@@ -51255,6 +51303,11 @@
         "path": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.query.json"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.shipyard-key.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.shipyard-key.json"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json"
@@ -51273,6 +51326,11 @@
         "id": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.POST.user-story.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.POST.user-story.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/work.boards.GET.stories.json",
@@ -51313,6 +51371,11 @@
         "id": "src/forge/ado/__tests__/routes.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/routes.test.ts"
+      },
+      {
+        "id": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/tracker-writes.test.ts"
       },
       {
         "id": "src/forge/ado/__tests__/wiql.test.ts",
@@ -51388,6 +51451,11 @@
         "id": "src/forge/ado/wiql.ts",
         "kind": "src",
         "path": "src/forge/ado/wiql.ts"
+      },
+      {
+        "id": "src/forge/body-file.ts",
+        "kind": "src",
+        "path": "src/forge/body-file.ts"
       },
       {
         "id": "src/forge/config.ts",
@@ -78573,6 +78641,16 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "src/ship/exec.ts",
         "kind": "imports"
       },
@@ -81882,6 +81960,81 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/wiql.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -81910,6 +82063,11 @@
         "from": "src/forge/ado/__tests__/world.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/ado/__tests__/world.ts",
@@ -82238,6 +82396,11 @@
       },
       {
         "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
         "to": "src/forge/ado/html.ts",
         "kind": "imports"
       },
@@ -82258,7 +82421,17 @@
       },
       {
         "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
         "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/types.ts",
         "kind": "imports"
       },
       {
@@ -82270,6 +82443,16 @@
         "from": "src/forge/ado/wiql.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/body-file.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/body-file.ts",
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/forge/config.ts",
@@ -115088,12 +115271,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9748,
-      "edgeCount": 11535,
-      "importEdgeCount": 9485,
+      "nodeCount": 9760,
+      "edgeCount": 11558,
+      "importEdgeCount": 9502,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c617674ec3345b7c5de302df55c22a0c3bd0b2c95ca1cb22df2bb0e84bcce20e",
-  "manifestSha256": "5ed2e17214cdb6f54ddc8dcd0547602531f78f7a15fb2dfd196838cc9567dc2e"
+  "inventorySha256": "017ee49ca71924c1f010c3414fc9cbe669e99c371f8a9bc14d28f33390c41c65",
+  "manifestSha256": "1981bf25a665c39cc317963e2ad0f3c522a4b2a6fa36829ff94dc5c659cb65ae"
 }

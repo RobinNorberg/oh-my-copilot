@@ -874,11 +874,11 @@ export declare const graphEvidenceReferenceSchema: z.ZodObject<{
     ref: z.ZodString;
     summary: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    kind: "test" | "file" | "command" | "url" | "human";
+    kind: "url" | "test" | "file" | "command" | "human";
     ref: string;
     summary?: string | undefined;
 }, {
-    kind: "test" | "file" | "command" | "url" | "human";
+    kind: "url" | "test" | "file" | "command" | "human";
     ref: string;
     summary?: string | undefined;
 }>;
@@ -892,11 +892,11 @@ export declare const graphNodeResultSchema: z.ZodObject<{
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }, {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }>, "many">;
@@ -905,7 +905,7 @@ export declare const graphNodeResultSchema: z.ZodObject<{
     outcome: "failed" | "succeeded";
     attempt_id: string;
     evidence_refs: {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -916,7 +916,7 @@ export declare const graphNodeResultSchema: z.ZodObject<{
     outcome: "failed" | "succeeded";
     attempt_id: string;
     evidence_refs: {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -931,11 +931,11 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }, {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }>, "many">;
@@ -943,7 +943,7 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     decision: "approved" | "denied";
     evidence_refs: {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }[];
@@ -951,7 +951,7 @@ export declare const graphApprovalDecisionSchema: z.ZodObject<{
 }, {
     decision: "approved" | "denied";
     evidence_refs: {
-        kind: "test" | "file" | "command" | "url" | "human";
+        kind: "url" | "test" | "file" | "command" | "human";
         ref: string;
         summary?: string | undefined;
     }[];

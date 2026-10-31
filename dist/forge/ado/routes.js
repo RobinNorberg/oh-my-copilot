@@ -15,6 +15,11 @@
  *
  * The area/resource names were taken from the REST docs, not from a live
  * `az devops invoke` listing (design §10.1): the first live run diffs them.
+ *
+ * Tracker writes (`omg factory enqueue` only, shipyard-factory design §3.3,
+ * PR 7b): the work item create route and the `tracker: true` paths of the
+ * work item PATCH pass only when the guard holds enqueue's tracker write
+ * context; the engine, `check` and `omg ship` never get them.
  */
 const STABLE = '7.1';
 /** A non-empty string with no control characters other than tab and newlines. */
@@ -24,6 +29,35 @@ const TEXT = { type: 'string', pattern: TEXT_CHARS };
 const text = (maxLength) => ({ type: 'string', pattern: TEXT_CHARS, maxLength });
 /** A branch ref; never refs/pull, refs/tags or a ref with `..`. */
 const BRANCH_REF = { type: 'string', pattern: /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]+$/u, maxLength: 400 };
+/** One line of visible text for a work item title: no control or format characters (bidi overrides), no leading `-`; ADO caps titles at 255. */
+const TITLE = { type: 'string', pattern: /^(?!-)[^\p{Cc}\p{Cf}]+$/u, maxLength: 255 };
+/**
+ * The HTML the adapter builds for System.Description and the AC field
+ * (tracker.ts adoTextHtml/adoListHtml): escaped text, `<div>`, `<br>`,
+ * `<ul>`, `<li>` and five entities only. No attribute, link or image can
+ * pass, and no control character other than tab, and no bidi control.
+ */
+const ADAPTER_HTML = {
+    type: 'string',
+    pattern: /^(?:[^<>&\p{Cc}\p{Bidi_Control}]|\t|<\/?(?:div|ul|li)>|<br>|&(?:amp|lt|gt|quot|#39);)+$/u,
+    maxLength: 262_144,
+};
+/** An area path: `\`-separated names (the first must be the project, validateAdoBody's `areaPath` rule). */
+const AREA_PATH = { type: 'string', pattern: /^(?!@)[^\p{Cc}\p{Cf}/$?*:"&<>#%|+]+$/u, maxLength: 4000 };
+/** The two relations enqueue writes (shipyard-factory design §3.3, §5): parent and predecessor, as tracker.ts reads them. */
+export const ADO_TRACKER_RELATIONS = ['System.LinkTypes.Hierarchy-Reverse', 'System.LinkTypes.Dependency-Reverse'];
+/** `{ rel, url }`, no attributes; the url's org is the forge org (validateAdoBody's `relation` rule). */
+const RELATION = {
+    type: 'object',
+    shape: {
+        kind: 'object',
+        keys: ['rel', 'url'],
+        required: ['rel', 'url'],
+        values: { rel: { enum: ADO_TRACKER_RELATIONS }, url: { type: 'string', pattern: /^https:\/\/dev\.azure\.com\/[^/\s]+\/_apis\/wit\/workItems\/[1-9]\d{0,9}$/, maxLength: 400 } },
+    },
+};
+/** Microsoft.VSTS.Common.Priority: 1 (highest) to 4. */
+const PRIORITY = { enum: [1, 2, 3, 4] };
 const route = (r) => Object.freeze(r);
 export const ADO_ROUTES = Object.freeze([
     // Setup probes.
@@ -35,17 +69,47 @@ export const ADO_ROUTES = Object.freeze([
     route({
         id: 'wit.workItems.PATCH', area: 'wit', resource: 'workItems', method: 'PATCH', apiVersion: STABLE, routeParams: ['project', 'id'], queryParams: [],
         mediaType: 'application/json-patch+json',
-        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only writes.
+        // test /rev guards a concurrent edit; tags, state and the board's Kanban column field are the only engine writes.
+        // `add` on a field sets it; `add` on /relations/- appends a link; no op removes or replaces anything.
+        // https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update?view=azure-devops-rest-7.1 ("Add a link", "Add a tag")
         body: {
             kind: 'json-patch',
             ops: ['test', 'add'],
             paths: [
                 { path: /^\/rev$/, value: { type: 'integer', min: 1 } },
-                { path: /^\/fields\/System\.Tags$/, value: TEXT },
+                // With the tracker write context, a tag write is a test of the current list, then an add editing allowlisted tags only.
+                { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: 'tags' },
                 // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
                 { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
                 // A column move can change System.State too, so it is held to the configured progress columns (critic amendments §A.14).
                 { path: /^\/fields\/WEF_[0-9A-F]{32}_Kanban\.Column$/, value: TEXT, configured: 'columns' },
+                // Tracker writes (enqueue's update and link): title, description, AC, priority, and a parent or predecessor link.
+                { path: /^\/fields\/System\.Title$/, value: TITLE, tracker: true },
+                { path: /^\/fields\/System\.Description$/, value: ADAPTER_HTML, tracker: true },
+                { path: /^\/fields\/Microsoft\.VSTS\.Common\.AcceptanceCriteria$/, value: ADAPTER_HTML, tracker: true },
+                { path: /^\/fields\/Microsoft\.VSTS\.Common\.Priority$/, value: PRIORITY, tracker: true },
+                { path: /^\/relations\/-$/, value: RELATION, configured: 'relation', tracker: true },
+            ],
+        },
+    }),
+    // Create one work item (POST {project}/_apis/wit/workitems/${type}: the `$` is in the route template, the parameter is the type name).
+    // Fields only: links go through the PATCH above once every id is known. Enqueue only (tracker: true).
+    // https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1
+    route({
+        id: 'wit.workItems.POST', area: 'wit', resource: 'workItems', method: 'POST', apiVersion: STABLE, routeParams: ['project', 'type'], queryParams: [],
+        mediaType: 'application/json-patch+json',
+        tracker: true,
+        body: {
+            kind: 'json-patch',
+            ops: ['add'],
+            paths: [
+                { path: /^\/fields\/System\.Title$/, value: TITLE },
+                { path: /^\/fields\/System\.Description$/, value: ADAPTER_HTML },
+                { path: /^\/fields\/Microsoft\.VSTS\.Common\.AcceptanceCriteria$/, value: ADAPTER_HTML },
+                { path: /^\/fields\/Microsoft\.VSTS\.Common\.Priority$/, value: PRIORITY },
+                // Every tag on the tracker write allowlist.
+                { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: 'tags' },
+                { path: /^\/fields\/System\.AreaPath$/, value: AREA_PATH, configured: 'areaPath' },
             ],
         },
     }),
@@ -136,6 +200,8 @@ export const ADO_ROUTES = Object.freeze([
  */
 export const ADO_WRITE_ALLOWLIST = Object.freeze([
     ['wit', 'workItems', 'PATCH'],
+    // Enqueue only (the route's `tracker` flag).
+    ['wit', 'workItems', 'POST'],
     ['wit', 'comments', 'POST'],
     ['wit', 'wiql', 'POST'],
     ['git', 'pullRequests', 'POST'],
@@ -169,6 +235,8 @@ function valueProblem(v, rule, at) {
             return rule.pattern && !rule.pattern.test(v) ? `${at} has a refused value` : undefined;
         case 'integer':
             return typeof v === 'number' && Number.isSafeInteger(v) && v >= (rule.min ?? Number.MIN_SAFE_INTEGER) ? undefined : `${at} must be an integer${rule.min === undefined ? '' : ` >= ${rule.min}`}`;
+        case 'object':
+            return objectProblem(v, rule.shape, at);
         case 'array':
             if (!Array.isArray(v) || v.length < rule.minItems || v.length > rule.maxItems)
                 return `${at} must be an array of ${rule.minItems} to ${rule.maxItems} items`;
@@ -200,6 +268,84 @@ function objectProblem(v, shape, at) {
     return undefined;
 }
 /**
+ * A `factory:` or `harbor:` tag, look-alikes included: NFKC folds fullwidth
+ * letters and `：`, and space around the `:` does not hide it.
+ */
+const isFactoryTag = (tag) => /^(?:factory|harbor)\s*:/i.test(tag.normalize('NFKC').trim());
+/** A tag enqueue may write: visible text without `;` or `,`, no leading `-`, never a `factory:` or `harbor:` tag. */
+const isTrackerTag = (tag) => /^(?!-)[^;,\p{Cc}\p{Cf}]{1,100}$/u.test(tag) && !isFactoryTag(tag);
+const TAGS_PATH = '/fields/System.Tags';
+/**
+ * A tracker PATCH's tag write (`add` replaces the whole list): one
+ * `test /fields/System.Tags <current>` before one `add`, and the edit adds and
+ * removes allowlisted tags only, so every factory:/harbor: tag stays (the
+ * gh --add-label/--remove-label parity of PR 7a).
+ */
+function trackerTagEditProblem(body, labels) {
+    const adds = body.flatMap((op, i) => (op.op === 'add' && op.path === TAGS_PATH ? [i] : []));
+    if (adds.length === 0)
+        return undefined;
+    const tests = body.flatMap((op, i) => (op.op === 'test' && op.path === TAGS_PATH ? [i] : []));
+    const at = `body[${adds[0]}].value`;
+    if (adds.length > 1 || tests.length !== 1 || tests[0] > adds[0])
+        return `body[${adds[0]}]: a tracker tag write is one add after one test ${TAGS_PATH} of the current tags`;
+    const split = (v) => v.split(';').map((t) => t.trim());
+    const current = body[tests[0]].value === '' ? [] : split(body[tests[0]].value).filter(Boolean);
+    const next = split(body[adds[0]].value);
+    // ASCII-only fold: toLowerCase maps U+212A (Kelvin sign) to "k", which ADO's ordinal-ignore-case compare does not, so a look-alike would count as already current.
+    // A pure case change of an existing tag (`Factory:Run` for `factory:run`) is the same tag to ADO and stays allowed.
+    const fold = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    const has = (list, tag) => list.some((t) => fold(t) === fold(tag));
+    for (const tag of next) {
+        if (has(current, tag))
+            continue;
+        if (!isTrackerTag(tag))
+            return `${at} has a refused tag ${JSON.stringify(tag)}`;
+        if (!labels.includes(tag))
+            return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
+    }
+    for (const tag of current) {
+        if (has(next, tag))
+            continue;
+        if (isFactoryTag(tag))
+            return `${at} removes the factory tag ${JSON.stringify(tag)}`;
+        if (!isTrackerTag(tag) || !has(labels, tag))
+            return `${at} removes tag ${JSON.stringify(tag)}, which is not on the tracker write allowlist`;
+    }
+    return undefined;
+}
+/** The context-bound rules of the tags, area path and relation paths; the value already passed its AdoValue rule. */
+function trackerProblem(route, target, value, context, at) {
+    switch (target.configured) {
+        case 'tags': {
+            const writes = context.trackerWrites;
+            // The engine's marker and progress tag writes keep the TEXT rule alone; a tracker PATCH's tag edit is trackerTagEditProblem's.
+            if (!writes || route.method !== 'POST')
+                return undefined;
+            // A new item carries allowlisted tags only.
+            for (const tag of value.split(';').map((t) => t.trim())) {
+                if (!isTrackerTag(tag))
+                    return `${at} has a refused tag ${JSON.stringify(tag)}`;
+                if (!writes.labels.includes(tag))
+                    return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
+            }
+            return undefined;
+        }
+        case 'areaPath': {
+            const parts = value.split('\\');
+            if (!context.project || parts[0].toLowerCase() !== context.project.toLowerCase())
+                return `${at} is not the forge project's area path`;
+            return parts.some((p) => p.trim() === '') ? `${at} has an empty area name` : undefined;
+        }
+        case 'relation': {
+            const prefix = `https://dev.azure.com/${encodeURIComponent(context.org ?? '')}/_apis/wit/workItems/`.toLowerCase();
+            return context.org && value.url.toLowerCase().startsWith(prefix) ? undefined : `${at}.url is not a work item of the forge org`;
+        }
+        default:
+            return undefined;
+    }
+}
+/**
  * The typed validator hook for the invoke guard (PR 5): the first reason the
  * parsed `--in-file` JSON is refused for `route`, or undefined when every key
  * and value is allowed. `kind: 'none'` takes no `--in-file` at all
@@ -210,12 +356,15 @@ export function validateAdoBody(route, body, context = {}) {
     const shape = route.body;
     if (!shape)
         return `${route.id} takes no body`;
+    if (route.tracker && !context.trackerWrites)
+        return `${route.id} is a tracker write (omg factory enqueue only)`;
     if (shape.kind === 'none')
         return body === undefined ? undefined : `${route.id} takes no body`;
     if (shape.kind === 'object')
         return objectProblem(body, shape, 'body');
     if (!Array.isArray(body) || body.length === 0)
         return 'body must be a non-empty JSON-patch array';
+    const writes = context.trackerWrites;
     for (let i = 0; i < body.length; i++) {
         const at = `body[${i}]`;
         const op = body[i];
@@ -227,11 +376,21 @@ export function validateAdoBody(route, body, context = {}) {
         if (typeof op.op !== 'string' || !shape.ops.includes(op.op))
             return `${at}.op must be one of ${shape.ops.join(', ')}`;
         const target = typeof op.path === 'string' ? shape.paths.find((p) => p.path.test(op.path)) : undefined;
-        if (!target)
+        if (!target || (target.tracker && !writes))
             return `${at}.path is not allowed`;
-        const problem = valueProblem(op.value, target.value, `${at}.value`);
+        if (target.tracker && !(isPlainObject(body[0]) && body[0].op === 'test' && body[0].path === '/rev'))
+            return `${at}: a tracker write starts with test /rev`;
+        // Enqueue never moves an item: its state and board column are the engine's progress writes.
+        if (writes && (target.configured === 'states' || target.configured === 'columns'))
+            return `${at}.path is not a tracker write`;
+        // An untagged item's current tags, for trackerTagEditProblem's test op.
+        const untaggedTest = writes && op.op === 'test' && target.configured === 'tags' && op.value === '';
+        const problem = untaggedTest ? undefined : valueProblem(op.value, target.value, `${at}.value`);
         if (problem)
             return problem;
+        const contextProblem = trackerProblem(route, target, op.value, context, `${at}.value`);
+        if (contextProblem)
+            return contextProblem;
         if (target.configured === 'states' && context.allowedStates && !context.allowedStates.includes(op.value)) {
             return `${at}.value is not a configured progress state (${context.allowedStates.join(', ') || 'none configured'})`;
         }
@@ -239,6 +398,6 @@ export function validateAdoBody(route, body, context = {}) {
             return `${at}.value is not a configured progress column (${context.allowedColumns.join(', ') || 'none configured'})`;
         }
     }
-    return undefined;
+    return writes && route.method === 'PATCH' ? trackerTagEditProblem(body, writes.labels) : undefined;
 }
 //# sourceMappingURL=routes.js.map

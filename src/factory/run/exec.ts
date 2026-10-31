@@ -18,6 +18,8 @@
  *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
+ *   The work item create and the PATCH's item fields and links pass only with
+ *   the TrackerWriteContext (shipyard-factory design PR 7b).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
@@ -28,14 +30,17 @@
  *   even if the tamper check missed it.
  */
 
-import { closeSync, existsSync, fstatSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { isAbsolute, join, relative, resolve } from 'path';
+import { isAbsolute, join } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
+import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
+
+export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
 
 export class FactorySafetyError extends ShipSafetyError {
   constructor(message: string) {
@@ -89,8 +94,10 @@ export interface TrackerWriteContext {
   repo: string;
   /** Absolute directory the caller writes bodies into; `--body-file` must be a file directly in it. */
   bodyDir: string;
-  /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. */
+  /** Labels a write may add or remove (the intake label, `priority:p0`…`p3`); `factory:*` and `harbor:*` never pass. On Azure DevOps: the tags a new work item may carry. */
   labels: readonly string[];
+  /** Azure DevOps: the work item types a create may name (factory.intake.itemTypes); none = no create. */
+  itemTypes?: readonly string[];
 }
 
 /** shipyardKeySearch (src/forge/types.ts) for any spec. */
@@ -101,15 +108,7 @@ const MAX_WRITE_LABELS = 4;
 const isWriteLabel = (s: string | undefined, ctx: TrackerWriteContext): boolean =>
   typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
 
-function isBodyFile(s: string | undefined, ctx: TrackerWriteContext): boolean {
-  if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir)) return false;
-  const rel = relative(resolve(ctx.bodyDir), resolve(s));
-  // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
-  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
-}
-
-/** The most characters a tracker write's body file may hold. */
-export const MAX_TRACKER_BODY_CHARS = 65536;
+const isBodyFile = (s: string | undefined, ctx: TrackerWriteContext): boolean => isFile(s) && isBodyFileIn(s, ctx.bodyDir);
 
 /**
  * The argv index of a passed tracker write's `--body-file` value (create 7,
@@ -122,40 +121,6 @@ function trackerBodyFileArg(args: string[]): number | undefined {
   return undefined;
 }
 
-/**
- * Read a tracker write's body file as the guard's own bytes: a regular file
- * with one link (no symlink, junction or hardlink), the same file when opened
- * as when checked, at most MAX_TRACKER_BODY_CHARS characters.
- */
-function readTrackerBody(path: string, fail: (reason: string) => Error): Buffer {
-  let reason: string | undefined;
-  try {
-    const before = lstatSync(path, { bigint: true });
-    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n) {
-      reason = '--body-file must be a regular file with one link (no symlink, junction or hardlink)';
-    } else {
-      const fd = openSync(path, 'r');
-      try {
-        const opened = fstatSync(fd, { bigint: true });
-        if (!opened.isFile() || opened.nlink !== 1n || opened.dev !== before.dev || opened.ino !== before.ino) {
-          reason = '--body-file changed while it was checked';
-        } else if (opened.size > BigInt(MAX_TRACKER_BODY_CHARS * 4)) {
-          // UTF-8 spends at most 4 bytes per character: a larger file cannot fit.
-          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
-        } else {
-          const raw = readFileSync(fd);
-          if (raw.toString('utf8').length <= MAX_TRACKER_BODY_CHARS) return raw;
-          reason = `--body-file is longer than ${MAX_TRACKER_BODY_CHARS} characters`;
-        }
-      } finally {
-        closeSync(fd);
-      }
-    }
-  } catch (error) {
-    reason = `cannot read --body-file: ${error instanceof Error ? error.message : String(error)}`;
-  }
-  throw fail(reason);
-}
 
 /** `<flag> <label>` pairs, the flags' runs in `order`, every label allowlisted and used once. */
 function isLabelPairs(r: string[], order: readonly string[], ctx: TrackerWriteContext): boolean {
@@ -291,7 +256,7 @@ const adoRefusal = (cmd: string, args: string[]) => (reason: string) =>
  */
 export function assertFactoryCommand(cmd: string, args: string[], extraProtected: readonly string[] = [], env?: Readonly<Record<string, string>>, ado?: AdoGuardContext, writes?: TrackerWriteContext): void {
   if (isAdoCommand(cmd)) {
-    checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args));
+    checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
     return;
   }
   const file = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase();
@@ -323,7 +288,7 @@ export function assertFactoryCommand(cmd: string, args: string[], extraProtected
  */
 export function factoryGuardExec(exec: Exec, extraProtected: () => readonly string[] = () => [], ado: () => AdoGuardContext | undefined = () => undefined, writes: () => TrackerWriteContext | undefined = () => undefined): Exec {
   return (cmd, args, opts) => {
-    if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
+    if (isAdoCommand(cmd)) return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
     const ctx = writes();
     assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx);
     const at = ctx && cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;

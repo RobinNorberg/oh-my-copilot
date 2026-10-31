@@ -79,7 +79,7 @@ export function createAzureDevOpsForge(exec: Exec, cwd: string, config: Resolved
     kind: 'azure-devops',
     provider: 'azure-devops',
     repo: config.repo,
-    tracker: adoTracker(ctx, config.intake.source),
+    tracker: adoTracker(ctx, config.intake.source, options.trackerBodyDir),
     reviews: adoReviews(ctx),
     checks: adoChecks(ctx),
     merge: adoMerge(ctx, { stateDir: options.stateDir ?? join(homedir(), '.omg', 'forge'), untrustedRoots }),

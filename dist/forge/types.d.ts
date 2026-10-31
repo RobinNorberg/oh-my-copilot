@@ -133,7 +133,7 @@ export interface ForgeTracker {
         stderr: string;
     };
     /**
-     * `omg factory enqueue` only (shipyard-factory design §3.4); GitHub for now.
+     * `omg factory enqueue` only (shipyard-factory design §3.4).
      * Every item whose body has a `shipyard-key: <spec>/<key>` line, with that
      * key. Trust and parent are not checked here: the caller compares
      * `item.authorTrusted` and `item.parent` itself. Throws on a failed read.
@@ -146,19 +146,35 @@ export interface ForgeTracker {
     createItem?(draft: ForgeItemDraft): number;
     /** `omg factory enqueue` only: replace title and body, add/remove labels. Never closes, deletes, transfers or locks. Throws on failure. */
     updateItem?(id: number, update: ForgeItemUpdate): void;
+    /**
+     * `omg factory enqueue` only, Azure DevOps (GitHub edges are body lines):
+     * link `id` to its parent or a predecessor, as `parent` and `dependsOn`
+     * read it back. No write when the link exists. Throws on failure.
+     */
+    addRelation?(id: number, kind: ForgeRelationKind, target: number): void;
 }
+/** The links enqueue writes on Azure DevOps: Hierarchy-Reverse (parent) and Dependency-Reverse (predecessor). */
+export type ForgeRelationKind = 'parent' | 'depends-on';
 /** A new tracker item; the body (AC, edge lines, `shipyard-key:` footer) is rendered by the caller into `bodyFile`. */
 export interface ForgeItemDraft {
     title: string;
     bodyFile: string;
-    /** GitHub labels; each must be on the writer's allowlist. */
+    /** GitHub labels (Azure DevOps tags); each must be on the writer's allowlist. */
     labels: string[];
+    /** Azure DevOps: the acceptance criteria, which the adapter writes to the AC field as an escaped HTML list (GitHub renders them into the body). */
+    acceptance?: string[];
+    /** Azure DevOps: Microsoft.VSTS.Common.Priority, 1 to 4 (GitHub uses a `priority:p<n-1>` label). */
+    priority?: number;
 }
 export interface ForgeItemUpdate {
     title: string;
     bodyFile: string;
     addLabels: string[];
     removeLabels: string[];
+    /** Azure DevOps: as ForgeItemDraft.acceptance. */
+    acceptance?: string[];
+    /** Azure DevOps: as ForgeItemDraft.priority. */
+    priority?: number;
 }
 /** The idempotency footer line enqueue renders (design §3.3). */
 export declare const shipyardKeyLine: (spec: number, key: string) => string;
@@ -325,6 +341,8 @@ export interface ForgeOptions {
     untrustedRoots: readonly string[];
     /** Engine-owned directory outside every untrusted root (the ADO human merge body); default the user's ~/.omg/forge. */
     stateDir?: string;
+    /** `omg factory enqueue`'s body directory (its TrackerWriteContext bodyDir): an adapter that reads a tracker write's body file reads only a file directly in it. */
+    trackerBodyDir?: string;
 }
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */
 export type ForgeFactory = (exec: Exec, cwd: string, config: ResolvedForgeConfig, options: ForgeOptions) => Forge;

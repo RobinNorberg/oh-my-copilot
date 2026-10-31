@@ -1305,6 +1305,21 @@ gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:
 - Extra flags, reordered flags and a different `--state`, `--json` or search are refused. `gh api`, `gh search`, and `gh issue close|delete|transfer|lock|reopen` stay refused. Nothing touches pull requests or merges.
 - A search hit counts only when its body has exactly one key line for that spec, and the same key is still there when the issue is read again with `gh issue view`. Trust and parent are left to the caller.
 
+**Azure DevOps tracker writes (for `omg factory enqueue` on Azure DevOps, not yet wired).** The Azure DevOps tracker can create work items, update them, link them and find them by their `shipyard-key:` footer. No command uses these writes yet (enqueue is GitHub-only for now), and the factory guard allows them only with the enqueue write context. Every call is `az devops invoke` (REST 7.1, `application/json-patch+json`):
+
+| Write | Route | JSON-patch paths |
+|---|---|---|
+| create | `wit/workItems` `POST` ([docs](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1)), `type` = one of `factory.intake.itemTypes` (the first one) | `add` only: `System.Title`, `System.Description`, `Microsoft.VSTS.Common.AcceptanceCriteria`, `Microsoft.VSTS.Common.Priority`, `System.Tags`, `System.AreaPath` |
+| update, link | `wit/workItems` `PATCH` ([docs](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/update?view=azure-devops-rest-7.1)), starting with `test /rev` | `add` only: the four fields above, `System.Tags`, and `/relations/-` |
+| find by key | `wit/wiql` `POST` (a read) | `[System.Description] CONTAINS 'shipyard-key: <spec>/'`, then each hit is read and must hold exactly one key line for that spec |
+
+- A link is `{ rel, url }` with `rel` either `System.LinkTypes.Hierarchy-Reverse` (parent) or `System.LinkTypes.Dependency-Reverse` (predecessor), the links `parent` and `dependsOn` read back, and `url` a work item of the forge org. Other link types, attributes, removing or replacing a link, and a second parent are refused. An existing link is not written again.
+- Description and acceptance criteria are HTML the adapter builds: every character escaped, lines joined with `<br>`, the criteria as a `<ul>` list. The guard accepts only escaped text, `<div>`, `<br>`, `<ul>`, `<li>` and the entities `&amp; &lt; &gt; &quot; &#39;`, so no link, image or attribute gets through. Control characters (other than tab) and bidi controls are refused.
+- Titles are one line of visible text, at most 255 characters, with no control or format characters and no leading `-`.
+- Tags never start with `factory:`, `harbor:` or `-`, and contain no `,`, `;` or control characters. A new work item carries only allowlisted tags. An update keeps the item's other tags.
+- The area path (from an `area-tag` intake source) must be the forge project or under it. Priority is 1 to 4.
+- The body file is read like a GitHub one: a regular file with one link, at most 65536 characters. `--in-file` may not contain `:` after the drive letter, because that would name an NTFS alternate data stream. `omg factory run`, `omg factory check` and `omg ship` refuse the create route and every tracker path.
+
 #### `omg factory enqueue`
 
 ```bash

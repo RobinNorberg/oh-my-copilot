@@ -15,6 +15,11 @@
  *
  * The area/resource names were taken from the REST docs, not from a live
  * `az devops invoke` listing (design §10.1): the first live run diffs them.
+ *
+ * Tracker writes (`omg factory enqueue` only, shipyard-factory design §3.3,
+ * PR 7b): the work item create route and the `tracker: true` paths of the
+ * work item PATCH pass only when the guard holds enqueue's tracker write
+ * context; the engine, `check` and `omg ship` never get them.
  */
 export type AdoHttpMethod = 'GET' | 'POST' | 'PATCH';
 /** The value one body key may hold (validateAdoBody enforces it). */
@@ -34,6 +39,9 @@ export type AdoValue = {
     minItems: number;
     maxItems: number;
     items: AdoObjectBody;
+} | {
+    type: 'object';
+    shape: AdoObjectBody;
 };
 /** A JSON object: only `keys`, all of `required`, and every present key's value matching `values[key]`. */
 export interface AdoObjectBody {
@@ -51,18 +59,36 @@ export type AdoBody = {
  | {
     kind: 'json-patch';
     ops: readonly string[];
-    paths: readonly {
-        path: RegExp;
-        value: AdoValue;
-        configured?: 'states' | 'columns';
-    }[];
+    paths: readonly AdoPatchPath[];
 };
+/** One allowed JSON-patch path. */
+export interface AdoPatchPath {
+    path: RegExp;
+    value: AdoValue;
+    /** A config- or context-bound rule on top of `value` (validateAdoBody). */
+    configured?: 'states' | 'columns' | 'tags' | 'areaPath' | 'relation';
+    /** Only with the tracker write context (`omg factory enqueue`); a tracker PATCH starts with `test /rev`. */
+    tracker?: true;
+}
+/** What `omg factory enqueue` may write on Azure DevOps (from the factory guard's TrackerWriteContext). */
+export interface AdoTrackerWrites {
+    /** Tags a created work item may carry (the intake tag); `factory:*` and `harbor:*` never pass. */
+    labels: readonly string[];
+    /** Work item types the create route may name (factory.intake.itemTypes); none = no create. */
+    itemTypes?: readonly string[];
+}
 /** Values only the run's config knows, for validateAdoBody. */
 export interface AdoBodyContext {
     /** When set, a `configured: 'states'` path may only carry one of these (exact match). */
     allowedStates?: readonly string[];
     /** When set, a `configured: 'columns'` path may only carry one of these (exact match). */
     allowedColumns?: readonly string[];
+    /** The forge org: a relation's url must name a work item of it. */
+    org?: string;
+    /** The forge project: an area path must be it or under it. */
+    project?: string;
+    /** Set only for `omg factory enqueue`: the `tracker` paths and the stricter tag rule apply. */
+    trackerWrites?: AdoTrackerWrites;
 }
 export interface AdoRoute {
     /** Fixture and call-site key: `<area>.<resource>.<method>[.<variant>]`. */
@@ -79,7 +105,11 @@ export interface AdoRoute {
     mediaType?: string;
     /** `--accept-media-type` (response). */
     acceptMediaType?: string;
+    /** Only with the tracker write context (`omg factory enqueue`). */
+    tracker?: true;
 }
+/** The two relations enqueue writes (shipyard-factory design §3.3, §5): parent and predecessor, as tracker.ts reads them. */
+export declare const ADO_TRACKER_RELATIONS: readonly ["System.LinkTypes.Hierarchy-Reverse", "System.LinkTypes.Dependency-Reverse"];
 export declare const ADO_ROUTES: readonly AdoRoute[];
 /**
  * The writes the factory may make, listed by hand so a new write route needs

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADO_ROUTES, ADO_WRITE_ALLOWLIST, adoRouteById, findAdoRoute, validateAdoBody } from '../routes.js';
+import { ADO_ROUTES, ADO_TRACKER_RELATIONS, ADO_WRITE_ALLOWLIST, adoRouteById, findAdoRoute, validateAdoBody } from '../routes.js';
 const tuple = (r) => `${r.area}/${r.resource} ${r.method}`;
 describe('ADO route table invariants', () => {
     it('every route pins an api-version (7.1 or a 7.1 preview)', () => {
@@ -44,14 +44,33 @@ describe('ADO route table invariants', () => {
         expect(post?.kind === 'object' && post.keys).not.toContain('autoCompleteSetBy');
         expect(post?.kind === 'object' && post.keys).not.toContain('completionOptions');
     });
-    it('the work-item JSON-patch reaches only rev, tags, state and the Kanban column', () => {
+    it('the work-item JSON-patch reaches only rev, tags, state and the Kanban column without the tracker write context', () => {
         const body = adoRouteById('wit.workItems.PATCH').body;
         if (body?.kind !== 'json-patch')
             throw new Error('expected a json-patch body');
-        const ok = (path) => body.paths.some((p) => p.path.test(path));
-        expect(['/rev', '/fields/System.Tags', '/fields/System.State', '/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column'].every(ok)).toBe(true);
-        expect(['/fields/System.AssignedTo', '/fields/System.Description', '/relations/-', '/fields/System.Tags/x'].some(ok)).toBe(false);
+        const engine = (path) => body.paths.some((p) => !p.tracker && p.path.test(path));
+        expect(['/rev', '/fields/System.Tags', '/fields/System.State', '/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column'].every(engine)).toBe(true);
+        expect(['/fields/System.AssignedTo', '/fields/System.Description', '/relations/-', '/fields/System.Tags/x'].some(engine)).toBe(false);
         expect(body.ops).toEqual(['test', 'add']);
+    });
+    it('tracker writes: the create route and the PATCH tracker paths are exactly the design §3.3 fields and one link path', () => {
+        const create = adoRouteById('wit.workItems.POST');
+        expect(create).toMatchObject({ area: 'wit', resource: 'workItems', method: 'POST', apiVersion: '7.1', routeParams: ['project', 'type'], queryParams: [], mediaType: 'application/json-patch+json', tracker: true });
+        if (create.body?.kind !== 'json-patch')
+            throw new Error('expected a json-patch body');
+        expect(create.body.ops).toEqual(['add']);
+        const fields = ['/fields/System.Title', '/fields/System.Description', '/fields/Microsoft.VSTS.Common.AcceptanceCriteria', '/fields/Microsoft.VSTS.Common.Priority'];
+        const creates = (path) => create.body?.kind === 'json-patch' && create.body.paths.some((p) => p.path.test(path));
+        expect([...fields, '/fields/System.Tags', '/fields/System.AreaPath'].every(creates)).toBe(true);
+        expect(['/relations/-', '/fields/System.State', '/fields/System.AssignedTo', '/fields/System.IterationPath', '/id', '/rev'].some(creates)).toBe(false);
+        const patch = adoRouteById('wit.workItems.PATCH').body;
+        if (patch?.kind !== 'json-patch')
+            throw new Error('expected a json-patch body');
+        const tracker = patch.paths.filter((p) => p.tracker);
+        expect(tracker.map((p) => p.path.source)).toEqual([...fields, '/relations/-'].map((f) => `^${f.replace(/[./]/g, (c) => `\\${c}`)}$`));
+        // No route removes or replaces anything; only these two relation types.
+        expect(ADO_TRACKER_RELATIONS).toEqual(['System.LinkTypes.Hierarchy-Reverse', 'System.LinkTypes.Dependency-Reverse']);
+        expect(ADO_ROUTES.filter((r) => r.tracker).map((r) => r.id)).toEqual(['wit.workItems.POST']);
     });
     it('findAdoRoute compares names case-insensitively', () => {
         expect(findAdoRoute('Git', 'PULLREQUESTS', 'patch')?.id).toBe('git.pullRequests.PATCH');
