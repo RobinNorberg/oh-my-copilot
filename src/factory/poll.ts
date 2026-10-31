@@ -52,7 +52,7 @@ import type { HealConfig } from './heal/config.js';
 import { runHealScan, type ScanResult } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
 import {
-  defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
+  defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type OwnerDeps,
 } from './run/state.js';
 
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
@@ -363,8 +363,9 @@ export function pollTick(ctx: PollContext): PollTick {
       prs.push(row);
     }
   }
-  // An unreadable or integrity-failed run state may be a run in flight: never idle.
-  const idle = broken.size === 0 && !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
+  // A run state that is unreadable or fails its integrity seal (readFactoryState never checks it) may hide a run in flight: never idle.
+  const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+  const idle = !unsound && !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
 
   // 4. board: the rows that changed.
   const board: PollTick['board'] = [];

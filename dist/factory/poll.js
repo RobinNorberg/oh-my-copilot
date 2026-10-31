@@ -47,7 +47,7 @@ import { CheckUsageError, checkEnvFor, openReadForge } from './check/cli.js';
 import { checkItems, plainText } from './check/score.js';
 import { runHealScan } from './heal/cli.js';
 import { HealRunRefused } from './heal/run.js';
-import { defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, } from './run/state.js';
+import { defaultOwnerDeps, factoryRepoOwnerPath, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from './run/state.js';
 /** Bumped on any change to the `--json` tick shape (src/factory/__tests__/poll.test.ts pins it). */
 export const POLL_JSON_SCHEMA_VERSION = 1;
 export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
@@ -300,8 +300,9 @@ export function pollTick(ctx) {
             prs.push(row);
         }
     }
-    // An unreadable or integrity-failed run state may be a run in flight: never idle.
-    const idle = broken.size === 0 && !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
+    // A run state that is unreadable or fails its integrity seal (readFactoryState never checks it) may hide a run in flight: never idle.
+    const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+    const idle = !unsound && !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
     // 4. board: the rows that changed.
     const board = [];
     const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));

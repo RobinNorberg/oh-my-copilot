@@ -130400,7 +130400,8 @@ function pollTick(ctx) {
       prs.push(row);
     }
   }
-  const idle = broken.size === 0 && !engineBusy(root2, ctx.owner) && !live.some(([, s]) => !s.gate);
+  const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+  const idle = !unsound && !engineBusy(root2, ctx.owner) && !live.some(([, s]) => !s.gate);
   const board = [];
   const shown = step("board", () => collectBoard({ forge, config: config2, root: root2, ids: ids2, check: null, now: ctx.now(), warnings }));
   if (shown) {

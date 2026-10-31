@@ -312,9 +312,15 @@ describe('omg factory poll on GitHub', () => {
     it('idle: an unreadable or integrity-failed run state is never idle', async () => {
         seedParked();
         const path = factoryStatePath(root, 5);
-        writeFileSync(path, JSON.stringify({ ...moveTo(issueRun(5), 'implement', 'plan ok', T0), integrity: 'f'.repeat(64) }));
+        // Parked at a gate (would be idle) but its seal fails: readFactoryState still reads it.
+        const parked = setGate(moveTo(issueRun(5), 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0);
+        writeFileSync(path, JSON.stringify({ ...parked, integrity: 'f'.repeat(64) }));
         expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
         expect(ticks()[0].idle).toBe(false);
+        out.length = 0;
+        save(parked);
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+        expect(ticks()[0].idle).toBe(true);
         out.length = 0;
         writeFileSync(path, '{ not json');
         expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
