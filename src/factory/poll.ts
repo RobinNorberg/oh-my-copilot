@@ -303,7 +303,8 @@ export interface PollAutoStartOptions {
  * process group, so a Ctrl+C reaches it once (forwarded by poll), not twice;
  * on Windows it shares the console, which delivers Ctrl+C itself, so only
  * SIGTERM is forwarded there. Past timeoutMs it gets SIGTERM, then SIGKILL
- * after graceMs.
+ * after graceMs; on POSIX both go to the whole process group, on Windows only
+ * to the engine process (its lanes are not reached).
  */
 export function defaultPollAutoStart(entry: string | undefined = process.argv[1], o: PollAutoStartOptions = {}): PollAutoStart {
   return ({ root }) => new Promise((resolve) => {
@@ -335,6 +336,11 @@ export function defaultPollAutoStart(entry: string | undefined = process.argv[1]
       notStarted(error);
       return;
     }
+    // On POSIX the child leads its own process group: signal the group so its lane children die with it.
+    const killTree = (sig: NodeJS.Signals): void => {
+      if (process.platform === 'win32' || child.pid === undefined) { child.kill(sig); return; }
+      try { process.kill(-child.pid, sig); } catch { child.kill(sig); }
+    };
     child.stdout!.setEncoding('utf8');
     child.stdout!.on('data', (d: string) => {
       if (stdout.length + d.length <= AUTO_START_MAX_STDOUT) stdout += d;
@@ -352,8 +358,8 @@ export function defaultPollAutoStart(entry: string | undefined = process.argv[1]
     });
     timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
-      killer = setTimeout(() => child.kill('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
+      killTree('SIGTERM');
+      killer = setTimeout(() => killTree('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
     }, timeoutMs);
     unsubscribe = o.signals?.((signal) => {
       if (process.platform !== 'win32' || signal !== 'SIGINT') child.kill(signal);
@@ -467,7 +473,7 @@ export interface PollContext {
   owner: OwnerDeps;
   now: () => number;
   /** Row signatures of the previous tick (board diff), and PR facts (audit on change); updated by pollTick. */
-  previous: { board: Map<string, string>; prs: Map<string, string> };
+  previous: { board: Map<string, string>; prs: Map<string, string>; ledger?: boolean };
   tick: number;
 }
 
@@ -496,6 +502,12 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   };
   ctx.tick += 1;
   if (step('heartbeat', () => beat(root, ctx.owner, at)) === false) warnings.push(`another poller owns ${pollStatePath(root)}; stop this one`);
+
+  const ledgerNow = step('ledger', () => existsSync(ledgerPath(root)));
+  if (ledgerNow !== undefined) {
+    if (ctx.previous.ledger && !ledgerNow) warnings.push(`budget ledger ${ledgerPath(root)} disappeared; spend restarts at 0`);
+    ctx.previous.ledger = ledgerNow;
+  }
 
   // 1. heal
   let heal: PollTick['heal'];

@@ -151,7 +151,8 @@ export interface PollAutoStartOptions {
  * process group, so a Ctrl+C reaches it once (forwarded by poll), not twice;
  * on Windows it shares the console, which delivers Ctrl+C itself, so only
  * SIGTERM is forwarded there. Past timeoutMs it gets SIGTERM, then SIGKILL
- * after graceMs.
+ * after graceMs; on POSIX both go to the whole process group, on Windows only
+ * to the engine process (its lanes are not reached).
  */
 export declare function defaultPollAutoStart(entry?: string | undefined, o?: PollAutoStartOptions): PollAutoStart;
 /** The config layers of the auto-start's budget gate (read once, at poll start). */
@@ -264,6 +265,7 @@ export interface PollContext {
     previous: {
         board: Map<string, string>;
         prs: Map<string, string>;
+        ledger?: boolean;
     };
     tick: number;
 }

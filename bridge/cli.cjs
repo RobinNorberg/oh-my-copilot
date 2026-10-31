@@ -130373,6 +130373,17 @@ function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
       notStarted(error2);
       return;
     }
+    const killTree = (sig) => {
+      if (process.platform === "win32" || child.pid === void 0) {
+        child.kill(sig);
+        return;
+      }
+      try {
+        process.kill(-child.pid, sig);
+      } catch {
+        child.kill(sig);
+      }
+    };
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (d) => {
       if (stdout.length + d.length <= AUTO_START_MAX_STDOUT) stdout += d;
@@ -130390,8 +130401,8 @@ function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
     });
     timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
-      killer = setTimeout(() => child.kill("SIGKILL"), o.graceMs ?? AUTO_START_GRACE_MS);
+      killTree("SIGTERM");
+      killer = setTimeout(() => killTree("SIGKILL"), o.graceMs ?? AUTO_START_GRACE_MS);
     }, timeoutMs);
     unsubscribe = o.signals?.((signal) => {
       if (process.platform !== "win32" || signal !== "SIGINT") child.kill(signal);
@@ -130440,6 +130451,11 @@ async function pollTick(ctx) {
   };
   ctx.tick += 1;
   if (step("heartbeat", () => beat(root2, ctx.owner, at)) === false) warnings.push(`another poller owns ${pollStatePath(root2)}; stop this one`);
+  const ledgerNow = step("ledger", () => (0, import_fs173.existsSync)(ledgerPath2(root2)));
+  if (ledgerNow !== void 0) {
+    if (ctx.previous.ledger && !ledgerNow) warnings.push(`budget ledger ${ledgerPath2(root2)} disappeared; spend restarts at 0`);
+    ctx.previous.ledger = ledgerNow;
+  }
   let heal;
   if (!ctx.heal) heal = { ran: false, reason: "--no-heal" };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: "the forge has no heal capability (Azure DevOps: set factory.heal.pipeline)" };

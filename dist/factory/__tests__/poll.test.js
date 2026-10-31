@@ -269,6 +269,23 @@ describe('omg factory poll on GitHub', () => {
         expect(ticks().map((t) => [t.rateLimited, t.nextIntervalMs])).toEqual([[true, 10 * MIN], [true, 20 * MIN], [false, 5 * MIN]]);
         expect(ticks()[0].errors[0]).toMatch(/^intake: .*429/);
     });
+    it('warns once when the budget ledger an earlier tick saw has disappeared', async () => {
+        const file = join(root, '.omg', 'state', 'budget-ledger.json');
+        mkdirSync(join(root, '.omg', 'state'), { recursive: true });
+        writeFileSync(file, '{}');
+        let stop = () => { };
+        let n = 0;
+        const code = await poll(scripted().exec, { json: true }, {
+            projectConfig: () => LABEL,
+            onStop: (h) => { stop = h; return () => { }; },
+            sleep: async () => { n += 1; if (n === 1)
+                rmSync(file); if (n === 3)
+                stop(); },
+        });
+        expect(code).toBe(0);
+        expect(ticks().map((t) => t.warnings.filter((w) => /disappeared/.test(w)).length)).toEqual([0, 1, 0]);
+        expect(ticks()[1].warnings.join('\n')).toMatch(/budget ledger .*budget-ledger\.json disappeared; spend restarts at 0/);
+    });
     it('a stop signal during a tick ends the loop after that tick; the board then prints only changed rows', async () => {
         let stop = () => { };
         let ticked = 0;
@@ -687,6 +704,32 @@ describe('omg factory poll: factory.intake.autoStart', () => {
             writeFileSync(script(), 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);\n');
             const r = await defaultPollAutoStart(script(), { timeoutMs: () => 300, graceMs: 300 })({ root });
             expect(r).toMatchObject({ exitCode: 1, parsed: false, next: null, message: expect.stringMatching(/ran past its 0 min limit and was stopped \(ended by SIG(?:TERM|KILL)\)$/) });
+        });
+        it.skipIf(process.platform === 'win32')('past its limit the SIGKILL reaches the child\'s own children (the process group)', async () => {
+            // The child ignores SIGTERM and leaves a grandchild that does too; only the group's SIGKILL ends the grandchild.
+            const pidFile = join(root, 'grandchild.pid');
+            writeFileSync(script(), `process.on("SIGTERM", () => {});
+const { spawn } = require("child_process");
+const g = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });
+require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));
+setInterval(() => {}, 1000);
+`);
+            const r = await defaultPollAutoStart(script(), { timeoutMs: () => 1500, graceMs: 300 })({ root });
+            expect(r.message).toMatch(/was stopped \(ended by SIGKILL\)$/);
+            const pid = Number(readFileSync(pidFile, 'utf8'));
+            let alive = true;
+            for (let i = 0; i < 20 && alive; i++) {
+                try {
+                    process.kill(pid, 0);
+                    await new Promise((res) => setTimeout(res, 100));
+                }
+                catch {
+                    alive = false;
+                }
+            }
+            if (alive)
+                process.kill(pid, 'SIGKILL');
+            expect(alive).toBe(false);
         });
         it('forwards poll\'s stop signal to the child and reports a child ended by a signal', async () => {
             writeFileSync(script(), 'setInterval(() => {}, 1000); process.stdout.write("");\n');

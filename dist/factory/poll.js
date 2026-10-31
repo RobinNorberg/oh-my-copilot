@@ -256,7 +256,8 @@ export function parseRunNextOutcome(stdout) {
  * process group, so a Ctrl+C reaches it once (forwarded by poll), not twice;
  * on Windows it shares the console, which delivers Ctrl+C itself, so only
  * SIGTERM is forwarded there. Past timeoutMs it gets SIGTERM, then SIGKILL
- * after graceMs.
+ * after graceMs; on POSIX both go to the whole process group, on Windows only
+ * to the engine process (its lanes are not reached).
  */
 export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
     return ({ root }) => new Promise((resolve) => {
@@ -290,6 +291,19 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
             notStarted(error);
             return;
         }
+        // On POSIX the child leads its own process group: signal the group so its lane children die with it.
+        const killTree = (sig) => {
+            if (process.platform === 'win32' || child.pid === undefined) {
+                child.kill(sig);
+                return;
+            }
+            try {
+                process.kill(-child.pid, sig);
+            }
+            catch {
+                child.kill(sig);
+            }
+        };
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', (d) => {
             if (stdout.length + d.length <= AUTO_START_MAX_STDOUT)
@@ -309,8 +323,8 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
         });
         timer = setTimeout(() => {
             timedOut = true;
-            child.kill('SIGTERM');
-            killer = setTimeout(() => child.kill('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
+            killTree('SIGTERM');
+            killer = setTimeout(() => killTree('SIGKILL'), o.graceMs ?? AUTO_START_GRACE_MS);
         }, timeoutMs);
         unsubscribe = o.signals?.((signal) => {
             if (process.platform !== 'win32' || signal !== 'SIGINT')
@@ -389,6 +403,12 @@ export async function pollTick(ctx) {
     ctx.tick += 1;
     if (step('heartbeat', () => beat(root, ctx.owner, at)) === false)
         warnings.push(`another poller owns ${pollStatePath(root)}; stop this one`);
+    const ledgerNow = step('ledger', () => existsSync(ledgerPath(root)));
+    if (ledgerNow !== undefined) {
+        if (ctx.previous.ledger && !ledgerNow)
+            warnings.push(`budget ledger ${ledgerPath(root)} disappeared; spend restarts at 0`);
+        ctx.previous.ledger = ledgerNow;
+    }
     // 1. heal
     let heal;
     if (!ctx.heal)

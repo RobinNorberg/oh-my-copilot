@@ -1367,6 +1367,8 @@ One tick, in this order:
 
    A run you type yourself (`omg factory run`) never reads this gate; its budget behaviour is unchanged.
 
+   The child has a wall-clock limit: past it poll sends SIGTERM, then SIGKILL after a 2 min grace. On POSIX the child leads its own process group and both signals go to the group, so its lane children die with it. On Windows the timeout kill reaches only the engine process, not its lanes. A tick warns "budget ledger <path> disappeared; spend restarts at 0" when a ledger an earlier tick saw is gone.
+
    The tick's `autoStart` field is `{ started: false, reason }`, or `{ started: true, parsed, next, exitCode, message }`: `next` is the item the run took (`null` when nothing was runnable) and `exitCode` is the run's exit code. `parsed` is false when the run's stdout held no outcome (empty, truncated past 4 MiB, or not one of its `--json` documents). `next` then means nothing: the text output prints `outcome unreadable`, and the audit's `auto-start-done` record carries `outcome: "unreadable"` instead of `next`. Otherwise the text output prints an `auto-start:` line with the same facts, and the audit gets `auto-start` and `auto-start-done` records. At most one run starts per tick. Poll never starts the listener chain, `heal run` or `heal approve`.
 
    The run is a child `omg` process with the same node and CLI entry, in the repository root. It takes the engine's guard, run lock, `factory.run` limits and forge config exactly as if you had typed `omg factory run --next`, and its progress goes to stderr. The tick's reads stay on the read guard, which still refuses `omg`. While the run lasts, no tick runs.

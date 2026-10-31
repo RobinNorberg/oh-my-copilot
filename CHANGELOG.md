@@ -21,8 +21,10 @@ All notable changes to oh-my-copilot will be documented in this file.
   (`autoStart`, with `parsed`), the text output and the poll audit record
   whether a run started, the item it took and its exit code. An unreadable
   outcome shows as `outcome unreadable`. The run has a wall-clock limit taken
-  from the `factory.run` limits (SIGTERM, then SIGKILL), and poll forwards its
-  stop signals to it. Poll never starts the listener chain, `heal run` or
+  from the `factory.run` limits (SIGTERM, then SIGKILL, sent to the whole
+  process group on POSIX; on Windows only the engine process is reached), and
+  poll forwards its stop signals to it. A tick warns when a budget ledger an
+  earlier tick saw has disappeared. Poll never starts the listener chain, `heal run` or
   `heal approve`. The key is read only from the user config and the base
   branch's `.copilot/omg.jsonc`. A working-tree value is ignored with a
   warning, as with `factory.progress`.
