@@ -1,0 +1,22 @@
+name: diag-linux-build-drift
+on:
+  push:
+    branches: [diag/linux-build-drift]
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run build
+      - run: git status --porcelain
+      - run: git diff --stat
+      - name: Non-generated diff
+        run: git diff -- . ':(exclude)dist' ':(exclude)bridge' | head -400
+      - name: Verify inventory
+        run: node scripts/generate-inventory-graph.mjs --verify || true
