@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fe37562eaa90b61d7706c1654febf806ddfcdb87",
-    "sourceSha256": "6aa2425c3cfab85fa674f3704da4da113a72580105d31a7471547efd4e4fbd48",
+    "head": "26b41a2510d10a37484531cbc99173f8506fa02f",
+    "sourceSha256": "ddf087597f71b53960edcb4386c22984caac0e373ae499ce4184783623b88e6b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fe37562eaa90b61d7706c1654febf806ddfcdb87",
-  "sourceSha256": "6aa2425c3cfab85fa674f3704da4da113a72580105d31a7471547efd4e4fbd48",
+  "head": "26b41a2510d10a37484531cbc99173f8506fa02f",
+  "sourceSha256": "ddf087597f71b53960edcb4386c22984caac0e373ae499ce4184783623b88e6b",
   "counts": {
     "public": {
       "skills": 63,
@@ -45802,6 +45802,11 @@
         "path": "node:timers"
       },
       {
+        "id": "external:node:tty",
+        "kind": "external",
+        "path": "node:tty"
+      },
+      {
         "id": "external:node:url",
         "kind": "external",
         "path": "node:url"
@@ -57966,6 +57971,11 @@
       {
         "from": "scripts/ado-acceptance.mjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:tty",
         "kind": "imports"
       },
       {
@@ -115400,12 +115410,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9765,
-      "edgeCount": 11578,
-      "importEdgeCount": 9517,
+      "nodeCount": 9766,
+      "edgeCount": 11579,
+      "importEdgeCount": 9518,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "21384c7fab586fc36680757651001e1b18e78e8b0900d51d688ee74bad8dc0fc",
-  "manifestSha256": "3659b1a32701e87afb06ca9e947743cdac6c3a9382a8523168674593d44275ee"
+  "manifestSha256": "ef01ae14d80b46e12023ffa9cb96f36bfcdbffade183bc19bc8b5b6f62a723fb"
 }

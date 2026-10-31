@@ -31,7 +31,11 @@ All notable changes to oh-my-copilot will be documented in this file.
   predecessor ordering, and picks with `omg factory run --next --parent`
   (real only with `--with-lanes`). It then checks the merge gate comment, the
   spec's rollup line, and that no PR of the run is `completed`. Cleanup lists
-  the trustedAuthors the run added.
+  the trustedAuthors the run added, and one whose setup did not finish as
+  "may have been added". enqueue records into its own `recorded-enqueue/`, so
+  exercise's progress check sees only a `System.State` PATCH of the run's
+  item. The y/N prompt reads the terminal through `isatty(0)` (it no longer
+  fails silently on Linux and macOS), and a failed enqueue keeps its warnings.
 - **Listener intake goes to harbor, not intent.** An issue labeled `intake`
   now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
   prompt) instead of an intent session with a Chinese prompt, and the default

@@ -21,7 +21,8 @@
  * - Later phases use `--run <runId>`, or the newest manifest.
  * - The manifest `~/.omg/acceptance/<runId>.json` records every created id
  *   and is written before each create. The clone, the progress file, the OMC
- *   recording (`OMG_ADO_RECORD_DIR`) and the capture live in
+ *   recording (`OMG_ADO_RECORD_DIR`: `recorded/`, and `recorded-enqueue/` for
+ *   the enqueue phase) and the capture live in
  *   `~/.omg/acceptance/<runId>/`.
  * - `--dry-run` prints the exact argv of every command and every file it
  *   would write, and runs and writes nothing (not even read-only commands).
@@ -44,6 +45,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { isatty } from 'node:tty';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { backlogToTicketFile, inlineHtml } from './lib/backlog-to-workitems.mjs';
@@ -196,10 +198,17 @@ function findDeep(value, pick) {
 
 export const firstSig8 = (scanJson) => findDeep(scanJson, (o) => (typeof o.sig8 === 'string' && /^[0-9a-f]{8}$/.test(o.sig8) ? o.sig8 : undefined));
 
-/** The design's `exercise` assertions over the OMC recording and the run's output. */
+/**
+ * The design's `exercise` assertions over the OMC recording and the run's output.
+ * record.ts keeps one file per route + parameters key, so a repeated call
+ * leaves only its last answer: the PR status and PR PATCH checks see the last
+ * call of each key and are best-effort. noCompletedPr (az repos pr list) is
+ * the authoritative never-merged check.
+ */
 export function exerciseAssertions(recorded, runOutput, itemId) {
   const ok = (f) => f.exitCode === undefined || f.exitCode === 0;
   const of = (route) => recorded.filter((f) => f.route === route && ok(f));
+  const setsState = (f) => Array.isArray(f.requestBody) && f.requestBody.some((op) => op?.path === '/fields/System.State');
   const prStatuses = of('git.pullRequests.GET').flatMap((f) => (Array.isArray(f.stdout?.value) ? f.stdout.value : [f.stdout])).map((p) => p?.status).filter(Boolean);
   return [
     { what: 'a draft PR exists, linked to the work item', ok: of('git.pullRequests.POST').some((f) => f.requestBody?.isDraft === true && (f.requestBody?.workItemRefs ?? []).some((r) => String(r.id) === String(itemId))) },
@@ -207,7 +216,7 @@ export function exerciseAssertions(recorded, runOutput, itemId) {
     { what: 'the run parks at awaiting-human: merge', ok: /awaiting-human:?\s*merge/i.test(runOutput) },
     { what: 'the PR is still active and never completed', ok: prStatuses.length > 0 && prStatuses.every((s) => s !== 'completed') },
     { what: 'no PR PATCH other than {isDraft:false}', ok: recorded.filter((f) => f.route === 'git.pullRequests.PATCH').every((f) => JSON.stringify(f.requestBody) === '{"isDraft":false}') },
-    { what: 'progress moved the work item', ok: of('wit.workItems.PATCH').length > 0 },
+    { what: `progress moved #${itemId} (a System.State PATCH)`, ok: of('wit.workItems.PATCH').some((f) => String(f.routeParameters?.id) === String(itemId) && setsState(f)) },
   ];
 }
 
@@ -223,7 +232,7 @@ export function enqueueAssertions(file, dry, real, again) {
   const done = rows(real);
   const rerun = rows(again);
   return [
-    { what: `enqueue --dry-run plans all ${keys.length} tickets and writes nothing`, ok: dry?.ok === true && dry?.dryRun === true && keys.every((k) => planned.has(k)) },
+    { what: `enqueue --dry-run plans all ${keys.length} tickets`, ok: dry?.ok === true && dry?.dryRun === true && keys.every((k) => planned.has(k)) },
     { what: 'enqueue gives every ticket a work item id', ok: real?.ok === true && keys.every((k) => Number.isInteger(done.get(k)?.id) && ['created', 'updated', 'unchanged'].includes(done.get(k)?.action)) },
     { what: 'the mark step marked the runnable tickets', ok: Array.isArray(real?.mark?.marked) && real.mark.marked.length + (real.mark.alreadyMarked?.length ?? 0) > 0 && (real.mark.failed?.length ?? 0) === 0 },
     { what: 'an enqueue re-run (--dry-run) finds every ticket unchanged', ok: keys.every((k) => rerun.get(k)?.action === 'unchanged') },
@@ -382,6 +391,11 @@ function requireManifest(ctx) {
 
 const orgOf = (m) => m.org;
 const repoDirOf = (m) => join(m.runDir, 'repo');
+/**
+ * enqueue's own recording: its relation and mark PATCHes must not reach
+ * `recorded/`, where exercise looks for the progress PATCH.
+ */
+const enqueueRecordEnv = (m) => ({ OMG_ADO_RECORD_DIR: join(m.runDir, 'recorded-enqueue') });
 
 /** `omg factory setup` for the run's repository; `extra` goes before the confirmation flags. */
 const setupArgs = (m, extra = []) => [
@@ -500,8 +514,9 @@ export function create(ctx) {
 /**
  * Trust the spec's creator: on Azure DevOps enqueue (and check) trust only
  * the uniqueNames in the user config's factory.forge.azureDevOps.trustedAuthors.
- * The write is printed and confirmed first, and the manifest records the
- * name before it is written, so cleanup can list it.
+ * The write is printed and confirmed first. The manifest records the name as
+ * `trustPending` before the write and moves it to `trustedAuthorsAdded` once
+ * setup succeeds, so cleanup can list it either way.
  */
 function trustSpecCreator(ctx, m) {
   const author = requireSpec(m).createdBy;
@@ -518,15 +533,29 @@ function trustSpecCreator(ctx, m) {
   if (!ctx.confirm(`Add ${author} to factory.forge.azureDevOps.trustedAuthors in ${path}?`)) {
     throw new Error(`not confirmed: ${path} is unchanged. Add ${author} there yourself, or rerun with --yes`);
   }
-  m.trustedAuthorsAdded = [...new Set([...(m.trustedAuthorsAdded ?? []), author])];
+  // Pending until setup succeeds: a failed setup may or may not have written the user config.
+  m.trustPending = author;
   ctx.saveManifest();
-  ctx.omg(setupArgs(m, ['--trusted-author', next.join(','), '--scope', 'user']), { cwd: repoDirOf(m) });
+  ctx.omg(setupArgs(m, ['--trusted-author', next.join(','), '--scope', 'user']), { cwd: repoDirOf(m), env: enqueueRecordEnv(m) });
+  m.trustedAuthorsAdded = [...new Set([...(m.trustedAuthorsAdded ?? []), author])];
+  m.trustPending = null;
+  ctx.saveManifest();
 }
 
 /** One `omg factory enqueue` call; a refusal (exit 2) or failure throws with enqueue's own error. */
 function enqueueCall(ctx, m, file, extra, placeholder) {
-  const res = ctx.omg(['factory', 'enqueue', '--spec', String(m.spec.id), '--file', file, ...extra, '--json'], { cwd: repoDirOf(m), allowFail: true, placeholder });
-  if (res.status !== 0) throw new Error(`omg factory enqueue ${extra.join(' ')} exited ${res.status}: ${res.json?.error ?? res.stderr.trim().slice(0, 2000)}`);
+  const res = ctx.omg(['factory', 'enqueue', '--spec', String(m.spec.id), '--file', file, ...extra, '--json'], { cwd: repoDirOf(m), allowFail: true, placeholder, env: enqueueRecordEnv(m) });
+  if (res.status !== 0) {
+    // A failed real enqueue exits 1 with { ok: false, warnings } and no error field.
+    const ids = (Array.isArray(res.json?.items) ? res.json.items : []).filter((r) => Number.isInteger(r?.id));
+    if (ids.length && !extra.includes('--dry-run')) {
+      m.enqueuedBeforeFailure = Object.fromEntries(ids.map((r) => [r.key, r.id]));
+      ctx.saveManifest();
+    }
+    const cause = res.json?.error ?? (Array.isArray(res.json?.warnings) && res.json.warnings.length ? res.json.warnings.join('; ') : res.stderr.trim().slice(0, 2000));
+    const rerun = extra.includes('--dry-run') ? '' : `${ids.length ? `; the manifest records ids ${ids.map((r) => `#${r.id}`).join(', ')}` : ''}; rerunning --phase enqueue is idempotent (enqueue matches tickets by shipyard-key)`;
+    throw new Error(`omg factory enqueue${extra.map((a) => ` ${a}`).join('')} exited ${res.status}: ${cause}${rerun}`);
+  }
   return res.json;
 }
 
@@ -725,6 +754,7 @@ export function cleanup(ctx) {
   ctx.log(m.trustedAuthorsAdded?.length
     ? `this run added ${m.trustedAuthorsAdded.join(', ')} to factory.forge.azureDevOps.trustedAuthors in ${ctx.userConfig.path}; cleanup never edits the user config, so remove them there yourself if they should not stay trusted.`
     : 'no trustedAuthors were added by this run.');
+  if (m.trustPending) ctx.log(`${m.trustPending} may have been added to factory.forge.azureDevOps.trustedAuthors in ${ctx.userConfig.path}: the setup that adds it did not finish; check there yourself.`);
 }
 
 const PHASE_FNS = { preflight, create, enqueue, exercise, 'heal-drill': healDrill, capture: captureFixtures, cleanup };
@@ -737,22 +767,29 @@ export function runPhases(ctx) {
   if (ctx.o.phase === 'all' && ctx.manifest) ctx.log(`\nnext: --phase heal-drill --run ${ctx.manifest.runId} (needs an agent), then --phase cleanup --org ${ctx.manifest.org} --run ${ctx.manifest.runId}`);
 }
 
-/** A y/N question on the terminal; no terminal (or a read error) is a no. */
-function confirmOnTty(question) {
-  if (!process.stdin.isTTY) {
-    console.log(`${question} no: stdin is not a terminal (pass --yes to confirm)`);
+/**
+ * A y/N question on the terminal; no terminal or a read error is a no, with
+ * the reason printed. isatty(0), never process.stdin.isTTY: touching
+ * process.stdin makes fd 0 non-blocking on Linux and macOS, and readSync(0)
+ * then throws EAGAIN. `io` is for tests.
+ */
+export function confirmOnTty(question, io = {}) {
+  const { isTerminal = () => isatty(0), read = (buf) => readSync(0, buf, 0, buf.length, null), out = (s) => process.stdout.write(s) } = io;
+  if (!isTerminal()) {
+    out(`${question} no: stdin is not a terminal (pass --yes to confirm)\n`);
     return false;
   }
-  process.stdout.write(`${question} [y/N] `);
+  out(`${question} [y/N] `);
   const buf = Buffer.alloc(256);
   let answer = '';
   try {
     while (!answer.includes('\n')) {
-      const n = readSync(0, buf, 0, buf.length, null);
+      const n = read(buf);
       if (n === 0) break;
       answer += buf.toString('utf8', 0, n);
     }
-  } catch {
+  } catch (error) {
+    out(`no: could not read the answer (${error?.code ?? error?.message ?? error}); pass --yes to confirm\n`);
     return false;
   }
   return /^\s*y(es)?\s*$/i.test(answer);

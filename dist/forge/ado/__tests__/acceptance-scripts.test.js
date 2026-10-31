@@ -121,13 +121,14 @@ function manifest(home, over = {}) {
     writeFileSync(join(home, `${RUN}.json`), JSON.stringify(m), 'utf8');
     return m;
 }
-const USER_CONFIG = 'C:\\Users\\robin\\.copilot\\omg.jsonc';
+/** trustedUserConfigPath() (src/ship/config.ts) on Windows for the account robin. */
+const USER_CONFIG = 'C:\\Users\\robin\\AppData\\Roaming\\claude-omc\\config.jsonc';
 function context(o, answer, extra = {}) {
     const lines = [];
     const calls = [];
     const asked = [];
-    const spawn = (cmd, args) => {
-        calls.push({ cmd, args });
+    const spawn = (cmd, args, opts) => {
+        calls.push({ cmd, args, env: opts?.env });
         if (!answer)
             throw new Error(`spawned in a dry run: ${cmd} ${args.join(' ')}`);
         return { stderr: '', ...answer({ cmd, args }) };
@@ -409,10 +410,10 @@ describe('scripts/ado-acceptance.mjs enqueue', () => {
         writeFileSync(join(home, RUN, 'repo', 'BACKLOG.md'), BACKLOG, 'utf8');
         return home;
     };
-    const run = (home, extra, enqueueAnswer) => {
+    const run = (home, extra, enqueueAnswer, more = []) => {
         const manifests = [];
         let dryRuns = 0;
-        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'enqueue', '--run', RUN, '--home', home]);
+        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'enqueue', '--run', RUN, '--home', home, ...more]);
         const t = context(o, (c) => {
             const a = omgArgs(c);
             manifests.push(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8')));
@@ -449,9 +450,12 @@ describe('scripts/ado-acceptance.mjs enqueue', () => {
         const shown = r.lines.findIndex((l) => l === `user-scope write: ${USER_CONFIG}\n  factory.forge.azureDevOps.trustedAuthors: ["alice@contoso.example"] -> ["alice@contoso.example","robin@contoso.example"]\n  robin@contoso.example created spec #40; enqueue trusts only these uniqueNames. Cleanup lists what this run added; it never removes it.`);
         expect(shown).toBeGreaterThanOrEqual(0);
         expect(shown).toBeLessThan(r.lines.findIndex((l) => l.startsWith('asked: Add')));
-        // The manifest names the added author before the user config is written, and the pending enqueue before the real one.
-        expect(r.manifests[0]).toMatchObject({ trustedAuthorsAdded: ['robin@contoso.example'] });
+        // The manifest names the author as pending before the user config is written, and the pending enqueue before the real one.
+        expect(r.manifests[0]).toMatchObject({ trustPending: 'robin@contoso.example', trustedAuthorsAdded: [] });
+        expect(r.manifests[1]).toMatchObject({ trustPending: null, trustedAuthorsAdded: ['robin@contoso.example'] });
         expect(r.manifests[2]).toMatchObject({ pending: 'enqueue' });
+        // enqueue records into its own directory, never into the recording exercise reads.
+        expect(r.calls.map((c) => c.env?.OMG_ADO_RECORD_DIR)).toEqual(Array(4).fill(join(home, RUN, 'recorded-enqueue')));
         expect(JSON.parse(readFileSync(tickets(home), 'utf8'))).toEqual(backlogToTicketFile(BACKLOG, 40).file);
         expect(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8'))).toMatchObject({
             pending: null, trustedAuthorsAdded: ['robin@contoso.example'],
@@ -486,6 +490,34 @@ describe('scripts/ado-acceptance.mjs enqueue', () => {
         expect(r.run).toThrow(/omg factory enqueue --dry-run exited 2: ticket file: duplicate key exc-001/);
         expect(r.asked).toEqual([]);
     });
+    it('keeps a failed real enqueue\'s warnings, records the ids it made, and says a rerun is idempotent', () => {
+        const home = setupRun();
+        const failed = { ok: false, dryRun: false, items: [{ key: 'exc-001', id: 41, action: 'created' }, { key: 'exc-006', id: null, action: 'created' }], warnings: ['exc-006: az exited 1: TF401019'] };
+        const r = run(home, { confirm: () => true, trustedAuthors: ['robin@contoso.example'] }, (a) => (a[1] === 'enqueue' && !a.includes('--dry-run') ? { status: 1, stdout: JSON.stringify(failed) } : undefined));
+        expect(r.run).toThrow(/omg factory enqueue exited 1: exc-006: az exited 1: TF401019; the manifest records ids #41; rerunning --phase enqueue is idempotent/);
+        expect(JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8'))).toMatchObject({ pending: 'enqueue', enqueuedBeforeFailure: { 'exc-001': 41 } });
+    });
+    it('keeps the author pending when setup fails, and cleanup says it may have been added', () => {
+        const home = setupRun();
+        const r = run(home, { confirm: () => true }, (a) => (a[1] === 'setup' ? { status: 1, stdout: '' } : undefined));
+        expect(r.run).toThrow(/exit 1 from omg/);
+        const m = JSON.parse(readFileSync(join(home, `${RUN}.json`), 'utf8'));
+        expect(m).toMatchObject({ trustPending: 'robin@contoso.example', trustedAuthorsAdded: [] });
+        const o = acceptance.parseAcceptanceArgs(['--org', ORG, '--phase', 'cleanup', '--run', RUN, '--home', home]);
+        const { ctx, lines } = context(o, (c) => (azArgs(c)[2] === 'show' ? { status: 0, stdout: JSON.stringify({ id: PROJECT_ID, name: RUN }) } : { status: 0, stdout: '' }));
+        acceptance.runPhases(ctx);
+        expect(lines).toContain('no trustedAuthors were added by this run.');
+        expect(lines).toContain(`robin@contoso.example may have been added to factory.forge.azureDevOps.trustedAuthors in ${USER_CONFIG}: the setup that adds it did not finish; check there yourself.`);
+    });
+    it('--yes gives both confirmations without asking and logs each one', () => {
+        const home = setupRun();
+        const r = run(home, {}, undefined, ['--yes']);
+        r.run();
+        expect(r.asked).toEqual([]);
+        expect(r.lines).toContain(`Add robin@contoso.example to factory.forge.azureDevOps.trustedAuthors in ${USER_CONFIG}? yes (--yes)`);
+        expect(r.lines).toContain('Signature (launch C3): enqueue these 3 tickets as children of spec #40? yes (--yes)');
+        expect(r.calls.map((c) => omgArgs(c)[1])).toEqual(['setup', 'enqueue', 'enqueue', 'enqueue']);
+    });
     it('refuses a run made before the enqueue flow (no spec work item)', () => {
         const home = setupRun({ spec: undefined });
         expect(run(home, { confirm: () => true }).run).toThrow(/has no spec work item/);
@@ -506,9 +538,14 @@ describe('scripts/ado-acceptance.mjs exercise', () => {
         { route: 'git.pullRequests.POST', exitCode: 0, requestBody: { isDraft: true, workItemRefs: [{ id: '41' }] }, stdout: {} },
         { route: 'policy.evaluations.GET', exitCode: 0, stdout: { value: [] } },
         { route: 'git.pullRequests.GET', exitCode: 0, stdout: { status: 'active' } },
-        { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '41' }, stdout: {} },
+        { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '41' }, requestBody: [{ op: 'add', path: '/fields/System.State', value: 'Resolved' }], stdout: {} },
         { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '41' }, requestBody: { text: 'Factory run for #41 is awaiting a human: **merge** (phase merge).' }, stdout: {} },
         { route: 'wit.comments.POST', exitCode: 0, routeParameters: { workItemId: '40' }, requestBody: { text: '- #41 ready to merge: https://dev.azure.com/contoso-acc/x/_git/x/pullrequest/5\n\n<!-- omg-factory-rollup: #41 ready-to-merge 0123456789ab -->\n' }, stdout: {} },
+    ];
+    /** What enqueue records: relation and mark PATCHes, here on the other tickets. */
+    const ENQUEUE_PATCHES = [
+        { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '42' }, requestBody: [{ op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: 'x/40' } }], stdout: {} },
+        { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '43' }, requestBody: [{ op: 'add', path: '/fields/System.Tags', value: 'factory-ready' }], stdout: {} },
     ];
     const exercise = (withLanes, recorded = RECORDED, completed = '[]') => {
         const home = freshDir('home');
@@ -564,6 +601,17 @@ describe('scripts/ado-acceptance.mjs exercise', () => {
         expect(exercise(true, RECORDED, JSON.stringify([{ pullRequestId: 5 }])).run).toThrow(/exercise: 1 of/);
         expect(exercise(true, RECORDED.slice(0, -1)).run).toThrow(/exercise: 1 of/);
     });
+    it('fails the progress check when the recording holds only enqueue-style PATCHes on other ids, or no State op on the item', () => {
+        const noProgress = [...RECORDED.filter((f) => f.route !== 'wit.workItems.PATCH'), ...ENQUEUE_PATCHES];
+        const r = exercise(true, noProgress);
+        expect(r.run).toThrow(/exercise: 1 of/);
+        expect(r.lines).toContain('FAIL  progress moved #41 (a System.State PATCH)');
+        const tagOnly = [...noProgress, { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '41' }, requestBody: [{ op: 'add', path: '/fields/System.Tags', value: 'x' }], stdout: {} }];
+        expect(exercise(true, tagOnly).run).toThrow(/exercise: 1 of/);
+        const moved = exercise(true, [...RECORDED, ...ENQUEUE_PATCHES]);
+        moved.run();
+        expect(moved.lines).toContain('PASS  progress moved #41 (a System.State PATCH)');
+    });
 });
 describe('scripts/ado-acceptance.mjs flow assertions', () => {
     const TICKETS = { 'exc-001': { id: 41, blockedBy: [] }, 'exc-007': { id: 42, blockedBy: [] }, 'exc-009': { id: 43, blockedBy: ['exc-007', 'exc-001'] } };
@@ -617,11 +665,41 @@ describe('scripts/ado-acceptance.mjs options and assertions', () => {
             { route: 'policy.evaluations.GET', exitCode: 0, stdout: { value: [] } },
             { route: 'git.pullRequests.GET', exitCode: 0, stdout: { status: 'active' } },
             { route: 'git.pullRequests.PATCH', exitCode: 0, requestBody: { isDraft: false }, stdout: {} },
-            { route: 'wit.workItems.PATCH', exitCode: 0, stdout: {} },
+            { route: 'wit.workItems.PATCH', exitCode: 0, routeParameters: { id: '102' }, requestBody: [{ op: 'add', path: '/fields/System.State', value: 'Active' }], stdout: {} },
         ];
         expect(acceptance.exerciseAssertions(recorded, 'issue 102: awaiting-human: merge', '102').every((r) => r.ok)).toBe(true);
         const merged = [...recorded, { route: 'git.pullRequests.GET', exitCode: 0, stdout: { value: [{ status: 'completed' }] } }];
         expect(acceptance.exerciseAssertions(merged, 'awaiting-human: merge', '102').find((r) => r.what.includes('never completed')).ok).toBe(false);
+    });
+});
+describe('scripts/ado-acceptance.mjs confirmOnTty', () => {
+    const ask = (isTerminal, chunks) => {
+        const out = [];
+        const read = (buf) => {
+            const next = chunks.shift();
+            if (next === undefined)
+                return 0;
+            if (next instanceof Error)
+                throw next;
+            return buf.write(next);
+        };
+        return { answer: acceptance.confirmOnTty('Proceed?', { isTerminal: () => isTerminal, read, out: (s) => out.push(s) }), out: out.join('') };
+    };
+    it('says no without a terminal, never reading', () => {
+        const r = ask(false, [new Error('read without a terminal')]);
+        expect(r.answer).toBe(false);
+        expect(r.out).toContain('no: stdin is not a terminal (pass --yes to confirm)');
+    });
+    it('reads y as yes and an empty line as no, across chunks and CRLF', () => {
+        expect(ask(true, ['y\r\n']).answer).toBe(true);
+        expect(ask(true, ['Y', 'es\r\n']).answer).toBe(true);
+        expect(ask(true, ['\r\n']).answer).toBe(false);
+        expect(ask(true, ['n\n']).answer).toBe(false);
+    });
+    it('says no with the reason on a read error (EAGAIN)', () => {
+        const r = ask(true, [Object.assign(new Error('resource temporarily unavailable'), { code: 'EAGAIN' })]);
+        expect(r.answer).toBe(false);
+        expect(r.out).toContain('no: could not read the answer (EAGAIN); pass --yes to confirm');
     });
 });
 describe('scripts/ado-capture.mjs', () => {
