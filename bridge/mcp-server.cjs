@@ -46908,7 +46908,6 @@ function engineExec(o, inner) {
   const f = o.forge;
   if (f) assertFactoryForgeOptions(o.root, f.options);
   if (!f || f.config.kind !== "azure-devops") return { exec: factoryGuardExec(inner, () => [o.base]) };
-  if (o.heal) throw new FactoryStepError("ci-heal runs are GitHub-only (omg factory heal reads GitHub Actions history); this repository is on Azure DevOps");
   const entry = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
   const guard = adoGuardContext(f.config, entry);
   const exec = factoryGuardExec(inner, () => [o.base], () => guard);
@@ -46968,11 +46967,11 @@ function healPlanText(h, base) {
     ...fenced(fix.acceptance.map((a) => `- ${oneLine3(a, 300)}`))
   ].join("\n");
 }
-function healPrBody(s) {
+function healPrBody(s, runUrl = (id) => `${s.repoUrl}/actions/runs/${id}`) {
   const h = s.heal;
   const d = h.diagnosis;
   const cell = (v) => oneLine3(v ?? "", 80).replace(/[|`<>[\]\\]/g, "") || "?";
-  const run2 = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${s.repoUrl}/actions/runs/${r.runId})` : cell(r.runId)} | ${HEX405.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : "?"}`;
+  const run2 = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${runUrl(r.runId)})` : cell(r.runId)} | ${HEX405.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : "?"}`;
   return [
     `Self-heal for CI signature ${h.sig8}; merge is human.`,
     "",
@@ -47217,6 +47216,7 @@ var init_engine = __esm({
     init_merge_policy();
     init_az_binary();
     init_ado();
+    init_checks2();
     init_forge();
     init_gh();
     init_reviews();
@@ -47913,11 +47913,18 @@ var init_engine = __esm({
         this.gate("blocked-by", `depends on unfinished item${open3.length > 1 ? "s" : ""} ${ids} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open3.length > 1 ? "they merge" : "it merges"}`);
         return true;
       }
-      /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
+      /**
+       * ci-heal intake: no issue, only the repository url (the remote check before every fetch and push compares origin with it):
+       * the forge repo's on Azure DevOps, GitHub's `gh repo view` otherwise.
+       */
       healIntake() {
-        const v = this.gh(ghRepoView);
-        const url = typeof v?.url === "string" && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : "";
-        if (!url) throw new FactoryStepError("gh repo view returned no repository url");
+        let url;
+        if (this.forge) url = this.forge.repo.url;
+        else {
+          const v = this.gh(ghRepoView);
+          url = typeof v?.url === "string" && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : "";
+          if (!url) throw new FactoryStepError("gh repo view returned no repository url");
+        }
         if (this.foreignPr(url)) return;
         this.save((s) => moveTo({ ...s, repoUrl: url }, "plan", `ci-heal for CI signature ${s.heal?.sig8} in ${url}`, this.iso()));
       }
@@ -48135,12 +48142,12 @@ ${item.acceptance}
 ` : "";
             const heal = s.kind === "ci-heal";
             const link = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
-            const body = this.writeBody("pr-body", `${heal ? healPrBody(s) : `${link}
+            const body = this.writeBody("pr-body", `${heal ? forge ? healPrBody(s, (id) => adoBuildUrl(forge.repo, id)) : healPrBody(s) : `${link}
 
 Opened by \`omg factory run ${s.issue}\` (draft until the factory review approves).
 `}${sandboxNote}`);
             const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine3(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, "") || `issue ${s.issue}`} (#${s.issue})`;
-            pr = forge ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, itemId: s.issue }) : this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
+            pr = forge ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, ...heal ? {} : { itemId: s.issue } }) : this.gh((exec, cwd) => ghCreateDraftPr(exec, { base: s.base, head: s.branch, title, bodyFile: body }, cwd));
           }
           this.save((x) => ({ ...x, pr }));
         }
@@ -48975,6 +48982,24 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
   }
 });
 
+// src/factory/check/cli.ts
+var init_cli = __esm({
+  "src/factory/check/cli.ts"() {
+    "use strict";
+    init_config3();
+    init_az_binary();
+    init_ado();
+    init_forge_roots();
+    init_config2();
+    init_exec();
+    init_jsonc();
+    init_guard();
+    init_exec2();
+    init_state5();
+    init_score();
+  }
+});
+
 // src/factory/heal/classify.ts
 var init_classify = __esm({
   "src/factory/heal/classify.ts"() {
@@ -49130,20 +49155,23 @@ var init_implement = __esm({
 
 // src/factory/heal/cli.ts
 var import_path101, SCAN_LIMITS;
-var init_cli = __esm({
+var init_cli2 = __esm({
   "src/factory/heal/cli.ts"() {
     "use strict";
     import_path101 = require("path");
     init_esm();
     init_file_lock();
     init_config2();
+    init_ado();
     init_ci2();
+    init_cli();
     init_classify();
     init_config4();
     init_history();
     init_logs();
     init_signature();
     init_state3();
+    init_forge_roots();
     init_state5();
     init_implement();
     init_run2();
@@ -49159,24 +49187,6 @@ var init_cli = __esm({
   }
 });
 
-// src/factory/check/cli.ts
-var init_cli2 = __esm({
-  "src/factory/check/cli.ts"() {
-    "use strict";
-    init_config3();
-    init_az_binary();
-    init_ado();
-    init_forge_roots();
-    init_config2();
-    init_exec();
-    init_jsonc();
-    init_guard();
-    init_exec2();
-    init_state5();
-    init_score();
-  }
-});
-
 // src/cli/commands/factory-check.ts
 var import_fs83, import_promises7;
 var init_factory_check = __esm({
@@ -49186,7 +49196,7 @@ var init_factory_check = __esm({
     import_fs83 = require("fs");
     import_promises7 = require("readline/promises");
     init_project_config_path();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge();
     init_config2();
@@ -49213,7 +49223,7 @@ var init_enqueue = __esm({
     init_types10();
     init_config2();
     init_exec();
-    init_cli2();
+    init_cli();
     init_rules();
     init_score();
     init_forge_roots();
@@ -49279,6 +49289,15 @@ var init_intake_pick = __esm({
   "src/factory/setup/intake-pick.ts"() {
     "use strict";
     init_intake();
+    init_guard2();
+  }
+});
+
+// src/factory/setup/pipeline-pick.ts
+var init_pipeline_pick = __esm({
+  "src/factory/setup/pipeline-pick.ts"() {
+    "use strict";
+    init_score();
     init_guard2();
   }
 });
@@ -49549,13 +49568,14 @@ var init_factory_setup = __esm({
     init_config3();
     init_forge();
     init_ado();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge_roots();
     init_auth();
     init_detect();
     init_guard2();
     init_intake_pick();
+    init_pipeline_pick();
     init_progress_pick();
     init_write();
     init_redact2();
@@ -49594,7 +49614,7 @@ var init_collect = __esm({
   "src/factory/board/collect.ts"() {
     "use strict";
     import_fs89 = require("fs");
-    init_cli2();
+    init_cli();
     init_score();
     init_types10();
     init_state4();
@@ -49612,7 +49632,7 @@ var init_factory_board = __esm({
     "use strict";
     init_esm();
     init_collect();
-    init_cli2();
+    init_cli();
     init_score();
     init_integer_option();
   }
@@ -49691,16 +49711,16 @@ var init_factory = __esm({
     init_config2();
     init_exec();
     init_jsonc();
-    init_cli();
-    init_factory_check();
     init_cli2();
+    init_factory_check();
+    init_cli();
     init_enqueue();
     init_config4();
     init_ledger2();
     init_detect();
     init_factory_setup();
     init_factory_board();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge();
   }

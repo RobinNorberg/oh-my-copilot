@@ -122928,6 +122928,9 @@ function adoGuardContext(config2, entry2) {
   if (config2.kind !== "azure-devops" || !config2.repo.project) throw new Error("the Azure DevOps guard needs an azure-devops forge config");
   return { repo: config2.repo, entry: entry2, allowedStates: progressStates(config2), allowedColumns: progressColumns(config2) };
 }
+function adoReadGuardContext(config2, entry2) {
+  return { ...adoGuardContext(config2, entry2), allowedStates: [], allowedColumns: [] };
+}
 function createAzureDevOpsForge(exec3, cwd2, config2, options) {
   if (config2.kind !== "azure-devops" || !config2.azureDevOps || !config2.repo.project) throw new Error("createAzureDevOpsForge needs a resolved azure-devops forge config");
   const env2 = options.env ?? process.env;
@@ -124086,7 +124089,6 @@ function engineExec(o, inner) {
   const f = o.forge;
   if (f) assertFactoryForgeOptions(o.root, f.options);
   if (!f || f.config.kind !== "azure-devops") return { exec: factoryGuardExec(inner, () => [o.base]) };
-  if (o.heal) throw new FactoryStepError("ci-heal runs are GitHub-only (omg factory heal reads GitHub Actions history); this repository is on Azure DevOps");
   const entry2 = f.entry ?? resolveAzEntry(defaultAzBinaryDeps([o.root, ...f.options.untrustedRoots]));
   const guard = adoGuardContext(f.config, entry2);
   const exec3 = factoryGuardExec(inner, () => [o.base], () => guard);
@@ -124146,11 +124148,11 @@ function healPlanText(h, base) {
     ...fenced(fix.acceptance.map((a) => `- ${oneLine3(a, 300)}`))
   ].join("\n");
 }
-function healPrBody(s) {
+function healPrBody(s, runUrl = (id) => `${s.repoUrl}/actions/runs/${id}`) {
   const h = s.heal;
   const d = h.diagnosis;
   const cell = (v) => oneLine3(v ?? "", 80).replace(/[|`<>[\]\\]/g, "") || "?";
-  const run2 = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${s.repoUrl}/actions/runs/${r.runId})` : cell(r.runId)} | ${HEX406.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : "?"}`;
+  const run2 = (r) => `${/^\d{1,20}$/.test(r.runId) && s.repoUrl ? `[${r.runId}](${runUrl(r.runId)})` : cell(r.runId)} | ${HEX406.test(r.sha) ? `\`${r.sha.slice(0, 12)}\`` : "?"}`;
   return [
     `Self-heal for CI signature ${h.sig8}; merge is human.`,
     "",
@@ -124395,6 +124397,7 @@ var init_engine = __esm({
     init_merge_policy();
     init_az_binary();
     init_ado();
+    init_checks2();
     init_forge();
     init_gh();
     init_reviews();
@@ -125091,11 +125094,18 @@ var init_engine = __esm({
         this.gate("blocked-by", `depends on unfinished item${open9.length > 1 ? "s" : ""} ${ids2} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open9.length > 1 ? "they merge" : "it merges"}`);
         return true;
       }
-      /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
+      /**
+       * ci-heal intake: no issue, only the repository url (the remote check before every fetch and push compares origin with it):
+       * the forge repo's on Azure DevOps, GitHub's `gh repo view` otherwise.
+       */
       healIntake() {
-        const v = this.gh(ghRepoView);
-        const url = typeof v?.url === "string" && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : "";
-        if (!url) throw new FactoryStepError("gh repo view returned no repository url");
+        let url;
+        if (this.forge) url = this.forge.repo.url;
+        else {
+          const v = this.gh(ghRepoView);
+          url = typeof v?.url === "string" && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+$/.test(v.url) ? v.url : "";
+          if (!url) throw new FactoryStepError("gh repo view returned no repository url");
+        }
         if (this.foreignPr(url)) return;
         this.save((s) => moveTo({ ...s, repoUrl: url }, "plan", `ci-heal for CI signature ${s.heal?.sig8} in ${url}`, this.iso()));
       }
@@ -125313,12 +125323,12 @@ ${item.acceptance}
 ` : "";
             const heal = s.kind === "ci-heal";
             const link6 = forge ? `Work item #${s.issue}` : `Closes #${s.issue}`;
-            const body = this.writeBody("pr-body", `${heal ? healPrBody(s) : `${link6}
+            const body = this.writeBody("pr-body", `${heal ? forge ? healPrBody(s, (id) => adoBuildUrl(forge.repo, id)) : healPrBody(s) : `${link6}
 
 Opened by \`omg factory run ${s.issue}\` (draft until the factory review approves).
 `}${sandboxNote}`);
             const title = heal ? `fix(ci): self-heal for CI signature ${s.heal?.sig8}` : `${oneLine3(s.issueTitle ?? `issue ${s.issue}`).replace(/^[-\s]+/, "") || `issue ${s.issue}`} (#${s.issue})`;
-            pr = forge ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, itemId: s.issue }) : this.gh((exec3, cwd2) => ghCreateDraftPr(exec3, { base: s.base, head: s.branch, title, bodyFile: body }, cwd2));
+            pr = forge ? forge.reviews.createDraftPr({ base: s.base, head: s.branch, title, bodyFile: body, ...heal ? {} : { itemId: s.issue } }) : this.gh((exec3, cwd2) => ghCreateDraftPr(exec3, { base: s.base, head: s.branch, title, bodyFile: body }, cwd2));
           }
           this.save((x) => ({ ...x, pr }));
         }
@@ -126153,6 +126163,289 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
   }
 });
 
+// src/factory/check/cli.ts
+function checkGh(a, marker) {
+  const [group, sub, ...r] = a;
+  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "issue" && sub === "list") {
+    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER4.test(r[7]);
+  }
+  if (group === "issue" && sub === "edit") return marker !== void 0 && same4(r.slice(1), ["--add-label", marker]) && NUMBER4.test(r[0] ?? "");
+  if (group === "pr" && sub === "list") {
+    if (r.length === 4) return r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
+    return r.length === 8 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--base" && VALUE2(r[3]) && same4(r.slice(4), ["--state", "merged", "--json", "number"]);
+  }
+  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
+  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER4.test(r[5]);
+  return false;
+}
+function checkGuardExec(exec3, marker, ado = () => void 0, command = "omg factory check") {
+  return (cmd, args, opts) => {
+    const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
+    const refuse = (why) => {
+      throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`);
+    };
+    const mark = marker?.();
+    if (!args.every((x) => typeof x === "string")) refuse("non-string argument");
+    if (file === "gh") {
+      if (opts?.env !== void 0) refuse("gh takes no environment");
+      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
+    } else if (file === "git") {
+      const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]));
+      if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
+      assertFactoryCommand(cmd, args, [], opts?.env);
+    } else if (isAdoCommand(cmd)) {
+      const flag = (f) => {
+        const at = args.indexOf(f);
+        return at >= 0 ? args[at + 1] : void 0;
+      };
+      const method = flag("--http-method")?.toUpperCase();
+      const wiql = method === "POST" && flag("--area")?.toLowerCase() === "wit" && flag("--resource")?.toLowerCase() === "wiql";
+      if (mark === void 0 && method !== void 0 && method !== "GET" && !wiql) refuse("only reads run without a confirmed --mark");
+      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`));
+    } else {
+      refuse(`not a command ${command} runs`);
+    }
+    return exec3(cmd, args, opts);
+  };
+}
+function parseSourceSpec(spec) {
+  const at = spec.indexOf(":");
+  const type = at > 0 ? spec.slice(0, at) : "";
+  const value = spec.slice(at + 1);
+  switch (type) {
+    case "label":
+      return { type, label: value };
+    case "milestone":
+      return { type, milestone: value };
+    case "wiql-query":
+      return { type, queryId: value };
+    case "board-column": {
+      const [team, board, ...column] = value.split("/");
+      if (!team || !board || column.length === 0) break;
+      return { type, team, board, column: column.join("/") };
+    }
+    case "area-tag": {
+      const hash = value.lastIndexOf("#");
+      if (hash <= 0) break;
+      return { type, areaPath: value.slice(0, hash), tag: value.slice(hash + 1) };
+    }
+    default:
+      break;
+  }
+  throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column> or area-tag:<area path>#<tag>`);
+}
+function parseItemId(raw) {
+  const n = Number(raw.replace(/^#/, ""));
+  if (!Number.isInteger(n) || n <= 0 || !/^#?\d+$/.test(raw)) throw new CheckUsageError(`item id must be a positive number, got ${JSON.stringify(raw)}`);
+  return n;
+}
+function git3(exec3, root2, args) {
+  const r = exec3("git", args, { cwd: root2, env: TRUSTED_READ_ENV });
+  return { ok: r.status === 0, out: r.stdout.trim(), err: r.stderr.trim().split("\n")[0] ?? "" };
+}
+function checkEnvFor(exec3, root2, config2, base, baseSha) {
+  return {
+    config: config2,
+    runState: (id) => readFactoryState(root2, id),
+    remoteBranch: (branch) => {
+      const r = git3(exec3, root2, ["ls-remote", "origin", `refs/heads/${branch}`]);
+      if (!r.ok) throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${r.err}`);
+      return r.out.length > 0;
+    },
+    readPlan: (path30) => baseSha ? readBaseFile(exec3, root2, baseSha, path30) : null,
+    planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
+    base
+  };
+}
+function requireLabel(exec3, root2, marker, repo) {
+  const res = exec3("gh", ["label", "list", "--search", marker, "--json", "name", "--limit", "100"], { cwd: root2 });
+  if (res.status !== 0) throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
+  let names;
+  try {
+    names = JSON.parse(res.stdout);
+  } catch {
+    throw new Error("gh label list returned no JSON");
+  }
+  const found = Array.isArray(names) && names.some((l) => typeof l?.name === "string" && l.name.toLowerCase() === marker.toLowerCase());
+  if (!found) throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
+}
+function fetchBase(exec3, root2, base, warnings) {
+  const fetched = git3(exec3, root2, ["fetch", "origin", base]);
+  if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
+  const sha2 = git3(exec3, root2, ["rev-parse", "--verify", `refs/remotes/origin/${base}`]);
+  if (sha2.ok && /^[0-9a-f]{40}$/.test(sha2.out)) return sha2.out;
+  warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
+  return null;
+}
+function baseLayer(exec3, root2, base, baseSha, trustedUser, warnings) {
+  const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
+  if (!trustedBases.includes(base)) {
+    warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
+    return void 0;
+  }
+  if (!baseSha) return void 0;
+  const text4 = readBaseFile(exec3, root2, baseSha, BASE_CONFIG_PATH);
+  return text4 && text4.trim() ? parseJsonc(text4) : void 0;
+}
+function withFlags(project, o) {
+  if (o.source === void 0 && o.limit === void 0) return project;
+  const p = project && typeof project === "object" ? project : {};
+  const factory = p.factory && typeof p.factory === "object" ? p.factory : {};
+  const intake = factory.intake && typeof factory.intake === "object" ? factory.intake : {};
+  return {
+    ...p,
+    factory: {
+      ...factory,
+      intake: { ...intake, ...o.source !== void 0 ? { source: parseSourceSpec(o.source) } : {}, ...o.limit !== void 0 ? { limit: o.limit } : {} }
+    }
+  };
+}
+function renderCheckTable(items) {
+  if (items.length === 0) return "no items to check";
+  const color = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
+  const rows = items.map((r) => [`#${r.id}`, r.bucket, r.priority === null ? "-" : `P${r.priority}`, r.reasons[0] ?? "", r.title.slice(0, 60), r.detail]);
+  const widths = [0, 1, 2, 3].map((i) => Math.max(...rows.map((row) => row[i].length), ["ID", "BUCKET", "PRI", "REASON"][i].length));
+  const pad = (row) => row.slice(0, 4).map((c, i) => c.padEnd(widths[i])).join("  ");
+  const lines4 = [source_default.bold(`${pad(["ID", "BUCKET", "PRI", "REASON"])}  TITLE`)];
+  items.forEach((r, i) => {
+    const row = rows[i];
+    lines4.push(`${color[r.bucket](pad(row))}  ${row[4]}`);
+    lines4.push(source_default.gray(`${" ".repeat(widths[0] + 2)}${row[5]}`));
+  });
+  const counts = BUCKET_ORDER.map((b) => `${items.filter((r) => r.bucket === b).length} ${b}`).join(", ");
+  lines4.push(counts);
+  return lines4.join("\n");
+}
+function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker, command) {
+  const entry2 = config2.kind === "azure-devops" ? resolveAz(root2) : void 0;
+  const guard = entry2 ? adoGuardContext(config2, entry2) : void 0;
+  return { exec: checkGuardExec(exec3, marker, () => guard, command), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
+}
+function openReadForge(o, deps, warnings, command, marker) {
+  const pre = checkGuardExec(deps.exec, marker, void 0, command);
+  const top = git3(pre, process.cwd(), ["rev-parse", "--show-toplevel"]);
+  if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
+  const root2 = top.out;
+  const origin = git3(pre, root2, ["remote", "get-url", "origin"]);
+  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+  const base = deps.base(root2);
+  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
+  const baseSha = fetchBase(pre, root2, base, warnings);
+  const trustedUser = deps.trustedUser();
+  let config2;
+  try {
+    const loaded2 = resolveForgeConfig(trustedUser, baseLayer(pre, root2, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root2), o), origin.out);
+    config2 = loaded2.config;
+    warnings.push(...loaded2.warnings);
+  } catch (error2) {
+    if (!(error2 instanceof ForgeConfigError)) throw error2;
+    throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
+  }
+  try {
+    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
+    return { root: root2, base, baseSha, config: config2, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
+  } catch (error2) {
+    throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
+  }
+}
+async function runFactoryCheck(o, deps) {
+  const ids2 = o.ids.map(parseItemId);
+  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+  if (parent !== void 0 && ids2.length > 0) throw new CheckUsageError("--parent takes no item ids: it checks the spec's children");
+  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
+  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent checks every child of the spec");
+  const warnings = [];
+  let marker;
+  const { root: root2, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, deps, warnings, "omg factory check", () => marker);
+  const source = config2.intake.source;
+  if (ids2.length === 0 && parent === void 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source");
+  if (o.mark && !o.yes && (o.json || !deps.isTTY())) throw new CheckUsageError("--mark needs --yes without an interactive terminal (or with --json)");
+  const wanted = ids2.length > 0 ? ids2 : parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
+  const items = checkItems(forge, wanted, checkEnvFor(exec3, root2, config2, base, baseSha));
+  const m = { marker: config2.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
+  if (o.mark) {
+    const runnable = items.filter((r) => r.bucket === "runnable");
+    const todo = [];
+    const marked = (labels) => labels.some((l) => l.toLowerCase() === m.marker.toLowerCase());
+    for (const r of runnable) (marked(forge.tracker.viewItem(r.id).labels) ? m.alreadyMarked : todo).push(r.id);
+    if (todo.length > 0 && forge.kind === "github") requireLabel(exec3, root2, m.marker, config2.repo.url);
+    if (todo.length > 0) {
+      m.confirmed = Boolean(o.yes) || await deps.confirm(`Add ${forge.kind === "github" ? "label" : "tag"} ${m.marker} to ${todo.length} runnable item${todo.length > 1 ? "s" : ""} (${todo.map((id) => `#${id}`).join(", ")})?`);
+      if (m.confirmed) {
+        marker = m.marker;
+        try {
+          for (const id of todo) {
+            const res = forge.tracker.addMarker(id, m.marker);
+            if (res.ok) m.marked.push(id);
+            else m.failed.push({ id, error: plainText(res.stderr.trim()) });
+          }
+        } finally {
+          marker = void 0;
+        }
+      }
+    }
+  }
+  const ok2 = m.failed.length === 0 && !items.some((r) => r.reasons[0] === "read-failed");
+  if (o.json) {
+    const json = {
+      schemaVersion: CHECK_JSON_SCHEMA_VERSION,
+      ok: ok2,
+      forge: config2.kind,
+      repo: config2.repo.url,
+      source: ids2.length > 0 || parent !== void 0 || !source ? null : { ...source },
+      counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
+      items,
+      mark: m,
+      warnings: warnings.map(plainText)
+    };
+    deps.out(JSON.stringify(json, null, 2));
+  } else {
+    for (const w of warnings) deps.err(source_default.yellow(plainText(w)));
+    deps.out(renderCheckTable(items));
+    if (o.mark) {
+      if (m.marked.length > 0) deps.out(source_default.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(", ")}`));
+      if (m.alreadyMarked.length > 0) deps.out(`already marked: ${m.alreadyMarked.map((id) => `#${id}`).join(", ")}`);
+      for (const f of m.failed) deps.err(source_default.red(`#${f.id}: could not add ${m.marker}: ${f.error}`));
+      if (m.marked.length === 0 && m.failed.length === 0) deps.out("nothing marked");
+    }
+  }
+  return ok2 ? 0 : EXIT_CHECK_FAILED;
+}
+var EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER4, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same4, CHECK_GIT, defaultResolveAz;
+var init_cli = __esm({
+  "src/factory/check/cli.ts"() {
+    "use strict";
+    init_source();
+    init_config5();
+    init_az_binary();
+    init_ado();
+    init_forge_roots();
+    init_config4();
+    init_exec();
+    init_jsonc();
+    init_guard();
+    init_exec2();
+    init_state6();
+    init_score();
+    EXIT_CHECK_FAILED = 1;
+    EXIT_CHECK_USAGE = 2;
+    EXIT_CHECK_INCOMPATIBLE = 5;
+    CHECK_JSON_SCHEMA_VERSION = 1;
+    CheckUsageError = class extends Error {
+    };
+    CheckIncompatibleError = class extends Error {
+    };
+    NUMBER4 = /^\d+$/;
+    JSON_FIELDS3 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
+    FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
+    VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
+    same4 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+    CHECK_GIT = /* @__PURE__ */ new Set(["rev-parse", "remote", "fetch", "cat-file", "show", "ls-remote"]);
+    defaultResolveAz = (root2) => resolveAzEntry(defaultAzBinaryDeps([root2, ...factoryForgeOptions(root2).untrustedRoots]));
+  }
+});
+
 // src/factory/heal/classify.ts
 function envDiff(green2, red2) {
   if (!green2) return [];
@@ -126321,10 +126614,10 @@ function ghAllowed2(a) {
   if (group !== "run") return false;
   if (sub === "list") {
     const rest = r[0] === "--branch" && isBranch3(r[1]) ? r.slice(2) : r;
-    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER4.test(rest[7]);
+    return rest.length === 8 && rest[0] === "--workflow" && WORKFLOW.test(rest[1]) && rest[2] === "--event" && (rest[3] === "push" || rest[3] === "pull_request") && rest[4] === "--json" && rest[5] === RUN_LIST_FIELDS && rest[6] === "--limit" && NUMBER5.test(rest[7]);
   }
   if (sub === "view") {
-    return r.length === 3 && NUMBER4.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER4.test(r[1]) && r[2] === "--log";
+    return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && r[2] === "jobs" || r.length === 3 && r[0] === "--job" && NUMBER5.test(r[1]) && r[2] === "--log";
   }
   return false;
 }
@@ -126332,7 +126625,7 @@ function gitAllowed2(a) {
   const [sub, ...r] = a;
   switch (sub) {
     case "rev-parse":
-      return same4(r, ["--show-toplevel"]);
+      return same5(r, ["--show-toplevel"]);
     case "cat-file":
       return r.length === 2 && r[0] === "-e" && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case "merge-base": {
@@ -126379,7 +126672,7 @@ function shaRange(exec3, root2, green2, red2) {
   const files = diff.stdout.split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
   return { commits: Number(count3.stdout.trim()) || 0, codeFiles: files.filter((f) => CODE_PATH.test(f)).length, files: files.slice(0, MAX_RANGE_FILES) };
 }
-var HealSafetyError, NUMBER4, HEX407, BRANCH3, WORKFLOW, REPO_PATH3, same4, isBranch3, gitBase, MAX_RANGE_FILES, CODE_PATH;
+var HealSafetyError, NUMBER5, HEX407, BRANCH3, WORKFLOW, REPO_PATH3, same5, isBranch3, gitBase, MAX_RANGE_FILES, CODE_PATH;
 var init_history = __esm({
   "src/factory/heal/history.ts"() {
     "use strict";
@@ -126393,12 +126686,12 @@ var init_history = __esm({
         this.name = "HealSafetyError";
       }
     };
-    NUMBER4 = /^\d{1,20}$/;
+    NUMBER5 = /^\d{1,20}$/;
     HEX407 = /^[0-9a-f]{40}$/;
     BRANCH3 = /^[\w.][\w./-]*$/;
     WORKFLOW = /^[\w.-]+\.ya?ml$/;
     REPO_PATH3 = /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/;
-    same4 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+    same5 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     isBranch3 = (s) => typeof s === "string" && BRANCH3.test(s) && !s.includes("..");
     gitBase = (cmd) => cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
     MAX_RANGE_FILES = 50;
@@ -126995,7 +127288,7 @@ async function runHeal(o, deps) {
   const now2 = () => deps.now().toISOString();
   const lockPath2 = (0, import_path193.join)(healStateDir(o.root), "scan.lock");
   const locked = (fn) => withFileLockSync(lockPath2, fn, { timeoutMs: o.lockTimeoutMs ?? 6e4 });
-  const healExec = healGuardExec(deps.exec);
+  const healExec = healGuardExec(deps.exec, deps.ado);
   const bundleDir = (0, import_path193.join)(healStateDir(o.root), o.sig8, "evidence");
   const initial = readHealState(o.root, o.sig8);
   if (!initial) throw new HealRunRefused(`no heal signature ${o.sig8} (run omg factory heal scan first)`);
@@ -127299,6 +127592,7 @@ async function runHealEngine(o, deps) {
     ...o.dryRun ? { dryRun: true } : {},
     ...deps.gateConfig ? { gateConfig: deps.gateConfig } : {},
     ...deps.warn ? { warn: deps.warn } : {},
+    ...deps.forge ? { forge: deps.forge } : {},
     ...deps.engine
   });
   if (!o.dryRun && (outcome.phase === "merged" || outcome.phase === "cancelled")) {
@@ -127343,6 +127637,19 @@ var init_implement = __esm({
 });
 
 // src/factory/heal/cli.ts
+function adoHeal(config2, entry2, root2) {
+  const guard = adoReadGuardContext(config2, entry2);
+  const options = factoryForgeOptions(root2);
+  return {
+    guard: () => guard,
+    ci: (exec3, cwd2) => {
+      const ci = createAzureDevOpsForge(exec3, cwd2, config2, { ...options, entry: entry2 }).ci;
+      if (!ci) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
+      return ci;
+    },
+    forge: { config: config2, options, entry: entry2 }
+  };
+}
 function runJobs(ctx, runId) {
   let jobs = ctx.jobs.get(runId);
   if (!jobs) {
@@ -127420,7 +127727,7 @@ function runHealScan(opts) {
   return withFileLockSync((0, import_path195.join)(healStateDir(opts.root), "scan.lock"), () => scanOnce(opts), { timeoutMs: opts.lockTimeoutMs ?? 6e4 });
 }
 function scanOnce(opts) {
-  const exec3 = healGuardExec(opts.exec);
+  const exec3 = healGuardExec(opts.exec, opts.ado);
   const ci = (opts.ci ?? githubCi)(exec3, opts.root);
   const ctx = { exec: exec3, root: opts.root, ci, known: loadKnownFlaky(exec3, opts.root, opts.base, opts.warn), config: opts.config, jobs: /* @__PURE__ */ new Map(), logs: /* @__PURE__ */ new Map() };
   const completed = (r) => r.status === "completed";
@@ -127575,7 +127882,7 @@ async function guarded(json, fn) {
     process.exitCode = error2 instanceof HealUsageError ? 2 : error2 instanceof HealRunRefused ? EXIT_HEAL_REFUSED : 1;
   }
 }
-function engineDeps(deps) {
+function engineDeps(deps, ado) {
   return {
     exec: deps.exec,
     lanes: deps.lanes,
@@ -127584,26 +127891,30 @@ function engineDeps(deps) {
     now: deps.now,
     warn: (m) => console.error(source_default.yellow(termSafe(m))),
     ...deps.gateConfig ? { gateConfig: deps.gateConfig } : {},
-    ...deps.engine ? { engine: deps.engine } : {}
+    ...deps.engine ? { engine: deps.engine } : {},
+    ...ado ? { forge: ado.forge } : {}
   };
 }
 function healRoot(deps) {
   const r = healGuardExec(deps.exec)("git", ["rev-parse", "--show-toplevel"]);
   if (r.status !== 0) throw new HealUsageError("omg factory heal must run inside a git repository");
   const root2 = r.stdout.trim();
-  if (deps.forgeKind?.(root2) === "azure-devops") {
-    throw new HealRunRefused("omg factory heal is GitHub-only (it reads GitHub Actions history); this repository's origin is on Azure DevOps");
-  }
-  return root2;
+  if (deps.forgeKind?.(root2) !== "azure-devops") return { root: root2 };
+  if (!deps.forge) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
+  const { config: config2, warnings } = deps.forge(root2, deps.base(root2));
+  for (const w of warnings) console.error(source_default.yellow(termSafe(w)));
+  if (config2.kind !== "azure-devops") throw new HealRunRefused(`the origin is on Azure DevOps, but the forge config resolves to ${config2.kind}`);
+  if (!config2.heal?.pipeline) throw new HealRunRefused(HEAL_PIPELINE_MISSING);
+  return { root: root2, ado: adoHeal(config2, (deps.resolveAz ?? defaultResolveAz)(root2), root2) };
 }
 function healCommand(deps) {
   const heal = new Command("heal");
   heal.description("Experimental: classify red CI runs on the integration branch, diagnose them in a read-only lane, and, after a human approves, open a draft fix PR that parks at the human merge");
   heal.command("scan").description("Poll CI runs, compute failure signatures and classify new red runs into heal state").option("--dry-run", "Classify and print only; write no heal state").option("--json", "JSON output").action((o) => guarded(Boolean(o.json), () => {
-    const root2 = healRoot(deps);
+    const { root: root2, ado } = healRoot(deps);
     const { config: config2, warnings } = deps.config(root2);
     for (const w of warnings) console.error(source_default.yellow(w));
-    const result = runHealScan({ exec: deps.exec, root: root2, base: deps.base(root2), config: config2, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(source_default.yellow(m)), ledgerDir: deps.ledgerDir, ...deps.ci ? { ci: deps.ci } : {} });
+    const result = runHealScan({ exec: deps.exec, root: root2, base: deps.base(root2), config: config2, now: deps.now(), dryRun: Boolean(o.dryRun), warn: (m) => console.error(source_default.yellow(m)), ledgerDir: deps.ledgerDir, ...ciDeps(deps, ado) });
     if (o.json) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
     else {
       console.log(`${source_default.bold("factory heal scan")}  base=${result.base}${result.dryRun ? "  (dry run: no state written)" : ""}`);
@@ -127614,7 +127925,7 @@ function healCommand(deps) {
   }));
   heal.command("status [sig8]").description("Print recorded heal signatures, or one signature's classification (read-only)").option("--json", "JSON output").action((sig8, _o, c) => guarded(Boolean(c.optsWithGlobals().json), () => {
     const json = Boolean(c.optsWithGlobals().json);
-    const root2 = healRoot(deps);
+    const { root: root2 } = healRoot(deps);
     if (sig8 !== void 0) {
       if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
       const state = readHealState(root2, sig8);
@@ -127637,15 +127948,15 @@ function healCommand(deps) {
   }));
   heal.command("run <sig8>").description("Run the read-only debugger lane for a queued signature (billed, capped), record its diagnosis and park at awaiting-human").option("--dry-run", "Write the evidence bundle and print the debugger prompt; start no lane").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const root2 = healRoot(deps);
+    const { root: root2, ado } = healRoot(deps);
     const { config: config2, warnings } = deps.config(root2);
     for (const w of warnings) console.error(source_default.yellow(w));
     const outcome = await runHeal(
       { root: root2, base: deps.base(root2), sig8, config: config2, dryRun: Boolean(o.dryRun) },
-      { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...deps.ci ? { ci: deps.ci } : {}, ...deps.run }
+      { exec: deps.exec, lanes: deps.lanes, ledgerDir: deps.ledgerDir, now: deps.now, ...ciDeps(deps, ado), ...deps.run }
     );
     const proposal = outcome.diagnosis ? knownFlakyProposal(readHealState(root2, sig8)) : null;
-    const ciHeal = !o.dryRun && outcome.next === "heal-approve" && config2.autoImplement ? await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps)) : void 0;
+    const ciHeal = !o.dryRun && outcome.next === "heal-approve" && config2.autoImplement ? await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps, ado)) : void 0;
     if (o.json) console.log(JSON.stringify({ ok: true, ...outcome, ...proposal ? { knownFlakyProposal: proposal } : {}, ...ciHeal ? { ciHeal } : {} }, null, 2));
     else {
       if (outcome.prompt) console.log(outcome.prompt);
@@ -127659,23 +127970,23 @@ function healCommand(deps) {
   }));
   heal.command("approve <sig8>").description("A human approves a valid diagnosis: run the ci-heal run (implement, draft PR, review, prepare, CI gates) and park at the human merge; also resumes a parked ci-heal run").option("--dry-run", "Print what the ci-heal run would do next; no state, lanes or pushes").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const root2 = healRoot(deps);
+    const { root: root2, ado } = healRoot(deps);
     const { config: config2, warnings } = deps.config(root2);
     for (const w of warnings) console.error(source_default.yellow(w));
-    const outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: true, dryRun: Boolean(o.dryRun) }, engineDeps(deps));
+    const outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: true, dryRun: Boolean(o.dryRun) }, engineDeps(deps, ado));
     printEngineOutcome(Boolean(o.json), sig8, outcome);
     return outcome.exitCode;
   }));
   heal.command("cancel <sig8>").description("Cancel the ci-heal run of a signature: a running engine stops its lane; a parked run is cancelled now (the PR, branch and worktrees are kept)").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), async () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const root2 = healRoot(deps);
+    const { root: root2, ado } = healRoot(deps);
     const key = healRunKey(sig8);
     if (!readFactoryState(root2, key)) throw new HealRunRefused(`heal ${sig8} has no ci-heal run (omg factory heal close ${sig8} closes a parked heal run)`);
     requestFactoryCancel(root2, key, deps.now().toISOString());
     const { config: config2 } = deps.config(root2);
     let outcome;
     try {
-      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps));
+      outcome = await runHealEngine({ root: root2, base: deps.base(root2), sig8, config: config2, approved: false }, engineDeps(deps, ado));
     } catch (error2) {
       if (!/already running/.test(error2 instanceof Error ? error2.message : "") || !factoryCancelRequested(root2, key)) throw error2;
       if (o.json) console.log(JSON.stringify({ ok: true, sig8, cancelRequested: true }, null, 2));
@@ -127687,7 +127998,7 @@ function healCommand(deps) {
   }));
   heal.command("close <sig8>").description("Close an open heal run parked at heal-approve or heal-diagnosis (a human decision; frees the open-run slot)").option("--json", "JSON output").action((sig8, o) => guarded(Boolean(o.json), () => {
     if (!SIG8.test(sig8)) throw new HealUsageError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-    const root2 = healRoot(deps);
+    const { root: root2 } = healRoot(deps);
     const state = closeHeal(root2, sig8, { ledgerDir: deps.ledgerDir, now: deps.now });
     if (o.json) console.log(JSON.stringify({ ok: true, sig8, healRun: state.healRun, next: state.next }, null, 2));
     else console.log(`${source_default.bold(`factory heal close ${sig8}`)}  closed heal run ${termSafe(state.healRun.id)}`);
@@ -127695,8 +128006,8 @@ function healCommand(deps) {
   }));
   return heal;
 }
-var import_path195, SCAN_LIMITS, HealUsageError, termSafe;
-var init_cli = __esm({
+var import_path195, SCAN_LIMITS, HEAL_PIPELINE_MISSING, HealUsageError, termSafe, ciDeps;
+var init_cli2 = __esm({
   "src/factory/heal/cli.ts"() {
     "use strict";
     import_path195 = require("path");
@@ -127704,13 +128015,16 @@ var init_cli = __esm({
     init_file_lock();
     init_source();
     init_config4();
+    init_ado();
     init_ci2();
+    init_cli();
     init_classify();
     init_config6();
     init_history();
     init_logs();
     init_signature();
     init_state4();
+    init_forge_roots();
     init_state6();
     init_implement();
     init_run2();
@@ -127723,292 +128037,11 @@ var init_cli = __esm({
       greenLookups: 3,
       prWindowMs: 72 * 36e5
     });
+    HEAL_PIPELINE_MISSING = `omg factory heal on Azure DevOps needs factory.heal.pipeline: { "definitionId": <build definition id> } in the base branch's .copilot/omg.jsonc (omg factory setup offers the pick); without it heal does not know which pipeline is CI`;
     HealUsageError = class extends Error {
     };
     termSafe = (v) => String(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
-  }
-});
-
-// src/factory/check/cli.ts
-function checkGh(a, marker) {
-  const [group, sub, ...r] = a;
-  if (group === "issue" && sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
-  if (group === "issue" && sub === "list") {
-    return r.length === 8 && (r[0] === "--label" || r[0] === "--milestone") && VALUE2(r[1]) && r[2] === "--state" && r[3] === "open" && r[4] === "--json" && r[5] === "number" && r[6] === "--limit" && NUMBER5.test(r[7]);
-  }
-  if (group === "issue" && sub === "edit") return marker !== void 0 && same5(r.slice(1), ["--add-label", marker]) && NUMBER5.test(r[0] ?? "");
-  if (group === "pr" && sub === "list") {
-    if (r.length === 4) return r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--json" && JSON_FIELDS3.test(r[3]);
-    return r.length === 8 && r[0] === "--head" && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === "--base" && VALUE2(r[3]) && same5(r.slice(4), ["--state", "merged", "--json", "number"]);
-  }
-  if (group === "pr" && sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS3.test(r[2]);
-  if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER5.test(r[5]);
-  return false;
-}
-function checkGuardExec(exec3, marker, ado = () => void 0, command = "omg factory check") {
-  return (cmd, args, opts) => {
-    const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
-    const refuse = (why) => {
-      throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`);
-    };
-    const mark = marker?.();
-    if (!args.every((x) => typeof x === "string")) refuse("non-string argument");
-    if (file === "gh") {
-      if (opts?.env !== void 0) refuse("gh takes no environment");
-      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
-    } else if (file === "git") {
-      const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]));
-      if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
-      assertFactoryCommand(cmd, args, [], opts?.env);
-    } else if (isAdoCommand(cmd)) {
-      const flag = (f) => {
-        const at = args.indexOf(f);
-        return at >= 0 ? args[at + 1] : void 0;
-      };
-      const method = flag("--http-method")?.toUpperCase();
-      const wiql = method === "POST" && flag("--area")?.toLowerCase() === "wit" && flag("--resource")?.toLowerCase() === "wiql";
-      if (mark === void 0 && method !== void 0 && method !== "GET" && !wiql) refuse("only reads run without a confirmed --mark");
-      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`));
-    } else {
-      refuse(`not a command ${command} runs`);
-    }
-    return exec3(cmd, args, opts);
-  };
-}
-function parseSourceSpec(spec) {
-  const at = spec.indexOf(":");
-  const type = at > 0 ? spec.slice(0, at) : "";
-  const value = spec.slice(at + 1);
-  switch (type) {
-    case "label":
-      return { type, label: value };
-    case "milestone":
-      return { type, milestone: value };
-    case "wiql-query":
-      return { type, queryId: value };
-    case "board-column": {
-      const [team, board, ...column] = value.split("/");
-      if (!team || !board || column.length === 0) break;
-      return { type, team, board, column: column.join("/") };
-    }
-    case "area-tag": {
-      const hash = value.lastIndexOf("#");
-      if (hash <= 0) break;
-      return { type, areaPath: value.slice(0, hash), tag: value.slice(hash + 1) };
-    }
-    default:
-      break;
-  }
-  throw new CheckUsageError(`--source ${JSON.stringify(spec)} is not label:<name>, milestone:<name>, wiql-query:<guid>, board-column:<team>/<board>/<column> or area-tag:<area path>#<tag>`);
-}
-function parseItemId(raw) {
-  const n = Number(raw.replace(/^#/, ""));
-  if (!Number.isInteger(n) || n <= 0 || !/^#?\d+$/.test(raw)) throw new CheckUsageError(`item id must be a positive number, got ${JSON.stringify(raw)}`);
-  return n;
-}
-function git3(exec3, root2, args) {
-  const r = exec3("git", args, { cwd: root2, env: TRUSTED_READ_ENV });
-  return { ok: r.status === 0, out: r.stdout.trim(), err: r.stderr.trim().split("\n")[0] ?? "" };
-}
-function checkEnvFor(exec3, root2, config2, base, baseSha) {
-  return {
-    config: config2,
-    runState: (id) => readFactoryState(root2, id),
-    remoteBranch: (branch) => {
-      const r = git3(exec3, root2, ["ls-remote", "origin", `refs/heads/${branch}`]);
-      if (!r.ok) throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${r.err}`);
-      return r.out.length > 0;
-    },
-    readPlan: (path30) => baseSha ? readBaseFile(exec3, root2, baseSha, path30) : null,
-    planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
-    base
-  };
-}
-function requireLabel(exec3, root2, marker, repo) {
-  const res = exec3("gh", ["label", "list", "--search", marker, "--json", "name", "--limit", "100"], { cwd: root2 });
-  if (res.status !== 0) throw new Error(`gh label list failed (exit ${res.status}): ${res.stderr.trim().split("\n")[0]}`);
-  let names;
-  try {
-    names = JSON.parse(res.stdout);
-  } catch {
-    throw new Error("gh label list returned no JSON");
-  }
-  const found = Array.isArray(names) && names.some((l) => typeof l?.name === "string" && l.name.toLowerCase() === marker.toLowerCase());
-  if (!found) throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
-}
-function fetchBase(exec3, root2, base, warnings) {
-  const fetched = git3(exec3, root2, ["fetch", "origin", base]);
-  if (!fetched.ok) warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
-  const sha2 = git3(exec3, root2, ["rev-parse", "--verify", `refs/remotes/origin/${base}`]);
-  if (sha2.ok && /^[0-9a-f]{40}$/.test(sha2.out)) return sha2.out;
-  warnings.push(`omg factory check: origin/${base} is not available; its committed config is not read and omg-plan links cannot be checked`);
-  return null;
-}
-function baseLayer(exec3, root2, base, baseSha, trustedUser, warnings) {
-  const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
-  if (!trustedBases.includes(base)) {
-    warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
-    return void 0;
-  }
-  if (!baseSha) return void 0;
-  const text4 = readBaseFile(exec3, root2, baseSha, BASE_CONFIG_PATH);
-  return text4 && text4.trim() ? parseJsonc(text4) : void 0;
-}
-function withFlags(project, o) {
-  if (o.source === void 0 && o.limit === void 0) return project;
-  const p = project && typeof project === "object" ? project : {};
-  const factory = p.factory && typeof p.factory === "object" ? p.factory : {};
-  const intake = factory.intake && typeof factory.intake === "object" ? factory.intake : {};
-  return {
-    ...p,
-    factory: {
-      ...factory,
-      intake: { ...intake, ...o.source !== void 0 ? { source: parseSourceSpec(o.source) } : {}, ...o.limit !== void 0 ? { limit: o.limit } : {} }
-    }
-  };
-}
-function renderCheckTable(items) {
-  if (items.length === 0) return "no items to check";
-  const color = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
-  const rows = items.map((r) => [`#${r.id}`, r.bucket, r.priority === null ? "-" : `P${r.priority}`, r.reasons[0] ?? "", r.title.slice(0, 60), r.detail]);
-  const widths = [0, 1, 2, 3].map((i) => Math.max(...rows.map((row) => row[i].length), ["ID", "BUCKET", "PRI", "REASON"][i].length));
-  const pad = (row) => row.slice(0, 4).map((c, i) => c.padEnd(widths[i])).join("  ");
-  const lines4 = [source_default.bold(`${pad(["ID", "BUCKET", "PRI", "REASON"])}  TITLE`)];
-  items.forEach((r, i) => {
-    const row = rows[i];
-    lines4.push(`${color[r.bucket](pad(row))}  ${row[4]}`);
-    lines4.push(source_default.gray(`${" ".repeat(widths[0] + 2)}${row[5]}`));
-  });
-  const counts = BUCKET_ORDER.map((b) => `${items.filter((r) => r.bucket === b).length} ${b}`).join(", ");
-  lines4.push(counts);
-  return lines4.join("\n");
-}
-function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker, command) {
-  const entry2 = config2.kind === "azure-devops" ? resolveAz(root2) : void 0;
-  const guard = entry2 ? adoGuardContext(config2, entry2) : void 0;
-  return { exec: checkGuardExec(exec3, marker, () => guard, command), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
-}
-function openReadForge(o, deps, warnings, command, marker) {
-  const pre = checkGuardExec(deps.exec, marker, void 0, command);
-  const top = git3(pre, process.cwd(), ["rev-parse", "--show-toplevel"]);
-  if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
-  const root2 = top.out;
-  const origin = git3(pre, root2, ["remote", "get-url", "origin"]);
-  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
-  const base = deps.base(root2);
-  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  const baseSha = fetchBase(pre, root2, base, warnings);
-  const trustedUser = deps.trustedUser();
-  let config2;
-  try {
-    const loaded2 = resolveForgeConfig(trustedUser, baseLayer(pre, root2, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root2), o), origin.out);
-    config2 = loaded2.config;
-    warnings.push(...loaded2.warnings);
-  } catch (error2) {
-    if (!(error2 instanceof ForgeConfigError)) throw error2;
-    throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
-  }
-  try {
-    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
-    return { root: root2, base, baseSha, config: config2, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
-  } catch (error2) {
-    throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
-  }
-}
-async function runFactoryCheck(o, deps) {
-  const ids2 = o.ids.map(parseItemId);
-  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
-  if (parent !== void 0 && ids2.length > 0) throw new CheckUsageError("--parent takes no item ids: it checks the spec's children");
-  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
-  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent checks every child of the spec");
-  const warnings = [];
-  let marker;
-  const { root: root2, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, deps, warnings, "omg factory check", () => marker);
-  const source = config2.intake.source;
-  if (ids2.length === 0 && parent === void 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source");
-  if (o.mark && !o.yes && (o.json || !deps.isTTY())) throw new CheckUsageError("--mark needs --yes without an interactive terminal (or with --json)");
-  const wanted = ids2.length > 0 ? ids2 : parent !== void 0 ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config2.intake.limit);
-  const items = checkItems(forge, wanted, checkEnvFor(exec3, root2, config2, base, baseSha));
-  const m = { marker: config2.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
-  if (o.mark) {
-    const runnable = items.filter((r) => r.bucket === "runnable");
-    const todo = [];
-    const marked = (labels) => labels.some((l) => l.toLowerCase() === m.marker.toLowerCase());
-    for (const r of runnable) (marked(forge.tracker.viewItem(r.id).labels) ? m.alreadyMarked : todo).push(r.id);
-    if (todo.length > 0 && forge.kind === "github") requireLabel(exec3, root2, m.marker, config2.repo.url);
-    if (todo.length > 0) {
-      m.confirmed = Boolean(o.yes) || await deps.confirm(`Add ${forge.kind === "github" ? "label" : "tag"} ${m.marker} to ${todo.length} runnable item${todo.length > 1 ? "s" : ""} (${todo.map((id) => `#${id}`).join(", ")})?`);
-      if (m.confirmed) {
-        marker = m.marker;
-        try {
-          for (const id of todo) {
-            const res = forge.tracker.addMarker(id, m.marker);
-            if (res.ok) m.marked.push(id);
-            else m.failed.push({ id, error: plainText(res.stderr.trim()) });
-          }
-        } finally {
-          marker = void 0;
-        }
-      }
-    }
-  }
-  const ok2 = m.failed.length === 0 && !items.some((r) => r.reasons[0] === "read-failed");
-  if (o.json) {
-    const json = {
-      schemaVersion: CHECK_JSON_SCHEMA_VERSION,
-      ok: ok2,
-      forge: config2.kind,
-      repo: config2.repo.url,
-      source: ids2.length > 0 || parent !== void 0 || !source ? null : { ...source },
-      counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
-      items,
-      mark: m,
-      warnings: warnings.map(plainText)
-    };
-    deps.out(JSON.stringify(json, null, 2));
-  } else {
-    for (const w of warnings) deps.err(source_default.yellow(plainText(w)));
-    deps.out(renderCheckTable(items));
-    if (o.mark) {
-      if (m.marked.length > 0) deps.out(source_default.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(", ")}`));
-      if (m.alreadyMarked.length > 0) deps.out(`already marked: ${m.alreadyMarked.map((id) => `#${id}`).join(", ")}`);
-      for (const f of m.failed) deps.err(source_default.red(`#${f.id}: could not add ${m.marker}: ${f.error}`));
-      if (m.marked.length === 0 && m.failed.length === 0) deps.out("nothing marked");
-    }
-  }
-  return ok2 ? 0 : EXIT_CHECK_FAILED;
-}
-var EXIT_CHECK_FAILED, EXIT_CHECK_USAGE, EXIT_CHECK_INCOMPATIBLE, CHECK_JSON_SCHEMA_VERSION, CheckUsageError, CheckIncompatibleError, NUMBER5, JSON_FIELDS3, FACTORY_ISSUE_BRANCH, VALUE2, same5, CHECK_GIT, defaultResolveAz;
-var init_cli2 = __esm({
-  "src/factory/check/cli.ts"() {
-    "use strict";
-    init_source();
-    init_config5();
-    init_az_binary();
-    init_ado();
-    init_forge_roots();
-    init_config4();
-    init_exec();
-    init_jsonc();
-    init_guard();
-    init_exec2();
-    init_state6();
-    init_score();
-    EXIT_CHECK_FAILED = 1;
-    EXIT_CHECK_USAGE = 2;
-    EXIT_CHECK_INCOMPATIBLE = 5;
-    CHECK_JSON_SCHEMA_VERSION = 1;
-    CheckUsageError = class extends Error {
-    };
-    CheckIncompatibleError = class extends Error {
-    };
-    NUMBER5 = /^\d+$/;
-    JSON_FIELDS3 = /^[A-Za-z]+(?:,[A-Za-z]+)*$/;
-    FACTORY_ISSUE_BRANCH = /^factory\/issue-\d+$/;
-    VALUE2 = (s) => typeof s === "string" && s.length > 0 && !s.startsWith("-") && !/[\r\n\0]/.test(s);
-    same5 = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
-    CHECK_GIT = /* @__PURE__ */ new Set(["rev-parse", "remote", "fetch", "cat-file", "show", "ls-remote"]);
-    defaultResolveAz = (root2) => resolveAzEntry(defaultAzBinaryDeps([root2, ...factoryForgeOptions(root2).untrustedRoots]));
+    ciDeps = (deps, ado) => ado ? { ci: ado.ci, ado: ado.guard } : deps.ci ? { ci: deps.ci } : {};
   }
 });
 
@@ -128058,7 +128091,7 @@ var init_factory_check = __esm({
     import_fs166 = require("fs");
     import_promises30 = require("readline/promises");
     init_project_config_path();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge();
     init_config4();
@@ -128581,7 +128614,7 @@ var init_enqueue = __esm({
     init_types11();
     init_config4();
     init_exec();
-    init_cli2();
+    init_cli();
     init_rules();
     init_score();
     init_forge_roots();
@@ -129313,6 +129346,50 @@ var init_intake_pick = __esm({
   }
 });
 
+// src/factory/setup/pipeline-pick.ts
+function adoRepositoryGuid(io) {
+  const repo = adoGet(io, "git.repositories.GET", { project: io.repo.project, repositoryId: io.repo.name });
+  const id = repo?.id;
+  if (typeof id !== "string" || !GUID4.test(id) || typeof repo?.name !== "string" || repo.name.toLowerCase() !== io.repo.name.toLowerCase()) {
+    throw new SetupError(5, `Azure DevOps git.repositories.GET did not answer repository ${io.repo.name} with its id`);
+  }
+  return id.toLowerCase();
+}
+function adoRepoDefinitions(io) {
+  const guid2 = adoRepositoryGuid(io);
+  const body = adoGet(io, "build.definitions.GET", { project: io.repo.project }, { repositoryId: guid2, repositoryType: "TfsGit", includeAllProperties: "true" });
+  return adoList(body).flatMap((d) => {
+    const repo = d.repository;
+    const ours = typeof repo?.id === "string" && repo.id.toLowerCase() === guid2 && repo.type === "TfsGit";
+    return ours && Number.isSafeInteger(d.id) && d.id > 0 ? [{ id: d.id, name: plainText(String(d.name ?? "")), path: plainText(String(d.path ?? "")) }] : [];
+  });
+}
+async function pickHealPipeline(io, prompter, flag) {
+  if (flag === "none" || flag === void 0 && !prompter) return void 0;
+  if (flag !== void 0 && !/^[1-9]\d{0,9}$/.test(flag)) throw new SetupError(2, `--heal-pipeline must be a build definition id or none, got ${JSON.stringify(flag)}`);
+  const definitions = adoRepoDefinitions(io);
+  if (flag !== void 0) {
+    const found = definitions.find((d) => d.id === Number(flag));
+    if (!found) throw new SetupError(5, `build definition ${flag} is not a pipeline of repository ${io.repo.name} (its pipelines: ${definitions.map((d) => d.id).join(", ") || "none"})`);
+    return { definitionId: found.id };
+  }
+  if (definitions.length === 0) return void 0;
+  const label2 = (d) => `#${d.id} ${d.name}${d.path && d.path !== "\\" ? ` (${d.path})` : ""}`;
+  const answer = await prompter.select("Which pipeline is CI for omg factory heal?", [NONE, ...definitions.map(label2)]);
+  const picked = definitions.find((d) => label2(d) === answer);
+  return picked ? { definitionId: picked.id } : void 0;
+}
+var GUID4, NONE;
+var init_pipeline_pick = __esm({
+  "src/factory/setup/pipeline-pick.ts"() {
+    "use strict";
+    init_score();
+    init_guard2();
+    GUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    NONE = "none (no heal on Azure DevOps)";
+  }
+});
+
 // src/factory/setup/progress-pick.ts
 function defaultProgress(kind) {
   return { enabled: true, stages: defaultProgressStages(kind) };
@@ -129437,6 +129514,7 @@ function sectionEdits(section) {
   if (section.intake.itemTypes) edits.push([["factory", "intake", "itemTypes"], section.intake.itemTypes]);
   edits.push([["factory", "progress", "enabled"], section.progress.enabled]);
   edits.push([["factory", "progress", "stages"], section.progress.stages]);
+  if (section.heal) edits.push([["factory", "heal", "pipeline"], section.heal.pipeline]);
   return edits;
 }
 function trustedAuthorsEdit(authors) {
@@ -129568,7 +129646,7 @@ var init_write = __esm({
     init_guard2();
     TRUSTED_AUTHORS = ["factory", "forge", "azureDevOps", "trustedAuthors"];
     OWNED = {
-      project: [["factory", "forge"], ["factory", "intake"], ["factory", "progress"]],
+      project: [["factory", "forge"], ["factory", "intake"], ["factory", "progress"], ["factory", "heal", "pipeline"]],
       user: [TRUSTED_AUTHORS]
     };
     BOM = String.fromCharCode(65279);
@@ -129646,7 +129724,7 @@ async function setup(o, deps, cwd2, out) {
   const repo = detected.repo;
   out.forge = { kind: repo.kind, host: repo.host, owner: repo.owner, ...repo.project ? { project: repo.project } : {}, name: repo.name, url: repo.url };
   const ado = repo.kind === "azure-devops";
-  if (!ado && (o.itemTypes || o.board || o.trustedAuthor)) throw new SetupError(2, "--item-types, --board and --trusted-author are Azure DevOps flags; this repository is on GitHub");
+  if (!ado && (o.itemTypes || o.board || o.trustedAuthor || o.healPipeline)) throw new SetupError(2, "--item-types, --board, --trusted-author and --heal-pipeline are Azure DevOps flags; this repository is on GitHub");
   let az;
   if (ado) {
     try {
@@ -129693,7 +129771,8 @@ async function setup(o, deps, cwd2, out) {
     trustedAuthors = list(await prompter.input("Trusted authors whose omg-plan: comments count (uniqueName, comma-separated; empty = none)", ""));
   }
   const team = source.type === "board-column" ? source.team : board?.team ?? detected.prefill.team;
-  out.config = buildSection(repo, { source, itemTypes }, progress, team);
+  const healPipeline = ado ? await pickHealPipeline(io, prompter, o.healPipeline) : void 0;
+  out.config = { ...buildSection(repo, { source, itemTypes }, progress, team), ...healPipeline ? { heal: { pipeline: healPipeline } } : {} };
   const planned = planWrites({ projectPath, userPath, section: out.config, ...trustedAuthors.length > 0 ? { trustedAuthors } : {} });
   out.diffs = planned.map((w) => ({ path: w.path, scope: w.scope, diff: w.diff }));
   const afterUser = parsedAfter(planned, userPath);
@@ -129709,6 +129788,7 @@ async function setup(o, deps, cwd2, out) {
   if (scope === "user") out.notes.push(`--scope user: the forge identity, intake and progress belong to this repository, so they go to ${projectPath}; the user config ${userPath} is shared by every repository and gets only trustedAuthors.`);
   out.notes.push(`${projectPath} is a protected path: omg factory reads forge.* and progress.* from it only on <base> once it is committed there.`);
   if (trustedAuthors.length > 0) out.notes.push(`trustedAuthors go to the user config ${userPath} only.`);
+  if (healPipeline) out.notes.push(`factory.heal.pipeline (build definition ${healPipeline.definitionId}) counts once ${projectPath} is committed on <base>; omg factory heal ignores it in the working tree.`);
   if (!o.json) {
     for (const w of planned) {
       console.log(source_default.bold(`--- ${w.path} (${w.scope})`));
@@ -129762,7 +129842,7 @@ function printOutcome(o, r) {
   }
 }
 function factorySetupCommand(deps = defaultFactorySetupDeps) {
-  return new Command("setup").description("Configure the factory for this repository: forge, auth, intake source, progress mapping (writes only factory.* after a diff)").option("--forge <kind>", "github | azure-devops (default: detected from origin; can only pin it)").option("--org <org>", "Azure DevOps organization (pin)").option("--project <project>", "Azure DevOps project (pin)").option("--repo <repo>", "GitHub owner/name or Azure DevOps repository (pin)").option("--intake <spec>", "label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag>").option("--item-types <list>", "Azure DevOps work item types, comma-separated").option("--progress <mode>", "default | none | <file.json>").option("--board <team/board>", "Azure DevOps board the progress columns live on (default: the board-column intake board)").option("--trusted-author <list>", "Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated").option("--scope <scope>", "project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors", "project").option("--dry-run", "Show the diff and the preview; write nothing").option("--yes", "Non-interactive: take every answer from flags and confirm the write").option("--json", "JSON output (non-interactive)").action(async (o) => {
+  return new Command("setup").description("Configure the factory for this repository: forge, auth, intake source, progress mapping (writes only factory.* after a diff)").option("--forge <kind>", "github | azure-devops (default: detected from origin; can only pin it)").option("--org <org>", "Azure DevOps organization (pin)").option("--project <project>", "Azure DevOps project (pin)").option("--repo <repo>", "GitHub owner/name or Azure DevOps repository (pin)").option("--intake <spec>", "label:<name> | milestone:<title> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area>#<tag>").option("--item-types <list>", "Azure DevOps work item types, comma-separated").option("--progress <mode>", "default | none | <file.json>").option("--board <team/board>", "Azure DevOps board the progress columns live on (default: the board-column intake board)").option("--trusted-author <list>", "Azure DevOps uniqueNames whose omg-plan: comments count (user config only), comma-separated").option("--heal-pipeline <id>", "Azure DevOps build definition omg factory heal reads as CI (a pipeline of this repository), or none").option("--scope <scope>", "project | user; forge identity, intake and progress always go to .copilot/omg.jsonc, the user config gets only trustedAuthors", "project").option("--dry-run", "Show the diff and the preview; write nothing").option("--yes", "Non-interactive: take every answer from flags and confirm the write").option("--json", "JSON output (non-interactive)").action(async (o) => {
     const result = await runFactorySetup(o, deps);
     printOutcome(o, result);
     process.exitCode = result.exitCode;
@@ -129781,13 +129861,14 @@ var init_factory_setup = __esm({
     init_config5();
     init_forge();
     init_ado();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge_roots();
     init_auth();
     init_detect();
     init_guard2();
     init_intake_pick();
+    init_pipeline_pick();
     init_progress_pick();
     init_write();
     init_redact3();
@@ -130149,7 +130230,7 @@ var init_collect = __esm({
   "src/factory/board/collect.ts"() {
     "use strict";
     import_fs172 = require("fs");
-    init_cli2();
+    init_cli();
     init_score();
     init_types11();
     init_state5();
@@ -130184,7 +130265,7 @@ var init_factory_board = __esm({
     init_esm();
     init_source();
     init_collect();
-    init_cli2();
+    init_cli();
     init_score();
     init_integer_option();
   }
@@ -130413,7 +130494,9 @@ function factoryCommand() {
     lanes: defaultFactoryRunDeps.lanes,
     ledgerDir: defaultLedgerDir(),
     runLimits: defaultFactoryRunDeps.limits,
-    forgeKind: (root2) => originForgeKind(factoryGuardExec(defaultExec), root2)
+    forgeKind: (root2) => originForgeKind(factoryGuardExec(defaultExec), root2),
+    // Azure DevOps only: the trusted forge config naming factory.heal.pipeline (GitHub never loads it).
+    forge: defaultFactoryRunDeps.forge
   }));
   cmd.addCommand(factorySetupCommand());
   cmd.command("listen").description("Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless harbor sessions").option("--port <n>", "port to listen on (transport adapters forward here)", integerOption(0, 65535), 7788).option("--host <addr>", "host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)", "127.0.0.1").requiredOption("--repo <names>", "repository whitelist, comma-separated owner/name").option("--cwd <dir>", "repository whose .omg state root the daemon writes to", process.cwd()).action((options) => {
@@ -130656,16 +130739,16 @@ var init_factory = __esm({
     init_config4();
     init_exec();
     init_jsonc();
-    init_cli();
-    init_factory_check();
     init_cli2();
+    init_factory_check();
+    init_cli();
     init_enqueue();
     init_config6();
     init_ledger2();
     init_detect();
     init_factory_setup();
     init_factory_board();
-    init_cli2();
+    init_cli();
     init_score();
     init_forge();
     defaultFactoryRunDeps = {

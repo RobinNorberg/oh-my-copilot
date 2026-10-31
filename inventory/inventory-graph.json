@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "824629395f9f768c16d8098e2950e052a99fba8b",
-    "sourceSha256": "422255b1cb2f395422018d2f70d67f88a6dddf7340ea0d63a1d886c0feed962a",
+    "head": "cbb91bcfb2d93e4a6e073747b0ed479b42a97218",
+    "sourceSha256": "6b2b3e30372988492ac0dd2b77a37b2cdaeb42f220f5027a3c2e656ddbd5150e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "824629395f9f768c16d8098e2950e052a99fba8b",
-  "sourceSha256": "422255b1cb2f395422018d2f70d67f88a6dddf7340ea0d63a1d886c0feed962a",
+  "head": "cbb91bcfb2d93e4a6e073747b0ed479b42a97218",
+  "sourceSha256": "6b2b3e30372988492ac0dd2b77a37b2cdaeb42f220f5027a3c2e656ddbd5150e",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1930,
-      "total": 1954
+      "srcFiles": 1934,
+      "total": 1958
     },
     "generated": {
-      "distFiles": 7124,
+      "distFiles": 7136,
       "bridgeFiles": 9,
-      "total": 7133
+      "total": 7145
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -3007,6 +3007,10 @@
       "dist/factory/__tests__/enqueue.test.d.ts.map",
       "dist/factory/__tests__/enqueue.test.js",
       "dist/factory/__tests__/enqueue.test.js.map",
+      "dist/factory/__tests__/heal-ado.test.d.ts",
+      "dist/factory/__tests__/heal-ado.test.d.ts.map",
+      "dist/factory/__tests__/heal-ado.test.js",
+      "dist/factory/__tests__/heal-ado.test.js.map",
       "dist/factory/__tests__/listener.test.d.ts",
       "dist/factory/__tests__/listener.test.d.ts.map",
       "dist/factory/__tests__/listener.test.js",
@@ -3311,6 +3315,10 @@
       "dist/factory/setup/__tests__/harness.d.ts.map",
       "dist/factory/setup/__tests__/harness.js",
       "dist/factory/setup/__tests__/harness.js.map",
+      "dist/factory/setup/__tests__/pipeline-pick.test.d.ts",
+      "dist/factory/setup/__tests__/pipeline-pick.test.d.ts.map",
+      "dist/factory/setup/__tests__/pipeline-pick.test.js",
+      "dist/factory/setup/__tests__/pipeline-pick.test.js.map",
       "dist/factory/setup/__tests__/setup.test.d.ts",
       "dist/factory/setup/__tests__/setup.test.d.ts.map",
       "dist/factory/setup/__tests__/setup.test.js",
@@ -3335,6 +3343,10 @@
       "dist/factory/setup/intake-pick.d.ts.map",
       "dist/factory/setup/intake-pick.js",
       "dist/factory/setup/intake-pick.js.map",
+      "dist/factory/setup/pipeline-pick.d.ts",
+      "dist/factory/setup/pipeline-pick.d.ts.map",
+      "dist/factory/setup/pipeline-pick.js",
+      "dist/factory/setup/pipeline-pick.js.map",
       "dist/factory/setup/progress-pick.d.ts",
       "dist/factory/setup/progress-pick.d.ts.map",
       "dist/factory/setup/progress-pick.js",
@@ -19920,6 +19932,26 @@
         "path": "dist/factory/__tests__/enqueue.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/heal-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/heal-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/heal-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/heal-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/heal-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/heal-ado.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/heal-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/heal-ado.test.js.map"
+      },
+      {
         "id": "dist/factory/__tests__/listener.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/listener.test.d.ts"
@@ -21440,6 +21472,26 @@
         "path": "dist/factory/setup/__tests__/harness.js.map"
       },
       {
+        "id": "dist/factory/setup/__tests__/pipeline-pick.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/pipeline-pick.test.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/pipeline-pick.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/pipeline-pick.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/pipeline-pick.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/pipeline-pick.test.js"
+      },
+      {
+        "id": "dist/factory/setup/__tests__/pipeline-pick.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/__tests__/pipeline-pick.test.js.map"
+      },
+      {
         "id": "dist/factory/setup/__tests__/setup.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/setup/__tests__/setup.test.d.ts"
@@ -21558,6 +21610,26 @@
         "id": "dist/factory/setup/intake-pick.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/setup/intake-pick.js.map"
+      },
+      {
+        "id": "dist/factory/setup/pipeline-pick.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/pipeline-pick.d.ts"
+      },
+      {
+        "id": "dist/factory/setup/pipeline-pick.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/pipeline-pick.d.ts.map"
+      },
+      {
+        "id": "dist/factory/setup/pipeline-pick.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/pipeline-pick.js"
+      },
+      {
+        "id": "dist/factory/setup/pipeline-pick.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/setup/pipeline-pick.js.map"
       },
       {
         "id": "dist/factory/setup/progress-pick.d.ts",
@@ -50315,6 +50387,11 @@
         "path": "src/factory/__tests__/enqueue.test.ts"
       },
       {
+        "id": "src/factory/__tests__/heal-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/heal-ado.test.ts"
+      },
+      {
         "id": "src/factory/__tests__/listener.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/listener.test.ts"
@@ -50795,6 +50872,11 @@
         "path": "src/factory/setup/__tests__/e2e.test.ts"
       },
       {
+        "id": "src/factory/setup/__tests__/fixtures/ado/build.definitions.json",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/fixtures/ado/build.definitions.json"
+      },
+      {
         "id": "src/factory/setup/__tests__/fixtures/ado/core.projects.json",
         "kind": "src",
         "path": "src/factory/setup/__tests__/fixtures/ado/core.projects.json"
@@ -50855,6 +50937,11 @@
         "path": "src/factory/setup/__tests__/harness.ts"
       },
       {
+        "id": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "kind": "src",
+        "path": "src/factory/setup/__tests__/pipeline-pick.test.ts"
+      },
+      {
         "id": "src/factory/setup/__tests__/setup.test.ts",
         "kind": "src",
         "path": "src/factory/setup/__tests__/setup.test.ts"
@@ -50883,6 +50970,11 @@
         "id": "src/factory/setup/intake-pick.ts",
         "kind": "src",
         "path": "src/factory/setup/intake-pick.ts"
+      },
+      {
+        "id": "src/factory/setup/pipeline-pick.ts",
+        "kind": "src",
+        "path": "src/factory/setup/pipeline-pick.ts"
       },
       {
         "id": "src/factory/setup/progress-pick.ts",
@@ -73228,6 +73320,11 @@
       },
       {
         "from": "src/cli/commands/factory-setup.ts",
+        "to": "src/factory/setup/pipeline-pick.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-setup.ts",
         "to": "src/factory/setup/progress-pick.ts",
         "kind": "imports"
       },
@@ -75787,6 +75884,101 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/heal-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/__tests__/listener.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -77238,6 +77430,11 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/heal/classify.ts",
         "kind": "imports"
       },
@@ -77323,6 +77520,11 @@
       },
       {
         "from": "src/factory/heal/cli.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
       },
@@ -77335,6 +77537,26 @@
         "from": "src/factory/heal/cli.ts",
         "to": "src/factory/run/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/cli.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/cli.ts",
@@ -77753,6 +77975,11 @@
       },
       {
         "from": "src/factory/heal/run.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/run.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
@@ -78113,6 +78340,41 @@
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/classify.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/factory/heal/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/factory/run/__tests__/fake-lanes.ts",
         "kind": "imports"
       },
@@ -78165,6 +78427,11 @@
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/forge/ado/guard.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.ado.test.ts",
+        "to": "src/forge/config.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
@@ -79188,6 +79455,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/ado/index.ts",
         "kind": "imports"
       },
@@ -79867,6 +80139,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "external:jsonc-parser",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "src/cli/commands/factory-setup.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/__tests__/pipeline-pick.test.ts",
+        "to": "src/factory/setup/__tests__/harness.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/setup/__tests__/setup.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80044,6 +80356,26 @@
       {
         "from": "src/factory/setup/intake-pick.ts",
         "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/pipeline-pick.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/pipeline-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/setup/pipeline-pick.ts",
+        "to": "src/factory/setup/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/setup/pipeline-pick.ts",
+        "to": "src/factory/setup/intake-pick.ts",
         "kind": "type-imports"
       },
       {
@@ -116038,12 +116370,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9805,
-      "edgeCount": 11660,
-      "importEdgeCount": 9578,
+      "nodeCount": 9821,
+      "edgeCount": 11708,
+      "importEdgeCount": 9609,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "66ef96acf286329aeaceca35cca89db316b6f533918cef43f0188bbb3008ecad",
-  "manifestSha256": "ba955ad9da425a543de9674c81d53967dc7c56d0fbfae7601d79d795a0a41a53"
+  "inventorySha256": "fdbb44f479480745d26e6d33501c16ad766403f3491b721bb993cda18d5f09d3",
+  "manifestSha256": "7c189e08337f12d764d73cc58c6af2c9b44ba5ad17aad082aa5b616446c35f57"
 }

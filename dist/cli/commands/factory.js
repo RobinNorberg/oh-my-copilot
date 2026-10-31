@@ -368,6 +368,8 @@ export function factoryCommand() {
         ledgerDir: defaultLedgerDir(),
         runLimits: defaultFactoryRunDeps.limits,
         forgeKind: (root) => originForgeKind(factoryGuardExec(defaultExec), root),
+        // Azure DevOps only: the trusted forge config naming factory.heal.pipeline (GitHub never loads it).
+        forge: defaultFactoryRunDeps.forge,
     }));
     cmd.addCommand(factorySetupCommand());
     cmd
