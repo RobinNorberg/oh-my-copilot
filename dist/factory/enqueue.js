@@ -506,7 +506,9 @@ export async function runFactoryEnqueue(o, deps) {
             found.push({ key: keys[0][1], item });
     }
     for (const { key, item } of found) {
-        if (!item.authorTrusted)
+        if (!inForge(item))
+            ignored.push({ id: item.id, key, reason: 'not in the forge project' });
+        else if (!item.authorTrusted)
             ignored.push({ id: item.id, key, reason: 'author is not trusted' });
         // Azure DevOps links the parent right after the create: a trusted holder with no parent is one whose link failed, and enqueue links it.
         else if (item.parent !== specId && !(ado && item.parent === undefined))

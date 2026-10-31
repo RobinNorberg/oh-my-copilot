@@ -122,7 +122,7 @@ function boards(root, items, o = {}) {
                 const phrase = /CONTAINS '(shipyard-key: \d+\/)'/.exec(body.query)?.[1];
                 if (!phrase || qp.$top !== '1000')
                     throw new Error(`unscripted WIQL ${JSON.stringify(body)}`);
-                const hits = Object.keys(items).map(Number).filter((id) => String(items[id].fields['System.Description'] ?? '').includes(phrase) && items[id].fields['System.TeamProject'] === 'Web');
+                const hits = Object.keys(items).map(Number).filter((id) => String(items[id].fields['System.Description'] ?? '').includes(phrase));
                 return ok({ ...template('wit.wiql.POST.shipyard-key'), workItems: hits.map((id) => ({ id, url: workItemUrl(id) })) });
             }
             case 'wit.workItemTypeStates.GET':
@@ -323,6 +323,13 @@ describe('omg factory enqueue on Azure DevOps: the run', () => {
         expect(json.ignored).toEqual([{ id: 30, key: 'aaa', reason: 'author is not trusted' }, { id: 31, key: 'bbb', reason: 'not a child of #10' }]);
         expect(json.items.map((r) => [r.key, r.id, r.action])).toEqual([['aaa', 33, 'created'], ['bbb', 34, 'created'], ['ccc', 32, 'updated']]);
         expect(linked(w.items[32], 'System.LinkTypes.Hierarchy-Reverse')).toEqual([10]);
+    });
+    it('ignores a key holder from another project', async () => {
+        const items = { ...spec(), 30: item({ 'System.Title': 'Do aaa', 'System.TeamProject': 'Other', 'System.Description': '<div>x<br><br>shipyard-key: 10/aaa</div>' }) };
+        const w = boards(root, items);
+        const { json } = await enqueue(w.exec, [ticket('aaa')]);
+        expect(json.ignored).toEqual([{ id: 30, key: 'aaa', reason: 'not in the forge project' }]);
+        expect(json.items.map((r) => [r.key, r.action])).toEqual([['aaa', 'created']]);
     });
     it('--dry-run shows the fields, links and mark candidates and writes nothing', async () => {
         const w = boards(root, spec());

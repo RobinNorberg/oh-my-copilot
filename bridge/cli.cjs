@@ -128129,7 +128129,8 @@ async function runFactoryEnqueue(o, deps) {
     if (keys.length === 1 && inForge(item)) found.push({ key: keys[0][1], item });
   }
   for (const { key, item } of found) {
-    if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: "author is not trusted" });
+    if (!inForge(item)) ignored.push({ id: item.id, key, reason: "not in the forge project" });
+    else if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: "author is not trusted" });
     else if (item.parent !== specId && !(ado && item.parent === void 0)) ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
     else if (holders.has(key)) throw new CheckUsageError(`key ${key} is held by #${holders.get(key).id} and #${item.id}; close one by hand`);
     else holders.set(key, item);
