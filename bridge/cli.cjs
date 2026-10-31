@@ -45,8 +45,8 @@ var require_error = __commonJS({
        * @param {string} code an id string representing the error
        * @param {string} message human-readable description of the error
        */
-      constructor(exitCode, code, message2) {
-        super(message2);
+      constructor(exitCode, code, message3) {
+        super(message3);
         Error.captureStackTrace(this, this.constructor);
         this.name = this.constructor.name;
         this.code = code;
@@ -59,8 +59,8 @@ var require_error = __commonJS({
        * Constructs the InvalidArgumentError class
        * @param {string} [message] explanation of why argument is invalid
        */
-      constructor(message2) {
-        super(1, "commander.invalidArgument", message2);
+      constructor(message3) {
+        super(1, "commander.invalidArgument", message3);
         Error.captureStackTrace(this, this.constructor);
         this.name = this.constructor.name;
       }
@@ -1394,9 +1394,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return never
        * @private
        */
-      _exit(exitCode, code, message2) {
+      _exit(exitCode, code, message3) {
         if (this._exitCallback) {
-          this._exitCallback(new CommanderError2(exitCode, code, message2));
+          this._exitCallback(new CommanderError2(exitCode, code, message3));
         }
         process3.exit(exitCode);
       }
@@ -1456,8 +1456,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
           return target.parseArg(value, previous);
         } catch (err) {
           if (err.code === "commander.invalidArgument") {
-            const message2 = `${invalidArgumentMessage} ${err.message}`;
-            this.error(message2, { exitCode: err.exitCode, code: err.code });
+            const message3 = `${invalidArgumentMessage} ${err.message}`;
+            this.error(message3, { exitCode: err.exitCode, code: err.code });
           }
           throw err;
         }
@@ -2460,9 +2460,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [errorOptions.code] - an id string representing the error
        * @param {number} [errorOptions.exitCode] - used with process.exit
        */
-      error(message2, errorOptions) {
+      error(message3, errorOptions) {
         this._outputConfiguration.outputError(
-          `${message2}
+          `${message3}
 `,
           this._outputConfiguration.writeErr
         );
@@ -2476,7 +2476,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         const config2 = errorOptions || {};
         const exitCode = config2.exitCode || 1;
         const code = config2.code || "commander.error";
-        this._exit(exitCode, code, message2);
+        this._exit(exitCode, code, message3);
       }
       /**
        * Apply any option related environment variables, if option does
@@ -2532,8 +2532,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @private
        */
       missingArgument(name) {
-        const message2 = `error: missing required argument '${name}'`;
-        this.error(message2, { code: "commander.missingArgument" });
+        const message3 = `error: missing required argument '${name}'`;
+        this.error(message3, { code: "commander.missingArgument" });
       }
       /**
        * `Option` is missing an argument.
@@ -2542,8 +2542,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @private
        */
       optionMissingArgument(option) {
-        const message2 = `error: option '${option.flags}' argument missing`;
-        this.error(message2, { code: "commander.optionMissingArgument" });
+        const message3 = `error: option '${option.flags}' argument missing`;
+        this.error(message3, { code: "commander.optionMissingArgument" });
       }
       /**
        * `Option` does not have a value, and is a mandatory option.
@@ -2552,8 +2552,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @private
        */
       missingMandatoryOptionValue(option) {
-        const message2 = `error: required option '${option.flags}' not specified`;
-        this.error(message2, { code: "commander.missingMandatoryOptionValue" });
+        const message3 = `error: required option '${option.flags}' not specified`;
+        this.error(message3, { code: "commander.missingMandatoryOptionValue" });
       }
       /**
        * `Option` conflicts with another option.
@@ -2586,8 +2586,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           return `option '${bestOption.flags}'`;
         };
-        const message2 = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
-        this.error(message2, { code: "commander.conflictingOption" });
+        const message3 = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+        this.error(message3, { code: "commander.conflictingOption" });
       }
       /**
        * Unknown option `flag`.
@@ -2608,8 +2608,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } while (command && !command._enablePositionalOptions);
           suggestion = suggestSimilar(flag, candidateFlags);
         }
-        const message2 = `error: unknown option '${flag}'${suggestion}`;
-        this.error(message2, { code: "commander.unknownOption" });
+        const message3 = `error: unknown option '${flag}'${suggestion}`;
+        this.error(message3, { code: "commander.unknownOption" });
       }
       /**
        * Excess arguments, more than expected.
@@ -2622,8 +2622,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
         const expected = this.registeredArguments.length;
         const s = expected === 1 ? "" : "s";
         const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
-        const message2 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
-        this.error(message2, { code: "commander.excessArguments" });
+        const message3 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
+        this.error(message3, { code: "commander.excessArguments" });
       }
       /**
        * Unknown command.
@@ -2641,8 +2641,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
           });
           suggestion = suggestSimilar(unknownName, candidateNames);
         }
-        const message2 = `error: unknown command '${unknownName}'${suggestion}`;
-        this.error(message2, { code: "commander.unknownCommand" });
+        const message3 = `error: unknown command '${unknownName}'${suggestion}`;
+        this.error(message3, { code: "commander.unknownCommand" });
       }
       /**
        * Get or set the program version.
@@ -5505,8 +5505,8 @@ function isAutopilotWorkflowSequence(stages) {
     (sequence) => stages.length === sequence.length && stages.every((stage, index) => typeof stage === "string" && stage === sequence[index])
   );
 }
-function workflowError(source, path30, message2) {
-  throw new Error(`[OMC] ${source} ${path30}: ${message2}`);
+function workflowError(source, path30, message3) {
+  throw new Error(`[OMC] ${source} ${path30}: ${message3}`);
 }
 function validateAutopilotWorkflows(config2, source) {
   if (!config2 || typeof config2 !== "object" || Array.isArray(config2)) return;
@@ -6137,8 +6137,8 @@ function loadAgentPrompt(agentName) {
     const content2 = (0, import_fs6.readFileSync)(agentPath, "utf-8");
     return stripFrontmatter(content2);
   } catch (error2) {
-    const message2 = error2 instanceof Error && error2.message.includes("Invalid agent name") ? error2.message : "Agent prompt file not found";
-    console.warn(`[loadAgentPrompt] ${message2}`);
+    const message3 = error2 instanceof Error && error2.message.includes("Invalid agent name") ? error2.message : "Agent prompt file not found";
+    console.warn(`[loadAgentPrompt] ${message3}`);
     return `Agent: ${agentName}
 
 Prompt unavailable.`;
@@ -7423,26 +7423,26 @@ function writeToStderr(data) {
     process.stderr.write(data.substring(i, i + CHUNK_SIZE));
   }
 }
-function extractDebugCategories(message2) {
+function extractDebugCategories(message3) {
   const categories = [];
-  const mcpMatch = message2.match(/^MCP server ["']([^"']+)["']/);
+  const mcpMatch = message3.match(/^MCP server ["']([^"']+)["']/);
   if (mcpMatch && mcpMatch[1]) {
     categories.push("mcp");
     categories.push(mcpMatch[1].toLowerCase());
   } else {
-    const prefixMatch = message2.match(/^([^:[]+):/);
+    const prefixMatch = message3.match(/^([^:[]+):/);
     if (prefixMatch && prefixMatch[1]) {
       categories.push(prefixMatch[1].trim().toLowerCase());
     }
   }
-  const bracketMatch = message2.match(/^\[([^\]]+)]/);
+  const bracketMatch = message3.match(/^\[([^\]]+)]/);
   if (bracketMatch && bracketMatch[1]) {
     categories.push(bracketMatch[1].trim().toLowerCase());
   }
-  if (message2.toLowerCase().includes("statsig event:")) {
+  if (message3.toLowerCase().includes("statsig event:")) {
     categories.push("statsig");
   }
-  const secondaryMatch = message2.match(/:\s*([^:]+?)(?:\s+(?:type|mode|status|event))?:/);
+  const secondaryMatch = message3.match(/:\s*([^:]+?)(?:\s+(?:type|mode|status|event))?:/);
   if (secondaryMatch && secondaryMatch[1]) {
     const secondary = secondaryMatch[1].trim().toLowerCase();
     if (secondary.length < 30 && !secondary.includes(" ")) {
@@ -7464,11 +7464,11 @@ function shouldShowDebugCategories(categories, filter) {
     return categories.some((cat) => filter.include.includes(cat));
   }
 }
-function shouldShowDebugMessage(message2, filter) {
+function shouldShowDebugMessage(message3, filter) {
   if (!filter) {
     return true;
   }
-  const categories = extractDebugCategories(message2);
+  const categories = extractDebugCategories(message3);
   return shouldShowDebugCategories(categories, filter);
 }
 function getClaudeConfigHomeDir() {
@@ -7674,14 +7674,14 @@ function jsonStringify(value, replacer, space) {
   const description2 = describeValue(value);
   return withSlowLogging(`JSON.stringify(${description2})`, () => JSON.stringify(value, replacer, space));
 }
-function shouldLogDebugMessage(message2) {
+function shouldLogDebugMessage(message3) {
   if (false) {
   }
   if (typeof process === "undefined" || typeof process.versions === "undefined" || typeof process.versions.node === "undefined") {
     return false;
   }
   const filter = getDebugFilter();
-  return shouldShowDebugMessage(message2, filter);
+  return shouldShowDebugMessage(message3, filter);
 }
 function getDebugWriter() {
   if (!debugWriter) {
@@ -7702,18 +7702,18 @@ function getDebugWriter() {
   }
   return debugWriter;
 }
-function logForDebugging(message2, { level } = {
+function logForDebugging(message3, { level } = {
   level: "debug"
 }) {
-  if (!shouldLogDebugMessage(message2)) {
+  if (!shouldLogDebugMessage(message3)) {
     return;
   }
-  if (hasFormattedOutput && message2.includes(`
+  if (hasFormattedOutput && message3.includes(`
 `)) {
-    message2 = jsonStringify(message2);
+    message3 = jsonStringify(message3);
   }
   const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
-  const output = `${timestamp2} [${level.toUpperCase()}] ${message2.trim()}
+  const output = `${timestamp2} [${level.toUpperCase()}] ${message3.trim()}
 `;
   if (isDebugToStdErr()) {
     writeToStderr(output);
@@ -7759,13 +7759,13 @@ function getOrCreateDebugFile() {
 `);
   return debugFilePath;
 }
-function logForSdkDebugging(message2) {
+function logForSdkDebugging(message3) {
   const path30 = getOrCreateDebugFile();
   if (!path30) {
     return;
   }
   const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
-  const output = `${timestamp2} ${message2}
+  const output = `${timestamp2} ${message3}
 `;
   (0, import_fs9.appendFileSync)(path30, output);
 }
@@ -7822,16 +7822,16 @@ function processCreateParams(params) {
   if (errorMap22)
     return { errorMap: errorMap22, description: description2 };
   const customMap = (iss, ctx) => {
-    const { message: message2 } = params;
+    const { message: message3 } = params;
     if (iss.code === "invalid_enum_value") {
-      return { message: message2 ?? ctx.defaultError };
+      return { message: message3 ?? ctx.defaultError };
     }
     if (typeof ctx.data === "undefined") {
-      return { message: message2 ?? required_error ?? ctx.defaultError };
+      return { message: message3 ?? required_error ?? ctx.defaultError };
     }
     if (iss.code !== "invalid_type")
       return { message: ctx.defaultError };
-    return { message: message2 ?? invalid_type_error ?? ctx.defaultError };
+    return { message: message3 ?? invalid_type_error ?? ctx.defaultError };
   };
   return { errorMap: customMap, description: description2 };
 }
@@ -8362,14 +8362,14 @@ function prefixIssues(path30, issues) {
     return iss;
   });
 }
-function unwrapMessage(message2) {
-  return typeof message2 === "string" ? message2 : message2?.message;
+function unwrapMessage(message3) {
+  return typeof message3 === "string" ? message3 : message3?.message;
 }
 function finalizeIssue(iss, ctx, config2) {
   const full = { ...iss, path: iss.path ?? [] };
   if (!iss.message) {
-    const message2 = unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
-    full.message = message2;
+    const message3 = unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
+    full.message = message3;
   }
   delete full.inst;
   delete full.continue;
@@ -9953,7 +9953,7 @@ function escapeNonAlphaNumeric(source) {
   }
   return result;
 }
-function addFormat(schema, value, message2, refs2) {
+function addFormat(schema, value, message3, refs2) {
   if (schema.format || schema.anyOf?.some((x) => x.format)) {
     if (!schema.anyOf) {
       schema.anyOf = [];
@@ -9975,13 +9975,13 @@ function addFormat(schema, value, message2, refs2) {
     }
     schema.anyOf.push({
       format: value,
-      ...message2 && refs2.errorMessages && { errorMessage: { format: message2 } }
+      ...message3 && refs2.errorMessages && { errorMessage: { format: message3 } }
     });
   } else {
-    setResponseValueAndErrors(schema, "format", value, message2, refs2);
+    setResponseValueAndErrors(schema, "format", value, message3, refs2);
   }
 }
-function addPattern(schema, regex, message2, refs2) {
+function addPattern(schema, regex, message3, refs2) {
   if (schema.pattern || schema.allOf?.some((x) => x.pattern)) {
     if (!schema.allOf) {
       schema.allOf = [];
@@ -10003,10 +10003,10 @@ function addPattern(schema, regex, message2, refs2) {
     }
     schema.allOf.push({
       pattern: stringifyRegExpWithFlags(regex, refs2),
-      ...message2 && refs2.errorMessages && { errorMessage: { pattern: message2 } }
+      ...message3 && refs2.errorMessages && { errorMessage: { pattern: message3 } }
     });
   } else {
-    setResponseValueAndErrors(schema, "pattern", stringifyRegExpWithFlags(regex, refs2), message2, refs2);
+    setResponseValueAndErrors(schema, "pattern", stringifyRegExpWithFlags(regex, refs2), message3, refs2);
   }
 }
 function stringifyRegExpWithFlags(regex, refs2) {
@@ -10871,11 +10871,11 @@ function unstable_v2_createSession(options) {
 function unstable_v2_resumeSession(sessionId, options) {
   return resumeSession(sessionId, options);
 }
-async function unstable_v2_prompt(message2, options) {
+async function unstable_v2_prompt(message3, options) {
   let __stack = [];
   try {
     const session = __using(__stack, createSession(options), 1);
-    await session.send(message2);
+    await session.send(message3);
     for await (const msg of session.stream()) {
       if (msg.type === "result") {
         return msg;
@@ -12235,12 +12235,12 @@ var init_sdk = __esm({
         }
         return [E.schemaPath, schPath];
       }
-      function extraErrorProps(cxt, { params, message: message2 }, keyValues) {
+      function extraErrorProps(cxt, { params, message: message3 }, keyValues) {
         const { keyword, data, schemaValue, it } = cxt;
         const { opts, propertyName, topSchemaRef, schemaPath } = it;
         keyValues.push([E.keyword, keyword], [E.params, typeof params == "function" ? params(cxt) : params || (0, codegen_1._)`{}`]);
         if (opts.messages) {
-          keyValues.push([E.message, typeof message2 == "function" ? message2(cxt) : message2]);
+          keyValues.push([E.message, typeof message3 == "function" ? message3(cxt) : message3]);
         }
         if (opts.verbose) {
           keyValues.push([E.schema, schemaValue], [E.parentSchema, (0, codegen_1._)`${topSchemaRef}${schemaPath}`], [names_1.default.data, data]);
@@ -14820,11 +14820,11 @@ var init_sdk = __esm({
           }
           const valid = this.validate($schema, schema);
           if (!valid && throwOrLogError) {
-            const message2 = "schema is invalid: " + this.errorsText();
+            const message3 = "schema is invalid: " + this.errorsText();
             if (this.opts.validateSchema === "log")
-              this.logger.error(message2);
+              this.logger.error(message3);
             else
-              throw new Error(message2);
+              throw new Error(message3);
           }
           return valid;
         }
@@ -17604,10 +17604,10 @@ var init_sdk = __esm({
         });
         if (env2.DEBUG_CLAUDE_AGENT_SDK || this.options.stderr) {
           childProcess.stderr.on("data", (data) => {
-            const message2 = data.toString();
-            logForSdkDebugging(message2);
+            const message3 = data.toString();
+            logForSdkDebugging(message3);
             if (this.options.stderr) {
-              this.options.stderr(message2);
+              this.options.stderr(message3);
             }
           });
         }
@@ -17907,8 +17907,8 @@ var init_sdk = __esm({
         try {
           for await (const line2 of rl) {
             if (line2.trim()) {
-              const message2 = jsonParse(line2);
-              yield message2;
+              const message3 = jsonParse(line2);
+              yield message3;
             }
           }
           await this.waitForExit();
@@ -18067,11 +18067,11 @@ var init_sdk = __esm({
       onmessage;
       async start() {
       }
-      async send(message2) {
+      async send(message3) {
         if (this.isClosed) {
           throw new Error("Transport is closed");
         }
-        this.sendMcpMessage(message2);
+        this.sendMcpMessage(message3);
       }
       async close() {
         if (this.isClosed) {
@@ -18167,23 +18167,23 @@ var init_sdk = __esm({
       }
       async readMessages() {
         try {
-          for await (const message2 of this.transport.readMessages()) {
-            if (message2.type === "control_response") {
-              const handler = this.pendingControlResponses.get(message2.response.request_id);
+          for await (const message3 of this.transport.readMessages()) {
+            if (message3.type === "control_response") {
+              const handler = this.pendingControlResponses.get(message3.response.request_id);
               if (handler) {
-                handler(message2.response);
+                handler(message3.response);
               }
               continue;
-            } else if (message2.type === "control_request") {
-              this.handleControlRequest(message2);
+            } else if (message3.type === "control_request") {
+              this.handleControlRequest(message3);
               continue;
-            } else if (message2.type === "control_cancel_request") {
-              this.handleControlCancelRequest(message2);
+            } else if (message3.type === "control_cancel_request") {
+              this.handleControlCancelRequest(message3);
               continue;
-            } else if (message2.type === "keep_alive") {
+            } else if (message3.type === "keep_alive") {
               continue;
             }
-            if (message2.type === "result") {
+            if (message3.type === "result") {
               this.firstResultReceived = true;
               if (this.firstResultReceivedResolve) {
                 this.firstResultReceivedResolve();
@@ -18193,7 +18193,7 @@ var init_sdk = __esm({
                 this.transport.endInput();
               }
             }
-            this.inputStream.enqueue(message2);
+            this.inputStream.enqueue(message3);
           }
           if (this.firstResultReceivedResolve) {
             this.firstResultReceivedResolve();
@@ -18284,8 +18284,8 @@ var init_sdk = __esm({
         throw new Error("Unsupported control request subtype: " + request.request.subtype);
       }
       async *readSdkMessages() {
-        for await (const message2 of this.inputStream) {
-          yield message2;
+        for await (const message3 of this.inputStream) {
+          yield message3;
         }
       }
       async initialize() {
@@ -18436,12 +18436,12 @@ var init_sdk = __esm({
         logForDebugging(`[Query.streamInput] Starting to process input stream`);
         try {
           let messageCount = 0;
-          for await (const message2 of stream) {
+          for await (const message3 of stream) {
             messageCount++;
-            logForDebugging(`[Query.streamInput] Processing message ${messageCount}: ${message2.type}`);
+            logForDebugging(`[Query.streamInput] Processing message ${messageCount}: ${message3.type}`);
             if (this.abortController?.signal.aborted)
               break;
-            await Promise.resolve(this.transport.write(jsonStringify(message2) + `
+            await Promise.resolve(this.transport.write(jsonStringify(message3) + `
 `));
           }
           logForDebugging(`[Query.streamInput] Finished processing ${messageCount} messages from input stream`);
@@ -18483,7 +18483,7 @@ var init_sdk = __esm({
         });
       }
       connectSdkMcpServer(name, server) {
-        const sdkTransport = new SdkControlServerTransport((message2) => this.sendMcpServerMessageToCli(name, message2));
+        const sdkTransport = new SdkControlServerTransport((message3) => this.sendMcpServerMessageToCli(name, message3));
         this.sdkMcpTransports.set(name, sdkTransport);
         this.sdkMcpServerInstances.set(name, server);
         server.connect(sdkTransport);
@@ -18496,12 +18496,12 @@ var init_sdk = __esm({
         }
         this.sdkMcpServerInstances.delete(name);
       }
-      sendMcpServerMessageToCli(serverName, message2) {
-        if ("id" in message2 && message2.id !== null && message2.id !== void 0) {
-          const key = `${serverName}:${message2.id}`;
+      sendMcpServerMessageToCli(serverName, message3) {
+        if ("id" in message3 && message3.id !== null && message3.id !== void 0) {
+          const key = `${serverName}:${message3.id}`;
           const pending = this.pendingMcpResponses.get(key);
           if (pending) {
-            pending.resolve(message2);
+            pending.resolve(message3);
             this.pendingMcpResponses.delete(key);
             return;
           }
@@ -18512,7 +18512,7 @@ var init_sdk = __esm({
           request: {
             subtype: "mcp_message",
             server_name: serverName,
-            message: message2
+            message: message3
           }
         };
         this.transport.write(jsonStringify(controlRequest) + `
@@ -18606,19 +18606,19 @@ var init_sdk = __esm({
         this.query = new Query(transport, false, void 0, void 0, this.abortController, /* @__PURE__ */ new Map());
         this.query.streamInput(this.inputStream);
       }
-      async send(message2) {
+      async send(message3) {
         if (this.closed) {
           throw new Error("Cannot send to closed session");
         }
-        const userMessage = typeof message2 === "string" ? {
+        const userMessage = typeof message3 === "string" ? {
           type: "user",
           session_id: "",
           message: {
             role: "user",
-            content: [{ type: "text", text: message2 }]
+            content: [{ type: "text", text: message3 }]
           },
           parent_tool_use_id: null
-        } : message2;
+        } : message3;
         this.inputStream.enqueue(userMessage);
       }
       async *stream() {
@@ -18893,104 +18893,104 @@ var init_sdk = __esm({
       return error2;
     };
     errorMap = (issue2, _ctx) => {
-      let message2;
+      let message3;
       switch (issue2.code) {
         case ZodIssueCode.invalid_type:
           if (issue2.received === ZodParsedType.undefined) {
-            message2 = "Required";
+            message3 = "Required";
           } else {
-            message2 = `Expected ${issue2.expected}, received ${issue2.received}`;
+            message3 = `Expected ${issue2.expected}, received ${issue2.received}`;
           }
           break;
         case ZodIssueCode.invalid_literal:
-          message2 = `Invalid literal value, expected ${JSON.stringify(issue2.expected, util.jsonStringifyReplacer)}`;
+          message3 = `Invalid literal value, expected ${JSON.stringify(issue2.expected, util.jsonStringifyReplacer)}`;
           break;
         case ZodIssueCode.unrecognized_keys:
-          message2 = `Unrecognized key(s) in object: ${util.joinValues(issue2.keys, ", ")}`;
+          message3 = `Unrecognized key(s) in object: ${util.joinValues(issue2.keys, ", ")}`;
           break;
         case ZodIssueCode.invalid_union:
-          message2 = `Invalid input`;
+          message3 = `Invalid input`;
           break;
         case ZodIssueCode.invalid_union_discriminator:
-          message2 = `Invalid discriminator value. Expected ${util.joinValues(issue2.options)}`;
+          message3 = `Invalid discriminator value. Expected ${util.joinValues(issue2.options)}`;
           break;
         case ZodIssueCode.invalid_enum_value:
-          message2 = `Invalid enum value. Expected ${util.joinValues(issue2.options)}, received '${issue2.received}'`;
+          message3 = `Invalid enum value. Expected ${util.joinValues(issue2.options)}, received '${issue2.received}'`;
           break;
         case ZodIssueCode.invalid_arguments:
-          message2 = `Invalid function arguments`;
+          message3 = `Invalid function arguments`;
           break;
         case ZodIssueCode.invalid_return_type:
-          message2 = `Invalid function return type`;
+          message3 = `Invalid function return type`;
           break;
         case ZodIssueCode.invalid_date:
-          message2 = `Invalid date`;
+          message3 = `Invalid date`;
           break;
         case ZodIssueCode.invalid_string:
           if (typeof issue2.validation === "object") {
             if ("includes" in issue2.validation) {
-              message2 = `Invalid input: must include "${issue2.validation.includes}"`;
+              message3 = `Invalid input: must include "${issue2.validation.includes}"`;
               if (typeof issue2.validation.position === "number") {
-                message2 = `${message2} at one or more positions greater than or equal to ${issue2.validation.position}`;
+                message3 = `${message3} at one or more positions greater than or equal to ${issue2.validation.position}`;
               }
             } else if ("startsWith" in issue2.validation) {
-              message2 = `Invalid input: must start with "${issue2.validation.startsWith}"`;
+              message3 = `Invalid input: must start with "${issue2.validation.startsWith}"`;
             } else if ("endsWith" in issue2.validation) {
-              message2 = `Invalid input: must end with "${issue2.validation.endsWith}"`;
+              message3 = `Invalid input: must end with "${issue2.validation.endsWith}"`;
             } else {
               util.assertNever(issue2.validation);
             }
           } else if (issue2.validation !== "regex") {
-            message2 = `Invalid ${issue2.validation}`;
+            message3 = `Invalid ${issue2.validation}`;
           } else {
-            message2 = "Invalid";
+            message3 = "Invalid";
           }
           break;
         case ZodIssueCode.too_small:
           if (issue2.type === "array")
-            message2 = `Array must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `more than`} ${issue2.minimum} element(s)`;
+            message3 = `Array must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `more than`} ${issue2.minimum} element(s)`;
           else if (issue2.type === "string")
-            message2 = `String must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `over`} ${issue2.minimum} character(s)`;
+            message3 = `String must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `over`} ${issue2.minimum} character(s)`;
           else if (issue2.type === "number")
-            message2 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
           else if (issue2.type === "bigint")
-            message2 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
           else if (issue2.type === "date")
-            message2 = `Date must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue2.minimum))}`;
+            message3 = `Date must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue2.minimum))}`;
           else
-            message2 = "Invalid input";
+            message3 = "Invalid input";
           break;
         case ZodIssueCode.too_big:
           if (issue2.type === "array")
-            message2 = `Array must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `less than`} ${issue2.maximum} element(s)`;
+            message3 = `Array must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `less than`} ${issue2.maximum} element(s)`;
           else if (issue2.type === "string")
-            message2 = `String must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `under`} ${issue2.maximum} character(s)`;
+            message3 = `String must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `under`} ${issue2.maximum} character(s)`;
           else if (issue2.type === "number")
-            message2 = `Number must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
           else if (issue2.type === "bigint")
-            message2 = `BigInt must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
+            message3 = `BigInt must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
           else if (issue2.type === "date")
-            message2 = `Date must be ${issue2.exact ? `exactly` : issue2.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue2.maximum))}`;
+            message3 = `Date must be ${issue2.exact ? `exactly` : issue2.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue2.maximum))}`;
           else
-            message2 = "Invalid input";
+            message3 = "Invalid input";
           break;
         case ZodIssueCode.custom:
-          message2 = `Invalid input`;
+          message3 = `Invalid input`;
           break;
         case ZodIssueCode.invalid_intersection_types:
-          message2 = `Intersection results could not be merged`;
+          message3 = `Intersection results could not be merged`;
           break;
         case ZodIssueCode.not_multiple_of:
-          message2 = `Number must be a multiple of ${issue2.multipleOf}`;
+          message3 = `Number must be a multiple of ${issue2.multipleOf}`;
           break;
         case ZodIssueCode.not_finite:
-          message2 = "Number must be finite";
+          message3 = "Number must be finite";
           break;
         default:
-          message2 = _ctx.defaultError;
+          message3 = _ctx.defaultError;
           util.assertNever(issue2);
       }
-      return { message: message2 };
+      return { message: message3 };
     };
     en_default = errorMap;
     overrideErrorMap = en_default;
@@ -19083,8 +19083,8 @@ var init_sdk = __esm({
     isValid = (x) => x.status === "valid";
     isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
     (function(errorUtil22) {
-      errorUtil22.errToObj = (message2) => typeof message2 === "string" ? { message: message2 } : message2 || {};
-      errorUtil22.toString = (message2) => typeof message2 === "string" ? message2 : message2?.message;
+      errorUtil22.errToObj = (message3) => typeof message3 === "string" ? { message: message3 } : message3 || {};
+      errorUtil22.toString = (message3) => typeof message3 === "string" ? message3 : message3?.message;
     })(errorUtil || (errorUtil = {}));
     ParseInputLazyPath = class {
       constructor(parent, value, path30, key) {
@@ -19246,14 +19246,14 @@ var init_sdk = __esm({
         const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
         return handleResult(ctx, result);
       }
-      refine(check2, message2) {
+      refine(check2, message3) {
         const getIssueProperties = (val) => {
-          if (typeof message2 === "string" || typeof message2 === "undefined") {
-            return { message: message2 };
-          } else if (typeof message2 === "function") {
-            return message2(val);
+          if (typeof message3 === "string" || typeof message3 === "undefined") {
+            return { message: message3 };
+          } else if (typeof message3 === "function") {
+            return message3(val);
           } else {
-            return message2;
+            return message3;
           }
         };
         return this._refinement((val, ctx) => {
@@ -19726,11 +19726,11 @@ var init_sdk = __esm({
         }
         return { status: status.value, value: input.data };
       }
-      _regex(regex, validation, message2) {
+      _regex(regex, validation, message3) {
         return this.refinement((data) => regex.test(data), {
           validation,
           code: ZodIssueCode.invalid_string,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
       _addCheck(check2) {
@@ -19739,37 +19739,37 @@ var init_sdk = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      email(message2) {
-        return this._addCheck({ kind: "email", ...errorUtil.errToObj(message2) });
+      email(message3) {
+        return this._addCheck({ kind: "email", ...errorUtil.errToObj(message3) });
       }
-      url(message2) {
-        return this._addCheck({ kind: "url", ...errorUtil.errToObj(message2) });
+      url(message3) {
+        return this._addCheck({ kind: "url", ...errorUtil.errToObj(message3) });
       }
-      emoji(message2) {
-        return this._addCheck({ kind: "emoji", ...errorUtil.errToObj(message2) });
+      emoji(message3) {
+        return this._addCheck({ kind: "emoji", ...errorUtil.errToObj(message3) });
       }
-      uuid(message2) {
-        return this._addCheck({ kind: "uuid", ...errorUtil.errToObj(message2) });
+      uuid(message3) {
+        return this._addCheck({ kind: "uuid", ...errorUtil.errToObj(message3) });
       }
-      nanoid(message2) {
-        return this._addCheck({ kind: "nanoid", ...errorUtil.errToObj(message2) });
+      nanoid(message3) {
+        return this._addCheck({ kind: "nanoid", ...errorUtil.errToObj(message3) });
       }
-      cuid(message2) {
-        return this._addCheck({ kind: "cuid", ...errorUtil.errToObj(message2) });
+      cuid(message3) {
+        return this._addCheck({ kind: "cuid", ...errorUtil.errToObj(message3) });
       }
-      cuid2(message2) {
-        return this._addCheck({ kind: "cuid2", ...errorUtil.errToObj(message2) });
+      cuid2(message3) {
+        return this._addCheck({ kind: "cuid2", ...errorUtil.errToObj(message3) });
       }
-      ulid(message2) {
-        return this._addCheck({ kind: "ulid", ...errorUtil.errToObj(message2) });
+      ulid(message3) {
+        return this._addCheck({ kind: "ulid", ...errorUtil.errToObj(message3) });
       }
-      base64(message2) {
-        return this._addCheck({ kind: "base64", ...errorUtil.errToObj(message2) });
+      base64(message3) {
+        return this._addCheck({ kind: "base64", ...errorUtil.errToObj(message3) });
       }
-      base64url(message2) {
+      base64url(message3) {
         return this._addCheck({
           kind: "base64url",
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
       jwt(options) {
@@ -19799,8 +19799,8 @@ var init_sdk = __esm({
           ...errorUtil.errToObj(options?.message)
         });
       }
-      date(message2) {
-        return this._addCheck({ kind: "date", message: message2 });
+      date(message3) {
+        return this._addCheck({ kind: "date", message: message3 });
       }
       time(options) {
         if (typeof options === "string") {
@@ -19816,14 +19816,14 @@ var init_sdk = __esm({
           ...errorUtil.errToObj(options?.message)
         });
       }
-      duration(message2) {
-        return this._addCheck({ kind: "duration", ...errorUtil.errToObj(message2) });
+      duration(message3) {
+        return this._addCheck({ kind: "duration", ...errorUtil.errToObj(message3) });
       }
-      regex(regex, message2) {
+      regex(regex, message3) {
         return this._addCheck({
           kind: "regex",
           regex,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
       includes(value, options) {
@@ -19834,43 +19834,43 @@ var init_sdk = __esm({
           ...errorUtil.errToObj(options?.message)
         });
       }
-      startsWith(value, message2) {
+      startsWith(value, message3) {
         return this._addCheck({
           kind: "startsWith",
           value,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
-      endsWith(value, message2) {
+      endsWith(value, message3) {
         return this._addCheck({
           kind: "endsWith",
           value,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
-      min(minLength, message2) {
+      min(minLength, message3) {
         return this._addCheck({
           kind: "min",
           value: minLength,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
-      max(maxLength, message2) {
+      max(maxLength, message3) {
         return this._addCheck({
           kind: "max",
           value: maxLength,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
-      length(len, message2) {
+      length(len, message3) {
         return this._addCheck({
           kind: "length",
           value: len,
-          ...errorUtil.errToObj(message2)
+          ...errorUtil.errToObj(message3)
         });
       }
-      nonempty(message2) {
-        return this.min(1, errorUtil.errToObj(message2));
+      nonempty(message3) {
+        return this.min(1, errorUtil.errToObj(message3));
       }
       trim() {
         return new _ZodString2({
@@ -20055,19 +20055,19 @@ var init_sdk = __esm({
         }
         return { status: status.value, value: input.data };
       }
-      gte(value, message2) {
-        return this.setLimit("min", value, true, errorUtil.toString(message2));
+      gte(value, message3) {
+        return this.setLimit("min", value, true, errorUtil.toString(message3));
       }
-      gt(value, message2) {
-        return this.setLimit("min", value, false, errorUtil.toString(message2));
+      gt(value, message3) {
+        return this.setLimit("min", value, false, errorUtil.toString(message3));
       }
-      lte(value, message2) {
-        return this.setLimit("max", value, true, errorUtil.toString(message2));
+      lte(value, message3) {
+        return this.setLimit("max", value, true, errorUtil.toString(message3));
       }
-      lt(value, message2) {
-        return this.setLimit("max", value, false, errorUtil.toString(message2));
+      lt(value, message3) {
+        return this.setLimit("max", value, false, errorUtil.toString(message3));
       }
-      setLimit(kind, value, inclusive, message2) {
+      setLimit(kind, value, inclusive, message3) {
         return new _ZodNumber({
           ...this._def,
           checks: [
@@ -20076,7 +20076,7 @@ var init_sdk = __esm({
               kind,
               value,
               inclusive,
-              message: errorUtil.toString(message2)
+              message: errorUtil.toString(message3)
             }
           ]
         });
@@ -20087,68 +20087,68 @@ var init_sdk = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      int(message2) {
+      int(message3) {
         return this._addCheck({
           kind: "int",
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      positive(message2) {
+      positive(message3) {
         return this._addCheck({
           kind: "min",
           value: 0,
           inclusive: false,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      negative(message2) {
+      negative(message3) {
         return this._addCheck({
           kind: "max",
           value: 0,
           inclusive: false,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      nonpositive(message2) {
+      nonpositive(message3) {
         return this._addCheck({
           kind: "max",
           value: 0,
           inclusive: true,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      nonnegative(message2) {
+      nonnegative(message3) {
         return this._addCheck({
           kind: "min",
           value: 0,
           inclusive: true,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      multipleOf(value, message2) {
+      multipleOf(value, message3) {
         return this._addCheck({
           kind: "multipleOf",
           value,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      finite(message2) {
+      finite(message3) {
         return this._addCheck({
           kind: "finite",
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      safe(message2) {
+      safe(message3) {
         return this._addCheck({
           kind: "min",
           inclusive: true,
           value: Number.MIN_SAFE_INTEGER,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         })._addCheck({
           kind: "max",
           inclusive: true,
           value: Number.MAX_SAFE_INTEGER,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
       get minValue() {
@@ -20271,19 +20271,19 @@ var init_sdk = __esm({
         });
         return INVALID;
       }
-      gte(value, message2) {
-        return this.setLimit("min", value, true, errorUtil.toString(message2));
+      gte(value, message3) {
+        return this.setLimit("min", value, true, errorUtil.toString(message3));
       }
-      gt(value, message2) {
-        return this.setLimit("min", value, false, errorUtil.toString(message2));
+      gt(value, message3) {
+        return this.setLimit("min", value, false, errorUtil.toString(message3));
       }
-      lte(value, message2) {
-        return this.setLimit("max", value, true, errorUtil.toString(message2));
+      lte(value, message3) {
+        return this.setLimit("max", value, true, errorUtil.toString(message3));
       }
-      lt(value, message2) {
-        return this.setLimit("max", value, false, errorUtil.toString(message2));
+      lt(value, message3) {
+        return this.setLimit("max", value, false, errorUtil.toString(message3));
       }
-      setLimit(kind, value, inclusive, message2) {
+      setLimit(kind, value, inclusive, message3) {
         return new _ZodBigInt({
           ...this._def,
           checks: [
@@ -20292,7 +20292,7 @@ var init_sdk = __esm({
               kind,
               value,
               inclusive,
-              message: errorUtil.toString(message2)
+              message: errorUtil.toString(message3)
             }
           ]
         });
@@ -20303,43 +20303,43 @@ var init_sdk = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      positive(message2) {
+      positive(message3) {
         return this._addCheck({
           kind: "min",
           value: BigInt(0),
           inclusive: false,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      negative(message2) {
+      negative(message3) {
         return this._addCheck({
           kind: "max",
           value: BigInt(0),
           inclusive: false,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      nonpositive(message2) {
+      nonpositive(message3) {
         return this._addCheck({
           kind: "max",
           value: BigInt(0),
           inclusive: true,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      nonnegative(message2) {
+      nonnegative(message3) {
         return this._addCheck({
           kind: "min",
           value: BigInt(0),
           inclusive: true,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      multipleOf(value, message2) {
+      multipleOf(value, message3) {
         return this._addCheck({
           kind: "multipleOf",
           value,
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
       get minValue() {
@@ -20462,18 +20462,18 @@ var init_sdk = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      min(minDate, message2) {
+      min(minDate, message3) {
         return this._addCheck({
           kind: "min",
           value: minDate.getTime(),
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
-      max(maxDate, message2) {
+      max(maxDate, message3) {
         return this._addCheck({
           kind: "max",
           value: maxDate.getTime(),
-          message: errorUtil.toString(message2)
+          message: errorUtil.toString(message3)
         });
       }
       get minDate() {
@@ -20705,26 +20705,26 @@ var init_sdk = __esm({
       get element() {
         return this._def.type;
       }
-      min(minLength, message2) {
+      min(minLength, message3) {
         return new _ZodArray({
           ...this._def,
-          minLength: { value: minLength, message: errorUtil.toString(message2) }
+          minLength: { value: minLength, message: errorUtil.toString(message3) }
         });
       }
-      max(maxLength, message2) {
+      max(maxLength, message3) {
         return new _ZodArray({
           ...this._def,
-          maxLength: { value: maxLength, message: errorUtil.toString(message2) }
+          maxLength: { value: maxLength, message: errorUtil.toString(message3) }
         });
       }
-      length(len, message2) {
+      length(len, message3) {
         return new _ZodArray({
           ...this._def,
-          exactLength: { value: len, message: errorUtil.toString(message2) }
+          exactLength: { value: len, message: errorUtil.toString(message3) }
         });
       }
-      nonempty(message2) {
-        return this.min(1, message2);
+      nonempty(message3) {
+        return this.min(1, message3);
       }
     };
     ZodArray.create = (schema, params) => {
@@ -20838,17 +20838,17 @@ var init_sdk = __esm({
       get shape() {
         return this._def.shape();
       }
-      strict(message2) {
+      strict(message3) {
         errorUtil.errToObj;
         return new _ZodObject({
           ...this._def,
           unknownKeys: "strict",
-          ...message2 !== void 0 ? {
+          ...message3 !== void 0 ? {
             errorMap: (issue2, ctx) => {
               const defaultError = this._def.errorMap?.(issue2, ctx).message ?? ctx.defaultError;
               if (issue2.code === "unrecognized_keys")
                 return {
-                  message: errorUtil.errToObj(message2).message ?? defaultError
+                  message: errorUtil.errToObj(message3).message ?? defaultError
                 };
               return {
                 message: defaultError
@@ -21477,23 +21477,23 @@ var init_sdk = __esm({
           return finalizeSet(elements);
         }
       }
-      min(minSize, message2) {
+      min(minSize, message3) {
         return new _ZodSet({
           ...this._def,
-          minSize: { value: minSize, message: errorUtil.toString(message2) }
+          minSize: { value: minSize, message: errorUtil.toString(message3) }
         });
       }
-      max(maxSize, message2) {
+      max(maxSize, message3) {
         return new _ZodSet({
           ...this._def,
-          maxSize: { value: maxSize, message: errorUtil.toString(message2) }
+          maxSize: { value: maxSize, message: errorUtil.toString(message3) }
         });
       }
-      size(size, message2) {
-        return this.min(size, message2).max(size, message2);
+      size(size, message3) {
+        return this.min(size, message3).max(size, message3);
       }
-      nonempty(message2) {
-        return this.min(1, message2);
+      nonempty(message3) {
+        return this.min(1, message3);
       }
     };
     ZodSet.create = (valueType, params) => {
@@ -25966,25 +25966,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       CreateTaskResultSchema
     ]);
     McpError = class _McpError extends Error {
-      constructor(code, message2, data) {
-        super(`MCP error ${code}: ${message2}`);
+      constructor(code, message3, data) {
+        super(`MCP error ${code}: ${message3}`);
         this.code = code;
         this.data = data;
         this.name = "McpError";
       }
-      static fromError(code, message2, data) {
+      static fromError(code, message3, data) {
         if (code === ErrorCode.UrlElicitationRequired && data) {
           const errorData = data;
           if (errorData.elicitations) {
-            return new UrlElicitationRequiredError(errorData.elicitations, message2);
+            return new UrlElicitationRequiredError(errorData.elicitations, message3);
           }
         }
-        return new _McpError(code, message2, data);
+        return new _McpError(code, message3, data);
       }
     };
     UrlElicitationRequiredError = class extends McpError {
-      constructor(elicitations, message2 = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
-        super(ErrorCode.UrlElicitationRequired, message2, {
+      constructor(elicitations, message3 = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
+        super(ErrorCode.UrlElicitationRequired, message3, {
           elicitations
         });
       }
@@ -26355,15 +26355,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                 let queuedMessage;
                 while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
                   if (queuedMessage.type === "response" || queuedMessage.type === "error") {
-                    const message2 = queuedMessage.message;
-                    const requestId = message2.id;
+                    const message3 = queuedMessage.message;
+                    const requestId = message3.id;
                     const resolver = this._requestResolvers.get(requestId);
                     if (resolver) {
                       this._requestResolvers.delete(requestId);
                       if (queuedMessage.type === "response") {
-                        resolver(message2);
+                        resolver(message3);
                       } else {
-                        const errorMessage5 = message2;
+                        const errorMessage5 = message3;
                         const error2 = new McpError(errorMessage5.error.code, errorMessage5.error.message, errorMessage5.error.data);
                         resolver(error2);
                       }
@@ -26493,16 +26493,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           this._onerror(error2);
         };
         const _onmessage = (_c = this._transport) === null || _c === void 0 ? void 0 : _c.onmessage;
-        this._transport.onmessage = (message2, extra) => {
-          _onmessage === null || _onmessage === void 0 || _onmessage(message2, extra);
-          if (isJSONRPCResponse(message2) || isJSONRPCError(message2)) {
-            this._onresponse(message2);
-          } else if (isJSONRPCRequest(message2)) {
-            this._onrequest(message2, extra);
-          } else if (isJSONRPCNotification(message2)) {
-            this._onnotification(message2);
+        this._transport.onmessage = (message3, extra) => {
+          _onmessage === null || _onmessage === void 0 || _onmessage(message3, extra);
+          if (isJSONRPCResponse(message3) || isJSONRPCError(message3)) {
+            this._onresponse(message3);
+          } else if (isJSONRPCRequest(message3)) {
+            this._onrequest(message3, extra);
+          } else if (isJSONRPCNotification(message3)) {
+            this._onnotification(message3);
           } else {
-            this._onerror(new Error(`Unknown message type: ${JSON.stringify(message2)}`));
+            this._onerror(new Error(`Unknown message type: ${JSON.stringify(message3)}`));
           }
         };
         await this._transport.start();
@@ -27019,20 +27019,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           this._taskProgressTokens.delete(taskId);
         }
       }
-      async _enqueueTaskMessage(taskId, message2, sessionId) {
+      async _enqueueTaskMessage(taskId, message3, sessionId) {
         var _a;
         if (!this._taskStore || !this._taskMessageQueue) {
           throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
         }
         const maxQueueSize = (_a = this._options) === null || _a === void 0 ? void 0 : _a.maxTaskQueueSize;
-        await this._taskMessageQueue.enqueue(taskId, message2, sessionId, maxQueueSize);
+        await this._taskMessageQueue.enqueue(taskId, message3, sessionId, maxQueueSize);
       }
       async _clearTaskQueue(taskId, sessionId) {
         if (this._taskMessageQueue) {
           const messages = await this._taskMessageQueue.dequeueAll(taskId, sessionId);
-          for (const message2 of messages) {
-            if (message2.type === "request" && isJSONRPCRequest(message2.message)) {
-              const requestId = message2.message.id;
+          for (const message3 of messages) {
+            if (message3.type === "request" && isJSONRPCRequest(message3.message)) {
+              const requestId = message3.message.id;
               const resolver = this._requestResolvers.get(requestId);
               if (resolver) {
                 resolver(new McpError(ErrorCode.InternalError, "Task cancelled or completed"));
@@ -28456,104 +28456,104 @@ var init_en = __esm({
     init_ZodError();
     init_util();
     errorMap2 = (issue2, _ctx) => {
-      let message2;
+      let message3;
       switch (issue2.code) {
         case ZodIssueCode2.invalid_type:
           if (issue2.received === ZodParsedType2.undefined) {
-            message2 = "Required";
+            message3 = "Required";
           } else {
-            message2 = `Expected ${issue2.expected}, received ${issue2.received}`;
+            message3 = `Expected ${issue2.expected}, received ${issue2.received}`;
           }
           break;
         case ZodIssueCode2.invalid_literal:
-          message2 = `Invalid literal value, expected ${JSON.stringify(issue2.expected, util2.jsonStringifyReplacer)}`;
+          message3 = `Invalid literal value, expected ${JSON.stringify(issue2.expected, util2.jsonStringifyReplacer)}`;
           break;
         case ZodIssueCode2.unrecognized_keys:
-          message2 = `Unrecognized key(s) in object: ${util2.joinValues(issue2.keys, ", ")}`;
+          message3 = `Unrecognized key(s) in object: ${util2.joinValues(issue2.keys, ", ")}`;
           break;
         case ZodIssueCode2.invalid_union:
-          message2 = `Invalid input`;
+          message3 = `Invalid input`;
           break;
         case ZodIssueCode2.invalid_union_discriminator:
-          message2 = `Invalid discriminator value. Expected ${util2.joinValues(issue2.options)}`;
+          message3 = `Invalid discriminator value. Expected ${util2.joinValues(issue2.options)}`;
           break;
         case ZodIssueCode2.invalid_enum_value:
-          message2 = `Invalid enum value. Expected ${util2.joinValues(issue2.options)}, received '${issue2.received}'`;
+          message3 = `Invalid enum value. Expected ${util2.joinValues(issue2.options)}, received '${issue2.received}'`;
           break;
         case ZodIssueCode2.invalid_arguments:
-          message2 = `Invalid function arguments`;
+          message3 = `Invalid function arguments`;
           break;
         case ZodIssueCode2.invalid_return_type:
-          message2 = `Invalid function return type`;
+          message3 = `Invalid function return type`;
           break;
         case ZodIssueCode2.invalid_date:
-          message2 = `Invalid date`;
+          message3 = `Invalid date`;
           break;
         case ZodIssueCode2.invalid_string:
           if (typeof issue2.validation === "object") {
             if ("includes" in issue2.validation) {
-              message2 = `Invalid input: must include "${issue2.validation.includes}"`;
+              message3 = `Invalid input: must include "${issue2.validation.includes}"`;
               if (typeof issue2.validation.position === "number") {
-                message2 = `${message2} at one or more positions greater than or equal to ${issue2.validation.position}`;
+                message3 = `${message3} at one or more positions greater than or equal to ${issue2.validation.position}`;
               }
             } else if ("startsWith" in issue2.validation) {
-              message2 = `Invalid input: must start with "${issue2.validation.startsWith}"`;
+              message3 = `Invalid input: must start with "${issue2.validation.startsWith}"`;
             } else if ("endsWith" in issue2.validation) {
-              message2 = `Invalid input: must end with "${issue2.validation.endsWith}"`;
+              message3 = `Invalid input: must end with "${issue2.validation.endsWith}"`;
             } else {
               util2.assertNever(issue2.validation);
             }
           } else if (issue2.validation !== "regex") {
-            message2 = `Invalid ${issue2.validation}`;
+            message3 = `Invalid ${issue2.validation}`;
           } else {
-            message2 = "Invalid";
+            message3 = "Invalid";
           }
           break;
         case ZodIssueCode2.too_small:
           if (issue2.type === "array")
-            message2 = `Array must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `more than`} ${issue2.minimum} element(s)`;
+            message3 = `Array must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `more than`} ${issue2.minimum} element(s)`;
           else if (issue2.type === "string")
-            message2 = `String must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `over`} ${issue2.minimum} character(s)`;
+            message3 = `String must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `over`} ${issue2.minimum} character(s)`;
           else if (issue2.type === "number")
-            message2 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
           else if (issue2.type === "bigint")
-            message2 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
           else if (issue2.type === "date")
-            message2 = `Date must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue2.minimum))}`;
+            message3 = `Date must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue2.minimum))}`;
           else
-            message2 = "Invalid input";
+            message3 = "Invalid input";
           break;
         case ZodIssueCode2.too_big:
           if (issue2.type === "array")
-            message2 = `Array must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `less than`} ${issue2.maximum} element(s)`;
+            message3 = `Array must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `less than`} ${issue2.maximum} element(s)`;
           else if (issue2.type === "string")
-            message2 = `String must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `under`} ${issue2.maximum} character(s)`;
+            message3 = `String must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `under`} ${issue2.maximum} character(s)`;
           else if (issue2.type === "number")
-            message2 = `Number must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
+            message3 = `Number must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
           else if (issue2.type === "bigint")
-            message2 = `BigInt must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
+            message3 = `BigInt must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
           else if (issue2.type === "date")
-            message2 = `Date must be ${issue2.exact ? `exactly` : issue2.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue2.maximum))}`;
+            message3 = `Date must be ${issue2.exact ? `exactly` : issue2.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue2.maximum))}`;
           else
-            message2 = "Invalid input";
+            message3 = "Invalid input";
           break;
         case ZodIssueCode2.custom:
-          message2 = `Invalid input`;
+          message3 = `Invalid input`;
           break;
         case ZodIssueCode2.invalid_intersection_types:
-          message2 = `Intersection results could not be merged`;
+          message3 = `Intersection results could not be merged`;
           break;
         case ZodIssueCode2.not_multiple_of:
-          message2 = `Number must be a multiple of ${issue2.multipleOf}`;
+          message3 = `Number must be a multiple of ${issue2.multipleOf}`;
           break;
         case ZodIssueCode2.not_finite:
-          message2 = "Number must be finite";
+          message3 = "Number must be finite";
           break;
         default:
-          message2 = _ctx.defaultError;
+          message3 = _ctx.defaultError;
           util2.assertNever(issue2);
       }
-      return { message: message2 };
+      return { message: message3 };
     };
     en_default3 = errorMap2;
   }
@@ -28702,8 +28702,8 @@ var errorUtil2;
 var init_errorUtil = __esm({
   "node_modules/zod/v3/helpers/errorUtil.js"() {
     (function(errorUtil3) {
-      errorUtil3.errToObj = (message2) => typeof message2 === "string" ? { message: message2 } : message2 || {};
-      errorUtil3.toString = (message2) => typeof message2 === "string" ? message2 : message2?.message;
+      errorUtil3.errToObj = (message3) => typeof message3 === "string" ? { message: message3 } : message3 || {};
+      errorUtil3.toString = (message3) => typeof message3 === "string" ? message3 : message3?.message;
     })(errorUtil2 || (errorUtil2 = {}));
   }
 });
@@ -28719,16 +28719,16 @@ function processCreateParams2(params) {
   if (errorMap3)
     return { errorMap: errorMap3, description: description2 };
   const customMap = (iss, ctx) => {
-    const { message: message2 } = params;
+    const { message: message3 } = params;
     if (iss.code === "invalid_enum_value") {
-      return { message: message2 ?? ctx.defaultError };
+      return { message: message3 ?? ctx.defaultError };
     }
     if (typeof ctx.data === "undefined") {
-      return { message: message2 ?? required_error ?? ctx.defaultError };
+      return { message: message3 ?? required_error ?? ctx.defaultError };
     }
     if (iss.code !== "invalid_type")
       return { message: ctx.defaultError };
-    return { message: message2 ?? invalid_type_error ?? ctx.defaultError };
+    return { message: message3 ?? invalid_type_error ?? ctx.defaultError };
   };
   return { errorMap: customMap, description: description2 };
 }
@@ -29068,14 +29068,14 @@ var init_types3 = __esm({
         const result = await (isAsync2(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
         return handleResult2(ctx, result);
       }
-      refine(check2, message2) {
+      refine(check2, message3) {
         const getIssueProperties = (val) => {
-          if (typeof message2 === "string" || typeof message2 === "undefined") {
-            return { message: message2 };
-          } else if (typeof message2 === "function") {
-            return message2(val);
+          if (typeof message3 === "string" || typeof message3 === "undefined") {
+            return { message: message3 };
+          } else if (typeof message3 === "function") {
+            return message3(val);
           } else {
-            return message2;
+            return message3;
           }
         };
         return this._refinement((val, ctx) => {
@@ -29548,11 +29548,11 @@ var init_types3 = __esm({
         }
         return { status: status.value, value: input.data };
       }
-      _regex(regex, validation, message2) {
+      _regex(regex, validation, message3) {
         return this.refinement((data) => regex.test(data), {
           validation,
           code: ZodIssueCode2.invalid_string,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
       _addCheck(check2) {
@@ -29561,37 +29561,37 @@ var init_types3 = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      email(message2) {
-        return this._addCheck({ kind: "email", ...errorUtil2.errToObj(message2) });
+      email(message3) {
+        return this._addCheck({ kind: "email", ...errorUtil2.errToObj(message3) });
       }
-      url(message2) {
-        return this._addCheck({ kind: "url", ...errorUtil2.errToObj(message2) });
+      url(message3) {
+        return this._addCheck({ kind: "url", ...errorUtil2.errToObj(message3) });
       }
-      emoji(message2) {
-        return this._addCheck({ kind: "emoji", ...errorUtil2.errToObj(message2) });
+      emoji(message3) {
+        return this._addCheck({ kind: "emoji", ...errorUtil2.errToObj(message3) });
       }
-      uuid(message2) {
-        return this._addCheck({ kind: "uuid", ...errorUtil2.errToObj(message2) });
+      uuid(message3) {
+        return this._addCheck({ kind: "uuid", ...errorUtil2.errToObj(message3) });
       }
-      nanoid(message2) {
-        return this._addCheck({ kind: "nanoid", ...errorUtil2.errToObj(message2) });
+      nanoid(message3) {
+        return this._addCheck({ kind: "nanoid", ...errorUtil2.errToObj(message3) });
       }
-      cuid(message2) {
-        return this._addCheck({ kind: "cuid", ...errorUtil2.errToObj(message2) });
+      cuid(message3) {
+        return this._addCheck({ kind: "cuid", ...errorUtil2.errToObj(message3) });
       }
-      cuid2(message2) {
-        return this._addCheck({ kind: "cuid2", ...errorUtil2.errToObj(message2) });
+      cuid2(message3) {
+        return this._addCheck({ kind: "cuid2", ...errorUtil2.errToObj(message3) });
       }
-      ulid(message2) {
-        return this._addCheck({ kind: "ulid", ...errorUtil2.errToObj(message2) });
+      ulid(message3) {
+        return this._addCheck({ kind: "ulid", ...errorUtil2.errToObj(message3) });
       }
-      base64(message2) {
-        return this._addCheck({ kind: "base64", ...errorUtil2.errToObj(message2) });
+      base64(message3) {
+        return this._addCheck({ kind: "base64", ...errorUtil2.errToObj(message3) });
       }
-      base64url(message2) {
+      base64url(message3) {
         return this._addCheck({
           kind: "base64url",
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
       jwt(options) {
@@ -29621,8 +29621,8 @@ var init_types3 = __esm({
           ...errorUtil2.errToObj(options?.message)
         });
       }
-      date(message2) {
-        return this._addCheck({ kind: "date", message: message2 });
+      date(message3) {
+        return this._addCheck({ kind: "date", message: message3 });
       }
       time(options) {
         if (typeof options === "string") {
@@ -29638,14 +29638,14 @@ var init_types3 = __esm({
           ...errorUtil2.errToObj(options?.message)
         });
       }
-      duration(message2) {
-        return this._addCheck({ kind: "duration", ...errorUtil2.errToObj(message2) });
+      duration(message3) {
+        return this._addCheck({ kind: "duration", ...errorUtil2.errToObj(message3) });
       }
-      regex(regex, message2) {
+      regex(regex, message3) {
         return this._addCheck({
           kind: "regex",
           regex,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
       includes(value, options) {
@@ -29656,46 +29656,46 @@ var init_types3 = __esm({
           ...errorUtil2.errToObj(options?.message)
         });
       }
-      startsWith(value, message2) {
+      startsWith(value, message3) {
         return this._addCheck({
           kind: "startsWith",
           value,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
-      endsWith(value, message2) {
+      endsWith(value, message3) {
         return this._addCheck({
           kind: "endsWith",
           value,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
-      min(minLength, message2) {
+      min(minLength, message3) {
         return this._addCheck({
           kind: "min",
           value: minLength,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
-      max(maxLength, message2) {
+      max(maxLength, message3) {
         return this._addCheck({
           kind: "max",
           value: maxLength,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
-      length(len, message2) {
+      length(len, message3) {
         return this._addCheck({
           kind: "length",
           value: len,
-          ...errorUtil2.errToObj(message2)
+          ...errorUtil2.errToObj(message3)
         });
       }
       /**
        * Equivalent to `.min(1)`
        */
-      nonempty(message2) {
-        return this.min(1, errorUtil2.errToObj(message2));
+      nonempty(message3) {
+        return this.min(1, errorUtil2.errToObj(message3));
       }
       trim() {
         return new _ZodString2({
@@ -29880,19 +29880,19 @@ var init_types3 = __esm({
         }
         return { status: status.value, value: input.data };
       }
-      gte(value, message2) {
-        return this.setLimit("min", value, true, errorUtil2.toString(message2));
+      gte(value, message3) {
+        return this.setLimit("min", value, true, errorUtil2.toString(message3));
       }
-      gt(value, message2) {
-        return this.setLimit("min", value, false, errorUtil2.toString(message2));
+      gt(value, message3) {
+        return this.setLimit("min", value, false, errorUtil2.toString(message3));
       }
-      lte(value, message2) {
-        return this.setLimit("max", value, true, errorUtil2.toString(message2));
+      lte(value, message3) {
+        return this.setLimit("max", value, true, errorUtil2.toString(message3));
       }
-      lt(value, message2) {
-        return this.setLimit("max", value, false, errorUtil2.toString(message2));
+      lt(value, message3) {
+        return this.setLimit("max", value, false, errorUtil2.toString(message3));
       }
-      setLimit(kind, value, inclusive, message2) {
+      setLimit(kind, value, inclusive, message3) {
         return new _ZodNumber({
           ...this._def,
           checks: [
@@ -29901,7 +29901,7 @@ var init_types3 = __esm({
               kind,
               value,
               inclusive,
-              message: errorUtil2.toString(message2)
+              message: errorUtil2.toString(message3)
             }
           ]
         });
@@ -29912,68 +29912,68 @@ var init_types3 = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      int(message2) {
+      int(message3) {
         return this._addCheck({
           kind: "int",
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      positive(message2) {
+      positive(message3) {
         return this._addCheck({
           kind: "min",
           value: 0,
           inclusive: false,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      negative(message2) {
+      negative(message3) {
         return this._addCheck({
           kind: "max",
           value: 0,
           inclusive: false,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      nonpositive(message2) {
+      nonpositive(message3) {
         return this._addCheck({
           kind: "max",
           value: 0,
           inclusive: true,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      nonnegative(message2) {
+      nonnegative(message3) {
         return this._addCheck({
           kind: "min",
           value: 0,
           inclusive: true,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      multipleOf(value, message2) {
+      multipleOf(value, message3) {
         return this._addCheck({
           kind: "multipleOf",
           value,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      finite(message2) {
+      finite(message3) {
         return this._addCheck({
           kind: "finite",
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      safe(message2) {
+      safe(message3) {
         return this._addCheck({
           kind: "min",
           inclusive: true,
           value: Number.MIN_SAFE_INTEGER,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         })._addCheck({
           kind: "max",
           inclusive: true,
           value: Number.MAX_SAFE_INTEGER,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
       get minValue() {
@@ -30096,19 +30096,19 @@ var init_types3 = __esm({
         });
         return INVALID2;
       }
-      gte(value, message2) {
-        return this.setLimit("min", value, true, errorUtil2.toString(message2));
+      gte(value, message3) {
+        return this.setLimit("min", value, true, errorUtil2.toString(message3));
       }
-      gt(value, message2) {
-        return this.setLimit("min", value, false, errorUtil2.toString(message2));
+      gt(value, message3) {
+        return this.setLimit("min", value, false, errorUtil2.toString(message3));
       }
-      lte(value, message2) {
-        return this.setLimit("max", value, true, errorUtil2.toString(message2));
+      lte(value, message3) {
+        return this.setLimit("max", value, true, errorUtil2.toString(message3));
       }
-      lt(value, message2) {
-        return this.setLimit("max", value, false, errorUtil2.toString(message2));
+      lt(value, message3) {
+        return this.setLimit("max", value, false, errorUtil2.toString(message3));
       }
-      setLimit(kind, value, inclusive, message2) {
+      setLimit(kind, value, inclusive, message3) {
         return new _ZodBigInt({
           ...this._def,
           checks: [
@@ -30117,7 +30117,7 @@ var init_types3 = __esm({
               kind,
               value,
               inclusive,
-              message: errorUtil2.toString(message2)
+              message: errorUtil2.toString(message3)
             }
           ]
         });
@@ -30128,43 +30128,43 @@ var init_types3 = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      positive(message2) {
+      positive(message3) {
         return this._addCheck({
           kind: "min",
           value: BigInt(0),
           inclusive: false,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      negative(message2) {
+      negative(message3) {
         return this._addCheck({
           kind: "max",
           value: BigInt(0),
           inclusive: false,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      nonpositive(message2) {
+      nonpositive(message3) {
         return this._addCheck({
           kind: "max",
           value: BigInt(0),
           inclusive: true,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      nonnegative(message2) {
+      nonnegative(message3) {
         return this._addCheck({
           kind: "min",
           value: BigInt(0),
           inclusive: true,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      multipleOf(value, message2) {
+      multipleOf(value, message3) {
         return this._addCheck({
           kind: "multipleOf",
           value,
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
       get minValue() {
@@ -30287,18 +30287,18 @@ var init_types3 = __esm({
           checks: [...this._def.checks, check2]
         });
       }
-      min(minDate, message2) {
+      min(minDate, message3) {
         return this._addCheck({
           kind: "min",
           value: minDate.getTime(),
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
-      max(maxDate, message2) {
+      max(maxDate, message3) {
         return this._addCheck({
           kind: "max",
           value: maxDate.getTime(),
-          message: errorUtil2.toString(message2)
+          message: errorUtil2.toString(message3)
         });
       }
       get minDate() {
@@ -30530,26 +30530,26 @@ var init_types3 = __esm({
       get element() {
         return this._def.type;
       }
-      min(minLength, message2) {
+      min(minLength, message3) {
         return new _ZodArray({
           ...this._def,
-          minLength: { value: minLength, message: errorUtil2.toString(message2) }
+          minLength: { value: minLength, message: errorUtil2.toString(message3) }
         });
       }
-      max(maxLength, message2) {
+      max(maxLength, message3) {
         return new _ZodArray({
           ...this._def,
-          maxLength: { value: maxLength, message: errorUtil2.toString(message2) }
+          maxLength: { value: maxLength, message: errorUtil2.toString(message3) }
         });
       }
-      length(len, message2) {
+      length(len, message3) {
         return new _ZodArray({
           ...this._def,
-          exactLength: { value: len, message: errorUtil2.toString(message2) }
+          exactLength: { value: len, message: errorUtil2.toString(message3) }
         });
       }
-      nonempty(message2) {
-        return this.min(1, message2);
+      nonempty(message3) {
+        return this.min(1, message3);
       }
     };
     ZodArray3.create = (schema, params) => {
@@ -30666,17 +30666,17 @@ var init_types3 = __esm({
       get shape() {
         return this._def.shape();
       }
-      strict(message2) {
+      strict(message3) {
         errorUtil2.errToObj;
         return new _ZodObject({
           ...this._def,
           unknownKeys: "strict",
-          ...message2 !== void 0 ? {
+          ...message3 !== void 0 ? {
             errorMap: (issue2, ctx) => {
               const defaultError = this._def.errorMap?.(issue2, ctx).message ?? ctx.defaultError;
               if (issue2.code === "unrecognized_keys")
                 return {
-                  message: errorUtil2.errToObj(message2).message ?? defaultError
+                  message: errorUtil2.errToObj(message3).message ?? defaultError
                 };
               return {
                 message: defaultError
@@ -31394,23 +31394,23 @@ var init_types3 = __esm({
           return finalizeSet(elements);
         }
       }
-      min(minSize, message2) {
+      min(minSize, message3) {
         return new _ZodSet({
           ...this._def,
-          minSize: { value: minSize, message: errorUtil2.toString(message2) }
+          minSize: { value: minSize, message: errorUtil2.toString(message3) }
         });
       }
-      max(maxSize, message2) {
+      max(maxSize, message3) {
         return new _ZodSet({
           ...this._def,
-          maxSize: { value: maxSize, message: errorUtil2.toString(message2) }
+          maxSize: { value: maxSize, message: errorUtil2.toString(message3) }
         });
       }
-      size(size, message2) {
-        return this.min(size, message2).max(size, message2);
+      size(size, message3) {
+        return this.min(size, message3).max(size, message3);
       }
-      nonempty(message2) {
-        return this.min(1, message2);
+      nonempty(message3) {
+        return this.min(1, message3);
       }
     };
     ZodSet2.create = (valueType, params) => {
@@ -33427,8 +33427,8 @@ Install with: ${this.serverConfig.installHint}`
           const messageJson = this.buffer.subarray(messageStart, messageEnd).toString();
           this.buffer = this.buffer.subarray(messageEnd);
           try {
-            const message2 = JSON.parse(messageJson);
-            this.handleMessage(message2);
+            const message3 = JSON.parse(messageJson);
+            this.handleMessage(message3);
           } catch {
           }
         }
@@ -33436,23 +33436,23 @@ Install with: ${this.serverConfig.installHint}`
       /**
        * Handle a parsed JSON-RPC message
        */
-      handleMessage(message2) {
-        const record3 = message2;
-        const hasOwnMethod = Object.prototype.hasOwnProperty.call(message2, "method");
-        const hasOwnId = Object.prototype.hasOwnProperty.call(message2, "id");
+      handleMessage(message3) {
+        const record3 = message3;
+        const hasOwnMethod = Object.prototype.hasOwnProperty.call(message3, "method");
+        const hasOwnId = Object.prototype.hasOwnProperty.call(message3, "id");
         if (hasOwnMethod && typeof record3.method === "string") {
           const id = record3.id;
           if (hasOwnId) {
             if (typeof id === "string" || typeof id === "number" && Number.isInteger(id)) {
-              this.handleServerRequest(message2);
+              this.handleServerRequest(message3);
             }
             return;
           }
-          this.handleNotification(message2);
+          this.handleNotification(message3);
           return;
         }
         if (!hasOwnMethod && hasOwnId && typeof record3.id === "number") {
-          const response = message2;
+          const response = message3;
           const pending = this.pendingRequests.get(response.id);
           if (pending) {
             clearTimeout(pending.timeout);
@@ -33470,10 +33470,10 @@ Install with: ${this.serverConfig.installHint}`
         const error2 = request.method === "client/registerCapability" ? { code: -32803, message: "Dynamic capability registration is not supported" } : { code: -32601, message: "Method not found" };
         const response = { jsonrpc: "2.0", id: request.id, error: error2 };
         const content2 = JSON.stringify(response);
-        const message2 = `Content-Length: ${Buffer.byteLength(content2)}\r
+        const message3 = `Content-Length: ${Buffer.byteLength(content2)}\r
 \r
 ${content2}`;
-        void this.enqueueOutboundWrite(() => this.writeMessage(message2)).catch(() => {
+        void this.enqueueOutboundWrite(() => this.writeMessage(message3)).catch(() => {
         });
       }
       /**
@@ -33507,7 +33507,7 @@ ${content2}`;
           params
         };
         const content2 = JSON.stringify(request);
-        const message2 = `Content-Length: ${Buffer.byteLength(content2)}\r
+        const message3 = `Content-Length: ${Buffer.byteLength(content2)}\r
 \r
 ${content2}`;
         return new Promise((resolve73, reject2) => {
@@ -33524,7 +33524,7 @@ ${content2}`;
             if (!this.pendingRequests.has(id)) {
               throw new Error(`LSP request '${method}' is no longer pending`);
             }
-            return this.writeMessage(message2);
+            return this.writeMessage(message3);
           }).catch((error2) => {
             const pending = this.pendingRequests.get(id);
             if (!pending) return;
@@ -33544,10 +33544,10 @@ ${content2}`;
           params
         };
         const content2 = JSON.stringify(notification);
-        const message2 = `Content-Length: ${Buffer.byteLength(content2)}\r
+        const message3 = `Content-Length: ${Buffer.byteLength(content2)}\r
 \r
 ${content2}`;
-        return this.writeMessage(message2);
+        return this.writeMessage(message3);
       }
       async notifyWithBackpressure(method, params) {
         return this.enqueueOutboundWrite(() => this.notify(method, params));
@@ -33563,12 +33563,12 @@ ${content2}`;
         this.notificationTail = notification.catch(() => void 0);
         return notification;
       }
-      writeMessage(message2) {
+      writeMessage(message3) {
         if (!this.process?.stdin) {
           throw new Error("LSP client is not connected");
         }
         try {
-          return this.process.stdin.write(message2);
+          return this.process.stdin.write(message3);
         } catch (error2) {
           const failure4 = error2 instanceof Error ? error2 : new Error(String(error2));
           this.handleTransportFailure(failure4);
@@ -34765,8 +34765,8 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
       });
       return { file, diagnostics };
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      return { file, skippedReason: message2 };
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      return { file, skippedReason: message3 };
     }
   });
   let filesChecked = 0;
@@ -34781,8 +34781,8 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
       }
       continue;
     }
-    const message2 = result.skippedReason ?? "unknown LSP diagnostics failure";
-    const match = message2.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+    const message3 = result.skippedReason ?? "unknown LSP diagnostics failure";
+    const match = message3.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
     if (match) {
       installHintSet.add(match[2].trim());
       skippedFiles.push({
@@ -34790,7 +34790,7 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
         reason: `missing language server: ${match[1]}`
       });
     } else {
-      skippedFiles.push({ file: result.file, reason: message2 });
+      skippedFiles.push({ file: result.file, reason: message3 });
     }
   }
   const errorCount = allDiagnostics.filter((d) => d.diagnostic.severity === 1).length;
@@ -34959,13 +34959,13 @@ Use lsp_servers tool to see available language servers.`
       }]
     };
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    if (message2.includes("not found")) {
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    if (message3.includes("not found")) {
       return {
         isError: true,
         content: [{
           type: "text",
-          text: `${message2}`
+          text: `${message3}`
         }]
       };
     }
@@ -34973,7 +34973,7 @@ Use lsp_servers tool to see available language servers.`
       isError: true,
       content: [{
         type: "text",
-        text: `Error in ${operation}: ${message2}`
+        text: `Error in ${operation}: ${message3}`
       }]
     };
   }
@@ -38541,8 +38541,8 @@ var init_session_lock = __esm({
       }
     };
     LockError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "LockError";
       }
     };
@@ -38851,23 +38851,23 @@ var init_socket_client = __esm({
     net = __toESM(require("net"), 1);
     import_crypto6 = require("crypto");
     SocketConnectionError = class extends Error {
-      constructor(message2, socketPath, originalError) {
-        super(message2);
+      constructor(message3, socketPath, originalError) {
+        super(message3);
         this.socketPath = socketPath;
         this.originalError = originalError;
         this.name = "SocketConnectionError";
       }
     };
     SocketTimeoutError = class extends Error {
-      constructor(message2, timeoutMs) {
-        super(message2);
+      constructor(message3, timeoutMs) {
+        super(message3);
         this.timeoutMs = timeoutMs;
         this.name = "SocketTimeoutError";
       }
     };
     JsonRpcError = class extends Error {
-      constructor(message2, code, data) {
-        super(message2);
+      constructor(message3, code, data) {
+        super(message3);
         this.code = code;
         this.data = data;
         this.name = "JsonRpcError";
@@ -40462,8 +40462,8 @@ function nativeBindingDiagnostic(detail) {
   return `better-sqlite3 native binding (${SQLITE_NATIVE_BINDING}) is unavailable. State mutation is using the file-lock fallback. ${SQLITE_NATIVE_BINDING_REMEDIATION}${suffix}`;
 }
 function isNativeBindingError(error2) {
-  const message2 = errorMessage(error2);
-  return /better[_-]sqlite3(?:\.node)?|bindings(?:\.js)?|MODULE_NOT_FOUND|NODE_MODULE_VERSION|did not self-register|Could not locate the bindings file/i.test(message2);
+  const message3 = errorMessage(error2);
+  return /better[_-]sqlite3(?:\.node)?|bindings(?:\.js)?|MODULE_NOT_FOUND|NODE_MODULE_VERSION|did not self-register|Could not locate the bindings file/i.test(message3);
 }
 function ownProcessStartIdentity() {
   if (ownProcessStartIdentityCache === null) {
@@ -43660,8 +43660,8 @@ function readPrdFromPath(prdPath) {
     }
     return { prd: normalized2 };
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    return { error: `Failed to read ${prdPath}: ${message2}` };
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    return { error: `Failed to read ${prdPath}: ${message3}` };
   }
 }
 function isStoryComplete(story) {
@@ -46923,9 +46923,9 @@ function authenticatedObservation(observation, sessionId, root2) {
           return false;
         }
         if (!isRecord2(record3)) return false;
-        const message2 = record3.message;
+        const message3 = record3.message;
         const text4 = assistantText(record3);
-        matched = recordContentSha256 === observation.recordContentSha256 && record3.sessionId === sessionId && record3.type === "assistant" && isRecord2(message2) && message2.role === "assistant" && !record3.isMeta && !record3.isReplay && !record3.replay && !record3.meta && text4 !== null && !text4.includes("<local-command-stdout>") && text4.trim() === `Signal: ${observation.signalId}`;
+        matched = recordContentSha256 === observation.recordContentSha256 && record3.sessionId === sessionId && record3.type === "assistant" && isRecord2(message3) && message3.role === "assistant" && !record3.isMeta && !record3.isReplay && !record3.replay && !record3.meta && text4 !== null && !text4.includes("<local-command-stdout>") && text4.trim() === `Signal: ${observation.signalId}`;
         return matched;
       }
     );
@@ -47107,9 +47107,9 @@ function findCompletionEvidence(transcript, boundaryOffset, endOffset, sessionId
     } catch {
       return false;
     }
-    const message2 = isRecord2(record3) ? record3.message : null;
+    const message3 = isRecord2(record3) ? record3.message : null;
     const text4 = isRecord2(record3) ? assistantText(record3) : null;
-    if (!evidence && isRecord2(record3) && record3.sessionId === sessionId && record3.type === "assistant" && isRecord2(message2) && message2.role === "assistant" && !record3.isMeta && !record3.isReplay && !record3.replay && !record3.meta && text4 !== null && !text4.includes("<local-command-stdout>") && text4.trim() === `Signal: ${signal}`) {
+    if (!evidence && isRecord2(record3) && record3.sessionId === sessionId && record3.type === "assistant" && isRecord2(message3) && message3.role === "assistant" && !record3.isMeta && !record3.isReplay && !record3.replay && !record3.meta && text4 !== null && !text4.includes("<local-command-stdout>") && text4.trim() === `Signal: ${signal}`) {
       evidence = {
         byteOffset,
         lineNumber,
@@ -48972,8 +48972,8 @@ Path: ${sessionStatePath}
           if (mode === "team") {
             const teamMutation = await writeTeamState(statePath, sessionId, omitUndefinedFields(stateWithMeta));
             if (teamMutation.result !== "written") {
-              const message2 = teamMutation.result === "corrupt" ? "team state is corrupt; existing bytes preserved" : teamMutation.result === "foreign" ? `state is owned by another session and cannot be modified by session '${sessionId ?? "legacy"}'` : teamMutation.error ? `state publication failed: ${teamMutation.error instanceof Error ? teamMutation.error.message : String(teamMutation.error)}` : "state mutation lock unavailable";
-              throw new Error(message2);
+              const message3 = teamMutation.result === "corrupt" ? "team state is corrupt; existing bytes preserved" : teamMutation.result === "foreign" ? `state is owned by another session and cannot be modified by session '${sessionId ?? "legacy"}'` : teamMutation.error ? `state publication failed: ${teamMutation.error instanceof Error ? teamMutation.error.message : String(teamMutation.error)}` : "state mutation lock unavailable";
+              throw new Error(message3);
             }
             writtenState = teamMutation.state ?? stateWithMeta;
           } else if (mode === "autopilot" && builtState.active === false) {
@@ -49442,21 +49442,21 @@ ${JSON.stringify(writtenState, null, 2)}
               }]
             };
           }
-          let message2 = `Cleared state for mode: ${mode}
+          let message3 = `Cleared state for mode: ${mode}
 - Locations cleared: ${clearedCount}`;
           if (errors.length > 0) {
-            message2 += `
+            message3 += `
 - Errors: ${errors.join(", ")}`;
           }
           if (mode === "team") {
-            message2 += `
+            message3 += `
 - ${TEAM_RUNTIME_PRESERVATION_NOTE}`;
           }
-          message2 += "\nWARNING: No session_id provided. Cleared legacy plus all session-scoped state; this is a broad operation that may affect other sessions.";
+          message3 += "\nWARNING: No session_id provided. Cleared legacy plus all session-scoped state; this is a broad operation that may affect other sessions.";
           return {
             content: [{
               type: "text",
-              text: message2
+              text: message3
             }],
             ...errors.length > 0 ? { isError: true } : {}
           };
@@ -51764,8 +51764,8 @@ function stringLeaves(value, maxLeaves = 24) {
 }
 function extractTranscriptTexts(entry2) {
   const texts = [];
-  const message2 = entry2.message;
-  const content2 = message2?.content;
+  const message3 = entry2.message;
+  const content2 = message3?.content;
   if (typeof content2 === "string") {
     texts.push(content2);
   } else if (Array.isArray(content2)) {
@@ -51797,8 +51797,8 @@ function buildTranscriptEntry(entry2) {
   if (texts.length === 0) {
     return null;
   }
-  const message2 = entry2.message;
-  const sessionId = typeof entry2.sessionId === "string" ? entry2.sessionId : typeof entry2.session_id === "string" ? entry2.session_id : typeof message2?.sessionId === "string" ? message2.sessionId : void 0;
+  const message3 = entry2.message;
+  const sessionId = typeof entry2.sessionId === "string" ? entry2.sessionId : typeof entry2.session_id === "string" ? entry2.session_id : typeof message3?.sessionId === "string" ? message3.sessionId : void 0;
   if (!sessionId) {
     return null;
   }
@@ -51807,7 +51807,7 @@ function buildTranscriptEntry(entry2) {
     agentId: typeof entry2.agentId === "string" ? entry2.agentId : void 0,
     timestamp: typeof entry2.timestamp === "string" ? entry2.timestamp : void 0,
     projectPath: typeof entry2.cwd === "string" ? entry2.cwd : void 0,
-    role: typeof message2?.role === "string" ? message2.role : void 0,
+    role: typeof message3?.role === "string" ? message3.role : void 0,
     entryType: typeof entry2.type === "string" ? entry2.type : void 0,
     texts
   };
@@ -57481,8 +57481,8 @@ var init_client2 = __esm({
   "src/hooks/jev/client.ts"() {
     "use strict";
     JevClientError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "JevClientError";
       }
     };
@@ -60294,8 +60294,8 @@ function readPluginManifest(root2) {
     }
     return { manifest: parsed2, errors: [] };
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    return { manifest: null, errors: [`Invalid plugin manifest: .claude-plugin/plugin.json: ${message2}`] };
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    return { manifest: null, errors: [`Invalid plugin manifest: .claude-plugin/plugin.json: ${message3}`] };
   }
 }
 function normalizePluginRelPath(value) {
@@ -60397,11 +60397,11 @@ function collectPluginHookManifestSnapshot() {
     try {
       raw = JSON.parse((0, import_fs57.readFileSync)((0, import_path71.join)(root2, "hooks", "hooks.json"), "utf-8"));
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
       return {
         valid: false,
         commandsByEvent: /* @__PURE__ */ new Map(),
-        diagnostics: [`${root2}: invalid hooks/hooks.json: ${message2}`]
+        diagnostics: [`${root2}: invalid hooks/hooks.json: ${message3}`]
       };
     }
     if (!isObjectRecord(raw) || !isObjectRecord(raw.hooks)) {
@@ -60634,15 +60634,15 @@ function compactPluginSkillPayload(targetRoot) {
   try {
     (0, import_fs57.mkdirSync)(fullBodiesDir, { recursive: true });
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    return { compacted, totalBytes, errors: [`Failed to create ${fullBodiesDir}: ${message2}`] };
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    return { compacted, totalBytes, errors: [`Failed to create ${fullBodiesDir}: ${message3}`] };
   }
   const skillEntries = (() => {
     try {
       return (0, import_fs57.readdirSync)(skillsDir, { withFileTypes: true });
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      errors.push(`Failed to read plugin skills from ${skillsDir}: ${message2}`);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      errors.push(`Failed to read plugin skills from ${skillsDir}: ${message3}`);
       return null;
     }
   })();
@@ -60664,8 +60664,8 @@ function compactPluginSkillPayload(targetRoot) {
       totalBytes += Buffer.byteLength(shim, "utf-8");
       compacted += 1;
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      errors.push(`Failed to compact plugin skill ${entry2.name}: ${message2}`);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      errors.push(`Failed to compact plugin skill ${entry2.name}: ${message3}`);
     }
   }
   return { compacted, totalBytes, errors };
@@ -60703,8 +60703,8 @@ function copyPluginSyncPayload(sourceRoot, targetRoots) {
         copiedToTarget = true;
         copiedSkills = copiedSkills || entry2 === "skills";
       } catch (error2) {
-        const message2 = error2 instanceof Error ? error2.message : String(error2);
-        errors.push(`Failed to sync ${entry2} to ${targetRoot}: ${message2}`);
+        const message3 = error2 instanceof Error ? error2.message : String(error2);
+        errors.push(`Failed to sync ${entry2} to ${targetRoot}: ${message3}`);
       }
     }
     if (copiedSkills) {
@@ -60996,10 +60996,10 @@ function install(options = {}) {
   const targetVersion = options.version ?? VERSION;
   const installedVersionHint = getNewestInstalledVersionHint();
   if (isComparableVersion(targetVersion) && isComparableVersion(installedVersionHint) && compareVersions(targetVersion, installedVersionHint) < 0) {
-    const message2 = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omg update" to update the CLI package, then rerun "omg setup".`;
-    log3(message2);
+    const message3 = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omg update" to update the CLI package, then rerun "omg setup".`;
+    log3(message3);
     result.success = true;
-    result.message = message2;
+    result.message = message3;
     return result;
   }
   log3(`Platform: ${process.platform} (Node.js hooks)`);
@@ -61292,8 +61292,8 @@ function install(options = {}) {
         );
         log3("Saved template-version stamp");
       } catch (error2) {
-        const message2 = error2 instanceof Error ? error2.message : String(error2);
-        log3(`  Warning: Could not write template-version stamp (non-fatal): ${message2}`);
+        const message3 = error2 instanceof Error ? error2.message : String(error2);
+        log3(`  Warning: Could not write template-version stamp (non-fatal): ${message3}`);
       }
     } else {
       log3("Skipping version metadata (project-scoped plugin)");
@@ -61307,8 +61307,8 @@ function install(options = {}) {
         log3("Updated persisted setupVersion");
       }
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      log3(`  Warning: Could not refresh setupVersion metadata (non-fatal): ${message2}`);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      log3(`  Warning: Could not refresh setupVersion metadata (non-fatal): ${message3}`);
     }
     result.success = true;
     result.message = `Successfully installed ${result.installedAgents.length} agents, ${result.installedCommands.length} commands, ${result.installedSkills.length} skills`;
@@ -61860,13 +61860,13 @@ function syncPluginCache(verbose = false) {
     }
     return { ...result, skipped: false };
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
     if (verbose) {
-      console.warn(`[omc update] Plugin cache sync warning: ${message2}`);
+      console.warn(`[omc update] Plugin cache sync warning: ${message3}`);
     } else {
-      console.warn("[omc update] Plugin cache sync warning:", message2);
+      console.warn("[omc update] Plugin cache sync warning:", message3);
     }
-    return { synced: false, skipped: false, errors: [message2] };
+    return { synced: false, skipped: false, errors: [message3] };
   }
 }
 function getOMCConfig() {
@@ -62064,8 +62064,8 @@ function reconcileUpdateRuntime(options) {
         (0, import_fs58.mkdirSync)(HOOKS_DIR, { recursive: true });
       }
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      errors.push(`Failed to prepare hooks directory: ${message2}`);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      errors.push(`Failed to prepare hooks directory: ${message3}`);
     }
   }
   try {
@@ -62080,8 +62080,8 @@ function reconcileUpdateRuntime(options) {
       errors.push(...installResult.errors);
     }
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    errors.push(`Failed to refresh installer artifacts: ${message2}`);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    errors.push(`Failed to refresh installer artifacts: ${message3}`);
   }
   try {
     const pluginSyncResult = syncActivePluginCache();
@@ -62094,10 +62094,10 @@ function reconcileUpdateRuntime(options) {
       }
     }
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    errors.push(`Plugin cache sync failed: ${message2}`);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    errors.push(`Plugin cache sync failed: ${message3}`);
     if (options?.verbose) {
-      console.warn(`[omc] Plugin cache sync error: ${message2}`);
+      console.warn(`[omc] Plugin cache sync error: ${message3}`);
     }
   }
   try {
@@ -62379,9 +62379,9 @@ function saveSilentUpdateState(state) {
   }
   (0, import_fs58.writeFileSync)(SILENT_UPDATE_STATE_FILE, JSON.stringify(state, null, 2));
 }
-function silentLog(message2, logFile) {
+function silentLog(message3, logFile) {
   const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
-  const logMessage = `[${timestamp2}] ${message2}
+  const logMessage = `[${timestamp2}] ${message3}
 `;
   if (logFile) {
     try {
@@ -62534,9 +62534,9 @@ __export(todo_continuation_exports, {
   isValidTask: () => isValidTask,
   readTaskFiles: () => readTaskFiles
 });
-function debugLog(message2, ...args) {
+function debugLog(message3, ...args) {
   if (isDebugEnabled("todo-continuation")) {
-    console.error("[todo-continuation]", message2, ...args);
+    console.error("[todo-continuation]", message3, ...args);
   }
 }
 function isValidSessionId(sessionId) {
@@ -63519,15 +63519,15 @@ function collectTeamMission(teamRoot, teamName, config2) {
     const workerName = worker.name?.trim();
     if (!workerName) continue;
     const mailbox = readJsonSafe((0, import_node_path9.join)(teamRoot, "mailbox", `${workerName}.json`));
-    for (const message2 of mailbox?.messages ?? []) {
-      if (!message2.created_at || !message2.body) continue;
+    for (const message3 of mailbox?.messages ?? []) {
+      if (!message3.created_at || !message3.body) continue;
       timeline.push({
-        id: `handoff:${message2.message_id || `${workerName}:${message2.created_at}`}`,
-        at: message2.created_at,
+        id: `handoff:${message3.message_id || `${workerName}:${message3.created_at}`}`,
+        at: message3.created_at,
         kind: "handoff",
         agent: workerName,
-        detail: compactText(message2.body, 72) || "handoff",
-        sourceKey: `handoff:${message2.message_id || workerName}`
+        detail: compactText(message3.body, 72) || "handoff",
+        sourceKey: `handoff:${message3.message_id || workerName}`
       });
     }
   }
@@ -66294,10 +66294,10 @@ function checkSkillActiveState(directory, sessionId) {
   if (!ok2) {
     return { shouldBlock: false, message: "" };
   }
-  const message2 = `[SKILL ACTIVE: ${incremented.skill_name}] The "${incremented.skill_name}" skill is still executing (reinforcement ${incremented.reinforcement_count}/${incremented.max_reinforcements}). Continue working on the skill's instructions. Do not stop until the skill completes its workflow.`;
+  const message3 = `[SKILL ACTIVE: ${incremented.skill_name}] The "${incremented.skill_name}" skill is still executing (reinforcement ${incremented.reinforcement_count}/${incremented.max_reinforcements}). Continue working on the skill's instructions. Do not stop until the skill completes its workflow.`;
   return {
     shouldBlock: true,
-    message: message2,
+    message: message3,
     skillName: incremented.skill_name
   };
 }
@@ -70165,8 +70165,8 @@ var init_azure_devops = __esm({
     init_remote_url();
     AdoError = class extends Error {
       type;
-      constructor(message2, type) {
-        super(message2);
+      constructor(message3, type) {
+        super(message3);
         this.name = "AdoError";
         this.type = type;
       }
@@ -73571,7 +73571,7 @@ function telegramRequestOptions(bodyLength, botToken) {
   }
   return options;
 }
-function composeDiscordContent(message2, mention) {
+function composeDiscordContent(message3, mention) {
   const mentionParsed = parseMentionAllowedMentions(mention);
   const allowed_mentions = {
     parse: [],
@@ -73584,10 +73584,10 @@ function composeDiscordContent(message2, mention) {
     const prefix = `${mention}
 `;
     const maxBody = DISCORD_MAX_CONTENT_LENGTH - prefix.length;
-    const body = message2.length > maxBody ? message2.slice(0, maxBody - 1) + "\u2026" : message2;
+    const body = message3.length > maxBody ? message3.slice(0, maxBody - 1) + "\u2026" : message3;
     content2 = `${prefix}${body}`;
   } else {
-    content2 = message2.length > DISCORD_MAX_CONTENT_LENGTH ? message2.slice(0, DISCORD_MAX_CONTENT_LENGTH - 1) + "\u2026" : message2;
+    content2 = message3.length > DISCORD_MAX_CONTENT_LENGTH ? message3.slice(0, DISCORD_MAX_CONTENT_LENGTH - 1) + "\u2026" : message3;
   }
   return { content: content2, allowed_mentions };
 }
@@ -73796,13 +73796,13 @@ async function sendTelegram(config2, payload) {
     };
   }
 }
-function composeSlackText(message2, mention) {
+function composeSlackText(message3, mention) {
   const validatedMention = validateSlackMention(mention);
   if (validatedMention) {
     return `${validatedMention}
-${message2}`;
+${message3}`;
   }
-  return message2;
+  return message3;
 }
 async function sendSlack(config2, payload) {
   if (!config2.enabled || !config2.webhookUrl) {
@@ -77309,9 +77309,9 @@ function normalizeDiscordTagList(tagList) {
 function normalizeTelegramTagList(tagList) {
   return (tagList ?? []).map((tag) => tag.trim()).filter(Boolean).map((tag) => tag.startsWith("@") ? tag : `@${tag}`);
 }
-function prefixMessageWithTags(message2, tags) {
-  return tags.length === 0 ? message2 : `${tags.join(" ")}
-${message2}`;
+function prefixMessageWithTags(message3, tags) {
+  return tags.length === 0 ? message3 : `${tags.join(" ")}
+${message3}`;
 }
 function interpolatePath(pathTemplate, sessionId, idempotencyKey) {
   const now2 = /* @__PURE__ */ new Date();
@@ -77326,17 +77326,17 @@ async function writeToFile(config2, content2, sessionId, idempotencyKey) {
   (0, import_fs80.mkdirSync)((0, import_path96.dirname)(resolvedPath), { recursive: true });
   (0, import_fs80.writeFileSync)(resolvedPath, content2, { encoding: "utf-8", mode: 384 });
 }
-async function sendTelegram2(config2, message2, signal, _idempotencyKey) {
+async function sendTelegram2(config2, message3, signal, _idempotencyKey) {
   if (!config2.botToken || !config2.chatId || !/^[0-9]+:[A-Za-z0-9_-]+$/.test(config2.botToken)) return;
-  const response = await fetch(`https://api.telegram.org/bot${config2.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: config2.chatId, text: message2, parse_mode: "Markdown" }), signal });
+  const response = await fetch(`https://api.telegram.org/bot${config2.botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: config2.chatId, text: message3, parse_mode: "Markdown" }), signal });
   if (!response.ok) throw new Error(`Telegram API error: ${response.status}`);
 }
-async function sendDiscord2(config2, message2, signal, _idempotencyKey) {
+async function sendDiscord2(config2, message3, signal, _idempotencyKey) {
   if (!config2.webhookUrl) return;
   const url = new URL(config2.webhookUrl);
   const allowed = ["discord.com", "discordapp.com"];
   if (url.protocol !== "https:" || !allowed.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return;
-  const response = await fetch(config2.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: message2 }), signal });
+  const response = await fetch(config2.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: message3 }), signal });
   if (!response.ok) throw new Error(`Discord webhook error: ${response.status}`);
 }
 async function runLegacyCallbacks(metrics, options, signal) {
@@ -78788,8 +78788,8 @@ var init_contracts = __esm({
 });
 
 // src/team/team-instance.ts
-function fail(code, message2 = code) {
-  throw new TeamInstanceError(code, message2);
+function fail(code, message3 = code) {
+  throw new TeamInstanceError(code, message3);
 }
 function stableJson(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
@@ -79460,8 +79460,8 @@ var init_team_instance = __esm({
     init_types10();
     TeamInstanceError = class extends Error {
       code;
-      constructor(code, message2 = code, options) {
-        super(message2, options);
+      constructor(code, message3 = code, options) {
+        super(message3, options);
         this.name = "TeamInstanceError";
         this.code = code;
       }
@@ -81540,16 +81540,16 @@ function isStrictCanonicalMailboxTimestamp(value) {
   return isStrictCanonicalMailboxText(value) && Number.isFinite(Date.parse(value));
 }
 function materializeStrictCanonicalMailboxMessage(raw) {
-  const message2 = {
+  const message3 = {
     message_id: raw.message_id,
     from_worker: raw.from_worker,
     to_worker: raw.to_worker,
     body: raw.body,
     created_at: raw.created_at
   };
-  if ("notified_at" in raw) message2.notified_at = raw.notified_at;
-  if ("delivered_at" in raw) message2.delivered_at = raw.delivered_at;
-  return message2;
+  if ("notified_at" in raw) message3.notified_at = raw.notified_at;
+  if ("delivered_at" in raw) message3.delivered_at = raw.delivered_at;
+  return message3;
 }
 function validateStrictCanonicalMailboxMessage(raw, messageIndex) {
   if (!isStrictCanonicalMailboxRecord(raw)) return { kind: "malformed_message", messageIndex, field: "$" };
@@ -81585,10 +81585,10 @@ async function teamReadCanonicalMailboxMessageStrict(teamName, workerName, messa
     messages.push(validated);
   }
   const indexesByMessageId = /* @__PURE__ */ new Map();
-  for (const [messageIndex2, message3] of messages.entries()) {
-    const indexes = indexesByMessageId.get(message3.message_id) ?? [];
+  for (const [messageIndex2, message4] of messages.entries()) {
+    const indexes = indexesByMessageId.get(message4.message_id) ?? [];
     indexes.push(messageIndex2);
-    indexesByMessageId.set(message3.message_id, indexes);
+    indexesByMessageId.set(message4.message_id, indexes);
   }
   const requestedIndexes = indexesByMessageId.get(messageId) ?? [];
   if (requestedIndexes.length > 1) {
@@ -81598,11 +81598,11 @@ async function teamReadCanonicalMailboxMessageStrict(teamName, workerName, messa
   if (duplicate) return { kind: "duplicate_message_id", messageId: duplicate[0], messageIndexes: duplicate[1] };
   if (requestedIndexes.length === 0) return { kind: "message_missing" };
   const messageIndex = requestedIndexes[0];
-  const message2 = messages[messageIndex];
-  if (message2.to_worker !== workerName) return { kind: "recipient_mismatch", messageIndex };
-  if (message2.notified_at) return { kind: "replay_suppressed", message: { ...message2 }, marker: "notified_at" };
-  if (message2.delivered_at) return { kind: "replay_suppressed", message: { ...message2 }, marker: "delivered_at" };
-  return { kind: "valid", message: { ...message2 } };
+  const message3 = messages[messageIndex];
+  if (message3.to_worker !== workerName) return { kind: "recipient_mismatch", messageIndex };
+  if (message3.notified_at) return { kind: "replay_suppressed", message: { ...message3 }, marker: "notified_at" };
+  if (message3.delivered_at) return { kind: "replay_suppressed", message: { ...message3 }, marker: "delivered_at" };
+  return { kind: "valid", message: { ...message3 } };
 }
 async function writeMailbox(teamName, workerName, mailbox, cwd2) {
   const p = absPath(cwd2, TeamPaths.mailbox(teamName, workerName));
@@ -81611,21 +81611,21 @@ async function writeMailbox(teamName, workerName, mailbox, cwd2) {
 async function teamSendMessage(teamName, fromWorker, toWorker, body, cwd2) {
   return withMailboxLock(teamName, toWorker, cwd2, async () => {
     const mailbox = await readMailbox(teamName, toWorker, cwd2);
-    const message2 = {
+    const message3 = {
       message_id: (0, import_node_crypto7.randomUUID)(),
       from_worker: fromWorker,
       to_worker: toWorker,
       body,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     };
-    mailbox.messages.push(message2);
+    mailbox.messages.push(message3);
     await writeMailbox(teamName, toWorker, mailbox, cwd2);
     await teamAppendEvent(teamName, {
       type: "message_received",
       worker: toWorker,
-      message_id: message2.message_id
+      message_id: message3.message_id
     }, cwd2);
-    return message2;
+    return message3;
   });
 }
 async function teamBroadcast(teamName, fromWorker, body, cwd2) {
@@ -81943,22 +81943,22 @@ var init_allocation_policy = __esm({
 function safeString2(value) {
   return typeof value === "string" ? value : "";
 }
-function isUndelivered(message2) {
-  if (!message2 || typeof message2 !== "object") return false;
-  const candidate = message2;
+function isUndelivered(message3) {
+  if (!message3 || typeof message3 !== "object") return false;
+  const candidate = message3;
   const deliveredAt = safeString2(
     candidate.delivered_at ?? candidate.deliveredAt ?? candidate.delivered
   ).trim();
   return deliveredAt === "";
 }
-function messageFromWorker(message2) {
-  if (!message2 || typeof message2 !== "object") return "";
-  const candidate = message2;
+function messageFromWorker(message3) {
+  if (!message3 || typeof message3 !== "object") return "";
+  const candidate = message3;
   return safeString2(candidate.from_worker ?? candidate.from).trim();
 }
-function messageToWorker(message2) {
-  if (!message2 || typeof message2 !== "object") return "";
-  const candidate = message2;
+function messageToWorker(message3) {
+  if (!message3 || typeof message3 !== "object") return "";
+  const candidate = message3;
   return safeString2(candidate.to_worker ?? candidate.to).trim();
 }
 async function readMailboxFileMessages(filePath) {
@@ -82017,10 +82017,10 @@ async function scanMailboxOutstanding(mailboxDir) {
     if (!recipient) continue;
     let inbound = 0;
     const outboundBySender = /* @__PURE__ */ new Map();
-    for (const message2 of messages) {
-      if (!isUndelivered(message2)) continue;
-      if (messageToWorker(message2) === recipient) inbound += 1;
-      const from = messageFromWorker(message2);
+    for (const message3 of messages) {
+      if (!isUndelivered(message3)) continue;
+      if (messageToWorker(message3) === recipient) inbound += 1;
+      const from = messageFromWorker(message3);
       if (from) outboundBySender.set(from, (outboundBySender.get(from) ?? 0) + 1);
     }
     const recipientEntry = result[recipient] ?? { undeliveredInbound: 0, undeliveredOutbound: 0 };
@@ -83403,12 +83403,12 @@ function accountQuotaError(events) {
   if (!e) return null;
   const d = e.data ?? {};
   if (e.type === "session.error") return `session.error quota${typeof d.message === "string" ? ` "${excerpt(d.message, 120)}"` : ""}`;
-  let message2 = typeof d.errorMessage === "string" ? d.errorMessage : "";
+  let message3 = typeof d.errorMessage === "string" ? d.errorMessage : "";
   try {
-    message2 = String(JSON.parse(message2).message ?? message2);
+    message3 = String(JSON.parse(message3).message ?? message3);
   } catch {
   }
-  return [String(d.statusCode ?? "?"), typeof d.errorCode === "string" ? d.errorCode : "", message2 && `"${excerpt(message2, 120)}"`].filter(Boolean).join(" ");
+  return [String(d.statusCode ?? "?"), typeof d.errorCode === "string" ? d.errorCode : "", message3 && `"${excerpt(message3, 120)}"`].filter(Boolean).join(" ");
 }
 function isQuotaEvent(e) {
   const d = e.data ?? {};
@@ -85688,7 +85688,7 @@ async function teamRecoveryState(cwd2, teamName) {
   }
 }
 function terminalResult(input, recoveryId, error2) {
-  const message2 = error2 === "team_not_found" ? "The requested team does not exist." : error2 === "runtime_v2_required" ? "Dead-worker recovery requires runtime v2 state." : error2 === "invalid_persisted_state" ? "The authoritative team config is unreadable or malformed." : "The persistent runtime owner identity cannot be verified.";
+  const message3 = error2 === "team_not_found" ? "The requested team does not exist." : error2 === "runtime_v2_required" ? "Dead-worker recovery requires runtime v2 state." : error2 === "invalid_persisted_state" ? "The authoritative team config is unreadable or malformed." : "The persistent runtime owner identity cannot be verified.";
   return {
     outcome: "failed",
     committed: false,
@@ -85698,7 +85698,7 @@ function terminalResult(input, recoveryId, error2) {
     teamName: input.teamName,
     workerName: input.workerName,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    message: message2
+    message: message3
   };
 }
 function persistTerminalResult(input, recoveryId, result) {
@@ -86569,7 +86569,7 @@ function isCmuxDialectFailure(error2) {
   return /(?:unknown|unrecognized|invalid|unsupported) (?:command|subcommand|option)|no such (?:command|subcommand)|Found argument .*--surface.*wasn't expected|unexpected argument|unexpected option/i.test(text4);
 }
 function redactCmuxFailureMessage(error2, argLists) {
-  let message2 = getCmuxErrorText(error2);
+  let message3 = getCmuxErrorText(error2);
   const commandNames = new Set(argLists.map((args) => args[0]).filter(Boolean));
   const sensitiveArgs = [...new Set(argLists.flatMap((args) => args).flatMap((arg) => {
     if (!arg || commandNames.has(arg)) return [];
@@ -86577,9 +86577,9 @@ function redactCmuxFailureMessage(error2, argLists) {
     return [arg, ...fragments];
   }))].sort((a, b) => b.length - a.length);
   for (const arg of sensitiveArgs) {
-    message2 = message2.split(arg).join("[redacted]");
+    message3 = message3.split(arg).join("[redacted]");
   }
-  return message2;
+  return message3;
 }
 async function cmuxExecPrimaryWithLegacyFallback(primaryArgs, legacyArgs) {
   try {
@@ -86832,8 +86832,8 @@ async function verifyCmuxTargetOwnershipWithRetry(target, dependencies) {
   }
   return membership;
 }
-async function invokeDirectMailboxEffect(target, message2, dependencies = defaultDirectMailboxEffectDependencies) {
-  if (!target.paneId || !message2) return { kind: "not_attempted", reason: "mailbox_target_missing" };
+async function invokeDirectMailboxEffect(target, message3, dependencies = defaultDirectMailboxEffectDependencies) {
+  if (!target.paneId || !message3) return { kind: "not_attempted", reason: "mailbox_target_missing" };
   if (target.provider === "cmux" && !isCmuxContext()) {
     return { kind: "not_attempted", reason: "mailbox_membership_unresolvable" };
   }
@@ -86862,7 +86862,7 @@ async function invokeDirectMailboxEffect(target, message2, dependencies = defaul
       dependencies.serverIdentityDependencies
     );
     if (inputBlockReason) return { kind: "not_attempted", reason: inputBlockReason };
-    const text4 = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message2}`.slice(0, 200) : message2;
+    const text4 = target.recipientRole === "leader" ? `[OMC_TMUX_INJECT] ${message3}`.slice(0, 200) : message3;
     try {
       const literal3 = await runGuardedNativeTmuxCommand(
         tmuxServerIdentity,
@@ -86916,7 +86916,7 @@ async function invokeDirectMailboxEffect(target, message2, dependencies = defaul
     }
   }
   try {
-    const notified = target.recipientRole === "leader" ? await dependencies.sendLeader(target.providerTarget, target.paneId, message2) : await dependencies.sendWorker(target.providerTarget, target.paneId, message2);
+    const notified = target.recipientRole === "leader" ? await dependencies.sendLeader(target.providerTarget, target.paneId, message3) : await dependencies.sendWorker(target.providerTarget, target.paneId, message3);
     return notified ? {
       kind: "confirmed",
       transport: "tmux_send_keys",
@@ -87007,8 +87007,8 @@ function redactBoundedDiagnostic(error2, maxLength = 240) {
   const redacted = raw.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 <redacted>").replace(/("--?[A-Za-z0-9_-]*(?:api[-_]?key|token|secret|password|credential|auth)[A-Za-z0-9_-]*"\s*,\s*)"[^"]*"/gi, '$1"<redacted>"').replace(/("[A-Za-z_][A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIALS?)"\s*:\s*)"[^"]*"/gi, '$1"<redacted>"').replace(/(--?[A-Za-z0-9_-]*(?:api[-_]?key|token|secret|password|credential|auth)[A-Za-z0-9_-]*)(?:=|\s+)(?:'[^']*'|"[^"]*"|\S+)/gi, "$1=<redacted>").replace(/\b[A-Za-z_][A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIALS?)=[^\s;]+/gi, "<redacted>").replace(/\s+/g, " ").trim();
   return redacted.length > maxLength ? `${redacted.slice(0, maxLength)}\u2026` : redacted;
 }
-function logWorkerSpawnDiagnostic(message2) {
-  process.stderr.write(`[team/tmux-session] ${message2}
+function logWorkerSpawnDiagnostic(message3) {
+  process.stderr.write(`[team/tmux-session] ${message3}
 `);
 }
 function paneCurrentCommandLooksReady(command) {
@@ -88440,11 +88440,11 @@ async function capturePaneObservation(paneId, opts = {}) {
     return { ok: true, captured: result.stdout };
   } catch (error2) {
     const operation = (opts.operation ?? "capture").replace(/[^A-Za-z0-9._-]/g, "?").slice(0, 64);
-    const message2 = redactBoundedDiagnostic(error2);
+    const message3 = redactBoundedDiagnostic(error2);
     logWorkerSpawnDiagnostic(
-      `pane capture failed operation=${operation} pane=${safePaneDiagnosticToken(paneId)} error=${JSON.stringify(message2)}`
+      `pane capture failed operation=${operation} pane=${safePaneDiagnosticToken(paneId)} error=${JSON.stringify(message3)}`
     );
-    return { ok: false, error: message2 };
+    return { ok: false, error: message3 };
   }
 }
 async function capturePaneAsync(paneId, opts = {}) {
@@ -88785,8 +88785,8 @@ async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
   if (selector) return "selector_persistent";
   return void 0;
 }
-async function deliverStartupInbox(context, message2, options = {}) {
-  if (message2.length > 200) return { ok: false, reason: "message_too_long" };
+async function deliverStartupInbox(context, message3, options = {}) {
+  if (message3.length > 200) return { ok: false, reason: "message_too_long" };
   const ready = await waitForStartupPaneReady(context, { attemptAlreadyFenced: options.attemptAlreadyFenced });
   if (!ready.ok) return { ok: false, reason: ready.reason };
   try {
@@ -88797,7 +88797,7 @@ async function deliverStartupInbox(context, message2, options = {}) {
     if (preInputBlockReason) return { ok: false, reason: preInputBlockReason };
     await sendLiteralPaneText(
       context.ownership.paneId,
-      message2,
+      message3,
       context.ownership.tmuxServerIdentity
     );
     await sleep5(100);
@@ -88844,7 +88844,7 @@ async function probeStartupPaneActivity(context, options = {}) {
   if (detectPaneTrustPromptKind(observation.captured, context.provider)) return "idle";
   return paneHasActiveTask(observation.captured, context.provider) ? "busy" : "idle";
 }
-async function retryStartupInboxSubmit(context, message2, options = {}) {
+async function retryStartupInboxSubmit(context, message3, options = {}) {
   if (!await startupContextIsActive(context, options.attemptAlreadyFenced)) return "unavailable";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
@@ -88857,7 +88857,7 @@ async function retryStartupInboxSubmit(context, message2, options = {}) {
   });
   if (!observation.ok || detectPaneTrustPromptKind(observation.captured, context.provider)) return "unavailable";
   if (paneHasActiveTask(observation.captured, context.provider)) return "pane_busy";
-  if (!paneTailContainsLiteralLine(observation.captured, message2)) return "unavailable";
+  if (!paneTailContainsLiteralLine(observation.captured, message3)) return "unavailable";
   try {
     await sendTeamPaneKey(context.ownership.paneId, "Enter", context.ownership.tmuxServerIdentity);
     return "resubmitted";
@@ -88876,14 +88876,14 @@ function shouldAttemptAdaptiveRetry(args) {
   if (!paneLooksReady(args.latestCapture)) return false;
   return true;
 }
-async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) {
-  if (message2.length > 200) {
-    console.warn(`[tmux-session] sendToWorker: message rejected (${message2.length} chars exceeds 200 char limit)`);
+async function sendToWorker(_sessionName, paneId, message3, tmuxServerIdentity) {
+  if (message3.length > 200) {
+    console.warn(`[tmux-session] sendToWorker: message rejected (${message3.length} chars exceeds 200 char limit)`);
     return false;
   }
   if (!isCmuxSurfaceTarget(paneId) && !tmuxServerIdentity) return false;
   if (tmuxServerIdentity) {
-    return guardedSendLiteralAndEnter(paneId, message2, tmuxServerIdentity);
+    return guardedSendLiteralAndEnter(paneId, message3, tmuxServerIdentity);
   }
   try {
     const sendKey = async (key) => {
@@ -88914,7 +88914,7 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
       return false;
     }
     if (isCmuxSurfaceTarget(paneId)) {
-      await cmuxSendSurface(paneId, message2);
+      await cmuxSendSurface(paneId, message3);
     } else {
       return false;
     }
@@ -88942,7 +88942,7 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
       await sleep5(140);
       const checkObservation = await capturePaneObservation(paneId, { operation: "worker-direct-submit-check" });
       if (!checkObservation.ok || !checkObservation.captured.trim() || paneHasTrustPrompt(checkObservation.captured)) return false;
-      if (!paneTailContainsLiteralLine(checkObservation.captured, message2)) return true;
+      if (!paneTailContainsLiteralLine(checkObservation.captured, message3)) return true;
       await sleep5(140);
     }
     if (await paneInCopyMode(paneId)) {
@@ -88955,7 +88955,7 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
     if (shouldAttemptAdaptiveRetry({
       paneBusy,
       latestCapture: finalCapture,
-      message: message2,
+      message: message3,
       paneInCopyMode: paneModeBeforeAdaptiveRetry,
       retriesAttempted: 0
     })) {
@@ -88970,7 +88970,7 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
       if (isCmuxSurfaceTarget(paneId)) {
         const retryInputObservation = await capturePaneObservation(paneId, { operation: "worker-direct-retry-input" });
         if (!retryInputObservation.ok || !retryInputObservation.captured.trim() || paneHasTrustPrompt(retryInputObservation.captured)) return false;
-        await cmuxSendSurface(paneId, message2);
+        await cmuxSendSurface(paneId, message3);
       } else {
         return false;
       }
@@ -88982,7 +88982,7 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
         await sleep5(140);
         const retryObservation = await capturePaneObservation(paneId, { operation: "worker-direct-retry-check" });
         if (!retryObservation.ok || !retryObservation.captured.trim() || paneHasTrustPrompt(retryObservation.captured)) return false;
-        if (!paneTailContainsLiteralLine(retryObservation.captured, message2)) return true;
+        if (!paneTailContainsLiteralLine(retryObservation.captured, message3)) return true;
       }
     }
     if (await paneInCopyMode(paneId)) {
@@ -88996,13 +88996,13 @@ async function sendToWorker(_sessionName, paneId, message2, tmuxServerIdentity) 
     if (!finalCheckObservation.ok || !finalCheckObservation.captured.trim() || paneHasTrustPrompt(finalCheckObservation.captured)) {
       return false;
     }
-    return !paneTailContainsLiteralLine(finalCheckObservation.captured, message2);
+    return !paneTailContainsLiteralLine(finalCheckObservation.captured, message3);
   } catch {
     return false;
   }
 }
-async function injectToLeaderPane(sessionName2, leaderPaneId, message2, tmuxServerIdentity) {
-  const prefixed = `[OMC_TMUX_INJECT] ${message2}`.slice(0, 200);
+async function injectToLeaderPane(sessionName2, leaderPaneId, message3, tmuxServerIdentity) {
+  const prefixed = `[OMC_TMUX_INJECT] ${message3}`.slice(0, 200);
   if (!isCmuxSurfaceTarget(leaderPaneId) && !tmuxServerIdentity) return false;
   if (tmuxServerIdentity) {
     return guardedSendLiteralAndEnter(leaderPaneId, prefixed, tmuxServerIdentity);
@@ -89494,8 +89494,8 @@ var init_tmux_session = __esm({
       partialSession;
       creationEvidence;
       cleanupStatus = "unknown";
-      constructor(message2, partialSession, creationEvidence) {
-        super(message2);
+      constructor(message3, partialSession, creationEvidence) {
+        super(message3);
         this.name = "TeamSessionCreationError";
         this.partialSession = {
           ...partialSession,
@@ -89845,7 +89845,7 @@ async function composeInitialInbox(teamName, workerName, content2, cwd2, cliOutp
 ${cliOutputContract}` : content2;
   await (0, import_promises19.writeFile)(inboxPath, finalContent, "utf-8");
 }
-async function appendToInbox(teamName, workerName, message2, cwd2) {
+async function appendToInbox(teamName, workerName, message3, cwd2) {
   const safeTeam = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
   const inboxPath = (0, import_path112.join)(teamStateRoot(cwd2, safeTeam), "workers", safeWorker, "inbox.md");
@@ -89854,7 +89854,7 @@ async function appendToInbox(teamName, workerName, message2, cwd2) {
   await (0, import_promises19.appendFile)(inboxPath, `
 
 ---
-${message2}`, "utf-8");
+${message3}`, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName, cwd2) {
   const root2 = teamStateRoot(cwd2, sanitizeName(teamName));
@@ -90417,8 +90417,8 @@ function evaluateMailboxNotificationGuard(input, state) {
   if (state.mailbox.kind !== "valid") {
     return { kind: "suppress", reason: mailboxFailureReason(state.mailbox), safePendingRequest, target };
   }
-  const message2 = state.mailbox.message;
-  if (message2.message_id !== input.messageId || message2.to_worker !== input.recipient) {
+  const message3 = state.mailbox.message;
+  if (message3.message_id !== input.messageId || message3.to_worker !== input.recipient) {
     return { kind: "suppress", reason: "mailbox_recipient_mismatch", safePendingRequest, target };
   }
   if (!targetHasPersistedAuthority(state.config, target)) {
@@ -90457,7 +90457,7 @@ function evaluateMailboxNotificationGuard(input, state) {
     kind: "allow",
     target,
     request: { ...request },
-    message: { ...message2 },
+    message: { ...message3 },
     securityTuple: {
       configName: state.config.name,
       configInstanceId,
@@ -90483,8 +90483,8 @@ function evaluateMailboxNotificationGuard(input, state) {
       requestFallbackAllowed: request.fallback_allowed,
       requestStatus: "pending",
       mailboxOwner: input.recipient,
-      mailboxMessageId: message2.message_id,
-      mailboxRecipient: message2.to_worker,
+      mailboxMessageId: message3.message_id,
+      mailboxRecipient: message3.to_worker,
       provider: target.provider,
       providerTarget: target.providerTarget,
       providerPaneId: target.paneId
@@ -90541,8 +90541,8 @@ function fallbackTransportForPreference(preference) {
   return "hook";
 }
 function notifyExceptionReason(error2) {
-  const message2 = error2 instanceof Error ? error2.message : String(error2);
-  return `notify_exception:${message2}`;
+  const message3 = error2 instanceof Error ? error2.message : String(error2);
+  return `notify_exception:${message3}`;
 }
 function isExactText2(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -90816,7 +90816,7 @@ async function queueInboxInstruction(params) {
   return outcome;
 }
 async function queueDirectMailboxMessage(params) {
-  const message2 = await params.deps.sendDirectMessage(params.teamName, params.fromWorker, params.toWorker, params.body, params.cwd);
+  const message3 = await params.deps.sendDirectMessage(params.teamName, params.fromWorker, params.toWorker, params.body, params.cwd);
   const queued = await enqueueDispatchRequest(
     params.teamName,
     {
@@ -90825,7 +90825,7 @@ async function queueDirectMailboxMessage(params) {
       worker_index: params.toWorkerIndex,
       pane_id: params.toPaneId,
       trigger_message: params.triggerMessage,
-      message_id: message2.message_id,
+      message_id: message3.message_id,
       transport_preference: params.transportPreference,
       fallback_allowed: params.fallbackAllowed
     },
@@ -90837,13 +90837,13 @@ async function queueDirectMailboxMessage(params) {
       transport: "none",
       reason: "duplicate_pending_dispatch_request",
       request_id: queued.request.request_id,
-      message_id: message2.message_id
+      message_id: message3.message_id
     };
   }
   const notifyOutcome = await Promise.resolve(params.notify(
     { workerName: params.toWorker, workerIndex: params.toWorkerIndex, paneId: params.toPaneId },
     params.triggerMessage,
-    { request: queued.request, message_id: message2.message_id }
+    { request: queued.request, message_id: message3.message_id }
   )).catch((error2) => ({
     ok: false,
     transport: fallbackTransportForPreference(params.transportPreference),
@@ -90852,7 +90852,7 @@ async function queueDirectMailboxMessage(params) {
   const { notification_managed: notificationManaged, ...outcome } = {
     ...notifyOutcome,
     request_id: queued.request.request_id,
-    message_id: message2.message_id,
+    message_id: message3.message_id,
     to_worker: params.toWorker
   };
   if (notificationManaged) return outcome;
@@ -90861,16 +90861,16 @@ async function queueDirectMailboxMessage(params) {
       teamName: params.teamName,
       request: queued.request,
       cwd: params.cwd,
-      messageId: message2.message_id
+      messageId: message3.message_id
     });
     return outcome;
   }
   if (isConfirmedNotification(outcome)) {
-    await params.deps.markMessageNotified(params.teamName, params.toWorker, message2.message_id, params.cwd);
+    await params.deps.markMessageNotified(params.teamName, params.toWorker, message3.message_id, params.cwd);
     await markDispatchRequestNotified(
       params.teamName,
       queued.request.request_id,
-      { message_id: message2.message_id, last_reason: outcome.reason },
+      { message_id: message3.message_id, last_reason: outcome.reason },
       params.cwd
     );
   } else {
@@ -90878,7 +90878,7 @@ async function queueDirectMailboxMessage(params) {
       teamName: params.teamName,
       request: queued.request,
       reason: outcome.reason,
-      messageId: message2.message_id,
+      messageId: message3.message_id,
       cwd: params.cwd
     });
   }
@@ -90904,14 +90904,14 @@ async function queueBroadcastMailboxMessage(params) {
       continue;
     }
     const triggerMessage = params.triggerFor(recipient.workerName);
-    const message2 = await params.deps.sendDirectMessage(
+    const message3 = await params.deps.sendDirectMessage(
       params.teamName,
       params.fromWorker,
       recipient.workerName,
       params.body,
       params.cwd
     );
-    persistedRecipients.push({ ...recipient, triggerMessage, message: message2 });
+    persistedRecipients.push({ ...recipient, triggerMessage, message: message3 });
   }
   for (const recipient of persistedRecipients) {
     const queued = await enqueueDispatchRequest(
@@ -91527,8 +91527,8 @@ function gitOrNull(args, cwd2) {
 function countUnmergedWorkerCommits(repoRoot3, wtPath, baseCommit, gitDirArgs = [], contained = []) {
   return countUnmergedCommits(repoRoot3, gitOrNull([...gitDirArgs, "rev-parse", "HEAD"], wtPath), baseCommit, contained);
 }
-function commitCheckFailedError(message2) {
-  const error2 = new Error(`worktree_commit_check_failed: ${message2}`);
+function commitCheckFailedError(message3) {
+  const error2 = new Error(`worktree_commit_check_failed: ${message3}`);
   error2.code = "worktree_commit_check_failed";
   return error2;
 }
@@ -91720,9 +91720,9 @@ function readMetadataResult(repoRoot3, teamName) {
       const entries = JSON.parse((0, import_node_fs16.readFileSync)(metaPath, "utf-8"));
       for (const entry2 of entries) byWorker.set(entry2.workerName, entry2);
     } catch (err) {
-      const message2 = err instanceof Error ? err.message : String(err);
-      issues.push({ path: metaPath, message: message2 });
-      process.stderr.write(`[omc] warning: worktrees.json parse error at ${metaPath}: ${message2}
+      const message3 = err instanceof Error ? err.message : String(err);
+      issues.push({ path: metaPath, message: message3 });
+      process.stderr.write(`[omc] warning: worktrees.json parse error at ${metaPath}: ${message3}
 `);
     }
   }
@@ -91742,8 +91742,8 @@ function listRootAgentsBackupIssues(repoRoot3, teamName, entries) {
     try {
       JSON.parse((0, import_node_fs16.readFileSync)(backupPath, "utf-8"));
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      issues.push({ path: backupPath, message: `worktree_root_agents_backup_unreadable:${workerName}:${message2}` });
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      issues.push({ path: backupPath, message: `worktree_root_agents_backup_unreadable:${workerName}:${message3}` });
       continue;
     }
     if (!knownWorkers.has(sanitizeName(workerName))) {
@@ -92578,13 +92578,13 @@ function parseCliWorkerVerdict(raw) {
     if (typeof severity !== "string" || !VALID_SEVERITIES.has(severity)) {
       throw new Error(`verdict_finding_${idx}_invalid_severity:${String(severity)}`);
     }
-    const message2 = f.message;
-    if (typeof message2 !== "string" || !message2) {
+    const message3 = f.message;
+    if (typeof message3 !== "string" || !message3) {
       throw new Error(`verdict_finding_${idx}_missing_message`);
     }
     const finding = {
       severity,
-      message: message2
+      message: message3
     };
     if (typeof f.file === "string" && f.file) finding.file = f.file;
     if (typeof f.line === "number" && Number.isFinite(f.line)) finding.line = f.line;
@@ -92801,14 +92801,14 @@ async function ensureLeaderInbox(teamName, cwd2) {
   }
   return inboxPath;
 }
-async function appendToLeaderInbox(teamName, message2, cwd2) {
+async function appendToLeaderInbox(teamName, message3, cwd2) {
   const inboxPath = leaderInboxPath(teamName, cwd2);
   validateResolvedPath(inboxPath, teamStateRoot(cwd2, sanitizeName(teamName)));
   await (0, import_promises21.mkdir)((0, import_path114.dirname)(inboxPath), { recursive: true });
   await (0, import_promises21.appendFile)(inboxPath, `
 
 ---
-${message2}`, "utf-8");
+${message3}`, "utf-8");
 }
 function extendLeaderBootstrapPrompt(teamName, cwd2) {
   const safe2 = sanitizeName(teamName);
@@ -93312,7 +93312,7 @@ async function startMergeOrchestrator(config2) {
             return "unknown";
           }
         })();
-        const message2 = formatRebaseConflictForWorker({
+        const message3 = formatRebaseConflictForWorker({
           workerName: other.workerName,
           workerBranch: other.workerBranch,
           leaderBranch: config2.leaderBranch,
@@ -93322,7 +93322,7 @@ async function startMergeOrchestrator(config2) {
           observedAt: Date.now()
         });
         try {
-          await appendToInbox(config2.teamName, other.workerName, message2, config2.cwd);
+          await appendToInbox(config2.teamName, other.workerName, message3, config2.cwd);
         } catch {
         }
         await appendEvent(config2.repoRoot, config2.teamName, {
@@ -93368,7 +93368,7 @@ async function startMergeOrchestrator(config2) {
           ).trim();
         } catch {
         }
-        const message2 = formatMergeConflictForLeader({
+        const message3 = formatMergeConflictForLeader({
           workerName: entry2.workerName,
           workerBranch: entry2.workerBranch,
           leaderBranch: config2.leaderBranch,
@@ -93377,7 +93377,7 @@ async function startMergeOrchestrator(config2) {
           observedAt: Date.now()
         });
         try {
-          await appendToLeaderInbox(config2.teamName, message2, config2.cwd);
+          await appendToLeaderInbox(config2.teamName, message3, config2.cwd);
         } catch {
         }
         await appendEvent(config2.repoRoot, config2.teamName, {
@@ -93394,7 +93394,7 @@ async function startMergeOrchestrator(config2) {
         mergerPath
       );
       if (!result.success) {
-        const message2 = formatMergeConflictForLeader({
+        const message3 = formatMergeConflictForLeader({
           workerName: entry2.workerName,
           workerBranch: entry2.workerBranch,
           leaderBranch: config2.leaderBranch,
@@ -93403,7 +93403,7 @@ async function startMergeOrchestrator(config2) {
           observedAt: Date.now()
         });
         try {
-          await appendToLeaderInbox(config2.teamName, message2, config2.cwd);
+          await appendToLeaderInbox(config2.teamName, message3, config2.cwd);
         } catch {
         }
         await appendEvent(config2.repoRoot, config2.teamName, {
@@ -93642,11 +93642,11 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
           } catch {
           }
         }
-        const message2 = `## Teardown audit: unmerged worker branches at shutdown
+        const message3 = `## Teardown audit: unmerged worker branches at shutdown
 
 ${unmerged.map((u) => `- ${u.workerName}: ${u.reason}`).join("\n")}`;
         try {
-          await appendToLeaderInbox(config2.teamName, message2, config2.cwd);
+          await appendToLeaderInbox(config2.teamName, message3, config2.cwd);
         } catch {
         }
       }
@@ -93689,7 +93689,7 @@ async function recoverFromRestart(config2) {
   for (const entry2 of entries) {
     if (!isRebaseInProgress(entry2.path)) continue;
     orphanedRebases.push(entry2.workerName);
-    const message2 = `### Runtime restart recovery \u2014 your branch is mid-rebase
+    const message3 = `### Runtime restart recovery \u2014 your branch is mid-rebase
 
 Runtime restarted while your branch was mid-rebase onto \`${config2.leaderBranch}\`.
 
@@ -93698,7 +93698,7 @@ Runtime restarted while your branch was mid-rebase onto \`${config2.leaderBranch
 Cadence remains paused. Resolve and \`git rebase --continue\`, or \`git rebase --abort\` to bail.
 Cadence resumes once the git rebase state is gone.`;
     try {
-      await appendToInbox(config2.teamName, entry2.workerName, message2, config2.cwd);
+      await appendToInbox(config2.teamName, entry2.workerName, message3, config2.cwd);
     } catch {
     }
   }
@@ -94036,12 +94036,12 @@ var init_scaling = __esm({
 });
 
 // src/team/recovery-saga.ts
-function failure2(input, error2, message2, reservationsWritten = false) {
+function failure2(input, error2, message3, reservationsWritten = false) {
   return {
     outcome: "failed",
     committed: false,
     error: error2,
-    message: message2,
+    message: message3,
     ...reservationsWritten ? { reservationsWritten: true } : {},
     requestId: input.requestId,
     recoveryId: input.recoveryId,
@@ -94312,7 +94312,7 @@ var init_routes = __esm({
       route({ id: "core.teams.GET", area: "core", resource: "teams", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: ["$top", "$skip"] }),
       route({ id: "git.repositories.GET", area: "git", resource: "repositories", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId"], queryParams: [] }),
       // Work items (intake, check, progress).
-      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand"] }),
+      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand", "ids", "fields", "errorPolicy"] }),
       route({
         id: "wit.workItems.PATCH",
         area: "wit",
@@ -94733,7 +94733,11 @@ var init_guard = __esm({
       "searchCriteria.status": /^(?:active|completed)$/,
       // A satisfied dependency: a completed (merged) PR into the base.
       "searchCriteria.targetRefName": /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
-      continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/
+      continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/,
+      // The board's batched work item read (tracker.ts peekItems): at most 200 ids, field reference names, missing ids omitted.
+      ids: /^[1-9]\d{0,9}(?:,[1-9]\d{0,9}){0,199}$/,
+      fields: /^[A-Za-z][\w.]{0,127}(?:,[A-Za-z][\w.]{0,127}){0,15}$/,
+      errorPolicy: /^omit$/
     };
     READ_QUERY_VALUE = {
       branchName: /^refs\/(?:pull\/[1-9]\d{0,9}\/merge|heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400})$/u
@@ -94861,8 +94865,8 @@ var init_exec = __esm({
     import_child_process28 = require("child_process");
     init_guard();
     ShipSafetyError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "ShipSafetyError";
       }
     };
@@ -96578,8 +96582,8 @@ var init_redact2 = __esm({
 function formatGateHits(hits) {
   return hits.map((h) => `${h.file}:${h.line}: ${h.rule} ${h.masked}`).join("\n");
 }
-function fail2(where, message2) {
-  throw new CassetteFormatError(`${where}: ${message2}`);
+function fail2(where, message3) {
+  throw new CassetteFormatError(`${where}: ${message3}`);
 }
 function parseManifest(value, where = MANIFEST_FILE) {
   if (!isRecord8(value)) fail2(where, "not a JSON object");
@@ -99120,8 +99124,8 @@ function workerInstructionStateRoot(cwd2, teamName, platform = process.platform)
 }
 function buildStartupInboxTrigger(cwd2, teamName, workerName, attemptId, platform = process.platform) {
   const suffix = ` [launch:${attemptId.slice(0, 12)}]`;
-  const message2 = generateTriggerMessage(teamName, workerName, workerInstructionStateRoot(cwd2, teamName, platform)) + suffix;
-  if (platform !== "win32" || message2.length <= 200) return message2;
+  const message3 = generateTriggerMessage(teamName, workerName, workerInstructionStateRoot(cwd2, teamName, platform)) + suffix;
+  if (platform !== "win32" || message3.length <= 200) return message3;
   return `Read workers/${workerName}/inbox.md under the OMC_TEAM_STATE_ROOT environment variable; execute now, report concrete progress.${suffix}`;
 }
 function setRuntimeOwnerRecoveryClient(client) {
@@ -99209,8 +99213,8 @@ async function recoverDeadWorkerV2(teamName, cwd2, { workerName, requestId = (0,
     if (instanceId === void 0) throw new Error("team_instance_authority_missing");
     createTeamInstanceBinding({ teamName, cwd: cwd2, instanceId });
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    const errorCode2 = message2 === "team_not_found" ? "team_not_found" : message2 === "runtime_v2_required" ? "runtime_v2_required" : "invalid_persisted_state";
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    const errorCode2 = message3 === "team_not_found" ? "team_not_found" : message3 === "runtime_v2_required" ? "runtime_v2_required" : "invalid_persisted_state";
     return {
       outcome: "failed",
       committed: false,
@@ -99220,7 +99224,7 @@ async function recoverDeadWorkerV2(teamName, cwd2, { workerName, requestId = (0,
       teamName,
       workerName,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      message: message2
+      message: message3
     };
   }
   const ownerInput = { requestId, cwd: cwd2, teamName, workerName, instanceId, timeoutMs };
@@ -99549,8 +99553,8 @@ async function getWorkerExecutionLiveness(teamName, cwd2, instanceId, worker) {
 }
 function isTeamInstanceBoundaryError(error2) {
   const code = error2 && typeof error2 === "object" && "code" in error2 ? error2.code : void 0;
-  const message2 = error2 instanceof Error ? error2.message : String(error2);
-  return typeof code === "string" && code.startsWith("team_instance_") || message2.startsWith("team_instance_");
+  const message3 = error2 instanceof Error ? error2.message : String(error2);
+  return typeof code === "string" && code.startsWith("team_instance_") || message3.startsWith("team_instance_");
 }
 function isFreshTimestamp2(value, maxAgeMs = MONITOR_SIGNAL_STALE_MS) {
   if (!value) return false;
@@ -100003,8 +100007,8 @@ async function spawnSdkV2Worker(opts, sdk) {
     transportPreference: "prompt_stdin",
     fallbackAllowed: false,
     inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}:${attempt.attempt_id}`,
-    notify: async (_target, message2) => {
-      ringDoorbell(stateRoot2, opts.workerName, { kind: "prompt", text: message2, from: "leader-fixed" });
+    notify: async (_target, message3) => {
+      ringDoorbell(stateRoot2, opts.workerName, { kind: "prompt", text: message3, from: "leader-fixed" });
       const settled = await waitForStartupEvidenceBudget(
         async () => {
           if (await hasCurrentWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, attempt.attempt_id)) return true;
@@ -100452,12 +100456,12 @@ async function buildRecoveryPaneContext(input, sagaInput, worker, descriptor, ow
     ...startupContext ? { startupContext } : {}
   };
 }
-function recoveryError(input, recoveryId, error2, message2) {
+function recoveryError(input, recoveryId, error2, message3) {
   return {
     outcome: "failed",
     committed: false,
     error: error2,
-    message: message2,
+    message: message3,
     requestId: input.requestId,
     recoveryId,
     teamName: input.teamName,
@@ -101848,9 +101852,9 @@ ${recoveryContract}` : ""}`;
     const result = await runRecoverySaga(sagaInput, deps);
     return finalizeRecoveryOwnerResult(input, recoveryId, result);
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    const code = message2 === "team_not_found" ? "team_not_found" : message2 === "invalid_persisted_state" ? "invalid_persisted_state" : message2 === "stale_state_revision" ? "stale_state_revision" : message2 === "runtime_owner_fence_lost" ? "runtime_owner_fence_lost" : message2 === "worker_cleanup_incomplete" ? "worker_cleanup_incomplete" : message2.startsWith("team_instance_") ? "invalid_persisted_state" : "runtime_owner_unavailable";
-    const result = recoveryError(input, recoveryId, code, message2);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    const code = message3 === "team_not_found" ? "team_not_found" : message3 === "invalid_persisted_state" ? "invalid_persisted_state" : message3 === "stale_state_revision" ? "stale_state_revision" : message3 === "runtime_owner_fence_lost" ? "runtime_owner_fence_lost" : message3 === "worker_cleanup_incomplete" ? "worker_cleanup_incomplete" : message3.startsWith("team_instance_") ? "invalid_persisted_state" : "runtime_owner_unavailable";
+    const result = recoveryError(input, recoveryId, code, message3);
     return ownerBound && (code === "team_not_found" || code === "invalid_persisted_state") ? await finalizeBoundRecoveryOwnerTerminal(input, recoveryId, result) : code === "team_not_found" || code === "invalid_persisted_state" ? persistRecoveryFinal(input, recoveryId, result) : result;
   }
 }
@@ -105240,12 +105244,12 @@ function rotateLogIfNeeded(logPath) {
   } catch {
   }
 }
-function log(message2) {
+function log(message3) {
   try {
     ensureStateDir3();
     rotateLogIfNeeded(LOG_FILE_PATH);
     const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
-    const logLine = `[${timestamp2}] ${redactTokens(message2)}
+    const logLine = `[${timestamp2}] ${redactTokens(message3)}
 `;
     (0, import_fs107.appendFileSync)(LOG_FILE_PATH, logLine, { mode: SECURE_FILE_MODE2 });
   } catch {
@@ -107354,7 +107358,7 @@ function buildAgentsOverlay(directory, options) {
   if (!result.map) {
     return { message: "", hasCodebaseMap: false };
   }
-  const message2 = `<session-restore>
+  const message3 = `<session-restore>
 
 [CODEBASE MAP]
 
@@ -107368,7 +107372,7 @@ ${result.map}
 ---
 
 `;
-  return { message: message2, hasCodebaseMap: true };
+  return { message: message3, hasCodebaseMap: true };
 }
 var init_agents_overlay = __esm({
   "src/hooks/agents-overlay.ts"() {
@@ -110352,8 +110356,8 @@ var require_regexp_tree = __commonJS({
     function unexpectedEndOfInput() {
       parseError("Unexpected end of input.");
     }
-    function parseError(message2) {
-      throw new SyntaxError(message2);
+    function parseError(message3) {
+      throw new SyntaxError(message3);
     }
     module2.exports = yyparse;
   }
@@ -117433,8 +117437,8 @@ var init_state5 = __esm({
       blocked: []
     };
     ShipStateError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "ShipStateError";
       }
     };
@@ -117767,7 +117771,7 @@ function commitLaneWork(input) {
     return { ok: false, refusal: "error", reason: `the engine commit failed: ${errText3(err)}` };
   }
 }
-function conflictFixStart(repoRoot3, head, base, message2) {
+function conflictFixStart(repoRoot3, head, base, message3) {
   const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"], GIT_TIMEOUT_MS3).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
@@ -117782,7 +117786,7 @@ function conflictFixStart(repoRoot3, head, base, message2) {
   }
   const [tree, ...conflicted] = out.split("\0").filter(Boolean);
   if (!tree || !HEX.test(tree)) throw new Error(`git merge-tree printed no tree (${JSON.stringify(out.slice(0, 80))})`);
-  const sha2 = runHostGit(repoRoot3, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message2, tree], GIT_TIMEOUT_MS3, env2).trim();
+  const sha2 = runHostGit(repoRoot3, ["commit-tree", "--no-gpg-sign", "-p", head, "-p", base, "-m", message3, tree], GIT_TIMEOUT_MS3, env2).trim();
   if (!HEX.test(sha2)) throw new Error(`git commit-tree printed ${JSON.stringify(sha2.slice(0, 80))}`);
   return { sha: sha2, conflicted: [...new Set(conflicted)] };
 }
@@ -118042,8 +118046,8 @@ var init_exec2 = __esm({
     init_body_file();
     FACTORY_BRANCH_PREFIX = "factory/";
     FactorySafetyError = class extends ShipSafetyError {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "FactorySafetyError";
       }
     };
@@ -120124,8 +120128,8 @@ var init_ledger2 = __esm({
     import_path178 = require("path");
     init_atomic_write();
     LedgerError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "LedgerError";
       }
     };
@@ -120517,8 +120521,8 @@ var init_state6 = __esm({
     HEAL_APPROVE_GATE = "heal-approve";
     HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
     FactoryStateError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "FactoryStateError";
       }
     };
@@ -121060,9 +121064,9 @@ async function watchGates(opts) {
     try {
       report3 = evaluateGates(opts.exec, opts.pr, config2, opts.known, opts.cwd, opts.headSha, opts.forge);
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      if (!opts.retryTransient || !opts.watch || !(error2 instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message2)) throw error2;
-      opts.onTransient?.(message2);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      if (!opts.retryTransient || !opts.watch || !(error2 instanceof GhChecksError) || !TRANSIENT_GH_ERROR.test(message3)) throw error2;
+      opts.onTransient?.(message3);
       if (opts.now() >= deadline) throw error2;
       await opts.sleep(Math.min(config2.pollIntervalSeconds * 1e3, Math.max(0, deadline - opts.now())));
       continue;
@@ -121101,8 +121105,8 @@ var init_gates = __esm({
     PASS_STATES = /* @__PURE__ */ new Set(["SUCCESS", "SKIPPED"]);
     PENDING_STATES = /* @__PURE__ */ new Set(["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"]);
     GhChecksError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "GhChecksError";
       }
     };
@@ -121140,8 +121144,8 @@ var init_gh = __esm({
   "src/forge/github/gh.ts"() {
     "use strict";
     GhCommandError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "GhCommandError";
       }
     };
@@ -121481,8 +121485,8 @@ var init_az_binary = __esm({
     import_path182 = require("path");
     AZ_PYTHON_PREFIX = Object.freeze(["-IBm", "azure.cli"]);
     AzBinaryError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "AzBinaryError";
       }
     };
@@ -122514,8 +122518,8 @@ var init_config5 = __esm({
     init_remote_url();
     init_types11();
     ForgeConfigError = class extends Error {
-      constructor(code, message2) {
-        super(message2);
+      constructor(code, message3) {
+        super(message3);
         this.code = code;
         this.name = "ForgeConfigError";
       }
@@ -122641,8 +122645,8 @@ var init_wiql = __esm({
   "src/forge/ado/wiql.ts"() {
     "use strict";
     WiqlError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "WiqlError";
       }
     };
@@ -122744,6 +122748,25 @@ function adoTracker(ctx, intakeSource2, bodyDir) {
         repoUrl: ctx.repo.url,
         ...project ? { project } : {}
       };
+    },
+    peekItems(ids2) {
+      const out = /* @__PURE__ */ new Map();
+      for (let at = 0; at < ids2.length; at += PEEK_BATCH) {
+        const batch = ids2.slice(at, at + PEEK_BATCH);
+        const json = adoJson(adoCall(ctx, "wit.workItems.GET", projectParams(ctx), { ids: batch.join(","), fields: PEEK_FIELDS, errorPolicy: "omit" }), `work items ${batch.join(",")}`);
+        for (const w of listValue(json)) {
+          if (!isObject4(w) || typeof w.id !== "number" || !batch.includes(w.id) || !isObject4(w.fields)) continue;
+          const f = w.fields;
+          out.set(w.id, {
+            title: str3(f["System.Title"]) ?? "",
+            url: `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_workitems/edit/${w.id}`,
+            column: str3(f["System.BoardColumn"]),
+            state: str3(f["System.State"]) ?? "",
+            labels: splitTags(f["System.Tags"])
+          });
+        }
+      }
+      return out;
     },
     queryItems(source, limit) {
       const top = { $top: String(limit) };
@@ -122853,7 +122876,7 @@ function adoTracker(ctx, intakeSource2, bodyDir) {
   };
   return tracker;
 }
-var import_fs160, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure3, RELATION_OF, KEY_QUERY_TOP, HTML_ESCAPES, escapeHtml, adoTextHtml, adoListHtml;
+var import_fs160, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure3, RELATION_OF, PEEK_FIELDS, PEEK_BATCH, KEY_QUERY_TOP, HTML_ESCAPES, escapeHtml, adoTextHtml, adoListHtml;
 var init_tracker = __esm({
   "src/forge/ado/tracker.ts"() {
     "use strict";
@@ -122875,6 +122898,8 @@ var init_tracker = __esm({
     num3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
     failure3 = (error2) => error2 instanceof Error ? error2.message : String(error2);
     RELATION_OF = { parent: PARENT, "depends-on": DEPENDS_ON };
+    PEEK_FIELDS = "System.Id,System.Title,System.State,System.BoardColumn,System.Tags";
+    PEEK_BATCH = 200;
     KEY_QUERY_TOP = "1000";
     HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
     escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
@@ -123741,8 +123766,8 @@ var init_lane = __esm({
     "use strict";
     init_job();
     LaneLostError = class extends Error {
-      constructor(remoteId, message2) {
-        super(message2);
+      constructor(remoteId, message3) {
+        super(message3);
         this.remoteId = remoteId;
         this.name = "LaneLostError";
       }
@@ -124415,8 +124440,8 @@ var init_engine = __esm({
       }
     };
     FactoryStepError = class extends Error {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "FactoryStepError";
       }
     };
@@ -126363,8 +126388,8 @@ var init_history = __esm({
     init_ci2();
     init_ci2();
     HealSafetyError = class extends ShipSafetyError {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "HealSafetyError";
       }
     };
@@ -127137,8 +127162,8 @@ async function runHeal(o, deps) {
     if (counters.day === reserved.lane.startedAt.slice(0, 10)) {
       writeHealCounters(o.root, deps.ledgerDir, { ...counters, credits: Math.max(0, counters.credits - reserved.lane.maxCredits + outcome.usage.credits) });
     }
-    const message2 = next === "heal-approve" ? `awaiting-human: heal-approve (diagnosis ${diagnosis.diagnosis.class}: ${diagnosis.diagnosis.fix.summary.slice(0, 200)})` : `awaiting-human: heal-diagnosis (${diagnosis.outcome}: ${diagnosis.reason ?? ""})`;
-    return { sig8: o.sig8, exitCode: EXIT_HEAL_PARKED, next, message: message2, bundleDir, lane, diagnosis };
+    const message3 = next === "heal-approve" ? `awaiting-human: heal-approve (diagnosis ${diagnosis.diagnosis.class}: ${diagnosis.diagnosis.fix.summary.slice(0, 200)})` : `awaiting-human: heal-diagnosis (${diagnosis.outcome}: ${diagnosis.reason ?? ""})`;
+    return { sig8: o.sig8, exitCode: EXIT_HEAL_PARKED, next, message: message3, bundleDir, lane, diagnosis };
   });
 }
 var import_crypto53, import_fs165, import_path193, DEBUG_LANE_TIMEOUT_MS, EXIT_HEAL_PARKED, EXIT_HEAL_REFUSED, HEAL_LEDGER_PREFIX, HealRunRefused, HEAL_UNCONFINED_ENV, sha2564, healLedgerDir, mirrorCountersPath, sealPath, sealOf, HEAL_CLASSES, RUN_ID, HEX408, MAX_SUBJECT_ITEMS, MAX_SUBJECT_TEXT, healTestId, isText, isRun, scanRecordPath, scanRecordHash, runSpent;
@@ -127248,12 +127273,12 @@ async function runHealEngine(o, deps) {
     if (s.next !== "heal-approve") throw new HealRunRefused(`heal ${o.sig8} is at ${s.next}; only a valid diagnosis parked at heal-approve starts a ci-heal run`);
     const sealed = readHealSealSubject(deps.ledgerDir, o.root, o.sig8);
     if (!sealed) throw new HealRunRefused(`the heal seal of ${o.sig8} holds no valid classification snapshot; rerun omg factory heal run ${o.sig8}`);
-    let same7 = false;
+    let same8 = false;
     try {
-      same7 = JSON.stringify(healSealSubject(s.class, s.classification, s.source)) === JSON.stringify(sealed);
+      same8 = JSON.stringify(healSealSubject(s.class, s.classification, s.source)) === JSON.stringify(sealed);
     } catch {
     }
-    if (!same7) deps.warn?.(`the class or classification in the heal record of ${o.sig8} differs from the sealed one outside the repository; it is ignored`);
+    if (!same8) deps.warn?.(`the class or classification in the heal record of ${o.sig8} differs from the sealed one outside the repository; it is ignored`);
     record3 = healRecord(s, sealed);
   }
   const { limits, warnings } = deps.limits(o.root);
@@ -127544,9 +127569,9 @@ async function guarded(json, fn) {
   try {
     process.exitCode = await fn();
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
-    else console.error(source_default.red(`Error: ${message2}`));
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    if (json) console.log(JSON.stringify({ ok: false, error: message3 }, null, 2));
+    else console.error(source_default.red(`Error: ${message3}`));
     process.exitCode = error2 instanceof HealUsageError ? 2 : error2 instanceof HealRunRefused ? EXIT_HEAL_REFUSED : 1;
   }
 }
@@ -127720,20 +127745,20 @@ function checkGh(a, marker) {
   if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER5.test(r[5]);
   return false;
 }
-function checkGuardExec(exec3, marker, ado = () => void 0) {
+function checkGuardExec(exec3, marker, ado = () => void 0, command = "omg factory check") {
   return (cmd, args, opts) => {
     const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
     const refuse = (why) => {
-      throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(" ")}\`: ${why}`);
+      throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`);
     };
     const mark = marker?.();
     if (!args.every((x) => typeof x === "string")) refuse("non-string argument");
     if (file === "gh") {
       if (opts?.env !== void 0) refuse("gh takes no environment");
-      if (!checkGh(args, mark)) refuse("not one of the command shapes omg factory check runs");
+      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
     } else if (file === "git") {
       const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]));
-      if (!read) refuse("not one of the read-only git shapes omg factory check runs");
+      if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
       assertFactoryCommand(cmd, args, [], opts?.env);
     } else if (isAdoCommand(cmd)) {
       const flag = (f) => {
@@ -127743,9 +127768,9 @@ function checkGuardExec(exec3, marker, ado = () => void 0) {
       const method = flag("--http-method")?.toUpperCase();
       const wiql = method === "POST" && flag("--area")?.toLowerCase() === "wit" && flag("--resource")?.toLowerCase() === "wiql";
       if (mark === void 0 && method !== void 0 && method !== "GET" && !wiql) refuse("only reads run without a confirmed --mark");
-      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(" ")}\`: ${why}`));
+      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`));
     } else {
-      refuse("not a command omg factory check runs");
+      refuse(`not a command ${command} runs`);
     }
     return exec3(cmd, args, opts);
   };
@@ -127858,10 +127883,37 @@ function renderCheckTable(items) {
   lines4.push(counts);
   return lines4.join("\n");
 }
-function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker) {
+function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker, command) {
   const entry2 = config2.kind === "azure-devops" ? resolveAz(root2) : void 0;
   const guard = entry2 ? adoGuardContext(config2, entry2) : void 0;
-  return { exec: checkGuardExec(exec3, marker, () => guard), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
+  return { exec: checkGuardExec(exec3, marker, () => guard, command), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
+}
+function openReadForge(o, deps, warnings, command, marker) {
+  const pre = checkGuardExec(deps.exec, marker, void 0, command);
+  const top = git3(pre, process.cwd(), ["rev-parse", "--show-toplevel"]);
+  if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
+  const root2 = top.out;
+  const origin = git3(pre, root2, ["remote", "get-url", "origin"]);
+  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+  const base = deps.base(root2);
+  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
+  const baseSha = fetchBase(pre, root2, base, warnings);
+  const trustedUser = deps.trustedUser();
+  let config2;
+  try {
+    const loaded2 = resolveForgeConfig(trustedUser, baseLayer(pre, root2, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root2), o), origin.out);
+    config2 = loaded2.config;
+    warnings.push(...loaded2.warnings);
+  } catch (error2) {
+    if (!(error2 instanceof ForgeConfigError)) throw error2;
+    throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
+  }
+  try {
+    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
+    return { root: root2, base, baseSha, config: config2, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
+  } catch (error2) {
+    throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
+  }
 }
 async function runFactoryCheck(o, deps) {
   const ids2 = o.ids.map(parseItemId);
@@ -127871,33 +127923,7 @@ async function runFactoryCheck(o, deps) {
   if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent checks every child of the spec");
   const warnings = [];
   let marker;
-  let exec3 = checkGuardExec(deps.exec, () => marker);
-  const top = git3(exec3, process.cwd(), ["rev-parse", "--show-toplevel"]);
-  if (!top.ok) throw new CheckUsageError("omg factory check must run inside a git repository");
-  const root2 = top.out;
-  const origin = git3(exec3, root2, ["remote", "get-url", "origin"]);
-  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
-  const base = deps.base(root2);
-  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  const baseSha = fetchBase(exec3, root2, base, warnings);
-  const trustedUser = deps.trustedUser();
-  let config2;
-  try {
-    const loaded2 = resolveForgeConfig(trustedUser, baseLayer(exec3, root2, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root2), o), origin.out);
-    config2 = loaded2.config;
-    warnings.push(...loaded2.warnings);
-  } catch (error2) {
-    if (!(error2 instanceof ForgeConfigError)) throw error2;
-    throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
-  }
-  let forge;
-  try {
-    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, () => marker);
-    exec3 = read.exec;
-    forge = deps.createForge(exec3, root2, config2, read.options);
-  } catch (error2) {
-    throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
-  }
+  const { root: root2, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, deps, warnings, "omg factory check", () => marker);
   const source = config2.intake.source;
   if (ids2.length === 0 && parent === void 0 && !source) throw new CheckUsageError("no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source");
   if (o.mark && !o.yes && (o.json || !deps.isTTY())) throw new CheckUsageError("--mark needs --yes without an interactive terminal (or with --json)");
@@ -128016,9 +128042,9 @@ function factoryCheckCommand(deps) {
     try {
       process.exitCode = await runFactoryCheck({ ids: ids2, ...o }, deps);
     } catch (error2) {
-      const message2 = plainText(error2 instanceof Error ? error2.message : String(error2));
-      if (o.json) deps.out(JSON.stringify({ ok: false, error: message2 }, null, 2));
-      else deps.err(source_default.red(`Error: ${message2}`));
+      const message3 = plainText(error2 instanceof Error ? error2.message : String(error2));
+      if (o.json) deps.out(JSON.stringify({ ok: false, error: message3 }, null, 2));
+      else deps.err(source_default.red(`Error: ${message3}`));
       process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
@@ -128043,8 +128069,8 @@ var init_factory_check = __esm({
 });
 
 // src/factory/enqueue.ts
-function fail3(message2) {
-  throw new CheckUsageError(`ticket file: ${message2}`);
+function fail3(message3) {
+  throw new CheckUsageError(`ticket file: ${message3}`);
 }
 function line(v, where, max) {
   if (typeof v !== "string" || !v.trim()) fail3(`${where} must be a non-empty string`);
@@ -128361,8 +128387,8 @@ async function runFactoryEnqueue(o, deps) {
     const claim = claimOf(forge, root2, base, item, remoteBranch);
     if (claim) return { ticket: t, item, action: "kept-claimed", reasons: [claim], title, labels, addLabels: [], removeLabels: [] };
     const pending = t.blockedBy.some((b) => ref(b, ids2) === void 0);
-    const same7 = !pending && item.title === title && normalized(item.body) === normalized(body) && addLabels.length === 0 && removeLabels.length === 0;
-    return { ticket: t, item, action: same7 ? "unchanged" : "updated", reasons: [], title, labels, addLabels, removeLabels };
+    const same8 = !pending && item.title === title && normalized(item.body) === normalized(body) && addLabels.length === 0 && removeLabels.length === 0;
+    return { ticket: t, item, action: same8 ? "unchanged" : "updated", reasons: [], title, labels, addLabels, removeLabels };
   });
   const fileKeys = new Set(file.tickets.map((t) => t.key));
   const orphans = [...holders].filter(([k]) => !fileKeys.has(k)).map(([, item]) => item).sort((a, b) => a.id - b.id);
@@ -128719,15 +128745,15 @@ var init_guard2 = __esm({
     init_exec();
     init_routes();
     SetupError = class extends Error {
-      constructor(exitCode, message2) {
-        super(message2);
+      constructor(exitCode, message3) {
+        super(message3);
         this.exitCode = exitCode;
         this.name = "SetupError";
       }
     };
     SetupSafetyError = class extends ShipSafetyError {
-      constructor(message2) {
-        super(message2);
+      constructor(message3) {
+        super(message3);
         this.name = "SetupSafetyError";
       }
     };
@@ -129793,6 +129819,377 @@ var init_factory_setup = __esm({
   }
 });
 
+// src/factory/board/render.ts
+function sourceText(source) {
+  const v = (k) => String(source[k] ?? "");
+  switch (source.type) {
+    case "label":
+      return `label ${v("label")}`;
+    case "milestone":
+      return `milestone ${v("milestone")}`;
+    case "wiql-query":
+      return `wiql-query ${v("queryId")}`;
+    case "board-column":
+      return `board-column ${v("team")}/${v("board")}/${v("column")}`;
+    case "area-tag":
+      return `area-tag ${v("areaPath")}#${v("tag")}`;
+    default:
+      return v("type");
+  }
+}
+function flagText(r) {
+  return r.flags.map((f) => {
+    if (f === "drift") return source_default.yellow(`drift: live ${JSON.stringify(r.liveText ?? r.stage.live)} != recorded ${r.stage.recorded}`);
+    if (f === "unsynced") return source_default.yellow(`unsynced: recorded ${r.stage.recorded ?? "-"} != expected ${r.stage.expected}`);
+    if (f === "seal") return source_default.red("seal!");
+    return source_default.yellow("stale");
+  });
+}
+function backlogLine(r) {
+  const id = runLabel(r.id).padEnd(6);
+  if (r.error) return `  ${source_default.red("read-failed".padEnd(10))}  ${id}  ${r.error}`;
+  const pri = r.check?.priority ? `P${r.check.priority}` : "- ";
+  const title = r.title.slice(0, 40).padEnd(40);
+  if (!r.check) return `  ${id}  ${title}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
+  const bucket = BUCKET_COLOR[r.check.bucket](r.check.bucket.padEnd(10));
+  return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ""}${r.check.reasons.length ? `  ${source_default.gray(r.check.detail)}` : ""}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
+}
+function runLine(r, prefix) {
+  const run2 = r.run;
+  const parts = [runLabel(r.id).padEnd(6)];
+  if (r.error) parts.push(source_default.red(`read-failed: ${r.error}`));
+  if (run2) {
+    parts.push(run2.gate ? source_default.yellow(`awaiting-human: ${run2.gate.name}`) : run2.phase);
+    if (run2.runningLane) parts.push(`lane ${run2.runningLane} running`);
+    parts.push(`${run2.credits.toFixed(2)} cr`);
+    if (run2.pr !== void 0) parts.push(`PR ${prefix}${run2.pr}`);
+    if (run2.head) parts.push(`head ${run2.head.slice(0, 12)}`);
+  }
+  if (r.gates) parts.push(`verdict ${r.gates.verdict} @ ${r.gates.sha.slice(0, 12)}`);
+  if (r.title) parts.push(r.title.slice(0, 40));
+  parts.push(...flagText(r));
+  const lines4 = [`  ${parts.join("  ")}`];
+  if (run2?.gate) lines4.push(source_default.gray(`        ${run2.gate.reason}`));
+  return lines4.join("\n");
+}
+function renderBoard(b) {
+  const prefix = b.forge === "azure-devops" ? "!" : "#";
+  const items = b.columns.reduce((n, c) => n + c.items.length, 0);
+  const runs = b.columns.reduce((n, c) => n + c.items.filter((r) => r.run).length, 0) + b.outside.length;
+  const source = b.parent ? `spec #${b.parent.id} ${b.parent.title}` : b.source ? `source ${plainText(sourceText(b.source))}` : "no intake source";
+  const lines4 = [source_default.bold(`factory board  ${b.forge} ${b.repo}  ${source}  (${items} item${items === 1 ? "" : "s"}, ${runs} run${runs === 1 ? "" : "s"})`)];
+  for (const c of b.columns) {
+    if (c.items.length === 0) continue;
+    lines4.push("");
+    lines4.push(source_default.bold(c.title === c.stage ? c.stage.toUpperCase() : `${c.stage.toUpperCase()} (${c.title})`));
+    for (const r of c.items) lines4.push(c.stage === "backlog" ? backlogLine(r) : runLine(r, prefix));
+  }
+  if (b.outside.length > 0) {
+    lines4.push("");
+    lines4.push(source_default.bold("RUNS NOT IN THE INTAKE SOURCE"));
+    for (const r of b.outside) lines4.push(runLine(r, prefix));
+  }
+  if (items === 0 && b.outside.length === 0) lines4.push("no items and no runs in flight");
+  return lines4.join("\n");
+}
+var BUCKET_COLOR;
+var init_render = __esm({
+  "src/factory/board/render.ts"() {
+    "use strict";
+    init_source();
+    init_score();
+    init_state6();
+    BUCKET_COLOR = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
+  }
+});
+
+// src/factory/board/collect.ts
+function readRuns(root2, warnings) {
+  const runs = /* @__PURE__ */ new Map();
+  const broken = /* @__PURE__ */ new Set();
+  let names;
+  try {
+    names = (0, import_fs172.readdirSync)(factoryStateDir3(root2));
+  } catch {
+    return { runs, broken };
+  }
+  for (const name of names.sort()) {
+    const m = RUN_FILE.exec(name);
+    if (!m) continue;
+    const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
+    try {
+      const state = readFactoryState(root2, key);
+      if (state) runs.set(key, state);
+    } catch (error2) {
+      broken.add(key);
+      warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message2(error2)}`);
+    }
+  }
+  return { runs, broken };
+}
+function liveStage(kind, stages, item, recorded) {
+  const pick2 = (hits, text4) => {
+    const stage = recorded !== void 0 && hits.includes(recorded) ? recorded : hits[0];
+    return { stage, text: text4(stage) };
+  };
+  if (kind === "github") {
+    const hits = PROGRESS_STAGES.filter((s) => item.labels.some((l) => same7(l, stages[s]?.label)));
+    return hits.length ? pick2(hits, (s) => stages[s]?.label) : { stage: "unmapped" };
+  }
+  const byColumn = PROGRESS_STAGES.filter((s) => same7(item.column, stages[s]?.column));
+  if (byColumn.length) return pick2(byColumn, () => item.column);
+  const byState = PROGRESS_STAGES.filter((s) => same7(item.state, stages[s]?.state));
+  if (byState.length) return pick2(byState, () => item.state);
+  return { stage: "unmapped", text: item.column ?? (item.state || void 0) };
+}
+function wouldSync(config2, s, expected) {
+  if (!config2.progress.enabled || s.kind === "ci-heal" || s.phase === "intake") return false;
+  if (expected === "cancelled") return s.trackerStage !== void 0;
+  const m = config2.progress.stages[expected];
+  return Boolean(m?.label || m?.column || m?.state);
+}
+function columnTitle(config2, stage) {
+  if (stage === "backlog" || !config2.progress.enabled) return stage;
+  const m = config2.progress.stages[stage];
+  return plainText(m?.label ?? m?.column ?? m?.state ?? stage);
+}
+function runPart(root2, s, warnings) {
+  const integrity = verifyFactoryIntegrity(s) ? "ok" : s.integrity === void 0 ? "none" : "bad";
+  const running = s.lanes.find((l) => l.status === "running");
+  const run2 = {
+    phase: s.phase,
+    ...s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason) } } : {},
+    ...s.pr !== void 0 ? { pr: s.pr } : {},
+    ...s.head ? { head: plainText(s.head) } : {},
+    lanes: s.lanes.length,
+    ...running ? { runningLane: plainText(running.id) } : {},
+    credits: Number(runCredits(s).toFixed(2)),
+    integrity,
+    updatedAt: plainText(s.updatedAt)
+  };
+  if (s.pr === void 0) return { run: run2 };
+  try {
+    const ship = readShipState(root2, s.pr);
+    const v = ship ? latestVerdict(ship) : void 0;
+    return v ? { run: run2, gates: { verdict: plainText(v.verdict), sha: v.sha, at: plainText(v.at) } } : { run: run2 };
+  } catch (error2) {
+    warnings.push(`omg factory board: ship state of PR ${s.pr} is unreadable: ${message2(error2)}`);
+    return { run: run2 };
+  }
+}
+function flagsOf(config2, s, row, now2) {
+  const flags = [];
+  const { expected, recorded, live } = row.stage;
+  if (live !== void 0 && recorded !== void 0 && live !== recorded) flags.push("drift");
+  if (expected !== void 0 && recorded !== expected && wouldSync(config2, s, expected)) flags.push("unsynced");
+  if (row.run?.integrity !== "ok") flags.push("seal");
+  const updated = Date.parse(s.updatedAt);
+  if (!TERMINAL_FACTORY_PHASES.includes(s.phase) && !s.gate && Number.isFinite(updated) && now2 - updated > BOARD_STALE_MS) flags.push("stale");
+  return flags;
+}
+function memoTracker(forge) {
+  const seen = /* @__PURE__ */ new Map();
+  const tracker = Object.assign(Object.create(forge.tracker), {
+    viewItem: (id) => {
+      const hit2 = seen.get(id);
+      if (hit2) return hit2;
+      const item = forge.tracker.viewItem(id);
+      seen.set(id, item);
+      return item;
+    }
+  });
+  return { forge: Object.assign(Object.create(forge), { tracker }), seen };
+}
+function collectBoard(input) {
+  const { config: config2, root: root2, now: now2, warnings } = input;
+  const ids2 = [...new Set(input.ids)];
+  const { forge, seen } = memoTracker(input.forge);
+  const { runs, broken } = readRuns(root2, warnings);
+  const rows = /* @__PURE__ */ new Map();
+  const live = /* @__PURE__ */ new Map();
+  let order;
+  if (input.check) {
+    const results = checkItems(forge, ids2, input.check);
+    order = results.map((r) => r.id);
+    for (const r of results) {
+      const failed3 = r.reasons[0] === "read-failed" || r.reasons[0] === "wrong-type";
+      rows.set(r.id, {
+        id: r.id,
+        title: r.title,
+        url: r.url,
+        ...failed3 && !seen.has(r.id) ? { error: r.detail } : {},
+        check: { bucket: r.bucket, priority: r.priority, reasons: r.reasons, detail: r.detail },
+        stage: {},
+        flags: []
+      });
+      const item = seen.get(r.id);
+      if (item) live.set(r.id, { labels: item.labels, column: item.column, state: item.rawState });
+    }
+  } else {
+    order = [...ids2].sort((a, b) => a - b);
+    let peeked;
+    if (forge.tracker.peekItems) {
+      try {
+        peeked = forge.tracker.peekItems(ids2.filter((id) => /^[1-9]\d{0,9}$/.test(String(id))));
+      } catch (error2) {
+        if (error2 instanceof FactorySafetyError) throw error2;
+        warnings.push(`omg factory board: the batched item read failed: ${message2(error2)}`);
+        peeked = /* @__PURE__ */ new Map();
+      }
+    }
+    for (const id of order) {
+      let p = peeked?.get(id);
+      let error2;
+      if (!peeked) {
+        try {
+          const item = forge.tracker.viewItem(id);
+          p = { title: item.title, url: item.url, labels: item.labels, column: item.column, state: item.rawState };
+        } catch (e) {
+          if (e instanceof FactorySafetyError) throw e;
+          error2 = `#${id} could not be read: ${message2(e)}`;
+        }
+      } else if (!p) {
+        error2 = `#${id} could not be read`;
+      }
+      rows.set(id, { id, title: plainText(p?.title ?? ""), url: plainText(p?.url ?? ""), ...error2 ? { error: error2 } : {}, stage: {}, flags: [] });
+      if (p) live.set(id, { labels: p.labels, column: p.column, state: p.state });
+    }
+  }
+  const columns = ["backlog", ...PROGRESS_STAGES].map((stage) => ({ stage, title: columnTitle(config2, stage), items: [] }));
+  const column = (stage) => columns.find((c) => c.stage === stage);
+  for (const id of order) {
+    const row = rows.get(id);
+    const s = runs.get(id);
+    if (!s) {
+      if (broken.has(id)) row.flags.push("seal");
+      const l2 = live.get(id);
+      if (l2 && config2.progress.enabled) {
+        const found = liveStage(config2.kind, config2.progress.stages, l2);
+        if (found.stage !== "unmapped") row.stage.live = found.stage;
+      }
+      column("backlog").items.push(row);
+      continue;
+    }
+    Object.assign(row, runPart(root2, s, warnings));
+    if (!row.title && s.issueTitle) row.title = plainText(s.issueTitle);
+    const expected = trackerStageOf(s);
+    row.stage = { expected, ...s.trackerStage ? { recorded: s.trackerStage } : {} };
+    const l = live.get(id);
+    if (l && config2.progress.enabled) {
+      const found = liveStage(config2.kind, config2.progress.stages, l, s.trackerStage);
+      row.stage.live = found.stage;
+      if (found.text) row.liveText = plainText(found.text);
+    }
+    row.flags = flagsOf(config2, s, row, now2);
+    column(expected).items.push(row);
+  }
+  const inSource = new Set(ids2);
+  const outside = [];
+  for (const [key, s] of runs) {
+    if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
+    if (s.forgeKind !== void 0 && s.forgeKind !== config2.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config2.kind}`);
+    const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : "")), url: "", stage: { expected: trackerStageOf(s), ...s.trackerStage ? { recorded: s.trackerStage } : {} }, flags: [] };
+    Object.assign(row, runPart(root2, s, warnings));
+    row.flags = flagsOf(config2, s, row, now2);
+    outside.push(row);
+  }
+  outside.sort((a, b) => typeof a.id === typeof b.id ? a.id < b.id ? -1 : 1 : typeof a.id === "number" ? -1 : 1);
+  for (const c of columns) if (c.stage !== "backlog") c.items.sort((a, b) => a.id - b.id);
+  return { columns, outside, readFailed: [...rows.values()].some((r) => r.error !== void 0 || r.check?.reasons[0] === "read-failed") };
+}
+async function runFactoryBoard(o, deps) {
+  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
+  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent shows every child of the spec");
+  const warnings = [];
+  const checkDeps = { ...deps, isTTY: () => false, confirm: async () => false };
+  const { root: root2, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, checkDeps, warnings, "omg factory board");
+  const source = config2.intake.source;
+  let spec = null;
+  let ids2 = [];
+  if (parent !== void 0) {
+    const item = forge.tracker.viewItem(parent);
+    spec = { id: item.id, title: plainText(item.title), url: plainText(item.url) };
+    ids2 = item.children;
+  } else if (source) {
+    ids2 = forge.tracker.queryItems(source, config2.intake.limit);
+  } else if (!hasRuns(root2)) {
+    throw new CheckIncompatibleError("no intake source and no factory runs: pass --source <spec> or --parent <spec>, or set factory.intake.source");
+  }
+  const env2 = o.check === false ? null : checkEnvFor(exec3, root2, config2, base, baseSha);
+  const board = collectBoard({ forge, config: config2, root: root2, ids: ids2, check: env2, now: (deps.now ?? Date.now)(), warnings });
+  const json = {
+    schemaVersion: BOARD_JSON_SCHEMA_VERSION,
+    ok: !board.readFailed,
+    forge: config2.kind,
+    repo: config2.repo.url,
+    source: parent !== void 0 || !source ? null : Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === "string" ? plainText(v) : v])),
+    parent: spec,
+    columns: board.columns,
+    outside: board.outside,
+    warnings: warnings.map(plainText)
+  };
+  if (o.json) {
+    deps.out(JSON.stringify(json, null, 2));
+  } else {
+    for (const w of json.warnings) deps.err(w);
+    deps.out(renderBoard(json));
+  }
+  return json.ok ? 0 : 1;
+}
+function hasRuns(root2) {
+  try {
+    return (0, import_fs172.readdirSync)(factoryStateDir3(root2)).some((n) => RUN_FILE.test(n));
+  } catch {
+    return false;
+  }
+}
+var import_fs172, BOARD_JSON_SCHEMA_VERSION, BOARD_STALE_MS, RUN_FILE, message2, same7;
+var init_collect = __esm({
+  "src/factory/board/collect.ts"() {
+    "use strict";
+    import_fs172 = require("fs");
+    init_cli2();
+    init_score();
+    init_types11();
+    init_state5();
+    init_budget();
+    init_exec2();
+    init_state6();
+    init_render();
+    BOARD_JSON_SCHEMA_VERSION = 1;
+    BOARD_STALE_MS = 24 * 60 * 60 * 1e3;
+    RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
+    message2 = (error2) => plainText(error2 instanceof Error ? error2.message : String(error2));
+    same7 = (a, b) => a !== void 0 && b !== void 0 && a.toLowerCase() === b.toLowerCase();
+  }
+});
+
+// src/cli/commands/factory-board.ts
+function factoryBoardCommand(deps) {
+  return new Command("board").description("Read-only board: intake items by bucket, runs by tracker stage, drift / unsynced / seal / stale flags").option("--source <spec>", "intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>").option("--parent <spec>", "show the children of this spec item instead of the intake source").option("--limit <n>", "items read from the source (1..200)", integerOption(1, 200)).option("--no-check", "skip the check rules: one batched tracker read for the live stages").option("--json", "JSON output (schemaVersion 1)").action(async (o) => {
+    try {
+      process.exitCode = await runFactoryBoard(o, deps);
+    } catch (error2) {
+      const message3 = plainText(error2 instanceof Error ? error2.message : String(error2));
+      if (o.json) deps.out(JSON.stringify({ ok: false, error: message3 }, null, 2));
+      else deps.err(source_default.red(`Error: ${message3}`));
+      process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
+    }
+  });
+}
+var init_factory_board = __esm({
+  "src/cli/commands/factory-board.ts"() {
+    "use strict";
+    init_esm();
+    init_source();
+    init_collect();
+    init_cli2();
+    init_score();
+    init_integer_option();
+  }
+});
+
 // src/cli/commands/factory.ts
 function renderChainStatus(status) {
   const lines4 = [];
@@ -129819,7 +130216,7 @@ function renderChainStatus(status) {
 }
 function projectConfig(root2) {
   const path30 = resolveProjectConfigPath(root2);
-  return (0, import_fs172.existsSync)(path30) ? parseJsonc((0, import_fs172.readFileSync)(path30, "utf8")) : void 0;
+  return (0, import_fs173.existsSync)(path30) ? parseJsonc((0, import_fs173.readFileSync)(path30, "utf8")) : void 0;
 }
 function parseIssue(raw) {
   const n = Number(String(raw ?? "").replace(/^#/, ""));
@@ -129835,9 +130232,9 @@ async function factoryGuarded(json, fn) {
   try {
     process.exitCode = await fn();
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
-    else console.error(source_default.red(`Error: ${message2}`));
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    if (json) console.log(JSON.stringify({ ok: false, error: message3 }, null, 2));
+    else console.error(source_default.red(`Error: ${message3}`));
     process.exitCode = error2 instanceof FactoryUsageError ? 2 : 1;
   }
 }
@@ -129992,9 +130389,9 @@ function factoryEnqueueCommand(deps) {
     try {
       process.exitCode = await runFactoryEnqueue(o, deps);
     } catch (error2) {
-      const message2 = plainText(error2 instanceof Error ? error2.message : String(error2));
-      if (o.json) deps.out(JSON.stringify({ ok: false, error: message2 }, null, 2));
-      else deps.err(source_default.red(`Error: ${message2}`));
+      const message3 = plainText(error2 instanceof Error ? error2.message : String(error2));
+      if (o.json) deps.out(JSON.stringify({ ok: false, error: message3 }, null, 2));
+      else deps.err(source_default.red(`Error: ${message3}`));
       process.exitCode = error2 instanceof CheckUsageError ? EXIT_CHECK_USAGE : error2 instanceof CheckIncompatibleError ? EXIT_CHECK_INCOMPATIBLE : EXIT_CHECK_FAILED;
     }
   });
@@ -130005,6 +130402,7 @@ function factoryCommand() {
   cmd.addCommand(factoryRunCommand());
   cmd.addCommand(factoryCheckCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+  cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(healCommand({
     exec: defaultExec,
     base: defaultFactoryRunDeps.base,
@@ -130080,9 +130478,9 @@ function buildRouteTableNarrow() {
 }
 function validateFactoryPrerequisites(cwd2) {
   const missing = [];
-  if (!(0, import_fs172.existsSync)((0, import_path199.join)(getOmcRoot(cwd2), "state"))) missing.push(".omg/state/");
+  if (!(0, import_fs173.existsSync)((0, import_path199.join)(getOmcRoot(cwd2), "state"))) missing.push(".omg/state/");
   for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
-    if (!(0, import_fs172.existsSync)((0, import_path199.join)(cwd2, face))) missing.push(face);
+    if (!(0, import_fs173.existsSync)((0, import_path199.join)(cwd2, face))) missing.push(face);
   }
   return { ok: missing.length === 0, missing };
 }
@@ -130102,7 +130500,7 @@ function runFactoryInit(options = {}) {
       message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the yard faces CLAUDE.md and GLOSSARY.md come from /oh-my-copilot:drydock. Point --cwd at the project root.`
     };
   }
-  if ((0, import_fs172.existsSync)(routesPath) && !options.force) {
+  if ((0, import_fs173.existsSync)(routesPath) && !options.force) {
     return {
       exitCode: 1,
       message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`
@@ -130110,8 +130508,8 @@ function runFactoryInit(options = {}) {
   }
   const table = buildRouteTableNarrow();
   try {
-    (0, import_fs172.mkdirSync)((0, import_path199.join)(routesPath, ".."), { recursive: true });
-    (0, import_fs172.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
+    (0, import_fs173.mkdirSync)((0, import_path199.join)(routesPath, ".."), { recursive: true });
+    (0, import_fs173.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
 `, "utf8");
   } catch (error2) {
     return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${error2.message}` };
@@ -130123,8 +130521,8 @@ function runFactoryInit(options = {}) {
   };
 }
 function readRawRoutes(routesPath) {
-  if (!(0, import_fs172.existsSync)(routesPath)) return null;
-  const raw = (0, import_fs172.readFileSync)(routesPath, "utf8");
+  if (!(0, import_fs173.existsSync)(routesPath)) return null;
+  const raw = (0, import_fs173.readFileSync)(routesPath, "utf8");
   try {
     const parsed2 = JSON.parse(raw);
     if (parsed2 && typeof parsed2 === "object" && !Array.isArray(parsed2)) return { ok: true, raw, table: parsed2 };
@@ -130186,7 +130584,7 @@ async function migrateFactoryRoutes(options = {}) {
   const read = readRawRoutes(routesPath);
   if (!read) return { exitCode: 0, message: `no route table at ${routesPath}; nothing to migrate` };
   if (!read.ok) return { exitCode: 1, message: `factory init --migrate refused: ${read.message}` };
-  if ((0, import_fs172.lstatSync)(routesPath).isSymbolicLink()) {
+  if ((0, import_fs173.lstatSync)(routesPath).isSymbolicLink()) {
     return { exitCode: 1, message: `factory init --migrate refused: ${routesPath} is a symlink; migrate its target by hand (omg factory init --check shows the routes)` };
   }
   const rows = Object.entries(read.table).map(([key, value]) => classifyRoute(root2, key, value));
@@ -130213,18 +130611,18 @@ A backup is written first.`)) {
   const stamp = (options.now ?? /* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z").replace(/:/g, "-");
   const backupPath = `${routesPath}.bak-${stamp}`;
   try {
-    (0, import_fs172.writeFileSync)(backupPath, read.raw, { encoding: "utf8", flag: "wx" });
+    (0, import_fs173.writeFileSync)(backupPath, read.raw, { encoding: "utf8", flag: "wx" });
   } catch (error2) {
     return { exitCode: 1, message: `factory init --migrate refused: cannot write the backup ${backupPath} (${error2.message}); nothing changed` };
   }
   const tmp = `${routesPath}.${process.pid}.tmp`;
   try {
-    (0, import_fs172.writeFileSync)(tmp, `${JSON.stringify(migrated, null, 2)}
+    (0, import_fs173.writeFileSync)(tmp, `${JSON.stringify(migrated, null, 2)}
 `, "utf8");
-    (0, import_fs172.renameSync)(tmp, routesPath);
+    (0, import_fs173.renameSync)(tmp, routesPath);
   } catch (error2) {
     try {
-      (0, import_fs172.unlinkSync)(tmp);
+      (0, import_fs173.unlinkSync)(tmp);
     } catch {
     }
     return { exitCode: 1, message: `factory init --migrate failed: cannot write ${routesPath} (${error2.message}); the backup is ${backupPath}` };
@@ -130232,14 +130630,14 @@ A backup is written first.`)) {
   return { exitCode: 0, message: `factory init --migrate rewrote ${routesPath} (backup: ${backupPath}):
 ${plan}` };
 }
-var import_fs172, import_path199, defaultFactoryRunDeps, FactoryUsageError, NO_LANES, bucketCounts;
+var import_fs173, import_path199, defaultFactoryRunDeps, FactoryUsageError, NO_LANES, bucketCounts;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
     "use strict";
     init_esm();
     init_integer_option();
     init_source();
-    import_fs172 = require("fs");
+    import_fs173 = require("fs");
     import_path199 = require("path");
     init_listener();
     init_status();
@@ -130266,6 +130664,7 @@ var init_factory = __esm({
     init_ledger2();
     init_detect();
     init_factory_setup();
+    init_factory_board();
     init_cli2();
     init_score();
     init_forge();
@@ -130296,9 +130695,9 @@ var init_factory = __esm({
 // src/smoke/copilot-chain-scenario.ts
 function prepareChainProject(projectDir) {
   try {
-    (0, import_fs173.mkdirSync)((0, import_path200.join)(getOmcRoot(projectDir), "state"), { recursive: true });
+    (0, import_fs174.mkdirSync)((0, import_path200.join)(getOmcRoot(projectDir), "state"), { recursive: true });
     for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
-      if (!(0, import_fs173.existsSync)((0, import_path200.join)(projectDir, face))) (0, import_fs173.writeFileSync)((0, import_path200.join)(projectDir, face), `# ${face}
+      if (!(0, import_fs174.existsSync)((0, import_path200.join)(projectDir, face))) (0, import_fs174.writeFileSync)((0, import_path200.join)(projectDir, face), `# ${face}
 `, "utf8");
     }
   } catch (err) {
@@ -130312,11 +130711,11 @@ function prepareChainProject(projectDir) {
     "failed:*": { stage: "halt", skill: "stop" }
   };
   try {
-    (0, import_fs173.writeFileSync)((0, import_path200.join)(getOmcRoot(projectDir), "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
+    (0, import_fs174.writeFileSync)((0, import_path200.join)(getOmcRoot(projectDir), "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
 `);
     const skillDir = (0, import_path200.join)(projectDir, ".github", "skills", CHAIN_SKILL);
-    (0, import_fs173.mkdirSync)(skillDir, { recursive: true });
-    (0, import_fs173.writeFileSync)((0, import_path200.join)(skillDir, "SKILL.md"), [
+    (0, import_fs174.mkdirSync)(skillDir, { recursive: true });
+    (0, import_fs174.writeFileSync)((0, import_path200.join)(skillDir, "SKILL.md"), [
       "---",
       `name: ${CHAIN_SKILL}`,
       "description: Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.",
@@ -130340,7 +130739,7 @@ function chainLinkSmokeEnv(base, bin, root2, linkId) {
 }
 function readJson3(path30) {
   try {
-    return JSON.parse((0, import_fs173.readFileSync)(path30, "utf8"));
+    return JSON.parse((0, import_fs174.readFileSync)(path30, "utf8"));
   } catch {
     return null;
   }
@@ -130349,7 +130748,7 @@ function collectChainEvidence(projectDir, home, firstLink) {
   const factoryDir = factoryStateDir2(projectDir);
   let entries = [];
   try {
-    entries = (0, import_fs173.readdirSync)(factoryDir);
+    entries = (0, import_fs174.readdirSync)(factoryDir);
   } catch {
   }
   const ledgers = [];
@@ -130362,14 +130761,14 @@ function collectChainEvidence(projectDir, home, firstLink) {
   ledgers.sort((a, b) => a.file === firstLink ? -1 : b.file === firstLink ? 1 : String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
   let decisions = [];
   try {
-    decisions = parseJsonl((0, import_fs173.readFileSync)((0, import_path200.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
+    decisions = parseJsonl((0, import_fs174.readFileSync)((0, import_path200.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
   } catch {
   }
   const stopped = readJson3((0, import_path200.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
   const sessions = ledgers.map((l) => l.hostSessionId).filter((id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id)).map((hostSessionId) => {
     let events = null;
     try {
-      events = parseJsonl((0, import_fs173.readFileSync)((0, import_path200.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
+      events = parseJsonl((0, import_fs174.readFileSync)((0, import_path200.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
     } catch {
     }
     return { hostSessionId, events };
@@ -130380,7 +130779,7 @@ function openLinks(projectDir) {
   const factoryDir = factoryStateDir2(projectDir);
   let entries = [];
   try {
-    entries = (0, import_fs173.readdirSync)(factoryDir);
+    entries = (0, import_fs174.readdirSync)(factoryDir);
   } catch {
     return [];
   }
@@ -130388,8 +130787,8 @@ function openLinks(projectDir) {
 }
 function chainSettled(projectDir, firstLink) {
   const factoryDir = factoryStateDir2(projectDir);
-  if (!(0, import_fs173.existsSync)((0, import_path200.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
-  const ledgers = (0, import_fs173.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson3((0, import_path200.join)(factoryDir, e)) }));
+  if (!(0, import_fs174.existsSync)((0, import_path200.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
+  const ledgers = (0, import_fs174.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson3((0, import_path200.join)(factoryDir, e)) }));
   return ledgers.every(({ id, ledger }) => ledger?.decision !== "enqueued" || ledgers.some((l) => l.ledger?.parentLink === id));
 }
 function stopTimedOutChain(projectDir, open9) {
@@ -130399,14 +130798,14 @@ function stopTimedOutChain(projectDir, open9) {
     const ledger = readJson3((0, import_path200.join)(factoryDir, `chain-${id}.json`));
     if (!ledger || typeof ledger !== "object") continue;
     try {
-      (0, import_fs173.writeFileSync)((0, import_path200.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now2, decision: "smoke-timeout" }, null, 2));
+      (0, import_fs174.writeFileSync)((0, import_path200.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now2, decision: "smoke-timeout" }, null, 2));
     } catch {
     }
   }
   const marker = (0, import_path200.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
-  if ((0, import_fs173.existsSync)(marker)) return;
+  if ((0, import_fs174.existsSync)(marker)) return;
   try {
-    (0, import_fs173.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now2 }, null, 2));
+    (0, import_fs174.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now2 }, null, 2));
   } catch {
   }
 }
@@ -130453,7 +130852,7 @@ async function runChainScenario(input) {
   const chain = collectChainEvidence(input.projectDir, input.home, firstLink);
   const events = chain.sessions.flatMap((s) => s.events ?? []);
   try {
-    (0, import_fs173.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs174.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
   const linkError = link1.error ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : void 0) ?? (stillOpen.length ? `timed out with open link(s) ${stillOpen.join(", ")}; their ledgers were closed (smoke-timeout) so they cannot enqueue, but a running link was not killed` : void 0);
@@ -130466,13 +130865,13 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto54, import_child_process46, import_fs173, import_path200, CHAIN_ACK_TOKEN, sleep8;
+var import_crypto54, import_child_process46, import_fs174, import_path200, CHAIN_ACK_TOKEN, sleep8;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto54 = require("crypto");
     import_child_process46 = require("child_process");
-    import_fs173 = require("fs");
+    import_fs174 = require("fs");
     import_path200 = require("path");
     init_tmux_utils();
     init_factory();
@@ -130491,7 +130890,7 @@ var init_copilot_chain_scenario = __esm({
 
 // src/smoke/copilot-hook-manifest.ts
 function readCopilotHookManifest(root2) {
-  const parsed2 = JSON.parse((0, import_fs174.readFileSync)((0, import_path201.join)(root2, COPILOT_HOOKS_PATH), "utf-8"));
+  const parsed2 = JSON.parse((0, import_fs175.readFileSync)((0, import_path201.join)(root2, COPILOT_HOOKS_PATH), "utf-8"));
   if (!parsed2 || typeof parsed2 !== "object" || !parsed2.hooks || typeof parsed2.hooks !== "object") {
     throw new Error(`${COPILOT_HOOKS_PATH} has no "hooks" object`);
   }
@@ -130534,11 +130933,11 @@ function dispatchHookEntry(event, entry2, root2, payload, opts) {
     ...err && !timedOut ? { error: err.message } : {}
   };
 }
-var import_fs174, import_path201, PLUGIN_ROOT_TOKEN, COPILOT_HOOKS_PATH, DEFAULT_ENTRY_TIMEOUT_SEC, GRACE_MS;
+var import_fs175, import_path201, PLUGIN_ROOT_TOKEN, COPILOT_HOOKS_PATH, DEFAULT_ENTRY_TIMEOUT_SEC, GRACE_MS;
 var init_copilot_hook_manifest = __esm({
   "src/smoke/copilot-hook-manifest.ts"() {
     "use strict";
-    import_fs174 = require("fs");
+    import_fs175 = require("fs");
     import_path201 = require("path");
     PLUGIN_ROOT_TOKEN = "${CLAUDE_PLUGIN_ROOT}";
     COPILOT_HOOKS_PATH = "copilot/hooks.json";
@@ -130555,13 +130954,13 @@ function prepareStubPlugin(home, name, text4, node = process.execPath) {
   const log3 = (0, import_path202.join)(home, `${name}-stub.jsonl`);
   const config2 = (0, import_path202.join)(dir, "config.json");
   const script = (0, import_path202.join)(dir, "stub.cjs");
-  (0, import_fs175.mkdirSync)(dir, { recursive: true });
-  (0, import_fs175.writeFileSync)((0, import_path202.join)(dir, "plugin.json"), `${JSON.stringify({ name: `omg-smoke-${name}-stub`, version: "0.0.0", description: `omg smoke ${name} stub hook`, hooks: "./hooks.json" }, null, 2)}
+  (0, import_fs176.mkdirSync)(dir, { recursive: true });
+  (0, import_fs176.writeFileSync)((0, import_path202.join)(dir, "plugin.json"), `${JSON.stringify({ name: `omg-smoke-${name}-stub`, version: "0.0.0", description: `omg smoke ${name} stub hook`, hooks: "./hooks.json" }, null, 2)}
 `);
-  (0, import_fs175.writeFileSync)((0, import_path202.join)(dir, "hooks.json"), `${JSON.stringify({ version: 1, hooks: { [reg.event]: [{ type: "command", exec: node, args: [script, reg.kind, config2, log3], timeoutSec: 10 }] } }, null, 2)}
+  (0, import_fs176.writeFileSync)((0, import_path202.join)(dir, "hooks.json"), `${JSON.stringify({ version: 1, hooks: { [reg.event]: [{ type: "command", exec: node, args: [script, reg.kind, config2, log3], timeoutSec: 10 }] } }, null, 2)}
 `);
-  (0, import_fs175.writeFileSync)(config2, JSON.stringify({ text: text4 }));
-  (0, import_fs175.writeFileSync)(script, [
+  (0, import_fs176.writeFileSync)(config2, JSON.stringify({ text: text4 }));
+  (0, import_fs176.writeFileSync)(script, [
     "'use strict';",
     "const fs = require('fs');",
     "const [kind, config, log] = process.argv.slice(2);",
@@ -130586,7 +130985,7 @@ function prepareStubPlugin(home, name, text4, node = process.execPath) {
 }
 function readJsonl2(path30) {
   try {
-    return parseJsonl((0, import_fs175.readFileSync)(path30, "utf8")).events;
+    return parseJsonl((0, import_fs176.readFileSync)(path30, "utf8")).events;
   } catch {
     return [];
   }
@@ -130613,14 +131012,14 @@ function seedUltragoal(input, sessionId, now2) {
   const path30 = ultragoalStatePath(input.projectDir, sessionId);
   let state;
   try {
-    state = JSON.parse((0, import_fs175.readFileSync)(path30, "utf8"));
+    state = JSON.parse((0, import_fs176.readFileSync)(path30, "utf8"));
   } catch {
     const run2 = runs.find((r) => r.status !== 0 || r.stderr.trim()) ?? runs[0];
     return { ok: false, detail: `no ultragoal state after the activation hook (exit ${String(run2?.status)}): ${excerpt(run2?.stderr || run2?.stdout, 200)}` };
   }
   if (state.active !== true) return { ok: false, detail: "activation hook wrote an inactive ultragoal state", state };
   state = { ...state, awaiting_confirmation_set_at: new Date(now2 - ULTRAGOAL_CONFIRM_TTL_MS - 6e4).toISOString(), max_reinforcements: 1 };
-  (0, import_fs175.writeFileSync)(path30, JSON.stringify(state, null, 2));
+  (0, import_fs176.writeFileSync)(path30, JSON.stringify(state, null, 2));
   return { ok: true, detail: `ultragoal activated by our UserPromptSubmit group, confirmation backdated past the ${ULTRAGOAL_CONFIRM_TTL_MS / 1e3} s TTL`, state };
 }
 async function runCliScenario(input) {
@@ -130642,7 +131041,7 @@ async function runCliScenario(input) {
   try {
     stub = prepareStubPlugin(input.home, name, name === "continuation" ? continuationReason(nonce) : promptContextLine(nonce), input.node);
     if (name === "ultragoal") {
-      (0, import_fs175.writeFileSync)((0, import_path202.join)(input.projectDir, "README.md"), "# omg smoke ultragoal fixture\n");
+      (0, import_fs176.writeFileSync)((0, import_path202.join)(input.projectDir, "README.md"), "# omg smoke ultragoal fixture\n");
       cli.seed = seedUltragoal(input, sessionId, (input.now ?? Date.now)());
     }
   } catch (err) {
@@ -130652,7 +131051,7 @@ async function runCliScenario(input) {
   const eventsFile = (0, import_path202.join)(input.home, "session-state", sessionId, "events.jsonl");
   const readEvents = () => {
     try {
-      return parseJsonl((0, import_fs175.readFileSync)(eventsFile, "utf8")).events;
+      return parseJsonl((0, import_fs176.readFileSync)(eventsFile, "utf8")).events;
     } catch {
       return [];
     }
@@ -130708,10 +131107,10 @@ async function runCliScenario(input) {
   const events = readEvents();
   if (!error2 && !timedOut && events.length === 0) error2 = `no events.jsonl for session ${sessionId}`;
   try {
-    (0, import_fs175.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs176.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
-  if (stub && (0, import_fs175.existsSync)(stub.log)) {
+  if (stub && (0, import_fs176.existsSync)(stub.log)) {
     cli.stub = readJsonl2(stub.log).map((r) => ({
       kind: String(r.kind ?? ""),
       payload: r.payload && typeof r.payload === "object" ? r.payload : null,
@@ -130720,13 +131119,13 @@ async function runCliScenario(input) {
   }
   return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto55, import_child_process47, import_fs175, import_path202, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto55, import_child_process47, import_fs176, import_path202, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto55 = require("crypto");
     import_child_process47 = require("child_process");
-    import_fs175 = require("fs");
+    import_fs176 = require("fs");
     import_path202 = require("path");
     init_worktree_paths();
     init_tmux_utils();
@@ -130815,9 +131214,9 @@ function prepareFactoryRepo(dir) {
   const bare = (0, import_path203.join)(dir, "remote.git");
   const repo = (0, import_path203.join)(dir, "repo");
   try {
-    (0, import_fs176.mkdirSync)(repo, { recursive: true });
-    (0, import_fs176.writeFileSync)((0, import_path203.join)(repo, "README.md"), "# omg factory run smoke\n");
-    (0, import_fs176.writeFileSync)((0, import_path203.join)(repo, ".gitignore"), ".omg/\nnode_modules/\n");
+    (0, import_fs177.mkdirSync)(repo, { recursive: true });
+    (0, import_fs177.writeFileSync)((0, import_path203.join)(repo, "README.md"), "# omg factory run smoke\n");
+    (0, import_fs177.writeFileSync)((0, import_path203.join)(repo, ".gitignore"), ".omg/\nnode_modules/\n");
   } catch (err) {
     return `repository files: ${err.message}`;
   }
@@ -130929,7 +131328,7 @@ async function runFactoryRunScenario(input) {
   };
   const events = lanes.events();
   try {
-    (0, import_fs176.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs177.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
   const parked = evidence.outcome?.gate === "merge";
@@ -130937,11 +131336,11 @@ async function runFactoryRunScenario(input) {
   const model = laneModelLabel(input.model, [...lanes.results.values()].map((r) => r.model ?? null));
   return { ...base, model, events, idle: parked && !error2, timedOut: false, ...error2 ? { error: error2 } : {}, factory: evidence };
 }
-var import_fs176, import_path203, FIX_REVIEW_INSTRUCTION, FACTORY_LANE_TIMEOUT_MS, ok, smokeGateConfig, RecordingLanes;
+var import_fs177, import_path203, FIX_REVIEW_INSTRUCTION, FACTORY_LANE_TIMEOUT_MS, ok, smokeGateConfig, RecordingLanes;
 var init_copilot_factory_run_scenario = __esm({
   "src/smoke/copilot-factory-run-scenario.ts"() {
     "use strict";
-    import_fs176 = require("fs");
+    import_fs177 = require("fs");
     import_path203 = require("path");
     init_job();
     init_budget();
@@ -131005,7 +131404,7 @@ ${FIX_REVIEW_INSTRUCTION}` : input.prompt;
         for (const r of this.results.values()) {
           if (!r.logsUrl) continue;
           try {
-            out.push(...parseJsonl((0, import_fs176.readFileSync)(r.logsUrl, "utf8")).events);
+            out.push(...parseJsonl((0, import_fs177.readFileSync)(r.logsUrl, "utf8")).events);
           } catch {
           }
         }
@@ -131136,7 +131535,7 @@ function sandboxLanes(input, canary) {
 }
 function commitProbe(repo) {
   try {
-    (0, import_fs177.writeFileSync)((0, import_path204.join)(repo, SANDBOX_PROBE_SCRIPT), SANDBOX_PROBE_SOURCE);
+    (0, import_fs178.writeFileSync)((0, import_path204.join)(repo, SANDBOX_PROBE_SCRIPT), SANDBOX_PROBE_SOURCE);
   } catch (err) {
     return { error: `probe script: ${errText6(err)}` };
   }
@@ -131150,7 +131549,7 @@ function commitProbe(repo) {
 function laneEvents(result) {
   if (!result?.logsUrl) return [];
   try {
-    return parseJsonl((0, import_fs177.readFileSync)(result.logsUrl, "utf8")).events;
+    return parseJsonl((0, import_fs178.readFileSync)(result.logsUrl, "utf8")).events;
   } catch {
     return [];
   }
@@ -131185,10 +131584,10 @@ function probeOutput(events) {
   return null;
 }
 function landed(kind, path30, nonce) {
-  const hit2 = (0, import_fs177.existsSync)(path30);
+  const hit2 = (0, import_fs178.existsSync)(path30);
   if (hit2 && (0, import_path204.basename)(path30).includes(nonce)) {
     try {
-      (0, import_fs177.rmSync)(path30, { force: true });
+      (0, import_fs178.rmSync)(path30, { force: true });
     } catch {
     }
   }
@@ -131382,18 +131781,18 @@ async function runSandboxLaneScenario(input) {
   }
   const all = [...events.review ?? [], ...events.write ?? [], ...events.canary ?? []];
   try {
-    (0, import_fs177.writeFileSync)(input.eventsPath, all.map((e) => JSON.stringify(e)).join("\n") + (all.length ? "\n" : ""));
+    (0, import_fs178.writeFileSync)(input.eventsPath, all.map((e) => JSON.stringify(e)).join("\n") + (all.length ? "\n" : ""));
   } catch {
   }
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto56, import_fs177, import_http2, import_os38, import_path204, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote2;
+var import_crypto56, import_fs178, import_http2, import_os38, import_path204, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText6, quote2;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
     import_crypto56 = require("crypto");
-    import_fs177 = require("fs");
+    import_fs178 = require("fs");
     import_http2 = require("http");
     import_os38 = require("os");
     import_path204 = require("path");
@@ -131479,7 +131878,7 @@ function lastJsonObject(stdout) {
 }
 function readJson4(path30) {
   try {
-    const value = JSON.parse((0, import_fs178.readFileSync)(path30, "utf8"));
+    const value = JSON.parse((0, import_fs179.readFileSync)(path30, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -131526,11 +131925,11 @@ function leftoverReservations(projectDir, teamName) {
   const base = (0, import_path205.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
   let hashes = [];
   try {
-    hashes = (0, import_fs178.readdirSync)(base);
+    hashes = (0, import_fs179.readdirSync)(base);
   } catch {
     return [];
   }
-  return hashes.map((h) => (0, import_path205.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs178.existsSync)(p));
+  return hashes.map((h) => (0, import_path205.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs179.existsSync)(p));
 }
 function sessionUsage(stateRoot2, worker) {
   const session = readJson4((0, import_path205.join)(stateRoot2, "workers", worker, "sdk-session.json"));
@@ -131636,13 +132035,13 @@ async function runTeamScenario(input) {
   const logDir = (0, import_path205.join)(input.home, "logs");
   for (const worker of workers) {
     try {
-      eventsByWorker.set(worker, parseJsonl((0, import_fs178.readFileSync)((0, import_path205.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
+      eventsByWorker.set(worker, parseJsonl((0, import_fs179.readFileSync)((0, import_path205.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
     } catch {
     }
     const workerLogs = (0, import_path205.join)(stateDir, "workers", worker, "copilot-home", "logs");
     try {
-      (0, import_fs178.mkdirSync)(logDir, { recursive: true });
-      for (const f of (0, import_fs178.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs178.copyFileSync)((0, import_path205.join)(workerLogs, f), (0, import_path205.join)(logDir, `team-${worker}-${f}`));
+      (0, import_fs179.mkdirSync)(logDir, { recursive: true });
+      for (const f of (0, import_fs179.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs179.copyFileSync)((0, import_path205.join)(workerLogs, f), (0, import_path205.join)(logDir, `team-${worker}-${f}`));
     } catch {
     }
   }
@@ -131671,7 +132070,7 @@ async function runTeamScenario(input) {
   while (pids.some(isAlive) && now2() < reapDeadline) await sleep9(250);
   evidence.orphans = pids.filter(isAlive);
   evidence.reservationsLeft = leftoverReservations(input.projectDir, teamName);
-  evidence.stateLeft = (0, import_fs178.existsSync)(stateDir);
+  evidence.stateLeft = (0, import_fs179.existsSync)(stateDir);
   if (evidence.commits.some((c) => c.subjects.length > 0)) {
     const after = lastJsonObject((await omg(["team", "status", teamName, "--json"], 6e4)).stdout);
     const preserved = Array.isArray(after?.preserved_worktrees) ? after.preserved_worktrees.map((p) => samePathKey2(str6(p.path))) : [];
@@ -131687,7 +132086,7 @@ async function runTeamScenario(input) {
   evidence.cost = teamCost(usage, eventsByWorker);
   const events = [...eventsByWorker.values()].flat();
   try {
-    (0, import_fs178.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs179.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
   const error2 = timedOut ? `tasks did not settle within ${budgetMs} ms; the team was shut down with --force` : shutdown.code !== 0 ? `omg team shutdown exited ${String(shutdown.code)}: ${excerpt(shutdown.stderr.slice(-300), 300)}` : void 0;
@@ -131700,12 +132099,12 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process48, import_fs178, import_path205, sleep9;
+var import_child_process48, import_fs179, import_path205, sleep9;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
     import_child_process48 = require("child_process");
-    import_fs178 = require("fs");
+    import_fs179 = require("fs");
     import_path205 = require("path");
     init_worktree_paths();
     init_copilot_session_eval();
@@ -131721,7 +132120,7 @@ var init_copilot_team_scenario = __esm({
 function canonical3(p) {
   let out = (0, import_path206.resolve)(p);
   try {
-    out = import_fs179.realpathSync.native(out);
+    out = import_fs180.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
@@ -131729,11 +132128,11 @@ function canonical3(p) {
 function errorResult(text4) {
   return { content: [{ type: "text", text: text4 }], isError: true };
 }
-var import_fs179, import_path206, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, OPT_IN_SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
+var import_fs180, import_path206, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, OPT_IN_SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
 var init_host_smoke_tool = __esm({
   "src/tools/host-smoke-tool.ts"() {
     "use strict";
-    import_fs179 = require("fs");
+    import_fs180 = require("fs");
     import_path206 = require("path");
     init_zod();
     init_names();
@@ -131838,8 +132237,8 @@ async function guarded2(name, fn) {
   try {
     return jsonResult(await fn(await getManager()));
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    return errorResult2(message2.startsWith(name) ? message2 : `${name}: ${message2}`);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    return errorResult2(message3.startsWith(name) ? message3 : `${name}: ${message3}`);
   }
 }
 var DEFAULT_WAIT_MS, MAX_WAIT_MS, manager, jobIdSchema, startSchema, waitSchema, copilotRunStartTool, copilotRunStatusTool, copilotRunWaitTool, copilotRunCancelTool, copilotRunCleanupTool, copilotRunTools;
@@ -132116,21 +132515,21 @@ function tier1Ids(delegate) {
 }
 function readJson5(path30) {
   try {
-    return JSON.parse((0, import_fs180.readFileSync)(path30, "utf-8"));
+    return JSON.parse((0, import_fs181.readFileSync)(path30, "utf-8"));
   } catch {
     return null;
   }
 }
 function countDirsWith(dir, file) {
   try {
-    return (0, import_fs180.readdirSync)(dir).filter((name) => (0, import_fs180.existsSync)((0, import_path207.join)(dir, name, file))).sort();
+    return (0, import_fs181.readdirSync)(dir).filter((name) => (0, import_fs181.existsSync)((0, import_path207.join)(dir, name, file))).sort();
   } catch {
     return [];
   }
 }
 function countFiles(dir, ext) {
   try {
-    return (0, import_fs180.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
+    return (0, import_fs181.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
   } catch {
     return -1;
   }
@@ -132147,12 +132546,12 @@ function extractJsonArray(text4) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs180.mkdtempSync)((0, import_path207.join)((0, import_os39.tmpdir)(), prefix));
+  return (0, import_fs181.mkdtempSync)((0, import_path207.join)((0, import_os39.tmpdir)(), prefix));
 }
 function removeDir(path30) {
   if (!path30) return;
   try {
-    (0, import_fs180.rmSync)(path30, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    (0, import_fs181.rmSync)(path30, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   } catch {
   }
 }
@@ -132244,7 +132643,7 @@ function checkPluginList(ctx, bin, env2, cwd2, packageVersion) {
 function normalizePath4(p) {
   let out = (0, import_path207.resolve)(p);
   try {
-    out = import_fs180.realpathSync.native(out);
+    out = import_fs181.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
@@ -132276,7 +132675,7 @@ async function defaultExpectedToolCount() {
 async function checkMcpListTools(ctx) {
   const id = "mcp.list_tools";
   const server = (0, import_path207.join)(ctx.root, "dist", "mcp", "standalone-server.js");
-  if (!(0, import_fs180.existsSync)(server)) return { id, ok: false, detail: `${server} missing; run npm run build` };
+  if (!(0, import_fs181.existsSync)(server)) return { id, ok: false, detail: `${server} missing; run npm run build` };
   let expected;
   try {
     expected = await (ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount)();
@@ -132366,11 +132765,11 @@ async function checkMcpListTools(ctx) {
 }
 function initProject(ctx, projectDir, env2) {
   const res = ctx.spawnSyncFn("git", ["init", "-q"], { cwd: projectDir, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  if (res.status !== 0 || !(0, import_fs180.existsSync)((0, import_path207.join)(projectDir, ".git"))) (0, import_fs180.mkdirSync)((0, import_path207.join)(projectDir, ".git"), { recursive: true });
+  if (res.status !== 0 || !(0, import_fs181.existsSync)((0, import_path207.join)(projectDir, ".git"))) (0, import_fs181.mkdirSync)((0, import_path207.join)(projectDir, ".git"), { recursive: true });
 }
 function readText2(path30) {
   try {
-    return (0, import_fs180.readFileSync)(path30, "utf-8");
+    return (0, import_fs181.readFileSync)(path30, "utf-8");
   } catch {
     return null;
   }
@@ -132378,12 +132777,12 @@ function readText2(path30) {
 function readDebugLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs180.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path207.join)(logDir, f));
+    files = (0, import_fs181.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path207.join)(logDir, f));
   } catch {
     return { text: null };
   }
   if (files.length === 0) return { text: null };
-  files.sort((a, b) => (0, import_fs180.statSync)(a).mtimeMs - (0, import_fs180.statSync)(b).mtimeMs);
+  files.sort((a, b) => (0, import_fs181.statSync)(a).mtimeMs - (0, import_fs181.statSync)(b).mtimeMs);
   return { text: files.map((f) => readText2(f) ?? "").join("\n"), path: files[files.length - 1] };
 }
 function mcpServerNames(root2) {
@@ -132397,14 +132796,14 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   const home = (0, import_path207.join)(parent, "home");
   artifacts.copilotHome = home;
   const projectDir = (0, import_path207.join)(parent, "project");
-  (0, import_fs180.mkdirSync)(home);
-  (0, import_fs180.mkdirSync)(projectDir);
+  (0, import_fs181.mkdirSync)(home);
+  (0, import_fs181.mkdirSync)(projectDir);
   const logDir = (0, import_path207.join)(home, "logs");
   const sessionId = (ctx.deps.randomUUID ?? import_crypto57.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env2 = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
-  (0, import_fs180.writeFileSync)((0, import_path207.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
+  (0, import_fs181.writeFileSync)((0, import_path207.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
 `);
   initProject(ctx, projectDir, env2);
   const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
@@ -132438,7 +132837,7 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   });
   const stdoutPath = (0, import_path207.join)(home, "smoke-stdout.jsonl");
   try {
-    (0, import_fs180.writeFileSync)(stdoutPath, run2.stdout);
+    (0, import_fs181.writeFileSync)(stdoutPath, run2.stdout);
   } catch {
   }
   const eventsPath = (0, import_path207.join)(home, "session-state", sessionId, "events.jsonl");
@@ -132651,18 +133050,18 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   const home = (0, import_path207.join)(parent, "home");
   const projectDir = (0, import_path207.join)(parent, "project");
   const remoteDir = (0, import_path207.join)(parent, "remote.git");
-  (0, import_fs180.mkdirSync)(home);
+  (0, import_fs181.mkdirSync)(home);
   artifacts.copilotHome = home;
   const run2 = ctx.cassette ? { ...ctx.cassette, stateRoot: (0, import_path207.join)(parent, "cassette-state") } : void 0;
   const identity = run2?.mode === "replay" ? {} : loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const base = run2 ? cassetteEnv(ctx.env, run2, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env2 = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env2.OMC_GIT_GUARDRAILS = "1";
-  (0, import_fs180.writeFileSync)((0, import_path207.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
+  (0, import_fs181.writeFileSync)((0, import_path207.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
   try {
-    agentFiles = (0, import_fs180.readdirSync)((0, import_path207.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
+    agentFiles = (0, import_fs181.readdirSync)((0, import_path207.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
   const result = await runSdkTier({
@@ -132697,13 +133096,13 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process49, import_crypto57, import_fs180, import_os39, import_path207, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process49, import_crypto57, import_fs181, import_os39, import_path207, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process49 = require("child_process");
     import_crypto57 = require("crypto");
-    import_fs180 = require("fs");
+    import_fs181 = require("fs");
     import_os39 = require("os");
     import_path207 = require("path");
     init_tmux_utils();
@@ -133652,9 +134051,9 @@ function reconcileClaudeGoalSnapshot(snapshot, options) {
   const errors = [];
   const warnings = [];
   if (!effectiveSnapshot.available) {
-    const message2 = "Claude goal snapshot is absent or reports no active goal; ask the active Claude agent to share the current /goal condition and pass its JSON with --claude-goal-json.";
-    if (options.requireSnapshot) errors.push(message2);
-    else warnings.push(message2);
+    const message3 = "Claude goal snapshot is absent or reports no active goal; ask the active Claude agent to share the current /goal condition and pass its JSON with --claude-goal-json.";
+    if (options.requireSnapshot) errors.push(message3);
+    else warnings.push(message3);
     return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
   }
   const expected = normalizeObjective(options.expectedObjective);
@@ -135080,8 +135479,8 @@ var init_types12 = __esm({
     "use strict";
     FenceError = class extends Error {
       code;
-      constructor(code, message2) {
-        super(message2);
+      constructor(code, message3) {
+        super(message3);
         this.name = "FenceError";
         this.code = code;
       }
@@ -135089,11 +135488,11 @@ var init_types12 = __esm({
     JournalCorruptionError = class extends Error {
       /** Number of trailing incomplete/unparseable records dropped by readAll. */
       truncatedCount;
-      constructor(message2, truncatedCount) {
+      constructor(message3, truncatedCount) {
         if (!Number.isInteger(truncatedCount) || truncatedCount < 1) {
           throw new Error("truncatedCount must be a positive integer");
         }
-        super(message2);
+        super(message3);
         this.name = "JournalCorruptionError";
         this.truncatedCount = truncatedCount;
       }
@@ -135144,7 +135543,7 @@ function createCheckpoint(cwd2, label2) {
     throw new CheckpointError("checkpoint label must not be empty");
   }
   const toplevel = repoToplevel(cwd2);
-  const tmpIndexDir = (0, import_fs188.mkdtempSync)((0, import_path216.join)((0, import_os45.tmpdir)(), "omc-checkpoint-"));
+  const tmpIndexDir = (0, import_fs189.mkdtempSync)((0, import_path216.join)((0, import_os45.tmpdir)(), "omc-checkpoint-"));
   try {
     const tmpIndexPath = (0, import_path216.join)(tmpIndexDir, "index");
     git5([...CONTENT_FIDELITY, "add", "-A", "--"], {
@@ -135166,7 +135565,7 @@ function createCheckpoint(cwd2, label2) {
     git5(["update-ref", `${REF_PREFIX}${commit}`, commit], { cwd: toplevel });
     return commit.slice(0, 12);
   } finally {
-    (0, import_fs188.rmSync)(tmpIndexDir, { recursive: true, force: true });
+    (0, import_fs189.rmSync)(tmpIndexDir, { recursive: true, force: true });
   }
 }
 function listCheckpoints(cwd2) {
@@ -135224,12 +135623,12 @@ function rollbackToCheckpoint(cwd2, checkpointId, force = false) {
   git5([...CONTENT_FIDELITY, "restore", "--source", full, "--staged", "--worktree", ":/"], { cwd: toplevel });
   git5(["clean", "-fd"], { cwd: toplevel });
 }
-var import_child_process55, import_fs188, import_os45, import_path216, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
+var import_child_process55, import_fs189, import_os45, import_path216, GIT_TIMEOUT_MS5, REF_PREFIX, SHADOW_IDENTITY, CONTENT_FIDELITY, CheckpointError;
 var init_checkpoint = __esm({
   "src/features/checkpoint/index.ts"() {
     "use strict";
     import_child_process55 = require("child_process");
-    import_fs188 = require("fs");
+    import_fs189 = require("fs");
     import_os45 = require("os");
     import_path216 = require("path");
     GIT_TIMEOUT_MS5 = 6e4;
@@ -135242,8 +135641,8 @@ var init_checkpoint = __esm({
     ];
     CONTENT_FIDELITY = ["-c", "core.autocrlf=false"];
     CheckpointError = class extends Error {
-      constructor(message2, exitCode = 1) {
-        super(message2);
+      constructor(message3, exitCode = 1) {
+        super(message3);
         this.exitCode = exitCode;
         this.name = "CheckpointError";
       }
@@ -135252,8 +135651,8 @@ var init_checkpoint = __esm({
 });
 
 // src/graph/scheduler.ts
-function fail4(code, message2) {
-  throw new GraphSchedulerError(code, message2);
+function fail4(code, message3) {
+  throw new GraphSchedulerError(code, message3);
 }
 function displayValue(value) {
   if (typeof value === "string") return JSON.stringify(value);
@@ -136201,8 +136600,8 @@ var init_scheduler = __esm({
     init_schema();
     GraphSchedulerError = class extends Error {
       code;
-      constructor(code, message2) {
-        super(message2);
+      constructor(code, message3) {
+        super(message3);
         this.name = "GraphSchedulerError";
         this.code = code;
       }
@@ -136238,11 +136637,11 @@ function envelopeError(value) {
   }
   return null;
 }
-var import_fs189, import_crypto61, import_path217, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
+var import_fs190, import_crypto61, import_path217, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
 var init_journal = __esm({
   "src/graph/runtime/journal.ts"() {
     "use strict";
-    import_fs189 = require("fs");
+    import_fs190 = require("fs");
     import_crypto61 = require("crypto");
     import_path217 = require("path");
     init_descriptor();
@@ -136291,7 +136690,7 @@ var init_journal = __esm({
           try {
             fd = operations.open(
               filePath,
-              import_fs189.constants.O_APPEND | import_fs189.constants.O_CREAT | import_fs189.constants.O_WRONLY | (import_fs189.constants.O_NONBLOCK ?? 0)
+              import_fs190.constants.O_APPEND | import_fs190.constants.O_CREAT | import_fs190.constants.O_WRONLY | (import_fs190.constants.O_NONBLOCK ?? 0)
             );
             assertPrivateRegularFile(fd, filePath);
           } catch (error2) {
@@ -136304,22 +136703,22 @@ var init_journal = __esm({
             throw error2;
           }
           try {
-            const initialSize = (0, import_fs189.fstatSync)(fd).size;
+            const initialSize = (0, import_fs190.fstatSync)(fd).size;
             assertOwnership?.();
             let writeCompleted = false;
             try {
-              (0, import_fs189.writeSync)(fd, line2);
+              (0, import_fs190.writeSync)(fd, line2);
               writeCompleted = true;
-              (0, import_fs189.fsyncSync)(fd);
+              (0, import_fs190.fsyncSync)(fd);
               assertOwnership?.();
             } catch (error2) {
               if (writeCompleted) {
                 try {
-                  const size = (0, import_fs189.fstatSync)(fd).size;
+                  const size = (0, import_fs190.fstatSync)(fd).size;
                   const expectedSize = initialSize + Buffer.byteLength(line2);
                   if (size === expectedSize) {
-                    (0, import_fs189.ftruncateSync)(fd, initialSize);
-                    (0, import_fs189.fsyncSync)(fd);
+                    (0, import_fs190.ftruncateSync)(fd, initialSize);
+                    (0, import_fs190.fsyncSync)(fd);
                   }
                 } catch {
                 }
@@ -136327,7 +136726,7 @@ var init_journal = __esm({
               throw error2;
             }
           } finally {
-            (0, import_fs189.closeSync)(fd);
+            (0, import_fs190.closeSync)(fd);
           }
         });
       }
@@ -136436,11 +136835,11 @@ function lstatNoFollow(operations, filePath) {
   }
   return stats;
 }
-var import_fs190, import_crypto62, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
+var import_fs191, import_crypto62, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
 var init_fence = __esm({
   "src/graph/runtime/fence.ts"() {
     "use strict";
-    import_fs190 = require("fs");
+    import_fs191 = require("fs");
     import_crypto62 = require("crypto");
     init_atomic_write();
     init_platform();
@@ -136650,7 +137049,7 @@ var init_fence = __esm({
         try {
           fd = operations.open(
             lockPath2,
-            import_fs190.constants.O_CREAT | import_fs190.constants.O_EXCL | import_fs190.constants.O_WRONLY,
+            import_fs191.constants.O_CREAT | import_fs191.constants.O_EXCL | import_fs191.constants.O_WRONLY,
             384
           );
         } catch (error2) {
@@ -136665,12 +137064,12 @@ var init_fence = __esm({
             epoch,
             timestamp: Date.now()
           };
-          (0, import_fs190.writeSync)(fd, JSON.stringify(payload), null, "utf8");
+          (0, import_fs191.writeSync)(fd, JSON.stringify(payload), null, "utf8");
           this.beforeEpochPersist?.();
           atomicWriteFileSync(epochFilePath, String(epoch), void 0, operations);
         } catch (error2) {
           const createdIdentity = this.identityFromFd(fd);
-          (0, import_fs190.closeSync)(fd);
+          (0, import_fs191.closeSync)(fd);
           this.cleanupCreatedLock(operations, lockPath2, createdIdentity);
           throw error2;
         }
@@ -136721,7 +137120,7 @@ var init_fence = __esm({
       }
       identityFromFd(fd) {
         try {
-          const stats = (0, import_fs190.fstatSync)(fd);
+          const stats = (0, import_fs191.fstatSync)(fd);
           return {
             dev: stats.dev,
             ino: stats.ino,
@@ -136796,7 +137195,7 @@ var init_fence = __esm({
           return false;
         }
         try {
-          const ours = (0, import_fs190.fstatSync)(this.fd);
+          const ours = (0, import_fs191.fstatSync)(this.fd);
           const theirs = lstatNoFollow(operations, lockPath2);
           if (ours.ino !== theirs.ino || ours.size !== theirs.size) {
             return false;
@@ -136810,7 +137209,7 @@ var init_fence = __esm({
       clearHeld() {
         if (this.fd !== null) {
           try {
-            (0, import_fs190.closeSync)(this.fd);
+            (0, import_fs191.closeSync)(this.fd);
           } catch {
           }
           this.fd = null;
@@ -136886,8 +137285,8 @@ var init_store = __esm({
     PROJECTION_FILE_NAME = "projection.json";
     ProjectionStoreError = class extends Error {
       code;
-      constructor(code, message2) {
-        super(message2);
+      constructor(code, message3) {
+        super(message3);
         this.name = "ProjectionStoreError";
         this.code = code;
       }
@@ -137844,12 +138243,12 @@ async function parseTranscript(transcriptPath, options) {
     lastToolName: null,
     recentTools: []
   };
-  if (!transcriptPath || !(0, import_fs197.existsSync)(transcriptPath)) {
+  if (!transcriptPath || !(0, import_fs198.existsSync)(transcriptPath)) {
     return result;
   }
   let cacheKey = null;
   try {
-    const stat2 = (0, import_fs197.statSync)(transcriptPath);
+    const stat2 = (0, import_fs198.statSync)(transcriptPath);
     cacheKey = `${transcriptPath}:${stat2.size}:${stat2.mtimeMs}`;
     const cached2 = transcriptCache.get(transcriptPath);
     if (cached2?.cacheKey === cacheKey) {
@@ -137870,7 +138269,7 @@ async function parseTranscript(transcriptPath, options) {
   const observedSessionIds = /* @__PURE__ */ new Set();
   const recentToolMap = /* @__PURE__ */ new Map();
   try {
-    const stat2 = (0, import_fs197.statSync)(transcriptPath);
+    const stat2 = (0, import_fs198.statSync)(transcriptPath);
     const fileSize = stat2.size;
     if (fileSize > MAX_TAIL_BYTES) {
       const lines4 = readTailLines(transcriptPath, fileSize, MAX_TAIL_BYTES);
@@ -137894,7 +138293,7 @@ async function parseTranscript(transcriptPath, options) {
       }
       sessionTotalsReliable = sessionTokenTotals.seenUsage;
     } else {
-      const fileStream = (0, import_fs197.createReadStream)(transcriptPath);
+      const fileStream = (0, import_fs198.createReadStream)(transcriptPath);
       const rl = (0, import_readline5.createInterface)({
         input: fileStream,
         crlfDelay: Infinity
@@ -137975,7 +138374,7 @@ function cloneTranscriptData(result) {
       ...tool2,
       timestamp: new Date(tool2.timestamp.getTime())
     })),
-    incomingMessages: result.incomingMessages?.map((message2) => ({ ...message2 })),
+    incomingMessages: result.incomingMessages?.map((message3) => ({ ...message3 })),
     sessionStart: cloneDate(result.sessionStart),
     lastActivatedSkill: result.lastActivatedSkill ? {
       ...result.lastActivatedSkill,
@@ -138019,12 +138418,12 @@ function finalizeTranscriptResult(result, options, pendingPermissions) {
 function readTailLines(filePath, fileSize, maxBytes) {
   const startOffset = Math.max(0, fileSize - maxBytes);
   const bytesToRead = fileSize - startOffset;
-  const fd = (0, import_fs197.openSync)(filePath, "r");
+  const fd = (0, import_fs198.openSync)(filePath, "r");
   const buffer = Buffer.alloc(bytesToRead);
   try {
-    (0, import_fs197.readSync)(fd, buffer, 0, bytesToRead, startOffset);
+    (0, import_fs198.readSync)(fd, buffer, 0, bytesToRead, startOffset);
   } finally {
-    (0, import_fs197.closeSync)(fd);
+    (0, import_fs198.closeSync)(fd);
   }
   const content2 = buffer.toString("utf8");
   const lines4 = content2.split("\n");
@@ -138335,11 +138734,11 @@ function extractLastRequestTokenUsage(usage) {
 function getNumericUsageValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-var import_fs197, import_readline5, import_path228, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
+var import_fs198, import_readline5, import_path228, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
 var init_transcript = __esm({
   "src/hud/transcript.ts"() {
     "use strict";
-    import_fs197 = require("fs");
+    import_fs198 = require("fs");
     import_readline5 = require("readline");
     import_path228 = require("path");
     init_agent_kind();
@@ -138402,7 +138801,7 @@ function str7(value) {
 }
 function isFile3(path30) {
   try {
-    return (0, import_fs198.statSync)(path30).isFile();
+    return (0, import_fs199.statSync)(path30).isFile();
   } catch {
     return false;
   }
@@ -138410,7 +138809,7 @@ function isFile3(path30) {
 function resolveCopilotEventsPath(transcriptPath, sessionId) {
   if (transcriptPath) {
     try {
-      const stat2 = (0, import_fs198.statSync)(transcriptPath);
+      const stat2 = (0, import_fs199.statSync)(transcriptPath);
       const candidate = stat2.isDirectory() ? (0, import_path229.join)(transcriptPath, "events.jsonl") : (0, import_path229.basename)(transcriptPath) === "events.jsonl" ? transcriptPath : (0, import_path229.join)((0, import_path229.dirname)(transcriptPath), "events.jsonl");
       if (isFile3(candidate)) return candidate;
     } catch {
@@ -138426,16 +138825,16 @@ function readTail(path30, size) {
   const start = Math.max(0, size - MAX_TAIL_BYTES2);
   const length = size - start;
   const buffer = Buffer.alloc(length);
-  const fd = (0, import_fs198.openSync)(path30, "r");
+  const fd = (0, import_fs199.openSync)(path30, "r");
   try {
     let offset = 0;
     while (offset < length) {
-      const n = (0, import_fs198.readSync)(fd, buffer, offset, length - offset, start + offset);
+      const n = (0, import_fs199.readSync)(fd, buffer, offset, length - offset, start + offset);
       if (n === 0) break;
       offset += n;
     }
   } finally {
-    (0, import_fs198.closeSync)(fd);
+    (0, import_fs199.closeSync)(fd);
   }
   const text4 = buffer.toString("utf8");
   return start > 0 ? text4.slice(text4.indexOf("\n") + 1) : text4;
@@ -138592,7 +138991,7 @@ function readCopilotEvents(eventsPath, options = {}) {
   const now2 = options.now ?? Date.now();
   const staleMs = (options.staleTaskThresholdMinutes ?? 30) * 6e4;
   try {
-    const stat2 = (0, import_fs198.statSync)(eventsPath);
+    const stat2 = (0, import_fs199.statSync)(eventsPath);
     if (!stat2.isFile()) return emptyResult();
     const key = `${stat2.size}:${stat2.mtimeMs}:${staleMs}:${Math.floor(now2 / 6e4)}`;
     const cached2 = cache.get(eventsPath);
@@ -138605,11 +139004,11 @@ function readCopilotEvents(eventsPath, options = {}) {
     return emptyResult();
   }
 }
-var import_fs198, import_path229, MAX_TAIL_BYTES2, MAX_AGENTS, MAX_RECENT_TOOLS2, CACHE_MAX_SIZE, RECENT_TOOLS_SKIP2, RELEVANT_TYPES, cache;
+var import_fs199, import_path229, MAX_TAIL_BYTES2, MAX_AGENTS, MAX_RECENT_TOOLS2, CACHE_MAX_SIZE, RECENT_TOOLS_SKIP2, RELEVANT_TYPES, cache;
 var init_copilot_events = __esm({
   "src/hud/copilot-events.ts"() {
     "use strict";
-    import_fs198 = require("fs");
+    import_fs199 = require("fs");
     import_path229 = require("path");
     init_ledger();
     MAX_TAIL_BYTES2 = 4 * 1024 * 1024;
@@ -138652,7 +139051,7 @@ var init_copilot_events = __esm({
 // src/hud/omc-state.ts
 function isStateFileStale(filePath) {
   try {
-    const stat2 = (0, import_fs199.statSync)(filePath);
+    const stat2 = (0, import_fs200.statSync)(filePath);
     const age = Date.now() - stat2.mtimeMs;
     return age > MAX_STATE_AGE_MS2;
   } catch {
@@ -138663,20 +139062,20 @@ function resolveStatePath2(directory, filename, sessionId) {
   const omcRoot = getOmcRoot(directory);
   if (sessionId) {
     const sessionPath = (0, import_path230.join)(omcRoot, "state", "sessions", sessionId, filename);
-    return (0, import_fs199.existsSync)(sessionPath) ? sessionPath : null;
+    return (0, import_fs200.existsSync)(sessionPath) ? sessionPath : null;
   }
   let bestPath = null;
   let bestMtime = 0;
   const sessionsDir = (0, import_path230.join)(omcRoot, "state", "sessions");
-  if ((0, import_fs199.existsSync)(sessionsDir)) {
+  if ((0, import_fs200.existsSync)(sessionsDir)) {
     try {
-      const entries = (0, import_fs199.readdirSync)(sessionsDir, { withFileTypes: true });
+      const entries = (0, import_fs200.readdirSync)(sessionsDir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
         const sessionFile = (0, import_path230.join)(sessionsDir, entry2.name, filename);
-        if ((0, import_fs199.existsSync)(sessionFile)) {
+        if ((0, import_fs200.existsSync)(sessionFile)) {
           try {
-            const mtime = (0, import_fs199.statSync)(sessionFile).mtimeMs;
+            const mtime = (0, import_fs200.statSync)(sessionFile).mtimeMs;
             if (mtime > bestMtime) {
               bestMtime = mtime;
               bestPath = sessionFile;
@@ -138689,9 +139088,9 @@ function resolveStatePath2(directory, filename, sessionId) {
     }
   }
   const newPath = (0, import_path230.join)(omcRoot, "state", filename);
-  if ((0, import_fs199.existsSync)(newPath)) {
+  if ((0, import_fs200.existsSync)(newPath)) {
     try {
-      const mtime = (0, import_fs199.statSync)(newPath).mtimeMs;
+      const mtime = (0, import_fs200.statSync)(newPath).mtimeMs;
       if (mtime > bestMtime) {
         bestMtime = mtime;
         bestPath = newPath;
@@ -138701,9 +139100,9 @@ function resolveStatePath2(directory, filename, sessionId) {
     }
   }
   const legacyPath = (0, import_path230.join)(omcRoot, filename);
-  if ((0, import_fs199.existsSync)(legacyPath)) {
+  if ((0, import_fs200.existsSync)(legacyPath)) {
     try {
-      const mtime = (0, import_fs199.statSync)(legacyPath).mtimeMs;
+      const mtime = (0, import_fs200.statSync)(legacyPath).mtimeMs;
       if (mtime > bestMtime) {
         bestPath = legacyPath;
       }
@@ -138722,7 +139121,7 @@ function readRalphStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content2 = (0, import_fs199.readFileSync)(stateFile, "utf-8");
+    const content2 = (0, import_fs200.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content2);
     if (!state.active) {
       return null;
@@ -138740,14 +139139,14 @@ function readRalphStateForHud(directory, sessionId) {
 }
 function readPrdStateForHud(directory) {
   let prdPath = (0, import_path230.join)(directory, "prd.json");
-  if (!(0, import_fs199.existsSync)(prdPath)) {
+  if (!(0, import_fs200.existsSync)(prdPath)) {
     prdPath = (0, import_path230.join)(getOmcRoot(directory), "prd.json");
-    if (!(0, import_fs199.existsSync)(prdPath)) {
+    if (!(0, import_fs200.existsSync)(prdPath)) {
       return null;
     }
   }
   try {
-    const content2 = (0, import_fs199.readFileSync)(prdPath, "utf-8");
+    const content2 = (0, import_fs200.readFileSync)(prdPath, "utf-8");
     const prd = JSON.parse(content2);
     if (!prd.userStories || !Array.isArray(prd.userStories)) {
       return null;
@@ -138800,7 +139199,7 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content2 = (0, import_fs199.readFileSync)(stateFile, "utf-8");
+    const content2 = (0, import_fs200.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content2);
     if (!state.active) {
       return null;
@@ -138823,11 +139222,11 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
 }
-var import_fs199, import_path230, MAX_STATE_AGE_MS2;
+var import_fs200, import_path230, MAX_STATE_AGE_MS2;
 var init_omc_state = __esm({
   "src/hud/omc-state.ts"() {
     "use strict";
-    import_fs199 = require("fs");
+    import_fs200 = require("fs");
     import_path230 = require("path");
     init_worktree_paths();
     init_named_workflow_resume_validator();
@@ -138847,8 +139246,8 @@ function getCachePath2() {
 function readCache2() {
   try {
     const p = getCachePath2();
-    if (!(0, import_fs200.existsSync)(p)) return null;
-    return JSON.parse((0, import_fs200.readFileSync)(p, "utf-8"));
+    if (!(0, import_fs201.existsSync)(p)) return null;
+    return JSON.parse((0, import_fs201.readFileSync)(p, "utf-8"));
   } catch {
     return null;
   }
@@ -138857,9 +139256,9 @@ function writeCache2(buckets, identity) {
   try {
     const p = getCachePath2();
     const dir = (0, import_path231.dirname)(p);
-    if (!(0, import_fs200.existsSync)(dir)) (0, import_fs200.mkdirSync)(dir, { recursive: true });
+    if (!(0, import_fs201.existsSync)(dir)) (0, import_fs201.mkdirSync)(dir, { recursive: true });
     const cache2 = { timestamp: Date.now(), buckets, identity };
-    (0, import_fs200.writeFileSync)(p, JSON.stringify(cache2, null, 2));
+    (0, import_fs201.writeFileSync)(p, JSON.stringify(cache2, null, 2));
   } catch {
   }
 }
@@ -138977,13 +139376,13 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process58, import_node_crypto19, import_fs200, import_path231, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process58, import_node_crypto19, import_fs201, import_path231, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
     import_child_process58 = require("child_process");
     import_node_crypto19 = require("node:crypto");
-    import_fs200 = require("fs");
+    import_fs201 = require("fs");
     import_path231 = require("path");
     init_config_dir();
     CACHE_TTL_MS2 = 3e4;
@@ -140232,8 +140631,8 @@ var init_team = __esm({
 // src/hud/elements/ultragoal.ts
 function readPlan(path30) {
   try {
-    const mtimeMs = (0, import_fs201.statSync)(path30).mtimeMs;
-    const plan = JSON.parse((0, import_fs201.readFileSync)(path30, "utf-8"));
+    const mtimeMs = (0, import_fs202.statSync)(path30).mtimeMs;
+    const plan = JSON.parse((0, import_fs202.readFileSync)(path30, "utf-8"));
     if (plan?.version !== 1 || !Array.isArray(plan.goals)) return null;
     const goals = plan.goals.filter((goal) => typeof goal === "object" && goal !== null && typeof goal.status === "string");
     return { plan: { ...plan, goals }, mtimeMs };
@@ -140243,10 +140642,10 @@ function readPlan(path30) {
 }
 function readUltragoalStateForHud(directory, now2 = Date.now()) {
   const root2 = (0, import_path232.join)(getOmcRoot(directory), "ultragoal");
-  if (!(0, import_fs201.existsSync)(root2)) return null;
+  if (!(0, import_fs202.existsSync)(root2)) return null;
   const paths = [(0, import_path232.join)(root2, ULTRAGOAL_GOALS)];
   try {
-    for (const entry2 of (0, import_fs201.readdirSync)((0, import_path232.join)(root2, ULTRAGOAL_PLANS_SUBDIR), { withFileTypes: true })) {
+    for (const entry2 of (0, import_fs202.readdirSync)((0, import_path232.join)(root2, ULTRAGOAL_PLANS_SUBDIR), { withFileTypes: true })) {
       if (entry2.isDirectory()) paths.push((0, import_path232.join)(root2, ULTRAGOAL_PLANS_SUBDIR, entry2.name, ULTRAGOAL_GOALS));
     }
   } catch {
@@ -140267,11 +140666,11 @@ function renderUltragoal(state) {
   const color = state.failed > 0 ? YELLOW10 : GREEN10;
   return `goal:${color}${state.complete}/${state.total}${RESET}`;
 }
-var import_fs201, import_path232, GREEN10, YELLOW10, MAX_PLAN_AGE_MS;
+var import_fs202, import_path232, GREEN10, YELLOW10, MAX_PLAN_AGE_MS;
 var init_ultragoal = __esm({
   "src/hud/elements/ultragoal.ts"() {
     "use strict";
-    import_fs201 = require("fs");
+    import_fs202 = require("fs");
     import_path232 = require("path");
     init_worktree_paths();
     init_artifacts();
@@ -140763,8 +141162,8 @@ var init_effort = __esm({
 // src/hud/elements/api-key-source.ts
 function settingsFileHasApiKey(filePath) {
   try {
-    if (!(0, import_fs202.existsSync)(filePath)) return false;
-    const content2 = (0, import_fs202.readFileSync)(filePath, "utf-8");
+    if (!(0, import_fs203.existsSync)(filePath)) return false;
+    const content2 = (0, import_fs203.readFileSync)(filePath, "utf-8");
     const settings = JSON.parse(content2);
     const env2 = settings?.env;
     if (typeof env2 !== "object" || env2 === null) return false;
@@ -140787,11 +141186,11 @@ function renderApiKeySource(source) {
   if (!source) return null;
   return `${dim("key:")}${cyan(source)}`;
 }
-var import_fs202, import_path233;
+var import_fs203, import_path233;
 var init_api_key_source = __esm({
   "src/hud/elements/api-key-source.ts"() {
     "use strict";
-    import_fs202 = require("fs");
+    import_fs203 = require("fs");
     import_path233 = require("path");
     init_colors();
     init_config_dir();
@@ -141465,7 +141864,7 @@ async function render(context, config2) {
   return finalLines.join("\n");
 }
 var ANSI_REGEX, PLAIN_SEPARATOR, DIM_SEPARATOR, LAYOUT_ALIASES;
-var init_render = __esm({
+var init_render2 = __esm({
   "src/hud/render.ts"() {
     "use strict";
     init_types9();
@@ -141614,7 +142013,7 @@ function findByteBackward(fd, fromExclusive, byte) {
   while (end > 0) {
     const start = Math.max(0, end - SCAN_CHUNK_BYTES);
     const length = end - start;
-    (0, import_fs203.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs204.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).lastIndexOf(byte);
     if (index !== -1) return start + index;
     end = start;
@@ -141626,7 +142025,7 @@ function findByteForward(fd, fromInclusive, size, byte) {
   const buffer = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
   while (start < size) {
     const length = Math.min(SCAN_CHUNK_BYTES, size - start);
-    (0, import_fs203.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs204.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).indexOf(byte);
     if (index !== -1) return start + index;
     start += length;
@@ -141641,19 +142040,19 @@ function readLineContainingOffset(fd, size, offset) {
   const length = endOffset - startOffset;
   if (length <= 0 || length > MAX_BOUNDARY_LINE_BYTES) return null;
   const line2 = Buffer.allocUnsafe(length);
-  (0, import_fs203.readSync)(fd, line2, 0, length, startOffset);
+  (0, import_fs204.readSync)(fd, line2, 0, length, startOffset);
   return { line: line2, endOffset };
 }
 function findLastCompactBoundaryEndOffset(transcriptPath, size) {
   if (size <= 0) return null;
-  const fd = (0, import_fs203.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs204.openSync)(transcriptPath, "r");
   try {
     let end = size;
     const buffer = Buffer.allocUnsafe(Math.min(SCAN_CHUNK_BYTES, size));
     while (end > 0) {
       const start = Math.max(0, end - SCAN_CHUNK_BYTES);
       const length = end - start;
-      (0, import_fs203.readSync)(fd, buffer, 0, length, start);
+      (0, import_fs204.readSync)(fd, buffer, 0, length, start);
       const chunk = buffer.subarray(0, length);
       let index = chunk.lastIndexOf(COMPACT_BOUNDARY_MARKER_BYTES);
       while (index !== -1) {
@@ -141668,13 +142067,13 @@ function findLastCompactBoundaryEndOffset(transcriptPath, size) {
       end = start + COMPACT_BOUNDARY_MARKER_BYTES.length - 1;
     }
   } finally {
-    (0, import_fs203.closeSync)(fd);
+    (0, import_fs204.closeSync)(fd);
   }
   return null;
 }
 function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
   if (end <= start) return 0;
-  const fd = (0, import_fs203.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs204.openSync)(transcriptPath, "r");
   try {
     const chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
     const prefix = Buffer.allocUnsafe(LOCAL_API_REQUEST_PREFIX.length);
@@ -141683,7 +142082,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     const countLine = (lineEndExclusive) => {
       const lineLength = lineEndExclusive - lineStart;
       if (lineLength >= prefix.length) {
-        const bytesRead = (0, import_fs203.readSync)(fd, prefix, 0, prefix.length, lineStart);
+        const bytesRead = (0, import_fs204.readSync)(fd, prefix, 0, prefix.length, lineStart);
         if (bytesRead === prefix.length && prefix.equals(LOCAL_API_REQUEST_PREFIX)) {
           excludedBytes += lineLength;
         }
@@ -141693,7 +142092,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     let position = start;
     while (position < end) {
       const length = Math.min(SCAN_CHUNK_BYTES, end - position);
-      (0, import_fs203.readSync)(fd, chunk, 0, length, position);
+      (0, import_fs204.readSync)(fd, chunk, 0, length, position);
       const view = chunk.subarray(0, length);
       let newline = view.indexOf(10);
       while (newline !== -1) {
@@ -141705,7 +142104,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     if (lineStart < end) countLine(end);
     return excludedBytes;
   } finally {
-    (0, import_fs203.closeSync)(fd);
+    (0, import_fs204.closeSync)(fd);
   }
 }
 function estimateTranscriptPayloadBytes(transcriptPath, size) {
@@ -141720,9 +142119,9 @@ function estimateTranscriptPayloadBytes(transcriptPath, size) {
   );
 }
 function estimatePayloadFromTranscriptPath(transcriptPath) {
-  if (!transcriptPath || !(0, import_fs203.existsSync)(transcriptPath)) return null;
+  if (!transcriptPath || !(0, import_fs204.existsSync)(transcriptPath)) return null;
   try {
-    const stat2 = (0, import_fs203.statSync)(transcriptPath);
+    const stat2 = (0, import_fs204.statSync)(transcriptPath);
     if (!stat2.isFile()) return null;
     return createPayloadEstimate(
       estimateTranscriptPayloadBytes(transcriptPath, stat2.size)
@@ -141731,11 +142130,11 @@ function estimatePayloadFromTranscriptPath(transcriptPath) {
     return null;
   }
 }
-var import_fs203, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
+var import_fs204, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
 var init_payload_estimate = __esm({
   "src/hud/payload-estimate.ts"() {
     "use strict";
-    import_fs203 = require("fs");
+    import_fs204 = require("fs");
     ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES = 32e6;
     PAYLOAD_WARNING_BYTES = 22e6;
     PAYLOAD_CRITICAL_BYTES = 26e6;
@@ -141795,9 +142194,9 @@ function mergeStdinRateLimits(stdinRateLimits, usageResult) {
 }
 function readSessionSummary(stateDir, sessionId) {
   const statePath = (0, import_path234.join)(stateDir, `session-summary-${sessionId}.json`);
-  if (!(0, import_fs204.existsSync)(statePath)) return null;
+  if (!(0, import_fs205.existsSync)(statePath)) return null;
   try {
-    return JSON.parse((0, import_fs204.readFileSync)(statePath, "utf-8"));
+    return JSON.parse((0, import_fs205.readFileSync)(statePath, "utf-8"));
   } catch {
     return null;
   }
@@ -141831,7 +142230,7 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     "scripts",
     "session-summary.mjs"
   );
-  if (!(0, import_fs204.existsSync)(scriptPath)) {
+  if (!(0, import_fs205.existsSync)(scriptPath)) {
     if (process.env.OMC_DEBUG) {
       console.error("[HUD] session-summary script not found:", scriptPath);
     }
@@ -141872,10 +142271,10 @@ function showDiagnostic() {
   const configDir = getCopilotConfigDir();
   const hudScript = (0, import_path234.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
   const settingsFile = (0, import_path234.join)(configDir, "settings.json");
-  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs204.existsSync)((0, import_path234.join)(configDir, "hud", name)));
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs205.existsSync)((0, import_path234.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
-    const settings = JSON.parse((0, import_fs204.readFileSync)(settingsFile, "utf-8"));
+    const settings = JSON.parse((0, import_fs205.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     const command = sl && typeof sl === "object" && typeof sl.command === "string" ? sl.command : typeof sl === "string" ? sl : null;
     statusLineOk = command !== null && HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
@@ -142103,9 +142502,9 @@ async function mainImpl(watchMode = false, skipInit = false) {
     if (config2.contextLimitWarning.autoCompact && context.contextPercent >= config2.contextLimitWarning.threshold) {
       try {
         const omcStateDir = (0, import_path234.join)(getOmcRoot(cwd2), "state");
-        (0, import_fs204.mkdirSync)(omcStateDir, { recursive: true });
+        (0, import_fs205.mkdirSync)(omcStateDir, { recursive: true });
         const triggerFile = (0, import_path234.join)(omcStateDir, "compact-requested.json");
-        (0, import_fs204.writeFileSync)(
+        (0, import_fs205.writeFileSync)(
           triggerFile,
           JSON.stringify({
             requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -142147,7 +142546,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs204, import_promises39, import_path234, import_child_process59, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs205, import_promises39, import_path234, import_child_process59, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -142158,7 +142557,7 @@ var init_hud = __esm({
     init_omc_state();
     init_usage_api();
     init_custom_rate_provider();
-    init_render();
+    init_render2();
     init_api_key_source();
     init_host();
     init_update_hint();
@@ -142170,7 +142569,7 @@ var init_hud = __esm({
     init_version();
     init_auto_update();
     init_worktree_paths();
-    import_fs204 = require("fs");
+    import_fs205 = require("fs");
     import_promises39 = require("fs/promises");
     import_path234 = require("path");
     import_child_process59 = require("child_process");
@@ -142196,7 +142595,7 @@ module.exports = __toCommonJS(index_exports);
 init_esm();
 init_source();
 var import_path235 = require("path");
-var import_fs205 = require("fs");
+var import_fs206 = require("fs");
 init_config_dir();
 init_env_vars();
 init_loader();
@@ -142507,10 +142906,10 @@ function readSharedTasks(cwd2, filter) {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
-function addSharedMessage(cwd2, message2) {
+function addSharedMessage(cwd2, message3) {
   const interopDir = getInteropDir(cwd2);
   const fullMessage = {
-    ...message2,
+    ...message3,
     id: `msg-${Date.now()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 9)}`,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     read: false
@@ -142519,8 +142918,8 @@ function addSharedMessage(cwd2, message2) {
     cwd: cwd2,
     category: "message-content",
     entityId: fullMessage.id,
-    body: message2.content,
-    source: message2.source,
+    body: message3.content,
+    source: message3.source,
     retention: "session"
   });
   fullMessage.content = contentHandoff.text;
@@ -142543,11 +142942,11 @@ function readSharedMessages(cwd2, filter) {
       const content2 = (0, import_fs45.readFileSync)((0, import_path59.join)(messagesDir, file), "utf-8");
       const parsed2 = SharedMessageSchema.safeParse(JSON.parse(content2));
       if (!parsed2.success) continue;
-      const message2 = parsed2.data;
-      if (filter?.source && message2.source !== filter.source) continue;
-      if (filter?.target && message2.target !== filter.target) continue;
-      if (filter?.unreadOnly && message2.read) continue;
-      messages.push(message2);
+      const message3 = parsed2.data;
+      if (filter?.source && message3.source !== filter.source) continue;
+      if (filter?.target && message3.target !== filter.target) continue;
+      if (filter?.unreadOnly && message3.read) continue;
+      messages.push(message3);
     } catch {
     }
   }
@@ -142564,9 +142963,9 @@ function markMessageAsRead(cwd2, messageId) {
     const content2 = (0, import_fs45.readFileSync)(messagePath, "utf-8");
     const parsed2 = SharedMessageSchema.safeParse(JSON.parse(content2));
     if (!parsed2.success) return false;
-    const message2 = parsed2.data;
-    message2.read = true;
-    atomicWriteJsonSync(messagePath, message2);
+    const message3 = parsed2.data;
+    message3.read = true;
+    atomicWriteJsonSync(messagePath, message3);
     return true;
   } catch {
     return false;
@@ -142936,7 +143335,7 @@ var interopSendMessageTool = {
     try {
       const cwd2 = resolveWorkingDirectory(workingDirectory);
       const source = getInteropSource(target);
-      const message2 = addSharedMessage(cwd2, {
+      const message3 = addSharedMessage(cwd2, {
         source,
         target,
         content: content2,
@@ -142947,10 +143346,10 @@ var interopSendMessageTool = {
           type: "text",
           text: `## Message Sent to ${target.toUpperCase()}
 
-**Message ID:** ${message2.id}
-**Content:** ${message2.content}
-` + (message2.contentArtifact ? `**Content artifact:** ${message2.contentArtifact.path}
-` : "") + `**Timestamp:** ${message2.timestamp}
+**Message ID:** ${message3.id}
+**Content:** ${message3.content}
+` + (message3.contentArtifact ? `**Content artifact:** ${message3.contentArtifact.path}
+` : "") + `**Timestamp:** ${message3.timestamp}
 
 The message has been queued for ${target.toUpperCase()}.`
         }]
@@ -142988,24 +143387,24 @@ var interopReadMessagesTool = {
         };
       }
       if (markAsRead) {
-        for (const message2 of limitedMessages) {
-          markMessageAsRead(cwd2, message2.id);
+        for (const message3 of limitedMessages) {
+          markMessageAsRead(cwd2, message3.id);
         }
       }
       const lines4 = [
         `## Messages (${limitedMessages.length}${messages.length > limit ? ` of ${messages.length}` : ""})
 `
       ];
-      for (const message2 of limitedMessages) {
-        const readIcon = message2.read ? "\u2713" : "\u25CB";
-        lines4.push(`### ${readIcon} ${message2.id}`);
-        lines4.push(`- **From:** ${message2.source.toUpperCase()} \u2192 **To:** ${message2.target.toUpperCase()}`);
-        lines4.push(`- **Content:** ${message2.content}`);
-        lines4.push(`- **Timestamp:** ${message2.timestamp}`);
-        lines4.push(`- **Read:** ${message2.read ? "Yes" : "No"}`);
-        lines4.push(...formatArtifactDescriptorLines("Content", message2.contentArtifact));
-        if (message2.metadata) {
-          lines4.push(`- **Metadata:** ${JSON.stringify(message2.metadata)}`);
+      for (const message3 of limitedMessages) {
+        const readIcon = message3.read ? "\u2713" : "\u25CB";
+        lines4.push(`### ${readIcon} ${message3.id}`);
+        lines4.push(`- **From:** ${message3.source.toUpperCase()} \u2192 **To:** ${message3.target.toUpperCase()}`);
+        lines4.push(`- **Content:** ${message3.content}`);
+        lines4.push(`- **Timestamp:** ${message3.timestamp}`);
+        lines4.push(`- **Read:** ${message3.read ? "Yes" : "No"}`);
+        lines4.push(...formatArtifactDescriptorLines("Content", message3.contentArtifact));
+        if (message3.metadata) {
+          lines4.push(`- **Metadata:** ${JSON.stringify(message3.metadata)}`);
         }
         lines4.push("");
       }
@@ -143859,8 +144258,8 @@ var import_path74 = require("path");
 
 // src/features/lookout/types.ts
 var LookoutError = class extends Error {
-  constructor(message2, exitCode = 1) {
-    super(message2);
+  constructor(message3, exitCode = 1) {
+    super(message3);
     this.exitCode = exitCode;
     this.name = "LookoutError";
   }
@@ -147712,26 +148111,26 @@ function buildSessionStartAdditionalContext(messages) {
     /\[ROOT AGENTS\.md LOADED\]/,
     /\[PENDING TASKS DETECTED\]/
   ];
-  const ordered = messages.map((message2, index) => {
-    const priority = priorityOrder.findIndex((pattern) => pattern.test(message2));
-    return { message: message2, index, priority: priority === -1 ? priorityOrder.length + index : priority };
+  const ordered = messages.map((message3, index) => {
+    const priority = priorityOrder.findIndex((pattern) => pattern.test(message3));
+    return { message: message3, index, priority: priority === -1 ? priorityOrder.length + index : priority };
   }).sort((a, b) => a.priority - b.priority || a.index - b.index).map((entry2) => entry2.message);
   const budget = resolveSessionStartContextBudget();
   let used = 0;
   const selected = [];
-  for (const message2 of ordered) {
+  for (const message3 of ordered) {
     const separatorLength = selected.length > 0 ? 1 : 0;
-    if (used + separatorLength + message2.length > budget) {
+    if (used + separatorLength + message3.length > budget) {
       const remainingBudget = budget - used - separatorLength;
       if (remainingBudget > 0) {
         selected.push(
-          remainingBudget > 120 ? compactBudgetedText2(message2, remainingBudget) : compactBudgetedText2(sessionStartOmissionNotice(budget), remainingBudget)
+          remainingBudget > 120 ? compactBudgetedText2(message3, remainingBudget) : compactBudgetedText2(sessionStartOmissionNotice(budget), remainingBudget)
         );
       }
       break;
     }
-    selected.push(message2);
-    used += separatorLength + message2.length;
+    selected.push(message3);
+    used += separatorLength + message3.length;
   }
   return selected.join("\n");
 }
@@ -151041,9 +151440,9 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
             timeoutMs
           });
         } catch (error2) {
-          const message2 = error2 instanceof Error ? error2.message : String(error2);
-          if (RECOVERY_ERROR_CODES.has(message2)) {
-            return { ok: false, operation, error: { code: message2, message: message2 } };
+          const message3 = error2 instanceof Error ? error2.message : String(error2);
+          if (RECOVERY_ERROR_CODES.has(message3)) {
+            return { ok: false, operation, error: { code: message3, message: message3 } };
           }
           throw error2;
         }
@@ -151109,7 +151508,7 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
         if (!teamName || !toWorker || !body) {
           return { ok: false, operation, error: { code: "invalid_input", message: "team_name, from_worker, to_worker, body are required" } };
         }
-        let message2 = null;
+        let message3 = null;
         const target = await findWorkerDispatchTarget(teamName, toWorker, cwd2);
         const notificationOutcome = await queueDirectMailboxMessage({
           teamName,
@@ -151130,14 +151529,14 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
           }),
           deps: {
             sendDirectMessage: async (resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd) => {
-              message2 = await teamSendMessage(resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd);
-              return message2;
+              message3 = await teamSendMessage(resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd);
+              return message3;
             },
             broadcastMessage: teamBroadcast,
             markMessageNotified: (resolvedTeamName, workerName, messageId, resolvedCwd) => teamMarkMessageNotified(resolvedTeamName, workerName, messageId, resolvedCwd)
           }
         });
-        return { ok: true, operation, data: { message: message2, notification_outcome: notificationOutcome } };
+        return { ok: true, operation, data: { message: message3, notification_outcome: notificationOutcome } };
       }
       case "broadcast": {
         const teamName = String(args.team_name || "").trim();
@@ -151177,15 +151576,15 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
           }),
           deps: {
             sendDirectMessage: async (resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd) => {
-              const message2 = await teamSendMessage(
+              const message3 = await teamSendMessage(
                 resolvedTeamName,
                 resolvedFromWorker,
                 resolvedToWorker,
                 resolvedBody,
                 resolvedCwd
               );
-              messages.push(message2);
-              return message2;
+              messages.push(message3);
+              return message3;
             },
             // queueBroadcastMailboxMessage persists from the recipient snapshot via sendDirectMessage.
             broadcastMessage: async () => [],
@@ -151766,8 +152165,8 @@ function byteLength(value) {
   return Buffer.byteLength(typeof value === "string" ? value : JSON.stringify(value), "utf-8");
 }
 function getMessageContent(record3) {
-  const message2 = record3.message;
-  return message2 && typeof message2 === "object" && !Array.isArray(message2) ? message2.content : void 0;
+  const message3 = record3.message;
+  return message3 && typeof message3 === "object" && !Array.isArray(message3) ? message3.content : void 0;
 }
 function countToolUse(content2) {
   if (!Array.isArray(content2)) return 0;
@@ -151795,9 +152194,9 @@ function sessionIdOf(record3) {
     const value = record3[key];
     if (typeof value === "string") return value;
   }
-  const message2 = record3.message;
-  if (message2 && typeof message2 === "object" && !Array.isArray(message2)) {
-    const value = message2.sessionId;
+  const message3 = record3.message;
+  if (message3 && typeof message3 === "object" && !Array.isArray(message3)) {
+    const value = message3.sessionId;
     if (typeof value === "string") return value;
   }
   return void 0;
@@ -151853,8 +152252,8 @@ function updateContextEstimate(stats, record3) {
     stats.estimatedContextPercent = Math.round(inputValue / windowValue * 100);
   }
 }
-function addSignal(signals, severity, code, message2, evidence) {
-  signals.push({ severity, code, message: message2, evidence });
+function addSignal(signals, severity, code, message3, evidence) {
+  signals.push({ severity, code, message: message3, evidence });
 }
 function computeSignals(stats) {
   const signals = [];
@@ -152330,16 +152729,16 @@ function formatRateLimitStatus(status) {
   if (status.monthlyLimited) {
     parts.push("Monthly limit reached");
   }
-  let message2 = parts.join(" and ");
+  let message3 = parts.join(" and ");
   if (status.timeUntilResetMs !== null) {
-    message2 += ` (resets in ${formatTimeUntilReset(status.timeUntilResetMs)})`;
+    message3 += ` (resets in ${formatTimeUntilReset(status.timeUntilResetMs)})`;
   }
   if (status.apiErrorReason === "rate_limited") {
-    message2 += " [usage API 429; cached data]";
+    message3 += " [usage API 429; cached data]";
   } else if (status.usingStaleData) {
-    message2 += ` [${status.apiErrorReason ? `usage API ${status.apiErrorReason} error` : "stale usage"}; cached data]`;
+    message3 += ` [${status.apiErrorReason ? `usage API ${status.apiErrorReason} error` : "stale usage"}; cached data]`;
   }
-  return message2;
+  return message3;
 }
 function isRateLimitStatusDegraded(status) {
   return !!status && (status.usingStaleData === true || status.apiErrorReason !== void 0);
@@ -152581,15 +152980,15 @@ function isDaemonRunning2(config2) {
   }
   return true;
 }
-function log2(message2, config2) {
+function log2(message3, config2) {
   if (config2.verbose) {
-    console.log(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${message2}`);
+    console.log(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${message3}`);
   }
   try {
     ensureStateDir7(config2);
     rotateLogIfNeeded2(config2.logFilePath);
     const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
-    const logLine = `[${timestamp2}] ${message2}
+    const logLine = `[${timestamp2}] ${message3}
 `;
     (0, import_fs140.appendFileSync)(config2.logFilePath, logLine, { mode: SECURE_FILE_MODE3 });
   } catch {
@@ -154745,9 +155144,9 @@ function ralphVerify(options, directory = process.cwd(), now2 = /* @__PURE__ */ 
   }
   const commands = resolution.commands;
   if (commands.length === 0) {
-    const message2 = "no feedback commands: declare feedbackCommands in the PRD or add package.json build/lint/test scripts";
-    if (options.json) console.log(JSON.stringify({ sessionId: sessionId || null, baselinePresent: Boolean(baseline), commands: [], newFailures: [], resolvedFailures: [], unrunnableCommands: [], note: message2 }));
-    else console.log(`ralph verify: ${message2}`);
+    const message3 = "no feedback commands: declare feedbackCommands in the PRD or add package.json build/lint/test scripts";
+    if (options.json) console.log(JSON.stringify({ sessionId: sessionId || null, baselinePresent: Boolean(baseline), commands: [], newFailures: [], resolvedFailures: [], unrunnableCommands: [], note: message3 }));
+    else console.log(`ralph verify: ${message3}`);
     return 0;
   }
   const current = {};
@@ -155090,7 +155489,7 @@ function smokeCassetteImportCommand(dir, cli) {
 // src/cli/commands/hooks.ts
 var import_child_process50 = require("child_process");
 var import_crypto58 = require("crypto");
-var import_fs181 = require("fs");
+var import_fs182 = require("fs");
 var import_os41 = require("os");
 var import_path209 = require("path");
 var import_url23 = require("url");
@@ -155152,9 +155551,9 @@ function checkCopilotVersion(env2, deps, spawnSync19) {
     detail: cmp > 0 ? `copilot ${version3} is newer than the verified target (${target}); hook behaviour past ${TARGET_COPILOT_VERSION} is unverified` : `copilot ${version3} is older than the verified target (${target})`
   };
 }
-async function defaultRenderHooks(root2, sourceText) {
+async function defaultRenderHooks(root2, sourceText2) {
   const mod = await import((0, import_url23.pathToFileURL)((0, import_path209.join)(root2, "scripts", "copilot", "build-hooks.mjs")).href);
-  return mod.renderCopilotHooks(sourceText);
+  return mod.renderCopilotHooks(sourceText2);
 }
 async function checkManifestSync(root2, deps) {
   const id = "manifest.sync";
@@ -155162,12 +155561,12 @@ async function checkManifestSync(root2, deps) {
   let onDisk;
   let source;
   try {
-    onDisk = (0, import_fs181.readFileSync)(generated, "utf-8");
+    onDisk = (0, import_fs182.readFileSync)(generated, "utf-8");
   } catch {
     return { id, status: "fail", detail: `${generated} missing` };
   }
   try {
-    source = (0, import_fs181.readFileSync)((0, import_path209.join)(root2, "hooks", "hooks.json"), "utf-8");
+    source = (0, import_fs182.readFileSync)((0, import_path209.join)(root2, "hooks", "hooks.json"), "utf-8");
   } catch {
     return { id, status: "warn", detail: "hooks/hooks.json missing; sync not checked" };
   }
@@ -155189,7 +155588,7 @@ function checkScripts(manifest, root2) {
         if (!arg.includes(PLUGIN_ROOT_TOKEN)) return;
         count3++;
         const path30 = resolveEntryArgs(entry2, root2)[i];
-        if (!(0, import_fs181.existsSync)(path30)) missing.add(path30);
+        if (!(0, import_fs182.existsSync)(path30)) missing.add(path30);
       });
     }
   }
@@ -155224,15 +155623,15 @@ function dispatchCheck(event, entry2, result) {
 function dispatchChecks(manifest, root2, env2, spawnSync19, deps, only) {
   const events = Object.keys(manifest.hooks).filter((e) => !only || e === only);
   if (only && events.length === 0) return [{ id: `dispatch.${only}`, status: "fail", detail: `${COPILOT_HOOKS_PATH} registers no ${only} (events: ${Object.keys(manifest.hooks).join(", ")})` }];
-  const parent = (0, import_fs181.mkdtempSync)((0, import_path209.join)((0, import_os41.tmpdir)(), "omg-hooks-doctor-"));
+  const parent = (0, import_fs182.mkdtempSync)((0, import_path209.join)((0, import_os41.tmpdir)(), "omg-hooks-doctor-"));
   const checks = [];
   try {
     const home = (0, import_path209.join)(parent, "home");
     const project = (0, import_path209.join)(parent, "project");
-    (0, import_fs181.mkdirSync)(home);
-    (0, import_fs181.mkdirSync)(project);
+    (0, import_fs182.mkdirSync)(home);
+    (0, import_fs182.mkdirSync)(project);
     spawnSync19("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
-    (0, import_fs181.writeFileSync)((0, import_path209.join)(project, "README.md"), "# omg hooks doctor\n");
+    (0, import_fs182.writeFileSync)((0, import_path209.join)(project, "README.md"), "# omg hooks doctor\n");
     const sandboxEnv = { ...buildSessionEnv(env2, (0, import_path209.join)(home, ".copilot")), HOME: home, USERPROFILE: home };
     const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? import_crypto58.randomUUID)()}`);
     for (const event of events) {
@@ -155249,7 +155648,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync19, deps, only) {
     return checks;
   } finally {
     try {
-      (deps.rmSync ?? import_fs181.rmSync)(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
+      (deps.rmSync ?? import_fs182.rmSync)(parent, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
     } catch (err) {
       try {
         const script = `const fs=require('fs');const d=process.argv[1];let n=0;(function t(){try{fs.rmSync(d,{recursive:true,force:true});}catch{if(++n<60)return setTimeout(t,2000);}})();`;
@@ -155373,7 +155772,7 @@ async function budgetCommand(action, options, cwd2 = process.cwd()) {
 
 // src/cli/commands/capabilities.ts
 var import_crypto59 = require("crypto");
-var import_fs182 = require("fs");
+var import_fs183 = require("fs");
 var import_path210 = require("path");
 init_zod();
 init_definitions();
@@ -155411,16 +155810,16 @@ function packageRoot() {
   if (typeof __dirname !== "undefined" && __dirname) {
     const fromSrc = (0, import_path210.resolve)(__dirname, "..", "..", "..");
     const fromDist = (0, import_path210.resolve)(__dirname, "..", "..");
-    if ((0, import_fs182.existsSync)((0, import_path210.join)(fromSrc, "package.json"))) return fromSrc;
-    if ((0, import_fs182.existsSync)((0, import_path210.join)(fromDist, "package.json"))) return fromDist;
+    if ((0, import_fs183.existsSync)((0, import_path210.join)(fromSrc, "package.json"))) return fromSrc;
+    if ((0, import_fs183.existsSync)((0, import_path210.join)(fromDist, "package.json"))) return fromDist;
   }
   return process.cwd();
 }
 function listSkillFiles(root2) {
   const skillsDir = (0, import_path210.join)(root2, "skills");
-  if (!(0, import_fs182.existsSync)(skillsDir)) return [];
-  const names = (0, import_fs182.readdirSync)(skillsDir).sort((a, b) => a.localeCompare(b));
-  return names.map((name) => (0, import_path210.join)(skillsDir, name, "SKILL.md")).filter((path30) => (0, import_fs182.existsSync)(path30) && (0, import_fs182.statSync)(path30).isFile());
+  if (!(0, import_fs183.existsSync)(skillsDir)) return [];
+  const names = (0, import_fs183.readdirSync)(skillsDir).sort((a, b) => a.localeCompare(b));
+  return names.map((name) => (0, import_path210.join)(skillsDir, name, "SKILL.md")).filter((path30) => (0, import_fs183.existsSync)(path30) && (0, import_fs183.statSync)(path30).isFile());
 }
 function readSkillTitle(markdown) {
   const heading = markdown.split("\n").find((line2) => line2.startsWith("# "));
@@ -155449,7 +155848,7 @@ function collectCapabilitySurface(root2 = packageRoot()) {
     defaultModel: agent.defaultModel ?? null
   })).sort((a, b) => a.name.localeCompare(b.name));
   const skills = listSkillFiles(root2).map((path30) => {
-    const markdown = (0, import_fs182.readFileSync)(path30, "utf-8");
+    const markdown = (0, import_fs183.readFileSync)(path30, "utf-8");
     return {
       name: skillNameFromSkillFilePath(path30),
       digest: sha2565(markdown),
@@ -155546,28 +155945,28 @@ function runDeterministicCapabilityFixtures(fixtures, surface = collectCapabilit
   const toolNames = new Set(surface.tools.map((tool2) => tool2.name));
   return fixtures.map((fixture) => {
     let condition = false;
-    let message2 = "fixture kind not implemented";
+    let message3 = "fixture kind not implemented";
     if (fixture.kind === "tool_selection") {
       condition = !!fixture.toolName && toolNames.has(fixture.toolName) && fixture.toolName === fixture.expectedToolName;
-      message2 = condition ? `selected ${fixture.toolName}` : `could not select ${fixture.toolName ?? "<missing>"}`;
+      message3 = condition ? `selected ${fixture.toolName}` : `could not select ${fixture.toolName ?? "<missing>"}`;
     } else if (fixture.kind === "arg_validity") {
       const validation = validateToolArgs(fixture.toolName, fixture.args);
       condition = validation.ok;
-      message2 = validation.message;
+      message3 = validation.message;
     } else if (fixture.kind === "required_args") {
       const tool2 = surface.tools.find((candidate) => candidate.name === fixture.toolName);
       const validation = validateToolArgs(fixture.toolName, fixture.args);
       condition = !!tool2 && tool2.inputSchema.required.length > 0 && !validation.ok;
-      message2 = condition ? "missing required args rejected" : `missing required args were not rejected: ${validation.message}`;
+      message3 = condition ? "missing required args rejected" : `missing required args were not rejected: ${validation.message}`;
     } else if (fixture.kind === "structured_output") {
       condition = true;
-      message2 = "structured fixture envelope emitted";
+      message3 = "structured fixture envelope emitted";
     } else if (fixture.kind === "no_hallucinated_tool") {
       condition = !fixture.toolName || !toolNames.has(fixture.toolName);
-      message2 = condition ? `rejected absent tool ${fixture.toolName ?? "<none>"}` : `accepted unexpected tool ${fixture.toolName}`;
+      message3 = condition ? `rejected absent tool ${fixture.toolName ?? "<none>"}` : `accepted unexpected tool ${fixture.toolName}`;
     } else if (fixture.kind === "tool_restraint") {
       condition = !fixture.toolName;
-      message2 = condition ? "no tool selected" : `unexpected tool selected: ${fixture.toolName}`;
+      message3 = condition ? "no tool selected" : `unexpected tool selected: ${fixture.toolName}`;
     }
     const ok2 = fixture.expectedOutcome === "pass" ? condition : !condition;
     return {
@@ -155575,7 +155974,7 @@ function runDeterministicCapabilityFixtures(fixtures, surface = collectCapabilit
       kind: fixture.kind,
       ok: ok2,
       outcome: ok2 ? "pass" : "fail",
-      message: message2
+      message: message3
     };
   });
 }
@@ -155592,7 +155991,7 @@ function buildCapabilitiesLockfile() {
   };
 }
 function parseLockfile(path30) {
-  const parsed2 = JSON.parse((0, import_fs182.readFileSync)(path30, "utf-8"));
+  const parsed2 = JSON.parse((0, import_fs183.readFileSync)(path30, "utf-8"));
   if (parsed2.schemaVersion !== CAPABILITIES_LOCK_SCHEMA_VERSION) {
     throw new Error(`unsupported capabilities lockfile schema: ${parsed2.schemaVersion ?? "<missing>"}`);
   }
@@ -155681,15 +156080,15 @@ function printCheckReport(report3, json) {
 async function capabilitiesLockCommand(options) {
   const lockfilePath = resolveLockfilePath(options.lockfile);
   const lockfile = buildCapabilitiesLockfile();
-  (0, import_fs182.mkdirSync)((0, import_path210.dirname)(lockfilePath), { recursive: true });
-  (0, import_fs182.writeFileSync)(lockfilePath, `${stableStringify(lockfile)}
+  (0, import_fs183.mkdirSync)((0, import_path210.dirname)(lockfilePath), { recursive: true });
+  (0, import_fs183.writeFileSync)(lockfilePath, `${stableStringify(lockfile)}
 `);
   printLockSummary(lockfilePath, lockfile, options.json);
   return lockfile.fixtureResults.every((result) => result.ok) ? 0 : 1;
 }
 async function capabilitiesCheckCommand(options) {
   const lockfilePath = resolveLockfilePath(options.lockfile);
-  if (!(0, import_fs182.existsSync)(lockfilePath)) {
+  if (!(0, import_fs183.existsSync)(lockfilePath)) {
     const report4 = {
       ok: false,
       lockfile: lockfilePath,
@@ -155996,8 +156395,8 @@ var TEAM_API_OPERATION_NOTES = {
   "read-recovery-result": "Looks up the durable pending, succeeded, failed, or commit_unknown recovery outcome by request_id in the canonical team workspace state."
 };
 function shouldPrintTeamHelpForError(error2) {
-  const message2 = error2 instanceof Error ? error2.message : String(error2);
-  return /^Usage:\s+omg team\b/.test(message2);
+  const message3 = error2 instanceof Error ? error2.message : String(error2);
+  return /^Usage:\s+omg team\b/.test(message3);
 }
 var NUMBERED_LINE_RE = /^\s*\d+[.)]\s+(.+)$/;
 var BULLETED_LINE_RE = /^\s*[-*•]\s+(.+)$/;
@@ -156591,9 +156990,9 @@ async function withStartupCleanupGuidance(teamName, cwd2, run2) {
     await run2();
   } catch (error2) {
     if (!(error2 instanceof Error) || error2.message !== "invalid_persisted_state") throw error2;
-    const message2 = await startupCleanupIncompleteMessage(teamName, cwd2);
-    if (!message2) throw error2;
-    console.error(message2);
+    const message3 = await startupCleanupIncompleteMessage(teamName, cwd2);
+    if (!message3) throw error2;
+    console.error(message3);
     process.exitCode = 1;
   }
 }
@@ -156920,7 +157319,7 @@ async function teamCommand(args) {
 init_source();
 init_integer_option();
 init_tmux_utils();
-var import_fs184 = require("fs");
+var import_fs185 = require("fs");
 
 // src/ralphthon/types.ts
 var RALPHTHON_DEFAULTS = {
@@ -156936,7 +157335,7 @@ var RALPHTHON_DEFAULTS = {
 var PRD_FILENAME2 = "ralphthon-prd.json";
 
 // src/ralphthon/prd.ts
-var import_fs183 = require("fs");
+var import_fs184 = require("fs");
 var import_path211 = require("path");
 init_worktree_paths();
 var DEFAULT_PLANNING_CONTEXT = {
@@ -156958,16 +157357,16 @@ function getRalphthonPrdPath(directory) {
 }
 function findRalphthonPrdPath(directory) {
   const rootPath = (0, import_path211.join)(directory, PRD_FILENAME2);
-  if ((0, import_fs183.existsSync)(rootPath)) return rootPath;
+  if ((0, import_fs184.existsSync)(rootPath)) return rootPath;
   const omcPath = getRalphthonPrdPath(directory);
-  if ((0, import_fs183.existsSync)(omcPath)) return omcPath;
+  if ((0, import_fs184.existsSync)(omcPath)) return omcPath;
   return null;
 }
 function readRalphthonPrd(directory) {
   const prdPath = findRalphthonPrdPath(directory);
   if (!prdPath) return null;
   try {
-    const content2 = (0, import_fs183.readFileSync)(prdPath, "utf-8");
+    const content2 = (0, import_fs184.readFileSync)(prdPath, "utf-8");
     const prd = JSON.parse(content2);
     if (!prd.stories || !Array.isArray(prd.stories)) return null;
     if (!prd.config) return null;
@@ -156981,9 +157380,9 @@ function writeRalphthonPrd(directory, prd) {
   let prdPath = findRalphthonPrdPath(directory);
   if (!prdPath) {
     const omcDir = getOmcRoot(directory);
-    if (!(0, import_fs183.existsSync)(omcDir)) {
+    if (!(0, import_fs184.existsSync)(omcDir)) {
       try {
-        (0, import_fs183.mkdirSync)(omcDir, { recursive: true });
+        (0, import_fs184.mkdirSync)(omcDir, { recursive: true });
       } catch {
         return false;
       }
@@ -156995,7 +157394,7 @@ function writeRalphthonPrd(directory, prd) {
       ...prd,
       planningContext: normalizePlanningContext(prd.planningContext)
     };
-    (0, import_fs183.writeFileSync)(prdPath, JSON.stringify(normalizedPrd, null, 2));
+    (0, import_fs184.writeFileSync)(prdPath, JSON.stringify(normalizedPrd, null, 2));
     return true;
   } catch {
     return false;
@@ -157762,7 +158161,7 @@ async function ralphthonCommand(args) {
     const pollMs = 5e3;
     let waited = 0;
     while (waited < maxWaitMs) {
-      if ((0, import_fs184.existsSync)(prdPath)) {
+      if ((0, import_fs185.existsSync)(prdPath)) {
         const prd = readRalphthonPrd(cwd2);
         if (prd && prd.stories.length > 0) {
           console.log(source_default.green("PRD generated successfully!"));
@@ -158089,8 +158488,8 @@ async function readJsonInput(raw) {
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed);
     return JSON.parse(await (0, import_promises36.readFile)(trimmed, "utf-8"));
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    throw new UltragoalError(`Invalid --quality-gate-json: ${message2}`);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    throw new UltragoalError(`Invalid --quality-gate-json: ${message3}`);
   }
 }
 async function ultragoalCommand(args) {
@@ -158661,7 +159060,7 @@ async function aliasRetirementCommand(args) {
 // src/cli/commands/teleport.ts
 init_source();
 var import_child_process51 = require("child_process");
-var import_fs185 = require("fs");
+var import_fs186 = require("fs");
 var import_os42 = require("os");
 var import_path212 = require("path");
 init_loader();
@@ -158676,14 +159075,14 @@ var PACKAGE_MANAGER_LOCKFILES = {
 };
 function readPackageJsonText(directory) {
   try {
-    return (0, import_fs185.readFileSync)((0, import_path212.join)(directory, PACKAGE_JSON_NAME), "utf-8");
+    return (0, import_fs186.readFileSync)((0, import_path212.join)(directory, PACKAGE_JSON_NAME), "utf-8");
   } catch {
     return null;
   }
 }
 function detectPackageManager(parentRepoRoot, worktreePath) {
   for (const [manager2, lockfile] of Object.entries(PACKAGE_MANAGER_LOCKFILES)) {
-    if ((0, import_fs185.existsSync)((0, import_path212.join)(worktreePath, lockfile)) || (0, import_fs185.existsSync)((0, import_path212.join)(parentRepoRoot, lockfile))) {
+    if ((0, import_fs186.existsSync)((0, import_path212.join)(worktreePath, lockfile)) || (0, import_fs186.existsSync)((0, import_path212.join)(parentRepoRoot, lockfile))) {
       return manager2;
     }
   }
@@ -158704,10 +159103,10 @@ function detectPackageManager(parentRepoRoot, worktreePath) {
 function symlinkNodeModules(parentRepoRoot, worktreePath) {
   const sourceNodeModules = (0, import_path212.join)(parentRepoRoot, "node_modules");
   const targetNodeModules = (0, import_path212.join)(worktreePath, "node_modules");
-  if (!(0, import_fs185.existsSync)(sourceNodeModules) || (0, import_fs185.existsSync)(targetNodeModules)) {
+  if (!(0, import_fs186.existsSync)(sourceNodeModules) || (0, import_fs186.existsSync)(targetNodeModules)) {
     return false;
   }
-  (0, import_fs185.symlinkSync)(sourceNodeModules, targetNodeModules, process.platform === "win32" ? "junction" : "dir");
+  (0, import_fs186.symlinkSync)(sourceNodeModules, targetNodeModules, process.platform === "win32" ? "junction" : "dir");
   return true;
 }
 function installDependencies(worktreePath, packageManager) {
@@ -158721,9 +159120,9 @@ function installDependencies(worktreePath, packageManager) {
     stdio: "inherit"
   });
 }
-function warnTeleportDependencyFallback(message2, json) {
+function warnTeleportDependencyFallback(message3, json) {
   if (json) return;
-  console.warn(source_default.yellow(message2));
+  console.warn(source_default.yellow(message3));
 }
 function bootstrapTeleportDependencies(parentRepoRoot, worktreePath, options) {
   const packageManager = detectPackageManager(parentRepoRoot, worktreePath);
@@ -158923,10 +159322,10 @@ async function fetchProviderInfo(type, number3, provider, owner, repo) {
 function createWorktree(repoRoot3, worktreePath, branchName2, baseBranch) {
   try {
     const parentDir = (0, import_path212.join)(worktreePath, "..");
-    if (!(0, import_fs185.existsSync)(parentDir)) {
-      (0, import_fs185.mkdirSync)(parentDir, { recursive: true });
+    if (!(0, import_fs186.existsSync)(parentDir)) {
+      (0, import_fs186.mkdirSync)(parentDir, { recursive: true });
     }
-    if ((0, import_fs185.existsSync)(worktreePath)) {
+    if ((0, import_fs186.existsSync)(worktreePath)) {
       return { success: false, error: `Worktree already exists at ${worktreePath}` };
     }
     (0, import_child_process51.execFileSync)("git", ["fetch", "origin", baseBranch], {
@@ -158949,8 +159348,8 @@ function createWorktree(repoRoot3, worktreePath, branchName2, baseBranch) {
     });
     return { success: true };
   } catch (err) {
-    const message2 = err instanceof Error ? err.message : String(err);
-    return { success: false, error: message2 };
+    const message3 = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message3 };
   }
 }
 async function teleportCommand(ref, options) {
@@ -159065,11 +159464,11 @@ async function teleportCommand(ref, options) {
       symlinkNodeModules: shouldSymlinkNodeModules
     });
   } catch (err) {
-    const message2 = err instanceof Error ? err.message : String(err);
+    const message3 = err instanceof Error ? err.message : String(err);
     if (!options.json) {
-      console.error(source_default.red(`Failed to bootstrap worktree dependencies: ${message2}`));
+      console.error(source_default.red(`Failed to bootstrap worktree dependencies: ${message3}`));
     }
-    return { success: false, error: message2 };
+    return { success: false, error: message3 };
   }
   if (!options.json) {
     console.log("");
@@ -159100,13 +159499,13 @@ function findWorktreeDirs(dir, maxDepth = 3, currentDepth = 0) {
   if (currentDepth >= maxDepth) return [];
   const results = [];
   try {
-    const entries = (0, import_fs185.readdirSync)(dir, { withFileTypes: true });
+    const entries = (0, import_fs186.readdirSync)(dir, { withFileTypes: true });
     for (const entry2 of entries) {
       if (!entry2.isDirectory()) continue;
       const fullPath = (0, import_path212.join)(dir, entry2.name);
       try {
         const gitPath2 = (0, import_path212.join)(fullPath, ".git");
-        const stat2 = (0, import_fs185.statSync)(gitPath2);
+        const stat2 = (0, import_fs186.statSync)(gitPath2);
         if (stat2.isFile()) {
           results.push(fullPath);
           continue;
@@ -159121,7 +159520,7 @@ function findWorktreeDirs(dir, maxDepth = 3, currentDepth = 0) {
 }
 async function teleportListCommand(options) {
   const worktreeRoot = DEFAULT_WORKTREE_ROOT;
-  if (!(0, import_fs185.existsSync)(worktreeRoot)) {
+  if (!(0, import_fs186.existsSync)(worktreeRoot)) {
     if (options.json) {
       console.log(JSON.stringify({ worktrees: [] }));
     } else {
@@ -159228,11 +159627,11 @@ async function teleportRemoveCommand(pathOrName, options) {
     }
     return 0;
   } catch (err) {
-    const message2 = err instanceof Error ? err.message : String(err);
+    const message3 = err instanceof Error ? err.message : String(err);
     if (options.json) {
-      console.log(JSON.stringify({ success: false, error: message2 }));
+      console.log(JSON.stringify({ success: false, error: message3 }));
     } else {
-      console.error(source_default.red(`Failed to remove worktree: ${message2}`));
+      console.error(source_default.red(`Failed to remove worktree: ${message3}`));
     }
     return 1;
   }
@@ -159255,7 +159654,7 @@ function resolvePluginDirArg(rawPath) {
 
 // src/cli/launch.ts
 var import_child_process52 = require("child_process");
-var import_fs186 = require("fs");
+var import_fs187 = require("fs");
 var import_os43 = require("os");
 var import_path214 = require("path");
 init_atomic_write();
@@ -159305,37 +159704,37 @@ var SLACK_FLAG = "--slack";
 var WEBHOOK_FLAG = "--webhook";
 var OMC_RUNTIME_DIRNAME = ".omc-launch";
 function hasOmcMarkers(path30) {
-  if (!(0, import_fs186.existsSync)(path30)) return false;
-  const content2 = (0, import_fs186.readFileSync)(path30, "utf-8");
+  if (!(0, import_fs187.existsSync)(path30)) return false;
+  const content2 = (0, import_fs187.readFileSync)(path30, "utf-8");
   return content2.includes("<!-- OMC:START -->") && content2.includes("<!-- OMC:END -->");
 }
 function ensureMirroredPath(sourcePath, targetPath, options = {}) {
-  if (!(0, import_fs186.existsSync)(sourcePath)) return;
+  if (!(0, import_fs187.existsSync)(sourcePath)) return;
   try {
-    const sourceStat = (0, import_fs186.lstatSync)(sourcePath);
-    const targetExists = (0, import_fs186.existsSync)(targetPath);
+    const sourceStat = (0, import_fs187.lstatSync)(sourcePath);
+    const targetExists = (0, import_fs187.existsSync)(targetPath);
     if (targetExists) {
-      const targetStat = (0, import_fs186.lstatSync)(targetPath);
+      const targetStat = (0, import_fs187.lstatSync)(targetPath);
       if (targetStat.isSymbolicLink()) {
         return;
       }
-      (0, import_fs186.rmSync)(targetPath, { recursive: true, force: true });
+      (0, import_fs187.rmSync)(targetPath, { recursive: true, force: true });
     }
     if (sourceStat.isDirectory()) {
-      (0, import_fs186.symlinkSync)(sourcePath, targetPath, process.platform === "win32" ? "junction" : "dir");
+      (0, import_fs187.symlinkSync)(sourcePath, targetPath, process.platform === "win32" ? "junction" : "dir");
       return;
     }
-    (0, import_fs186.symlinkSync)(sourcePath, targetPath, "file");
+    (0, import_fs187.symlinkSync)(sourcePath, targetPath, "file");
   } catch {
     if (options.allowCopyFallback === false) {
       return;
     }
-    const sourceStat = (0, import_fs186.lstatSync)(sourcePath);
+    const sourceStat = (0, import_fs187.lstatSync)(sourcePath);
     if (sourceStat.isDirectory()) {
-      (0, import_fs186.cpSync)(sourcePath, targetPath, { recursive: true });
+      (0, import_fs187.cpSync)(sourcePath, targetPath, { recursive: true });
       return;
     }
-    (0, import_fs186.copyFileSync)(sourcePath, targetPath);
+    (0, import_fs187.copyFileSync)(sourcePath, targetPath);
   }
 }
 function isJsonObject(value) {
@@ -159346,7 +159745,7 @@ function hasOwn(value, key) {
 }
 function readJsonObject4(path30) {
   try {
-    const parsed2 = JSON.parse((0, import_fs186.readFileSync)(path30, "utf-8"));
+    const parsed2 = JSON.parse((0, import_fs187.readFileSync)(path30, "utf-8"));
     return isJsonObject(parsed2) ? parsed2 : null;
   } catch {
     return null;
@@ -159397,20 +159796,20 @@ function resolveCredentialTarget(path30) {
     visited.add(current);
     let stat2;
     try {
-      stat2 = (0, import_fs186.lstatSync)(current);
+      stat2 = (0, import_fs187.lstatSync)(current);
     } catch (error2) {
       const code = error2 && typeof error2 === "object" && "code" in error2 ? error2.code : void 0;
       if (code === "ENOENT" || code === "ENOTDIR") return null;
       throw error2;
     }
     if (!stat2.isSymbolicLink()) return current;
-    const target = (0, import_fs186.readlinkSync)(current);
+    const target = (0, import_fs187.readlinkSync)(current);
     current = (0, import_path214.isAbsolute)(target) ? (0, import_path214.resolve)(target) : (0, import_path214.resolve)((0, import_path214.dirname)(current), target);
   }
 }
 function inspectCredentialFile(path30) {
   try {
-    (0, import_fs186.lstatSync)(path30);
+    (0, import_fs187.lstatSync)(path30);
   } catch (error2) {
     const code = error2 && typeof error2 === "object" && "code" in error2 ? error2.code : void 0;
     if (code !== "ENOENT" && code !== "ENOTDIR") {
@@ -159429,7 +159828,7 @@ function inspectCredentialFile(path30) {
   }
   let stat2;
   try {
-    stat2 = (0, import_fs186.lstatSync)(resolvedPath);
+    stat2 = (0, import_fs187.lstatSync)(resolvedPath);
   } catch {
     return { exists: true, regularFile: false, readable: false, valid: false, parsed: null, candidate: null, writePath: null };
   }
@@ -159438,7 +159837,7 @@ function inspectCredentialFile(path30) {
   }
   let parsed2;
   try {
-    parsed2 = JSON.parse((0, import_fs186.readFileSync)(resolvedPath, "utf-8"));
+    parsed2 = JSON.parse((0, import_fs187.readFileSync)(resolvedPath, "utf-8"));
   } catch {
     return { exists: true, regularFile: true, readable: false, valid: false, parsed: null, candidate: null, writePath: resolvedPath };
   }
@@ -159557,27 +159956,27 @@ function refreshRuntimeClaudeJson(baseConfigDir, runtimeClaudeJsonPath, sourceCl
     changed = true;
   }
   if (changed) {
-    (0, import_fs186.writeFileSync)(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
+    (0, import_fs187.writeFileSync)(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
   }
 }
 function ensureMirroredCredentials(sourcePath, targetPath, hasEligibleSourceCredentials) {
-  if (!(0, import_fs186.existsSync)(sourcePath)) return;
+  if (!(0, import_fs187.existsSync)(sourcePath)) return;
   const removeExistingTarget = () => {
     try {
-      (0, import_fs186.lstatSync)(targetPath);
-      (0, import_fs186.rmSync)(targetPath, { recursive: true, force: true });
+      (0, import_fs187.lstatSync)(targetPath);
+      (0, import_fs187.rmSync)(targetPath, { recursive: true, force: true });
     } catch {
     }
   };
   removeExistingTarget();
   try {
-    (0, import_fs186.symlinkSync)(sourcePath, targetPath, "file");
+    (0, import_fs187.symlinkSync)(sourcePath, targetPath, "file");
     return;
   } catch {
     removeExistingTarget();
   }
   try {
-    (0, import_fs186.linkSync)(sourcePath, targetPath);
+    (0, import_fs187.linkSync)(sourcePath, targetPath);
     return;
   } catch {
     removeExistingTarget();
@@ -159588,7 +159987,7 @@ function ensureMirroredCredentials(sourcePath, targetPath, hasEligibleSourceCred
 }
 function pathExists(path30) {
   try {
-    (0, import_fs186.lstatSync)(path30);
+    (0, import_fs187.lstatSync)(path30);
     return true;
   } catch {
     return false;
@@ -159624,24 +160023,24 @@ function swapRuntimeConfigDir(runtimeConfigDir, nextConfigDir) {
   const previousConfigDir = `${runtimeConfigDir}.prev`;
   let movedPrevious = false;
   try {
-    (0, import_fs186.rmSync)(previousConfigDir, { recursive: true, force: true });
+    (0, import_fs187.rmSync)(previousConfigDir, { recursive: true, force: true });
     if (pathExists(runtimeConfigDir)) {
-      (0, import_fs186.renameSync)(runtimeConfigDir, previousConfigDir);
+      (0, import_fs187.renameSync)(runtimeConfigDir, previousConfigDir);
       movedPrevious = true;
     }
-    (0, import_fs186.renameSync)(nextConfigDir, runtimeConfigDir);
+    (0, import_fs187.renameSync)(nextConfigDir, runtimeConfigDir);
   } catch (error2) {
     try {
       if (movedPrevious && !pathExists(runtimeConfigDir) && pathExists(previousConfigDir)) {
-        (0, import_fs186.renameSync)(previousConfigDir, runtimeConfigDir);
+        (0, import_fs187.renameSync)(previousConfigDir, runtimeConfigDir);
       }
     } catch {
     }
-    (0, import_fs186.rmSync)(nextConfigDir, { recursive: true, force: true });
+    (0, import_fs187.rmSync)(nextConfigDir, { recursive: true, force: true });
     throw error2;
   }
   try {
-    (0, import_fs186.rmSync)(previousConfigDir, { recursive: true, force: true });
+    (0, import_fs187.rmSync)(previousConfigDir, { recursive: true, force: true });
   } catch {
   }
 }
@@ -159657,7 +160056,7 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
   const sourceClaudeJsonPath = (0, import_path214.join)((0, import_path214.dirname)(baseConfigDir), ".claude.json");
   const lifecycleLockPath = lockPathFor((0, import_path214.join)(baseConfigDir, ".omc-launch.prepare.lock"));
   return withFileLockSync(lifecycleLockPath, () => {
-    const preservedClaudeJson = pathExists(runtimeClaudeJsonPath) ? (0, import_fs186.readFileSync)(runtimeClaudeJsonPath) : null;
+    const preservedClaudeJson = pathExists(runtimeClaudeJsonPath) ? (0, import_fs187.readFileSync)(runtimeClaudeJsonPath) : null;
     const preservedRuntimeClaudeJson = readJsonObject4(runtimeClaudeJsonPath);
     const sourceClaudeJson = readJsonObject4(sourceClaudeJsonPath);
     reconcileRuntimeCredentials(
@@ -159666,15 +160065,15 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
       sourceClaudeJson,
       preservedRuntimeClaudeJson
     );
-    (0, import_fs186.rmSync)(nextConfigDir, { recursive: true, force: true });
+    (0, import_fs187.rmSync)(nextConfigDir, { recursive: true, force: true });
     try {
-      (0, import_fs186.mkdirSync)(nextConfigDir, { recursive: true });
+      (0, import_fs187.mkdirSync)(nextConfigDir, { recursive: true });
       const nextClaudeJsonPath = (0, import_path214.join)(nextConfigDir, ".claude.json");
       if (preservedClaudeJson) {
-        (0, import_fs186.writeFileSync)(nextClaudeJsonPath, preservedClaudeJson);
+        (0, import_fs187.writeFileSync)(nextClaudeJsonPath, preservedClaudeJson);
       }
       refreshRuntimeClaudeJson(baseConfigDir, nextClaudeJsonPath, sourceClaudeJson);
-      (0, import_fs186.copyFileSync)(companionPath, (0, import_path214.join)(nextConfigDir, "CLAUDE.md"));
+      (0, import_fs187.copyFileSync)(companionPath, (0, import_path214.join)(nextConfigDir, "CLAUDE.md"));
       for (const entry2 of [
         "agents",
         "commands",
@@ -159705,22 +160104,22 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
         hasLinkableCredentials(baseCredentialInspection)
       );
       const runtimeSettingsPath = (0, import_path214.join)(nextConfigDir, "settings.json");
-      if ((0, import_fs186.existsSync)(runtimeSettingsPath)) {
+      if ((0, import_fs187.existsSync)(runtimeSettingsPath)) {
         try {
-          const rawSettings = JSON.parse((0, import_fs186.readFileSync)(runtimeSettingsPath, "utf-8"));
+          const rawSettings = JSON.parse((0, import_fs187.readFileSync)(runtimeSettingsPath, "utf-8"));
           const repaired = stripRetiredTeamMcpServers(rawSettings);
           if (repaired.changed) {
-            (0, import_fs186.writeFileSync)(runtimeSettingsPath, JSON.stringify(repaired.settings, null, 2));
+            (0, import_fs187.writeFileSync)(runtimeSettingsPath, JSON.stringify(repaired.settings, null, 2));
           }
         } catch {
         }
       }
-      (0, import_fs186.writeFileSync)(
+      (0, import_fs187.writeFileSync)(
         (0, import_path214.join)(nextConfigDir, ".omc-launch-profile.json"),
         JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2)
       );
     } catch (error2) {
-      (0, import_fs186.rmSync)(nextConfigDir, { recursive: true, force: true });
+      (0, import_fs187.rmSync)(nextConfigDir, { recursive: true, force: true });
       throw error2;
     }
     swapRuntimeConfigDir(runtimeConfigDir, nextConfigDir);
@@ -160075,13 +160474,13 @@ function emptySensitiveEnvTransport() {
 function removeSensitiveEnvArtifacts(file, dir) {
   if (file) {
     try {
-      (0, import_fs186.rmSync)(file, { force: true });
+      (0, import_fs187.rmSync)(file, { force: true });
     } catch {
     }
   }
   if (dir) {
     try {
-      (0, import_fs186.rmSync)(dir, { recursive: true, force: true });
+      (0, import_fs187.rmSync)(dir, { recursive: true, force: true });
     } catch {
     }
   }
@@ -160100,16 +160499,16 @@ function buildSensitiveEnvFilePrefix(vars) {
       value: getProcessEnvironmentValue(name),
       encoded: nativeWindows ? escapeForCmdSet(getProcessEnvironmentValue(name)) : null
     }));
-    dir = (0, import_fs186.mkdtempSync)((0, import_path214.join)((0, import_os43.tmpdir)(), "omc-launch-env-"));
+    dir = (0, import_fs187.mkdtempSync)((0, import_path214.join)((0, import_os43.tmpdir)(), "omc-launch-env-"));
     file = (0, import_path214.join)(dir, nativeWindows ? "env.cmd" : "env.sh");
     const body = nativeWindows ? `@echo off\r
 ${values.map(({ name, encoded }) => `set "${name}=${encoded}"`).join("\r\n")}\r
 ` : `${values.map(({ name, value }) => `export ${name}=${quoteShellArg2(value)}`).join("\n")}
 `;
-    (0, import_fs186.writeFileSync)(file, body, { mode: 384 });
+    (0, import_fs187.writeFileSync)(file, body, { mode: 384 });
     try {
-      (0, import_fs186.chmodSync)(dir, 448);
-      (0, import_fs186.chmodSync)(file, 384);
+      (0, import_fs187.chmodSync)(dir, 448);
+      (0, import_fs187.chmodSync)(file, 384);
     } catch (error2) {
       if (!nativeWindows) throw error2;
     }
@@ -160123,8 +160522,8 @@ ${values.map(({ name, encoded }) => `set "${name}=${encoded}"`).join("\r\n")}\r
     return { prefix, paths: [file, dir], cleanup };
   } catch (error2) {
     removeSensitiveEnvArtifacts(file, dir);
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    throw new Error(`[omc] Unable to prepare secure credential transport: ${message2}`);
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    throw new Error(`[omc] Unable to prepare secure credential transport: ${message3}`);
   }
 }
 var TMUX_SESSION_ENV_VARS = /* @__PURE__ */ new Set(["TMUX", "TMUX_PANE", "PSMUX_SESSION", "CLAUDECODE"]);
@@ -160473,7 +160872,7 @@ function interopCommand(options = {}) {
 
 // src/cli/ask.ts
 var import_child_process54 = require("child_process");
-var import_fs187 = require("fs");
+var import_fs188 = require("fs");
 var import_promises37 = require("fs/promises");
 var import_os44 = require("os");
 var import_path215 = require("path");
@@ -160528,8 +160927,8 @@ function resolveAskPromptsDir(cwd2, packageRoot2, env2 = process.env) {
   }
   try {
     const scopePath = (0, import_path215.join)(cwd2, ".omx", "setup-scope.json");
-    if ((0, import_fs187.existsSync)(scopePath)) {
-      const parsed2 = JSON.parse((0, import_fs187.readFileSync)(scopePath, "utf-8"));
+    if ((0, import_fs188.existsSync)(scopePath)) {
+      const parsed2 = JSON.parse((0, import_fs188.readFileSync)(scopePath, "utf-8"));
       if (parsed2.scope === "project" || parsed2.scope === "project-local") {
         return (0, import_path215.join)(cwd2, ".codex", "prompts");
       }
@@ -160543,11 +160942,11 @@ async function resolveAgentPromptContent(role, promptsDir) {
   if (!SAFE_ROLE_PATTERN.test(normalizedRole)) {
     throw new Error(`[ask] invalid --agent-prompt role "${role}". Expected lowercase role names like "executor" or "test-engineer".`);
   }
-  if (!(0, import_fs187.existsSync)(promptsDir)) {
+  if (!(0, import_fs188.existsSync)(promptsDir)) {
     throw new Error(`[ask] prompts directory not found: ${promptsDir}.`);
   }
   const promptPath = (0, import_path215.join)(promptsDir, `${normalizedRole}.md`);
-  if (!(0, import_fs187.existsSync)(promptPath)) {
+  if (!(0, import_fs188.existsSync)(promptPath)) {
     const files = await (0, import_promises37.readdir)(promptsDir).catch(() => []);
     const availableRoles = files.filter((file) => file.endsWith(".md")).map((file) => file.slice(0, -3)).sort();
     const availableSuffix = availableRoles.length > 0 ? ` Available roles: ${availableRoles.join(", ")}.` : "";
@@ -160640,7 +161039,7 @@ async function askCommand(args) {
   const packageRoot2 = getPackageRoot();
   const advisorScriptPath = resolveAskAdvisorScriptPath(packageRoot2);
   const promptsDir = resolveAskPromptsDir(process.cwd(), packageRoot2, process.env);
-  if (!(0, import_fs187.existsSync)(advisorScriptPath)) {
+  if (!(0, import_fs188.existsSync)(advisorScriptPath)) {
     throw new Error(`[ask] advisor script not found: ${advisorScriptPath}`);
   }
   let finalPrompt = parsed2.prompt;
@@ -160788,9 +161187,9 @@ function stopQuery(value) {
     });
   }
 }
-function assistantText3(message2) {
-  if (!isRecord10(message2) || message2.type !== "assistant") return null;
-  const inner = message2.message;
+function assistantText3(message3) {
+  if (!isRecord10(message3) || message3.type !== "assistant") return null;
+  const inner = message3.message;
   if (!isRecord10(inner) || !Array.isArray(inner.content)) return null;
   const parts = [];
   for (const block of inner.content) {
@@ -160800,13 +161199,13 @@ function assistantText3(message2) {
   }
   return parts.length > 0 ? parts.join("") : null;
 }
-function sdkResult(message2) {
-  if (!isRecord10(message2) || message2.type !== "result") return null;
-  if (message2.subtype !== "success" || message2.is_error === true) {
-    const reason = typeof message2.subtype === "string" ? message2.subtype : "error";
+function sdkResult(message3) {
+  if (!isRecord10(message3) || message3.type !== "result") return null;
+  if (message3.subtype !== "success" || message3.is_error === true) {
+    const reason = typeof message3.subtype === "string" ? message3.subtype : "error";
     return { ok: false, reason };
   }
-  return { ok: true, text: typeof message2.result === "string" ? message2.result : "" };
+  return { ok: true, text: typeof message3.result === "string" ? message3.result : "" };
 }
 function truncate2(text4) {
   return text4.length > SUMMARY_LIMIT ? text4.slice(0, SUMMARY_LIMIT) : text4;
@@ -160884,13 +161283,13 @@ Goal: ${context.descriptor.goal}`;
           return assistantText3(value) ?? "";
         }
         const parts = [];
-        for await (const message2 of returned) {
-          const final = sdkResult(message2);
+        for await (const message3 of returned) {
+          const final = sdkResult(message3);
           if (final) {
             if (!final.ok) throw new AgentRunError(`sdk result error: ${final.reason}`);
             return final.text;
           }
-          const chunk = assistantText3(message2);
+          const chunk = assistantText3(message3);
           if (chunk !== null && chunk.length > 0) {
             parts.push(chunk);
           }
@@ -160917,8 +161316,8 @@ Goal: ${context.descriptor.goal}`;
       if (error2 instanceof AgentTimeoutError) {
         return failed2(context, error2.message);
       }
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      return failed2(context, `error: ${truncate2(message2)}`);
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      return failed2(context, `error: ${truncate2(message3)}`);
     } finally {
       if (timeoutTimer !== void 0) clearTimeout(timeoutTimer);
     }
@@ -161232,8 +161631,8 @@ function errorMessage2(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
 }
 var CRASH_EXIT_CODE = 70;
-function fail5(message2, code) {
-  console.error(source_default.red(`Error: ${message2}`));
+function fail5(message3, code) {
+  console.error(source_default.red(`Error: ${message3}`));
   process.exitCode = code;
 }
 async function loadSealedDescriptor(descriptorPath, runsRoot) {
@@ -161482,8 +161881,8 @@ function errorMessage3(error2) {
   if (error2 instanceof CheckpointError) return error2.message;
   return error2 instanceof Error ? error2.message : String(error2);
 }
-function fail6(message2, code) {
-  console.error(source_default.red(`Error: ${message2}`));
+function fail6(message3, code) {
+  console.error(source_default.red(`Error: ${message3}`));
   process.exitCode = code;
 }
 function checkpointCommand() {
@@ -161546,8 +161945,8 @@ function errorMessage4(error2) {
   if (error2 instanceof LookoutError) return error2.message;
   return error2 instanceof Error ? error2.message : String(error2);
 }
-function fail7(message2, code) {
-  console.error(source_default.red(`Error: ${message2}`));
+function fail7(message3, code) {
+  console.error(source_default.red(`Error: ${message3}`));
   process.exitCode = code;
 }
 function safeEvidence(value) {
@@ -161621,14 +162020,14 @@ init_agent_progress();
 
 // src/release/drive.ts
 var import_child_process57 = require("child_process");
-var import_fs192 = require("fs");
+var import_fs193 = require("fs");
 var import_os46 = require("os");
 var import_path221 = require("path");
 init_process_utils();
 
 // src/release/engine.ts
 var import_child_process56 = require("child_process");
-var import_fs191 = require("fs");
+var import_fs192 = require("fs");
 var import_path220 = require("path");
 var import_url25 = require("url");
 init_atomic_write();
@@ -161862,8 +162261,8 @@ function flakyCandidatesPath(stateRoot2, version3) {
 }
 function readReleaseState(stateRoot2, version3) {
   const path30 = releaseStatePath(stateRoot2, version3);
-  if (!(0, import_fs191.existsSync)(path30)) return null;
-  const parsed2 = JSON.parse((0, import_fs191.readFileSync)(path30, "utf8"));
+  if (!(0, import_fs192.existsSync)(path30)) return null;
+  const parsed2 = JSON.parse((0, import_fs192.readFileSync)(path30, "utf8"));
   if (parsed2?.version !== 1 || parsed2.release !== version3 || typeof parsed2.phases !== "object") {
     throw new Error(`${path30} is not a release state for ${version3}`);
   }
@@ -161980,7 +162379,7 @@ var Release = class {
   save(patch) {
     this.state = { ...this.state, ...patch, updatedAt: new Date(this.deps.now()).toISOString() };
     const path30 = releaseStatePath(this.deps.stateRoot, this.v);
-    (0, import_fs191.mkdirSync)((0, import_path220.join)(this.deps.stateRoot, "release"), { recursive: true });
+    (0, import_fs192.mkdirSync)((0, import_path220.join)(this.deps.stateRoot, "release"), { recursive: true });
     atomicWriteJsonSync(path30, this.state);
   }
   run(cmd, args, opts) {
@@ -162008,7 +162407,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
   }
   file(rel) {
     const path30 = (0, import_path220.join)(this.deps.root, rel);
-    return (0, import_fs191.existsSync)(path30) ? (0, import_fs191.readFileSync)(path30, "utf8") : null;
+    return (0, import_fs192.existsSync)(path30) ? (0, import_fs192.readFileSync)(path30, "utf8") : null;
   }
   readPkgName() {
     const pkg = this.file("package.json");
@@ -162075,7 +162474,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     if (this.run("gh", ["auth", "status"]).status !== 0) problems.push("gh is not authenticated (gh auth login)");
     const lockRel = this.git("rev-parse", "--git-path", "index.lock");
     const lock = (0, import_path220.isAbsolute)(lockRel) ? lockRel : (0, import_path220.join)(this.deps.root, lockRel);
-    if ((0, import_fs191.existsSync)(lock)) {
+    if ((0, import_fs192.existsSync)(lock)) {
       problems.push(`${lock} exists; another git process may hold it (not deleted; remove it only when no git process runs): ${this.gitProcesses()}`);
     }
     const remoteTag = this.run("git", ["ls-remote", "--tags", "origin", `refs/tags/v${v}`]);
@@ -162101,7 +162500,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
       const content2 = this.file(stamp.file);
       const next = content2 === null ? null : stampVersion(content2, stamp, v);
       if (next === null) missing.push(`${stamp.file}: no version stamp`);
-      else if (next !== content2) (0, import_fs191.writeFileSync)((0, import_path220.join)(this.deps.root, stamp.file), next);
+      else if (next !== content2) (0, import_fs192.writeFileSync)((0, import_path220.join)(this.deps.root, stamp.file), next);
     }
     if (missing.length > 0) fail8("version stamps missing", missing);
     this.script("scripts/generate-prompt-projections.mjs");
@@ -162113,7 +162512,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     this.must("npm", ["run", "build"], "npm run build");
     this.git("add", "-f", "dist", "bridge");
     const tracked = this.git("ls-files", "dist").split(/\r?\n/).filter(Boolean);
-    const orphans = findDistOrphans(tracked, (p) => (0, import_fs191.existsSync)((0, import_path220.join)(this.deps.root, p)));
+    const orphans = findDistOrphans(tracked, (p) => (0, import_fs192.existsSync)((0, import_path220.join)(this.deps.root, p)));
     if (orphans.length > 0) {
       if (!this.opts.fixOrphans) fail8(`${orphans.length} dist file(s) without a src source (re-run with --fix-orphans to remove them)`, orphans);
       for (let i = 0; i < orphans.length; i += 100) this.git("rm", "-q", "--", ...orphans.slice(i, i + 100));
@@ -162160,7 +162559,7 @@ ${r.stderr}`.trim().split(/\r?\n/);
     if (suite === "targeted") {
       const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
       if (tag.status !== 0) fail8("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
-      const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs191.existsSync)((0, import_path220.join)(this.deps.root, f)));
+      const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs192.existsSync)((0, import_path220.join)(this.deps.root, f)));
       if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       const args = ["node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed];
       this.deps.log(`  node ${args.join(" ")}`);
@@ -162170,14 +162569,14 @@ ${r.stderr}`.trim().split(/\r?\n/);
     }
     if (suite === "full") {
       const out = (0, import_path220.join)(this.deps.stateRoot, "release", `${this.v}-vitest.json`);
-      (0, import_fs191.mkdirSync)((0, import_path220.join)(this.deps.stateRoot, "release"), { recursive: true });
-      (0, import_fs191.rmSync)(out, { force: true });
-      (0, import_fs191.rmSync)(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
+      (0, import_fs192.mkdirSync)((0, import_path220.join)(this.deps.stateRoot, "release"), { recursive: true });
+      (0, import_fs192.rmSync)(out, { force: true });
+      (0, import_fs192.rmSync)(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
       const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { suiteEnv: true });
-      if (!(0, import_fs191.existsSync)(out)) fail8(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
-      const failing = failingTitlesFromVitestJson((0, import_fs191.readFileSync)(out, "utf8"));
-      const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs191.readFileSync)(this.opts.baseline, "utf8")) : [];
+      if (!(0, import_fs192.existsSync)(out)) fail8(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
+      const failing = failingTitlesFromVitestJson((0, import_fs192.readFileSync)(out, "utf8"));
+      const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs192.readFileSync)(this.opts.baseline, "utf8")) : [];
       const fresh = newFailures(failing, baseline);
       if (fresh.length > TRIAGE_CAP) fail8(`${fresh.length} failing test(s) not in the baseline, more than the ${TRIAGE_CAP} triaged in isolation (report: ${out})`, fresh);
       if (fresh.length === 0) {
@@ -162228,11 +162627,11 @@ ${r.stderr}`.trim().split(/\r?\n/);
       if (!result) {
         let passes = 0;
         for (let n = 0; name !== null && n < runs; n++) {
-          (0, import_fs191.rmSync)(out, { force: true });
+          (0, import_fs192.rmSync)(out, { force: true });
           const args = ["node_modules/vitest/vitest.mjs", "run", file, `--testNamePattern=${escapeRe(name)}`, "--reporter=json", `--outputFile=${out}`];
           this.deps.log(`  node ${args.slice(0, 3).join(" ")} ${JSON.stringify(args[3])} --reporter=json (isolated rerun ${n + 1}/${runs})`);
           const r = this.run(this.deps.node, args, { suiteEnv: true, timeoutMs });
-          if (r.status === 0 && (0, import_fs191.existsSync)(out) && testPassedInReport((0, import_fs191.readFileSync)(out, "utf8"), file, name)) passes++;
+          if (r.status === 0 && (0, import_fs192.existsSync)(out) && testPassedInReport((0, import_fs192.readFileSync)(out, "utf8"), file, name)) passes++;
         }
         result = { title, file, runs: name === null ? 0 : runs, passes, class: classifyTriage(runs, passes, name === null) };
       }
@@ -162240,7 +162639,7 @@ ${r.stderr}`.trim().split(/\r?\n/);
       this.save({ suiteTriage: { sha: head, results: [...results, ...prior.filter((p) => !results.some((r) => r.title === p.title))] } });
       this.deps.progress({ phase: "suite", status: "heartbeat", note: `triage ${i + 1}/${titles.length}: ${result.class}, passed ${result.passes}/${result.runs} isolated reruns: ${title}` });
     }
-    (0, import_fs191.rmSync)(out, { force: true });
+    (0, import_fs192.rmSync)(out, { force: true });
     return results;
   }
   /** sha256 of HEAD's object ids for SMOKE_INPUTS: the committed tree, since smoke runs after commit. */
@@ -162574,7 +162973,7 @@ ${rr.stderr}`) });
         now: this.deps.now,
         onReport: (r) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` }),
         retryTransient: this.opts.drive,
-        onTransient: (message2) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr}: transient GitHub error, retrying (${message2.slice(0, 120)})` })
+        onTransient: (message3) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr}: transient GitHub error, retrying (${message3.slice(0, 120)})` })
       });
       if (report3.verdict === "green") {
         const command = ["pr", "merge", String(pr), "--admin", "--merge", "--match-head-commit", view.headRefOid];
@@ -162777,7 +163176,7 @@ async function runRelease(deps, requested) {
   const opts = { ...requested, suite: requested.suite ?? recorded ?? "none", baseline };
   if (requested.baseline && opts.suite !== "full") throw new UsageError(`--baseline needs --suite full (this release's suite is ${opts.suite})`);
   const last = PHASES2.indexOf(opts.to ?? "verify");
-  if (start !== null && opts.suite === "full" && opts.baseline && PHASES2.indexOf(start) <= PHASES2.indexOf("suite") && last >= PHASES2.indexOf("suite") && !(0, import_fs191.existsSync)(opts.baseline)) {
+  if (start !== null && opts.suite === "full" && opts.baseline && PHASES2.indexOf(start) <= PHASES2.indexOf("suite") && last >= PHASES2.indexOf("suite") && !(0, import_fs192.existsSync)(opts.baseline)) {
     throw new UsageError(`baseline report not found: ${opts.baseline} (pass --baseline again)`);
   }
   if (opts.from && PHASES2.indexOf(opts.from) > last) throw new UsageError(`--from ${opts.from} comes after --to ${opts.to}`);
@@ -162864,20 +163263,20 @@ function driveLogPath(dir, name) {
 }
 function readDriveLock(path30) {
   try {
-    const lock = JSON.parse((0, import_fs192.readFileSync)(path30, "utf8"));
+    const lock = JSON.parse((0, import_fs193.readFileSync)(path30, "utf8"));
     return Number.isInteger(lock?.pid) && lock.pid > 0 ? lock : null;
   } catch {
     return null;
   }
 }
-async function acquireDriveLock(path30, argv, proc, log3, now2 = Date.now, fsx = { rename: import_fs192.renameSync }) {
+async function acquireDriveLock(path30, argv, proc, log3, now2 = Date.now, fsx = { rename: import_fs193.renameSync }) {
   const identity = await proc.identity(process.pid) ?? await proc.identity(process.pid);
   if (!identity) throw new Error(`cannot read the start identity of pid ${process.pid}; refusing to drive (${path30} could not be told apart from a reused pid by --stop)`);
   const lock = { pid: process.pid, startedAt: new Date(now2()).toISOString(), argv, host: (0, import_os46.hostname)(), identity };
-  (0, import_fs192.mkdirSync)((0, import_path221.dirname)(path30), { recursive: true });
+  (0, import_fs193.mkdirSync)((0, import_path221.dirname)(path30), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      (0, import_fs192.writeFileSync)(path30, `${JSON.stringify(lock, null, 2)}
+      (0, import_fs193.writeFileSync)(path30, `${JSON.stringify(lock, null, 2)}
 `, { flag: "wx" });
       return { ok: true, lock };
     } catch (error2) {
@@ -162900,20 +163299,20 @@ async function acquireDriveLock(path30, argv, proc, log3, now2 = Date.now, fsx =
     }
     const moved = readDriveLock(tomb);
     if (moved?.pid === holder?.pid && moved?.startedAt === holder?.startedAt) {
-      (0, import_fs192.rmSync)(tomb, { force: true });
+      (0, import_fs193.rmSync)(tomb, { force: true });
       continue;
     }
     try {
       fsx.rename(tomb, path30);
     } catch {
-      (0, import_fs192.rmSync)(tomb, { force: true });
+      (0, import_fs193.rmSync)(tomb, { force: true });
     }
     return { ok: false, holder: readDriveLock(path30), liveness: "live" };
   }
   return { ok: false, holder: readDriveLock(path30), liveness: "unknown" };
 }
 function releaseDriveLock(path30, pid = process.pid) {
-  if (readDriveLock(path30)?.pid === pid) (0, import_fs192.rmSync)(path30, { force: true });
+  if (readDriveLock(path30)?.pid === pid) (0, import_fs193.rmSync)(path30, { force: true });
 }
 function throttleHeartbeats(progress, now2, everyMs = DRIVE_HEARTBEAT_MS) {
   let last = -Infinity;
@@ -162947,14 +163346,14 @@ async function driveRelease(deps, opts, drive = {}) {
   }
 }
 function spawnDetachedDriver(entry2, argv, logPath, cwd2, spawnImpl = import_child_process57.spawn) {
-  (0, import_fs192.mkdirSync)((0, import_path221.dirname)(logPath), { recursive: true });
-  const fd = (0, import_fs192.openSync)(logPath, "a");
+  (0, import_fs193.mkdirSync)((0, import_path221.dirname)(logPath), { recursive: true });
+  const fd = (0, import_fs193.openSync)(logPath, "a");
   try {
     const child = spawnImpl(process.execPath, [entry2, ...argv], { cwd: cwd2, detached: true, stdio: ["ignore", fd, fd], windowsHide: true, env: process.env });
     child.unref();
     return child.pid;
   } finally {
-    (0, import_fs192.closeSync)(fd);
+    (0, import_fs193.closeSync)(fd);
   }
 }
 async function awaitDriverLock(path30, pid, sleep12, waitMs = 15e3, stepMs = 250) {
@@ -162986,24 +163385,24 @@ async function withDriveLock(path30, argv, proc, log3, fn) {
   }
 }
 function lastLines(path30, n) {
-  if (!(0, import_fs192.existsSync)(path30)) return [];
-  return (0, import_fs192.readFileSync)(path30, "utf8").split(/\r?\n/).filter(Boolean).slice(-n);
+  if (!(0, import_fs193.existsSync)(path30)) return [];
+  return (0, import_fs193.readFileSync)(path30, "utf8").split(/\r?\n/).filter(Boolean).slice(-n);
 }
 async function stopDriver(path30, proc) {
   const lock = readDriveLock(path30);
   if (!lock) {
-    if ((0, import_fs192.existsSync)(path30)) (0, import_fs192.rmSync)(path30, { force: true });
+    if ((0, import_fs193.existsSync)(path30)) (0, import_fs193.rmSync)(path30, { force: true });
     return { stopped: false, refused: false, reason: "no driver is running (no drive lock)" };
   }
   if (!lock.identity) return { stopped: false, refused: true, reason: `the lock of pid ${lock.pid} has no start identity, so the pid cannot be verified; not signalled, lock kept (stop it by hand, then delete ${path30})` };
   const liveness = await proc.liveness(lock);
   if (liveness === "unknown") return { stopped: false, refused: true, reason: `cannot verify pid ${lock.pid} on ${lock.host}; not signalled, lock kept (stop it there, or delete ${path30} once it is gone)` };
   if (liveness !== "live") {
-    (0, import_fs192.rmSync)(path30, { force: true });
+    (0, import_fs193.rmSync)(path30, { force: true });
     return { stopped: false, refused: false, reason: `pid ${lock.pid} is ${liveness === "dead" ? "not running" : "another process now"}; removed the stale lock` };
   }
   if (!await proc.kill(lock.pid)) return { stopped: false, refused: true, reason: `could not kill pid ${lock.pid}; lock kept` };
-  (0, import_fs192.rmSync)(path30, { force: true });
+  (0, import_fs193.rmSync)(path30, { force: true });
   return { stopped: true, pid: lock.pid };
 }
 
@@ -163080,9 +163479,9 @@ async function guarded3(json, fn) {
   try {
     process.exitCode = await fn();
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
-    else console.error(source_default.red(`Error: ${message2}`));
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    if (json) console.log(JSON.stringify({ ok: false, error: message3 }, null, 2));
+    else console.error(source_default.red(`Error: ${message3}`));
     process.exitCode = error2 instanceof UsageError2 ? 2 : 1;
   }
 }
@@ -163311,8 +163710,8 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
         if (o.drive) beat(`PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`);
       },
       retryTransient: o.drive,
-      onTransient: (message2) => {
-        if (o.drive) beat(`PR #${pr}: transient GitHub error, retrying (${message2.slice(0, 120)})`);
+      onTransient: (message3) => {
+        if (o.drive) beat(`PR #${pr}: transient GitHub error, retrying (${message3.slice(0, 120)})`);
       }
     });
     let result;
@@ -163426,14 +163825,14 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
 // src/cli/commands/release.ts
 init_esm();
 init_source();
-var import_fs194 = require("fs");
+var import_fs195 = require("fs");
 var import_path224 = require("path");
 var import_promises38 = require("readline/promises");
 init_config4();
 init_worktree_paths();
 
 // src/release/progress.ts
-var import_fs193 = require("fs");
+var import_fs194 = require("fs");
 var import_path223 = require("path");
 var BARE_VALUE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
 var MAX_NOTE = 500;
@@ -163453,8 +163852,8 @@ function releaseProgressFile(stateRoot2) {
 function emitReleaseProgress(input, stateRoot2) {
   try {
     const path30 = input.file || releaseProgressFile(stateRoot2);
-    (0, import_fs193.mkdirSync)((0, import_path223.dirname)(path30), { recursive: true });
-    (0, import_fs193.appendFileSync)(path30, `${formatReleaseProgress(input)}
+    (0, import_fs194.mkdirSync)((0, import_path223.dirname)(path30), { recursive: true });
+    (0, import_fs194.appendFileSync)(path30, `${formatReleaseProgress(input)}
 `, "utf8");
     return true;
   } catch {
@@ -163599,7 +163998,7 @@ function releaseCommand(overrides = {}) {
       }
       if (o.flakyCandidates) {
         const path30 = flakyCandidatesPath(stateRoot2, version3);
-        const content2 = (0, import_fs194.existsSync)(path30) ? (0, import_fs194.readFileSync)(path30, "utf8") : null;
+        const content2 = (0, import_fs195.existsSync)(path30) ? (0, import_fs195.readFileSync)(path30, "utf8") : null;
         let tests = [];
         try {
           tests = content2 ? JSON.parse(content2).tests ?? [] : [];
@@ -163621,9 +164020,9 @@ function releaseCommand(overrides = {}) {
         if (stopped.stopped) {
           deps.progress({ phase: "release", status: "blocked", note: `drive of ${version3} stopped by --stop (pid ${stopped.pid}); resume: omg release ${version3} --drive --detach` });
         }
-        const message2 = stopped.stopped ? `stopped the driver (pid ${stopped.pid}) and removed ${lockPath2}` : stopped.reason;
+        const message3 = stopped.stopped ? `stopped the driver (pid ${stopped.pid}) and removed ${lockPath2}` : stopped.reason;
         if (json) console.log(JSON.stringify({ ...stopped, lockPath: lockPath2 }, null, 2));
-        else console.log(message2);
+        else console.log(message3);
         process.exitCode = !stopped.stopped && stopped.refused ? 1 : 0;
         return;
       }
@@ -163690,9 +164089,9 @@ function releaseCommand(overrides = {}) {
       else printResult(result);
       process.exitCode = result.ok ? 0 : 1;
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
-      else console.error(source_default.red(`Error: ${message2}`));
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      if (json) console.log(JSON.stringify({ ok: false, error: message3 }, null, 2));
+      else console.error(source_default.red(`Error: ${message3}`));
       process.exitCode = error2 instanceof UsageError ? 2 : 1;
     }
   });
@@ -163709,7 +164108,7 @@ init_worktree_paths();
 
 // src/port/engine.ts
 var import_crypto64 = require("crypto");
-var import_fs195 = require("fs");
+var import_fs196 = require("fs");
 var import_path225 = require("path");
 init_lane();
 init_ledger2();
@@ -163724,8 +164123,8 @@ init_exec();
 var PORT_BRANCH = /^port\/upstream-[0-9a-f]{9}$/;
 var REMOTE2 = /^[\w][\w.-]*$/;
 var PortSafetyError = class extends ShipSafetyError {
-  constructor(message2) {
-    super(message2);
+  constructor(message3) {
+    super(message3);
     this.name = "PortSafetyError";
   }
 };
@@ -163853,8 +164252,8 @@ function laneForbidden(paths) {
   });
 }
 var PortStop = class extends Error {
-  constructor(status, phase, message2, next = null) {
-    super(message2);
+  constructor(status, phase, message3, next = null) {
+    super(message3);
     this.status = status;
     this.phase = phase;
     this.next = next;
@@ -163868,8 +164267,8 @@ var isJunk = (p) => JUNK_PATHS.some((j) => p === j || p.startsWith(`${j}/`));
 var chunks = (items, size = 100) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
 function forkFeaturesSection(cwd2) {
   const path30 = (0, import_path225.join)(cwd2, ".omc", "skills", "port-upstream.md");
-  if (!(0, import_fs195.existsSync)(path30)) return "";
-  const text4 = (0, import_fs195.readFileSync)(path30, "utf8").replace(/\r/g, "");
+  if (!(0, import_fs196.existsSync)(path30)) return "";
+  const text4 = (0, import_fs196.readFileSync)(path30, "utf8").replace(/\r/g, "");
   const m = /^## Fork Features to Preserve\n([\s\S]*?)(?=^## )/m.exec(text4);
   return m ? m[1].trim() : "";
 }
@@ -163920,7 +164319,7 @@ async function runPortDrive(opts) {
   const git7 = (...args) => exec3("git", args, { cwd: cwd2 });
   const script = (...args) => exec3(node, args, { cwd: cwd2 });
   const repoScript = (...args) => exec3(node, args, { cwd: cwd2, env: scriptEnv });
-  const exists = (p) => (0, import_fs195.existsSync)((0, import_path225.isAbsolute)(p) ? p : (0, import_path225.join)(cwd2, p));
+  const exists = (p) => (0, import_fs196.existsSync)((0, import_path225.isAbsolute)(p) ? p : (0, import_path225.join)(cwd2, p));
   const result = {
     status: "fail",
     exitCode: 1,
@@ -164007,16 +164406,16 @@ ${dirty}`);
       begin("delta", "package.json");
       const blockers = [];
       const deltaFile = (0, import_path225.join)(portDir, "package-delta.json");
-      if (opts.resume && (0, import_fs195.existsSync)(deltaFile)) {
-        result.packageDelta = JSON.parse((0, import_fs195.readFileSync)(deltaFile, "utf8"));
+      if (opts.resume && (0, import_fs196.existsSync)(deltaFile)) {
+        result.packageDelta = JSON.parse((0, import_fs196.readFileSync)(deltaFile, "utf8"));
         ok2("ran before; skipped on --continue (the human handled it)");
       } else {
         const d = repoScript(DRIFT_SCRIPT, "--package-delta", "--head", head, "--json");
         if (d.status !== 0 && d.status !== 1) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --package-delta failed: ${tail3(d.stderr, 5)}`);
         result.packageDelta = JSON.parse(d.stdout).changes;
         const human = result.packageDelta.filter((c) => c.action === "human");
-        (0, import_fs195.mkdirSync)(portDir, { recursive: true });
-        (0, import_fs195.writeFileSync)(deltaFile, `${JSON.stringify(result.packageDelta, null, 2)}
+        (0, import_fs196.mkdirSync)(portDir, { recursive: true });
+        (0, import_fs196.writeFileSync)(deltaFile, `${JSON.stringify(result.packageDelta, null, 2)}
 `);
         if (human.length > 0) {
           blockers.push(`package.json delta needs a human: ${human.map((c) => c.key).join(", ")} (${deltaFile}); port it by hand and stage package.json + package-lock.json`);
@@ -164027,8 +164426,8 @@ ${dirty}`);
       if (report3.leaks.length > 0) {
         if (accept !== void 0) {
           result.acceptedLeaks = report3.leaks.map((l) => `${l.path}:${l.line}`);
-          (0, import_fs195.mkdirSync)(portDir, { recursive: true });
-          (0, import_fs195.writeFileSync)((0, import_path225.join)(portDir, "accepted-leaks.json"), `${JSON.stringify({ head, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), leaks: report3.leaks }, null, 2)}
+          (0, import_fs196.mkdirSync)(portDir, { recursive: true });
+          (0, import_fs196.writeFileSync)((0, import_path225.join)(portDir, "accepted-leaks.json"), `${JSON.stringify({ head, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), leaks: report3.leaks }, null, 2)}
 `);
           opts.log(`reconcile: ${report3.leaks.length} leak line(s) accepted with --accept-leaks ${short(head)} (${(0, import_path225.join)(portDir, "accepted-leaks.json")})`);
         } else {
@@ -164037,9 +164436,9 @@ ${dirty}`);
       }
       const conflicts = report3.conflicts;
       if (conflicts.length > 0) {
-        (0, import_fs195.mkdirSync)(portDir, { recursive: true });
+        (0, import_fs196.mkdirSync)(portDir, { recursive: true });
         const brief = (0, import_path225.join)(portDir, "brief.md");
-        (0, import_fs195.writeFileSync)(brief, renderReconcileBrief({ cwd: cwd2, base: rangeBase, head, conflicts, progressFile, date: date3 }));
+        (0, import_fs196.writeFileSync)(brief, renderReconcileBrief({ cwd: cwd2, base: rangeBase, head, conflicts, progressFile, date: date3 }));
         result.brief = brief;
         const sensitive = conflicts.filter((c) => HUMAN_REVIEW_PREFIXES.some((p) => c.path.startsWith(p)) || laneForbidden([c.path]).length > 0);
         if (sensitive.length > 0) {
@@ -164140,12 +164539,12 @@ ${[...errors, tail3(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
     const pushed = git7("push", remote, `HEAD:refs/heads/${branch}`);
     if (pushed.status !== 0) throw new PortStop("fail", phase, `git push ${remote} ${branch} failed: ${tail3(pushed.stderr || pushed.stdout, 5)}`, resumeCmd);
     const md = repoScript(DRIFT_SCRIPT, "--report", "--base", rangeBase, "--head", head, "--markdown");
-    (0, import_fs195.mkdirSync)(portDir, { recursive: true });
+    (0, import_fs196.mkdirSync)(portDir, { recursive: true });
     const bodyFile = (0, import_path225.join)(portDir, "pr-body.md");
     const gates = result.gates.length > 0 ? result.gates.join(", ") : "green before the port commit (resumed with --continue)";
     const leaks = result.acceptedLeaks.length > 0 ? `
 - leak sweep: ${result.acceptedLeaks.length} line(s) accepted with --accept-leaks: ${listed(result.acceptedLeaks)}` : "";
-    (0, import_fs195.writeFileSync)(bodyFile, `${md.status === 0 ? md.stdout : ""}
+    (0, import_fs196.writeFileSync)(bodyFile, `${md.status === 0 ? md.stdout : ""}
 ### omg port drive
 
 - gates: ${gates}
@@ -164167,12 +164566,12 @@ ${[...errors, tail3(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
     return finish(result, err.status, `${err.phase}: ${err.message}`, err.next, opts);
   }
 }
-function finish(result, status, message2, next, opts) {
+function finish(result, status, message3, next, opts) {
   result.status = status;
   result.exitCode = status === "done" ? 0 : status === "blocked" ? 3 : 1;
-  result.message = message2;
+  result.message = message3;
   result.next = next;
-  opts.progress("report", status === "done" ? "done" : status, `${message2.split("\n")[0]}${next ? `; next: ${next}` : ""}`);
+  opts.progress("report", status === "done" ? "done" : status, `${message3.split("\n")[0]}${next ? `; next: ${next}` : ""}`);
   return result;
 }
 function findPortCommit(git7, head) {
@@ -164208,7 +164607,7 @@ async function runReconcileLane(lanes, cap, ctx) {
     laneId: `port-${short(ctx.head)}`,
     cwd: ctx.cwd,
     baseRef: ctx.preApply,
-    prompt: (0, import_fs195.readFileSync)(ctx.brief, "utf8"),
+    prompt: (0, import_fs196.readFileSync)(ctx.brief, "utf8"),
     profile: "write",
     timeoutMs: cap.timeoutMs,
     maxCredits: cap.maxCredits,
@@ -164258,13 +164657,13 @@ var sha2566 = (data) => (0, import_crypto64.createHash)("sha256").update(data).d
 function contentHash(path30) {
   let st;
   try {
-    st = (0, import_fs195.lstatSync)(path30);
+    st = (0, import_fs196.lstatSync)(path30);
   } catch {
     return "absent";
   }
-  if (st.isSymbolicLink()) return `l ${(0, import_fs195.readlinkSync)(path30)}`;
+  if (st.isSymbolicLink()) return `l ${(0, import_fs196.readlinkSync)(path30)}`;
   if (st.isDirectory()) return "d";
-  return `f ${st.mode & 73 ? "x" : "-"} ${sha2566((0, import_fs195.readFileSync)(path30))}`;
+  return `f ${st.mode & 73 ? "x" : "-"} ${sha2566((0, import_fs196.readFileSync)(path30))}`;
 }
 var hashPaths = (cwd2, paths) => sha2566([...paths].sort().map((p) => `${p} ${contentHash((0, import_path225.join)(cwd2, p))}`).join("\n"));
 function hostBaseline(gitOk, cwd2, preApply, conflicted) {
@@ -164385,9 +164784,9 @@ function portCommand(deps = {}) {
       else printResult2(result);
       process.exitCode = result.exitCode;
     } catch (error2) {
-      const message2 = error2 instanceof Error ? error2.message : String(error2);
-      if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
-      else console.error(source_default.red(`Error: ${message2}`));
+      const message3 = error2 instanceof Error ? error2.message : String(error2);
+      if (json) console.log(JSON.stringify({ ok: false, error: message3 }, null, 2));
+      else console.error(source_default.red(`Error: ${message3}`));
       process.exitCode = error2 instanceof PortUsageError ? 2 : 1;
     }
   });
@@ -164396,7 +164795,7 @@ function portCommand(deps = {}) {
 
 // src/cli/commands/progress.ts
 init_esm();
-var import_fs196 = require("fs");
+var import_fs197 = require("fs");
 var import_path227 = require("path");
 init_agent_progress();
 var UsageError3 = class extends Error {
@@ -164420,7 +164819,7 @@ function resolveSources(o, cwd2) {
 function listSources(sources) {
   if (sources.files) return sources.files;
   try {
-    return (0, import_fs196.readdirSync)(sources.dir).filter((name) => name.endsWith(".log")).sort().map((name) => (0, import_path227.join)(sources.dir, name));
+    return (0, import_fs197.readdirSync)(sources.dir).filter((name) => name.endsWith(".log")).sort().map((name) => (0, import_path227.join)(sources.dir, name));
   } catch {
     return [];
   }
@@ -164454,17 +164853,17 @@ function parseAgents(raw) {
 var newTail = () => ({ offset: 0, rest: Buffer.alloc(0), ino: 0, birthtimeMs: 0 });
 function readFrom(path30, offset, size) {
   if (size <= offset) return Buffer.alloc(0);
-  const fd = (0, import_fs196.openSync)(path30, "r");
+  const fd = (0, import_fs197.openSync)(path30, "r");
   try {
     const chunk = Buffer.alloc(size - offset);
-    return chunk.subarray(0, (0, import_fs196.readSync)(fd, chunk, 0, chunk.length, offset));
+    return chunk.subarray(0, (0, import_fs197.readSync)(fd, chunk, 0, chunk.length, offset));
   } finally {
-    (0, import_fs196.closeSync)(fd);
+    (0, import_fs197.closeSync)(fd);
   }
 }
 function tryStat(path30) {
   try {
-    return (0, import_fs196.statSync)(path30);
+    return (0, import_fs197.statSync)(path30);
   } catch {
     return null;
   }
@@ -164548,7 +164947,7 @@ async function watchProgress(o, deps) {
     for (const path30 of paths) {
       let tail4 = tails.get(path30);
       if (!tail4) {
-        if (!(0, import_fs196.existsSync)(path30)) continue;
+        if (!(0, import_fs197.existsSync)(path30)) continue;
         tail4 = newTail();
         tails.set(path30, tail4);
       }
@@ -164904,8 +165303,8 @@ Examples:
     console.log(`  User:    ${paths.user}`);
     console.log(`  Project: ${paths.project}`);
     console.log(source_default.blue("\nFile status:"));
-    console.log(`  User:    ${(0, import_fs205.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
-    console.log(`  Project: ${(0, import_fs205.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  User:    ${(0, import_fs206.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  Project: ${(0, import_fs206.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
     return;
   }
   const config2 = loadConfig();
@@ -165074,7 +165473,7 @@ Examples:
     }
     config3.notificationProfiles[profileName] = profile;
     try {
-      (0, import_fs205.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
+      (0, import_fs206.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${profileName}" \u2014 ${type} configured`));
       console.log(JSON.stringify(profile[type], null, 2));
     } catch (error2) {
@@ -165187,7 +165586,7 @@ Examples:
     }
   }
   try {
-    (0, import_fs205.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+    (0, import_fs206.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
     console.log(source_default.green(`\u2713 Stop callback '${type}' configured`));
     console.log(JSON.stringify(config2.stopHookCallbacks[type], null, 2));
   } catch (error2) {
@@ -165249,7 +165648,7 @@ Active profile (OMC_NOTIFY_PROFILE): ${activeProfile}`));
       delete config2.notificationProfiles;
     }
     try {
-      (0, import_fs205.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+      (0, import_fs206.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${name}" deleted`));
     } catch (error2) {
       console.error(source_default.red("Failed to write configuration:"), error2);
@@ -165367,8 +165766,8 @@ Examples:
       process.exit(1);
     }
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    console.error(source_default.red(`Update failed: ${message2}`));
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    console.error(source_default.red(`Update failed: ${message3}`));
     console.error(source_default.gray('Try again with "omg update --force", or reinstall with "omg install --force".'));
     process.exit(1);
   }
@@ -165387,8 +165786,8 @@ program2.command("update-reconcile").description("Internal: Reconcile runtime st
       console.log(source_default.green(reconcileResult.message));
     }
   } catch (error2) {
-    const message2 = error2 instanceof Error ? error2.message : String(error2);
-    console.error(source_default.red(`Reconciliation error: ${message2}`));
+    const message3 = error2 instanceof Error ? error2.message : String(error2);
+    console.error(source_default.red(`Reconciliation error: ${message3}`));
     process.exit(1);
   }
 });

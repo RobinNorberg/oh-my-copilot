@@ -20450,7 +20450,7 @@ var init_routes = __esm({
       route({ id: "core.teams.GET", area: "core", resource: "teams", method: "GET", apiVersion: STABLE, routeParams: ["projectId"], queryParams: ["$top", "$skip"] }),
       route({ id: "git.repositories.GET", area: "git", resource: "repositories", method: "GET", apiVersion: STABLE, routeParams: ["project", "repositoryId"], queryParams: [] }),
       // Work items (intake, check, progress).
-      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand"] }),
+      route({ id: "wit.workItems.GET", area: "wit", resource: "workItems", method: "GET", apiVersion: STABLE, routeParams: ["project", "id"], queryParams: ["$expand", "ids", "fields", "errorPolicy"] }),
       route({
         id: "wit.workItems.PATCH",
         area: "wit",

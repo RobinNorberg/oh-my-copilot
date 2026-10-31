@@ -21,6 +21,17 @@ All notable changes to oh-my-copilot will be documented in this file.
   pipeline. The heal guard sends `az` to the Azure DevOps guard with a new
   `read` policy that refuses every non-GET route. `heal scan` on Azure
   DevOps stays refused until the follow-up PR.
+- **`omg factory board`.** A read-only view of intake items, their factory
+  runs and their tracker stages, on GitHub and Azure DevOps. Items without a
+  run are grouped by check bucket; runs sit in the column of their expected
+  stage, with the gate, lane, credits, PR, head and latest verdict. Flags:
+  `drift` (a human moved the card), `unsynced` (a progress write is pending),
+  `seal!` (the run state fails its integrity check) and `stale` (no change
+  for 24 hours). `--parent <spec>` shows a spec's children, runs outside the
+  source get their own section, and `--no-check` reads Azure DevOps items in
+  one batched `wit/workitems?ids=` GET (the new optional
+  `ForgeTracker.peekItems`). It runs on `omg factory check`'s read guard with
+  no marker, so every write is refused. `--json` has schemaVersion 1.
 - **`omg factory enqueue` on Azure DevOps.** Tickets become work items of the
   first `factory.intake.itemTypes` type, with the criteria in the
   acceptance-criteria field, the priority field, a parent link to the spec and
@@ -35,6 +46,22 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
+- **The Azure DevOps live acceptance script walks the shipyard–factory flow**
+  (`scripts/ado-acceptance.mjs`, maintainers only). `create` makes a spec work
+  item instead of one User Story per backlog ticket. A new `enqueue` phase
+  prints the user-config `factory.forge.azureDevOps.trustedAuthors` change and
+  asks before it adds the spec's creator (`--yes` confirms). It then sends the
+  `BACKLOG.md` tickets through `omg factory enqueue`: `--dry-run`, a
+  signature, the real enqueue, and a re-run that must find every ticket
+  unchanged. `exercise` checks `omg factory check --parent` and the
+  predecessor ordering, and picks with `omg factory run --next --parent`
+  (real only with `--with-lanes`). It then checks the merge gate comment, the
+  spec's rollup line, and that no PR of the run is `completed`. Cleanup lists
+  the trustedAuthors the run added, and one whose setup did not finish as
+  "may have been added". enqueue records into its own `recorded-enqueue/`, so
+  exercise's progress check sees only a `System.State` PATCH of the run's
+  item. The y/N prompt reads the terminal through `isatty(0)` (it no longer
+  fails silently on Linux and macOS), and a failed enqueue keeps its warnings.
 - **Listener intake goes to harbor, not intent.** An issue labeled `intake`
   now spawns a headless `/oh-my-copilot:harbor look at #<n>` session (English
   prompt) instead of an intent session with a Chinese prompt, and the default
