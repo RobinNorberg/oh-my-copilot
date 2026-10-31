@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "dbfb9bb1e0e8d1ba17ee31b1bd611374702c086f",
-    "sourceSha256": "c690720a2115fbe98baca1e90e1c804d310eeedb01caa78700950179cd0895c6",
+    "head": "209582acc9eb29c78a5a12f0fbadfa923015e4f2",
+    "sourceSha256": "f5a3d2cde5f5e7ac9de86060648afa2f7f630654569c7bae168133666842853f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "dbfb9bb1e0e8d1ba17ee31b1bd611374702c086f",
-  "sourceSha256": "c690720a2115fbe98baca1e90e1c804d310eeedb01caa78700950179cd0895c6",
+  "head": "209582acc9eb29c78a5a12f0fbadfa923015e4f2",
+  "sourceSha256": "f5a3d2cde5f5e7ac9de86060648afa2f7f630654569c7bae168133666842853f",
   "counts": {
     "public": {
       "skills": 63,
@@ -8748,11 +8748,6 @@
         "path": ".claude-plugin/plugin.json"
       },
       {
-        "id": ".claude/settings.local.json",
-        "kind": "other",
-        "path": ".claude/settings.local.json"
-      },
-      {
         "id": ".clawhip/project.json",
         "kind": "other",
         "path": ".clawhip/project.json"
@@ -8976,11 +8971,6 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
-      },
-      {
-        "id": ".omg/projection-manifest.json",
-        "kind": "other",
-        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -57846,6 +57836,11 @@
         "id": "tests/lint/multirepo-paths-git-files.test.ts",
         "kind": "other",
         "path": "tests/lint/multirepo-paths-git-files.test.ts"
+      },
+      {
+        "id": "tests/lint/omg-runtime-untracked.test.ts",
+        "kind": "other",
+        "path": "tests/lint/omg-runtime-untracked.test.ts"
       },
       {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
@@ -116540,6 +116535,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/omg-runtime-untracked.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -116851,12 +116866,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9842,
-      "edgeCount": 11780,
-      "importEdgeCount": 9661,
+      "nodeCount": 9841,
+      "edgeCount": 11784,
+      "importEdgeCount": 9665,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "bae4169ac05a4decb6222229df904e9ada6889e29079683637dd17fe294829d6",
-  "manifestSha256": "7695fbb6d0da2bdf34c5b062650de8e155d22c6398bd677e86076ecf7e803e92"
+  "inventorySha256": "412cfa40cd1c750a5dd5df40c272dc02ba85ba9d62b93e87a01ac790cf44adcd",
+  "manifestSha256": "62d312402de5a9a3cd69b9fbfbbd85e1ea03f0eb0fe95ff0122d92d24bace70c"
 }
