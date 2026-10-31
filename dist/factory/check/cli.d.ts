@@ -39,7 +39,7 @@ export declare class CheckIncompatibleError extends Error {
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
-export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined): Exec;
+export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined, command?: string): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export declare function parseSourceSpec(spec: string): Record<string, string>;
 export declare function parseItemId(raw: string): number;
@@ -111,7 +111,7 @@ export declare const defaultResolveAz: (root: string) => AzEntry;
  * gets the forge repo and that entry (adoGuardContext), and the adapter
  * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
-export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined): {
+export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined, command?: string): {
     exec: Exec;
     options: AzureDevOpsForgeOptions;
 };

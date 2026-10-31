@@ -76,18 +76,18 @@ const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', '
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
-export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined): Exec {
+export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado: () => AdoGuardContext | undefined = () => undefined, command = 'omg factory check'): Exec {
   return (cmd, args, opts) => {
     const file = cmd.replace(/\\/g, '/').split('/').pop()!.toLowerCase().replace(/\.exe$/, '');
-    const refuse = (why: string): never => { throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`); };
+    const refuse = (why: string): never => { throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`); };
     const mark = marker?.();
     if (!args.every((x) => typeof x === 'string')) refuse('non-string argument');
     if (file === 'gh') {
       if (opts?.env !== undefined) refuse('gh takes no environment');
-      if (!checkGh(args, mark)) refuse('not one of the command shapes omg factory check runs');
+      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
     } else if (file === 'git') {
       const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
-      if (!read) refuse('not one of the read-only git shapes omg factory check runs');
+      if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
       // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.
       assertFactoryCommand(cmd, args, [], opts?.env);
     } else if (isAdoCommand(cmd)) {
@@ -97,9 +97,9 @@ export function checkGuardExec(exec: Exec, marker?: () => string | undefined, ad
       const wiql = method === 'POST' && flag('--area')?.toLowerCase() === 'wit' && flag('--resource')?.toLowerCase() === 'wiql';
       if (mark === undefined && method !== undefined && method !== 'GET' && !wiql) refuse('only reads run without a confirmed --mark');
       // The factory guard's path: az gets the guard's own copy of a validated --in-file body, never the caller's file.
-      return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', (why) => new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`));
+      return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`));
     } else {
-      refuse('not a command omg factory check runs');
+      refuse(`not a command ${command} runs`);
     }
     return exec(cmd, args, opts);
   };
@@ -275,10 +275,10 @@ export const defaultResolveAz = (root: string): AzEntry => resolveAzEntry(defaul
  * gets the forge repo and that entry (adoGuardContext), and the adapter
  * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
-export function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz: (root: string) => AzEntry = defaultResolveAz, marker?: () => string | undefined): { exec: Exec; options: AzureDevOpsForgeOptions } {
+export function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz: (root: string) => AzEntry = defaultResolveAz, marker?: () => string | undefined, command?: string): { exec: Exec; options: AzureDevOpsForgeOptions } {
   const entry = config.kind === 'azure-devops' ? resolveAz(root) : undefined;
   const guard = entry ? adoGuardContext(config, entry) : undefined;
-  return { exec: checkGuardExec(exec, marker, () => guard), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
+  return { exec: checkGuardExec(exec, marker, () => guard, command), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
 }
 
 /** What a read-only factory command (check, board) works on: the checkout, its base, the resolved forge config and the forge on the read guard. */
@@ -301,7 +301,7 @@ export interface ReadForge {
  */
 export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge {
   // The git reads before the forge config is known; az runs only through forgeReadExec below.
-  const pre = checkGuardExec(deps.exec, marker);
+  const pre = checkGuardExec(deps.exec, marker, undefined, command);
   const top = git(pre, process.cwd(), ['rev-parse', '--show-toplevel']);
   if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
   const root = top.out;
@@ -322,7 +322,7 @@ export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, 
     throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
   }
   try {
-    const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker);
+    const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
     return { root, base, baseSha, config, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
   } catch (error) {
     throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));

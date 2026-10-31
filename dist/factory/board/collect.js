@@ -188,7 +188,8 @@ export function collectBoard(input) {
         let peeked;
         if (forge.tracker.peekItems) {
             try {
-                peeked = forge.tracker.peekItems(ids);
+                // The batch guard takes plain 1-10 digit ids; any other id is a read-failed row, not a board abort.
+                peeked = forge.tracker.peekItems(ids.filter((id) => /^[1-9]\d{0,9}$/.test(String(id))));
             }
             catch (error) {
                 // A guard refusal is a bug, never an unreadable item.
@@ -301,7 +302,7 @@ export async function runFactoryBoard(o, deps) {
         ok: !board.readFailed,
         forge: config.kind,
         repo: config.repo.url,
-        source: parent !== undefined || !source ? null : { ...source },
+        source: parent !== undefined || !source ? null : Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === 'string' ? plainText(v) : v])),
         parent: spec,
         columns: board.columns,
         outside: board.outside,

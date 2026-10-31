@@ -127564,20 +127564,20 @@ function checkGh(a, marker) {
   if (group === "label" && sub === "list") return r.length === 6 && r[0] === "--search" && VALUE2(r[1]) && r[2] === "--json" && r[3] === "name" && r[4] === "--limit" && NUMBER5.test(r[5]);
   return false;
 }
-function checkGuardExec(exec3, marker, ado = () => void 0) {
+function checkGuardExec(exec3, marker, ado = () => void 0, command = "omg factory check") {
   return (cmd, args, opts) => {
     const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
     const refuse = (why) => {
-      throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(" ")}\`: ${why}`);
+      throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`);
     };
     const mark = marker?.();
     if (!args.every((x) => typeof x === "string")) refuse("non-string argument");
     if (file === "gh") {
       if (opts?.env !== void 0) refuse("gh takes no environment");
-      if (!checkGh(args, mark)) refuse("not one of the command shapes omg factory check runs");
+      if (!checkGh(args, mark)) refuse(`not one of the command shapes ${command} runs`);
     } else if (file === "git") {
       const read = CHECK_GIT.has(args[0]) && (args[0] !== "show" || args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]));
-      if (!read) refuse("not one of the read-only git shapes omg factory check runs");
+      if (!read) refuse(`not one of the read-only git shapes ${command} runs`);
       assertFactoryCommand(cmd, args, [], opts?.env);
     } else if (isAdoCommand(cmd)) {
       const flag = (f) => {
@@ -127587,9 +127587,9 @@ function checkGuardExec(exec3, marker, ado = () => void 0) {
       const method = flag("--http-method")?.toUpperCase();
       const wiql = method === "POST" && flag("--area")?.toLowerCase() === "wit" && flag("--resource")?.toLowerCase() === "wiql";
       if (mark === void 0 && method !== void 0 && method !== "GET" && !wiql) refuse("only reads run without a confirmed --mark");
-      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(" ")}\`: ${why}`));
+      return runGuardedAdo(exec3, cmd, args, opts, ado(), "factory", (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(" ")}\`: ${why}`));
     } else {
-      refuse("not a command omg factory check runs");
+      refuse(`not a command ${command} runs`);
     }
     return exec3(cmd, args, opts);
   };
@@ -127702,13 +127702,13 @@ function renderCheckTable(items) {
   lines4.push(counts);
   return lines4.join("\n");
 }
-function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker) {
+function forgeReadExec(exec3, config2, root2, resolveAz = defaultResolveAz, marker, command) {
   const entry2 = config2.kind === "azure-devops" ? resolveAz(root2) : void 0;
   const guard = entry2 ? adoGuardContext(config2, entry2) : void 0;
-  return { exec: checkGuardExec(exec3, marker, () => guard), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
+  return { exec: checkGuardExec(exec3, marker, () => guard, command), options: { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} } };
 }
 function openReadForge(o, deps, warnings, command, marker) {
-  const pre = checkGuardExec(deps.exec, marker);
+  const pre = checkGuardExec(deps.exec, marker, void 0, command);
   const top = git3(pre, process.cwd(), ["rev-parse", "--show-toplevel"]);
   if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
   const root2 = top.out;
@@ -127728,7 +127728,7 @@ function openReadForge(o, deps, warnings, command, marker) {
     throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
   }
   try {
-    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker);
+    const read = forgeReadExec(deps.exec, config2, root2, deps.resolveAz, marker, command);
     return { root: root2, base, baseSha, config: config2, forge: deps.createForge(read.exec, root2, config2, read.options), exec: read.exec };
   } catch (error2) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
@@ -129849,7 +129849,7 @@ function collectBoard(input) {
     let peeked;
     if (forge.tracker.peekItems) {
       try {
-        peeked = forge.tracker.peekItems(ids2);
+        peeked = forge.tracker.peekItems(ids2.filter((id) => /^[1-9]\d{0,9}$/.test(String(id))));
       } catch (error2) {
         if (error2 instanceof FactorySafetyError) throw error2;
         warnings.push(`omg factory board: the batched item read failed: ${message2(error2)}`);
@@ -129942,7 +129942,7 @@ async function runFactoryBoard(o, deps) {
     ok: !board.readFailed,
     forge: config2.kind,
     repo: config2.repo.url,
-    source: parent !== void 0 || !source ? null : { ...source },
+    source: parent !== void 0 || !source ? null : Object.fromEntries(Object.entries(source).map(([k, v]) => [k, typeof v === "string" ? plainText(v) : v])),
     parent: spec,
     columns: board.columns,
     outside: board.outside,

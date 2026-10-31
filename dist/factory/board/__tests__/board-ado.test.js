@@ -178,6 +178,17 @@ describe('omg factory board on Azure DevOps (runFactoryBoard + the real adapter)
         expect(() => guarded(POSIX_ENTRY.command, adoInvokeArgs(ctx, 'wit.workItems.GET', { project: 'Web' }, { ids, fields: 'System.Title', errorPolicy: 'omit' }), { cwd: root })).toThrow(/query parameter ids has a refused value/);
         expect(() => guarded(POSIX_ENTRY.command, adoInvokeArgs(ctx, 'wit.workItems.GET', { project: 'Web' }, { ids: '42', errorPolicy: 'fail' }), { cwd: root })).toThrow(/query parameter errorPolicy has a refused value/);
         expect(w.az.length).toBe(before);
+        expect(() => guarded(POSIX_ENTRY.command, adoInvokeArgs(ctx, 'wit.workItems.PATCH', { project: 'Web', id: '42' }, undefined, body), { cwd: root })).toThrow(/^omg factory board refuses /);
+    });
+    it('--no-check turns an id the batch guard would refuse (more than 10 digits) into a read-failed row, not a board abort', async () => {
+        const fixtures = variant(loadAdoFixtures(), 'wit.wiql.POST.query.json', (s) => ({ ...s, workItems: [{ id: 42 }, { id: 12345678901 }] }));
+        const w = world(fixtures);
+        expect(await board(w.exec, { source: SOURCE, check: false, json: true })).toBe(1);
+        const b = json();
+        expect(b.ok).toBe(false);
+        expect(b.columns[0].items.find((r) => r.id === 12345678901)?.error).toBe('#12345678901 could not be read');
+        expect(w.az.map((args) => args.join(' ')).join(' ')).not.toContain('12345678901,');
+        expect(w.az.some((args) => args.includes('ids=42'))).toBe(true);
     });
 });
 //# sourceMappingURL=board-ado.test.js.map
