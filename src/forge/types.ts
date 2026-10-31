@@ -321,6 +321,8 @@ export interface ForgeOptions {
   untrustedRoots: readonly string[];
   /** Engine-owned directory outside every untrusted root (the ADO human merge body); default the user's ~/.omg/forge. */
   stateDir?: string;
+  /** `omg factory enqueue`'s body directory (its TrackerWriteContext bodyDir): an adapter that reads a tracker write's body file reads only a file directly in it. */
+  trackerBodyDir?: string;
 }
 
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */

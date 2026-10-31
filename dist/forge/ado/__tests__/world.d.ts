@@ -30,12 +30,13 @@ export interface Call {
     inFile?: string;
 }
 /** A forge over the fixtures, behind the factory guard; `calls` records what reached the fixture Exec. */
-/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check). */
+/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check); `bodyDir`: the adapter's body directory, default writes.bodyDir. */
 export declare function adoWorld(o?: {
     fixtures?: readonly AdoFixture[];
     entry?: AzEntry;
     source?: IntakeSource;
     writes?: TrackerWriteContext;
+    bodyDir?: string;
 }): {
     forge: import("../../types.js").Forge;
     calls: Call[];

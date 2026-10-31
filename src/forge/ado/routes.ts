@@ -160,7 +160,7 @@ export const ADO_ROUTES: readonly AdoRoute[] = Object.freeze([
       ops: ['test', 'add'],
       paths: [
         { path: /^\/rev$/, value: { type: 'integer', min: 1 } },
-        // With the tracker write context, every tag also passes the tag rule (no factory:/harbor:, no leading -).
+        // With the tracker write context, a tag write is a test of the current list, then an add editing allowlisted tags only.
         { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: 'tags' },
         // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
         { path: /^\/fields\/System\.State$/, value: TEXT, configured: 'states' },
@@ -348,20 +348,55 @@ function objectProblem(v: unknown, shape: AdoObjectBody, at: string): string | u
   return undefined;
 }
 
+/**
+ * A `factory:` or `harbor:` tag, look-alikes included: NFKC folds fullwidth
+ * letters and `：`, and space around the `:` does not hide it.
+ */
+const isFactoryTag = (tag: string): boolean => /^(?:factory|harbor)\s*:/i.test(tag.normalize('NFKC').trim());
 /** A tag enqueue may write: visible text without `;` or `,`, no leading `-`, never a `factory:` or `harbor:` tag. */
-const TRACKER_TAG = /^(?!-)(?!(?:factory|harbor):)[^;,\p{Cc}\p{Cf}]{1,100}$/iu;
+const isTrackerTag = (tag: string): boolean => /^(?!-)[^;,\p{Cc}\p{Cf}]{1,100}$/u.test(tag) && !isFactoryTag(tag);
+const TAGS_PATH = '/fields/System.Tags';
+
+/**
+ * A tracker PATCH's tag write (`add` replaces the whole list): one
+ * `test /fields/System.Tags <current>` before one `add`, and the edit adds and
+ * removes allowlisted tags only, so every factory:/harbor: tag stays (the
+ * gh --add-label/--remove-label parity of PR 7a).
+ */
+function trackerTagEditProblem(body: readonly Record<string, unknown>[], labels: readonly string[]): string | undefined {
+  const adds = body.flatMap((op, i) => (op.op === 'add' && op.path === TAGS_PATH ? [i] : []));
+  if (adds.length === 0) return undefined;
+  const tests = body.flatMap((op, i) => (op.op === 'test' && op.path === TAGS_PATH ? [i] : []));
+  const at = `body[${adds[0]}].value`;
+  if (adds.length > 1 || tests.length !== 1 || tests[0] > adds[0]) return `body[${adds[0]}]: a tracker tag write is one add after one test ${TAGS_PATH} of the current tags`;
+  const split = (v: unknown) => (v as string).split(';').map((t) => t.trim());
+  const current = body[tests[0]].value === '' ? [] : split(body[tests[0]].value).filter(Boolean);
+  const next = split(body[adds[0]].value);
+  const has = (list: readonly string[], tag: string) => list.some((t) => t.toLowerCase() === tag.toLowerCase());
+  for (const tag of next) {
+    if (has(current, tag)) continue;
+    if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
+    if (!labels.includes(tag)) return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
+  }
+  for (const tag of current) {
+    if (has(next, tag)) continue;
+    if (isFactoryTag(tag)) return `${at} removes the factory tag ${JSON.stringify(tag)}`;
+    if (!isTrackerTag(tag) || !has(labels, tag)) return `${at} removes tag ${JSON.stringify(tag)}, which is not on the tracker write allowlist`;
+  }
+  return undefined;
+}
 
 /** The context-bound rules of the tags, area path and relation paths; the value already passed its AdoValue rule. */
 function trackerProblem(route: AdoRoute, target: AdoPatchPath, value: unknown, context: AdoBodyContext, at: string): string | undefined {
   switch (target.configured) {
     case 'tags': {
       const writes = context.trackerWrites;
-      // The engine's marker and progress tag writes keep the TEXT rule alone.
-      if (!writes) return undefined;
+      // The engine's marker and progress tag writes keep the TEXT rule alone; a tracker PATCH's tag edit is trackerTagEditProblem's.
+      if (!writes || route.method !== 'POST') return undefined;
+      // A new item carries allowlisted tags only.
       for (const tag of (value as string).split(';').map((t) => t.trim())) {
-        if (!TRACKER_TAG.test(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
-        // A new item carries allowlisted tags only; an update keeps the item's other tags.
-        if (route.method === 'POST' && !writes.labels.includes(tag)) return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
+        if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
+        if (!writes.labels.includes(tag)) return `${at} tag ${JSON.stringify(tag)} is not on the tracker write allowlist`;
       }
       return undefined;
     }
@@ -404,7 +439,11 @@ export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBody
     const target = typeof op.path === 'string' ? shape.paths.find((p) => p.path.test(op.path as string)) : undefined;
     if (!target || (target.tracker && !writes)) return `${at}.path is not allowed`;
     if (target.tracker && !(isPlainObject(body[0]) && body[0].op === 'test' && body[0].path === '/rev')) return `${at}: a tracker write starts with test /rev`;
-    const problem = valueProblem(op.value, target.value, `${at}.value`);
+    // Enqueue never moves an item: its state and board column are the engine's progress writes.
+    if (writes && (target.configured === 'states' || target.configured === 'columns')) return `${at}.path is not a tracker write`;
+    // An untagged item's current tags, for trackerTagEditProblem's test op.
+    const untaggedTest = writes && op.op === 'test' && target.configured === 'tags' && op.value === '';
+    const problem = untaggedTest ? undefined : valueProblem(op.value, target.value, `${at}.value`);
     if (problem) return problem;
     const contextProblem = trackerProblem(route, target, op.value, context, `${at}.value`);
     if (contextProblem) return contextProblem;
@@ -415,5 +454,5 @@ export function validateAdoBody(route: AdoRoute, body: unknown, context: AdoBody
       return `${at}.value is not a configured progress column (${context.allowedColumns.join(', ') || 'none configured'})`;
     }
   }
-  return undefined;
+  return writes && route.method === 'PATCH' ? trackerTagEditProblem(body as Record<string, unknown>[], writes.labels) : undefined;
 }

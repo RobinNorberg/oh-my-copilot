@@ -4,6 +4,8 @@
  * DevOps adapter reads a work item body with it. No process imports here:
  * src/forge stays free of child_process.
  */
+/** Whether `path` names a file directly in the absolute directory `dir` (the caller's body directory). */
+export declare function isBodyFileIn(path: string, dir: string): boolean;
 /** The most characters a tracker write's body file may hold. */
 export declare const MAX_TRACKER_BODY_CHARS = 65536;
 /**

@@ -20468,7 +20468,7 @@ var init_routes = __esm({
           ops: ["test", "add"],
           paths: [
             { path: /^\/rev$/, value: { type: "integer", min: 1 } },
-            // With the tracker write context, every tag also passes the tag rule (no factory:/harbor:, no leading -).
+            // With the tracker write context, a tag write is a test of the current list, then an add editing allowlisted tags only.
             { path: /^\/fields\/System\.Tags$/, value: TEXT, configured: "tags" },
             // Also one of the configured progress-mapping states (validateAdoBody's allowedStates, design §7).
             { path: /^\/fields\/System\.State$/, value: TEXT, configured: "states" },

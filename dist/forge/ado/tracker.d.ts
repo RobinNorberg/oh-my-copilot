@@ -16,5 +16,6 @@ export declare const splitTags: (tags: unknown) => string[];
 export declare const adoTextHtml: (text: string) => string;
 /** The acceptance criteria as an escaped HTML list for Microsoft.VSTS.Common.AcceptanceCriteria. */
 export declare const adoListHtml: (items: readonly string[]) => string;
-export declare function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeTracker;
+/** `bodyDir`: enqueue's body directory (ForgeOptions.trackerBodyDir); unset, createItem and updateItem read no body file. */
+export declare function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir?: string): ForgeTracker;
 //# sourceMappingURL=tracker.d.ts.map

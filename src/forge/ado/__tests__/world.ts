@@ -55,8 +55,8 @@ export interface Call {
 }
 
 /** A forge over the fixtures, behind the factory guard; `calls` records what reached the fixture Exec. */
-/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check). */
-export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry; source?: IntakeSource; writes?: TrackerWriteContext } = {}) {
+/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check); `bodyDir`: the adapter's body directory, default writes.bodyDir. */
+export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry; source?: IntakeSource; writes?: TrackerWriteContext; bodyDir?: string } = {}) {
   const fixtures = o.fixtures ?? loadAdoFixtures();
   const entry = o.entry ?? POSIX_ENTRY;
   const inner = adoFixtureExec(fixtures);
@@ -70,7 +70,7 @@ export function adoWorld(o: { fixtures?: readonly AdoFixture[]; entry?: AzEntry;
   const config = adoConfig(o.source);
   const guard: AdoGuardContext = adoGuardContext(config, entry);
   const exec = factoryGuardExec(recording, () => [], () => guard, () => o.writes);
-  const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR });
+  const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR, trackerBodyDir: o.bodyDir ?? o.writes?.bodyDir });
   const routeOf = (c: Call) => {
     const a = c.args;
     const v = (f: string) => a[a.indexOf(f) + 1];

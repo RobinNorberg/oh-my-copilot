@@ -11,7 +11,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { readTrackerBody } from '../body-file.js';
+import { isBodyFileIn, readTrackerBody } from '../body-file.js';
 import { isTrustedAdoAuthor } from '../config.js';
 import {
   shipyardKeys, type ForgeComment, type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRelationKind, type ForgeTracker, type IntakeSource,
@@ -118,8 +118,9 @@ export const adoTextHtml = (text: string): string => `<div>${text.replace(/\r\n?
 /** The acceptance criteria as an escaped HTML list for Microsoft.VSTS.Common.AcceptanceCriteria. */
 export const adoListHtml = (items: readonly string[]): string => `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
 
-/** Title, description (from the body file, read like a gh tracker write's), AC and priority as JSON-patch adds. */
-function itemFieldOps(item: { title: string; bodyFile: string; acceptance?: string[]; priority?: number }): PatchOp[] {
+/** Title, description (from the body file, a file directly in enqueue's body directory read like a gh tracker write's), AC and priority as JSON-patch adds. */
+function itemFieldOps(item: { title: string; bodyFile: string; acceptance?: string[]; priority?: number }, bodyDir: string | undefined): PatchOp[] {
+  if (!bodyDir || !isBodyFileIn(item.bodyFile, bodyDir)) throw new Error(`--body-file ${JSON.stringify(item.bodyFile)} must be a file directly in enqueue's body directory`);
   const body = readTrackerBody(item.bodyFile, (reason) => new Error(reason)).toString('utf8');
   const ops: PatchOp[] = [{ op: 'add', path: '/fields/System.Title', value: item.title }];
   if (body.trim() !== '') ops.push({ op: 'add', path: '/fields/System.Description', value: adoTextHtml(body) });
@@ -136,7 +137,8 @@ function editedTags(current: string[], add: readonly string[], remove: readonly 
   return next.length === current.length && next.every((t, i) => t === current[i]) ? null : next;
 }
 
-export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeTracker {
+/** `bodyDir`: enqueue's body directory (ForgeOptions.trackerBodyDir); unset, createItem and updateItem read no body file. */
+export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir?: string): ForgeTracker {
   const tracker: ForgeTracker = {
     viewItem(id: number): ForgeItem {
       const item = readItem(ctx, id);
@@ -252,7 +254,7 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeT
     createItem(draft: ForgeItemDraft): number {
       const type = ctx.intakeItemTypes[0];
       if (!type) throw new Error('factory.intake.itemTypes names no work item type to create');
-      const ops = itemFieldOps(draft);
+      const ops = itemFieldOps(draft, bodyDir);
       if (draft.labels.length) ops.push({ op: 'add', path: '/fields/System.Tags', value: draft.labels.join('; ') });
       // An area-tag intake source: the new item sits in its area path (its tag comes in draft.labels).
       if (intakeSource?.type === 'area-tag') ops.push({ op: 'add', path: '/fields/System.AreaPath', value: intakeSource.areaPath });
@@ -262,11 +264,13 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeT
     },
 
     updateItem(id: number, update: ForgeItemUpdate): void {
-      const fields = itemFieldOps(update);
+      const fields = itemFieldOps(update, bodyDir);
       const res = patchItem(ctx, id, (item) => {
         const tags = editedTags(splitTags(item.fields['System.Tags']), update.addLabels, update.removeLabels);
         if (tags && tags.length === 0) throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
-        return tags ? [...fields, { op: 'add', path: '/fields/System.Tags', value: tags.join('; ') }] : fields;
+        // The add replaces the whole list: the guard checks the edit against the tested current tags.
+        const current = { op: 'test' as const, path: '/fields/System.Tags', value: str(item.fields['System.Tags']) ?? '' };
+        return tags ? [...fields, current, { op: 'add', path: '/fields/System.Tags', value: tags.join('; ') }] : fields;
       });
       if (!res.ok) throw new Error(`update work item ${id}: ${res.detail}`);
     },
@@ -280,6 +284,9 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource): ForgeT
         if (linked.includes(target)) return null;
         // A work item has one parent: a different one is a conflict for the captain, never replaced here.
         if (kind === 'parent' && linked.length > 0) throw new Error(`work item ${id} already has parent ${linked[0]}`);
+        // Work item ids are org-wide: the target must be an item of the forge project.
+        const project = str(readItem(ctx, target).fields['System.TeamProject']);
+        if (!project || project.toLowerCase() !== (ctx.repo.project ?? '').toLowerCase()) throw new Error(`work item ${target} is not in project ${ctx.repo.project}`);
         return [{ op: 'add', path: '/relations/-', value: { rel, url: `${adoOrgUrl(ctx.repo.owner)}/_apis/wit/workItems/${target}` } }];
       });
       if (!res.ok) throw new Error(`link work item ${id} to ${target}: ${res.detail}`);

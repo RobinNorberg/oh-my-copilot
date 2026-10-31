@@ -6,6 +6,15 @@
  */
 
 import { closeSync, fstatSync, lstatSync, openSync, readFileSync } from 'fs';
+import { isAbsolute, relative, resolve } from 'path';
+
+/** Whether `path` names a file directly in the absolute directory `dir` (the caller's body directory). */
+export function isBodyFileIn(path: string, dir: string): boolean {
+  if (!isAbsolute(path) || !isAbsolute(dir)) return false;
+  const rel = relative(resolve(dir), resolve(path));
+  // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
+}
 
 /** The most characters a tracker write's body file may hold. */
 export const MAX_TRACKER_BODY_CHARS = 65536;

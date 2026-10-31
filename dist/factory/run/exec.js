@@ -31,9 +31,9 @@
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { isAbsolute, join, relative, resolve } from 'path';
+import { isAbsolute, join } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
-import { readTrackerBody } from '../../forge/body-file.js';
+import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
@@ -86,13 +86,7 @@ const KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
 /** At most this many labels on one write (an intake label and a priority, plus the old priority removed). */
 const MAX_WRITE_LABELS = 4;
 const isWriteLabel = (s, ctx) => typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
-function isBodyFile(s, ctx) {
-    if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir))
-        return false;
-    const rel = relative(resolve(ctx.bodyDir), resolve(s));
-    // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
-    return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
-}
+const isBodyFile = (s, ctx) => isFile(s) && isBodyFileIn(s, ctx.bodyDir);
 /**
  * The argv index of a passed tracker write's `--body-file` value (create 7,
  * edit 8); undefined for every other shape. Call only after the guard passed.

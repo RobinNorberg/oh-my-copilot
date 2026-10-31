@@ -32,9 +32,9 @@
 
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { isAbsolute, join, relative, resolve } from 'path';
+import { isAbsolute, join } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo, type AdoGuardContext } from '../../forge/ado/guard.js';
-import { readTrackerBody } from '../../forge/body-file.js';
+import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
@@ -108,12 +108,7 @@ const MAX_WRITE_LABELS = 4;
 const isWriteLabel = (s: string | undefined, ctx: TrackerWriteContext): boolean =>
   typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
 
-function isBodyFile(s: string | undefined, ctx: TrackerWriteContext): boolean {
-  if (!isFile(s) || !isAbsolute(s) || !isAbsolute(ctx.bodyDir)) return false;
-  const rel = relative(resolve(ctx.bodyDir), resolve(s));
-  // No `:` either: `b.md:s` names an NTFS alternate data stream of b.md.
-  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel) && !/[\\/:]/.test(rel);
-}
+const isBodyFile = (s: string | undefined, ctx: TrackerWriteContext): boolean => isFile(s) && isBodyFileIn(s, ctx.bodyDir);
 
 /**
  * The argv index of a passed tracker write's `--body-file` value (create 7,

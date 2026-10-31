@@ -5,9 +5,9 @@
  * adapter builds the JSON-patch documents and the escaped HTML.
  */
 
-import { linkSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { assertFactoryCommand, FactorySafetyError, type TrackerWriteContext } from '../../../factory/run/exec.js';
 import { guardExec, type Exec } from '../../../ship/exec.js';
@@ -15,7 +15,7 @@ import type { AdoGuardContext } from '../guard.js';
 import { adoHtmlToText } from '../html.js';
 import { adoRouteById, validateAdoBody } from '../routes.js';
 import { adoListHtml, adoTextHtml } from '../tracker.js';
-import { loadAdoFixtures } from './fixtures.js';
+import { loadAdoFixtures, type AdoFixture } from './fixtures.js';
 import { adoWorld, POSIX_ENTRY, REPO, variant } from './world.js';
 
 const scratch = mkdtempSync(join(tmpdir(), 'omg-ado-tracker-writes-'));
@@ -85,8 +85,18 @@ describe('ADO tracker writes: the route allowlist', () => {
     }
     refused(guard(create([TITLE, link('System.LinkTypes.Hierarchy-Reverse')])), /path is not allowed/);
     refused(guard(create([TITLE, { op: 'add', path: '/fields/System.State', value: 'Closed' }])), /path is not allowed/);
-    // A state write stays held to the configured progress states, tracker context or not.
-    refused(guard(patch([REV, { op: 'add', path: '/fields/System.State', value: 'Closed' }])), /none configured/);
+    refused(guard(patch([REV, { op: 'add', path: '/fields/System.State', value: 'Closed' }])), /path is not a tracker write/);
+  });
+
+  it('enqueue never writes the state or the Kanban column, even a configured progress one', () => {
+    const progress: AdoGuardContext = { ...CTX, allowedStates: ['Closed'], allowedColumns: ['Done'] };
+    const state = patch([REV, { op: 'add', path: '/fields/System.State', value: 'Closed' }]);
+    const column = patch([REV, { op: 'add', path: '/fields/WEF_6CB513B6E70E43499D9FC94E5BBFB784_Kanban.Column', value: 'Done' }]);
+    for (const args of [state, column]) {
+      refused(() => assertFactoryCommand('az', args, [], undefined, progress, WRITES), /body\[1\]\.path is not a tracker write/);
+      // The engine's progress writes keep them.
+      expect(() => assertFactoryCommand('az', args, [], undefined, progress)).not.toThrow();
+    }
   });
 
   it('a tracker PATCH starts with test /rev', () => {
@@ -144,10 +154,48 @@ describe('ADO tracker writes: the text rule', () => {
     const all = { ...WRITES, labels: ['factory:building', 'harbor:accepted', '-x', 'a,b', `t${ch(0x1b)}`] };
     for (const tag of all.labels) refused(guard(field('/fields/System.Tags', tag), all), /refused (tag|value)/);
     refused(guard(field('/fields/System.Tags', 'Factory: Done'.toLowerCase())), /refused tag/);
-    // An update keeps the item's other tags, but the tag rule still holds.
-    expect(guard(patch([REV, { op: 'add', path: '/fields/System.Tags', value: 'factory; reports; ready' }]))).not.toThrow();
-    refused(guard(patch([REV, { op: 'add', path: '/fields/System.Tags', value: 'factory; harbor:accepted' }])), /refused tag "harbor:accepted"/);
-    refused(guard(patch([REV, { op: 'add', path: '/fields/System.Tags', value: 'factory; ; x' }])), /refused tag ""/);
+  });
+
+  const tagTest = (value: string) => ({ op: 'test', path: '/fields/System.Tags', value });
+  const tagAdd = (value: string) => ({ op: 'add', path: '/fields/System.Tags', value });
+
+  it('tags: factory:/harbor: look-alikes (space around the colon, fullwidth forms) are refused too', () => {
+    const lookAlikes = ['factory :x', 'factory\t: x', 'harbor : accepted', `factory${ch(0xff1a)}x`, `${ch(0xff46)}actory:x`, `HARBOR${ch(0xff1a)}a`, ` factory:x`];
+    const all = { ...WRITES, labels: lookAlikes };
+    for (const tag of lookAlikes) refused(guard(field('/fields/System.Tags', tag), all), /refused (tag|value)/);
+    for (const tag of lookAlikes) refused(guard(patch([REV, tagTest('factory'), tagAdd(`factory; ${tag}`)]), all), /refused (tag|value)/);
+  });
+
+  it('tags on an update: one test of the current list before one add; the edit adds and removes allowlisted tags only', () => {
+    const writes = { ...WRITES, labels: ['factory', 'ready', 'reports'] };
+    expect(guard(patch([REV, tagTest('factory; reports'), tagAdd('factory; ready')]), writes)).not.toThrow();
+    // An untagged item tests the empty list.
+    expect(guard(patch([REV, tagTest(''), tagAdd('ready')]), writes)).not.toThrow();
+    // The add replaces the whole list, so it never goes without the test, after it, or twice.
+    refused(guard(patch([REV, tagAdd('factory; ready')]), writes), /one add after one test \/fields\/System\.Tags/);
+    refused(guard(patch([REV, tagAdd('factory; ready'), tagTest('factory')]), writes), /one add after one test/);
+    refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; ready'), tagAdd('x')]), writes), /one add after one test/);
+    refused(guard(patch([REV, tagTest('factory'), tagTest('factory'), tagAdd('factory; ready')]), writes), /one add after one test/);
+    // Added and removed tags are allowlisted; the item's other tags stay.
+    refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; other')]), writes), /tag "other" is not on the tracker write allowlist/);
+    refused(guard(patch([REV, tagTest('factory; customer'), tagAdd('factory')]), writes), /removes tag "customer", which is not on the tracker write allowlist/);
+    expect(guard(patch([REV, tagTest('factory; Customer'), tagAdd('factory; Customer; ready')]), writes)).not.toThrow();
+    refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; harbor:accepted')]), writes), /refused tag "harbor:accepted"/);
+    refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; ; x')]), writes), /refused tag ""/);
+  });
+
+  it('tags on an update: an item with factory:/harbor: tags keeps every one of them', () => {
+    const current = 'factory; factory:building; harbor:accepted';
+    expect(guard(patch([REV, TITLE, tagTest(current), tagAdd(`${current}; ready`)]))).not.toThrow();
+    expect(guard(patch([REV, tagTest(current), tagAdd('factory:building; harbor:accepted; factory; ready')]))).not.toThrow();
+    refused(guard(patch([REV, tagTest(current), tagAdd('factory; harbor:accepted; ready')])), /removes the factory tag "factory:building"/);
+    refused(guard(patch([REV, tagTest(current), tagAdd('ready')])), /removes the factory tag/);
+    // Even an allowlisted factory: tag is never removed (or added).
+    const writes = { ...WRITES, labels: [...WRITES.labels, 'factory:building'] };
+    refused(guard(patch([REV, tagTest(current), tagAdd('factory; harbor:accepted')]), writes), /removes the factory tag "factory:building"/);
+    refused(guard(patch([REV, tagTest('factory'), tagAdd('factory; factory:building')]), writes), /refused tag "factory:building"/);
+    // A look-alike already on the item is held like the real tag.
+    refused(guard(patch([REV, tagTest(`factory; factory ${ch(0xff1a)}x`), tagAdd('factory')])), /removes the factory tag/);
   });
 
   it('area path: the forge project or under it; priority 1 to 4', () => {
@@ -181,6 +229,13 @@ describe('ADO tracker writes: guard refusals mirroring the GitHub ones (#372)', 
 
 describe('ADO adapter: enqueue writes over the fixtures', () => {
   const body = (text: string) => file(text);
+  /** The fixtures plus work item `id` (a copy of 42) in `project`. */
+  const withItem = (id: number, project: string | undefined): AdoFixture[] => {
+    const fixtures = loadAdoFixtures();
+    const base = fixtures.find((f) => f.name === 'wit.workItems.GET.42.json')!;
+    const stdout = structuredClone(base.stdout) as { id: number; fields: Record<string, unknown> };
+    return [...fixtures, { ...base, name: `wit.workItems.GET.${id}.json`, provenance: 'synthetic: variant of wit.workItems.GET.42.json', routeParameters: { project: 'Web', id: String(id) }, stdout: { ...stdout, id, fields: { ...stdout.fields, 'System.TeamProject': project } } }];
+  };
   const source = { type: 'area-tag' as const, areaPath: 'Web\\Factory', tag: 'factory' };
 
   it('createItem: one POST of the first intake type; escaped description and AC, priority, tags, area path', () => {
@@ -207,9 +262,30 @@ describe('ADO adapter: enqueue writes over the fixtures', () => {
   });
 
   it('createItem without the tracker write context is refused by the guard; no type configured throws before any call', () => {
-    const { forge, calls } = adoWorld({ source });
+    const { forge, calls } = adoWorld({ source, bodyDir: scratch });
     expect(() => forge.tracker.createItem!({ title: 'x', bodyFile: body('x'), labels: [] })).toThrow(FactorySafetyError);
     expect(calls).toEqual([]);
+  });
+
+  it('the body file is a file directly in enqueue\'s body directory; no directory set reads none', () => {
+    const { forge, calls } = adoWorld({ writes: WRITES });
+    const outside = mkdtempSync(join(tmpdir(), 'omg-ado-outside-'));
+    try {
+      const secret = join(outside, 'secret.txt');
+      writeFileSync(secret, 'secret', 'utf8');
+      mkdirSync(join(scratch, 'sub'), { recursive: true });
+      writeFileSync(join(scratch, 'sub', 'b.md'), 'x', 'utf8');
+      const ok = body('x');
+      for (const bad of [secret, join(scratch, '..', basename(outside), 'secret.txt'), join(scratch, 'sub', 'b.md'), `${ok}:s`, 'relative.md', scratch]) {
+        expect(() => forge.tracker.createItem!({ title: 'x', bodyFile: bad, labels: [] })).toThrow(/must be a file directly in enqueue's body directory/);
+        expect(() => forge.tracker.updateItem!(42, { title: 'x', bodyFile: bad, addLabels: [], removeLabels: [] })).toThrow(/must be a file directly in enqueue's body directory/);
+      }
+      const noDir = adoWorld({ writes: WRITES, bodyDir: '' }).forge;
+      expect(() => noDir.tracker.createItem!({ title: 'x', bodyFile: ok, labels: [] })).toThrow(/body directory/);
+      expect(calls).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('createItem: a refused title or AC item never reaches az', () => {
@@ -231,7 +307,7 @@ describe('ADO adapter: enqueue writes over the fixtures', () => {
   });
 
   it('updateItem: test /rev, the fields, and the tag edit in one PATCH', () => {
-    const { forge, calls, routes } = adoWorld({ writes: WRITES });
+    const { forge, calls, routes } = adoWorld({ writes: { ...WRITES, labels: ['factory', 'ready', 'reports'] } });
     forge.tracker.updateItem!(42, { title: 'New title', bodyFile: body('Body'), addLabels: ['ready', 'Factory'], removeLabels: ['reports'], acceptance: ['one'], priority: 1 });
     expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.PATCH']);
     expect(calls[1].body).toEqual([
@@ -240,8 +316,26 @@ describe('ADO adapter: enqueue writes over the fixtures', () => {
       { op: 'add', path: '/fields/System.Description', value: '<div>Body</div>' },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria', value: '<ul><li>one</li></ul>' },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: 1 },
+      { op: 'test', path: '/fields/System.Tags', value: 'factory; reports' },
       { op: 'add', path: '/fields/System.Tags', value: 'factory; ready' },
     ]);
+  });
+
+  it('updateItem: an item with a factory: tag is updated without stripping it; removing a tag off the allowlist is refused', () => {
+    const tagged = (tags: string | undefined) => variant(loadAdoFixtures(), 'wit.workItems.GET.42.json', (s) => ({ ...s, fields: { ...s.fields, 'System.Tags': tags } }));
+    const { forge, calls } = adoWorld({ writes: WRITES, fixtures: tagged('factory; factory:building; harbor:accepted') });
+    forge.tracker.updateItem!(42, { title: 'T', bodyFile: body('B'), addLabels: ['ready'], removeLabels: [] });
+    expect((calls[1].body as unknown[]).slice(-2)).toEqual([
+      { op: 'test', path: '/fields/System.Tags', value: 'factory; factory:building; harbor:accepted' },
+      { op: 'add', path: '/fields/System.Tags', value: 'factory; factory:building; harbor:accepted; ready' },
+    ]);
+    // reports (fixture) is not on WRITES' allowlist; factory:building never is.
+    expect(() => adoWorld({ writes: WRITES }).forge.tracker.updateItem!(42, { title: 'T', bodyFile: body('B'), addLabels: [], removeLabels: ['reports'] })).toThrow(/removes tag "reports"/);
+    expect(() => forge.tracker.updateItem!(42, { title: 'T', bodyFile: body('B'), addLabels: [], removeLabels: ['factory:building'] })).toThrow(/removes the factory tag "factory:building"/);
+    // An untagged item: the test names the empty list.
+    const untagged = adoWorld({ writes: WRITES, fixtures: tagged(undefined) });
+    untagged.forge.tracker.updateItem!(42, { title: 'T', bodyFile: body('B'), addLabels: ['ready'], removeLabels: [] });
+    expect((untagged.calls[1].body as unknown[]).slice(-2)).toEqual([{ op: 'test', path: '/fields/System.Tags', value: '' }, { op: 'add', path: '/fields/System.Tags', value: 'ready' }]);
   });
 
   it('updateItem: no tag op when the tags do not change; removing the last tag is refused', () => {
@@ -252,17 +346,29 @@ describe('ADO adapter: enqueue writes over the fixtures', () => {
   });
 
   it('addRelation: Dependency-Reverse / Hierarchy-Reverse to an org work item url; no write when linked', () => {
-    const { forge, calls, routes } = adoWorld({ writes: WRITES });
+    const { forge, calls, routes } = adoWorld({ writes: WRITES, fixtures: withItem(41, 'web') });
     forge.tracker.addRelation!(42, 'depends-on', 41);
-    expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.PATCH']);
-    expect(calls[1].body).toEqual([
+    expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.GET', 'wit.workItems.PATCH']);
+    // The target is viewed first: its project (compared case-insensitively) is the forge project.
+    expect(calls[1].args[calls[1].args.indexOf('--route-parameters') + 2]).toBe('id=41');
+    expect(calls[2].body).toEqual([
       { op: 'test', path: '/rev', value: 7 },
       { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Dependency-Reverse', url: 'https://dev.azure.com/contoso/_apis/wit/workItems/41' } },
     ]);
     // Already linked (fixture: predecessor 40, parent 30): read only.
     forge.tracker.addRelation!(42, 'depends-on', 40);
     forge.tracker.addRelation!(42, 'parent', 30);
-    expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.PATCH', 'wit.workItems.GET', 'wit.workItems.GET']);
+    expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.GET', 'wit.workItems.PATCH', 'wit.workItems.GET', 'wit.workItems.GET']);
+  });
+
+  it('addRelation: work item ids are org-wide, so a target in another project (or none) is refused before any write', () => {
+    for (const project of ['Other', undefined]) {
+      const { forge, routes } = adoWorld({ writes: WRITES, fixtures: withItem(41, project) });
+      expect(() => forge.tracker.addRelation!(42, 'depends-on', 41)).toThrow(/work item 41 is not in project Web/);
+      expect(routes()).toEqual(['wit.workItems.GET', 'wit.workItems.GET']);
+    }
+    // A target that cannot be read is no link either.
+    expect(() => adoWorld({ writes: WRITES }).forge.tracker.addRelation!(42, 'depends-on', 404)).toThrow(/TF401232/);
   });
 
   it('addRelation: one parent, no self link, no other kind', () => {
@@ -276,7 +382,7 @@ describe('ADO adapter: enqueue writes over the fixtures', () => {
   });
 
   it('addRelation without the tracker write context is refused by the guard', () => {
-    const { forge } = adoWorld();
+    const { forge } = adoWorld({ fixtures: withItem(41, 'Web') });
     expect(() => forge.tracker.addRelation!(42, 'depends-on', 41)).toThrow(/body\[1\]\.path is not allowed/);
   });
 
