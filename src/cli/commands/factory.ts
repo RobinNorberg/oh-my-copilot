@@ -326,7 +326,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
 export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
   return new Command('enqueue')
-    .description('Push launch\'s approved tickets to the tracker as children of a spec (GitHub; idempotent by shipyard-key)')
+    .description('Push launch\'s approved tickets to the tracker as children of a spec (GitHub or Azure DevOps; idempotent by shipyard-key)')
     .requiredOption('--spec <id>', 'the parent spec issue')
     .requiredOption('--file <path>', 'the ticket file launch wrote (schemaVersion 1)')
     .option('--dry-run', 'print the exact writes and write nothing')
@@ -339,6 +339,8 @@ export function factoryEnqueueCommand(deps: FactoryCheckDeps): Command {
       'to the runnable ones. The launch C3 signature is the confirmation',
       'for all of it: run --dry-run first and show its output at C3. Items already claimed by a factory run',
       'are never edited, and items whose key left the file are reported as orphaned, never closed.',
+      'On Azure DevOps the items are work items of factory.intake.itemTypes[0] with the AC and priority fields,',
+      'linked to the spec (parent) and their predecessors; the spec itself is not edited.',
     ].join('\n'))
     .action(async (o: { spec: string; file: string; dryRun?: boolean; json?: boolean }) => {
       try {

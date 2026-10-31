@@ -4,6 +4,20 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`omg factory enqueue` on Azure DevOps.** Tickets become work items of the
+  first `factory.intake.itemTypes` type, with the criteria in the
+  acceptance-criteria field, the priority field, a parent link to the spec and
+  a predecessor link per edge. An `area-tag` intake source gives each new item
+  its tag and area path; enqueue never sets a board column or a state, and
+  warns when the intake source needs one. Trust is the creator in
+  `factory.forge.azureDevOps.trustedAuthors` (user config). Mentions and
+  work item links in model text are neutralized. Exit 5 is now only for an
+  unsupported forge. A trusted in-project work item that carries the spec's
+  key footer but has no parent counts as a holder: enqueue edits it and links
+  it to the spec, which recovers a failed parent link.
+
 ### Changed
 
 - **Listener intake goes to harbor, not intent.** An issue labeled `intake`

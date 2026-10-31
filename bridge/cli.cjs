@@ -122454,6 +122454,7 @@ function adoTracker(ctx, intakeSource2, bodyDir) {
       const category = type && state ? stateCategory(ctx, type, state) : void 0;
       const acceptance = adoHtmlToText(f["Microsoft.VSTS.Common.AcceptanceCriteria"]);
       const [parent] = linkedIds(item.relations, PARENT);
+      const project = str3(f["System.TeamProject"]);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_workitems/edit/${id}`,
@@ -122473,7 +122474,8 @@ function adoTracker(ctx, intakeSource2, bodyDir) {
         dependsOn: linkedIds(item.relations, DEPENDS_ON),
         children: linkedIds(item.relations, CHILD),
         ...parent !== void 0 ? { parent } : {},
-        repoUrl: ctx.repo.url
+        repoUrl: ctx.repo.url,
+        ...project ? { project } : {}
       };
     },
     queryItems(source, limit) {
@@ -127941,12 +127943,19 @@ function findCycle(tickets) {
   return null;
 }
 function neutralizeTrusted(text4) {
-  return text4.replace(/<!--/g, "&lt;!--").replace(/(omg-plan|shipyard-key):/gi, "$1\\:").replace(/^([^\S\r\n]*)(#{1,6}[^\S\r\n]*acceptance criteria)/gim, "$1\\$2").replace(/^([^\S\r\n]*(?:depends on|blocked by|part of)[^\S\r\n]+)#(?=\d)/gim, "$1\\#").replace(/^([^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+)#(?=\d)/gm, "$1\\#");
+  return escapeTrustedLines(text4.replace(/<!--/g, "&lt;!--"));
+}
+function escapeTrustedLines(text4) {
+  return text4.replace(/(omg-plan|shipyard-key):/gi, "$1\\:").replace(/^([^\S\r\n]*)(#{1,6}[^\S\r\n]*acceptance criteria)/gim, "$1\\$2").replace(/^([^\S\r\n]*(?:depends on|blocked by|part of)[^\S\r\n]+)#(?=\d)/gim, "$1\\#").replace(/^([^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+)#(?=\d)/gm, "$1\\#");
 }
 function neutralizeNotifying(text4) {
   const longest = Math.max(0, ...[...text4.matchAll(/`+/g)].map((m) => m[0].length));
   const tick = "`".repeat(longest + 1);
   return text4.replace(NOTIFYING, (m, at, s) => `${s[at - 1] === "`" || s[at - 1] === "\\" ? " " : ""}${tick}${m}${tick}${s[at + m.length] === "`" ? " " : ""}`).replace(/&(?=#|[a-z]+;)/gi, "&amp;");
+}
+function renderAdoDescription(spec, t) {
+  const body = adoModelText(t.body).trim();
+  return [...body ? [body, ""] : [], shipyardKeyLine(spec, t.key), ""].join("\n");
 }
 function renderTicketBody(spec, t, edges) {
   const body = modelText(t.body).trim();
@@ -127980,10 +127989,18 @@ function specBodyWithTickets(body, children) {
   return `${body.trimEnd()}${body.trim() ? "\n\n" : ""}${section}
 `;
 }
-function enqueueGuardExec(exec3, writes, writing) {
-  const reads = checkGuardExec(exec3);
-  const tracker = factoryGuardExec(exec3, () => [], () => void 0, writes);
+function enqueueGuardExec(exec3, writes, writing, ado = () => void 0) {
+  const reads = checkGuardExec(exec3, void 0, ado);
+  const tracker = factoryGuardExec(exec3, () => [], ado, writes);
   return (cmd, args, opts) => {
+    if (isAdoCommand(cmd)) {
+      const flag = (f) => {
+        const at = args.indexOf(f);
+        return at >= 0 ? args[at + 1]?.toLowerCase() : void 0;
+      };
+      const itemWrite = flag("--area") === "wit" && flag("--resource") === "workitems" && (flag("--http-method") === "post" || flag("--http-method") === "patch");
+      return writing() && itemWrite ? tracker(cmd, args, opts) : reads(cmd, args, opts);
+    }
     const file = cmd.replace(/\\/g, "/").split("/").pop().toLowerCase().replace(/\.exe$/, "");
     if (file === "gh" && args[0] === "issue") {
       if (args[1] === "list" && args[2] === "--repo") return tracker(cmd, args, opts);
@@ -128026,7 +128043,8 @@ async function runFactoryEnqueue(o, deps) {
   const warnings = [];
   let ctx;
   let writing = false;
-  const exec3 = enqueueGuardExec(deps.exec, () => ctx, () => writing);
+  let adoGuard;
+  const exec3 = enqueueGuardExec(deps.exec, () => ctx, () => writing, () => adoGuard);
   const top = git4(exec3, process.cwd(), ["rev-parse", "--show-toplevel"]);
   if (!top.ok) throw new CheckUsageError("omg factory enqueue must run inside a git repository");
   const root2 = top.out;
@@ -128045,21 +128063,38 @@ async function runFactoryEnqueue(o, deps) {
     if (!(error2 instanceof ForgeConfigError)) throw error2;
     throw error2.code === "invalid" ? new CheckUsageError(error2.message) : new CheckIncompatibleError(`${error2.code}: ${error2.message}`);
   }
-  if (config2.kind !== "github") throw new CheckIncompatibleError(`omg factory enqueue supports GitHub only for now; the forge is ${config2.kind}`);
+  if (config2.kind !== "github" && config2.kind !== "azure-devops") throw new CheckIncompatibleError(`omg factory enqueue does not support the ${String(config2.kind)} forge`);
+  const ado = config2.kind === "azure-devops";
   const file = readTicketFile(o.file, config2.check.maxAcceptanceItems);
   if (file.spec !== specId) throw new CheckUsageError(`--spec ${specId} does not match the ticket file's spec ${file.spec}`);
   const source = config2.intake.source;
   const intakeLabel = source?.type === "label" ? source.label : void 0;
-  if (!intakeLabel) warnings.push("factory.intake.source is not a label: the items are not added to the intake source (omg factory check --parent still lists them)");
-  ctx = { repo: ghRepoArg(config2.repo), bodyDir: "", labels: [...intakeLabel ? [intakeLabel] : [], ...PRIORITY_LABELS] };
+  const intakeTag = source?.type === "area-tag" ? source.tag : void 0;
+  if (ado) {
+    const itemType = config2.intake.itemTypes[0];
+    if (!itemType) throw new CheckUsageError("factory.intake.itemTypes names no work item type to create");
+    if (source?.type === "board-column") warnings.push(`factory.intake.source is the board column ${source.column}: enqueue never sets a column or state, so the work items join the intake only once they are moved there (omg factory check --parent still lists them)`);
+    else if (source?.type === "wiql-query") warnings.push("factory.intake.source is a saved query: membership is the query's job, enqueue does not make the work items match it (omg factory check --parent still lists them)");
+    else if (!intakeTag) warnings.push("factory.intake.source is not an area-tag source: the work items are not added to the intake source (omg factory check --parent still lists them)");
+    ctx = { repo: config2.repo.url, bodyDir: "", labels: intakeTag ? [intakeTag] : [], itemTypes: [itemType] };
+  } else {
+    if (!intakeLabel) warnings.push("factory.intake.source is not a label: the items are not added to the intake source (omg factory check --parent still lists them)");
+    ctx = { repo: ghRepoArg(config2.repo), bodyDir: "", labels: [...intakeLabel ? [intakeLabel] : [], ...PRIORITY_LABELS] };
+  }
   let forge;
+  let forgeOptions;
   try {
-    forge = deps.createForge(exec3, root2, config2, factoryForgeOptions(root2));
+    const entry2 = ado ? (deps.resolveAz ?? defaultResolveAz)(root2) : void 0;
+    if (entry2) adoGuard = adoGuardContext(config2, entry2);
+    forgeOptions = { ...factoryForgeOptions(root2), ...entry2 ? { entry: entry2 } : {} };
+    forge = deps.createForge(exec3, root2, config2, forgeOptions);
   } catch (error2) {
     throw new CheckIncompatibleError(error2 instanceof Error ? error2.message : String(error2));
   }
   const tracker = forge.tracker;
-  if (!tracker.findByKey || !tracker.createItem || !tracker.updateItem) throw new CheckIncompatibleError(`the ${config2.kind} tracker cannot write items`);
+  if (!tracker.findByKey || !tracker.createItem || !tracker.updateItem || ado && !tracker.addRelation) throw new CheckIncompatibleError(`the ${config2.kind} tracker cannot write items`);
+  const inForge = (item) => ado ? item.project !== void 0 && item.project.toLowerCase() === (config2.repo.project ?? "").toLowerCase() : item.repoUrl.toLowerCase() === config2.repo.url.toLowerCase();
+  const itemOf = ado ? `a work item of project ${config2.repo.project}` : `an issue of ${config2.repo.url}`;
   const remoteBranch = (branch) => {
     const res = git4(exec3, root2, ["ls-remote", "origin", `refs/heads/${branch}`]);
     if (!res.ok) throw new Error(`git ls-remote origin refs/heads/${branch} failed: ${res.err}`);
@@ -128069,11 +128104,14 @@ async function runFactoryEnqueue(o, deps) {
   try {
     spec = tracker.viewItem(specId);
   } catch (error2) {
-    throw new CheckUsageError(`spec #${specId} cannot be read as an issue of ${config2.repo.url}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    throw new CheckUsageError(`spec #${specId} cannot be read as ${itemOf}: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  if (spec.repoUrl.toLowerCase() !== config2.repo.url.toLowerCase()) throw new CheckUsageError(`spec #${specId} is not an issue of ${config2.repo.url}`);
+  if (!inForge(spec)) throw new CheckUsageError(`spec #${specId} is not ${itemOf}`);
   if (!spec.open) throw new CheckUsageError(`spec #${specId} is closed`);
-  if (!spec.authorTrusted) throw new CheckUsageError(`spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config2.repo.url}`);
+  if (!spec.authorTrusted) {
+    const trusted = config2.azureDevOps?.trustedAuthors ?? [];
+    throw new CheckUsageError(!ado ? `spec #${specId}'s author is not an OWNER, MEMBER or COLLABORATOR of ${config2.repo.url}` : trusted.length === 0 ? `factory.forge.azureDevOps.trustedAuthors is empty in the user config, so no Azure DevOps author is trusted: add the uniqueName that created spec #${specId} there` : `spec #${specId}'s creator is not in factory.forge.azureDevOps.trustedAuthors (user config)`);
+  }
   const holders = /* @__PURE__ */ new Map();
   const ignored = [];
   const found = tracker.findByKey(specId);
@@ -128088,30 +128126,52 @@ async function runFactoryEnqueue(o, deps) {
       continue;
     }
     const keys = shipyardKeys(item.body).filter(([s]) => s === specId);
-    if (keys.length === 1 && item.repoUrl.toLowerCase() === config2.repo.url.toLowerCase()) found.push({ key: keys[0][1], item });
+    if (keys.length === 1 && inForge(item)) found.push({ key: keys[0][1], item });
   }
   for (const { key, item } of found) {
-    if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: "author is not trusted" });
-    else if (item.parent !== specId) ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
+    if (!inForge(item)) ignored.push({ id: item.id, key, reason: "not in the forge project" });
+    else if (!item.authorTrusted) ignored.push({ id: item.id, key, reason: "author is not trusted" });
+    else if (item.parent !== specId && !(ado && item.parent === void 0)) ignored.push({ id: item.id, key, reason: `not a child of #${specId}` });
     else if (holders.has(key)) throw new CheckUsageError(`key ${key} is held by #${holders.get(key).id} and #${item.id}; close one by hand`);
     else holders.set(key, item);
   }
   for (const ref2 of new Set(file.tickets.flatMap((t) => t.blockedBy.filter((b) => b.startsWith("#"))))) {
+    let item;
     try {
-      tracker.viewItem(Number(ref2.slice(1)));
+      item = tracker.viewItem(Number(ref2.slice(1)));
     } catch {
-      throw new CheckUsageError(`blockedBy ${ref2} is not an issue of ${config2.repo.url}`);
+      item = void 0;
     }
+    if (!item || ado && !inForge(item)) throw new CheckUsageError(`blockedBy ${ref2} is not ${itemOf}`);
   }
   const ids2 = new Map([...holders].map(([k, item]) => [k, item.id]));
   const ref = (b, known) => b.startsWith("#") ? b : known.has(b) ? `#${known.get(b)}` : void 0;
   const edgesOf = (t, known) => t.blockedBy.map((b) => ref(b, known) ?? `#${b}`);
+  const adoLinks = (p, known) => [
+    ...p.item?.parent === specId ? [] : [["parent", `#${specId}`]],
+    ...edgesOf(p.ticket, known).filter((e) => !p.item?.dependsOn.includes(Number(e.slice(1)))).map((e) => ["depends-on", e])
+  ];
   const planned = file.tickets.map((t) => {
     const item = holders.get(t.key);
-    const title = renderTitle(t);
-    if (title.length > 256) throw new CheckUsageError(`${t.key}: the title is longer than 256 characters once mentions are neutralized`);
-    const body = renderTicketBody(specId, t, edgesOf(t, ids2));
+    const title = ado ? neutralizeAdoNotifying(t.title) : renderTitle(t);
+    const maxTitle = ado ? 255 : 256;
+    if (title.length > maxTitle) throw new CheckUsageError(`${t.key}: the title is longer than ${maxTitle} characters once mentions are neutralized`);
+    const body = ado ? renderAdoDescription(specId, t) : renderTicketBody(specId, t, edgesOf(t, ids2));
     if (body.length > config2.check.maxBodyChars) throw new CheckUsageError(`${t.key}: the rendered body is ${body.length} characters (factory.check.maxBodyChars is ${config2.check.maxBodyChars})`);
+    if (ado) {
+      const acceptance = t.acceptance.map(adoModelText);
+      const labels2 = intakeTag ? [intakeTag] : [];
+      if (!item) return { ticket: t, action: "created", reasons: [], title, labels: labels2, addLabels: labels2, removeLabels: [], acceptance };
+      const addLabels2 = labels2.filter((l) => !item.labels.some((x) => x.toLowerCase() === l.toLowerCase()));
+      const claim2 = claimOf(forge, root2, base, item, remoteBranch);
+      if (claim2) return { ticket: t, item, action: "kept-claimed", reasons: [claim2], title, labels: labels2, addLabels: [], removeLabels: [], acceptance };
+      const fieldsSame = item.title === title && normalized(item.body) === normalized(adoHtmlToText(adoTextHtml(body))) && (item.acceptance ?? "") === adoHtmlToText(adoListHtml(acceptance)) && (t.priority === void 0 || item.priority === t.priority) && addLabels2.length === 0;
+      const wanted = new Set(t.blockedBy.map((b) => ref(b, ids2)).filter((r) => r !== void 0).map((r) => Number(r.slice(1))));
+      for (const dep of item.dependsOn.filter((d) => !wanted.has(d))) warnings.push(`#${item.id} (${t.key}) keeps its predecessor link to #${dep}: enqueue never removes a link; remove it by hand if that edge is gone`);
+      const p = { ticket: t, item, action: "updated", reasons: [], title, labels: labels2, addLabels: addLabels2, removeLabels: [], acceptance, fieldsSame };
+      const pending2 = t.blockedBy.some((b) => ref(b, ids2) === void 0);
+      return fieldsSame && !pending2 && adoLinks(p, ids2).length === 0 ? { ...p, action: "unchanged" } : p;
+    }
     const labels = [...intakeLabel ? [intakeLabel] : [], ...t.priority ? [PRIORITY_LABELS[t.priority - 1]] : []];
     if (!item) return { ticket: t, action: "created", reasons: [], title, labels, addLabels: labels, removeLabels: [] };
     const has2 = (l) => item.labels.some((x) => x.toLowerCase() === l.toLowerCase());
@@ -128132,10 +128192,10 @@ async function runFactoryEnqueue(o, deps) {
   const orphanRows = orphans.map((item) => ({ key: [...holders].find(([, i]) => i === item)[0], id: item.id, action: "orphaned", bucket: null, reasons: [], markCandidate: false }));
   const markCandidate = (a) => a === "created" || a === "updated" || a === "unchanged";
   const newKeys = planned.filter((p) => p.action === "created").map((p) => p.ticket.key);
-  if (specBody(ids2).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS) throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
+  if (!ado && specBody(ids2).length + newKeys.length * 20 > MAX_TRACKER_BODY_CHARS) throw new CheckUsageError(`spec #${specId}'s body would exceed ${MAX_TRACKER_BODY_CHARS} characters with the task list`);
   if (o.dryRun) {
-    const taskList2 = newKeys.length > 0 || normalized(specBody(ids2)) !== normalized(spec.body) ? "updated" : "unchanged";
-    const specPlanned = `${specBody(ids2)}${newKeys.length > 0 ? `
+    const taskList2 = !ado && (newKeys.length > 0 || normalized(specBody(ids2)) !== normalized(spec.body)) ? "updated" : "unchanged";
+    const specPlanned = () => `${specBody(ids2)}${newKeys.length > 0 ? `
 (plus the new ${newKeys.join(", ")} once created)` : ""}`;
     const rows2 = [
       ...planned.map((p) => ({
@@ -128145,11 +128205,21 @@ async function runFactoryEnqueue(o, deps) {
         bucket: null,
         reasons: p.reasons,
         markCandidate: markCandidate(p.action),
-        ...p.action === "created" || p.action === "updated" ? { planned: { title: p.title, body: renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids2)), addLabels: p.addLabels, removeLabels: p.removeLabels } } : {}
+        ...p.action === "created" || p.action === "updated" ? {
+          planned: ado ? {
+            title: p.title,
+            body: renderAdoDescription(specId, p.ticket),
+            addLabels: p.addLabels,
+            removeLabels: [],
+            acceptance: p.acceptance,
+            ...p.ticket.priority !== void 0 ? { priority: p.ticket.priority } : {},
+            links: adoLinks(p, ids2).map(([kind, target]) => `${kind} ${target}`)
+          } : { title: p.title, body: renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids2)), addLabels: p.addLabels, removeLabels: p.removeLabels }
+        } : {}
       })),
       ...orphanRows
     ];
-    report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: true, dryRun: true, spec: { id: specId, taskList: taskList2, ...taskList2 === "updated" ? { planned: specPlanned } : {} }, items: rows2, ignored, mark: null, warnings });
+    report(o, deps, { schemaVersion: ENQUEUE_SCHEMA_VERSION, ok: true, dryRun: true, spec: { id: specId, taskList: taskList2, ...taskList2 === "updated" ? { planned: specPlanned() } : {} }, items: rows2, ignored, mark: null, warnings });
     return 0;
   }
   const bodyDir = (0, import_fs167.mkdtempSync)((0, import_path196.join)((0, import_os37.tmpdir)(), "omg-enqueue-"));
@@ -128177,25 +128247,43 @@ async function runFactoryEnqueue(o, deps) {
       taskList = "updated";
     };
     try {
-      for (const p of planned.filter((x) => x.action === "created")) {
-        const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids2)).filter((r) => r !== void 0));
-        ids2.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
-        written.set(p.ticket.key, body);
+      if (ado) {
+        const writer = deps.createForge(exec3, root2, config2, { ...forgeOptions, trackerBodyDir: bodyDir }).tracker;
+        const priority = (t) => t.priority !== void 0 ? { priority: t.priority } : {};
+        for (const p of planned.filter((x) => x.action === "created")) {
+          const id = writer.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, renderAdoDescription(specId, p.ticket)), labels: p.labels, acceptance: p.acceptance, ...priority(p.ticket) });
+          ids2.set(p.ticket.key, id);
+          writer.addRelation(id, "parent", specId);
+        }
+        for (const p of planned) {
+          if (p.action !== "created" && p.action !== "updated") continue;
+          const id = ids2.get(p.ticket.key);
+          if (p.action === "updated" && !p.fieldsSame) {
+            writer.updateItem(id, { title: p.title, bodyFile: bodyFile(p.ticket.key, renderAdoDescription(specId, p.ticket)), addLabels: p.addLabels, removeLabels: [], acceptance: p.acceptance, ...priority(p.ticket) });
+          }
+          for (const [kind, target] of adoLinks(p, ids2)) if (p.action === "updated" || kind !== "parent") writer.addRelation(id, kind, Number(target.slice(1)));
+        }
+      } else {
+        for (const p of planned.filter((x) => x.action === "created")) {
+          const body = renderTicketBody(specId, p.ticket, p.ticket.blockedBy.map((b) => ref(b, ids2)).filter((r) => r !== void 0));
+          ids2.set(p.ticket.key, tracker.createItem({ title: p.title, bodyFile: bodyFile(p.ticket.key, body), labels: p.labels }));
+          written.set(p.ticket.key, body);
+          writeSpec();
+        }
+        for (const p of planned) {
+          if (p.action !== "created" && p.action !== "updated") continue;
+          const body = renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids2));
+          if (p.action === "created" && written.get(p.ticket.key) === body) continue;
+          tracker.updateItem(ids2.get(p.ticket.key), {
+            title: p.title,
+            bodyFile: bodyFile(p.ticket.key, body),
+            // A created item got its labels at create.
+            addLabels: p.action === "updated" ? p.addLabels : [],
+            removeLabels: p.removeLabels
+          });
+        }
         writeSpec();
       }
-      for (const p of planned) {
-        if (p.action !== "created" && p.action !== "updated") continue;
-        const body = renderTicketBody(specId, p.ticket, edgesOf(p.ticket, ids2));
-        if (p.action === "created" && written.get(p.ticket.key) === body) continue;
-        tracker.updateItem(ids2.get(p.ticket.key), {
-          title: p.title,
-          bodyFile: bodyFile(p.ticket.key, body),
-          // A created item got its labels at create.
-          addLabels: p.action === "updated" ? p.addLabels : [],
-          removeLabels: p.removeLabels
-        });
-      }
-      writeSpec();
     } catch (error2) {
       failed3 = true;
       warnings.push(`write failed (re-run enqueue to finish; it is idempotent): ${error2 instanceof Error ? error2.message : String(error2)}`);
@@ -128254,6 +128342,10 @@ function report(o, deps, json) {
       deps.out(`
 == ${r.action === "created" ? "create" : `edit #${r.id}`} ${r.key}: ${JSON.stringify(p.title)}${labels ? ` [${labels}]` : ""}`);
       deps.out(p.body);
+      if (p.acceptance) deps.out(`acceptance criteria:
+${p.acceptance.map((a) => `- ${a}`).join("\n")}`);
+      if (p.priority !== void 0) deps.out(`priority: ${p.priority}`);
+      if (p.links?.length) deps.out(`links: ${p.links.join(", ")}`);
     }
     if (json.spec.planned) deps.out(`
 == edit spec #${json.spec.id} body:
@@ -128265,7 +128357,7 @@ ${json.spec.planned}`);
     if (json.mark.marked.length > 0) deps.out(source_default.green(`marked ${json.mark.marker}: ${json.mark.marked.map((id) => `#${id}`).join(", ")}`));
   }
 }
-var import_fs167, import_os37, import_path196, ENQUEUE_SCHEMA_VERSION, MAX_TICKETS, MAX_FILE_BYTES, KEY, TICKET_FIELDS, PRIORITY_LABELS, EDGES_OPEN, EDGES_CLOSE, TICKETS_OPEN, TICKETS_CLOSE, BODY_CONTROL, LINE_CONTROL, NOTIFYING, modelText, renderTitle, normalized;
+var import_fs167, import_os37, import_path196, ENQUEUE_SCHEMA_VERSION, MAX_TICKETS, MAX_FILE_BYTES, KEY, TICKET_FIELDS, PRIORITY_LABELS, EDGES_OPEN, EDGES_CLOSE, TICKETS_OPEN, TICKETS_CLOSE, BODY_CONTROL, LINE_CONTROL, NOTIFYING, modelText, ADO_NOTIFYING, FULLWIDTH, neutralizeAdoNotifying, adoModelText, renderTitle, normalized;
 var init_enqueue = __esm({
   "src/factory/enqueue.ts"() {
     "use strict";
@@ -128273,6 +128365,10 @@ var init_enqueue = __esm({
     import_fs167 = require("fs");
     import_os37 = require("os");
     import_path196 = require("path");
+    init_guard();
+    init_html();
+    init_ado();
+    init_tracker();
     init_config5();
     init_gh();
     init_types11();
@@ -128298,6 +128394,10 @@ var init_enqueue = __esm({
     LINE_CONTROL = /[\p{Cc}\p{Cf}]/u;
     NOTIFYING = /(?:https?:\/\/|(?<![\w./-])www\.)[^\s/<>()`]+\/[^\s/<>()`]+\/[^\s/<>()`]+\/(?:issues|pull|discussions)\/\d+|(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.-]*)?|(?<![\w./-])[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+#\d+|(?<![\w&])#\d+\b|(?<![\w-])GH-\d+\b/gi;
     modelText = (s) => neutralizeTrusted(neutralizeNotifying(s));
+    ADO_NOTIFYING = /(?<![\w.+-])@(?=[<{\w])|(?<!\w)[#!](?=\d)/g;
+    FULLWIDTH = { "@": "\uFF20", "#": "\uFF03", "!": "\uFF01" };
+    neutralizeAdoNotifying = (text4) => text4.replace(ADO_NOTIFYING, (m) => FULLWIDTH[m]);
+    adoModelText = (s) => escapeTrustedLines(neutralizeAdoNotifying(s));
     renderTitle = (t) => neutralizeNotifying(t.title);
     normalized = (s) => s.replace(/\r\n/g, "\n").trimEnd();
   }
@@ -129697,14 +129797,16 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
   return run2;
 }
 function factoryEnqueueCommand(deps) {
-  return new Command("enqueue").description("Push launch's approved tickets to the tracker as children of a spec (GitHub; idempotent by shipyard-key)").requiredOption("--spec <id>", "the parent spec issue").requiredOption("--file <path>", "the ticket file launch wrote (schemaVersion 1)").option("--dry-run", "print the exact writes and write nothing").option("--json", "JSON output (schemaVersion 1)").addHelpText("after", [
+  return new Command("enqueue").description("Push launch's approved tickets to the tracker as children of a spec (GitHub or Azure DevOps; idempotent by shipyard-key)").requiredOption("--spec <id>", "the parent spec issue").requiredOption("--file <path>", "the ticket file launch wrote (schemaVersion 1)").option("--dry-run", "print the exact writes and write nothing").option("--json", "JSON output (schemaVersion 1)").addHelpText("after", [
     "",
     "Without --dry-run, enqueue creates or updates the items (with the intake label and a priority label),",
     "rewrites the spec's task list, then runs the mark step `omg factory check <ids> --mark --yes` over",
     "this file's created, updated and unchanged items (never orphans), which adds factory.intake.marker",
     "to the runnable ones. The launch C3 signature is the confirmation",
     "for all of it: run --dry-run first and show its output at C3. Items already claimed by a factory run",
-    "are never edited, and items whose key left the file are reported as orphaned, never closed."
+    "are never edited, and items whose key left the file are reported as orphaned, never closed.",
+    "On Azure DevOps the items are work items of factory.intake.itemTypes[0] with the AC and priority fields,",
+    "linked to the spec (parent) and their predecessors; the spec itself is not edited."
   ].join("\n")).action(async (o) => {
     try {
       process.exitCode = await runFactoryEnqueue(o, deps);

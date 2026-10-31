@@ -45131,6 +45131,7 @@ function adoTracker(ctx, intakeSource, bodyDir) {
       const category = type && state ? stateCategory(ctx, type, state) : void 0;
       const acceptance = adoHtmlToText(f["Microsoft.VSTS.Common.AcceptanceCriteria"]);
       const [parent] = linkedIds(item.relations, PARENT);
+      const project = str3(f["System.TeamProject"]);
       return {
         id,
         url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? "")}/_workitems/edit/${id}`,
@@ -45150,7 +45151,8 @@ function adoTracker(ctx, intakeSource, bodyDir) {
         dependsOn: linkedIds(item.relations, DEPENDS_ON),
         children: linkedIds(item.relations, CHILD),
         ...parent !== void 0 ? { parent } : {},
-        repoUrl: ctx.repo.url
+        repoUrl: ctx.repo.url,
+        ...project ? { project } : {}
       };
     },
     queryItems(source, limit) {
@@ -48504,6 +48506,10 @@ var init_enqueue = __esm({
     import_fs84 = require("fs");
     import_os20 = require("os");
     import_path102 = require("path");
+    init_guard();
+    init_html();
+    init_ado();
+    init_tracker();
     init_config3();
     init_gh();
     init_types10();
