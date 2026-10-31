@@ -23,6 +23,10 @@ All notable changes to oh-my-copilot will be documented in this file.
   readiness. The `--json` shape is unchanged (`schemaVersion` 1).
 - **Forge items carry their parent**: a GitHub `Part of #n` line, or an Azure
   DevOps parent link (`Hierarchy-Reverse`).
+- **`omg factory run --next [--parent <spec>]`** runs the first runnable item
+  in `omg factory check` order (priority, then id) among the spec's children
+  or the intake source. A run parked at `blocked-by` is resumed once its
+  dependencies are satisfied; nothing runnable exits 0 with the bucket counts.
 - **GitHub tracker writes for the planned `omg factory enqueue`**: create an
   issue, edit its title, body and labels, and find issues by their
   `shipyard-key: <spec>/<key>` footer. The factory guard allows them only
@@ -49,6 +53,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Changed
 
+- **`omg factory run` parks at `blocked-by` until dependencies are
+  satisfied.** An item with `Depends on #n` / `Blocked by #n` lines, or Azure
+  DevOps Predecessor links, waits at the intake gate `blocked-by` until each
+  dependency is closed, its factory PR merged into the base, or its run
+  merged. An item that depends on itself parks with `blocked-by:self`
+  (`omg factory check` reports it the same way) instead of waiting forever.
 - **A dependency whose factory PR merged counts as satisfied.** `omg factory
   check` no longer reports `depends-on:#n` when issue `#n` is still open but
   a PR from `factory/issue-<n>` was merged into the base, or its factory run

@@ -40845,7 +40845,10 @@ function factoryGh(a, writes) {
       return r.length === 9 && r[0] === "--draft" && r[1] === "--base" && isBranch2(r[2]) && r[3] === "--head" && isFactoryBranch(r[4], []) && r[5] === "--title" && isTitle(r[6]) && r[7] === "--body-file" && isFile2(r[8]);
     }
     if (sub === "comment") return r.length === 3 && NUMBER2.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
-    if (sub === "list") return r.length === 4 && r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
+    if (sub === "list") {
+      if (r.length === 4) return r[0] === "--head" && isFactoryBranch(r[1], []) && r[2] === "--json" && JSON_FIELDS2.test(r[3]);
+      return r.length === 8 && r[0] === "--head" && /^factory\/issue-\d+$/.test(r[1]) && r[2] === "--base" && isBranch2(r[3]) && same2(r.slice(4), ["--state", "merged", "--json", "number"]);
+    }
     if (sub === "ready") return r.length === 1 && NUMBER2.test(r[0]);
     if (sub === "merge") return false;
     return null;
@@ -45288,7 +45291,7 @@ function ghViewItem(exec, issue2, cwd) {
     comments: comments2.map((c) => ({ body: str5(c?.body), author: login(c?.author), trusted: commentTrusted(c ?? {}) })),
     labels,
     ...size ? { size: Number(size) } : {},
-    dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
+    dependsOn: ghDependsOn(body),
     children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
     ...parent ? { parent: Number(parent) } : {},
     repoUrl: m[1]
@@ -45373,7 +45376,7 @@ function githubTracker(exec, cwd, config2) {
     updateItem: (id, update) => ghUpdateItem(exec, config2.repo, id, update, cwd)
   };
 }
-var ISSUE_FIELDS, str5, login, refs, KEY_SEARCH_LIMIT, sameUrl;
+var ISSUE_FIELDS, str5, login, refs, ghDependsOn, KEY_SEARCH_LIMIT, sameUrl;
 var init_tracker2 = __esm({
   "src/forge/github/tracker.ts"() {
     "use strict";
@@ -45384,6 +45387,7 @@ var init_tracker2 = __esm({
     str5 = (v) => typeof v === "string" ? v : "";
     login = (author) => str5(author?.login);
     refs = (body, re) => [...new Set([...body.matchAll(re)].map((m) => Number(m[1])))];
+    ghDependsOn = (body) => refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim);
     KEY_SEARCH_LIMIT = 1e3;
     sameUrl = (a, b) => a.toLowerCase() === b.toLowerCase();
   }
@@ -45433,6 +45437,58 @@ var init_forge = __esm({
       // (slots kept on separate lines for the PR 2 / PR 5 edits)
       "azure-devops": (exec, cwd, config2, options) => createAzureDevOpsForge(exec, cwd, config2, options)
     };
+  }
+});
+
+// src/utils/string-width.ts
+var init_string_width = __esm({
+  "src/utils/string-width.ts"() {
+    "use strict";
+  }
+});
+
+// src/factory/check/rules.ts
+var init_rules = __esm({
+  "src/factory/check/rules.ts"() {
+    "use strict";
+    init_config2();
+    init_plan_rules();
+    init_state5();
+  }
+});
+
+// src/factory/check/score.ts
+function isSatisfied(forge, id, base, runState) {
+  if (runState(id)?.phase === "merged") return true;
+  const unreadable = (error2) => {
+    if (error2 instanceof FactorySafetyError) throw error2;
+    return false;
+  };
+  let item;
+  try {
+    item = forge.tracker.viewItem(id);
+  } catch (error2) {
+    if (forge.kind === "azure-devops") return unreadable(error2);
+    try {
+      return forge.reviews.viewPr(id).state === "MERGED";
+    } catch (prError) {
+      return unreadable(error2 instanceof FactorySafetyError ? error2 : prError);
+    }
+  }
+  if (!item.open) return true;
+  try {
+    return forge.reviews.findMergedPrForBranch(factoryBranch(id), base) !== void 0;
+  } catch (error2) {
+    return unreadable(error2);
+  }
+}
+var init_score = __esm({
+  "src/factory/check/score.ts"() {
+    "use strict";
+    init_string_width();
+    init_exec2();
+    init_state5();
+    init_rules();
   }
 });
 
@@ -46252,6 +46308,7 @@ var init_engine = __esm({
     init_gh();
     init_reviews();
     init_tracker2();
+    init_score();
     init_outcome();
     init_prepare();
     init_state4();
@@ -46914,6 +46971,35 @@ var init_engine = __esm({
         this.gate("pr-exists", `open PR #${open3[0].number} already uses ${this.state.branch} and this run did not create it; close it or adopt it by hand`);
         return true;
       }
+      /**
+       * The blocked-by intake gate (shipyard ↔ factory design §3.5): a dependency
+       * that is not satisfied (check's isSatisfied: closed, its factory PR merged
+       * into the base, or its run merged; unreadable is unsatisfied) parks the
+       * run at blocked-by. A rerun re-reads the item and its dependencies, so it
+       * proceeds once they merged. True when it parked.
+       */
+      blockedBy(dependsOn, repoUrl) {
+        if (dependsOn.length === 0) return false;
+        if (dependsOn.includes(this.o.issue)) {
+          this.save((s) => ({ ...s, repoUrl }));
+          this.gate("blocked-by", `blocked-by:self: #${this.o.issue} depends on itself, so it would wait forever; remove the Depends on / Blocked by line naming it, then rerun`);
+          return true;
+        }
+        const forge = this.forge ?? { kind: "github", tracker: { viewItem: (id) => ghViewItem(this.exec, id, this.o.root) }, reviews: githubReviews(this.exec, this.o.root) };
+        const runState = (id) => {
+          try {
+            return readFactoryState(this.o.root, id);
+          } catch {
+            return null;
+          }
+        };
+        const open3 = dependsOn.filter((d) => !isSatisfied(forge, d, this.state.base, runState));
+        if (open3.length === 0) return false;
+        const ids = open3.map((d) => `#${d}`).join(", ");
+        this.save((s) => ({ ...s, repoUrl }));
+        this.gate("blocked-by", `depends on unfinished item${open3.length > 1 ? "s" : ""} ${ids} (open, no factory PR merged into ${this.state.base}); nothing is implemented until ${open3.length > 1 ? "they merge" : "it merges"}`);
+        return true;
+      }
       /** ci-heal intake: no issue, only GitHub's url of the repository (the remote check before every fetch and push compares origin with it). */
       healIntake() {
         const v = this.gh(ghRepoView);
@@ -46970,6 +47056,7 @@ ${item.acceptance}
 ` : item.body;
         const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
         if (this.foreignPr(item.repoUrl)) return;
+        if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
         this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...planLink ? { planLink } : {} }, "plan", `work item ${item.url}`, this.iso()));
       }
       async intake() {
@@ -46987,6 +47074,7 @@ ${item.acceptance}
         const body = typeof v.body === "string" ? v.body : "";
         const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
         if (this.foreignPr(m[1])) return;
+        if (this.blockedBy(ghDependsOn(body), m[1])) return;
         this.save((s) => moveTo({ ...s, repoUrl: m[1], issueTitle: typeof v.title === "string" ? v.title : "", issueBody: body, ...planLink ? { planLink } : {} }, "plan", `issue ${url}`, this.iso()));
       }
       async plan() {
@@ -48157,33 +48245,6 @@ var init_cli = __esm({
   }
 });
 
-// src/utils/string-width.ts
-var init_string_width = __esm({
-  "src/utils/string-width.ts"() {
-    "use strict";
-  }
-});
-
-// src/factory/check/rules.ts
-var init_rules = __esm({
-  "src/factory/check/rules.ts"() {
-    "use strict";
-    init_config2();
-    init_plan_rules();
-    init_state5();
-  }
-});
-
-// src/factory/check/score.ts
-var init_score = __esm({
-  "src/factory/check/score.ts"() {
-    "use strict";
-    init_string_width();
-    init_state5();
-    init_rules();
-  }
-});
-
 // src/factory/check/cli.ts
 var init_cli2 = __esm({
   "src/factory/check/cli.ts"() {
@@ -48679,6 +48740,9 @@ var init_factory = __esm({
     init_ledger2();
     init_detect();
     init_factory_setup();
+    init_cli2();
+    init_score();
+    init_forge();
   }
 });
 

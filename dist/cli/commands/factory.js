@@ -49,6 +49,9 @@ import { resolveHealConfig } from '../../factory/heal/config.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
+import { checkEnvFor, fetchBase, forgeReadExec, parseItemId } from '../../factory/check/cli.js';
+import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.js';
+import { createForge } from '../../forge/index.js';
 export function renderChainStatus(status) {
     const lines = [];
     lines.push(`链状态 ${status.directory}`);
@@ -142,9 +145,31 @@ export function renderFactoryRunState(state) {
         lines.push(chalk.gray(`  ${h.at} ${h.from ?? '-'} -> ${h.to}: ${h.note}`));
     return lines.join('\n');
 }
-function printOutcome(json, outcome) {
+/**
+ * `run --next`: the first runnable item in `omg factory check` order
+ * (priority, then id) among the spec's children (`--parent`) or the intake
+ * source, read through check's read-only guard. A merged, cancelled, failed
+ * or active run, an own factory PR open or merged, or an unsatisfied
+ * dependency is never runnable (check/rules.ts), so --next never re-runs a
+ * finished item. Null with the checked rows when nothing is runnable.
+ */
+function pickNext(deps, root, base, loaded, parent) {
+    const { config } = loaded;
+    const source = config.intake.source;
+    if (parent === undefined && !source)
+        throw new FactoryUsageError('--next needs --parent <spec> or factory.intake.source');
+    const read = forgeReadExec(deps.exec, config, root);
+    const forge = createForge(read.exec, root, config, read.options);
+    const warnings = [];
+    const baseSha = fetchBase(read.exec, root, base, warnings);
+    const ids = parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
+    const items = checkItems(forge, ids, checkEnvFor(read.exec, root, config, base, baseSha));
+    return { next: items.find((r) => r.bucket === 'runnable') ?? null, items, warnings };
+}
+const bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
+function printOutcome(json, outcome, next) {
     if (json) {
-        console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...outcome }, null, 2));
+        console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2));
         return;
     }
     if (outcome.state)
@@ -159,10 +184,22 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
     run
         .description('Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge')
         .argument('[issue]', 'GitHub issue or Azure DevOps work item number')
+        .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
+        .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
         .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
-        const issue = parseIssue(issueRaw);
+        if (o.next && issueRaw !== undefined)
+            throw new FactoryUsageError('--next takes no issue: it picks the next runnable item');
+        if (o.parent !== undefined && !o.next)
+            throw new FactoryUsageError('--parent applies to --next');
+        let parent;
+        try {
+            parent = o.parent === undefined ? undefined : parseItemId(o.parent);
+        }
+        catch (error) {
+            throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
+        }
         const root = factoryRoot(exec);
         const { limits, warnings } = deps.limits(root);
         for (const w of warnings)
@@ -171,6 +208,29 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const loaded = deps.forge?.(root, base);
         for (const w of loaded?.warnings ?? [])
             console.error(chalk.yellow(w));
+        let issue;
+        let picked;
+        if (o.next) {
+            if (!loaded)
+                throw new FactoryUsageError('--next needs the forge config (omg factory setup)');
+            const { next, items, warnings: pickWarnings } = pickNext(deps, root, base, loaded, parent);
+            for (const w of pickWarnings)
+                console.error(chalk.yellow(plainText(w)));
+            const counts = bucketCounts(items);
+            if (!next) {
+                if (o.json)
+                    console.log(JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2));
+                else
+                    console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
+                return 0;
+            }
+            issue = picked = next.id;
+            if (!o.json)
+                console.log(chalk.cyan(`next runnable: #${next.id} ${next.title}`));
+        }
+        else {
+            issue = parseIssue(issueRaw);
+        }
         // The full untrusted roots, never a partial list (critic amendments §A.14; the engine re-checks).
         const forge = loaded ? { config: loaded.config, options: factoryForgeOptions(root) } : undefined;
         let signals = 0;
@@ -194,7 +254,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 interrupted: () => signals > 0,
                 warn: (m) => console.error(chalk.yellow(m)),
             });
-            printOutcome(Boolean(o.json), outcome);
+            printOutcome(Boolean(o.json), outcome, picked);
             return outcome.exitCode;
         }
         finally {

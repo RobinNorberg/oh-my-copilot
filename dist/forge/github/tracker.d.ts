@@ -28,6 +28,8 @@ export declare function ghIssueComment(exec: Exec, issue: number, bodyFile: stri
     ok: boolean;
     stderr: string;
 };
+/** ForgeItem.dependsOn of an issue body: its `Depends on #n` / `Blocked by #n` lines (the engine's blocked-by gate reads it too). */
+export declare const ghDependsOn: (body: string) => number[];
 /** `gh issue view` as a ForgeItem; throws GhCommandError when it is not the issue asked for. */
 export declare function ghViewItem(exec: Exec, issue: number, cwd: string): ForgeItem;
 /** Open issue numbers for a label or milestone source; the ADO sources are refused. */

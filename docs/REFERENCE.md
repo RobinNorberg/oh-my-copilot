@@ -963,6 +963,7 @@ The engine is deterministic code that owns every transition. LLM work happens on
 ```bash
 omg factory run <issue> [--json]          # start, or resume at the recorded phase
 omg factory run <issue> --dry-run         # read the issue and plan and print the next step; no state, lanes or pushes
+omg factory run --next [--parent <spec>] [--json]  # run the first runnable item in omg factory check order
 omg factory run status <issue> [--json]   # the persisted state, read-only; --json adds integrityOk and runCredits
 omg factory run cancel <issue> [--json]   # ask the running engine to cancel its lane and stop; keeps the PR, branch and worktrees
 omg factory run clean <issue> [--json]    # remove the worktrees and local branches of a merged or cancelled run
@@ -974,6 +975,8 @@ omg factory run clean <issue> [--json]    # remove the worktrees and local branc
 | `4` | Any other `awaiting-human` stop, or `clean` kept a worktree |
 | `1` | A failure: an engine step failed, or the state is `failed` |
 | `2` | A usage error, such as a missing issue number, or `status` for an issue with no run |
+
+`omg factory run --next` picks the first `runnable` item in `omg factory check` order (priority, then id) among the children of `--parent <spec>`, or else the `factory.intake.source` items, and runs it. A run parked at `blocked-by` is picked again, and resumed, once its dependencies are satisfied; a finished or otherwise active run, or an item whose factory PR is open or merged, is never picked. With nothing runnable it prints the bucket counts and exits 0.
 
 `omg factory run` without `--dry-run` is itself the opt-in to live, billed lanes; no `OMG_COPILOT_RUN_ALLOW` is needed. The first Ctrl+C or SIGTERM cancels the lane after the current poll. A second one exits at once, and the next run treats the lane as lost.
 
@@ -990,7 +993,7 @@ any phase ─cancel─→ cancelled          any phase ─gate─→ awaiting-hu
 
 | Phase | What the engine does |
 |---|---|
-| `intake` | Reads the issue with `gh issue view`. A closed issue ends the run as `cancelled`. An open PR that already uses the factory branch stops at `pr-exists`. |
+| `intake` | Reads the issue with `gh issue view`. A closed issue ends the run as `cancelled`. An open PR that already uses the factory branch stops at `pr-exists`. A `Depends on #n` / `Blocked by #n` line (GitHub) or a Predecessor link (Azure DevOps) whose item is not satisfied stops at `blocked-by`; satisfied means closed, its factory PR merged into the base, or its factory run `merged`. An item that depends on itself stops at `blocked-by` with `blocked-by:self`. |
 | `plan` | Resolves the spec. An `omg-plan: <repo path>` line wins. It counts in the body when the issue's author owns the repository or has commented as an owner, member or collaborator, and in a comment by an owner, member or collaborator. The plan file is read from the base branch. Otherwise the issue body counts when it has an `Acceptance criteria` heading. |
 | `implement` | One write lane at `origin/<base>`. The prompt carries the issue and the plan and says to commit, not push. The lane must leave at least one commit that descends from its start. |
 | `publish` | The engine pushes the lane head to `refs/heads/factory/issue-<n>` with a plain refspec. The first publish opens a draft PR with `Closes #<n>` and starts ship state with implementer `factory-impl-<n>`. Before pushing, the engine re-reads the remote branch and the PR, so a crash between push and record repeats nothing. |
@@ -1267,10 +1270,11 @@ The rules are evaluated in order, and the first one that matches sets the bucket
 | `closed` | blocked | The item is closed (GitHub `CLOSED`, or an ADO Completed/Removed state). |
 | `wrong-type` | blocked | The ADO type is not in `factory.intake.itemTypes`, or the GitHub id is a pull request. |
 | `run-finished:<phase>` | blocked | A factory run for the item is merged, cancelled or failed. The engine never restarts one. |
-| `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. |
+| `run-active:<phase>[/<gate>]` | blocked | Any other factory run for the item exists. A run parked at `intake` / `blocked-by` is not counted: the rules below re-read its dependencies, so it becomes `runnable` once they are satisfied. |
 | `pr-exists` | blocked | An open PR already uses `factory/issue-<n>`. A PR from a fork counts too, because the engine's `pr-exists` gate counts it. |
 | `merged` | blocked | A PR from `factory/issue-<n>` was already merged into the base. The item stays open when the base is not the default branch, so it is not run again. |
 | `branch-exists` | blocked | `origin/factory/issue-<n>` exists without an open PR (`git ls-remote`). The engine would stop at `head-moved-externally`. |
+| `blocked-by:self` | blocked | The item depends on itself (a `Depends on` / `Blocked by` line naming its own number). |
 | `depends-on:#n,…` | blocked | An item it depends on is unfinished. A dependency is satisfied when it is closed, when a PR from its `factory/issue-<n>` branch was merged into the base (`ship.base`), or when its factory run is `merged`. The merged PR counts because `Closes #n` does not close the issue when the base is not the default branch. A dependency that is a GitHub PR counts as resolved once it is merged; a PR closed without merging does not. On Azure DevOps a work item that cannot be read is never looked up as a PR, because work items and PRs number separately there. A dependency that cannot be read stays unsatisfied. |
 | `needs-split` | blocked | It has open children, is an ADO Epic or Feature, or has the GitHub label `epic`. |
 | `no-plan` | needs-plan | There is no trusted `omg-plan:` line, no `Acceptance criteria` heading, and no ADO Acceptance Criteria. |
