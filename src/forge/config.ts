@@ -11,6 +11,7 @@
  * | forge.* (identity)                 | user -> base -> origin detection     | ignored, warned on a diff  |
  * | forge.azureDevOps.trustedAuthors   | user only                            | ignored, warned            |
  * | progress.* (tracker writes)        | user -> base                         | ignored, warned on a diff  |
+ * | heal.pipeline (ADO: which is CI)   | user -> base                         | ignored, warned on a diff  |
  * | intake.*, check.*                  | project -> user -> base -> defaults  | allowed                    |
  *
  * Config can pin the forge, never redirect it: a kind, org, project or repo
@@ -352,6 +353,27 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
     warnings.push(`omg factory: ignoring factory.progress from the working-tree project config; it is read only from the user config or ${baseSource}`);
   }
 
+  // heal.pipeline decides which builds heal believes are CI: user -> base only (ADO parity design §3.2).
+  const bPipeline = factoryBlock(base, 'heal', baseSource).pipeline;
+  const uPipeline = factoryBlock(trustedUser, 'heal', 'user config').pipeline;
+  const pHeal = (project as { factory?: { heal?: unknown } } | null | undefined)?.factory?.heal;
+  const pPipeline = pHeal !== null && typeof pHeal === 'object' ? (pHeal as Block).pipeline : undefined;
+  if (pPipeline !== undefined && !same(pPipeline, bPipeline)) {
+    warnings.push(`omg factory: ignoring factory.heal.pipeline from the working-tree project config; it is read only from the user config or ${baseSource}`);
+  }
+  const pipelineRaw = uPipeline ?? bPipeline;
+  let heal: ResolvedForgeConfig['heal'];
+  if (pipelineRaw !== undefined && pipelineRaw !== null) {
+    if (kind !== 'azure-devops') {
+      warnings.push('omg factory: ignoring factory.heal.pipeline; it names an Azure Pipelines build definition and is used on azure-devops only');
+    } else {
+      const p = object(pipelineRaw, `${source}: factory.heal.pipeline`);
+      const extra = Object.keys(p).find((k) => k !== 'definitionId');
+      if (extra) throw new ForgeConfigError('invalid', `${source}: factory.heal.pipeline.${extra} is not a key (allowed: definitionId)`);
+      heal = { pipeline: { definitionId: count(p.definitionId, 'heal.pipeline.definitionId', source, 1, 2_147_483_647) } };
+    }
+  }
+
   return {
     config: {
       kind,
@@ -360,6 +382,7 @@ export function resolveForgeConfig(trustedUser: unknown, base: unknown, project:
       intake: resolveIntake(intake, kind),
       check: resolveCheck(check),
       progress: resolveProgress({ ...bProgress, ...uProgress }, hasFactoryKey(base, 'progress') || hasFactoryKey(trustedUser, 'progress'), kind, source),
+      ...(heal ? { heal } : {}),
     },
     warnings,
   };

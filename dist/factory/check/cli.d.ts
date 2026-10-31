@@ -1,12 +1,14 @@
 /**
- * `omg factory check [<id>...] [--source <spec>] [--limit n] [--json] [--mark [--yes]]`
+ * `omg factory check [<id>... | --parent <spec> | --source <spec>] [--limit n] [--json] [--mark [--yes]]`
  * (factory forges design §5): bucket intake items as runnable, needs-plan
- * or blocked. Read-only unless `--mark`, which adds `factory.intake.marker`
+ * or blocked; `--parent` checks a spec's children (shipyard ↔ factory
+ * design §3.1). Read-only unless `--mark`, which adds `factory.intake.marker`
  * (a GitHub label or an ADO tag) to the runnable items only, after a TTY
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * open-PR lookup on `factory/issue-<n>`, a dependency's merged factory PR
+ * into the base, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
  * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
  * runGuardedAdo (fail closed without an ADO guard context), and while not
@@ -17,7 +19,7 @@
  * source or limit, no intake source, `--mark` without `--yes` and no TTY),
  * 5 incompatible (forge mismatch, unsupported remote, no adapter for the forge).
  */
-import type { ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
+import type { Forge, ForgeFactory, ResolvedForgeConfig } from '../../forge/types.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import { type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
 import { type Exec } from '../../ship/exec.js';
@@ -37,7 +39,7 @@ export declare class CheckIncompatibleError extends Error {
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
-export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined): Exec;
+export declare function checkGuardExec(exec: Exec, marker?: () => string | undefined, ado?: () => AdoGuardContext | undefined, command?: string): Exec;
 /** `--source` as a config value (resolveForgeConfig validates it): label:x, milestone:x, wiql-query:<guid>, board-column:team/board/column, area-tag:<area path>#<tag>. */
 export declare function parseSourceSpec(spec: string): Record<string, string>;
 export declare function parseItemId(raw: string): number;
@@ -61,6 +63,8 @@ export interface FactoryCheckDeps {
 }
 export interface FactoryCheckOptions {
     ids: string[];
+    /** A spec item: check its children (ForgeItem.children) instead of ids or the intake source. */
+    parent?: string;
     source?: string;
     limit?: number;
     json?: boolean;
@@ -94,6 +98,10 @@ export interface CheckJson {
  * The setup wizard builds its preview env with this too.
  */
 export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
+/** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
+export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
+export declare function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;
 /** Production az entry: resolved outside every root a lane writes (factoryForgeOptions). */
 export declare const defaultResolveAz: (root: string) => AzEntry;
@@ -103,10 +111,28 @@ export declare const defaultResolveAz: (root: string) => AzEntry;
  * gets the forge repo and that entry (adoGuardContext), and the adapter
  * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
-export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined): {
+export declare function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: string, resolveAz?: (root: string) => AzEntry, marker?: () => string | undefined, command?: string): {
     exec: Exec;
     options: AzureDevOpsForgeOptions;
 };
+/** What a read-only factory command (check, board) works on: the checkout, its base, the resolved forge config and the forge on the read guard. */
+export interface ReadForge {
+    root: string;
+    base: string;
+    /** origin/<base>; null when it cannot be read (fetchBase warned). */
+    baseSha: string | null;
+    config: ResolvedForgeConfig;
+    forge: Forge;
+    /** The guarded Exec the forge runs on (forgeReadExec). */
+    exec: Exec;
+}
+/**
+ * Resolve the checkout, base and forge config (`--source` / `--limit` as
+ * working-tree intake keys) and build the forge on the read guard. Every
+ * command passes checkGuardExec; `marker` is check's confirmed `--mark`
+ * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
+ */
+export declare function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge;
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export declare function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number>;
 //# sourceMappingURL=cli.d.ts.map

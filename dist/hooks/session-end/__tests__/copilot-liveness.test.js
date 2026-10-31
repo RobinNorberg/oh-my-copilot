@@ -185,7 +185,7 @@ describe('session-end worker on Copilot', () => {
         const dir = project();
         mkdirSync(factoryStateDir(dir), { recursive: true });
         writeFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), JSON.stringify({ intentId: 'intent-copilot' }));
-        writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'code-review' } }));
+        writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'omc-review' } }));
         prepareCopilotJob(dir);
         const decisions = () => { try {
             return readFileSync(join(factoryStateDir(dir), 'chain-decisions.jsonl'), 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line).decision);
@@ -256,7 +256,7 @@ describe('session-end worker on Copilot', () => {
             const dir = project();
             mkdirSync(factoryStateDir(dir), { recursive: true });
             writeFileSync(join(factoryStateDir(dir), `chain-${SESSION}.json`), JSON.stringify({ intentId: 'intent-copilot' }));
-            writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'code-review' } }));
+            writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'omc-review' } }));
             prepareCopilotJob(dir);
             deferSessionEndChain(dir, SESSION, { reason: 'complete' });
             writeEvents('session-events-shutdown.jsonl');
@@ -294,7 +294,7 @@ describe('session-end worker on Copilot', () => {
             const link = 'link-claude';
             mkdirSync(factoryStateDir(dir), { recursive: true });
             writeFileSync(join(factoryStateDir(dir), `chain-${link}.json`), JSON.stringify({ intentId: 'intent-link', host: 'copilot', chainLink: link, boundSessionId: SESSION }));
-            writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'code-review' } }));
+            writeFileSync(join(dir, '.omg', 'factory-routes.json'), JSON.stringify({ 'success:*': { stage: 'review', skill: 'omc-review' } }));
             prepareCopilotJob(dir);
             deferSessionEndChain(dir, SESSION, { reason: 'complete', linkEnv: link, claudeEntrypoint: 'cli' });
             writeEvents('session-events-shutdown.jsonl');

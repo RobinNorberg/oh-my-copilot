@@ -55,8 +55,12 @@ export interface ForgeItem {
     dependsOn: number[];
     /** ADO Hierarchy-Forward; GitHub task-list "- [ ] #n". */
     children: number[];
+    /** GitHub first "Part of #n" line | ADO Hierarchy-Reverse link; absent when the item has none. */
+    parent?: number;
     /** Repository the factory branch and PR live in. */
     repoUrl: string;
+    /** ADO System.TeamProject (work item ids are org-wide); undefined on GitHub. */
+    project?: string;
 }
 /** The fields the engine and merge policy read (today's MergeView plus url/headRefName). */
 export interface ForgePr {
@@ -130,9 +134,78 @@ export interface ForgeTracker {
         ok: boolean;
         stderr: string;
     };
+    /**
+     * `omg factory enqueue` only (shipyard-factory design §3.4).
+     * Every item whose body has a `shipyard-key: <spec>/<key>` line, with that
+     * key. Trust and parent are not checked here: the caller compares
+     * `item.authorTrusted` and `item.parent` itself. Throws on a failed read.
+     */
+    findByKey?(spec: number): Array<{
+        key: string;
+        item: ForgeItem;
+    }>;
+    /** `omg factory enqueue` only: a new item from a body file the caller wrote; its id. Throws on failure. */
+    createItem?(draft: ForgeItemDraft): number;
+    /** `omg factory enqueue` only: replace title and body, add/remove labels. Never closes, deletes, transfers or locks. Throws on failure. */
+    updateItem?(id: number, update: ForgeItemUpdate): void;
+    /**
+     * `omg factory enqueue` only, Azure DevOps (GitHub edges are body lines):
+     * link `id` to its parent or a predecessor, as `parent` and `dependsOn`
+     * read it back. No write when the link exists. Throws on failure.
+     */
+    addRelation?(id: number, kind: ForgeRelationKind, target: number): void;
+    /**
+     * `omg factory board --no-check` only: a cheap batched read of the live
+     * stage fields. Azure DevOps: one `GET wit/workitems?ids=…&fields=…` per
+     * 200 ids. An id missing from the map could not be read. Optional: GitHub
+     * reads each item with viewItem. Throws on a failed call.
+     */
+    peekItems?(ids: readonly number[]): Map<number, ForgePeek>;
 }
+/** What peekItems reads per item: enough for a board row and its live stage. */
+export interface ForgePeek {
+    title: string;
+    url: string;
+    /** ADO System.BoardColumn. */
+    column?: string;
+    /** GitHub state | ADO System.State. */
+    state: string;
+    /** GitHub labels | ADO tags. */
+    labels: string[];
+}
+/** The links enqueue writes on Azure DevOps: Hierarchy-Reverse (parent) and Dependency-Reverse (predecessor). */
+export type ForgeRelationKind = 'parent' | 'depends-on';
+/** A new tracker item; the body (AC, edge lines, `shipyard-key:` footer) is rendered by the caller into `bodyFile`. */
+export interface ForgeItemDraft {
+    title: string;
+    bodyFile: string;
+    /** GitHub labels (Azure DevOps tags); each must be on the writer's allowlist. */
+    labels: string[];
+    /** Azure DevOps: the acceptance criteria, which the adapter writes to the AC field as an escaped HTML list (GitHub renders them into the body). */
+    acceptance?: string[];
+    /** Azure DevOps: Microsoft.VSTS.Common.Priority, 1 to 4 (GitHub uses a `priority:p<n-1>` label). */
+    priority?: number;
+}
+export interface ForgeItemUpdate {
+    title: string;
+    bodyFile: string;
+    addLabels: string[];
+    removeLabels: string[];
+    /** Azure DevOps: as ForgeItemDraft.acceptance. */
+    acceptance?: string[];
+    /** Azure DevOps: as ForgeItemDraft.priority. */
+    priority?: number;
+}
+/** The idempotency footer line enqueue renders (design §3.3). */
+export declare const shipyardKeyLine: (spec: number, key: string) => string;
+/** The one GitHub search findByKey runs: the `shipyard-key: <spec>/` footer phrase in issue bodies. */
+export declare const shipyardKeySearch: (spec: number) => string;
+/** The `shipyard-key:` footer lines of a body: `[spec, key]` per line, in order. The key is a C3 slug `[a-z0-9-]{3,60}`. */
+export declare function shipyardKeys(body: string): Array<[number, string]>;
 export interface ForgeReviews {
     findOpenPrForBranch(branch: string): number | undefined;
+    /** A merged PR from `branch` into `base`, if any (a satisfied dependency: base may not be the default branch, so `Closes #n` never fired). */
+    findMergedPrForBranch(branch: string, base: string): number | undefined;
     createDraftPr(o: {
         base: string;
         head: string;
@@ -203,8 +276,9 @@ export interface ForgeMerge {
     /** ADO branch-policy decision inputs beyond gates (reviewers, comments, work-item link); GitHub returns []. */
     blockingPolicies(pr: number, headSha: string): string[];
 }
-/** Heal (CI history); GitHub only for now: ADO has capabilities.heal = false. */
+/** Heal (CI history): GitHub Actions; Azure Pipelines only with a configured factory.heal.pipeline (capabilities.heal). */
 export interface ForgeCi {
+    /** ADO ignores `workflow` and lists the builds of factory.heal.pipeline. */
     listRuns(o: {
         workflow: string;
         event: 'push' | 'pull_request';
@@ -277,6 +351,12 @@ export interface ResolvedForgeConfig {
     intake: ForgeIntakeConfig;
     check: ForgeCheckConfig;
     progress: ForgeProgressConfig;
+    /** `factory.heal.pipeline` from the trusted layers (user config, base branch); absent unless configured. */
+    heal?: {
+        pipeline?: {
+            definitionId: number;
+        };
+    };
 }
 /** What an adapter needs from its caller besides the Exec (src/factory/run/forge-roots.ts builds it for the factory). */
 export interface ForgeOptions {
@@ -288,6 +368,8 @@ export interface ForgeOptions {
     untrustedRoots: readonly string[];
     /** Engine-owned directory outside every untrusted root (the ADO human merge body); default the user's ~/.omg/forge. */
     stateDir?: string;
+    /** `omg factory enqueue`'s body directory (its TrackerWriteContext bodyDir): an adapter that reads a tracker write's body file reads only a file directly in it. */
+    trackerBodyDir?: string;
 }
 /** Adapters are built from the caller's (guarded) Exec; they never spawn. */
 export type ForgeFactory = (exec: Exec, cwd: string, config: ResolvedForgeConfig, options: ForgeOptions) => Forge;

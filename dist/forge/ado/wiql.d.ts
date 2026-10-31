@@ -21,4 +21,6 @@ export declare function areaTagWiql(source: Extract<IntakeSource, {
 }>, itemTypes: readonly string[]): string;
 /** WIQL for a board-column source, given the board's Kanban column field. */
 export declare function boardColumnWiql(columnField: string, column: string, itemTypes: readonly string[]): string;
+/** enqueue's findByKey: the work items whose description holds the `shipyard-key: <spec>/` footer phrase (shipyard-factory design §3.4). */
+export declare function shipyardKeyWiql(spec: number): string;
 //# sourceMappingURL=wiql.d.ts.map

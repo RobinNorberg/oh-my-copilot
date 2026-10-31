@@ -11,6 +11,8 @@ export class GhCommandError extends Error {
         this.name = 'GhCommandError';
     }
 }
+/** gh's `--repo` value for a forge repository: `HOST/OWNER/NAME`. */
+export const ghRepoArg = (repo) => `${repo.host}/${repo.owner}/${repo.name}`;
 /** `gh <args>` in `cwd`; stdout, or GhCommandError naming the command and its first stderr line. */
 export function ghRun(exec, args, cwd) {
     const res = exec('gh', args, { cwd });

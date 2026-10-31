@@ -1,0 +1,18 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1",
+  "note": "adapted: the new User Story 50 in project Web, as the create sample returns it (the fixture key does not include the body; tests assert the body)",
+  "route": "wit.workItems.POST",
+  "routeParameters": { "project": "Web", "type": "User Story" },
+  "stdout": {
+    "id": 50,
+    "rev": 1,
+    "fields": {
+      "System.AreaPath": "Web\\Factory",
+      "System.TeamProject": "Web",
+      "System.WorkItemType": "User Story",
+      "System.State": "New",
+      "System.Title": "Export the report as CSV"
+    },
+    "url": "https://dev.azure.com/contoso/_apis/wit/workItems/50"
+  }
+}

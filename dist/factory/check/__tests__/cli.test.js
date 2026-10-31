@@ -45,6 +45,8 @@ function scripted(root, issues, o = {}) {
             }
             if (args[0] === 'pr' && args[1] === 'list') {
                 const n = Number(/issue-(\d+)$/.exec(args[3])[1]);
+                if (a.includes('--state merged'))
+                    return ok(JSON.stringify(o.merged?.[n] && a.includes('--base dev') ? [{ number: o.merged[n] }] : []));
                 return ok(JSON.stringify(o.prs?.[n] ? [{ number: o.prs[n], state: 'OPEN' }] : []));
             }
             if (args[0] === 'label' && args[1] === 'list')
@@ -117,6 +119,8 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
             ...[1, 2, 3, 4, 5].flatMap((n) => [
                 `gh ${fields.replace('%', String(n))} cwd=${root}`,
                 `gh ["pr","list","--head","factory/issue-${n}","--json","number,state,headRefOid,url"] cwd=${root}`,
+                // The item's own factory PR merged into the base (#3 stops at its open PR).
+                ...(n === 3 ? [] : [`gh ["pr","list","--head","factory/issue-${n}","--base","dev","--state","merged","--json","number"] cwd=${root}`]),
             ]),
         ]);
     });
@@ -204,6 +208,37 @@ describe('omg factory check (GitHub through forge.tracker)', () => {
         process.exitCode = undefined;
         expect(codes).toEqual([2, 5, 0]);
     });
+    describe('--parent and satisfied dependencies', () => {
+        const SPEC = {
+            10: { title: 'spec', body: 'The spec.\n- [ ] #11\n- [x] #12\n' },
+            11: { title: 'first slice', body: `Part of #10\n${AC}` },
+            12: { title: 'second slice', body: `Part of #10\nBlocked by #11\n${AC}` },
+            13: { title: 'not a child', body: AC },
+        };
+        it('lists the spec\'s children with readiness; the JSON shape stays schemaVersion 1', async () => {
+            const rec = recordingExec(scripted(root, SPEC), {}, ['gh']);
+            expect(await run(rec.exec, { parent: '#10', json: true })).toBe(0);
+            const json = JSON.parse(out.join('\n'));
+            expect(Object.keys(json)).toEqual(['schemaVersion', 'ok', 'forge', 'repo', 'source', 'counts', 'items', 'mark', 'warnings']);
+            expect(json.schemaVersion).toBe(1);
+            expect(json.source).toBeNull();
+            expect(json.items.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[11, 'runnable', []], [12, 'blocked', ['depends-on:#11']]]);
+            expect(rec.calls).toContain(`gh ["pr","list","--head","factory/issue-11","--base","dev","--state","merged","--json","number"] cwd=${root}`);
+            expect(rec.calls.some((c) => c.includes('"13"'))).toBe(false);
+        });
+        it('a dependency whose factory PR merged into the base is satisfied while its issue is still open', async () => {
+            expect(await run(scripted(root, SPEC, { merged: { 11: 70 } }), { parent: '10', json: true })).toBe(0);
+            const json = JSON.parse(out.join('\n'));
+            expect(json.items.find((r) => r.id === 12)).toMatchObject({ bucket: 'runnable', reasons: [] });
+        });
+        it('--parent takes no ids and no --source', async () => {
+            const exec = scripted(root, SPEC);
+            await expect(run(exec, { parent: '10', ids: ['11'] })).rejects.toThrow(/--parent takes no item ids/);
+            await expect(run(exec, { parent: '10', source: 'label:factory' })).rejects.toThrow(/--parent and --source/);
+            await expect(run(exec, { parent: '10', limit: 5 })).rejects.toThrow(/--limit applies to an intake source/);
+            await expect(run(exec, { parent: 'x' })).rejects.toThrow(/positive number/);
+        });
+    });
     it('parseSourceSpec', () => {
         expect(parseSourceSpec('board-column:Web Team/Stories/Ready/Now')).toEqual({ type: 'board-column', team: 'Web Team', board: 'Stories', column: 'Ready/Now' });
         expect(parseSourceSpec('area-tag:Web\\Factory#factory')).toEqual({ type: 'area-tag', areaPath: 'Web\\Factory', tag: 'factory' });
@@ -221,6 +256,9 @@ describe('checkGuardExec', () => {
         refused(exec, 'gh', ['issue', 'comment', '1', '--body-file', 'x']);
         refused(exec, 'gh', ['api', 'repos/o/r']);
         refused(exec, 'gh', ['pr', 'list', '--head', 'main', '--json', 'number']);
+        expect(exec('gh', ['pr', 'list', '--head', 'factory/issue-1', '--base', 'dev', '--state', 'merged', '--json', 'number']).status).toBe(0);
+        refused(exec, 'gh', ['pr', 'list', '--head', 'factory/issue-1', '--base', 'dev', '--state', 'all', '--json', 'number']);
+        refused(exec, 'gh', ['pr', 'list', '--head', 'factory/issue-1', '--base', '--repo=x', '--state', 'merged', '--json', 'number']);
         refused(exec, 'gh', ['issue', 'list', '--label', '--repo=x', '--state', 'open', '--json', 'number', '--limit', '5']);
         refused(exec, 'git', ['push', 'origin', 'HEAD:refs/heads/x']);
         refused(exec, 'git', ['show', 'HEAD']);

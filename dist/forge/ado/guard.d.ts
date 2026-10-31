@@ -23,11 +23,18 @@
  * Refused outright with their own message: `--debug`/`--verbose` (they
  * print the Authorization header), `az repos pr update` and
  * `az repos pr create --auto-complete` (merge is human).
+ *
+ * Tracker writes (shipyard-factory design PR 7b): the work item create route
+ * and the work item PATCH's title, description, AC, priority and link paths
+ * pass only with `writes`, the tracker write context `omg factory enqueue`
+ * sets (factoryGuardExec). The create names one of its item types; its tags
+ * are on its allowlist. Without it (the engine, `check`, `omg ship`) they
+ * are refused, and nothing ever removes a field, a link or an item.
  */
 import type { Exec, ExecOptions, ExecResult } from '../../ship/exec.js';
 import type { ForgeRepo } from '../types.js';
 import type { AzEntry } from './az-binary.js';
-import { type AdoRoute } from './routes.js';
+import { type AdoRoute, type AdoTrackerWrites } from './routes.js';
 export interface AdoGuardContext {
     /** The resolved forge repo (kind azure-devops): owner = org, project, name = repo. */
     repo: ForgeRepo;
@@ -38,8 +45,12 @@ export interface AdoGuardContext {
     /** The progress-mapping board columns (progressColumns): the only Kanban column a work item PATCH may set; none when absent. */
     allowedColumns?: readonly string[];
 }
-/** factory: every routes.ts route. ship: reads plus the requeue of a build evaluation (`omg ship` reruns flaky builds). */
-export type AdoGuardPolicy = 'factory' | 'ship';
+/**
+ * factory: every routes.ts route. ship: reads plus the requeue of a build
+ * evaluation (`omg ship` reruns flaky builds). read: GET routes only
+ * (`omg factory heal`, ADO parity design §3.5).
+ */
+export type AdoGuardPolicy = 'factory' | 'ship' | 'read';
 /** The parsed parts of an `az devops invoke` argv (after the entry prefix). */
 export interface AdoInvoke {
     route: AdoRoute;
@@ -64,12 +75,12 @@ export interface CheckedAdoCommand {
 /**
  * Check one az command; throws `fail(reason)` when it is refused. Reads and
  * validates the --in-file JSON; the bytes returned are what runGuardedAdo
- * hands az.
+ * hands az. `writes` (enqueue only) adds the tracker write routes and paths.
  */
-export declare function checkAdoCommand(cmd: string, args: readonly string[], env: Readonly<Record<string, string>> | undefined, ctx: AdoGuardContext | undefined, policy: AdoGuardPolicy, fail: (reason: string) => Error): CheckedAdoCommand;
+export declare function checkAdoCommand(cmd: string, args: readonly string[], env: Readonly<Record<string, string>> | undefined, ctx: AdoGuardContext | undefined, policy: AdoGuardPolicy, fail: (reason: string) => Error, writes?: AdoTrackerWrites): CheckedAdoCommand;
 /**
  * Check, copy the validated body into a guard-owned temp file, run az with
  * THAT path, and remove the copy. The caller's file is never handed to az.
  */
-export declare function runGuardedAdo(exec: Exec, cmd: string, args: string[], opts: ExecOptions | undefined, ctx: AdoGuardContext | undefined, policy: AdoGuardPolicy, fail: (reason: string) => Error): ExecResult;
+export declare function runGuardedAdo(exec: Exec, cmd: string, args: string[], opts: ExecOptions | undefined, ctx: AdoGuardContext | undefined, policy: AdoGuardPolicy, fail: (reason: string) => Error, writes?: AdoTrackerWrites): ExecResult;
 //# sourceMappingURL=guard.d.ts.map

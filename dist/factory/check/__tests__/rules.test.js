@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ADO_ITEM_TYPES, DEFAULT_CHECK_CONFIG } from '../../../forge/config.js';
 import { GhCommandError } from '../../../forge/github/gh.js';
 import { acceptanceItems, acceptanceSection, isVague } from '../rules.js';
-import { checkItems, factoryCheckPreview, itemPriority, plainText } from '../score.js';
+import { FactorySafetyError } from '../../run/exec.js';
+import { checkItems, factoryCheckPreview, isSatisfied, itemPriority, plainText } from '../score.js';
 const AC = '## Acceptance criteria\n- `omg factory check --json` prints schemaVersion 1\n- exit code 2 on a bad id\n';
 const PLAN_BASE = 'origin/dev at 0123456789ab';
 function item(id, over = {}) {
@@ -47,6 +48,11 @@ function fakeForge(w) {
         },
         reviews: {
             findOpenPrForBranch: (branch) => w.prs?.[branch],
+            findMergedPrForBranch: (branch, base) => {
+                if (w.mergedFails?.includes(branch))
+                    throw new Error('gh pr list failed');
+                return w.merged?.[`${branch} -> ${base}`];
+            },
             viewPr: (pr) => {
                 const state = w.prStates?.[pr];
                 if (!state)
@@ -64,6 +70,7 @@ function env(w) {
         remoteBranch: (branch) => w.branches?.includes(branch) ?? false,
         readPlan: (path) => w.plans?.[path] ?? null,
         planBase: PLAN_BASE,
+        base: 'dev',
     };
 }
 const check = (w) => checkItems(fakeForge(w), w.items.map((i) => i.id).filter((id) => id < 100), env(w));
@@ -91,7 +98,18 @@ const ROWS = [
         world: { items: [item(1)], branches: ['factory/issue-1'] },
         bucket: 'blocked', reasons: ['branch-exists'], detail: 'origin/factory/issue-1 exists without an open PR; the engine would stop at head-moved-externally',
     },
-    { rule: 'a dependency that is a merged or closed PR is satisfied', world: { items: [item(1, { dependsOn: [150, 151] })], prStates: { 150: 'MERGED', 151: 'CLOSED' } }, bucket: 'runnable', reasons: [] },
+    {
+        rule: "merged (the item's own factory PR merged into the base while the item stays open)",
+        world: { items: [item(1)], merged: { 'factory/issue-1 -> dev': 90 } },
+        bucket: 'blocked', reasons: ['merged'], detail: 'PR #90 from factory/issue-1 already merged into the base',
+    },
+    { rule: 'a dependency that is a merged PR is satisfied', world: { items: [item(1, { dependsOn: [150] })], prStates: { 150: 'MERGED' } }, bucket: 'runnable', reasons: [] },
+    { rule: 'a dependency that is a PR closed without merging blocks', world: { items: [item(1, { dependsOn: [150, 151] })], prStates: { 150: 'MERGED', 151: 'CLOSED' } }, bucket: 'blocked', reasons: ['depends-on:#151'] },
+    {
+        rule: 'on ADO a failed work-item read never falls back to the PR with that number',
+        world: { kind: 'azure-devops', items: [item(1, { type: 'User Story', dependsOn: [150] })], prStates: { 150: 'MERGED' } },
+        bucket: 'blocked', reasons: ['depends-on:#150'],
+    },
     { rule: 'a dependency that is an open PR blocks', world: { items: [item(1, { dependsOn: [150, 152] })], prStates: { 150: 'MERGED', 152: 'OPEN' } }, bucket: 'blocked', reasons: ['depends-on:#152'] },
     {
         rule: 'read-failed (the item read fails)',
@@ -108,6 +126,47 @@ const ROWS = [
         rule: 'depends-on (an unreadable dependency counts as open)',
         world: { items: [item(1, { dependsOn: [130] })], failing: { 130: new Error('boom') } },
         bucket: 'blocked', reasons: ['depends-on:#130'],
+    },
+    {
+        rule: 'depends-on is satisfied by a factory PR merged into the base while the issue is still open',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], merged: { 'factory/issue-160 -> dev': 88 } },
+        bucket: 'runnable', reasons: [],
+    },
+    {
+        rule: 'depends-on is not satisfied by a factory PR merged into another base',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], merged: { 'factory/issue-160 -> main': 88 } },
+        bucket: 'blocked', reasons: ['depends-on:#160'],
+    },
+    {
+        rule: 'depends-on is satisfied by a merged factory run state',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 160: { phase: 'merged' } } },
+        bucket: 'runnable', reasons: [],
+    },
+    {
+        rule: 'a run parked at intake/blocked-by whose dependency merged is runnable again (run --next resumes it)',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 1: { phase: 'intake', gate: { name: 'blocked-by' } } }, merged: { 'factory/issue-160 -> dev': 88 } },
+        bucket: 'runnable', reasons: [],
+    },
+    {
+        rule: 'a run parked at intake/blocked-by stays blocked while its dependency is unfinished',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], runs: { 1: { phase: 'intake', gate: { name: 'blocked-by' } } } },
+        bucket: 'blocked', reasons: ['depends-on:#160'],
+    },
+    { rule: 'run-active (intake parked at another gate)', world: { items: [item(1)], runs: { 1: { phase: 'intake', gate: { name: 'pr-exists' } } } }, bucket: 'blocked', reasons: ['run-active:intake/pr-exists'] },
+    {
+        rule: 'blocked-by:self (an item that depends on itself)',
+        world: { items: [item(7, { dependsOn: [7] })] },
+        bucket: 'blocked', reasons: ['blocked-by:self'], detail: '#7 depends on itself; remove the Depends on / Blocked by line naming it',
+    },
+    {
+        rule: 'depends-on (a failed merged-PR lookup counts as unsatisfied)',
+        world: { items: [item(1, { dependsOn: [160] }), item(160)], mergedFails: ['factory/issue-160'] },
+        bucket: 'blocked', reasons: ['depends-on:#160'],
+    },
+    {
+        rule: 'children stay open while their factory PR merged (needs-split reads the item state only)',
+        world: { items: [item(1, { children: [161] }), item(161)], merged: { 'factory/issue-161 -> dev': 89 } },
+        bucket: 'blocked', reasons: ['needs-split'],
     },
     { rule: 'needs-split (open children)', world: { items: [item(1, { children: [140, 141] }), item(140, { open: false }), item(141)] }, bucket: 'blocked', reasons: ['needs-split'], detail: 'has open children #141' },
     {
@@ -191,6 +250,17 @@ describe('omg factory check rules (forges §5)', () => {
         expect(results.map((r) => [r.id, r.bucket, r.reasons])).toEqual([[2, 'runnable', []], [1, 'blocked', ['read-failed']]]);
         const lookup = checkItems({ ...fakeForge({ items: [item(3)] }), reviews: { findOpenPrForBranch: () => { throw new Error('gh pr list failed'); } } }, [3], env({ items: [] }));
         expect(lookup[0]).toMatchObject({ id: 3, title: 'item 3', bucket: 'blocked', reasons: ['read-failed'], detail: '#3 could not be checked: gh pr list failed' });
+    });
+    it('a guard refusal (FactorySafetyError) in a dependency lookup is rethrown, never read as unsatisfied', () => {
+        const refusal = new FactorySafetyError('omg factory check refuses `gh pr list`: test');
+        const forge = fakeForge({ items: [item(1, { dependsOn: [160] }), item(160)] });
+        const refusing = { ...forge, reviews: { ...forge.reviews, findMergedPrForBranch: () => { throw refusal; } } };
+        expect(() => isSatisfied(refusing, 160, 'dev', () => null)).toThrow(refusal);
+        expect(() => checkItems(refusing, [1], env({ items: [] }))).toThrow(refusal);
+        const adoRefusing = { ...forge, kind: 'azure-devops', tracker: { viewItem: () => { throw refusal; } } };
+        expect(() => isSatisfied(adoRefusing, 160, 'dev', () => null)).toThrow(refusal);
+        const ghRefusing = { ...forge, tracker: { viewItem: () => { throw refusal; } } };
+        expect(() => isSatisfied(ghRefusing, 160, 'dev', () => null)).toThrow(refusal);
     });
     it('AC section helpers', () => {
         expect(acceptanceSection('intro\n### Acceptance Criteria\n- a\n1. b\n## Next\n- c')).toBe('- a\n1. b');

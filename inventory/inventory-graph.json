@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "508478661a9e7021740df28baa0e5c4aa9be6609",
-    "sourceSha256": "fe8c388c97acc2e1f9841e7d2a3ee2a191d825bd15ed22472fe31a64a8d18a85",
+    "head": "b240d60c4f563ab6480c3c90cd13bc3fd8966b6f",
+    "sourceSha256": "203980891c7c5e6bc2d1dee3b04a1a600bfd8eea9a8406f120b7c89592330f42",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "508478661a9e7021740df28baa0e5c4aa9be6609",
-  "sourceSha256": "fe8c388c97acc2e1f9841e7d2a3ee2a191d825bd15ed22472fe31a64a8d18a85",
+  "head": "b240d60c4f563ab6480c3c90cd13bc3fd8966b6f",
+  "sourceSha256": "203980891c7c5e6bc2d1dee3b04a1a600bfd8eea9a8406f120b7c89592330f42",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 54,
       "templateHooks": 24,
-      "srcFiles": 1902,
-      "total": 1926
+      "srcFiles": 1930,
+      "total": 1954
     },
     "generated": {
-      "distFiles": 7064,
+      "distFiles": 7124,
       "bridgeFiles": 9,
-      "total": 7073
+      "total": 7133
     },
     "prompt": {
       "promptLikeFiles": 65
@@ -2769,6 +2769,10 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory-board.d.ts",
+      "dist/cli/commands/factory-board.d.ts.map",
+      "dist/cli/commands/factory-board.js",
+      "dist/cli/commands/factory-board.js.map",
       "dist/cli/commands/factory-check.d.ts",
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
@@ -2995,6 +2999,14 @@
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
       "dist/factory/__tests__/check-run.test.js.map",
+      "dist/factory/__tests__/enqueue-ado.test.d.ts",
+      "dist/factory/__tests__/enqueue-ado.test.d.ts.map",
+      "dist/factory/__tests__/enqueue-ado.test.js",
+      "dist/factory/__tests__/enqueue-ado.test.js.map",
+      "dist/factory/__tests__/enqueue.test.d.ts",
+      "dist/factory/__tests__/enqueue.test.d.ts.map",
+      "dist/factory/__tests__/enqueue.test.js",
+      "dist/factory/__tests__/enqueue.test.js.map",
       "dist/factory/__tests__/listener.test.d.ts",
       "dist/factory/__tests__/listener.test.d.ts.map",
       "dist/factory/__tests__/listener.test.js",
@@ -3019,6 +3031,22 @@
       "dist/factory/__tests__/workflow-run.test.d.ts.map",
       "dist/factory/__tests__/workflow-run.test.js",
       "dist/factory/__tests__/workflow-run.test.js.map",
+      "dist/factory/board/__tests__/board-ado.test.d.ts",
+      "dist/factory/board/__tests__/board-ado.test.d.ts.map",
+      "dist/factory/board/__tests__/board-ado.test.js",
+      "dist/factory/board/__tests__/board-ado.test.js.map",
+      "dist/factory/board/__tests__/board.test.d.ts",
+      "dist/factory/board/__tests__/board.test.d.ts.map",
+      "dist/factory/board/__tests__/board.test.js",
+      "dist/factory/board/__tests__/board.test.js.map",
+      "dist/factory/board/collect.d.ts",
+      "dist/factory/board/collect.d.ts.map",
+      "dist/factory/board/collect.js",
+      "dist/factory/board/collect.js.map",
+      "dist/factory/board/render.d.ts",
+      "dist/factory/board/render.d.ts.map",
+      "dist/factory/board/render.js",
+      "dist/factory/board/render.js.map",
       "dist/factory/check/__tests__/ado.test.d.ts",
       "dist/factory/check/__tests__/ado.test.d.ts.map",
       "dist/factory/check/__tests__/ado.test.js",
@@ -3047,6 +3075,10 @@
       "dist/factory/check/score.d.ts.map",
       "dist/factory/check/score.js",
       "dist/factory/check/score.js.map",
+      "dist/factory/enqueue.d.ts",
+      "dist/factory/enqueue.d.ts.map",
+      "dist/factory/enqueue.js",
+      "dist/factory/enqueue.js.map",
       "dist/factory/heal/__tests__/classify.test.d.ts",
       "dist/factory/heal/__tests__/classify.test.d.ts.map",
       "dist/factory/heal/__tests__/classify.test.js",
@@ -3147,6 +3179,10 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.outcome.test.d.ts",
+      "dist/factory/run/__tests__/engine.outcome.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.outcome.test.js",
+      "dist/factory/run/__tests__/engine.outcome.test.js.map",
       "dist/factory/run/__tests__/engine.progress.test.d.ts",
       "dist/factory/run/__tests__/engine.progress.test.d.ts.map",
       "dist/factory/run/__tests__/engine.progress.test.js",
@@ -3235,6 +3271,10 @@
       "dist/factory/run/merge-policy.d.ts.map",
       "dist/factory/run/merge-policy.js",
       "dist/factory/run/merge-policy.js.map",
+      "dist/factory/run/outcome.d.ts",
+      "dist/factory/run/outcome.d.ts.map",
+      "dist/factory/run/outcome.js",
+      "dist/factory/run/outcome.js.map",
       "dist/factory/run/plan-rules.d.ts",
       "dist/factory/run/plan-rules.d.ts.map",
       "dist/factory/run/plan-rules.js",
@@ -3679,6 +3719,10 @@
       "dist/forge/__tests__/gh-argv-baseline.ship.test.d.ts.map",
       "dist/forge/__tests__/gh-argv-baseline.ship.test.js",
       "dist/forge/__tests__/gh-argv-baseline.ship.test.js.map",
+      "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts",
+      "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts.map",
+      "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js",
+      "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js.map",
       "dist/forge/__tests__/no-spawn.test.d.ts",
       "dist/forge/__tests__/no-spawn.test.d.ts.map",
       "dist/forge/__tests__/no-spawn.test.js",
@@ -3699,6 +3743,10 @@
       "dist/forge/ado/__tests__/az-binary.test.d.ts.map",
       "dist/forge/ado/__tests__/az-binary.test.js",
       "dist/forge/ado/__tests__/az-binary.test.js.map",
+      "dist/forge/ado/__tests__/ci.test.d.ts",
+      "dist/forge/ado/__tests__/ci.test.d.ts.map",
+      "dist/forge/ado/__tests__/ci.test.js",
+      "dist/forge/ado/__tests__/ci.test.js.map",
       "dist/forge/ado/__tests__/exact-head.test.d.ts",
       "dist/forge/ado/__tests__/exact-head.test.d.ts.map",
       "dist/forge/ado/__tests__/exact-head.test.js",
@@ -3743,6 +3791,10 @@
       "dist/forge/ado/__tests__/routes.test.d.ts.map",
       "dist/forge/ado/__tests__/routes.test.js",
       "dist/forge/ado/__tests__/routes.test.js.map",
+      "dist/forge/ado/__tests__/tracker-writes.test.d.ts",
+      "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map",
+      "dist/forge/ado/__tests__/tracker-writes.test.js",
+      "dist/forge/ado/__tests__/tracker-writes.test.js.map",
       "dist/forge/ado/__tests__/wiql.test.d.ts",
       "dist/forge/ado/__tests__/wiql.test.d.ts.map",
       "dist/forge/ado/__tests__/wiql.test.js",
@@ -3759,6 +3811,10 @@
       "dist/forge/ado/checks.d.ts.map",
       "dist/forge/ado/checks.js",
       "dist/forge/ado/checks.js.map",
+      "dist/forge/ado/ci.d.ts",
+      "dist/forge/ado/ci.d.ts.map",
+      "dist/forge/ado/ci.js",
+      "dist/forge/ado/ci.js.map",
       "dist/forge/ado/guard.d.ts",
       "dist/forge/ado/guard.d.ts.map",
       "dist/forge/ado/guard.js",
@@ -3803,6 +3859,10 @@
       "dist/forge/ado/wiql.d.ts.map",
       "dist/forge/ado/wiql.js",
       "dist/forge/ado/wiql.js.map",
+      "dist/forge/body-file.d.ts",
+      "dist/forge/body-file.d.ts.map",
+      "dist/forge/body-file.js",
+      "dist/forge/body-file.js.map",
       "dist/forge/config.d.ts",
       "dist/forge/config.d.ts.map",
       "dist/forge/config.js",
@@ -8660,6 +8720,11 @@
         "path": ".claude-plugin/plugin.json"
       },
       {
+        "id": ".claude/settings.local.json",
+        "kind": "other",
+        "path": ".claude/settings.local.json"
+      },
+      {
         "id": ".clawhip/project.json",
         "kind": "other",
         "path": ".clawhip/project.json"
@@ -8883,6 +8948,11 @@
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
+      },
+      {
+        "id": ".omg/projection-manifest.json",
+        "kind": "other",
+        "path": ".omg/projection-manifest.json"
       },
       {
         "id": ".omx/plans/source-overall-cleanup/fallback-classification-inventory.md",
@@ -18660,6 +18730,26 @@
         "path": "dist/cli/commands/doctor-team-routing.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-board.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-board.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-board.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-check.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-check.d.ts"
@@ -19790,6 +19880,46 @@
         "path": "dist/factory/__tests__/check-run.test.js.map"
       },
       {
+        "id": "dist/factory/__tests__/enqueue-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue-ado.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue-ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/enqueue.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/enqueue.test.js.map"
+      },
+      {
         "id": "dist/factory/__tests__/listener.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/listener.test.d.ts"
@@ -19908,6 +20038,86 @@
         "id": "dist/factory/__tests__/workflow-run.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/workflow-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.d.ts"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.js"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board-ado.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board-ado.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.d.ts"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.js"
+      },
+      {
+        "id": "dist/factory/board/__tests__/board.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/__tests__/board.test.js.map"
+      },
+      {
+        "id": "dist/factory/board/collect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.d.ts"
+      },
+      {
+        "id": "dist/factory/board/collect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/collect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.js"
+      },
+      {
+        "id": "dist/factory/board/collect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/collect.js.map"
+      },
+      {
+        "id": "dist/factory/board/render.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.d.ts"
+      },
+      {
+        "id": "dist/factory/board/render.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.d.ts.map"
+      },
+      {
+        "id": "dist/factory/board/render.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.js"
+      },
+      {
+        "id": "dist/factory/board/render.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/board/render.js.map"
       },
       {
         "id": "dist/factory/check/__tests__/ado.test.d.ts",
@@ -20048,6 +20258,26 @@
         "id": "dist/factory/check/score.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/check/score.js.map"
+      },
+      {
+        "id": "dist/factory/enqueue.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/enqueue.d.ts"
+      },
+      {
+        "id": "dist/factory/enqueue.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/enqueue.d.ts.map"
+      },
+      {
+        "id": "dist/factory/enqueue.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/enqueue.js"
+      },
+      {
+        "id": "dist/factory/enqueue.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/enqueue.js.map"
       },
       {
         "id": "dist/factory/heal/__tests__/classify.test.d.ts",
@@ -20550,6 +20780,26 @@
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.outcome.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.outcome.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.progress.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.progress.test.d.ts"
@@ -20988,6 +21238,26 @@
         "id": "dist/factory/run/merge-policy.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/merge-policy.js.map"
+      },
+      {
+        "id": "dist/factory/run/outcome.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.d.ts"
+      },
+      {
+        "id": "dist/factory/run/outcome.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/outcome.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.js"
+      },
+      {
+        "id": "dist/factory/run/outcome.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/outcome.js.map"
       },
       {
         "id": "dist/factory/run/plan-rules.d.ts",
@@ -23210,6 +23480,26 @@
         "path": "dist/forge/__tests__/gh-argv-baseline.ship.test.js.map"
       },
       {
+        "id": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js"
+      },
+      {
+        "id": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/__tests__/gh-argv-baseline.tracker-writes.test.js.map"
+      },
+      {
         "id": "dist/forge/__tests__/no-spawn.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/__tests__/no-spawn.test.d.ts"
@@ -23308,6 +23598,26 @@
         "id": "dist/forge/ado/__tests__/az-binary.test.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/az-binary.test.js.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/ci.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/ci.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/ci.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/ci.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/ci.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/ci.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/ci.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/ci.test.js.map"
       },
       {
         "id": "dist/forge/ado/__tests__/exact-head.test.d.ts",
@@ -23530,6 +23840,26 @@
         "path": "dist/forge/ado/__tests__/routes.test.js.map"
       },
       {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.js"
+      },
+      {
+        "id": "dist/forge/ado/__tests__/tracker-writes.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/__tests__/tracker-writes.test.js.map"
+      },
+      {
         "id": "dist/forge/ado/__tests__/wiql.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/forge/ado/__tests__/wiql.test.d.ts"
@@ -23608,6 +23938,26 @@
         "id": "dist/forge/ado/checks.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/checks.js.map"
+      },
+      {
+        "id": "dist/forge/ado/ci.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/ci.d.ts"
+      },
+      {
+        "id": "dist/forge/ado/ci.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/ci.d.ts.map"
+      },
+      {
+        "id": "dist/forge/ado/ci.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/ci.js"
+      },
+      {
+        "id": "dist/forge/ado/ci.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/ado/ci.js.map"
       },
       {
         "id": "dist/forge/ado/guard.d.ts",
@@ -23828,6 +24178,26 @@
         "id": "dist/forge/ado/wiql.js.map",
         "kind": "generated-dist",
         "path": "dist/forge/ado/wiql.js.map"
+      },
+      {
+        "id": "dist/forge/body-file.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.d.ts"
+      },
+      {
+        "id": "dist/forge/body-file.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.d.ts.map"
+      },
+      {
+        "id": "dist/forge/body-file.js",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.js"
+      },
+      {
+        "id": "dist/forge/body-file.js.map",
+        "kind": "generated-dist",
+        "path": "dist/forge/body-file.js.map"
       },
       {
         "id": "dist/forge/config.d.ts",
@@ -45600,6 +45970,11 @@
         "path": "node:timers"
       },
       {
+        "id": "external:node:tty",
+        "kind": "external",
+        "path": "node:tty"
+      },
+      {
         "id": "external:node:url",
         "kind": "external",
         "path": "node:url"
@@ -49635,6 +50010,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory-board.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-board.ts"
+      },
+      {
         "id": "src/cli/commands/factory-check.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-check.ts"
@@ -49925,6 +50305,16 @@
         "path": "src/factory/__tests__/check-run.test.ts"
       },
       {
+        "id": "src/factory/__tests__/enqueue-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/enqueue-ado.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/enqueue.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/enqueue.test.ts"
+      },
+      {
         "id": "src/factory/__tests__/listener.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/listener.test.ts"
@@ -49955,6 +50345,26 @@
         "path": "src/factory/__tests__/workflow-run.test.ts"
       },
       {
+        "id": "src/factory/board/__tests__/board-ado.test.ts",
+        "kind": "src",
+        "path": "src/factory/board/__tests__/board-ado.test.ts"
+      },
+      {
+        "id": "src/factory/board/__tests__/board.test.ts",
+        "kind": "src",
+        "path": "src/factory/board/__tests__/board.test.ts"
+      },
+      {
+        "id": "src/factory/board/collect.ts",
+        "kind": "src",
+        "path": "src/factory/board/collect.ts"
+      },
+      {
+        "id": "src/factory/board/render.ts",
+        "kind": "src",
+        "path": "src/factory/board/render.ts"
+      },
+      {
         "id": "src/factory/check/__tests__/ado.test.ts",
         "kind": "src",
         "path": "src/factory/check/__tests__/ado.test.ts"
@@ -49970,9 +50380,19 @@
         "path": "src/factory/check/__tests__/cli.test.ts"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-42.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json",
@@ -49980,9 +50400,24 @@
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-44.json"
       },
       {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-45-merged.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48-merged.json"
+      },
+      {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json",
         "kind": "src",
         "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-48.json"
+      },
+      {
+        "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json",
+        "kind": "src",
+        "path": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49-merged.json"
       },
       {
         "id": "src/factory/check/__tests__/fixtures/ado/git.pullRequests.GET.issue-49.json",
@@ -50053,6 +50488,11 @@
         "id": "src/factory/check/score.ts",
         "kind": "src",
         "path": "src/factory/check/score.ts"
+      },
+      {
+        "id": "src/factory/enqueue.ts",
+        "kind": "src",
+        "path": "src/factory/enqueue.ts"
       },
       {
         "id": "src/factory/heal/__tests__/classify.test.ts",
@@ -50200,6 +50640,11 @@
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.outcome.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.progress.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.progress.test.ts"
@@ -50308,6 +50753,11 @@
         "id": "src/factory/run/merge-policy.ts",
         "kind": "src",
         "path": "src/factory/run/merge-policy.ts"
+      },
+      {
+        "id": "src/factory/run/outcome.ts",
+        "kind": "src",
+        "path": "src/factory/run/outcome.ts"
       },
       {
         "id": "src/factory/run/plan-rules.ts",
@@ -50935,6 +51385,11 @@
         "path": "src/forge/__tests__/gh-argv-baseline.ship.test.ts"
       },
       {
+        "id": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "kind": "src",
+        "path": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts"
+      },
+      {
         "id": "src/forge/__tests__/no-spawn.test.ts",
         "kind": "src",
         "path": "src/forge/__tests__/no-spawn.test.ts"
@@ -50960,6 +51415,11 @@
         "path": "src/forge/ado/__tests__/az-binary.test.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/ci.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/ci.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/exact-head.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/exact-head.test.ts"
@@ -50980,9 +51440,24 @@
         "path": "src/forge/ado/__tests__/fixtures.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/build.builds.GET.heal-pr.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.builds.GET.heal-pr.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/build.builds.GET.heal-push.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.builds.GET.heal-push.json"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures/build.builds.GET.pr-17.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/build.builds.GET.pr-17.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/build.definitions.GET.repo.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/build.definitions.GET.repo.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/build.logs.GET.101-7.json",
@@ -51018,6 +51493,16 @@
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.by-id.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged-none.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/git.pullRequests.GET.merged.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/git.pullRequests.PATCH.ready.json",
@@ -51065,6 +51550,11 @@
         "path": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.query.json"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.shipyard-key.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.wiql.POST.shipyard-key.json"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/wit.workItemTypeStates.GET.user-story.json"
@@ -51080,9 +51570,19 @@
         "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.missing.json"
       },
       {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.peek.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.GET.peek.json"
+      },
+      {
         "id": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json",
         "kind": "src",
         "path": "src/forge/ado/__tests__/fixtures/wit.workItems.PATCH.42.json"
+      },
+      {
+        "id": "src/forge/ado/__tests__/fixtures/wit.workItems.POST.user-story.json",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/fixtures/wit.workItems.POST.user-story.json"
       },
       {
         "id": "src/forge/ado/__tests__/fixtures/work.boards.GET.stories.json",
@@ -51125,6 +51625,11 @@
         "path": "src/forge/ado/__tests__/routes.test.ts"
       },
       {
+        "id": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "kind": "src",
+        "path": "src/forge/ado/__tests__/tracker-writes.test.ts"
+      },
+      {
         "id": "src/forge/ado/__tests__/wiql.test.ts",
         "kind": "src",
         "path": "src/forge/ado/__tests__/wiql.test.ts"
@@ -51143,6 +51648,11 @@
         "id": "src/forge/ado/checks.ts",
         "kind": "src",
         "path": "src/forge/ado/checks.ts"
+      },
+      {
+        "id": "src/forge/ado/ci.ts",
+        "kind": "src",
+        "path": "src/forge/ado/ci.ts"
       },
       {
         "id": "src/forge/ado/guard.ts",
@@ -51198,6 +51708,11 @@
         "id": "src/forge/ado/wiql.ts",
         "kind": "src",
         "path": "src/forge/ado/wiql.ts"
+      },
+      {
+        "id": "src/forge/body-file.ts",
+        "kind": "src",
+        "path": "src/forge/body-file.ts"
       },
       {
         "id": "src/forge/config.ts",
@@ -57679,6 +58194,11 @@
       {
         "from": "scripts/ado-acceptance.mjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/ado-acceptance.mjs",
+        "to": "external:node:tty",
         "kind": "imports"
       },
       {
@@ -71763,6 +72283,16 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -71793,7 +72323,17 @@
       },
       {
         "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
         "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-run-cli.test.ts",
+        "to": "src/forge/config.ts",
         "kind": "imports"
       },
       {
@@ -72497,6 +73037,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-board.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-check.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -72753,6 +73328,11 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-check.ts",
         "kind": "imports"
       },
@@ -72774,6 +73354,31 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/enqueue.ts",
         "kind": "imports"
       },
       {
@@ -72878,8 +73483,23 @@
       },
       {
         "from": "src/cli/commands/factory.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
         "to": "src/hooks/session-end/routing.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/factory.ts",
@@ -75028,13 +75648,143 @@
       },
       {
         "from": "src/factory/__tests__/check-run.test.ts",
-        "to": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
-        "from": "src/factory/__tests__/check-run.test.ts",
-        "to": "src/lib/worktree-paths.ts",
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "external:node:fs",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/factory/enqueue.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/factory/run/plan-rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/enqueue.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/__tests__/listener.test.ts",
@@ -75257,6 +76007,261 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board-ado.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/cli/commands/factory-board.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/__tests__/board.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/board/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/collect.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/board/render.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/check/__tests__/ado.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -75463,6 +76468,11 @@
       },
       {
         "from": "src/factory/check/__tests__/rules.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/__tests__/rules.test.ts",
         "to": "src/forge/config.ts",
         "kind": "imports"
       },
@@ -75603,6 +76613,16 @@
       },
       {
         "from": "src/factory/check/score.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/score.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
       },
@@ -75615,6 +76635,136 @@
         "from": "src/factory/check/score.ts",
         "to": "src/utils/string-width.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/check/rules.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/ado/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/enqueue.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/heal/__tests__/classify.test.ts",
@@ -76373,6 +77523,16 @@
       },
       {
         "from": "src/factory/heal/history.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/heal/history.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/heal/history.ts",
         "to": "src/forge/github/ci.ts",
         "kind": "exports"
       },
@@ -77020,6 +78180,66 @@
         "from": "src/factory/run/__tests__/engine.ado.test.ts",
         "to": "src/ship/state.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.outcome.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/__tests__/engine.progress.test.ts",
@@ -77678,6 +78898,11 @@
       },
       {
         "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
         "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
@@ -77700,6 +78925,16 @@
         "from": "src/factory/run/__tests__/units.test.ts",
         "to": "src/factory/run/state.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/units.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/__tests__/units.test.ts",
@@ -77798,6 +79033,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/heal/diagnosis-output.ts",
         "kind": "imports"
       },
@@ -77854,6 +79099,16 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/merge-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/outcome.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/outcome.ts",
         "kind": "type-imports"
       },
       {
@@ -78028,6 +79283,11 @@
       },
       {
         "from": "src/factory/run/exec.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -78040,6 +79300,16 @@
         "from": "src/factory/run/exec.ts",
         "to": "src/forge/ado/guard.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/exec.ts",
@@ -78289,6 +79559,21 @@
       {
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/outcome.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -78889,6 +80174,11 @@
       {
         "from": "src/factory/watchdog.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "src/cli/commands/intake.ts",
         "kind": "imports"
       },
       {
@@ -80827,6 +82117,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/forge/__tests__/recording-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/forge/github/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/__tests__/gh-argv-baseline.tracker-writes.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/__tests__/no-spawn.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80889,6 +82239,11 @@
       {
         "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
         "to": "scripts/lib/backlog-to-workitems.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/acceptance-scripts.test.ts",
+        "to": "src/factory/enqueue.ts",
         "kind": "imports"
       },
       {
@@ -80964,6 +82319,71 @@
       {
         "from": "src/forge/ado/__tests__/az-binary.test.ts",
         "to": "src/forge/ado/az-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/ci.test.ts",
+        "to": "src/forge/types.ts",
         "kind": "type-imports"
       },
       {
@@ -81272,6 +82692,81 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/fixtures.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/__tests__/world.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/html.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/routes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/forge/ado/tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/tracker-writes.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/__tests__/wiql.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -81300,6 +82795,11 @@
         "from": "src/forge/ado/__tests__/world.ts",
         "to": "src/factory/run/exec.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/__tests__/world.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/forge/ado/__tests__/world.ts",
@@ -81372,6 +82872,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/factory/heal/history.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/factory/heal/logs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/forge/ado/invoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/ado/ci.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/forge/ado/guard.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -81439,6 +82969,11 @@
       {
         "from": "src/forge/ado/index.ts",
         "to": "src/forge/ado/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/index.ts",
+        "to": "src/forge/ado/ci.ts",
         "kind": "imports"
       },
       {
@@ -81628,6 +83163,11 @@
       },
       {
         "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/ado/guard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
         "to": "src/forge/ado/html.ts",
         "kind": "imports"
       },
@@ -81648,7 +83188,17 @@
       },
       {
         "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/body-file.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
         "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/ado/tracker.ts",
+        "to": "src/forge/types.ts",
         "kind": "imports"
       },
       {
@@ -81660,6 +83210,16 @@
         "from": "src/forge/ado/wiql.ts",
         "to": "src/forge/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/forge/body-file.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/body-file.ts",
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/forge/config.ts",
@@ -81844,6 +83404,11 @@
       {
         "from": "src/forge/github/tracker.ts",
         "to": "src/forge/github/gh.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/forge/github/tracker.ts",
+        "to": "src/forge/types.ts",
         "kind": "imports"
       },
       {
@@ -90828,6 +92393,11 @@
       },
       {
         "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/forge/github/chain-tracker.ts",
         "kind": "imports"
       },
@@ -90844,6 +92414,11 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/frontmatter.ts",
         "kind": "imports"
       },
       {
@@ -114463,12 +116038,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 9714,
-      "edgeCount": 11448,
-      "importEdgeCount": 9420,
+      "nodeCount": 9805,
+      "edgeCount": 11660,
+      "importEdgeCount": 9578,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "7d51b686bf3ef52a3146f666685664e4fee393808edae598819e5f50848b3d0c",
-  "manifestSha256": "243c15221382a6638dc93790788c889944f31fe3fa2e0683e6c40732752d60bf"
+  "inventorySha256": "66ef96acf286329aeaceca35cca89db316b6f533918cef43f0188bbb3008ecad",
+  "manifestSha256": "57b36d05d676b563f9124f13df7ef835c3c7757ce0145f3f049ecf42ff7fd28e"
 }

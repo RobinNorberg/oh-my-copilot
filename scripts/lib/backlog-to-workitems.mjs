@@ -1,7 +1,7 @@
 /**
- * Turn a BACKLOG.md in the ExcavatorTrek shape into Azure DevOps work item
- * fields for the live acceptance run (scripts/ado-acceptance.mjs, ADO parity
- * design §6 `create`). Pure: no I/O.
+ * Turn a BACKLOG.md in the ExcavatorTrek shape into the ticket file of
+ * `omg factory enqueue` for the live acceptance run (scripts/ado-acceptance.mjs,
+ * phase `enqueue`). Pure: no I/O.
  *
  * The shape:
  *
@@ -90,26 +90,29 @@ export function inlineHtml(text) {
 }
 
 /**
- * The fields `az boards work-item create` gets for one ticket: the title
- * (`<key> <title>`), the description and the acceptance criteria as HTML
- * (`Microsoft.VSTS.Common.AcceptanceCriteria` is a User Story field of the
- * Agile process), and the dependencies by key.
+ * launch's ticket file for `omg factory enqueue --spec <spec> --file`
+ * (shipyard ↔ factory design §3.2): one ticket per backlog ticket, keyed by
+ * the lower-cased ticket key, titled `<key> <title>`, the `Depends on:` text
+ * and the prose as the body, one acceptance item per checkbox, and every
+ * dependency the backlog defines as a `blockedBy` key. A dependency on a key
+ * the backlog lacks is reported, not invented.
  */
-export function ticketToWorkItem(ticket) {
-  const depends = ticket.dependsText ? [`<p>Depends on: ${inlineHtml(ticket.dependsText)}</p>`] : [];
-  return {
-    key: ticket.key,
-    title: `${ticket.key} ${ticket.title}`,
-    descriptionHtml: [...depends, ...ticket.description.map((p) => `<p>${inlineHtml(p)}</p>`)].join('') || `<p>${inlineHtml(ticket.title)}</p>`,
-    acceptanceHtml: `<ul>${ticket.acceptance.map((a) => `<li>${inlineHtml(a.text)}</li>`).join('')}</ul>`,
-    dependsOn: ticket.dependsOn,
-  };
-}
-
-/** Work items for every ticket; a dependency on a key the backlog lacks is reported, not invented. */
-export function backlogToWorkItems(markdown) {
+export function backlogToTicketFile(markdown, spec) {
   const tickets = parseBacklog(markdown);
   const keys = new Set(tickets.map((t) => t.key));
   const unknown = tickets.flatMap((t) => t.dependsOn.filter((d) => !keys.has(d)).map((d) => `${t.key} depends on ${d}, which BACKLOG.md does not define`));
-  return { items: tickets.map(ticketToWorkItem), unknown };
+  return {
+    file: {
+      schemaVersion: 1,
+      spec,
+      tickets: tickets.map((t) => ({
+        key: t.key.toLowerCase(),
+        title: `${t.key} ${t.title}`,
+        body: [...(t.dependsText ? [`Depends on: ${t.dependsText}`] : []), ...t.description].join('\n\n') || t.title,
+        acceptance: t.acceptance.map((a) => a.text),
+        blockedBy: t.dependsOn.filter((d) => keys.has(d)).map((d) => d.toLowerCase()),
+      })),
+    },
+    unknown,
+  };
 }

@@ -6,25 +6,38 @@
  *   (no `+`, no flags), never a protected branch. Ship's `HEAD:refs/heads/<b>`
  *   push shape is refused here: the factory pushes nothing else.
  * - GitHub: `gh issue view|comment`, `gh pr create --draft|comment|list|ready`
+ *   (one `pr list` is the blocked-by gate's merged lookup on `factory/issue-<n>`)
  *   and `gh repo view --json url` (ci-heal runs) in fixed shapes, plus ship's
  *   `gh pr view|checks` and `gh run list|view|rerun`.
  *   Never `gh api`, `gh -R`, or a merge (merge is always human).
+ * - Tracker writes (`omg factory enqueue` only, when its TrackerWriteContext is
+ *   set): `gh issue create`, `gh issue edit` (title, body, labels) and the
+ *   `shipyard-key:` search `gh issue list --search`, each in one exact shape,
+ *   pinned to the configured repository, with a body file from the caller's
+ *   own directory (gh reads the guard's checked copy) and labels from its allowlist. Never close, delete,
+ *   transfer or lock; without the context all three shapes are refused.
  * - Azure DevOps: `az devops invoke` on the routes.ts allowlist only, as the
  *   resolved az entry, for the run's forge repo (src/forge/ado/guard.ts).
+ *   The work item create and the PATCH's item fields and links pass only with
+ *   the TrackerWriteContext (shipyard-factory design PR 7b).
  * - The engine-owned prepare checkout: `git worktree add -B <its branch>
  *   <abs path> <sha40>` and `git merge --abort` (ship's prepare shapes run in it).
  * - Read-only git for the lane tamper check (review-guard.ts) and the review
- *   prompt's diff (no external diff driver, no textconv).
+ *   prompt's diff (no external diff driver, no textconv) and its standards
+ *   files (`ls-tree` of docs/standards/ at the base commit).
  * - Every engine git command runs hardened (hardenedGitExec): no hooks and no
  *   fsmonitor, so a hook or fsmonitor a lane planted cannot run in the engine
  *   even if the tamper check missed it.
  */
-import { existsSync, readdirSync } from 'fs';
-import { isAbsolute } from 'path';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { isAbsolute, join } from 'path';
 import { checkAdoCommand, isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
+import { isBodyFileIn, readTrackerBody } from '../../forge/body-file.js';
 import { assertSafeCommand, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV } from '../../ship/exec.js';
 /** Every branch the factory pushes starts with this prefix (fixed, not configurable). */
 export const FACTORY_BRANCH_PREFIX = 'factory/';
+export { MAX_TRACKER_BODY_CHARS } from '../../forge/body-file.js';
 export class FactorySafetyError extends ShipSafetyError {
     constructor(message) {
         super(message);
@@ -40,7 +53,8 @@ export const FOR_EACH_REF_FORMAT = '--format=%(refname) %(objectname)';
 const CHECKOUT_BRANCH = /^omc-team\/factory-run\/(?:issue-\d+|heal-[0-9a-f]{8})$/;
 const isBranch = (s) => typeof s === 'string' && BRANCH.test(s) && !s.includes('..') && !s.endsWith('/') && !s.endsWith('.lock');
 const isFile = (s) => typeof s === 'string' && s.length > 0 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
-const isTitle = (s) => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\r\n\0]/.test(s);
+/** One line of visible text: no control or format characters (tab, newline, NUL, bidi overrides such as RLO). */
+const isTitle = (s) => typeof s === 'string' && s.length > 0 && s.length <= 256 && !s.startsWith('-') && !/[\p{Cc}\p{Cf}]/u.test(s);
 const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
 /** A progress label of the factory family (factory forges design §7): `factory:<stage>`. */
 const FACTORY_LABEL = /^factory:[a-z0-9][a-z0-9-]{0,40}$/;
@@ -66,6 +80,67 @@ function isProgressLabelEdit(r) {
         labels.push(r[i + 1]);
     }
     return true;
+}
+/** shipyardKeySearch (src/forge/types.ts) for any spec. */
+const KEY_SEARCH = /^"shipyard-key: \d+\/" in:body$/;
+/** At most this many labels on one write (an intake label and a priority, plus the old priority removed). */
+const MAX_WRITE_LABELS = 4;
+const isWriteLabel = (s, ctx) => typeof s === 'string' && ctx.labels.includes(s) && !/^(?:factory|harbor):/i.test(s) && /^[^,\s-][^,\r\n\0]{0,49}$/.test(s);
+const isBodyFile = (s, ctx) => isFile(s) && isBodyFileIn(s, ctx.bodyDir);
+/**
+ * The argv index of a passed tracker write's `--body-file` value (create 7,
+ * edit 8); undefined for every other shape. Call only after the guard passed.
+ */
+function trackerBodyFileArg(args) {
+    if (args[0] !== 'issue')
+        return undefined;
+    if (args[1] === 'create' && args[6] === '--body-file')
+        return 7;
+    if (args[1] === 'edit' && args[3] === '--repo' && args[7] === '--body-file')
+        return 8;
+    return undefined;
+}
+/** `<flag> <label>` pairs, the flags' runs in `order`, every label allowlisted and used once. */
+function isLabelPairs(r, order, ctx) {
+    if (r.length % 2 !== 0 || r.length / 2 > MAX_WRITE_LABELS)
+        return false;
+    const seen = [];
+    let at = 0;
+    for (let i = 0; i < r.length; i += 2) {
+        const idx = order.indexOf(r[i]);
+        if (idx < at)
+            return false;
+        at = idx;
+        if (!isWriteLabel(r[i + 1], ctx) || seen.includes(r[i + 1]))
+            return false;
+        seen.push(r[i + 1]);
+    }
+    return true;
+}
+/**
+ * The enqueue write shapes, exact arity:
+ *   issue create --repo <repo> --title <t> --body-file <f> (--label <l>)*
+ *   issue edit <n> --repo <repo> --title <t> --body-file <f> (--add-label <l>)* (--remove-label <l>)*
+ *   issue list --repo <repo> --search "shipyard-key: <spec>/" in:body --state all --json number,body --limit <1..1000>
+ * null = not a write shape (the engine's shapes decide; they refuse all three).
+ */
+function trackerWriteGh(a, ctx) {
+    const [group, sub, ...r] = a;
+    if (group !== 'issue')
+        return null;
+    if (sub === 'create') {
+        return r.length >= 6 && same(r.slice(0, 6), ['--repo', ctx.repo, '--title', r[3], '--body-file', r[5]])
+            && isTitle(r[3]) && isBodyFile(r[5], ctx) && isLabelPairs(r.slice(6), ['--label'], ctx);
+    }
+    if (sub === 'edit' && r[1] === '--repo') {
+        return r.length >= 7 && NUMBER.test(r[0]) && same(r.slice(1, 7), ['--repo', ctx.repo, '--title', r[4], '--body-file', r[6]])
+            && isTitle(r[4]) && isBodyFile(r[6], ctx) && isLabelPairs(r.slice(7), ['--add-label', '--remove-label'], ctx);
+    }
+    if (sub === 'list' && r[0] === '--repo') {
+        return same(r, ['--repo', ctx.repo, '--search', r[3], '--state', 'all', '--json', 'number,body', '--limit', r[9]])
+            && KEY_SEARCH.test(r[3]) && NUMBER.test(r[9]) && Number(r[9]) >= 1 && Number(r[9]) <= 1000;
+    }
+    return null;
 }
 function isFactoryBranch(name, protectedBranches) {
     return isBranch(name) && name.startsWith(FACTORY_BRANCH_PREFIX) && name.length > FACTORY_BRANCH_PREFIX.length
@@ -101,6 +176,9 @@ function factoryGit(a, protectedBranches) {
             return same(r, ['--porcelain=v1', '-z', '--untracked-files=all']) ? true : null;
         case 'diff':
             return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
+        case 'ls-tree':
+            // Two-axis review: the standards files on the base commit.
+            return r.length === 6 && same(r.slice(0, 3), ['-r', '-z', '--name-only']) && /^[0-9a-f]{40}$/.test(r[3]) && same(r.slice(4), ['--', 'docs/standards/']) ? true : null;
         case 'rev-list':
             // Publish check: the commits of the prepared head beyond the reviewed head and GitHub's base.
             return r.length === 3 && /^[0-9a-f]{40}$/.test(r[0]) && /^\^[0-9a-f]{40}$/.test(r[1]) && /^\^[0-9a-f]{40}$/.test(r[2]) ? true : null;
@@ -114,7 +192,10 @@ function factoryGit(a, protectedBranches) {
             return null;
     }
 }
-function factoryGh(a) {
+function factoryGh(a, writes) {
+    const write = writes ? trackerWriteGh(a, writes) : null;
+    if (write !== null)
+        return write;
     const [group, sub, ...r] = a;
     if (group === 'issue') {
         if (sub === 'view')
@@ -132,8 +213,13 @@ function factoryGh(a) {
         }
         if (sub === 'comment')
             return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
-        if (sub === 'list')
-            return r.length === 4 && r[0] === '--head' && isFactoryBranch(r[1], []) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+        if (sub === 'list') {
+            if (r.length === 4)
+                return r[0] === '--head' && isFactoryBranch(r[1], []) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+            // The blocked-by gate: a dependency's factory PR merged into the base (score.ts isSatisfied, findMergedPrForBranch).
+            return r.length === 8 && r[0] === '--head' && /^factory\/issue-\d+$/.test(r[1]) && r[2] === '--base' && isBranch(r[3])
+                && same(r.slice(4), ['--state', 'merged', '--json', 'number']);
+        }
         if (sub === 'ready')
             return r.length === 1 && NUMBER.test(r[0]);
         // Merge is always a human step: ship's `gh pr merge` shape is refused here.
@@ -152,17 +238,18 @@ const adoRefusal = (cmd, args) => (reason) => new FactorySafetyError(`omg factor
  * non-push, non-merge ship shape. `extraProtected` adds the run's base.
  * `az` and python go to the Azure DevOps guard (src/forge/ado/guard.ts),
  * which refuses them unless `ado` names the run's forge and az entry.
+ * `writes` (enqueue only) adds the tracker write shapes.
  */
-export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
+export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado, writes) {
     if (isAdoCommand(cmd)) {
-        checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args));
+        checkAdoCommand(cmd, args, env, ado, 'factory', adoRefusal(cmd, args), writes);
         return;
     }
     const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase();
     const base = file.replace(/\.exe$/, '');
     const protectedBranches = [...PROTECTED_BRANCHES, ...extraProtected];
     const strings = args.every((x) => typeof x === 'string');
-    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args) : null;
+    const verdict = !strings ? false : base === 'git' ? factoryGit(args, protectedBranches) : base === 'gh' ? factoryGh(args, writes) : null;
     if (verdict === false)
         throw new FactorySafetyError(`omg factory run refuses \`${file} ${args.join(' ')}\`: not one of the command shapes the factory engine runs`);
     if (verdict === true) {
@@ -182,14 +269,32 @@ export function assertFactoryCommand(cmd, args, extraProtected = [], env, ado) {
 }
 /**
  * Wrap an Exec so every call passes assertFactoryCommand first; `extraProtected` is read per call.
- * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body.
+ * An `az devops invoke` write runs with the guard's own copy of its validated --in-file body,
+ * and a tracker write (gh issue create/edit) with the guard's own copy of its checked --body-file.
+ * `writes` is set only by `omg factory enqueue`: the tracker write shapes pass while it returns a context.
  */
-export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined) {
+export function factoryGuardExec(exec, extraProtected = () => [], ado = () => undefined, writes = () => undefined) {
     return (cmd, args, opts) => {
         if (isAdoCommand(cmd))
-            return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args));
-        assertFactoryCommand(cmd, args, extraProtected(), opts?.env);
-        return exec(cmd, args, opts);
+            return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', adoRefusal(cmd, args), writes());
+        const ctx = writes();
+        assertFactoryCommand(cmd, args, extraProtected(), opts?.env, undefined, ctx);
+        const at = ctx && cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '') === 'gh' ? trackerBodyFileArg(args) : undefined;
+        if (at === undefined)
+            return exec(cmd, args, opts);
+        // A tracker write runs with the guard's own copy of the checked body, like an az --in-file.
+        const body = readTrackerBody(args[at], (reason) => new FactorySafetyError(`omg factory run refuses \`gh ${args.join(' ')}\`: ${reason}`));
+        const dir = mkdtempSync(join(tmpdir(), 'omg-gh-body-'));
+        try {
+            const owned = join(dir, 'body.md');
+            writeFileSync(owned, body, { mode: 0o600, flag: 'wx' });
+            const rewritten = [...args];
+            rewritten[at] = owned;
+            return exec(cmd, rewritten, opts);
+        }
+        finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     };
 }
 /** Prepended to every hardened git command, after the guard checked the plain shape. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const actions = vi.hoisted(() => ({
@@ -215,7 +215,7 @@ describe('SessionEnd durable worker', () => {
         });
         const directory = project();
         const sessionId = 'selfheal-chain-advance';
-        const chain = { outcome: 'success', reason: 'prompt_input_exit', routeTable: { 'success:*': { stage: 'launch', skill: 'launch' } }, sessionId, intentId: 'i-selfheal', includeUserSettings: true };
+        const chain = { outcome: 'success', reason: 'prompt_input_exit', routeTable: { 'success:*': { stage: 'launch', skill: 'execute' } }, sessionId, intentId: 'i-selfheal', includeUserSettings: true };
         expect(prepareCoreManifest(directory, sessionId, { chain })).not.toBeNull();
         const initial = readSessionEndJob(directory, sessionId);
         // Simulate the standalone hook flow: core sealed by foreground, foreground
@@ -240,6 +240,42 @@ describe('SessionEnd durable worker', () => {
         expect(readSessionEndJob(directory, sessionId).actions['spawn-next']).toMatchObject({ status: 'completed', attempts: 1 });
         // Restore the mock shape later tests in this file inherit (mock
         // implementations survive clearAllMocks).
+        actionRunner.runSessionEndAction.mockResolvedValue({ code: 'completed', completed: true });
+    });
+    it('a spawn-next job queued before the upgrade with a captain route records enqueued-failed and spawns nothing', async () => {
+        vi.useFakeTimers();
+        actionRunner.runSessionEndAction.mockImplementation(async (_context, execute) => {
+            try {
+                await execute();
+                return { code: 'completed', completed: true };
+            }
+            catch {
+                return { code: 'failed', completed: false };
+            }
+        });
+        const actual = await vi.importActual('../spawn-next.js');
+        const spawned = [];
+        vi.mocked(executeSpawnNext).mockImplementationOnce((c, d) => actual.executeSpawnNext(c, d, (command) => { spawned.push(command); return { unref() { } }; }));
+        const directory = project();
+        const sessionId = 'preupgrade-captain-route';
+        const chain = { outcome: 'success', reason: 'prompt_input_exit', routeTable: { 'success:*': { stage: 'launch', skill: 'launch' } }, sessionId, intentId: 'i-preupgrade' };
+        expect(prepareCoreManifest(directory, sessionId, { chain })).not.toBeNull();
+        const initial = readSessionEndJob(directory, sessionId);
+        expect(mutateSessionEndJob(directory, sessionId, initial.revision, (job) => {
+            job.producers.core = { state: 'sealed', intentKey: job.producers.core.intentKey, payloadDigest: job.producers.core.payloadDigest, sealedAt: new Date().toISOString(), sealedBy: 'foreground' };
+            const foreground = job.actions['foreground-cleanup'];
+            foreground.status = 'completed';
+            foreground.completedAt = new Date().toISOString();
+            foreground.lastOutcomeCode = 'completed';
+            job.producerGraceExpiresAt = new Date(Date.now() + 1_000).toISOString();
+        })).not.toBeNull();
+        await processSessionEndWorker({ directory, sessionId });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.runAllTimersAsync();
+        expect(vi.mocked(executeSpawnNext)).toHaveBeenCalledTimes(1);
+        expect(spawned).toEqual([]);
+        const decisions = readFileSync(join(directory, '.omg', 'state', 'factory', 'chain-decisions.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+        expect(decisions.at(-1)).toMatchObject({ decision: 'enqueued-failed', sessionId, error: expect.stringMatching(/^route-retired:launch/) });
         actionRunner.runSessionEndAction.mockResolvedValue({ code: 'completed', completed: true });
     });
     it('fails closed after grace when a wiki-first manifest never receives core, without a 250ms recovery loop', async () => {

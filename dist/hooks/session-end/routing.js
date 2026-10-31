@@ -51,6 +51,31 @@ export function normalizeRouteTable(input) {
 export function decideNextStage(outcome, reason, table) {
     return table[`${outcome}:${reason}`] ?? table[`${outcome}:*`] ?? null;
 }
+/**
+ * Skills a chain link must never spawn. Captain skills hold human checkpoints
+ * (an AFK link can only stall or rubber-stamp them); retired skills no longer
+ * exist (`diagnose`: CI failures go to `omg factory heal`). `intent` still
+ * spawns but is deprecated: tracker intake is harbor's job.
+ */
+export const CAPTAIN_SKILLS = new Set(['launch', 'ask-navigator', 'loft', 'drydock']);
+export const RETIRED_SKILLS = new Set(['diagnose']);
+export const DEPRECATED_SKILLS = new Set(['intent']);
+/** The bare skill name a route names: trimmed, lower-case, without a leading `/` or a `plugin:` prefix. */
+export function canonicalChainSkill(skill) {
+    const bare = skill.trim().toLowerCase().replace(/^\/+/, '');
+    return bare.slice(bare.lastIndexOf(':') + 1).trim();
+}
+/** Classify a route's skill by its canonical name, so case or prefix variants cannot slip past the refusal. */
+export function chainSkillStatus(skill) {
+    const name = canonicalChainSkill(skill);
+    if (RETIRED_SKILLS.has(name))
+        return 'retired';
+    if (CAPTAIN_SKILLS.has(name))
+        return 'captain';
+    if (DEPRECATED_SKILLS.has(name))
+        return 'deprecated';
+    return 'ok';
+}
 const CRITERIA = [
     ['irreversibleOrExternal', '判据一：不可逆或外部可见'],
     ['precedentSetting', '判据二：先例性'],

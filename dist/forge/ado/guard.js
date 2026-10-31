@@ -23,6 +23,13 @@
  * Refused outright with their own message: `--debug`/`--verbose` (they
  * print the Authorization header), `az repos pr update` and
  * `az repos pr create --auto-complete` (merge is human).
+ *
+ * Tracker writes (shipyard-factory design PR 7b): the work item create route
+ * and the work item PATCH's title, description, AC, priority and link paths
+ * pass only with `writes`, the tracker write context `omg factory enqueue`
+ * sets (factoryGuardExec). The create names one of its item types; its tags
+ * are on its allowlist. Without it (the engine, `check`, `omg ship`) they
+ * are refused, and nothing ever removes a field, a link or an item.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -39,7 +46,7 @@ const NAME = /^(?!@)[^\p{Cc}/\\?#%&]{1,256}$/u;
 const VALUE = /^(?!@)[^\p{Cc}]{1,2048}$/u;
 const ROUTE_VALUE = {
     id: NUMBER_ID, workItemId: NUMBER_ID, pullRequestId: NUMBER_ID, buildId: NUMBER_ID, logId: NUMBER_ID,
-    evaluationId: GUID, type: NAME, team: NAME, board: NAME, structureGroup: /^(?:areas|iterations)$/,
+    evaluationId: GUID, type: NAME, team: NAME, board: NAME, structureGroup: /^(?:areas|iterations)$/, definitionId: NUMBER_ID,
 };
 /** Where `id` is not a numeric id: a saved query's GUID, a board's name. */
 const ROUTE_VALUE_BY_ROUTE = {
@@ -50,9 +57,21 @@ const QUERY_VALUE = {
     $top: /^\d{1,4}$/, $skip: /^\d{1,6}$/, $depth: /^\d{1,2}$/, $expand: /^[A-Za-z]{1,32}$/,
     artifactId: /^vstfs:\/\/\/CodeReview\/CodeReviewId\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[1-9]\d{0,9}$/i,
     includeNotApplicable: /^(?:true|false)$/, format: /^markdown$/, order: /^(?:asc|desc)$/,
-    branchName: /^refs\/pull\/[1-9]\d{0,9}\/merge$/, reasonFilter: /^pullRequest$/, queryOrder: /^queueTimeDescending$/,
-    'searchCriteria.sourceRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u, 'searchCriteria.status': /^active$/,
+    branchName: /^refs\/pull\/[1-9]\d{0,9}\/merge$/, reasonFilter: /^pullRequest$/, queryOrder: /^(?:queueTimeDescending|finishTimeDescending)$/,
+    definitions: NUMBER_ID, statusFilter: /^completed$/, resultFilter: /^(?:succeeded|partiallySucceeded|failed|canceled)$/,
+    minTime: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,7})?Z$/,
+    // build.definitions.GET: the repository's GUID, as a query parameter (the repositoryId route parameter is the forge repo).
+    repositoryId: GUID, repositoryType: /^TfsGit$/, includeAllProperties: /^(?:true|false)$/,
+    'searchCriteria.sourceRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u, 'searchCriteria.status': /^(?:active|completed)$/,
+    // A satisfied dependency: a completed (merged) PR into the base.
+    'searchCriteria.targetRefName': /^refs\/heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400}$/u,
     continuationToken: /^[A-Za-z0-9+/=_-]{1,512}$/,
+    // The board's batched work item read (tracker.ts peekItems): at most 200 ids, field reference names, missing ids omitted.
+    ids: /^[1-9]\d{0,9}(?:,[1-9]\d{0,9}){0,199}$/, fields: /^[A-Za-z][\w.]{0,127}(?:,[A-Za-z][\w.]{0,127}){0,15}$/, errorPolicy: /^omit$/,
+};
+/** The `read` policy's overrides: heal lists its pipeline's builds of a base branch too. */
+const READ_QUERY_VALUE = {
+    branchName: /^refs\/(?:pull\/[1-9]\d{0,9}\/merge|heads\/(?!.*\.\.)[^\s\p{Cc}~^:?*[\\]{1,400})$/u,
 };
 const MAX_BODY_BYTES = 1024 * 1024;
 /** ADO names compare case-insensitively with escapes decoded (design §8.3). */
@@ -136,10 +155,18 @@ export function parseAdoInvoke(azArgs) {
     return { route, routeParameters, queryParameters, flags, inFileAt };
 }
 /** Why an invoke is refused for `ctx`/`policy`, or undefined. Does not read the body. */
-function invokeProblem(inv, ctx, policy) {
+function invokeProblem(inv, ctx, policy, writes) {
     const { route, flags, routeParameters: rp, queryParameters: qp } = inv;
+    if (policy === 'read' && (route.method !== 'GET' || flags['--http-method'] !== 'GET'))
+        return `${route.id} is not a read (this command only reads Azure DevOps)`;
     if (policy === 'ship' && route.method !== 'GET' && !SHIP_WRITES.has(route.id))
         return `${route.id} is not a route omg ship runs`;
+    if (route.tracker && (policy !== 'factory' || !writes))
+        return `${route.id} is a tracker write (omg factory enqueue only)`;
+    // The create names one of enqueue's work item types, exactly.
+    if (route.tracker && Object.hasOwn(rp, 'type') && !(writes?.itemTypes ?? []).includes(rp.type)) {
+        return `type ${JSON.stringify(rp.type)} is not a tracker write item type (${(writes?.itemTypes ?? []).join(', ') || 'none configured'})`;
+    }
     if (flags['--http-method'] !== route.method)
         return `--http-method must be ${route.method}`;
     if (flags['--api-version'] !== route.apiVersion)
@@ -174,8 +201,10 @@ function invokeProblem(inv, ctx, policy) {
         return 'the project route parameter is required';
     if (route.routeParams.includes('repositoryId') && !Object.hasOwn(rp, 'repositoryId'))
         return 'the repositoryId route parameter is required';
+    if (route.tracker && route.routeParams.includes('type') && !Object.hasOwn(rp, 'type'))
+        return 'the type route parameter is required';
     for (const [name, value] of Object.entries(qp)) {
-        if (!(QUERY_VALUE[name] ?? VALUE).test(value))
+        if (!((policy === 'read' ? READ_QUERY_VALUE[name] : undefined) ?? QUERY_VALUE[name] ?? VALUE).test(value))
             return `query parameter ${name} has a refused value`;
     }
     const takesBody = route.body !== undefined && route.body.kind !== 'none';
@@ -188,9 +217,9 @@ function invokeProblem(inv, ctx, policy) {
 /**
  * Check one az command; throws `fail(reason)` when it is refused. Reads and
  * validates the --in-file JSON; the bytes returned are what runGuardedAdo
- * hands az.
+ * hands az. `writes` (enqueue only) adds the tracker write routes and paths.
  */
-export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
+export function checkAdoCommand(cmd, args, env, ctx, policy, fail, writes) {
     const file = baseName(cmd);
     if (/\.(?:cmd|bat)$/.test(file))
         throw fail(`${file} is a cmd.exe shim; az runs only as the resolved python -IBm azure.cli entry`);
@@ -220,7 +249,7 @@ export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
     const inv = parseAdoInvoke(azArgs);
     if (typeof inv === 'string')
         throw fail(inv);
-    const problem = invokeProblem(inv, ctx, policy);
+    const problem = invokeProblem(inv, ctx, policy, writes);
     if (problem)
         throw fail(problem);
     if (inv.inFileAt === undefined)
@@ -228,6 +257,9 @@ export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
     const path = inv.flags['--in-file'];
     if (!isAbsolute(path) || /[\r\n\0]/.test(path))
         throw fail('--in-file must be an absolute path');
+    // No `:` past a drive letter: `body.json:s` names an NTFS alternate data stream of body.json.
+    if (path.replace(/^[A-Za-z]:/, '').includes(':'))
+        throw fail('--in-file must not contain `:` (an NTFS alternate data stream)');
     let raw;
     try {
         raw = readFileSync(path);
@@ -245,7 +277,13 @@ export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
     catch {
         throw fail('--in-file is not JSON');
     }
-    const bodyProblem = validateAdoBody(inv.route, parsed, { allowedStates: ctx.allowedStates ?? [], allowedColumns: ctx.allowedColumns ?? [] });
+    const bodyProblem = validateAdoBody(inv.route, parsed, {
+        allowedStates: ctx.allowedStates ?? [],
+        allowedColumns: ctx.allowedColumns ?? [],
+        org: ctx.repo.owner,
+        project: ctx.repo.project,
+        ...(policy === 'factory' && writes ? { trackerWrites: writes } : {}),
+    });
     if (bodyProblem)
         throw fail(`--in-file refused: ${bodyProblem}`);
     // Re-serialized from the parsed value: a duplicate key cannot smuggle a second value past the check.
@@ -255,8 +293,8 @@ export function checkAdoCommand(cmd, args, env, ctx, policy, fail) {
  * Check, copy the validated body into a guard-owned temp file, run az with
  * THAT path, and remove the copy. The caller's file is never handed to az.
  */
-export function runGuardedAdo(exec, cmd, args, opts, ctx, policy, fail) {
-    const checked = checkAdoCommand(cmd, args, opts?.env, ctx, policy, fail);
+export function runGuardedAdo(exec, cmd, args, opts, ctx, policy, fail, writes) {
+    const checked = checkAdoCommand(cmd, args, opts?.env, ctx, policy, fail, writes);
     if (checked.body === undefined || checked.inFileArg === undefined)
         return exec(cmd, args, opts);
     const dir = mkdtempSync(join(tmpdir(), 'omg-ado-body-'));

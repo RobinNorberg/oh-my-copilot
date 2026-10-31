@@ -17,7 +17,7 @@ import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { integerOption } from '../utils/integer-option.js';
 
-async function ttyConfirm(question: string): Promise<boolean> {
+export async function ttyConfirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
@@ -47,12 +47,13 @@ export function factoryCheckCommand(deps: FactoryCheckDeps): Command {
   return new Command('check')
     .description('Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)')
     .argument('[ids...]', 'item ids (GitHub issue numbers or ADO work item ids); default: the intake source')
+    .option('--parent <spec>', 'check the children of this spec item (GitHub task list `- [ ] #n` | ADO child links)')
     .option('--source <spec>', 'intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag>')
     .option('--limit <n>', 'items read from the source (1..200)', integerOption(1, 200))
     .option('--json', 'JSON output (schemaVersion 1)')
     .option('--mark', 'add factory.intake.marker to the runnable items (asks first)')
     .option('--yes', 'confirm --mark without a prompt')
-    .action(async (ids: string[], o: { source?: string; limit?: number; json?: boolean; mark?: boolean; yes?: boolean }) => {
+    .action(async (ids: string[], o: { parent?: string; source?: string; limit?: number; json?: boolean; mark?: boolean; yes?: boolean }) => {
       try {
         process.exitCode = await runFactoryCheck({ ids, ...o }, deps);
       } catch (error) {

@@ -1,12 +1,13 @@
 /**
  * GitHub issues as the factory tracker (factory forges design §2, PR 2): the
  * engine's `gh issue view` / `gh issue comment` moved verbatim, plus the
- * ForgeTracker reads and label writes. Label writes (progress, `check
- * --mark`) need factory guard shapes that land with PR 7; until then the
- * guard refuses them and these methods report `ok: false`.
+ * ForgeTracker reads and label writes, plus the `omg factory enqueue` item
+ * writes (shipyard-factory design PR 7a), which pass the factory guard only
+ * with enqueue's TrackerWriteContext (src/factory/run/exec.ts).
  */
 import { commentTrusted, issueAuthorTrusted } from '../../factory/run/plan-rules.js';
-import { GhCommandError, ghJson } from './gh.js';
+import { shipyardKeys, shipyardKeySearch, } from '../types.js';
+import { GhCommandError, ghJson, ghRepoArg, ghRun } from './gh.js';
 /** `gh issue view --json` fields the engine reads (author: whose body `omg-plan:` line counts). */
 export const ISSUE_FIELDS = 'title,body,labels,state,url,author,comments';
 /** `gh issue view <id> --json ISSUE_FIELDS` (the engine's dry run handles the result itself). */
@@ -25,6 +26,8 @@ export function ghIssueComment(exec, issue, bodyFile, cwd) {
 const str = (v) => (typeof v === 'string' ? v : '');
 const login = (author) => str(author?.login);
 const refs = (body, re) => [...new Set([...body.matchAll(re)].map((m) => Number(m[1])))];
+/** ForgeItem.dependsOn of an issue body: its `Depends on #n` / `Blocked by #n` lines (the engine's blocked-by gate reads it too). */
+export const ghDependsOn = (body) => refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim);
 /** `gh issue view` as a ForgeItem; throws GhCommandError when it is not the issue asked for. */
 export function ghViewItem(exec, issue, cwd) {
     const v = ghIssueJson(exec, issue, cwd);
@@ -36,6 +39,7 @@ export function ghViewItem(exec, issue, cwd) {
     const labels = Array.isArray(v.labels) ? v.labels.map((l) => str(l?.name)).filter(Boolean) : [];
     const comments = Array.isArray(v.comments) ? v.comments : [];
     const size = labels.map((l) => /^size:(\d+)$/i.exec(l)?.[1]).find(Boolean);
+    const parent = /^[^\S\r\n]*part of[^\S\r\n]+#(\d+)\b/im.exec(body)?.[1];
     return {
         id: issue,
         url,
@@ -47,8 +51,9 @@ export function ghViewItem(exec, issue, cwd) {
         comments: comments.map((c) => ({ body: str(c?.body), author: login(c?.author), trusted: commentTrusted(c ?? {}) })),
         labels,
         ...(size ? { size: Number(size) } : {}),
-        dependsOn: refs(body, /^[^\S\r\n]*(?:depends on|blocked by)[^\S\r\n]+#(\d+)\b/gim),
+        dependsOn: ghDependsOn(body),
         children: refs(body, /^[^\S\r\n]*[-*][^\S\r\n]+\[[ xX]\][^\S\r\n]+#(\d+)\b/gm),
+        ...(parent ? { parent: Number(parent) } : {}),
         repoUrl: m[1],
     };
 }
@@ -91,6 +96,52 @@ export function ghSetProgress(exec, issue, stage, mapping, stages, cwd) {
     const res = editLabels(exec, issue, ['--add-label', mapping.label, ...others.flatMap((l) => ['--remove-label', l])], cwd);
     return { ok: res.ok, detail: res.ok ? `label ${mapping.label}` : res.stderr.trim() };
 }
+/** findByKey's one search page; GitHub search returns at most 1000 results. */
+const KEY_SEARCH_LIMIT = 1000;
+const sameUrl = (a, b) => a.toLowerCase() === b.toLowerCase();
+/**
+ * The issues of `repo` with exactly one `shipyard-key: <spec>/<key>` line,
+ * found by `gh issue list --search` and then read with `gh issue view` (for
+ * trust and parent). A body whose key differs between the two reads, or an
+ * issue of another repository, is skipped.
+ */
+export function ghFindByKey(exec, repo, spec, cwd) {
+    const args = ['issue', 'list', '--repo', ghRepoArg(repo), '--search', shipyardKeySearch(spec), '--state', 'all', '--json', 'number,body', '--limit', String(KEY_SEARCH_LIMIT)];
+    const list = ghJson(exec, args, cwd);
+    if (!Array.isArray(list))
+        throw new GhCommandError('gh issue list returned no JSON array');
+    const keyOf = (body) => {
+        const keys = shipyardKeys(body).filter(([s]) => s === spec);
+        return keys.length === 1 ? keys[0][1] : undefined;
+    };
+    const found = [];
+    for (const e of list) {
+        const n = e?.number;
+        const key = keyOf(str(e?.body));
+        if (typeof n !== 'number' || !key)
+            continue;
+        const item = ghViewItem(exec, n, cwd);
+        if (keyOf(item.body) === key && sameUrl(item.repoUrl, repo.url))
+            found.push({ key, item });
+    }
+    return found;
+}
+/** `gh issue create` from a body file; the new issue's number from the url gh prints. */
+export function ghCreateItem(exec, repo, draft, cwd) {
+    const args = ['issue', 'create', '--repo', ghRepoArg(repo), '--title', draft.title, '--body-file', draft.bodyFile, ...draft.labels.flatMap((l) => ['--label', l])];
+    const url = ghRun(exec, args, cwd).trim().split('\n').pop().trim();
+    const m = /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+)\/issues\/(\d+)$/.exec(url);
+    if (!m || !sameUrl(m[1], repo.url))
+        throw new GhCommandError(`gh issue create printed no issue url of ${repo.url}`);
+    return Number(m[2]);
+}
+/** `gh issue edit`: title and body from a body file, then label adds and removes. */
+export function ghUpdateItem(exec, repo, id, update, cwd) {
+    ghRun(exec, [
+        'issue', 'edit', String(id), '--repo', ghRepoArg(repo), '--title', update.title, '--body-file', update.bodyFile,
+        ...update.addLabels.flatMap((l) => ['--add-label', l]), ...update.removeLabels.flatMap((l) => ['--remove-label', l]),
+    ], cwd);
+}
 export function githubTracker(exec, cwd, config) {
     return {
         viewItem: (id) => ghViewItem(exec, id, cwd),
@@ -98,6 +149,9 @@ export function githubTracker(exec, cwd, config) {
         comment: (id, bodyFile) => ghIssueComment(exec, id, bodyFile, cwd),
         setProgress: (id, stage, mapping) => ghSetProgress(exec, id, stage, mapping, config.progress.stages, cwd),
         addMarker: (id, marker) => editLabels(exec, id, ['--add-label', marker], cwd),
+        findByKey: (spec) => ghFindByKey(exec, config.repo, spec, cwd),
+        createItem: (draft) => ghCreateItem(exec, config.repo, draft, cwd),
+        updateItem: (id, update) => ghUpdateItem(exec, config.repo, id, update, cwd),
     };
 }
 //# sourceMappingURL=tracker.js.map

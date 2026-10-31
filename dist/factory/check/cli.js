@@ -1,12 +1,14 @@
 /**
- * `omg factory check [<id>...] [--source <spec>] [--limit n] [--json] [--mark [--yes]]`
+ * `omg factory check [<id>... | --parent <spec> | --source <spec>] [--limit n] [--json] [--mark [--yes]]`
  * (factory forges design §5): bucket intake items as runnable, needs-plan
- * or blocked. Read-only unless `--mark`, which adds `factory.intake.marker`
+ * or blocked; `--parent` checks a spec's children (shipyard ↔ factory
+ * design §3.1). Read-only unless `--mark`, which adds `factory.intake.marker`
  * (a GitHub label or an ADO tag) to the runnable items only, after a TTY
  * confirmation or `--yes`, through `forge.tracker.addMarker`.
  *
  * Every command passes checkGuardExec: the gh reads the tracker builds, the
- * open-PR lookup on `factory/issue-<n>`, a dependency PR's state, the marker
+ * open-PR lookup on `factory/issue-<n>`, a dependency's merged factory PR
+ * into the base, a dependency PR's state, the marker
  * label lookup, the label write only while marking, the git reads of the base
  * and `git ls-remote origin refs/heads/factory/<name>`. az runs through the factory guard's
  * runGuardedAdo (fail closed without an ADO guard context), and while not
@@ -53,8 +55,12 @@ function checkGh(a, marker) {
     }
     if (group === 'issue' && sub === 'edit')
         return marker !== undefined && same(r.slice(1), ['--add-label', marker]) && NUMBER.test(r[0] ?? '');
-    if (group === 'pr' && sub === 'list')
-        return r.length === 4 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+    if (group === 'pr' && sub === 'list') {
+        if (r.length === 4)
+            return r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--json' && JSON_FIELDS.test(r[3]);
+        // A dependency's merged factory PR into the base (isSatisfied).
+        return r.length === 8 && r[0] === '--head' && FACTORY_ISSUE_BRANCH.test(r[1]) && r[2] === '--base' && VALUE(r[3]) && same(r.slice(4), ['--state', 'merged', '--json', 'number']);
+    }
     // A dependency that is a PR: its state.
     if (group === 'pr' && sub === 'view')
         return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
@@ -69,10 +75,10 @@ const CHECK_GIT = new Set(['rev-parse', 'remote', 'fetch', 'cat-file', 'show', '
  * confirmed: then, and only then, `gh issue edit <n> --add-label <marker>`
  * and az writes pass (the wit.wiql.POST query is a read and passes without it).
  */
-export function checkGuardExec(exec, marker, ado = () => undefined) {
+export function checkGuardExec(exec, marker, ado = () => undefined, command = 'omg factory check') {
     return (cmd, args, opts) => {
         const file = cmd.replace(/\\/g, '/').split('/').pop().toLowerCase().replace(/\.exe$/, '');
-        const refuse = (why) => { throw new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`); };
+        const refuse = (why) => { throw new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`); };
         const mark = marker?.();
         if (!args.every((x) => typeof x === 'string'))
             refuse('non-string argument');
@@ -80,12 +86,12 @@ export function checkGuardExec(exec, marker, ado = () => undefined) {
             if (opts?.env !== undefined)
                 refuse('gh takes no environment');
             if (!checkGh(args, mark))
-                refuse('not one of the command shapes omg factory check runs');
+                refuse(`not one of the command shapes ${command} runs`);
         }
         else if (file === 'git') {
             const read = CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1])));
             if (!read)
-                refuse('not one of the read-only git shapes omg factory check runs');
+                refuse(`not one of the read-only git shapes ${command} runs`);
             // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.
             assertFactoryCommand(cmd, args, [], opts?.env);
         }
@@ -97,10 +103,10 @@ export function checkGuardExec(exec, marker, ado = () => undefined) {
             if (mark === undefined && method !== undefined && method !== 'GET' && !wiql)
                 refuse('only reads run without a confirmed --mark');
             // The factory guard's path: az gets the guard's own copy of a validated --in-file body, never the caller's file.
-            return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', (why) => new FactorySafetyError(`omg factory check refuses \`${file} ${args.join(' ')}\`: ${why}`));
+            return runGuardedAdo(exec, cmd, args, opts, ado(), 'factory', (why) => new FactorySafetyError(`${command} refuses \`${file} ${args.join(' ')}\`: ${why}`));
         }
         else {
-            refuse('not a command omg factory check runs');
+            refuse(`not a command ${command} runs`);
         }
         return exec(cmd, args, opts);
     };
@@ -157,6 +163,7 @@ export function checkEnvFor(exec, root, config, base, baseSha) {
         },
         readPlan: (path) => (baseSha ? readBaseFile(exec, root, baseSha, path) : null),
         planBase: baseSha ? `origin/${base} at ${baseSha.slice(0, 12)}` : `origin/${base} (not available)`,
+        base,
     };
 }
 /** `--mark` on GitHub: the marker label must exist (gh would fail every edit); check never creates it. */
@@ -176,7 +183,7 @@ function requireLabel(exec, root, marker, repo) {
         throw new CheckIncompatibleError(`label ${marker} does not exist in ${repo}; run \`omg factory setup\` to create it (omg factory check never creates labels)`);
 }
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
-function fetchBase(exec, root, base, warnings) {
+export function fetchBase(exec, root, base, warnings) {
     const fetched = git(exec, root, ['fetch', 'origin', base]);
     if (!fetched.ok)
         warnings.push(`omg factory check: git fetch origin ${base} failed (${fetched.err}); using the local origin/${base}`);
@@ -187,7 +194,7 @@ function fetchBase(exec, root, base, warnings) {
     return null;
 }
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
-function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
+export function baseLayer(exec, root, base, baseSha, trustedUser, warnings) {
     const trustedBases = resolveShipConfig({ trustedBases: trustedUser?.ship?.trustedBases }).trustedBases;
     if (!trustedBases.includes(base)) {
         warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
@@ -238,33 +245,35 @@ export const defaultResolveAz = (root) => resolveAzEntry(defaultAzBinaryDeps([ro
  * gets the forge repo and that entry (adoGuardContext), and the adapter
  * spawns the same entry. GitHub needs neither. Exported for the board (B1) to reuse.
  */
-export function forgeReadExec(exec, config, root, resolveAz = defaultResolveAz, marker) {
+export function forgeReadExec(exec, config, root, resolveAz = defaultResolveAz, marker, command) {
     const entry = config.kind === 'azure-devops' ? resolveAz(root) : undefined;
     const guard = entry ? adoGuardContext(config, entry) : undefined;
-    return { exec: checkGuardExec(exec, marker, () => guard), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
+    return { exec: checkGuardExec(exec, marker, () => guard, command), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
 }
-/** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
-export async function runFactoryCheck(o, deps) {
-    const ids = o.ids.map(parseItemId);
-    const warnings = [];
-    let marker;
+/**
+ * Resolve the checkout, base and forge config (`--source` / `--limit` as
+ * working-tree intake keys) and build the forge on the read guard. Every
+ * command passes checkGuardExec; `marker` is check's confirmed `--mark`
+ * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
+ */
+export function openReadForge(o, deps, warnings, command, marker) {
     // The git reads before the forge config is known; az runs only through forgeReadExec below.
-    let exec = checkGuardExec(deps.exec, () => marker);
-    const top = git(exec, process.cwd(), ['rev-parse', '--show-toplevel']);
+    const pre = checkGuardExec(deps.exec, marker, undefined, command);
+    const top = git(pre, process.cwd(), ['rev-parse', '--show-toplevel']);
     if (!top.ok)
-        throw new CheckUsageError('omg factory check must run inside a git repository');
+        throw new CheckUsageError(`${command} must run inside a git repository`);
     const root = top.out;
-    const origin = git(exec, root, ['remote', 'get-url', 'origin']);
+    const origin = git(pre, root, ['remote', 'get-url', 'origin']);
     if (!origin.ok)
         throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
     const base = deps.base(root);
     if (!isPlainBranchName(base))
         throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-    const baseSha = fetchBase(exec, root, base, warnings);
+    const baseSha = fetchBase(pre, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
     try {
-        const loaded = resolveForgeConfig(trustedUser, baseLayer(exec, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
+        const loaded = resolveForgeConfig(trustedUser, baseLayer(pre, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
         config = loaded.config;
         warnings.push(...loaded.warnings);
     }
@@ -273,21 +282,33 @@ export async function runFactoryCheck(o, deps) {
             throw error;
         throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
     }
-    let forge;
     try {
-        const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, () => marker);
-        exec = read.exec;
-        forge = deps.createForge(exec, root, config, read.options);
+        const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
+        return { root, base, baseSha, config, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
     }
+}
+/** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
+export async function runFactoryCheck(o, deps) {
+    const ids = o.ids.map(parseItemId);
+    const parent = o.parent === undefined ? undefined : parseItemId(o.parent);
+    if (parent !== undefined && ids.length > 0)
+        throw new CheckUsageError('--parent takes no item ids: it checks the spec\'s children');
+    if (parent !== undefined && o.source !== undefined)
+        throw new CheckUsageError('--parent and --source are exclusive');
+    if (parent !== undefined && o.limit !== undefined)
+        throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
+    const warnings = [];
+    let marker;
+    const { root, base, baseSha, config, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
     const source = config.intake.source;
-    if (ids.length === 0 && !source)
-        throw new CheckUsageError('no item ids and no intake source: pass ids, --source <spec>, or set factory.intake.source');
+    if (ids.length === 0 && parent === undefined && !source)
+        throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');
     if (o.mark && !o.yes && (o.json || !deps.isTTY()))
         throw new CheckUsageError('--mark needs --yes without an interactive terminal (or with --json)');
-    const wanted = ids.length > 0 ? ids : forge.tracker.queryItems(source, config.intake.limit);
+    const wanted = ids.length > 0 ? ids : parent !== undefined ? forge.tracker.viewItem(parent).children : forge.tracker.queryItems(source, config.intake.limit);
     const items = checkItems(forge, wanted, checkEnvFor(exec, root, config, base, baseSha));
     const m = { marker: config.intake.marker, requested: Boolean(o.mark), confirmed: false, marked: [], alreadyMarked: [], failed: [] };
     if (o.mark) {
@@ -326,7 +347,7 @@ export async function runFactoryCheck(o, deps) {
             ok,
             forge: config.kind,
             repo: config.repo.url,
-            source: ids.length > 0 || !source ? null : { ...source },
+            source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
             items,
             mark: m,

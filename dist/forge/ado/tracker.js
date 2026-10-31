@@ -2,16 +2,26 @@
  * ForgeTracker on Azure Boards (factory forges design §5, §6, §7): work
  * items through `wit/workItems`, their comments, type states and WIQL
  * intake; progress and markers as one JSON-patch with `test /rev`.
+ *
+ * `omg factory enqueue`'s writes (shipyard-factory design §3.3, PR 7b):
+ * create a work item of the first intake type, update its title,
+ * description, AC, priority and tags, and add a parent or predecessor link.
+ * Description and AC are HTML this adapter builds from escaped text; the
+ * factory guard passes these writes only with enqueue's TrackerWriteContext.
  */
 import { readFileSync } from 'fs';
+import { isBodyFileIn, readTrackerBody } from '../body-file.js';
 import { isTrustedAdoAuthor } from '../config.js';
+import { shipyardKeys, } from '../types.js';
+import { adoOrgUrl } from './guard.js';
 import { adoHtmlToText } from './html.js';
 import { adoCall, adoJson, isObject, listValue, projectParams, str } from './invoke.js';
-import { areaTagWiql, boardColumnWiql, KANBAN_COLUMN_FIELD, QUERY_ID } from './wiql.js';
+import { areaTagWiql, boardColumnWiql, KANBAN_COLUMN_FIELD, QUERY_ID, shipyardKeyWiql } from './wiql.js';
 /** State categories of a closed item (wit/workitemtypes/{type}/states `category`). */
 const CLOSED_CATEGORIES = new Set(['completed', 'removed']);
 const DEPENDS_ON = 'System.LinkTypes.Dependency-Reverse';
 const CHILD = 'System.LinkTypes.Hierarchy-Forward';
+const PARENT = 'System.LinkTypes.Hierarchy-Reverse';
 /** A rev conflict on PATCH: HTTP 412 / TF26071 ("changed by someone else"), VS403351 (test op failed). */
 const REV_CONFLICT = /\b412\b|TF26071|VS403351|test operation/i;
 function readItem(ctx, id) {
@@ -75,8 +85,43 @@ function patchItem(ctx, id, build) {
     return { ok: false, detail: 'rev conflict persisted after one retry' };
 }
 const failure = (error) => (error instanceof Error ? error.message : String(error));
-export function adoTracker(ctx, intakeSource) {
-    return {
+/** The link each relation kind writes, as viewItem reads it back (parent, dependsOn). */
+const RELATION_OF = { parent: PARENT, 'depends-on': DEPENDS_ON };
+/** peekItems: the fields one batched work item read returns, and its batch size (the REST cap). */
+const PEEK_FIELDS = 'System.Id,System.Title,System.State,System.BoardColumn,System.Tags';
+const PEEK_BATCH = 200;
+/** findByKey's one WIQL page. */
+const KEY_QUERY_TOP = '1000';
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+/** Text as System.Description HTML: every character escaped, one `<br>` per line break (adoHtmlToText reads the lines back). */
+export const adoTextHtml = (text) => `<div>${text.replace(/\r\n?/g, '\n').split('\n').map(escapeHtml).join('<br>')}</div>`;
+/** The acceptance criteria as an escaped HTML list for Microsoft.VSTS.Common.AcceptanceCriteria. */
+export const adoListHtml = (items) => `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+/** Title, description (from the body file, a file directly in enqueue's body directory read like a gh tracker write's), AC and priority as JSON-patch adds. */
+function itemFieldOps(item, bodyDir) {
+    if (!bodyDir || !isBodyFileIn(item.bodyFile, bodyDir))
+        throw new Error(`--body-file ${JSON.stringify(item.bodyFile)} must be a file directly in enqueue's body directory`);
+    const body = readTrackerBody(item.bodyFile, (reason) => new Error(reason)).toString('utf8');
+    const ops = [{ op: 'add', path: '/fields/System.Title', value: item.title }];
+    if (body.trim() !== '')
+        ops.push({ op: 'add', path: '/fields/System.Description', value: adoTextHtml(body) });
+    if (item.acceptance?.length)
+        ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.AcceptanceCriteria', value: adoListHtml(item.acceptance) });
+    if (item.priority !== undefined)
+        ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: item.priority });
+    return ops;
+}
+/** The item's tags with `remove` dropped and `add` appended (case-insensitive); null when nothing changes. */
+function editedTags(current, add, remove) {
+    const lower = (t) => t.toLowerCase();
+    const kept = current.filter((t) => !remove.some((r) => lower(r) === lower(t)));
+    const next = [...kept, ...add.filter((a, i) => !kept.some((t) => lower(t) === lower(a)) && add.findIndex((b) => lower(b) === lower(a)) === i)];
+    return next.length === current.length && next.every((t, i) => t === current[i]) ? null : next;
+}
+/** `bodyDir`: enqueue's body directory (ForgeOptions.trackerBodyDir); unset, createItem and updateItem read no body file. */
+export function adoTracker(ctx, intakeSource, bodyDir) {
+    const tracker = {
         viewItem(id) {
             const item = readItem(ctx, id);
             const f = item.fields;
@@ -84,6 +129,8 @@ export function adoTracker(ctx, intakeSource) {
             const state = str(f['System.State']) ?? '';
             const category = type && state ? stateCategory(ctx, type, state) : undefined;
             const acceptance = adoHtmlToText(f['Microsoft.VSTS.Common.AcceptanceCriteria']);
+            const [parent] = linkedIds(item.relations, PARENT);
+            const project = str(f['System.TeamProject']);
             return {
                 id,
                 url: item.url ?? `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${id}`,
@@ -102,8 +149,31 @@ export function adoTracker(ctx, intakeSource) {
                 size: num(f['Microsoft.VSTS.Scheduling.StoryPoints']) ?? num(f['Microsoft.VSTS.Scheduling.Effort']),
                 dependsOn: linkedIds(item.relations, DEPENDS_ON),
                 children: linkedIds(item.relations, CHILD),
+                ...(parent !== undefined ? { parent } : {}),
                 repoUrl: ctx.repo.url,
+                ...(project ? { project } : {}),
             };
+        },
+        peekItems(ids) {
+            const out = new Map();
+            for (let at = 0; at < ids.length; at += PEEK_BATCH) {
+                const batch = ids.slice(at, at + PEEK_BATCH);
+                const json = adoJson(adoCall(ctx, 'wit.workItems.GET', projectParams(ctx), { ids: batch.join(','), fields: PEEK_FIELDS, errorPolicy: 'omit' }), `work items ${batch.join(',')}`);
+                // errorPolicy=omit: an id that does not exist (or is not readable) comes back as null.
+                for (const w of listValue(json)) {
+                    if (!isObject(w) || typeof w.id !== 'number' || !batch.includes(w.id) || !isObject(w.fields))
+                        continue;
+                    const f = w.fields;
+                    out.set(w.id, {
+                        title: str(f['System.Title']) ?? '',
+                        url: `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${w.id}`,
+                        column: str(f['System.BoardColumn']),
+                        state: str(f['System.State']) ?? '',
+                        labels: splitTags(f['System.Tags']),
+                    });
+                }
+            }
+            return out;
         },
         queryItems(source, limit) {
             const top = { $top: String(limit) };
@@ -178,6 +248,72 @@ export function adoTracker(ctx, intakeSource) {
                 return { ok: false, stderr: failure(error) };
             }
         },
+        findByKey(spec) {
+            const json = adoJson(adoCall(ctx, 'wit.wiql.POST', projectParams(ctx), { $top: KEY_QUERY_TOP }, { query: shipyardKeyWiql(spec) }), 'shipyard-key query');
+            const ids = (isObject(json) && Array.isArray(json.workItems) ? json.workItems : [])
+                .map((w) => (isObject(w) ? w.id : undefined))
+                .filter((n) => Number.isSafeInteger(n) && n > 0);
+            const found = [];
+            for (const id of ids) {
+                const item = tracker.viewItem(id);
+                // Exactly one footer line for this spec, read from the item itself (WIQL CONTAINS only narrows).
+                const keys = shipyardKeys(item.body).filter(([s]) => s === spec);
+                if (keys.length === 1)
+                    found.push({ key: keys[0][1], item });
+            }
+            return found;
+        },
+        createItem(draft) {
+            const type = ctx.intakeItemTypes[0];
+            if (!type)
+                throw new Error('factory.intake.itemTypes names no work item type to create');
+            const ops = itemFieldOps(draft, bodyDir);
+            if (draft.labels.length)
+                ops.push({ op: 'add', path: '/fields/System.Tags', value: draft.labels.join('; ') });
+            // An area-tag intake source: the new item sits in its area path (its tag comes in draft.labels).
+            if (intakeSource?.type === 'area-tag')
+                ops.push({ op: 'add', path: '/fields/System.AreaPath', value: intakeSource.areaPath });
+            const json = adoJson(adoCall(ctx, 'wit.workItems.POST', { ...projectParams(ctx), type }, {}, ops), `create ${type}`);
+            if (!isObject(json) || !Number.isSafeInteger(json.id) || json.id <= 0)
+                throw new Error(`create ${type}: malformed response`);
+            return json.id;
+        },
+        updateItem(id, update) {
+            const fields = itemFieldOps(update, bodyDir);
+            const res = patchItem(ctx, id, (item) => {
+                const tags = editedTags(splitTags(item.fields['System.Tags']), update.addLabels, update.removeLabels);
+                if (tags && tags.length === 0)
+                    throw new Error(`work item ${id}: removing its last tag is not a tracker write`);
+                // The add replaces the whole list: the guard checks the edit against the tested current tags.
+                const current = { op: 'test', path: '/fields/System.Tags', value: str(item.fields['System.Tags']) ?? '' };
+                return tags ? [...fields, current, { op: 'add', path: '/fields/System.Tags', value: tags.join('; ') }] : fields;
+            });
+            if (!res.ok)
+                throw new Error(`update work item ${id}: ${res.detail}`);
+        },
+        addRelation(id, kind, target) {
+            const rel = Object.hasOwn(RELATION_OF, kind) ? RELATION_OF[kind] : undefined;
+            if (!rel)
+                throw new Error(`relation ${JSON.stringify(kind)} is not a tracker write`);
+            if (!Number.isSafeInteger(target) || target <= 0 || target === id)
+                throw new Error(`work item ${id} cannot link to ${target}`);
+            const res = patchItem(ctx, id, (item) => {
+                const linked = linkedIds(item.relations, rel);
+                if (linked.includes(target))
+                    return null;
+                // A work item has one parent: a different one is a conflict for the captain, never replaced here.
+                if (kind === 'parent' && linked.length > 0)
+                    throw new Error(`work item ${id} already has parent ${linked[0]}`);
+                // Work item ids are org-wide: the target must be an item of the forge project.
+                const project = str(readItem(ctx, target).fields['System.TeamProject']);
+                if (!project || project.toLowerCase() !== (ctx.repo.project ?? '').toLowerCase())
+                    throw new Error(`work item ${target} is not in project ${ctx.repo.project}`);
+                return [{ op: 'add', path: '/relations/-', value: { rel, url: `${adoOrgUrl(ctx.repo.owner)}/_apis/wit/workItems/${target}` } }];
+            });
+            if (!res.ok)
+                throw new Error(`link work item ${id} to ${target}: ${res.detail}`);
+        },
     };
+    return tracker;
 }
 //# sourceMappingURL=tracker.js.map

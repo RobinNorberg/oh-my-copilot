@@ -46,7 +46,7 @@ Humans sit only at the graded gates; everything between gates runs AFK.
 - **Issue webhook** ✅ — listener daemon: HMAC, repo whitelist, intake label gate, serial.
 - **Cron** ✅ — `omg intake schedule` (host-native timer, no daemon) → headless sweep.
 - **Session end** ✅ — chain enqueuer: reason → outcome → route table → next link.
-- **CI failure** ⚠️ **to build** — check-run failure webhook → listener route → diagnose/fix session (`diagnose:ci-failure` route entry). Same HMAC/whitelist path as issue intake.
+- **CI failure** ✅ — `workflow_run` webhook → listener enqueues failed push runs of `ci.yml` on the dev branch → next `omg factory heal scan` processes them (no `diagnose` session; `check_suite` failures are discarded). Failures on other branches/workflows need a manual `omg factory heal scan`.
 - **Narrow starter loop** ⚠️ **to build** — `omg factory init --narrow`: one cron trigger + one session type + one reviewable PR (the "one lint rule a night" shape). The start-small configuration ships as the default; the full-pipeline route table is the widening, gated on the narrow loop's review track record.
 
 ### 3.2 Chain layer

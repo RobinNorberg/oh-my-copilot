@@ -212,4 +212,38 @@ describe('isTrustedAdoAuthor (§A.10)', () => {
         expect(isTrustedAdoAuthor({ uniqueName: 'owner@example.com' }, [])).toBe(false);
     });
 });
+describe('resolveForgeConfig: factory.heal.pipeline (ADO parity design §3.2)', () => {
+    const pipeline = (definitionId) => f({ heal: { pipeline: { definitionId } } });
+    it('is absent unless configured, so GitHub and unconfigured ADO configs are unchanged', () => {
+        expect(resolveForgeConfig(undefined, undefined, undefined, ADO).config).not.toHaveProperty('heal');
+        expect(resolveForgeConfig(undefined, undefined, undefined, GH).config).not.toHaveProperty('heal');
+    });
+    it('the user config or the base branch sets it; the user config wins', () => {
+        expect(resolveForgeConfig(pipeline(9), undefined, undefined, ADO).config.heal).toEqual({ pipeline: { definitionId: 9 } });
+        expect(resolveForgeConfig(undefined, pipeline(12), undefined, ADO).config.heal).toEqual({ pipeline: { definitionId: 12 } });
+        expect(resolveForgeConfig(pipeline(9), pipeline(12), undefined, ADO).config.heal).toEqual({ pipeline: { definitionId: 9 } });
+    });
+    it('a working-tree value is ignored with a warning', () => {
+        const { config, warnings } = resolveForgeConfig(undefined, undefined, pipeline(13), ADO);
+        expect(config).not.toHaveProperty('heal');
+        expect(warnings).toEqual([expect.stringContaining('ignoring factory.heal.pipeline from the working-tree project config')]);
+        const over = resolveForgeConfig(undefined, pipeline(12), pipeline(13), ADO);
+        expect(over.config.heal).toEqual({ pipeline: { definitionId: 12 } });
+        expect(over.warnings).toEqual([expect.stringContaining('ignoring factory.heal.pipeline')]);
+        // The same value as the base branch is not a diff; other heal keys are heal/config.ts's.
+        expect(resolveForgeConfig(undefined, pipeline(12), pipeline(12), ADO).warnings).toEqual([]);
+        expect(resolveForgeConfig(undefined, undefined, f({ heal: { dailyRuns: 1 } }), ADO).warnings).toEqual([]);
+    });
+    it('refuses a malformed value from a trusted layer', () => {
+        for (const bad of [0, -1, 1.5, '9', 2_147_483_648])
+            expect(code(() => resolveForgeConfig(pipeline(bad), undefined, undefined, ADO)), String(bad)).toBe('invalid');
+        expect(code(() => resolveForgeConfig(f({ heal: { pipeline: { definitionId: 9, name: 'CI' } } }), undefined, undefined, ADO))).toBe('invalid');
+        expect(code(() => resolveForgeConfig(f({ heal: { pipeline: 9 } }), undefined, undefined, ADO))).toBe('invalid');
+    });
+    it('is ignored with a warning on GitHub', () => {
+        const { config, warnings } = resolveForgeConfig(pipeline(9), undefined, undefined, GH);
+        expect(config).not.toHaveProperty('heal');
+        expect(warnings).toEqual([expect.stringContaining('used on azure-devops only')]);
+    });
+});
 //# sourceMappingURL=config.test.js.map

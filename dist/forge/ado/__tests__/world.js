@@ -38,6 +38,7 @@ export function variant(fixtures, name, edit) {
     return fixtures.map((f) => (f.name === name ? { ...f, provenance: `synthetic: variant of ${name}`, stdout: edit(structuredClone(f.stdout)) } : f));
 }
 /** A forge over the fixtures, behind the factory guard; `calls` records what reached the fixture Exec. */
+/** `writes`: the tracker write context `omg factory enqueue` sets (none = the engine and check); `bodyDir`: the adapter's body directory, default writes.bodyDir. */
 export function adoWorld(o = {}) {
     const fixtures = o.fixtures ?? loadAdoFixtures();
     const entry = o.entry ?? POSIX_ENTRY;
@@ -51,8 +52,8 @@ export function adoWorld(o = {}) {
     };
     const config = adoConfig(o.source);
     const guard = adoGuardContext(config, entry);
-    const exec = factoryGuardExec(recording, () => [], () => guard);
-    const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR });
+    const exec = factoryGuardExec(recording, () => [], () => guard, () => o.writes);
+    const forge = createAzureDevOpsForge(exec, CHECKOUT, config, { entry, env: {}, untrustedRoots: [CHECKOUT], stateDir: STATE_DIR, trackerBodyDir: o.bodyDir ?? o.writes?.bodyDir });
     const routeOf = (c) => {
         const a = c.args;
         const v = (f) => a[a.indexOf(f) + 1];
