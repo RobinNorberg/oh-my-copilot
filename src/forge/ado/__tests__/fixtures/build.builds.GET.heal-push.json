@@ -1,0 +1,17 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1",
+  "note": "adapted: heal's push history of pipeline 9 on main. 205 individualCI partiallySucceeded, 204 batchedCI succeeded, 203 manual (not CI, dropped), 202 individualCI with a short sourceVersion (dropped), 201 individualCI canceled; returned out of queueTime order",
+  "route": "build.builds.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "definitions": "9", "branchName": "refs/heads/main", "statusFilter": "completed", "queryOrder": "finishTimeDescending", "$top": "30" },
+  "stdout": {
+    "count": 5,
+    "value": [
+      { "id": 204, "buildNumber": "20261029.4", "status": "completed", "result": "succeeded", "reason": "batchedCI", "queueTime": "2026-10-29T09:00:00.000Z", "finishTime": "2026-10-29T09:20:00.000Z", "definition": { "id": 9, "name": "web-app CI" }, "sourceBranch": "refs/heads/main", "sourceVersion": "cccccccccccccccccccccccccccccccccccccccc" },
+      { "id": 205, "buildNumber": "20261029.5", "status": "completed", "result": "partiallySucceeded", "reason": "individualCI", "queueTime": "2026-10-29T10:00:00.000Z", "finishTime": "2026-10-29T10:15:00.000Z", "definition": { "id": 9, "name": "web-app CI" }, "sourceBranch": "refs/heads/main", "sourceVersion": "dddddddddddddddddddddddddddddddddddddddd" },
+      { "id": 203, "buildNumber": "20261029.3", "status": "completed", "result": "failed", "reason": "manual", "queueTime": "2026-10-29T08:00:00.000Z", "definition": { "id": 9, "name": "web-app CI" }, "sourceBranch": "refs/heads/main", "sourceVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      { "id": 202, "buildNumber": "20261029.2", "status": "completed", "result": "failed", "reason": "individualCI", "queueTime": "2026-10-29T07:00:00.000Z", "definition": { "id": 9, "name": "web-app CI" }, "sourceBranch": "refs/heads/main", "sourceVersion": "abc123" },
+      { "id": 201, "buildNumber": "20261029.1", "status": "completed", "result": "canceled", "reason": "individualCI", "queueTime": "2026-10-29T06:00:00.000Z", "definition": { "id": 9, "name": "web-app CI" }, "sourceBranch": "refs/heads/main", "sourceVersion": "9999999999999999999999999999999999999999" }
+    ]
+  }
+}

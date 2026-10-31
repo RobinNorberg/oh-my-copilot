@@ -1,0 +1,18 @@
+{
+  "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1",
+  "note": "adapted: heal's PR history of pipeline 9. 310 has triggerInfo sha and source branch; 309 the parameters sha and only pr.number (head branch pr-18); 308 no head field (dropped); 307 two head fields that disagree (dropped); 306 reason manual (dropped); 305 failed with the sha but neither a source branch nor a PR number (dropped)",
+  "route": "build.builds.GET",
+  "routeParameters": { "project": "Web" },
+  "queryParameters": { "definitions": "9", "reasonFilter": "pullRequest", "statusFilter": "completed", "queryOrder": "finishTimeDescending", "$top": "30" },
+  "stdout": {
+    "count": 6,
+    "value": [
+      { "id": 310, "status": "completed", "result": "failed", "reason": "pullRequest", "queueTime": "2026-10-29T12:00:00.000Z", "sourceBranch": "refs/pull/17/merge", "sourceVersion": "3333333333333333333333333333333333333333", "triggerInfo": { "pr.number": "17", "pr.sourceSha": "1111111111111111111111111111111111111111", "pr.sourceBranch": "refs/heads/factory/issue-42" } },
+      { "id": 309, "status": "completed", "result": "succeeded", "reason": "pullRequest", "queueTime": "2026-10-29T11:00:00.000Z", "sourceBranch": "refs/pull/18/merge", "sourceVersion": "5555555555555555555555555555555555555555", "parameters": "{\"system.pullRequest.sourceCommitId\":\"2222222222222222222222222222222222222222\"}", "triggerInfo": { "pr.number": "18" } },
+      { "id": 308, "status": "completed", "result": "failed", "reason": "pullRequest", "queueTime": "2026-10-29T10:00:00.000Z", "sourceBranch": "refs/pull/19/merge", "sourceVersion": "6666666666666666666666666666666666666666", "triggerInfo": { "pr.number": "19" } },
+      { "id": 307, "status": "completed", "result": "failed", "reason": "pullRequest", "queueTime": "2026-10-29T09:00:00.000Z", "sourceBranch": "refs/pull/20/merge", "sourceVersion": "7777777777777777777777777777777777777777", "parameters": "{\"system.pullRequest.sourceCommitId\":\"8888888888888888888888888888888888888888\"}", "triggerInfo": { "pr.number": "20", "pr.sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+      { "id": 306, "status": "completed", "result": "failed", "reason": "manual", "queueTime": "2026-10-29T08:00:00.000Z", "sourceBranch": "refs/pull/21/merge", "sourceVersion": "7777777777777777777777777777777777777777", "triggerInfo": { "pr.number": "21", "pr.sourceSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+      { "id": 305, "status": "completed", "result": "failed", "reason": "pullRequest", "queueTime": "2026-10-29T07:00:00.000Z", "sourceBranch": "refs/pull/22/merge", "sourceVersion": "7777777777777777777777777777777777777777", "triggerInfo": { "pr.sourceSha": "cccccccccccccccccccccccccccccccccccccccc" } }
+    ]
+  }
+}

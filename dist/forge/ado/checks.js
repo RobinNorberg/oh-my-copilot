@@ -52,10 +52,10 @@ export function buildHeadVerdict(build, head, mergeCommit) {
         return 'pending';
     return 'counts';
 }
-const RUN_STATUS = { notStarted: 'queued', postponed: 'queued', inProgress: 'in_progress', cancelling: 'in_progress', completed: 'completed' };
+export const RUN_STATUS = { notStarted: 'queued', postponed: 'queued', inProgress: 'in_progress', cancelling: 'in_progress', completed: 'completed' };
 const RUN_CONCLUSION = { succeeded: 'success', partiallySucceeded: 'failure', failed: 'failure', canceled: 'cancelled' };
 /** A finished build's conclusion; an unknown result fails closed. */
-const conclusion = (result) => !result || result === 'none' ? {} : { conclusion: RUN_CONCLUSION[result] ?? 'failure' };
+export const conclusion = (result) => !result || result === 'none' ? {} : { conclusion: RUN_CONCLUSION[result] ?? 'failure' };
 const EVALUATION_STATE = { approved: 'SUCCESS', notApplicable: 'SKIPPED', queued: 'QUEUED', running: 'IN_PROGRESS' };
 const STATUS_STATE = { succeeded: 'SUCCESS', notApplicable: 'SKIPPED', pending: 'PENDING', notSet: 'PENDING', failed: 'FAILURE', error: 'FAILURE' };
 function parseEvaluation(e) {
@@ -137,26 +137,44 @@ function buildPolicyState(e, counted) {
  */
 function failedJobId(ctx, buildId) {
     try {
-        const timeline = adoJson(adoCall(ctx, 'build.timeline.GET', { ...projectParams(ctx), buildId: String(buildId) }), `timeline of build ${buildId}`);
-        const newest = new Map();
-        for (const r of isObject(timeline) && Array.isArray(timeline.records) ? timeline.records : []) {
-            const id = isObject(r) && r.type === 'Job' ? str(r.id) : undefined;
-            if (!id)
-                continue;
-            const key = str(r.identifier) ?? id;
-            const seen = newest.get(key);
-            if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1))
-                newest.set(key, r);
-        }
-        const failed = [...newest.values()].filter((r) => r.result === 'failed');
+        const failed = newestJobRecords(buildTimeline(ctx, String(buildId))).filter((r) => r.result === 'failed');
         return failed.length === 1 ? `${buildId}:${str(failed[0].id)}` : undefined;
     }
     catch {
         return undefined;
     }
 }
+/** The records of build `buildId`'s timeline; throws when it cannot be read. */
+export function buildTimeline(ctx, buildId) {
+    const timeline = adoJson(adoCall(ctx, 'build.timeline.GET', { ...projectParams(ctx), buildId }), `timeline of build ${buildId}`);
+    return (isObject(timeline) && Array.isArray(timeline.records) ? timeline.records : []).filter(isObject);
+}
+/** The Job records of a timeline, only the newest `attempt` per `identifier`. */
+export function newestJobRecords(records) {
+    const newest = new Map();
+    for (const r of records) {
+        const id = r.type === 'Job' ? str(r.id) : undefined;
+        if (!id)
+            continue;
+        const key = str(r.identifier) ?? id;
+        const seen = newest.get(key);
+        if (!seen || Number(r.attempt ?? 1) > Number(seen.attempt ?? 1))
+            newest.set(key, r);
+    }
+    return [...newest.values()];
+}
+/** One build log's text (its lines joined); throws on a failed read or an unexpected response. */
+export function readBuildLog(ctx, buildId, logId) {
+    const log = adoJson(adoCall(ctx, 'build.logs.GET', { ...projectParams(ctx), buildId, logId: String(logId) }), `log ${logId} of build ${buildId}`);
+    const lines = isObject(log) && Array.isArray(log.value) ? log.value.filter((l) => typeof l === 'string') : typeof log === 'string' ? [log] : undefined;
+    if (!lines)
+        throw new Error(`log ${logId} of build ${buildId}: unexpected response`);
+    return lines.join('\n');
+}
+/** The build's results page (where a human reruns it). */
+export const adoBuildUrl = (repo, id) => `https://dev.azure.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.project ?? '')}/_build/results?buildId=${id}`;
 export function adoChecks(ctx) {
-    const buildUrl = (id) => `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_build/results?buildId=${id}`;
+    const buildUrl = (id) => adoBuildUrl(ctx.repo, id);
     function runs(view, head) {
         const json = adoJson(adoCall(ctx, 'build.builds.GET', projectParams(ctx), { branchName: `refs/pull/${view.id}/merge`, reasonFilter: 'pullRequest', queryOrder: 'queueTimeDescending', $top: '50' }), `builds of pull request ${view.id}`);
         return listValue(json)
@@ -210,15 +228,11 @@ export function adoChecks(ctx) {
                 return { ok: false, text: `job id ${JSON.stringify(jobId)} is not <buildId>:<timeline record id>` };
             try {
                 const buildId = m[1];
-                const timeline = adoJson(adoCall(ctx, 'build.timeline.GET', { ...projectParams(ctx), buildId }), `timeline of build ${buildId}`);
-                const records = isObject(timeline) && Array.isArray(timeline.records) ? timeline.records : [];
-                const record = records.find((r) => isObject(r) && str(r.id)?.toLowerCase() === m[2].toLowerCase());
+                const record = buildTimeline(ctx, buildId).find((r) => str(r.id)?.toLowerCase() === m[2].toLowerCase());
                 const logId = isObject(record) && isObject(record.log) ? record.log.id : undefined;
                 if (typeof logId !== 'number')
                     return { ok: false, text: `build ${buildId} record ${m[2]} has no log` };
-                const log = adoJson(adoCall(ctx, 'build.logs.GET', { ...projectParams(ctx), buildId, logId: String(logId) }), `log ${logId} of build ${buildId}`);
-                const lines = isObject(log) && Array.isArray(log.value) ? log.value.filter((l) => typeof l === 'string') : typeof log === 'string' ? [log] : undefined;
-                return lines ? { ok: true, text: lines.join('\n') } : { ok: false, text: `log ${logId} of build ${buildId}: unexpected response` };
+                return { ok: true, text: readBuildLog(ctx, buildId, logId) };
             }
             catch (error) {
                 return { ok: false, text: error instanceof Error ? error.message : String(error) };

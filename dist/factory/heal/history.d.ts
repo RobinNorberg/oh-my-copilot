@@ -1,19 +1,25 @@
 /**
- * Read-only GitHub and git access for `omg factory heal` through an injected
- * Exec. healGuardExec allows only the fixed read shapes below; PR 1 issues no
- * GitHub write (a rerun is recorded as an intent, never run), so `gh run
- * rerun`, `gh api` and every other command are refused before they spawn.
+ * Read-only GitHub, Azure DevOps and git access for `omg factory heal`
+ * through an injected Exec. healGuardExec allows only the fixed read shapes
+ * below; PR 1 issues no GitHub write (a rerun is recorded as an intent,
+ * never run), so `gh run rerun`, `gh api` and every other command are
+ * refused before they spawn. `az` goes to the Azure DevOps guard with the
+ * `read` policy (ADO parity design §3.5): GET routes of the forge repo only.
  */
 import type { Exec } from '../../ship/exec.js';
 import { ShipSafetyError } from '../../ship/exec.js';
+import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { RUN_LIST_FIELDS } from '../../forge/github/ci.js';
 export { RUN_LIST_FIELDS };
 export declare class HealSafetyError extends ShipSafetyError {
     constructor(message: string);
 }
 export declare function assertHealCommand(cmd: string, args: string[]): void;
-/** The exec every heal command runs through: allowlisted read shapes, git with replace refs off. */
-export declare function healGuardExec(exec: Exec): Exec;
+/**
+ * The exec every heal command runs through: allowlisted read shapes, git with replace refs off.
+ * `ado`: the Azure DevOps guard context (adoReadGuardContext); without one every az call is refused.
+ */
+export declare function healGuardExec(exec: Exec, ado?: () => AdoGuardContext | undefined): Exec;
 export interface HealRun {
     id: string;
     conclusion: string;
