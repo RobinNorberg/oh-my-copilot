@@ -1,6 +1,6 @@
 {
   "provenance": "docs-sample https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/list?view=azure-devops-rest-7.1",
-  "note": "adapted: PR 17's threads: a system vote entry, one the factory (the PR creator owner@example.com) posted, an active and a fixed human thread, a deleted one",
+  "note": "adapted: PR 17's threads: a system vote entry, one the factory posted (its hidden marker line; the factory runs as owner@example.com, the PR creator), an active and a fixed human thread, a deleted one, and a pending thread the same owner@example.com wrote by hand",
   "route": "git.pullRequestThreads.GET",
   "routeParameters": { "project": "Web", "repositoryId": "web-app", "pullRequestId": "17" },
   "stdout": {
@@ -21,7 +21,7 @@
         "publishedDate": "2026-10-28T10:05:00.000Z",
         "lastUpdatedDate": "2026-10-28T10:05:00.000Z",
         "comments": [
-          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Owner", "uniqueName": "Owner@Example.com" }, "content": "factory: gates green; a human merges", "commentType": "text" }
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Owner", "uniqueName": "Owner@Example.com" }, "content": "factory: gates green; a human merges\n\n<!-- omg-factory: comment -->\n", "commentType": "text" }
         ],
         "status": "active",
         "isDeleted": false
@@ -56,8 +56,18 @@
         ],
         "status": "active",
         "isDeleted": true
+      },
+      {
+        "id": 6,
+        "publishedDate": "2026-10-28T10:50:00.000Z",
+        "lastUpdatedDate": "2026-10-28T10:50:00.000Z",
+        "comments": [
+          { "id": 1, "parentCommentId": 0, "author": { "displayName": "Owner", "uniqueName": "Owner@Example.com" }, "content": "Note to self: check the export name.", "commentType": "text" }
+        ],
+        "status": "pending",
+        "isDeleted": false
       }
     ],
-    "count": 5
+    "count": 6
   }
 }

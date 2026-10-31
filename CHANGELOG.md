@@ -25,12 +25,16 @@ All notable changes to oh-my-copilot will be documented in this file.
   endpoint). Each tick runs the heal scan (only with the heal capability;
   still skipped on Azure DevOps), reports new intake items with their check
   bucket, prints the resume hint for a PR a human completed or abandoned,
-  counts the open human review threads on Azure DevOps (new
+  counts the active and pending human review threads on Azure DevOps (new
   `ForgeReviews.listThreads`, route `git.pullRequestThreads.GET`; system
-  threads and the PR creator's own are left out), and prints the board rows
-  that changed. `--once --json` prints one tick. A tick never starts a lane
-  and never writes to the tracker or forge (check's read guard). One poller
-  per repository; SIGINT ends the loop after the tick. The interval is 5 min
+  threads and the factory's own are left out: every factory PR comment on
+  Azure Repos now ends with the hidden line `<!-- omg-factory: comment -->`;
+  GitHub comments are unchanged), and prints the board rows that changed.
+  `--once --json` prints one tick; its `idle` is advisory and false while a
+  run state is unreadable. A tick never starts a lane and never writes to the
+  tracker or forge (check's read guard). One poller per repository, with a
+  heartbeat each tick (an owner silent for 2 h is taken over); SIGINT ends
+  the loop after the tick. The interval is 5 min
   by default with a 2 min floor, and doubles up to 60 min after a
   rate-limited tick (`TF400733`, HTTP 429). `TF400733` is now a transient ADO
   error, so gate polls retry it. `omg factory listen` on Azure DevOps now

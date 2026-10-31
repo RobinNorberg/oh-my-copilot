@@ -31633,11 +31633,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn6 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn5 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn6.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn6.detail}`
+    ok: !enf.blocked && spawn5.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn5.detail}`
   };
 }
 function sliceLogByTime(text3, starts) {
@@ -32837,8 +32837,8 @@ function rpcMethod(root, path15, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn6 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn6("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn5 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn5("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -45072,11 +45072,10 @@ function readAdoPr(ctx, pr) {
     lastMergeTargetCommit: commitOf(json.lastMergeTargetCommit),
     lastMergeCommit: commitOf(json.lastMergeCommit),
     mergeStatus: str3(json.mergeStatus),
-    projectId: str3(project.id),
-    createdBy: isObject3(json.createdBy) ? str3(json.createdBy.uniqueName)?.toLowerCase() : void 0
+    projectId: str3(project.id)
   };
 }
-function parseAdoThreads(json, pr, prAuthor) {
+function parseAdoThreads(json, pr) {
   return listValue(json).flatMap((t) => {
     if (!isObject3(t) || t.isDeleted === true) return [];
     if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
@@ -45090,7 +45089,7 @@ function parseAdoThreads(json, pr, prAuthor) {
       status: THREAD_STATUS.has(status) ? status : "unknown",
       kind: COMMENT_TYPE.has(kind) ? kind : "unknown",
       author,
-      byPrAuthor: author !== "" && author === prAuthor,
+      byFactory: endsWithMarker(first.content),
       updatedAt: str3(t.lastUpdatedDate) ?? "",
       ...file ? { file } : {}
     }];
@@ -45102,12 +45101,6 @@ function description(bodyFile) {
 }
 function adoReviews(ctx) {
   const prUrl2 = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
-  const creators = /* @__PURE__ */ new Map();
-  const read = (pr) => {
-    const v = readAdoPr(ctx, pr);
-    creators.set(pr, v.createdBy);
-    return v;
-  };
   return {
     findOpenPrForBranch(branch) {
       const json = adoJson(
@@ -45145,7 +45138,7 @@ function adoReviews(ctx) {
       return id;
     },
     viewPr(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       const state = STATE[v.status];
       if (!state) throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
       if (!v.lastMergeSourceCommit || !v.lastMergeTargetCommit) throw new Error(`pull request ${pr}: no source/target commit yet`);
@@ -45161,7 +45154,7 @@ function adoReviews(ctx) {
       };
     },
     prHead(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
     },
@@ -45170,7 +45163,11 @@ function adoReviews(ctx) {
     },
     commentPr(pr, bodyFile) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: (0, import_fs74.readFileSync)(bodyFile, "utf8"), commentType: 1 }], status: 1 };
+        const content = `${(0, import_fs74.readFileSync)(bodyFile, "utf8").trimEnd()}
+
+${ADO_FACTORY_COMMENT_MARKER}
+`;
+        const body = { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 1 };
         const call = adoCall(ctx, "git.pullRequestThreads.POST", { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error2) {
@@ -45178,13 +45175,12 @@ function adoReviews(ctx) {
       }
     },
     listThreads(pr) {
-      const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
       const json = adoJson(adoCall(ctx, "git.pullRequestThreads.GET", { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
-      return parseAdoThreads(json, pr, author);
+      return parseAdoThreads(json, pr);
     }
   };
 }
-var import_fs74, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE, branchOf;
+var import_fs74, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, ADO_FACTORY_COMMENT_MARKER, endsWithMarker, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE, branchOf;
 var init_reviews2 = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
@@ -45193,6 +45189,8 @@ var init_reviews2 = __esm({
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
     TRUNCATED = "\n\n(truncated: the full text is in the factory run log)";
+    ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->";
+    endsWithMarker = (content) => typeof content === "string" && content.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
     commitOf = (v) => {
       const id = isObject3(v) ? str3(v.commitId) : void 0;
       return id && SHA.test(id) ? id : void 0;
@@ -49656,15 +49654,12 @@ var init_factory_board = __esm({
 });
 
 // src/factory/poll.ts
-var import_child_process21, import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, AUTO_START_MAX_STDOUT;
+var import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
-    import_child_process21 = require("child_process");
     import_fs90 = require("fs");
     import_path105 = require("path");
-    init_governor();
-    init_ledger();
     init_atomic_write();
     init_file_lock();
     init_worktree_paths();
@@ -49676,12 +49671,11 @@ var init_poll = __esm({
     init_score();
     init_cli();
     init_run2();
-    init_budget();
     init_state5();
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
     POLL_MIN_INTERVAL_MS = 2 * 6e4;
     POLL_MAX_INTERVAL_MS = 60 * 6e4;
-    AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
+    POLL_OWNER_STALE_MS = 2 * POLL_MAX_INTERVAL_MS;
   }
 });
 
@@ -49924,7 +49918,7 @@ async function runChainScenario(input) {
   });
   const env2 = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env2, input.projectDir)]);
-  const link1 = await runAsync(input.spawn ?? import_child_process22.spawn, input.spawnSync, plan.command, plan.args, {
+  const link1 = await runAsync(input.spawn ?? import_child_process21.spawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env: env2,
     input: `${SCENARIOS.chain.prompt}
@@ -49959,12 +49953,12 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto28, import_child_process22, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
+var import_crypto28, import_child_process21, import_fs92, import_path107, CHAIN_ACK_TOKEN, sleep6;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto28 = require("crypto");
-    import_child_process22 = require("child_process");
+    import_child_process21 = require("child_process");
     import_fs92 = require("fs");
     import_path107 = require("path");
     init_tmux_utils();
@@ -50178,7 +50172,7 @@ async function runCliScenario(input) {
       break;
     }
     const plan = buildHostBinarySpawn(input.bin, argsFor(budget));
-    const res = await runAsync(input.spawn ?? import_child_process23.spawn, input.spawnSync, plan.command, plan.args, {
+    const res = await runAsync(input.spawn ?? import_child_process22.spawn, input.spawnSync, plan.command, plan.args, {
       cwd: input.projectDir,
       env: input.env,
       input: `${prompt}
@@ -50213,12 +50207,12 @@ async function runCliScenario(input) {
   }
   return { ...base, capped, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto29, import_child_process23, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto29, import_child_process22, import_fs94, import_path109, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto29 = require("crypto");
-    import_child_process23 = require("child_process");
+    import_child_process22 = require("child_process");
     import_fs94 = require("fs");
     import_path109 = require("path");
     init_worktree_paths();
@@ -51064,7 +51058,7 @@ async function runTeamScenario(input) {
   const deadline = started + budgetMs;
   const env2 = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
   const cli = (0, import_path112.join)(input.root, "bridge", "cli.cjs");
-  const spawnFn = input.spawn ?? import_child_process24.spawn;
+  const spawnFn = input.spawn ?? import_child_process23.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env: env2, timeoutMs });
   const base = {
     name: "team",
@@ -51193,11 +51187,11 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process24, import_fs97, import_path112, sleep7;
+var import_child_process23, import_fs97, import_path112, sleep7;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
-    import_child_process24 = require("child_process");
+    import_child_process23 = require("child_process");
     import_fs97 = require("fs");
     import_path112 = require("path");
     init_worktree_paths();
@@ -51714,8 +51708,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env2 },
-    spawnFn: deps.spawn ?? import_child_process25.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process25.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process24.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process24.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS,
     ...cassette ? { cassette } : {}
@@ -51850,11 +51844,11 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process25, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process24, import_crypto31, import_fs98, import_os22, import_path113, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process25 = require("child_process");
+    import_child_process24 = require("child_process");
     import_crypto31 = require("crypto");
     import_fs98 = require("fs");
     import_os22 = require("os");

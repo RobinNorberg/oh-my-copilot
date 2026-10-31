@@ -1,8 +1,8 @@
 /**
  * `omg factory poll` on Azure DevOps: runFactoryPoll with the real
  * createForge over the adapter's fixture world, so the CLI builds the az
- * read guard itself. The PR tick counts open human threads (system threads
- * and the factory's own are left out), a completed PR prints the resume hint
+ * read guard itself. The PR tick counts active and pending human threads
+ * (system threads and the factory's own, by its hidden marker, are left out), a completed PR prints the resume hint
  * and reads no threads, the heal tick is gated on capabilities.heal,
  * TF400733 marks the tick rate-limited, and every az call is a GET or the
  * WIQL query.
@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adoFixtureExec, loadAdoFixtures, parseAdoFixture } from '../../forge/ado/__tests__/fixtures.js';
 import { POSIX_ENTRY, REPO, variant } from '../../forge/ado/__tests__/world.js';
 import { ADO_RATE_LIMITED, ADO_TRANSIENT_ERROR } from '../../forge/ado/checks.js';
-import { parseAdoThreads } from '../../forge/ado/reviews.js';
+import { ADO_FACTORY_COMMENT_MARKER, parseAdoThreads } from '../../forge/ado/reviews.js';
 import { createForge } from '../../forge/index.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo } from '../run/state.js';
 import { defaultPollHealScan, pollStatePath, runFactoryPoll } from '../poll.js';
@@ -115,8 +115,8 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
             forge: 'azure-devops', repo: REPO.url,
             heal: { ran: false, reason: expect.stringContaining('factory.heal.pipeline') },
             intake: { ran: true, items: 1, new: [{ id: 42 }] },
-            // Only thread 3: thread 1 is ADO's own (system), 2 the factory's (the PR creator), 4 fixed, 5 deleted.
-            prs: [{ id: 42, pr: 17, state: 'OPEN', threads: 1 }],
+            // Threads 3 (active) and 6 (pending, by the PR creator the factory runs as): 1 is ADO's own (system), 2 carries the factory marker, 4 is fixed, 5 deleted.
+            prs: [{ id: 42, pr: 17, state: 'OPEN', threads: 2 }],
             // The run in review holds no gate: it is in flight, so the tick is not idle.
             idle: false, rateLimited: false, errors: [],
         });
@@ -125,13 +125,13 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
         expect(routes).toEqual(expect.arrayContaining(['wit.wiql.POST', 'git.pullRequests.GET', 'git.pullRequestThreads.GET', 'wit.workItems.GET']));
         for (const r of routes)
             expect(r, r).toMatch(/\.GET$|^wit\.wiql\.POST$/);
-        // viewPr's read gives listThreads the PR creator: two calls per open run.
+        // One PR read and one thread list per open run.
         expect(routes.filter((r) => r.startsWith('git.'))).toEqual(['git.pullRequests.GET', 'git.pullRequestThreads.GET']);
     });
     it('text output: the open human threads line', async () => {
         seedReview();
         expect(await poll(world().exec, { once: true })).toBe(0);
-        expect(out.join('\n')).toContain('PR !17 of #42: 1 open human thread(s)');
+        expect(out.join('\n')).toContain('PR !17 of #42: 2 open human thread(s)');
     });
     it('a PR a human completed prints the resume hint, reads no threads and writes nothing', async () => {
         seedReview();
@@ -187,21 +187,30 @@ describe('ADO rate limits and threads', () => {
     it('ADO_RATE_LIMITED and the transient set', () => {
         for (const m of ['TF400733: The request has been canceled', 'HTTP 429', 'Too Many Requests'])
             expect(ADO_RATE_LIMITED.test(m), m).toBe(true);
-        for (const m of ['HTTP 4290', 'TF400898', 'Service Unavailable'])
+        for (const m of ['status 429 Too Many Requests', 'Operation returned an invalid status code 429: status 429'])
+            expect(ADO_RATE_LIMITED.test(m), m).toBe(true);
+        // An id in the error text is no rate limit.
+        for (const m of ['HTTP 4290', 'TF400898', 'Service Unavailable', 'PR 429: pull request 429: no source/target commit yet', 'PR 429 threads: az exited 1', 'work item 429: not found'])
             expect(ADO_RATE_LIMITED.test(m), m).toBe(false);
         expect(ADO_TRANSIENT_ERROR.test('TF400733: The request has been canceled')).toBe(true);
     });
-    it('parseAdoThreads: statuses, kinds, the PR author and deleted threads', () => {
+    it('parseAdoThreads: statuses, kinds, the factory marker (not the author) and deleted threads', () => {
         const json = { value: [
-                { id: 1, status: 'active', comments: [{ commentType: 'text', author: { uniqueName: 'Me@Example.com' } }], lastUpdatedDate: 'x' },
+                // Hand-written by the login the factory runs as: a human thread.
+                { id: 1, status: 'active', comments: [{ commentType: 'text', author: { uniqueName: 'Me@Example.com' }, content: 'please look' }], lastUpdatedDate: 'x' },
+                { id: 4, status: 'pending', comments: [{ commentType: 'text', author: { uniqueName: 'Me@Example.com' }, content: `factory: review\n\n${ADO_FACTORY_COMMENT_MARKER}\n` }] },
+                // The marker quoted above the text is no factory comment.
+                { id: 5, status: 'active', comments: [{ commentType: 'text', author: { uniqueName: 'x@example.com' }, content: `${ADO_FACTORY_COMMENT_MARKER}\nreal question` }] },
                 { id: 2, status: 'weird', comments: [{ commentType: 'poll', author: {} }], threadContext: { filePath: '/a.ts' } },
                 { id: 3, status: 'active', isDeleted: true, comments: [] },
             ] };
-        expect(parseAdoThreads(json, 17, 'me@example.com')).toEqual([
-            { id: 1, status: 'active', kind: 'text', author: 'me@example.com', byPrAuthor: true, updatedAt: 'x' },
-            { id: 2, status: 'unknown', kind: 'unknown', author: '', byPrAuthor: false, updatedAt: '', file: '/a.ts' },
+        expect(parseAdoThreads(json, 17)).toEqual([
+            { id: 1, status: 'active', kind: 'text', author: 'me@example.com', byFactory: false, updatedAt: 'x' },
+            { id: 4, status: 'pending', kind: 'text', author: 'me@example.com', byFactory: true, updatedAt: '' },
+            { id: 5, status: 'active', kind: 'text', author: 'x@example.com', byFactory: false, updatedAt: '' },
+            { id: 2, status: 'unknown', kind: 'unknown', author: '', byFactory: false, updatedAt: '', file: '/a.ts' },
         ]);
-        expect(() => parseAdoThreads({ value: [{ status: 'active' }] }, 17, undefined)).toThrow(/without an id/);
+        expect(() => parseAdoThreads({ value: [{ status: 'active' }] }, 17)).toThrow(/without an id/);
     });
 });
 //# sourceMappingURL=poll-ado.test.js.map

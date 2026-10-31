@@ -23,11 +23,15 @@ export interface AdoPrView {
     mergeStatus?: string;
     /** Project GUID, for the policy artifact id. */
     projectId?: string;
-    /** createdBy.uniqueName, lowercased: the identity the factory opened the PR as. */
-    createdBy?: string;
 }
+/**
+ * The hidden last line of every PR comment the factory posts on Azure Repos
+ * (an HTML comment, not rendered): `omg factory poll` leaves those threads out
+ * of its human thread count. A person who pastes it only hides their own thread.
+ */
+export declare const ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->";
 export declare function readAdoPr(ctx: AdoContext, pr: number): AdoPrView;
 /** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
-export declare function parseAdoThreads(json: unknown, pr: number, prAuthor: string | undefined): ForgeThread[];
+export declare function parseAdoThreads(json: unknown, pr: number): ForgeThread[];
 export declare function adoReviews(ctx: AdoContext): ForgeReviews;
 //# sourceMappingURL=reviews.d.ts.map

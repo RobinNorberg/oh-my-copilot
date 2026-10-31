@@ -237,8 +237,12 @@ export interface ForgeThread {
     kind: 'text' | 'system' | 'codeChange' | 'unknown';
     /** The first comment's author.uniqueName, lowercased ('' when absent). */
     author: string;
-    /** The PR's creator started the thread: the identity the factory opens its PRs as. */
-    byPrAuthor: boolean;
+    /**
+     * The thread's first comment ends with the factory's hidden marker line
+     * (ADO_FACTORY_COMMENT_MARKER, which the ADO commentPr appends). Not the
+     * author: the factory may run as the operator's own login.
+     */
+    byFactory: boolean;
     /** lastUpdatedDate. */
     updatedAt: string;
     /** threadContext.filePath. */
@@ -275,7 +279,7 @@ export interface ForgeChecks {
         ok: boolean;
         stderr: string;
     };
-    /** TRANSIENT_GH_ERROR for GitHub; ADO 5xx/TF400898/VS800075. */
+    /** TRANSIENT_GH_ERROR for GitHub; ADO 5xx/TF400898/VS800075/TF400733. Never a reason to retry a non-idempotent write. */
     readonly transientError: RegExp;
 }
 export interface ForgeMerge {
