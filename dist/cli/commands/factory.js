@@ -117,6 +117,16 @@ function factoryRoot(exec) {
         throw new FactoryUsageError('omg factory run must run inside a git repository');
     return r.stdout.trim();
 }
+/**
+ * The `omg factory run --json` documents on stdout. `omg factory poll`'s
+ * auto-start parses them (parseRunNextOutcome; its contract test builds its
+ * fixtures from these writers).
+ */
+export const factoryRunJson = {
+    nothingRunnable: (counts) => JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2),
+    outcome: (outcome, next) => JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2),
+    error: (message) => JSON.stringify({ ok: false, error: message }, null, 2),
+};
 async function factoryGuarded(json, fn) {
     try {
         process.exitCode = await fn();
@@ -124,7 +134,7 @@ async function factoryGuarded(json, fn) {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (json)
-            console.log(JSON.stringify({ ok: false, error: message }, null, 2));
+            console.log(factoryRunJson.error(message));
         else
             console.error(chalk.red(`Error: ${message}`));
         process.exitCode = error instanceof FactoryUsageError ? 2 : 1;
@@ -171,7 +181,7 @@ function pickNext(deps, root, base, loaded, parent) {
 const bucketCounts = (items) => Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length]));
 function printOutcome(json, outcome, next) {
     if (json) {
-        console.log(JSON.stringify({ ok: outcome.exitCode === 0, ...(next !== undefined ? { next } : {}), ...outcome }, null, 2));
+        console.log(factoryRunJson.outcome(outcome, next));
         return;
     }
     if (outcome.state)
@@ -221,7 +231,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             const counts = bucketCounts(items);
             if (!next) {
                 if (o.json)
-                    console.log(JSON.stringify({ ok: true, next: null, message: 'nothing runnable', counts }, null, 2));
+                    console.log(factoryRunJson.nothingRunnable(counts));
                 else
                     console.log(`nothing runnable (${BUCKET_ORDER.map((b) => `${counts[b]} ${b}`).join(', ')})`);
                 return 0;

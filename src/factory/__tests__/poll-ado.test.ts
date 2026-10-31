@@ -170,7 +170,7 @@ describe('omg factory poll on Azure DevOps (runFactoryPoll + the real adapter)',
 
   it('factory.intake.autoStart: an idle tick starts one run --next; a run in flight or a working-tree key starts none', async () => {
     const starts: string[] = [];
-    const autoStart: PollAutoStart = async (o) => { starts.push(o.root); return { exitCode: 0, next: 42, message: 'parked at awaiting-human: merge' }; };
+    const autoStart: PollAutoStart = async (o) => { starts.push(o.root); return { exitCode: 0, parsed: true, next: 42, message: 'parked at awaiting-human: merge' }; };
     const user = { factory: { ...USER.factory, intake: { ...USER.factory.intake, autoStart: true } } };
     const w = world();
     expect(await poll(w.exec, { once: true, json: true }, { trustedUser: () => user, autoStart, budget: () => null })).toBe(0);

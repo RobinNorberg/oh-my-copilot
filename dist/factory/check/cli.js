@@ -272,8 +272,9 @@ export function openReadForge(o, deps, warnings, command, marker) {
     const baseSha = fetchBase(pre, root, base, warnings);
     const trustedUser = deps.trustedUser();
     let config;
+    const baseConfig = baseLayer(pre, root, base, baseSha, trustedUser, warnings);
     try {
-        const loaded = resolveForgeConfig(trustedUser, baseLayer(pre, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
+        const loaded = resolveForgeConfig(trustedUser, baseConfig, withFlags(deps.projectConfig(root), o), origin.out);
         config = loaded.config;
         warnings.push(...loaded.warnings);
     }
@@ -284,7 +285,7 @@ export function openReadForge(o, deps, warnings, command, marker) {
     }
     try {
         const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker, command);
-        return { root, base, baseSha, config, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
+        return { root, base, baseSha, config, baseConfig, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
     }
     catch (error) {
         throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));

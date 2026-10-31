@@ -80,7 +80,8 @@ function records(raw) {
             out[key] = value;
     return out;
 }
-function parseLedger(path) {
+/** The ledger at `path`; `invalid` when the file exists but is not a version-1 ledger (a missing file is an empty, valid one). */
+export function parseLedger(path) {
     let text;
     try {
         text = readFileSync(path, 'utf8');

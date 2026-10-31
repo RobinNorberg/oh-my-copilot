@@ -14,12 +14,18 @@ All notable changes to oh-my-copilot will be documented in this file.
   idle. `idle` is only advisory: right before the start, poll claims the
   engine's run lock atomically, and a refusal skips the tick. There must
   also be budget headroom: the `factory.run` limits resolve, and the AI
-  credits are below `budget.softLimit` when one is set. The tick JSON
-  (`autoStart`), the text output and the poll audit record whether a run
-  started, the item it took and its exit code. Poll never starts the listener
-  chain, `heal run` or `heal approve`. The key is read only from the user
-  config and the base branch's `.copilot/omg.jsonc`. A working-tree value is
-  ignored with a warning, as with `factory.progress`.
+  credits are below `budget.softLimit`. The budget gate fails closed. It reads
+  `budget.softLimit` from the user config, then the base branch. The working
+  tree can only lower it. A missing trusted limit, a corrupt ledger or
+  `OMC_BUDGET_GOVERNOR=0` blocks the start. The tick JSON
+  (`autoStart`, with `parsed`), the text output and the poll audit record
+  whether a run started, the item it took and its exit code. An unreadable
+  outcome shows as `outcome unreadable`. The run has a wall-clock limit taken
+  from the `factory.run` limits (SIGTERM, then SIGKILL), and poll forwards its
+  stop signals to it. Poll never starts the listener chain, `heal run` or
+  `heal approve`. The key is read only from the user config and the base
+  branch's `.copilot/omg.jsonc`. A working-tree value is ignored with a
+  warning, as with `factory.progress`.
 - **`omg factory poll`.** A foreground polling loop for GitHub and Azure
   DevOps, for where webhooks cannot reach (ADO service hooks need a public
   endpoint). Each tick runs the heal scan (only with the heal capability;
