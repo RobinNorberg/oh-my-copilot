@@ -18,3 +18,11 @@ describe('.omg/ runtime state stays untracked', () => {
     expect(tracked).toEqual([]);
   });
 });
+
+// Personal Claude Code permissions; .gitignore covers .claude/ (force-added by dcdecd04e).
+describe('local settings stay untracked', () => {
+  it('git does not track .claude/settings.local.json', () => {
+    const tracked = execFileSync('git', ['ls-files', '--', '.claude/settings.local.json'], { cwd: ROOT, encoding: 'utf8' });
+    expect(tracked).toBe('');
+  });
+});
