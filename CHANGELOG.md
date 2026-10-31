@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- **Team workers on Windows: a `.cmd` provider can no longer run a `node.cmd` planted in the worker cwd.** An npm-installed `codex.cmd`, `copilot.cmd` or `claude.cmd` shim without a `node.exe` beside it (the normal global install) runs a bare `node`, and cmd.exe searches the current directory before PATH. The worker supervisor ran it with the repo or worktree as cwd, so a repo containing `node.cmd`, `node.exe` or `node.bat` got it executed as the user at worker launch, before any provider sandbox or approval. The supervisor's cmd.exe route and the activation-gate wrapper now set `NoDefaultCurrentDirectoryInExePath=1` (a provider-supplied value of that name is dropped), and the supervisor refuses a `.cmd`/`.bat` argv[0] that is not an existing fully qualified path with `worker_launch_provider_executable_invalid`.
+
 # oh-my-copilot v5.19.1
 
 ## [5.19.1] - 2026-10-31
