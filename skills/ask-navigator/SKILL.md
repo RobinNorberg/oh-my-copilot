@@ -79,7 +79,7 @@ Every ticket is **HITL** (worked with the captain, who speaks for themselves) or
 | `grilling` | HITL | Call the Skill tool with "deep-interview"; the captain decides each round | Conversation is the resolution — the default case |
 | `task` | HITL or AFK | The navigator drives it alone where it can; otherwise hands the captain a precise checklist | Manual work that unblocks a decision (sign up for a service, provision access, move data so its shape can be seen) — it earns its place by unblocking a decision, not by delivering the destination |
 
-**Type line format.** Write the type as the plain-text line `Type: <type>` (one of `research`, `loft`, `grilling`, `task`) on its own line in the ticket body — not a heading, table row, list item, quote, or code block. Readers such as `omg ralph from-map` parse exactly this line. Labels still apply: a `wayfinder:<type>` label is read too, and when label and body disagree the more restrictive type wins (human-gated beats AFK). A body type alone makes a ticket auto-claimable only when the ticket is a native sub-issue of the map, so always wire tickets as native sub-issues.
+**Type line format.** Write the type as the plain-text line `Type: <type>` (one of `research`, `loft`, `grilling`, `task`) on its own line in the ticket body — not a heading, table row, list item, quote, or code block. Readers such as `omg ralph from-map` parse exactly this line. Labels still apply: a `wayfinder:<type>` label is read too, and when label and body disagree the more restrictive type wins (human-gated beats AFK). A body type alone makes a ticket auto-claimable only when the ticket is a native sub-issue of the map (linking one needs write access, so a body anyone can edit cannot grant auto); a ticket linked only through the body's Parent section stays human-gated. Always wire tickets as native sub-issues.
 
 The answer is never part of the ticket body; it is recorded on resolution. Assets created while resolving are linked from the ticket, not pasted in.
 
@@ -143,7 +143,8 @@ The map is done when no open tickets remain and **Not yet specified** is empty. 
 
 - No daemon, no mode, no always-on behavior, no runtime state machine: the map is ordinary tracker issues — nothing is written to repo files.
 - Incoming requests that arrive as fog are the harbor's to route: a fuzzy issue handed over by `/oh-my-copilot:harbor` charts like any loose idea, with the original thread and any signed decision links as material.
-- Never mutates Team lifecycle, task statuses, or runtime state; never publishes delivery tickets — vertical-slice build tickets belong to launch's C3, and the navigator must not pre-slice fog into them.
+- Never mutates Team lifecycle, task statuses, or runtime state; never publishes delivery tickets — vertical-slice build tickets belong to launch's C3, and the navigator must not pre-slice fog into them. Map tickets therefore never carry the factory intake label or a `shipyard-key:` line: delivery tickets reach the factory only as launch's `omg factory enqueue` output.
+- Tracker: GitHub only this cycle, also when launch and the factory run on another forge; on any other tracker, report and stop.
 - Never executes a decision beyond recording it. The one exception is a `task` ticket, which does only what unblocks a decision.
 - The map's Decisions-so-far is an index; a decision lives in exactly one place, its ticket.
 

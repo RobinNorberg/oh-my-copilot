@@ -13,12 +13,13 @@ You know something needs doing; you do not know which skill owns it. Find the jo
 
 | You are here | Skill |
 |---|---|
-| External work arrived (issues, PRs, reports) | `harbor` |
+| External work arrived (issues, PRs, reports) | `harbor` (+ `omg factory check` for readiness) |
 | A non-engineer handed you a chat log as requirements | `intent` |
 | The destination is foggy — the first three decisions cannot be stated yet | `ask-navigator` |
 | Vague idea; questions must come before anything else | `deep-interview` |
 | Requirements are clear; you need a plan | `plan` (multi-perspective consensus: `ralplan`) |
 | Approved plan; decompose and ship end to end with human checkpoints | `launch` |
+| Runnable tracker items need unattended delivery | `omg factory run --next` — CLI, manual: run it yourself |
 | One task; persistence until verified complete | `ralph` |
 | Hands-off idea-to-code | `autopilot` |
 | Work needs coordinated parallel workers | `team` |
