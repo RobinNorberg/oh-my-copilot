@@ -45072,11 +45072,10 @@ function readAdoPr(ctx, pr) {
     lastMergeTargetCommit: commitOf(json.lastMergeTargetCommit),
     lastMergeCommit: commitOf(json.lastMergeCommit),
     mergeStatus: str3(json.mergeStatus),
-    projectId: str3(project.id),
-    createdBy: isObject3(json.createdBy) ? str3(json.createdBy.uniqueName)?.toLowerCase() : void 0
+    projectId: str3(project.id)
   };
 }
-function parseAdoThreads(json, pr, prAuthor) {
+function parseAdoThreads(json, pr) {
   return listValue(json).flatMap((t) => {
     if (!isObject3(t) || t.isDeleted === true) return [];
     if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
@@ -45090,7 +45089,7 @@ function parseAdoThreads(json, pr, prAuthor) {
       status: THREAD_STATUS.has(status) ? status : "unknown",
       kind: COMMENT_TYPE.has(kind) ? kind : "unknown",
       author,
-      byPrAuthor: author !== "" && author === prAuthor,
+      byFactory: endsWithMarker(first.content),
       updatedAt: str3(t.lastUpdatedDate) ?? "",
       ...file ? { file } : {}
     }];
@@ -45102,12 +45101,6 @@ function description(bodyFile) {
 }
 function adoReviews(ctx) {
   const prUrl2 = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
-  const creators = /* @__PURE__ */ new Map();
-  const read = (pr) => {
-    const v = readAdoPr(ctx, pr);
-    creators.set(pr, v.createdBy);
-    return v;
-  };
   return {
     findOpenPrForBranch(branch) {
       const json = adoJson(
@@ -45145,7 +45138,7 @@ function adoReviews(ctx) {
       return id;
     },
     viewPr(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       const state = STATE[v.status];
       if (!state) throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
       if (!v.lastMergeSourceCommit || !v.lastMergeTargetCommit) throw new Error(`pull request ${pr}: no source/target commit yet`);
@@ -45161,7 +45154,7 @@ function adoReviews(ctx) {
       };
     },
     prHead(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
     },
@@ -45170,7 +45163,11 @@ function adoReviews(ctx) {
     },
     commentPr(pr, bodyFile) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: (0, import_fs74.readFileSync)(bodyFile, "utf8"), commentType: 1 }], status: 1 };
+        const content = `${(0, import_fs74.readFileSync)(bodyFile, "utf8").trimEnd()}
+
+${ADO_FACTORY_COMMENT_MARKER}
+`;
+        const body = { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 1 };
         const call = adoCall(ctx, "git.pullRequestThreads.POST", { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error2) {
@@ -45178,13 +45175,12 @@ function adoReviews(ctx) {
       }
     },
     listThreads(pr) {
-      const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
       const json = adoJson(adoCall(ctx, "git.pullRequestThreads.GET", { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
-      return parseAdoThreads(json, pr, author);
+      return parseAdoThreads(json, pr);
     }
   };
 }
-var import_fs74, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE, branchOf;
+var import_fs74, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, ADO_FACTORY_COMMENT_MARKER, endsWithMarker, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE, branchOf;
 var init_reviews2 = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
@@ -45193,6 +45189,8 @@ var init_reviews2 = __esm({
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
     TRUNCATED = "\n\n(truncated: the full text is in the factory run log)";
+    ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->";
+    endsWithMarker = (content) => typeof content === "string" && content.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
     commitOf = (v) => {
       const id = isObject3(v) ? str3(v.commitId) : void 0;
       return id && SHA.test(id) ? id : void 0;
@@ -49656,7 +49654,7 @@ var init_factory_board = __esm({
 });
 
 // src/factory/poll.ts
-var import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS;
+var import_fs90, import_path105, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -49677,6 +49675,7 @@ var init_poll = __esm({
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
     POLL_MIN_INTERVAL_MS = 2 * 6e4;
     POLL_MAX_INTERVAL_MS = 60 * 6e4;
+    POLL_OWNER_STALE_MS = 2 * POLL_MAX_INTERVAL_MS;
   }
 });
 

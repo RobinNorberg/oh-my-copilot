@@ -44342,9 +44342,9 @@ function detectStalePrd(directory, sessionId, options) {
   if (stalePointers.length > 0) {
     reasons.push("stale pointer(s): " + stalePointers.join("; "));
   }
-  const stale = unfinished.length > 0 && reasons.length > 0;
+  const stale2 = unfinished.length > 0 && reasons.length > 0;
   return {
-    stale,
+    stale: stale2,
     reasons,
     abnormalExit,
     unfinished,
@@ -65484,9 +65484,9 @@ function cleanupStaleAgents2(directory, sessionId) {
       if (staleAgents.length === 0) {
         return 0;
       }
-      for (const stale of staleAgents) {
+      for (const stale2 of staleAgents) {
         const agentIndex = state.agents.findIndex(
-          (a) => a.agent_id === stale.agent_id
+          (a) => a.agent_id === stale2.agent_id
         );
         if (agentIndex !== -1) {
           state.agents[agentIndex].status = "failed";
@@ -65600,9 +65600,9 @@ function getAgentDashboard(directory, sessionId) {
       `  [${agent.agent_id.substring(0, 7)}] ${shortType} (${elapsed}s) tools:${toolCount} last:${lastTool}${desc}`
     );
   }
-  const stale = getStaleAgents(state);
-  if (stale.length > 0) {
-    lines4.push(`  \u26A0 ${stale.length} stale agent(s) detected`);
+  const stale2 = getStaleAgents(state);
+  if (stale2.length > 0) {
+    lines4.push(`  \u26A0 ${stale2.length} stale agent(s) detected`);
   }
   return lines4.join("\n");
 }
@@ -65623,13 +65623,13 @@ function getAgentObservatory(directory, sessionId) {
     const cost = agent.token_usage?.cost_usd || 0;
     totalCost += cost;
     const tokens = agent.token_usage ? `${Math.round((agent.token_usage.input_tokens + agent.token_usage.output_tokens) / 1e3)}k` : "-";
-    const stale = getStaleAgents(state).some(
+    const stale2 = getStaleAgents(state).some(
       (s) => s.agent_id === agent.agent_id
     );
     const hasIntervention = interventions.some(
       (i) => i.agent_id === agent.agent_id
     );
-    const status = stale ? "\u{1F534}" : hasIntervention ? "\u{1F7E1}" : "\u{1F7E2}";
+    const status = stale2 ? "\u{1F534}" : hasIntervention ? "\u{1F7E1}" : "\u{1F7E2}";
     const perf = getAgentPerformance(directory, agent.agent_id, sessionId);
     const bottleneck = perf?.bottleneck || "";
     const files = agent.file_ownership?.length || 0;
@@ -65661,8 +65661,8 @@ function suggestInterventions(directory, sessionId) {
   const state = readTrackingState(directory, sessionId);
   const interventions = [];
   const running = state.agents.filter((a) => a.status === "running");
-  const stale = getStaleAgents(state);
-  for (const agent of stale) {
+  const stale2 = getStaleAgents(state);
+  for (const agent of stale2) {
     const elapsed = Math.round(
       (Date.now() - new Date(agent.started_at).getTime()) / 1e3 / 60
     );
@@ -65716,12 +65716,12 @@ function suggestInterventions(directory, sessionId) {
 function calculateParallelEfficiency(directory, sessionId) {
   const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
-  const stale = getStaleAgents(state);
+  const stale2 = getStaleAgents(state);
   if (running.length === 0)
     return { score: 100, active: 0, stale: 0, total: 0 };
-  const active = running.length - stale.length;
+  const active = running.length - stale2.length;
   const score = Math.round(active / running.length * 100);
-  return { score, active, stale: stale.length, total: running.length };
+  return { score, active, stale: stale2.length, total: running.length };
 }
 function recordFileOwnership(directory, agentId, filePath, sessionId) {
   const writePath = resolveWritePath(directory, sessionId);
@@ -96864,8 +96864,8 @@ function writeCassette(dir, cassette, options = {}) {
   if ((0, import_fs98.existsSync)((0, import_path119.join)(dir, REDACTION_FAILED_MARKER))) {
     throw new CassetteFormatError(`${dir}: holds a ${REDACTION_FAILED_MARKER} marker; remove it after fixing the cassette`);
   }
-  const stale = (0, import_fs98.existsSync)(dir) ? relativeFiles(dir).filter((rel) => !files.has(rel)) : [];
-  if (stale.length > 0) throw new CassetteFormatError(`${dir}: holds file(s) this recording does not replace: ${stale.join(", ")}; remove them first`);
+  const stale2 = (0, import_fs98.existsSync)(dir) ? relativeFiles(dir).filter((rel) => !files.has(rel)) : [];
+  if (stale2.length > 0) throw new CassetteFormatError(`${dir}: holds file(s) this recording does not replace: ${stale2.join(", ")}; remove them first`);
   const written = [];
   for (const [rel, content2] of files) {
     const path30 = (0, import_path119.join)(dir, ...rel.split("/"));
@@ -98155,9 +98155,9 @@ ${formatGateHits(gate.hits)}`);
         continue;
       }
       const incoming = new Set(filesUnder(dir));
-      const stale = filesUnder(to).filter((f) => !incoming.has(f));
-      if (stale.length > 0) {
-        problems.push(`${label2}: ${to} holds file(s) the import does not replace (${stale.join(", ")}); remove them first`);
+      const stale2 = filesUnder(to).filter((f) => !incoming.has(f));
+      if (stale2.length > 0) {
+        problems.push(`${label2}: ${to} holds file(s) the import does not replace (${stale2.join(", ")}); remove them first`);
         continue;
       }
     }
@@ -118146,8 +118146,8 @@ function worktreeEntries(commonDir, ids2) {
     const head = fileText((0, import_path177.join)(dir, "HEAD"));
     const gitdir = fileText((0, import_path177.join)(dir, "gitdir"));
     const commondir = fileText((0, import_path177.join)(dir, "commondir"));
-    const stale = !gitdir || !(0, import_fs150.existsSync)((0, import_path177.isAbsolute)(gitdir) ? gitdir : (0, import_path177.resolve)(dir, gitdir));
-    out[id] = { meta: sha([head, gitdir, commondir, treeHash((0, import_path177.join)(dir, "refs"))].join("\n")), gitdir, commondir, ...stale ? { stale } : {} };
+    const stale2 = !gitdir || !(0, import_fs150.existsSync)((0, import_path177.isAbsolute)(gitdir) ? gitdir : (0, import_path177.resolve)(dir, gitdir));
+    out[id] = { meta: sha([head, gitdir, commondir, treeHash((0, import_path177.join)(dir, "refs"))].join("\n")), gitdir, commondir, ...stale2 ? { stale: stale2 } : {} };
   }
   return out;
 }
@@ -121319,9 +121319,9 @@ async function driveGates(o) {
     }
     const report3 = res.report;
     if (report3.verdict === "green" || report3.verdict === "failed" || report3.verdict === "flaky") {
-      const stale = staleRead(o.exec, o.pr, o.head, report3, o.cwd, o.forge);
-      if (stale) {
-        await wait(`ignored a ${report3.verdict} read: ${stale}`);
+      const stale2 = staleRead(o.exec, o.pr, o.head, report3, o.cwd, o.forge);
+      if (stale2) {
+        await wait(`ignored a ${report3.verdict} read: ${stale2}`);
         continue;
       }
     }
@@ -121617,11 +121617,10 @@ function readAdoPr(ctx, pr) {
     lastMergeTargetCommit: commitOf(json.lastMergeTargetCommit),
     lastMergeCommit: commitOf(json.lastMergeCommit),
     mergeStatus: str3(json.mergeStatus),
-    projectId: str3(project.id),
-    createdBy: isObject4(json.createdBy) ? str3(json.createdBy.uniqueName)?.toLowerCase() : void 0
+    projectId: str3(project.id)
   };
 }
-function parseAdoThreads(json, pr, prAuthor) {
+function parseAdoThreads(json, pr) {
   return listValue(json).flatMap((t) => {
     if (!isObject4(t) || t.isDeleted === true) return [];
     if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
@@ -121635,7 +121634,7 @@ function parseAdoThreads(json, pr, prAuthor) {
       status: THREAD_STATUS.has(status) ? status : "unknown",
       kind: COMMENT_TYPE.has(kind) ? kind : "unknown",
       author,
-      byPrAuthor: author !== "" && author === prAuthor,
+      byFactory: endsWithMarker(first.content),
       updatedAt: str3(t.lastUpdatedDate) ?? "",
       ...file ? { file } : {}
     }];
@@ -121647,12 +121646,6 @@ function description(bodyFile) {
 }
 function adoReviews(ctx) {
   const prUrl2 = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
-  const creators = /* @__PURE__ */ new Map();
-  const read = (pr) => {
-    const v = readAdoPr(ctx, pr);
-    creators.set(pr, v.createdBy);
-    return v;
-  };
   return {
     findOpenPrForBranch(branch) {
       const json = adoJson(
@@ -121690,7 +121683,7 @@ function adoReviews(ctx) {
       return id;
     },
     viewPr(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       const state = STATE2[v.status];
       if (!state) throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
       if (!v.lastMergeSourceCommit || !v.lastMergeTargetCommit) throw new Error(`pull request ${pr}: no source/target commit yet`);
@@ -121706,7 +121699,7 @@ function adoReviews(ctx) {
       };
     },
     prHead(pr) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE2[v.status] ?? v.status.toUpperCase() };
     },
@@ -121715,7 +121708,11 @@ function adoReviews(ctx) {
     },
     commentPr(pr, bodyFile) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: (0, import_fs157.readFileSync)(bodyFile, "utf8"), commentType: 1 }], status: 1 };
+        const content2 = `${(0, import_fs157.readFileSync)(bodyFile, "utf8").trimEnd()}
+
+${ADO_FACTORY_COMMENT_MARKER}
+`;
+        const body = { comments: [{ parentCommentId: 0, content: content2, commentType: 1 }], status: 1 };
         const call = adoCall(ctx, "git.pullRequestThreads.POST", { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error2) {
@@ -121723,13 +121720,12 @@ function adoReviews(ctx) {
       }
     },
     listThreads(pr) {
-      const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
       const json = adoJson(adoCall(ctx, "git.pullRequestThreads.GET", { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
-      return parseAdoThreads(json, pr, author);
+      return parseAdoThreads(json, pr);
     }
   };
 }
-var import_fs157, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE2, branchOf;
+var import_fs157, SHA, ADO_PR_DESCRIPTION_MAX, TRUNCATED, ADO_FACTORY_COMMENT_MARKER, endsWithMarker, commitOf, THREAD_STATUS, COMMENT_TYPE, STATE2, branchOf;
 var init_reviews2 = __esm({
   "src/forge/ado/reviews.ts"() {
     "use strict";
@@ -121738,6 +121734,8 @@ var init_reviews2 = __esm({
     SHA = /^[0-9a-f]{40}$/;
     ADO_PR_DESCRIPTION_MAX = 4e3;
     TRUNCATED = "\n\n(truncated: the full text is in the factory run log)";
+    ADO_FACTORY_COMMENT_MARKER = "<!-- omg-factory: comment -->";
+    endsWithMarker = (content2) => typeof content2 === "string" && content2.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
     commitOf = (v) => {
       const id = isObject4(v) ? str3(v.commitId) : void 0;
       return id && SHA.test(id) ? id : void 0;
@@ -121937,7 +121935,7 @@ var init_checks2 = __esm({
     BUILD_POLICY_TYPE = "0609b952-1397-4640-95ec-e00a01b2c241";
     STATUS_POLICY_TYPE = "cbdc66da-9728-4af8-aada-9a5a32e4a226";
     ADO_TRANSIENT_ERROR = /HTTP 5\d\d|\b50[0234]\b|Bad Gateway|Service Unavailable|Gateway Time-?out|Internal Server Error|TF400898|VS800075|TF400733/i;
-    ADO_RATE_LIMITED = /TF400733|\b429\b|Too Many Requests/i;
+    ADO_RATE_LIMITED = /TF400733|HTTP 429\b|\bstatus 429\b|Too Many Requests/i;
     RUN_STATUS = { notStarted: "queued", postponed: "queued", inProgress: "in_progress", cancelling: "in_progress", completed: "completed" };
     RUN_CONCLUSION = { succeeded: "success", partiallySucceeded: "failure", failed: "failure", canceled: "cancelled" };
     conclusion = (result) => !result || result === "none" ? {} : { conclusion: RUN_CONCLUSION[result] ?? "failure" };
@@ -127082,12 +127080,12 @@ async function runHeal(o, deps) {
     if (!s) throw new HealRunRefused(`heal signature ${o.sig8} disappeared`);
     const subject2 = subjectFor(s);
     s = trusted(s);
-    const stale = s.lanes?.at(-1);
-    if (stale?.status === "running") {
-      if (stale.pid !== process.pid && pidAlive2(stale.pid)) throw new HealRunRefused(`debugger lane ${stale.id} is still running in process ${stale.pid}`);
+    const stale2 = s.lanes?.at(-1);
+    if (stale2?.status === "running") {
+      if (stale2.pid !== process.pid && pidAlive2(stale2.pid)) throw new HealRunRefused(`debugger lane ${stale2.id} is still running in process ${stale2.pid}`);
       s = {
         ...s,
-        lanes: s.lanes.map((l) => l.id === stale.id ? { ...l, status: "lost", endedAt: now2(), usage: { credits: l.maxCredits, premiumRequests: 0, source: "estimated" }, note: "its process ended before the lane was recorded; counted at its cap" } : l),
+        lanes: s.lanes.map((l) => l.id === stale2.id ? { ...l, status: "lost", endedAt: now2(), usage: { credits: l.maxCredits, premiumRequests: 0, source: "estimated" }, note: "its process ended before the lane was recorded; counted at its cap" } : l),
         next: "heal-diagnosis"
       };
     }
@@ -130250,9 +130248,10 @@ function readPollFile(path30) {
   }
   const f = raw && typeof raw === "object" ? raw : {};
   return {
-    ...Number.isSafeInteger(f.pid) ? { pid: f.pid } : {},
-    ...typeof f.hostname === "string" ? { hostname: f.hostname } : {},
+    // A pid without a hostname cannot be checked: no owner.
+    ...Number.isSafeInteger(f.pid) && typeof f.hostname === "string" ? { pid: f.pid, hostname: f.hostname } : {},
     ...typeof f.startedAt === "string" ? { startedAt: f.startedAt } : {},
+    ...typeof f.beatAt === "string" ? { beatAt: f.beatAt } : {},
     seen: Array.isArray(f.seen) ? f.seen.filter((n) => Number.isSafeInteger(n) && n > 0) : [],
     ...typeof f.at === "string" ? { at: f.at } : {}
   };
@@ -130262,15 +130261,17 @@ function acquirePoller(root2, now2, me = defaultOwnerDeps()) {
   ensureDirSync((0, import_path199.join)(path30, ".."));
   withFileLockSync(lockPathFor(path30), () => {
     const f = readPollFile(path30);
-    if (heldBy(f, me)) throw new PollBusyError(`omg factory poll already runs in this repository (pid ${f.pid} on ${f.hostname} since ${f.startedAt}); one poller per repository`);
-    writePollFile(path30, { pid: me.pid, hostname: me.hostname, startedAt: now2, seen: f.seen, ...f.at ? { at: f.at } : {} });
+    if (heldBy(f, me) && !stale(f, now2)) {
+      throw new PollBusyError(`omg factory poll already runs in this repository (pid ${f.pid} on ${f.hostname} since ${f.startedAt}, last beat ${f.beatAt ?? "none"}); one poller per repository. If no poller runs, delete ${path30}`);
+    }
+    writePollFile(path30, { pid: me.pid, hostname: me.hostname, startedAt: now2, beatAt: now2, ...ownerless(f) });
   }, { timeoutMs: 5e3 });
   return {
     release: () => {
       try {
         withFileLockSync(lockPathFor(path30), () => {
           const f = readPollFile(path30);
-          if (f.pid === me.pid && f.hostname === me.hostname) writePollFile(path30, { seen: f.seen, ...f.at ? { at: f.at } : {} });
+          if (f.pid === me.pid && f.hostname === me.hostname) writePollFile(path30, ownerless(f));
         }, { timeoutMs: 5e3 });
       } catch {
       }
@@ -130281,10 +130282,21 @@ function updateSeen(root2, seen, at) {
   const path30 = pollStatePath(root2);
   withFileLockSync(lockPathFor(path30), () => writePollFile(path30, { ...readPollFile(path30), seen: [...seen].sort((a, b) => a - b), at }), { timeoutMs: 5e3 });
 }
+function beat(root2, me, at) {
+  const path30 = pollStatePath(root2);
+  return withFileLockSync(lockPathFor(path30), () => {
+    const f = readPollFile(path30);
+    if (f.pid !== me.pid || f.hostname !== me.hostname) return false;
+    writePollFile(path30, { ...f, beatAt: at });
+    return true;
+  }, { timeoutMs: 5e3 });
+}
 function audit(root2, record3, at) {
   try {
-    ensureDirSync((0, import_path199.join)(pollAuditPath(root2), ".."));
-    (0, import_fs173.appendFileSync)(pollAuditPath(root2), `${JSON.stringify({ ...record3, at })}
+    const path30 = pollAuditPath(root2);
+    ensureDirSync((0, import_path199.join)(path30, ".."));
+    if ((0, import_fs173.lstatSync)(path30, { throwIfNoEntry: false })?.isSymbolicLink()) return;
+    (0, import_fs173.appendFileSync)(path30, `${JSON.stringify({ ...record3, at })}
 `, "utf8");
   } catch {
   }
@@ -130321,6 +130333,7 @@ function pollTick(ctx) {
     }
   };
   ctx.tick += 1;
+  if (step("heartbeat", () => beat(root2, ctx.owner, at)) === false) warnings.push(`another poller owns ${pollStatePath(root2)}; stop this one`);
   let heal;
   if (!ctx.heal) heal = { ran: false, reason: "--no-heal" };
   else if (!forge.capabilities.heal) heal = { ran: false, reason: "the forge has no heal capability (Azure DevOps: set factory.heal.pipeline)" };
@@ -130346,17 +130359,20 @@ function pollTick(ctx) {
       ids2 = listed2;
       const seen = new Set(readPollFile(pollStatePath(root2)).seen);
       const fresh = [...new Set(ids2)].filter((id) => !seen.has(id));
-      const results = fresh.length ? checkItems(forge, fresh, checkEnvFor(ctx.exec, root2, config2, ctx.base, ctx.baseSha)) : [];
-      for (const r of results) {
-        audit(root2, { kind: "intake-new", id: r.id, bucket: r.bucket, reasons: r.reasons }, at);
-        if (r.reasons[0] === "read-failed") errors.push(`intake: ${r.detail}`);
+      const results = fresh.length ? step("intake check", () => checkItems(forge, fresh, checkEnvFor(ctx.exec, root2, config2, ctx.base, ctx.baseSha))) : [];
+      if (!results) intake = { ran: false, reason: "the intake check failed" };
+      else {
+        for (const r of results) {
+          audit(root2, { kind: "intake-new", id: r.id, bucket: r.bucket, reasons: r.reasons }, at);
+          if (r.reasons[0] === "read-failed") errors.push(`intake: ${r.detail}`);
+        }
+        const failed3 = new Set(results.filter((r) => r.reasons[0] === "read-failed").map((r) => r.id));
+        step("intake seen", () => updateSeen(root2, ids2.filter((id) => !failed3.has(id)), at));
+        intake = { ran: true, items: ids2.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
       }
-      const failed3 = new Set(results.filter((r) => r.reasons[0] === "read-failed").map((r) => r.id));
-      updateSeen(root2, ids2.filter((id) => !failed3.has(id)), at);
-      intake = { ran: true, items: ids2.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
     }
   }
-  const { runs } = readRuns(root2, warnings);
+  const { runs, broken } = readRuns(root2, warnings);
   const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
   const prs = [];
   if (ctx.prs) {
@@ -130371,7 +130387,7 @@ function pollTick(ctx) {
         if (view.state !== "OPEN") row.hint = resumeHint(key);
         else if (forge.reviews.listThreads) {
           const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
-          if (threads) row.threads = threads.filter((t) => t.status === "active" && t.kind === "text" && !t.byPrAuthor).length;
+          if (threads) row.threads = threads.filter((t) => (t.status === "active" || t.status === "pending") && t.kind === "text" && !t.byFactory).length;
           else row.error = errors[errors.length - 1];
         }
       }
@@ -130384,7 +130400,7 @@ function pollTick(ctx) {
       prs.push(row);
     }
   }
-  const idle = !engineBusy(root2, ctx.owner) && !live.some(([, s]) => !s.gate);
+  const idle = broken.size === 0 && !engineBusy(root2, ctx.owner) && !live.some(([, s]) => !s.gate);
   const board = [];
   const shown = step("board", () => collectBoard({ forge, config: config2, root: root2, ids: ids2, check: null, now: ctx.now(), warnings }));
   if (shown) {
@@ -130483,7 +130499,7 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_fs173, import_path199, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, heldBy, message3, resumeHint, defaultSleep, defaultOnStop;
+var import_fs173, import_path199, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, message3, resumeHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -130505,12 +130521,18 @@ var init_poll = __esm({
     POLL_DEFAULT_INTERVAL_MS = 5 * 6e4;
     POLL_MIN_INTERVAL_MS = 2 * 6e4;
     POLL_MAX_INTERVAL_MS = 60 * 6e4;
+    POLL_OWNER_STALE_MS = 2 * POLL_MAX_INTERVAL_MS;
     PollBusyError = class extends Error {
     };
     pollStatePath = (root2) => (0, import_path199.join)(getOmcRoot(root2), "state", "factory-poll.json");
     pollAuditPath = (root2) => (0, import_path199.join)(getOmcRoot(root2), "state", "factory-poll-audit.jsonl");
     writePollFile = (path30, f) => atomicWriteFileSync(path30, `${JSON.stringify(f, null, 2)}
 `);
+    ownerless = (f) => ({ seen: f.seen, ...f.at ? { at: f.at } : {} });
+    stale = (f, now2) => {
+      const beat2 = Date.parse(f.beatAt ?? f.startedAt ?? "");
+      return !Number.isFinite(beat2) || Date.parse(now2) - beat2 > POLL_OWNER_STALE_MS;
+    };
     heldBy = (f, me) => f.pid !== void 0 && (f.hostname !== me.hostname || f.pid !== me.pid && me.isAlive(f.pid));
     message3 = (error2) => plainText(error2 instanceof Error ? error2.message : String(error2));
     resumeHint = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
@@ -134082,14 +134104,14 @@ async function runSdkHost(spec, deps) {
       const offered = await sessionOffersTool(sessionRef, probe);
       if (offered === false) {
         log3(`in-process tool ${probe} not offered by the session; recreating it on the ${spec.mcp_server} MCP server`);
-        const stale = sessionRef;
+        const stale2 = sessionRef;
         sessionRef = null;
         try {
-          await withTimeout5(stale.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+          await withTimeout5(stale2.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
         } catch {
         }
         try {
-          await withTimeout5(client.deleteSession(stale.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+          await withTimeout5(client.deleteSession(stale2.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
         } catch {
         }
         inProcess = null;
@@ -140503,10 +140525,10 @@ function formatResetTime(date3) {
   const remainingMinutes = diffMinutes % 60;
   return `${diffHours}h${remainingMinutes}m`;
 }
-function renderRateLimits(limits, stale) {
+function renderRateLimits(limits, stale2) {
   if (!limits) return null;
-  const staleMarker = stale ? `${DIM4}*${RESET}` : "";
-  const resetPrefix = stale ? "~" : "";
+  const staleMarker = stale2 ? `${DIM4}*${RESET}` : "";
+  const resetPrefix = stale2 ? "~" : "";
   const parts = [];
   if (limits.fiveHourPercent != null) {
     const fiveHour = Math.min(100, Math.max(0, Math.round(limits.fiveHourPercent)));
@@ -140563,10 +140585,10 @@ function renderRateLimits(limits, stale) {
   }
   return parts.length > 0 ? parts.join(" ") : null;
 }
-function renderRateLimitsWithBar(limits, barWidth = 8, stale) {
+function renderRateLimitsWithBar(limits, barWidth = 8, stale2) {
   if (!limits) return null;
-  const staleMarker = stale ? `${DIM4}*${RESET}` : "";
-  const resetPrefix = stale ? "~" : "";
+  const staleMarker = stale2 ? `${DIM4}*${RESET}` : "";
+  const resetPrefix = stale2 ? "~" : "";
   const parts = [];
   if (limits.fiveHourPercent != null) {
     const fiveHour = Math.min(100, Math.max(0, Math.round(limits.fiveHourPercent)));
@@ -140795,9 +140817,9 @@ function formatMoney(amount2, decimals) {
 function currencyPrefix(currency) {
   return currency.toUpperCase() === "USD" ? "$" : `${currency.toUpperCase()} `;
 }
-function renderEnterpriseCost(limits, stale) {
+function renderEnterpriseCost(limits, stale2) {
   if (!limits || limits.enterpriseSpentUsd === void 0) return null;
-  const staleMarker = stale ? `${DIM5}*${RESET}` : "";
+  const staleMarker = stale2 ? `${DIM5}*${RESET}` : "";
   const currency = limits.enterpriseCurrency ?? "USD";
   const prefix = currencyPrefix(currency);
   const decimals = limits.enterpriseDecimalPlaces ?? 2;
@@ -141966,12 +141988,12 @@ async function render(context, config2) {
   const rateLimitsResult = context.rateLimitsResult;
   if (enabledElements.rateLimits && rateLimitsResult && !enterpriseCostReplacesRateLimits) {
     if (rateLimitsResult.rateLimits) {
-      const stale = rateLimitsResult.stale;
+      const stale2 = rateLimitsResult.stale;
       const limits = enabledElements.useBars ? isolate(() => renderRateLimitsWithBar(
         rateLimitsResult.rateLimits,
         void 0,
-        stale
-      )) : isolate(() => renderRateLimits(rateLimitsResult.rateLimits, stale));
+        stale2
+      )) : isolate(() => renderRateLimits(rateLimitsResult.rateLimits, stale2));
       if (limits) rendered.set("rateLimits", limits);
     } else {
       const errorIndicator = isolate(() => renderRateLimitsError(rateLimitsResult));
@@ -142024,10 +142046,10 @@ async function render(context, config2) {
     }
   }
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
-    const stale = context.rateLimitsResult?.stale;
+    const stale2 = context.rateLimitsResult?.stale;
     const cost = isolate(() => renderEnterpriseCost(
       context.rateLimitsResult?.rateLimits,
-      stale
+      stale2
     ));
     if (cost) {
       rendered.set("enterpriseCost", cost);
@@ -164061,7 +164083,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
     }
     const hasState = existing !== null;
     let lastBeat = -Infinity;
-    const beat = (note) => {
+    const beat2 = (note) => {
       if (drive.now() - lastBeat < DRIVE_HEARTBEAT_MS) return;
       lastBeat = drive.now();
       progress("gates", "heartbeat", note);
@@ -164083,11 +164105,11 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
       now: drive.now,
       onReport: (r) => {
         if ((o.watch || o.drive) && !o.json) console.error(source_default.gray(`[${now()}] gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`));
-        if (o.drive) beat(`PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`);
+        if (o.drive) beat2(`PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed`);
       },
       retryTransient: o.drive,
       onTransient: (message4) => {
-        if (o.drive) beat(`PR #${pr}: transient GitHub error, retrying (${message4.slice(0, 120)})`);
+        if (o.drive) beat2(`PR #${pr}: transient GitHub error, retrying (${message4.slice(0, 120)})`);
       }
     });
     let result;

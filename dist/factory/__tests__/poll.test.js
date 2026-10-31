@@ -6,7 +6,7 @@
  * the tracker or forge.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,8 @@ import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
 import { createForge } from '../../forge/index.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { HealRunRefused } from '../heal/run.js';
+import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
+import { healStateDir } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
 import { acquirePoller, defaultPollHealScan, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, runFactoryPoll, } from '../poll.js';
 const SHA = 'a'.repeat(40);
@@ -306,6 +308,155 @@ describe('omg factory poll on GitHub', () => {
         expect(ticks()[0].intake).toEqual({ ran: false, reason: 'no intake source (factory.intake.source)' });
         expect(ticks()[0].board.map((b) => [b.stage, b.row.id])).toEqual([['outside', 4]]);
         expect(w.calls.some((c) => c.startsWith('gh issue'))).toBe(false);
+    });
+    it('idle: an unreadable or integrity-failed run state is never idle', async () => {
+        seedParked();
+        const path = factoryStatePath(root, 5);
+        writeFileSync(path, JSON.stringify({ ...moveTo(issueRun(5), 'implement', 'plan ok', T0), integrity: 'f'.repeat(64) }));
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+        expect(ticks()[0].idle).toBe(false);
+        out.length = 0;
+        writeFileSync(path, '{ not json');
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+        expect(ticks()[0].idle).toBe(false);
+        out.length = 0;
+        rmSync(path);
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+        expect(ticks()[0].idle).toBe(true);
+    });
+    it('owner: a pid without a hostname is no owner; a stale heartbeat is taken over; the refusal names the file', async () => {
+        const path = pollStatePath(root);
+        mkdirSync(dirname(path), { recursive: true });
+        const me = { pid: 2, hostname: hostname(), isAlive: () => true };
+        writeFileSync(path, JSON.stringify({ pid: 1, startedAt: T0, seen: [7] }));
+        acquirePoller(root, T0, me).release();
+        expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ seen: [7] });
+        // Another host, last beat 2 h 1 min ago: stale.
+        const beatAt = new Date(NOW - 121 * MIN).toISOString();
+        writeFileSync(path, JSON.stringify({ pid: 1, hostname: 'elsewhere', startedAt: T0, beatAt, seen: [7] }));
+        const now = new Date(NOW).toISOString();
+        acquirePoller(root, now, me);
+        expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ pid: 2, hostname: hostname(), startedAt: now, beatAt: now, seen: [7] });
+        // A live owner within the window is refused, with the file to delete.
+        writeFileSync(path, JSON.stringify({ pid: 1, hostname: 'elsewhere', startedAt: T0, beatAt: new Date(NOW - 119 * MIN).toISOString(), seen: [] }));
+        expect(() => acquirePoller(root, now, me)).toThrow(PollBusyError);
+        expect(() => acquirePoller(root, now, me)).toThrow(`If no poller runs, delete ${path}`);
+    });
+    it('owner: each tick writes the heartbeat under the lock', async () => {
+        let clock = NOW;
+        let stop = () => { };
+        const beats = [];
+        const code = await poll(scripted().exec, { json: true }, {
+            now: () => clock,
+            onStop: (h) => { stop = h; return () => { }; },
+            sleep: async () => {
+                beats.push(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).beatAt);
+                clock += 5 * MIN;
+                if (beats.length === 2)
+                    stop();
+            },
+        });
+        expect(code).toBe(0);
+        expect(beats).toEqual([new Date(NOW).toISOString(), new Date(NOW + 5 * MIN).toISOString()]);
+        // Released: no owner and no heartbeat left.
+        expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).beatAt).toBeUndefined();
+    });
+    it('a failed intake check or seen-file write is a tick error, never the end of the loop', async () => {
+        // On the first tick item 2 cannot be shaped into a result: checkItems throws.
+        const throwing = (exec, cwd, config, options) => {
+            const forge = createForge(exec, cwd, config, options);
+            return {
+                ...forge,
+                tracker: {
+                    ...forge.tracker,
+                    viewItem: (id) => {
+                        const item = forge.tracker.viewItem(id);
+                        return id === 2 && ticks().length === 0 ? Object.defineProperty({ ...item }, 'title', { get: () => { throw new Error('bad title'); } }) : item;
+                    },
+                },
+            };
+        };
+        let stop = () => { };
+        let lockHeld = false;
+        const lock = `${pollStatePath(root)}.lock`;
+        const code = await poll(scripted({
+            // The second tick's seen-file write meets a held lock (a live pid, fresh).
+            onCall: (cmd, args) => {
+                if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list' && ticks().length === 1) {
+                    writeFileSync(lock, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+                    lockHeld = true;
+                }
+                return undefined;
+            },
+        }).exec, { json: true }, {
+            projectConfig: () => LABEL,
+            createForge: throwing,
+            onStop: (h) => { stop = h; return () => { }; },
+            sleep: async () => {
+                if (lockHeld) {
+                    rmSync(lock);
+                    lockHeld = false;
+                }
+                if (ticks().length === 3)
+                    stop();
+            },
+        });
+        expect(code).toBe(0);
+        const [t1, t2] = ticks();
+        expect(t1.intake).toEqual({ ran: false, reason: 'the intake check failed' });
+        expect(t1.errors).toEqual([expect.stringMatching(/^intake check: bad title/)]);
+        expect(t2.errors).toEqual(expect.arrayContaining([expect.stringMatching(/^intake seen: /)]));
+        expect(ticks()).toHaveLength(3);
+        // Tick 1 marked nothing seen and tick 2 could not write: tick 3 checks both ids again and records them.
+        expect(ticks()[2].intake).toMatchObject({ ran: true, new: [{ id: 1 }, { id: 2 }] });
+        expect(JSON.parse(readFileSync(pollStatePath(root), 'utf8')).seen).toEqual([1, 2]);
+    }, 30_000);
+    it('the audit never appends through a symbolic link', async () => {
+        const target = join(root, 'elsewhere.jsonl');
+        writeFileSync(target, '');
+        mkdirSync(dirname(pollAuditPath(root)), { recursive: true });
+        let linked = true;
+        try {
+            symlinkSync(target, pollAuditPath(root), 'file');
+        }
+        catch {
+            linked = false;
+        }
+        // Without the privilege to make a file link (Windows), a junction is the link.
+        if (!linked) {
+            mkdirSync(join(root, 'dir-target'));
+            symlinkSync(join(root, 'dir-target'), pollAuditPath(root), 'junction');
+        }
+        seedParked();
+        expect(await poll(scripted({ prState: 'MERGED' }).exec, { once: true, json: true }, { projectConfig: () => LABEL })).toBe(0);
+        expect(ticks()[0].intake).toMatchObject({ ran: true, items: 2 });
+        expect(readFileSync(target, 'utf8')).toBe('');
+        expect(lstatSync(pollAuditPath(root)).isSymbolicLink()).toBe(true);
+    });
+    it('the default heal scan on GitHub: read-only argv, heal state under the repository', () => {
+        const calls = [];
+        const exec = (cmd, args) => {
+            calls.push(`${cmd} ${args.join(' ')}`);
+            if (cmd === 'gh' && args[0] === 'run' && args[1] === 'list')
+                return ok('[]');
+            if (cmd === 'git' && args[0] === 'show')
+                return { status: 128, stdout: '', stderr: 'fatal: path does not exist' };
+            throw new Error(`unscripted ${cmd} ${args.join(' ')}`);
+        };
+        const warnings = [];
+        const ledger = mkdtempSync(join(tmpdir(), 'omg-poll-ledger-'));
+        try {
+            const heal = defaultPollHealScan(exec, () => ({ config: { ...DEFAULT_HEAL_CONFIG }, warnings: [] }), ledger);
+            expect(heal({ root, base: 'dev', kind: 'github', now: new Date(NOW), warn: (m) => warnings.push(m) })).toMatchObject({ entries: [], queued: 0 });
+        }
+        finally {
+            rmSync(ledger, { recursive: true, force: true });
+        }
+        expect(calls.length).toBeGreaterThan(0);
+        for (const c of calls)
+            expect(c, c).toMatch(/^(?:gh run list |git show refs\/remotes\/origin\/dev:)/);
+        expect(healStateDir(root).startsWith(root)).toBe(true);
+        expect(warnings.join('\n')).toMatch(/known-flaky/);
     });
 });
 //# sourceMappingURL=poll.test.js.map

@@ -17,11 +17,15 @@
  * A tick never spawns a session or a lane and never writes to the tracker or
  * the forge: every forge call goes through check's read guard with no marker
  * (openReadForge), and the heal scan through the heal guard. It writes local
- * state only: the poll file, its audit and heal state. The tick result says
- * whether the repository was idle (no engine owner, no run in flight): the
- * seam an intake auto-start plugs into; poll itself starts nothing.
+ * state only: the poll file and its audit; on GitHub the heal tick also
+ * writes heal state under its `scan.lock` and the heal scan records in the
+ * ledger directory outside the repository. The tick result says whether the
+ * repository was idle (no engine owner, no run in flight, no unreadable run
+ * state): the seam an intake auto-start plugs into; poll itself starts nothing.
  *
- * One poller per repository (the owner pid in the poll file, under its lock).
+ * One poller per repository (the owner pid in the poll file, under its lock,
+ * with a `beatAt` heartbeat each tick; an owner silent for 2 x the 60 min
+ * ceiling is stale and taken over).
  * SIGINT / SIGTERM end the loop after the current tick. A rate-limited tick
  * (TF400733, HTTP 429) doubles the interval, up to 60 min; a clean tick
  * resets it. The interval floor is 2 min.
@@ -44,6 +48,8 @@ export declare const POLL_DEFAULT_INTERVAL_MS: number;
 export declare const POLL_MIN_INTERVAL_MS: number;
 /** The backoff ceiling. */
 export declare const POLL_MAX_INTERVAL_MS: number;
+/** An owner whose last heartbeat is older than this is stale (a crashed poller on another host, or a reused pid). */
+export declare const POLL_OWNER_STALE_MS: number;
 export declare class PollBusyError extends Error {
 }
 export declare const pollStatePath: (root: string) => string;
@@ -80,7 +86,7 @@ export interface PollPr {
     id: FactoryRunKey;
     pr: number;
     state?: ForgePr['state'];
-    /** Open review threads a person started (ADO; absent where the forge has no listThreads). */
+    /** Active or pending text threads the factory did not post (ADO; absent where the forge has no listThreads). */
     threads?: number;
     /** For a PR a human completed or abandoned: the command that records it. */
     hint?: string;
@@ -119,7 +125,13 @@ export interface PollTick {
         stage: BoardStage | 'outside';
         row: BoardRow;
     }>;
-    /** No engine owns the repository and no run is in flight (a parked run is not): an auto-start could begin one. */
+    /**
+     * No engine owns the repository, no run is in flight (a parked run is not)
+     * and every run state is readable: an auto-start could begin one. Advisory
+     * only: it is read without the engine's repo owner lock, so a consumer must
+     * still take that lock atomically (acquireFactoryRepoOwner) and treat a
+     * refusal as "skip this tick".
+     */
     idle: boolean;
     rateLimited: boolean;
     errors: string[];

@@ -17,11 +17,15 @@
  * A tick never spawns a session or a lane and never writes to the tracker or
  * the forge: every forge call goes through check's read guard with no marker
  * (openReadForge), and the heal scan through the heal guard. It writes local
- * state only: the poll file, its audit and heal state. The tick result says
- * whether the repository was idle (no engine owner, no run in flight): the
- * seam an intake auto-start plugs into; poll itself starts nothing.
+ * state only: the poll file and its audit; on GitHub the heal tick also
+ * writes heal state under its `scan.lock` and the heal scan records in the
+ * ledger directory outside the repository. The tick result says whether the
+ * repository was idle (no engine owner, no run in flight, no unreadable run
+ * state): the seam an intake auto-start plugs into; poll itself starts nothing.
  *
- * One poller per repository (the owner pid in the poll file, under its lock).
+ * One poller per repository (the owner pid in the poll file, under its lock,
+ * with a `beatAt` heartbeat each tick; an owner silent for 2 x the 60 min
+ * ceiling is stale and taken over).
  * SIGINT / SIGTERM end the loop after the current tick. A rate-limited tick
  * (TF400733, HTTP 429) doubles the interval, up to 60 min; a clean tick
  * resets it. The interval floor is 2 min.
@@ -30,7 +34,7 @@
  * 1 a read failed in the `--once` tick, or another poller runs; 2 usage;
  * 5 incompatible (as `omg factory check`).
  */
-import { appendFileSync, existsSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, lstatSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
@@ -51,6 +55,8 @@ export const POLL_DEFAULT_INTERVAL_MS = 5 * 60_000;
 export const POLL_MIN_INTERVAL_MS = 2 * 60_000;
 /** The backoff ceiling. */
 export const POLL_MAX_INTERVAL_MS = 60 * 60_000;
+/** An owner whose last heartbeat is older than this is stale (a crashed poller on another host, or a reused pid). */
+export const POLL_OWNER_STALE_MS = 2 * POLL_MAX_INTERVAL_MS;
 export class PollBusyError extends Error {
 }
 export const pollStatePath = (root) => join(getOmcRoot(root), 'state', 'factory-poll.json');
@@ -83,14 +89,22 @@ function readPollFile(path) {
     }
     const f = (raw && typeof raw === 'object' ? raw : {});
     return {
-        ...(Number.isSafeInteger(f.pid) ? { pid: f.pid } : {}),
-        ...(typeof f.hostname === 'string' ? { hostname: f.hostname } : {}),
+        // A pid without a hostname cannot be checked: no owner.
+        ...(Number.isSafeInteger(f.pid) && typeof f.hostname === 'string' ? { pid: f.pid, hostname: f.hostname } : {}),
         ...(typeof f.startedAt === 'string' ? { startedAt: f.startedAt } : {}),
+        ...(typeof f.beatAt === 'string' ? { beatAt: f.beatAt } : {}),
         seen: Array.isArray(f.seen) ? f.seen.filter((n) => Number.isSafeInteger(n) && n > 0) : [],
         ...(typeof f.at === 'string' ? { at: f.at } : {}),
     };
 }
 const writePollFile = (path, f) => atomicWriteFileSync(path, `${JSON.stringify(f, null, 2)}\n`);
+/** The poll file without its owner. */
+const ownerless = (f) => ({ seen: f.seen, ...(f.at ? { at: f.at } : {}) });
+/** The owner's last heartbeat (its start before the first beat) is older than POLL_OWNER_STALE_MS, or unreadable. */
+const stale = (f, now) => {
+    const beat = Date.parse(f.beatAt ?? f.startedAt ?? '');
+    return !Number.isFinite(beat) || Date.parse(now) - beat > POLL_OWNER_STALE_MS;
+};
 /** A live owner, or one on another host (its pid cannot be checked), holds the file. */
 const heldBy = (f, me) => f.pid !== undefined && (f.hostname !== me.hostname || (f.pid !== me.pid && me.isAlive(f.pid)));
 /**
@@ -102,9 +116,10 @@ export function acquirePoller(root, now, me = defaultOwnerDeps()) {
     ensureDirSync(join(path, '..'));
     withFileLockSync(lockPathFor(path), () => {
         const f = readPollFile(path);
-        if (heldBy(f, me))
-            throw new PollBusyError(`omg factory poll already runs in this repository (pid ${f.pid} on ${f.hostname} since ${f.startedAt}); one poller per repository`);
-        writePollFile(path, { pid: me.pid, hostname: me.hostname, startedAt: now, seen: f.seen, ...(f.at ? { at: f.at } : {}) });
+        if (heldBy(f, me) && !stale(f, now)) {
+            throw new PollBusyError(`omg factory poll already runs in this repository (pid ${f.pid} on ${f.hostname} since ${f.startedAt}, last beat ${f.beatAt ?? 'none'}); one poller per repository. If no poller runs, delete ${path}`);
+        }
+        writePollFile(path, { pid: me.pid, hostname: me.hostname, startedAt: now, beatAt: now, ...ownerless(f) });
     }, { timeoutMs: 5_000 });
     return {
         release: () => {
@@ -112,7 +127,7 @@ export function acquirePoller(root, now, me = defaultOwnerDeps()) {
                 withFileLockSync(lockPathFor(path), () => {
                     const f = readPollFile(path);
                     if (f.pid === me.pid && f.hostname === me.hostname)
-                        writePollFile(path, { seen: f.seen, ...(f.at ? { at: f.at } : {}) });
+                        writePollFile(path, ownerless(f));
                 }, { timeoutMs: 5_000 });
             }
             catch { /* the next poller takes a dead owner over */ }
@@ -123,10 +138,25 @@ function updateSeen(root, seen, at) {
     const path = pollStatePath(root);
     withFileLockSync(lockPathFor(path), () => writePollFile(path, { ...readPollFile(path), seen: [...seen].sort((a, b) => a - b), at }), { timeoutMs: 5_000 });
 }
+/** The owner's heartbeat; false when another poller has taken the file over. */
+function beat(root, me, at) {
+    const path = pollStatePath(root);
+    return withFileLockSync(lockPathFor(path), () => {
+        const f = readPollFile(path);
+        if (f.pid !== me.pid || f.hostname !== me.hostname)
+            return false;
+        writePollFile(path, { ...f, beatAt: at });
+        return true;
+    }, { timeoutMs: 5_000 });
+}
 function audit(root, record, at) {
     try {
-        ensureDirSync(join(pollAuditPath(root), '..'));
-        appendFileSync(pollAuditPath(root), `${JSON.stringify({ ...record, at })}\n`, 'utf8');
+        const path = pollAuditPath(root);
+        ensureDirSync(join(path, '..'));
+        // Never append through a link planted at the audit path.
+        if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
+            return;
+        appendFileSync(path, `${JSON.stringify({ ...record, at })}\n`, 'utf8');
     }
     catch {
         // best-effort audit trail (as the listener's)
@@ -180,6 +210,8 @@ export function pollTick(ctx) {
         }
     };
     ctx.tick += 1;
+    if (step('heartbeat', () => beat(root, ctx.owner, at)) === false)
+        warnings.push(`another poller owns ${pollStatePath(root)}; stop this one`);
     // 1. heal
     let heal;
     if (!ctx.heal)
@@ -215,20 +247,25 @@ export function pollTick(ctx) {
             ids = listed;
             const seen = new Set(readPollFile(pollStatePath(root)).seen);
             const fresh = [...new Set(ids)].filter((id) => !seen.has(id));
-            const results = fresh.length ? checkItems(forge, fresh, checkEnvFor(ctx.exec, root, config, ctx.base, ctx.baseSha)) : [];
-            for (const r of results) {
-                audit(root, { kind: 'intake-new', id: r.id, bucket: r.bucket, reasons: r.reasons }, at);
-                if (r.reasons[0] === 'read-failed')
-                    errors.push(`intake: ${r.detail}`);
+            const results = fresh.length ? step('intake check', () => checkItems(forge, fresh, checkEnvFor(ctx.exec, root, config, ctx.base, ctx.baseSha))) : [];
+            // A failed check marks nothing seen: the next tick checks every new id again.
+            if (!results)
+                intake = { ran: false, reason: 'the intake check failed' };
+            else {
+                for (const r of results) {
+                    audit(root, { kind: 'intake-new', id: r.id, bucket: r.bucket, reasons: r.reasons }, at);
+                    if (r.reasons[0] === 'read-failed')
+                        errors.push(`intake: ${r.detail}`);
+                }
+                // A read-failed item stays new, so the next tick checks it again.
+                const failed = new Set(results.filter((r) => r.reasons[0] === 'read-failed').map((r) => r.id));
+                step('intake seen', () => updateSeen(root, ids.filter((id) => !failed.has(id)), at));
+                intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
             }
-            // A read-failed item stays new, so the next tick checks it again.
-            const failed = new Set(results.filter((r) => r.reasons[0] === 'read-failed').map((r) => r.id));
-            updateSeen(root, ids.filter((id) => !failed.has(id)), at);
-            intake = { ran: true, items: ids.length, new: results.map((r) => ({ id: r.id, bucket: r.bucket, reasons: r.reasons })) };
         }
     }
     // 3. PRs (and the idle seam): the runs in flight.
-    const { runs } = readRuns(root, warnings);
+    const { runs, broken } = readRuns(root, warnings);
     const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
     const prs = [];
     if (ctx.prs) {
@@ -247,7 +284,7 @@ export function pollTick(ctx) {
                 else if (forge.reviews.listThreads) {
                     const threads = step(`PR ${pr} threads`, () => forge.reviews.listThreads(pr));
                     if (threads)
-                        row.threads = threads.filter((t) => t.status === 'active' && t.kind === 'text' && !t.byPrAuthor).length;
+                        row.threads = threads.filter((t) => (t.status === 'active' || t.status === 'pending') && t.kind === 'text' && !t.byFactory).length;
                     else
                         row.error = errors[errors.length - 1];
                 }
@@ -263,7 +300,8 @@ export function pollTick(ctx) {
             prs.push(row);
         }
     }
-    const idle = !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
+    // An unreadable or integrity-failed run state may be a run in flight: never idle.
+    const idle = broken.size === 0 && !engineBusy(root, ctx.owner) && !live.some(([, s]) => !s.gate);
     // 4. board: the rows that changed.
     const board = [];
     const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));

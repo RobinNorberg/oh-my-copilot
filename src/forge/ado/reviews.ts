@@ -29,9 +29,17 @@ export interface AdoPrView {
   mergeStatus?: string;
   /** Project GUID, for the policy artifact id. */
   projectId?: string;
-  /** createdBy.uniqueName, lowercased: the identity the factory opened the PR as. */
-  createdBy?: string;
 }
+
+/**
+ * The hidden last line of every PR comment the factory posts on Azure Repos
+ * (an HTML comment, not rendered): `omg factory poll` leaves those threads out
+ * of its human thread count. A person who pastes it only hides their own thread.
+ */
+export const ADO_FACTORY_COMMENT_MARKER = '<!-- omg-factory: comment -->';
+
+const endsWithMarker = (content: unknown): boolean =>
+  typeof content === 'string' && content.trimEnd().split('\n').pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
 
 const commitOf = (v: unknown): string | undefined => {
   const id = isObject(v) ? str(v.commitId) : undefined;
@@ -54,7 +62,6 @@ export function readAdoPr(ctx: AdoContext, pr: number): AdoPrView {
     lastMergeCommit: commitOf(json.lastMergeCommit),
     mergeStatus: str(json.mergeStatus),
     projectId: str(project.id),
-    createdBy: isObject(json.createdBy) ? str(json.createdBy.uniqueName)?.toLowerCase() : undefined,
   };
 }
 
@@ -62,7 +69,7 @@ const THREAD_STATUS: ReadonlySet<string> = new Set(['active', 'fixed', 'wontFix'
 const COMMENT_TYPE: ReadonlySet<string> = new Set(['text', 'system', 'codeChange']);
 
 /** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
-export function parseAdoThreads(json: unknown, pr: number, prAuthor: string | undefined): ForgeThread[] {
+export function parseAdoThreads(json: unknown, pr: number): ForgeThread[] {
   return listValue(json).flatMap((t): ForgeThread[] => {
     if (!isObject(t) || t.isDeleted === true) return [];
     if (!Number.isSafeInteger(t.id)) throw new Error(`pull request ${pr}: a thread without an id`);
@@ -76,7 +83,7 @@ export function parseAdoThreads(json: unknown, pr: number, prAuthor: string | un
       status: THREAD_STATUS.has(status) ? (status as ForgeThread['status']) : 'unknown',
       kind: COMMENT_TYPE.has(kind) ? (kind as ForgeThread['kind']) : 'unknown',
       author,
-      byPrAuthor: author !== '' && author === prAuthor,
+      byFactory: endsWithMarker(first.content),
       updatedAt: str(t.lastUpdatedDate) ?? '',
       ...(file ? { file } : {}),
     }];
@@ -94,13 +101,6 @@ function description(bodyFile: string): string {
 
 export function adoReviews(ctx: AdoContext): ForgeReviews {
   const prUrl = (pr: number) => `${ctx.repo.url}/pullrequest/${pr}`;
-  // A PR's creator never changes: listThreads reuses the one viewPr or prHead read.
-  const creators = new Map<number, string | undefined>();
-  const read = (pr: number): AdoPrView => {
-    const v = readAdoPr(ctx, pr);
-    creators.set(pr, v.createdBy);
-    return v;
-  };
   return {
     findOpenPrForBranch(branch: string): number | undefined {
       const json = adoJson(
@@ -139,7 +139,7 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
     },
 
     viewPr(pr: number): ForgePr {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       const state = STATE[v.status];
       if (!state) throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
       if (!v.lastMergeSourceCommit || !v.lastMergeTargetCommit) throw new Error(`pull request ${pr}: no source/target commit yet`);
@@ -156,7 +156,7 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
     },
 
     prHead(pr: number) {
-      const v = read(pr);
+      const v = readAdoPr(ctx, pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
     },
@@ -167,7 +167,8 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
 
     commentPr(pr: number, bodyFile: string) {
       try {
-        const body = { comments: [{ parentCommentId: 0, content: readFileSync(bodyFile, 'utf8'), commentType: 1 }], status: 1 };
+        const content = `${readFileSync(bodyFile, 'utf8').trimEnd()}\n\n${ADO_FACTORY_COMMENT_MARKER}\n`;
+        const body = { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 1 };
         const call = adoCall(ctx, 'git.pullRequestThreads.POST', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
         return { ok: call.ok, stderr: call.ok ? '' : call.stderr || `az exited ${call.status}` };
       } catch (error) {
@@ -176,9 +177,8 @@ export function adoReviews(ctx: AdoContext): ForgeReviews {
     },
 
     listThreads(pr: number): ForgeThread[] {
-      const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
       const json = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
-      return parseAdoThreads(json, pr, author);
+      return parseAdoThreads(json, pr);
     },
   };
 }

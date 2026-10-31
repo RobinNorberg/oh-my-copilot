@@ -10,6 +10,13 @@ const SHA = /^[0-9a-f]{40}$/;
 /** REST `description` limit on a pull request. */
 export const ADO_PR_DESCRIPTION_MAX = 4000;
 const TRUNCATED = '\n\n(truncated: the full text is in the factory run log)';
+/**
+ * The hidden last line of every PR comment the factory posts on Azure Repos
+ * (an HTML comment, not rendered): `omg factory poll` leaves those threads out
+ * of its human thread count. A person who pastes it only hides their own thread.
+ */
+export const ADO_FACTORY_COMMENT_MARKER = '<!-- omg-factory: comment -->';
+const endsWithMarker = (content) => typeof content === 'string' && content.trimEnd().split('\n').pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
 const commitOf = (v) => {
     const id = isObject(v) ? str(v.commitId) : undefined;
     return id && SHA.test(id) ? id : undefined;
@@ -31,13 +38,12 @@ export function readAdoPr(ctx, pr) {
         lastMergeCommit: commitOf(json.lastMergeCommit),
         mergeStatus: str(json.mergeStatus),
         projectId: str(project.id),
-        createdBy: isObject(json.createdBy) ? str(json.createdBy.uniqueName)?.toLowerCase() : undefined,
     };
 }
 const THREAD_STATUS = new Set(['active', 'fixed', 'wontFix', 'closed', 'byDesign', 'pending']);
 const COMMENT_TYPE = new Set(['text', 'system', 'codeChange']);
 /** The PR's threads (Pull Request Threads - List), deleted ones left out; a thread without a numeric id fails the read. */
-export function parseAdoThreads(json, pr, prAuthor) {
+export function parseAdoThreads(json, pr) {
     return listValue(json).flatMap((t) => {
         if (!isObject(t) || t.isDeleted === true)
             return [];
@@ -53,7 +59,7 @@ export function parseAdoThreads(json, pr, prAuthor) {
                 status: THREAD_STATUS.has(status) ? status : 'unknown',
                 kind: COMMENT_TYPE.has(kind) ? kind : 'unknown',
                 author,
-                byPrAuthor: author !== '' && author === prAuthor,
+                byFactory: endsWithMarker(first.content),
                 updatedAt: str(t.lastUpdatedDate) ?? '',
                 ...(file ? { file } : {}),
             }];
@@ -68,13 +74,6 @@ function description(bodyFile) {
 }
 export function adoReviews(ctx) {
     const prUrl = (pr) => `${ctx.repo.url}/pullrequest/${pr}`;
-    // A PR's creator never changes: listThreads reuses the one viewPr or prHead read.
-    const creators = new Map();
-    const read = (pr) => {
-        const v = readAdoPr(ctx, pr);
-        creators.set(pr, v.createdBy);
-        return v;
-    };
     return {
         findOpenPrForBranch(branch) {
             const json = adoJson(adoCall(ctx, 'git.pullRequests.GET', repoParams(ctx), { 'searchCriteria.sourceRefName': `refs/heads/${branch}`, 'searchCriteria.status': 'active' }), `pull requests for ${branch}`);
@@ -105,7 +104,7 @@ export function adoReviews(ctx) {
             return id;
         },
         viewPr(pr) {
-            const v = read(pr);
+            const v = readAdoPr(ctx, pr);
             const state = STATE[v.status];
             if (!state)
                 throw new Error(`pull request ${pr}: unknown status ${JSON.stringify(v.status)}`);
@@ -123,7 +122,7 @@ export function adoReviews(ctx) {
             };
         },
         prHead(pr) {
-            const v = read(pr);
+            const v = readAdoPr(ctx, pr);
             if (!v.lastMergeSourceCommit)
                 throw new Error(`pull request ${pr}: no source commit yet`);
             return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
@@ -133,7 +132,8 @@ export function adoReviews(ctx) {
         },
         commentPr(pr, bodyFile) {
             try {
-                const body = { comments: [{ parentCommentId: 0, content: readFileSync(bodyFile, 'utf8'), commentType: 1 }], status: 1 };
+                const content = `${readFileSync(bodyFile, 'utf8').trimEnd()}\n\n${ADO_FACTORY_COMMENT_MARKER}\n`;
+                const body = { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 1 };
                 const call = adoCall(ctx, 'git.pullRequestThreads.POST', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, body);
                 return { ok: call.ok, stderr: call.ok ? '' : call.stderr || `az exited ${call.status}` };
             }
@@ -142,9 +142,8 @@ export function adoReviews(ctx) {
             }
         },
         listThreads(pr) {
-            const author = creators.has(pr) ? creators.get(pr) : read(pr).createdBy;
             const json = adoJson(adoCall(ctx, 'git.pullRequestThreads.GET', { ...repoParams(ctx), pullRequestId: String(pr) }), `threads of pull request ${pr}`);
-            return parseAdoThreads(json, pr, author);
+            return parseAdoThreads(json, pr);
         },
     };
 }
