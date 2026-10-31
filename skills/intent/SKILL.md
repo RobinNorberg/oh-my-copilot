@@ -86,6 +86,10 @@ An accepted intent (`status: accepted`) is a valid mission brief. Launch's spec 
 
 Intent open questions carry into the spec verbatim, keeping their pending status.
 
+**Factory-sourced intents.** An intent that harbor routed from a factory `needs-plan` issue adds `source: <issue url>` to its frontmatter. Launch's spec links that issue, and launch closes it at C5 with a pointer to the spec. Hand the accepted intent to the captain with `/oh-my-copilot:launch` recommended; launch's `omg factory enqueue` handoff is what reaches the factory.
+
+**Not a chain stage.** Intent needs a live contributor for its numbered batches, so it runs only when a human invokes it. The factory listener sends intake to harbor, and the legacy SessionEnd chain still spawns an `intent` route but records `route-deprecated:intent`. `omg factory init --check` lists such routes; `omg factory init --migrate` rewrites `success:intake -> intent` to `success:intake -> harbor`.
+
 ## Amendment
 
 New information after acceptance (typically surfaced by the first spec) is an **amendment**: anyone may initiate, the submitter signs, and it always re-enters full review as a new round — no minor-change exemption. An intent change marks the generated spec stale; the spec is regenerated from the new intent and re-approved. No separate amendment record type: rounds carry it.

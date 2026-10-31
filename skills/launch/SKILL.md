@@ -1,7 +1,7 @@
 ---
 name: launch
 description: Shipyard's governed delivery pipeline — converge the mission, synthesize a durable spec, decompose vertical-slice tickets with blocking edges, run the frontier in parallel via team, close with verification, and report with a full decision log. Two entry gates — the yard gate (drydock audit) and the fog gate (an effort whose destination is unclear is routed to /ask-navigator before this pipeline starts). Humans own the checkpoints where there is no unique answer or the error cost is severe; agents continuously run everything repeatable and acceptable-by-evidence.
-argument-hint: "<mission brief | path to existing spec> [--serial]"
+argument-hint: "<mission brief | path to existing spec> [--serial] [--team]"
 level: 3
 disable-model-invocation: true
 pipeline: [deep-interview, launch]
@@ -44,6 +44,7 @@ Launch is a **stateless composition over OMC's existing lifecycle** — it owns 
 - The canonical `plan` → `execute` → `review` → `verify` surfaces own their existing lifecycle behavior. Launch-authored artifacts are limited to `GLOSSARY.md`, `docs/adr/`, and `docs/business/` — plus, only after C5 approval, the sediment slots named in the Phase 5 table. The spec and its tickets live only in the tracker — **the spec is the parent issue, the tickets are its native sub-issues** — and Launch never creates or writes local spec or ticket files; downstream readers take the spec and tickets from the tracker, never from a local tree.
 - Launch has no automatic resume. After interruption, re-read the artifacts and current Team status, but continue only through a new explicit Launch invocation after the owning Team lifecycle has reached a supported terminal/cleanup boundary. Never infer a human approval or replay an `in_progress` task.
 - Foggy efforts are the navigator's jurisdiction: when the fog gate routes to `/oh-my-copilot:ask-navigator`, the run never started — no artifacts, no partial state. The navigator's map is the only carrier across sessions; launch resumes only from the mission brief it hands back.
+- **Factory mode** (selected in Phase 3): the `omg factory` engine owns delivery state — run state, gates, PRs, the `factory:*` labels. Launch only reads it (`omg factory check`, `omg factory run status`) and never edits it or merges. Its tracker writes for tickets go through `omg factory enqueue` only, because enqueue is the code path that keeps re-runs idempotent and writes the edges the engine reads.
 - Launch adds no approval receipt, revision counter, replay log, cancellation path, rollback mechanism, or cleanup lifecycle of its own.
 
 Any durability claim in this skill is a claim about explicit tracker records or repository files, not about a hidden runtime.
@@ -108,7 +109,14 @@ Testing decisions retire orphans: when a seam is deepened or replaced, the tests
 
 ## Phase 3 — Ticket decomposition (agent drafts → C3 approves)
 
-Split into vertical slices as **child tracker issues** (native sub-issues of the parent spec issue), dependency-ordered, each declaring `blockedBy: [ids]`:
+**Mode selection (first action of Phase 3; the spec issue exists).** Run `omg factory check --parent <spec> --json`:
+
+- exit 5 (no compatible forge, which includes no factory config: `omg factory setup` writes it), a JSON `forge` other than `github` (enqueue supports GitHub only on this release), or `--team` on this invocation → **team mode**: Phases 3–5 run as written, and the factory-mode paragraphs do not apply.
+- otherwise → **factory mode**: the factory-mode paragraphs in Phases 3–5 replace the text they name. Factory mode does not need `factory.intake.source`: the `--parent` and `--spec` commands below name the spec. When the source is not a label, the enqueue dry run warns that the children are not added to it; show that warning at C3.
+
+State the selected mode in the C3 presentation, so the captain signs the delivery path along with the tickets.
+
+Split into vertical slices as **child tracker issues** (native sub-issues of the parent spec issue), dependency-ordered, each declaring `blockedBy: [ids]`. Native sub-issues are required in team mode only. In factory mode the factory handoff below replaces how the children are created: enqueue creates them, and native sub-issues are optional.
 - each ticket crosses every layer, is independently demonstrable, and fits one fresh context
 - **blocking edges are load-bearing declarations**: a ticket states what it waits on — which decisions, artifacts (specs, ADRs, loft results), or other tickets — not just which ticket numbers. The declaration is C3's input: granularity wrong here misroutes every dependency, and a ticket whose waits are undeclared cannot be scheduled honestly on the frontier.
 - wide refactors go expand-contract: add the new form, migrate in batches, remove the old — each batch a ticket
@@ -117,9 +125,32 @@ Agent-side mechanical validation runs first (independence, demonstrability, cont
 
 Integration-wiring rule: every vertical slice includes its own wiring and a smoke assertion — a slice whose output nothing mounts, serves, or imports is not done. Cross-slice seams that no single slice owns (route mounting, static serving, entry-point wiring) get an explicit integration ticket as the last frontier item.
 
+**Factory handoff (factory mode).** The tickets reach the tracker through `omg factory enqueue`, never through hand-written `gh` calls:
+
+1. Draft each ticket so a factory lane can run it. Lanes run network-off and cannot read the spec issue, so the body is self-contained: the user stories it serves, its seams with boundary class, and pointers to in-repo ADRs. Each acceptance item names its contract in backticks (`TokenStore.refresh()`), which passes both the durability gate (no paths) and the factory's vague-AC check. Done when every ticket is self-contained and has at most `factory.check.maxAcceptanceItems` acceptance items.
+2. Write the ticket file to the session scratchpad, never the repo: `{ "schemaVersion": 1, "spec": <spec>, "tickets": [{ "key", "title", "body", "acceptance": [...], "blockedBy": [...], "priority" }] }` (`blockedBy` and `priority` 1–4 optional). `key` is the slug signed at C3 (`[a-z0-9-]{3,60}`) and the idempotency key, so a re-run keeps every key unchanged; `blockedBy` names keys in the file or `#<n>` for an existing item. Done when the file exists.
+3. Run `omg factory enqueue --spec <spec> --file <path> --dry-run` and present its output at C3 with granularity and edges. The C3 signature covers everything the dry run lists: the created and updated issues, the intake label, and the mark step that adds `factory.intake.marker` to the runnable children. Exit 2 means the file was refused and nothing was written: fix the file and dry-run again. Done when the captain signs C3 on that output.
+4. Run the same command without `--dry-run` and with `--json`. Parse the JSON and post one table built from its `items` (key, id, action, bucket, reasons) plus its `mark.failed`, if any, on the spec as the execution-result comment. Done when the comment exists.
+5. Exit 1 means a tracker read or write, or the mark step, failed part-way: post the table for what the JSON shows, then re-run step 4 with the same file. The re-run is idempotent by `key`, but wait a minute before it: a create that landed without its task-list write is found only through GitHub search, which is eventually consistent. Done when a run exits 0.
+
+In factory mode `ready-for-agent` is enqueue's mark step — no separate label. `kept-claimed` means a factory run holds the item and it was not edited. An `orphaned` item (its key left the file) is never closed by enqueue, and launch does not close it either: list it in the C3 presentation and in the execution-result comment. The captain closes it by hand or leaves it open. Native sub-issue and `blockedBy` links stay optional; the factory reads the `Part of #<spec>` and `Blocked by #<n>` lines and the spec's task list that enqueue writes.
+
+A single-slice item routed from `/oh-my-copilot:harbor` is its own spec: the ticket file holds one ticket and `spec` is that item. Enqueue creates one child carrying the acceptance criteria and never writes them into the item. Enqueue exits 2 when the item's author is not an OWNER, MEMBER or COLLABORATOR; then open a spec issue of launch's own that links the item, and enqueue against that.
+
 ## Phase 4 — Run the frontier
 
 The frontier is every ticket whose blockers are all complete.
+
+**Factory mode.** This paragraph replaces the scout pass, integration topology, repair rule, Team dispatch, and C4 text below. Delivery is serial (one engine per repository). Loop on `omg factory run --next --parent <spec> --json` and branch on each exit code:
+
+- exit 0 with `"next": null` (message `nothing runnable`) → the loop ends.
+- exit 0 otherwise → the picked run parked at the `merge` gate (or reached a terminal phase). Continue with the next `--next`.
+- exit 4 → the picked run parked at another `awaiting-human` gate. Record its id and gate for C4 and continue with the next `--next`.
+- exit 1 (a run failed) or exit 2 (usage, such as missing forge config) → stop the loop and report it with `omg factory run status <n>`.
+
+A parked run's item checks as `blocked` with reason `run-active:<phase>/<gate>`, so `--next` never re-picks it and moves to the next independent ticket. Then report the frontier from `omg factory check --parent <spec> --json` (bucket and reason per child) and stop — launch does not wait for merges. The C4 surface is the exit-4 gates recorded above: read each with `omg factory run status <n> --json` and batch those questions at the next launch invocation. Done when the loop ended on `nothing runnable` or a stop, and the frontier report is posted.
+
+**Team mode** runs everything from the scout pass to the end of this phase.
 
 **Scout pass.** Exploration shared by two or more tickets runs once, before dispatch: an explore subagent resolves the shared questions and reports the findings into the session — notes stay in the conversation, never written to disk. The findings fold into the relevant tracker tickets at dispatch; workers never re-explore what a ticket already settles. A question only one ticket needs stays in that ticket.
 
@@ -145,6 +176,8 @@ On a later explicit Launch invocation, first require the owning Team lifecycle t
 **Repeated failure stop.** The same verification failure surviving three repair attempts halts that lane with a root-cause hypothesis for the human. This is the one condition that interrupts C4's batching immediately.
 
 ## Phase 5 — Closeout (agent reports → C5 accepts)
+
+**Factory mode.** Closeout is a new explicit launch invocation, and it starts only when `omg factory check --parent <spec> --json` reports every child with reason `closed`, `merged`, or `run-finished:merged`. Verify runs on `ship.base`. Run numbers come from the engine's outcome comments on each child and its rollup comments on the spec. There is no integration PR, so the `/oh-my-copilot:pr` step is skipped; every other step below applies unchanged.
 
 - all tickets terminal with evidence → run verify across the whole change
 - reconcile the paper trail: GLOSSARY.md accurate, ADRs complete, spec updated where implementation taught it something
