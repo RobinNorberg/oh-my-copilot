@@ -100,6 +100,8 @@ export interface CheckJson {
 export declare function checkEnvFor(exec: Exec, root: string, config: CheckEnv['config'], base: string, baseSha: string | null): CheckEnv;
 /** Fetch `origin/<base>` (read-only) and resolve it; null with a warning when it cannot be read. */
 export declare function fetchBase(exec: Exec, root: string, base: string, warnings: string[]): string | null;
+/** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
+export declare function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown;
 export declare function renderCheckTable(items: readonly CheckResult[]): string;
 /** Production az entry: resolved outside every root a lane writes (factoryForgeOptions). */
 export declare const defaultResolveAz: (root: string) => AzEntry;

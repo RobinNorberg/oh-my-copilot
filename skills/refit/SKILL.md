@@ -16,6 +16,7 @@ The survey starts from OMC's instruments, not from a checklist. Read before aski
 - `omg session friction report` — friction the session recorded about itself
 - `.omg/logs/` and session state — errors, retries, swallowed failures
 - plan notepads `.omg/notepads/*/issues.md` and `problems.md` — problems that accumulated across a plan
+- factory runs, when the repo uses `omg factory`: `omg factory run status <n> --json` (gate history, lane credits), `omg factory heal status --json`, and the listener audit `.omg/state/factory-listener-audit.jsonl` — gates that kept parking the same way and lanes that burned credits are environment findings
 - the repo's own check surface (`package.json` scripts, CI workflows) — read before proposing any new check, because a check that exists but sits unwired or silently broken is the finding, not a reinvention
 
 Findings emerge from what the data shows. An empty survey is a valid result and is stated plainly; an invented finding is the same violation as skipping the survey. A repo with no wired automated checks is itself a finding, not a neutral default.

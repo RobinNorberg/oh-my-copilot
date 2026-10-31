@@ -1291,7 +1291,7 @@ Results are sorted by bucket, then by priority, then by id. Priority is the ADO 
 
 `--parent <spec>` checks the children of a spec item instead of ids or the intake source: on GitHub the issues in the spec body's task list (`- [ ] #n`), on Azure DevOps the work items linked as children. It cannot be combined with ids, `--source` or `--limit`. A child names its spec with a `Part of #<spec>` line on GitHub or a parent link on Azure DevOps; the adapters read that as the item's parent.
 
-**Tracker writes (for the planned `omg factory enqueue`).** The GitHub tracker can create items, edit them and find them by their `shipyard-key: <spec>/<key>` footer line. No command uses these writes yet. The factory guard allows them only when the caller passes the enqueue write context; `omg factory run` and `omg factory check` never do, so for them all three shapes stay refused. Each write is one exact shape:
+**Tracker writes (`omg factory enqueue`).** The GitHub tracker can create items, edit them and find them by their `shipyard-key: <spec>/<key>` footer line. Only `omg factory enqueue` uses these writes. The factory guard allows them only when the caller passes the enqueue write context; `omg factory run` and `omg factory check` never do, so for them all three shapes stay refused. Each write is one exact shape:
 
 ```bash
 gh issue create --repo <host>/<owner>/<name> --title <title> --body-file <file> [--label <l>]...
@@ -1305,7 +1305,7 @@ gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:
 - Extra flags, reordered flags and a different `--state`, `--json` or search are refused. `gh api`, `gh search`, and `gh issue close|delete|transfer|lock|reopen` stay refused. Nothing touches pull requests or merges.
 - A search hit counts only when its body has exactly one key line for that spec, and the same key is still there when the issue is read again with `gh issue view`. Trust and parent are left to the caller.
 
-**Azure DevOps tracker writes (for the planned `omg factory enqueue`).** The Azure DevOps tracker can create work items, update them, link them and find them by their `shipyard-key:` footer. As on GitHub, no command uses these writes yet, and the factory guard allows them only with the enqueue write context. Every call is `az devops invoke` (REST 7.1, `application/json-patch+json`):
+**Azure DevOps tracker writes (for `omg factory enqueue` on Azure DevOps, not yet wired).** The Azure DevOps tracker can create work items, update them, link them and find them by their `shipyard-key:` footer. No command uses these writes yet (enqueue is GitHub-only for now), and the factory guard allows them only with the enqueue write context. Every call is `az devops invoke` (REST 7.1, `application/json-patch+json`):
 
 | Write | Route | JSON-patch paths |
 |---|---|---|
@@ -1319,6 +1319,50 @@ gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:
 - Tags never start with `factory:`, `harbor:` or `-`, and contain no `,`, `;` or control characters. A new work item carries only allowlisted tags. An update keeps the item's other tags.
 - The area path (from an `area-tag` intake source) must be the forge project or under it. Priority is 1 to 4.
 - The body file is read like a GitHub one: a regular file with one link, at most 65536 characters. `--in-file` may not contain `:` after the drive letter, because that would name an NTFS alternate data stream. `omg factory run`, `omg factory check` and `omg ship` refuse the create route and every tracker path.
+
+#### `omg factory enqueue`
+
+```bash
+omg factory enqueue --spec <id> --file <tickets.json> [--dry-run] [--json]
+```
+
+Pushes launch's C3-approved tickets to the tracker as children of the spec issue (shipyard ↔ factory design §3.2–§3.4). GitHub only for now; on another forge it exits 5. Launch writes the ticket file to its scratchpad, runs `--dry-run`, shows the output at C3, then runs it again without `--dry-run`.
+
+```json
+{
+  "schemaVersion": 1,
+  "spec": 412,
+  "tickets": [
+    {
+      "key": "auth-token-refresh",
+      "title": "Refresh tokens before expiry",
+      "body": "## Context\n…",
+      "acceptance": ["`TokenStore.refresh()` runs when < 60 s remain"],
+      "blockedBy": ["token-store-port", "#123"],
+      "priority": 2
+    }
+  ]
+}
+```
+
+- `key` is `[a-z0-9-]{3,60}` and unique in the file. `title` is one line. `acceptance` holds 1 to `factory.check.maxAcceptanceItems` one-line items, and they can't all be vague. `blockedBy` holds keys in the file or `#<n>` for an existing issue. `priority` (optional) is 1..4 and becomes the `priority:p<n-1>` label. `--spec` must match `spec`.
+- The command refuses with exit 2, and writes nothing, on: an unknown field, a duplicate key, a `blockedBy` cycle or unknown reference, too many or all-vague AC items, control or format characters (such as bidi overrides) in the text, a rendered body over `factory.check.maxBodyChars`, a spec that is closed, isn't an issue of the forge repository or whose author isn't an owner, member or collaborator, a `#n` that does not exist, or two trusted issues holding the same key.
+- Each ticket becomes an issue whose body is the ticket body, then `## Acceptance criteria` with a checkbox per item, then a `<!-- shipyard:edges -->` section (`Part of #<spec>` and one `Blocked by #n` per edge), then the footer `shipyard-key: <spec>/<key>`. It gets the intake label (when `factory.intake.source` is a label) and the priority label. The spec body gets a `<!-- shipyard:tickets -->` task list (`- [ ] #n`) that `omg factory check --parent` reads. A box ticked there stays ticked.
+- **Model-written text is neutralized** before it is posted from your account. @-mentions, `#n`, `GH-n` and cross-repository `owner/repo#n` references and issue/PR/discussion URLs (also bare `www.` ones) go into code spans, so nobody is notified and no backlink appears on another issue. `<!--` is escaped as `&lt;!--`, so an unclosed comment can't hide the acceptance criteria, edges or key from a reader. `omg-plan:` and `shipyard-key:` are escaped (`omg-plan\:`), as are `Acceptance criteria` headings, `Depends on`/`Blocked by`/`Part of #n` lines and task-list `- [ ] #n` lines, so ticket text can't become a trusted plan link, a second key, an edge or a child.
+- **Idempotent.** A key counts only on an issue by a trusted author (owner, member or collaborator) whose `Part of #<spec>` line names the spec. Holders are found by the key search and among the spec's task-list children; the task list is rewritten right after each create, because GitHub search is eventually consistent. After a partial failure, an immediate re-run may still need a short wait. Keys on other issues are listed under `ignored` and don't count, so an outside issue can't claim a key. Each ticket is then `created`, `unchanged` (no write), `updated` (title, body or labels changed), or `kept-claimed` (never edited) when the issue is closed, has a factory run state, has an open or merged `factory/issue-<n>` PR, or has that branch on origin. A key that is in the tracker but not in the file is reported as `orphaned`. It stays open and stays in the spec's task list, so the captain decides whether to close it.
+- Edges are written in a second pass, once every new issue has its number.
+- Body files are written to a fresh temporary directory outside the worktree (enqueue refuses if the temporary directory is inside it), then removed. gh reads the guard's own copy of each file.
+- **The mark step.** After the writes, enqueue runs `omg factory check <ids> --mark --yes` over this file's created, updated and unchanged issues only, which adds `factory.intake.marker` to the runnable ones. Orphans and any other task-list line of the spec are never marked. The dry run lists these mark candidates. The launch C3 signature is the confirmation for the issues, the intake label and the marker, so harbor's accept step doesn't apply these labels. The marker label must already exist (`omg factory setup`).
+- `--dry-run` prints every planned write (title, labels and the exact body; new issues show as `#<key>` in edges) and writes nothing. The guard refuses any create or edit during a dry run.
+- `--json` prints `{ schemaVersion: 1, ok, dryRun, spec: { id, taskList, planned? }, items, ignored, mark, warnings }`. Each item is `{ key, id, action, bucket, reasons, markCandidate }`, plus `planned` on a dry run. `bucket` and `reasons` come from the mark step's check.
+- Calls: every gh and git read is one of `omg factory check`'s shapes. Writes are the three tracker write shapes above, plus check's marker edit in the mark step. Nothing closes, deletes or merges anything.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | enqueued (or planned, with `--dry-run`) |
+| 1 | a tracker read or write failed, or the mark step did (re-run: it is idempotent) |
+| 2 | usage, or a refused ticket file (nothing written) |
+| 5 | incompatible: no forge, or a forge other than GitHub |
 
 `--json` prints `{ schemaVersion: 1, ok, forge, repo, source, counts, items, mark, warnings }` (`source` is `null` for ids and `--parent`). Each item is `{ id, title, url, bucket, reasons, detail, priority, planSource }`. `reasons` holds the exact reason code (empty when the item is runnable), and `planSource` is `omg-plan`, `issue-body` or `ado-acceptance`. `mark` is `{ marker, requested, confirmed, marked, alreadyMarked, failed }`.
 

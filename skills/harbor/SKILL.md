@@ -79,7 +79,7 @@ Eight labels, no new enums. A ship carries exactly one current `harbor:*` state 
 **Processing order per sweep:**
 1. Freeze this round's candidate snapshot; process by urgency and age; paginate fully — no skipped pages. Security-sensitive ships move to the restricted path first.
 2. Read current native records and handoff state. Skip ships with no relevant change; do not repeat satisfied asks.
-3. **Classify before verifying**: place each ship in one intake class first — standing-authorization match, duplicate candidate, self-evident trivial fix, needs-info wait, needs-decision wait, or full survey — and spend evidence only where the class calls for it. Cheap routing precedes expensive verification: a ship that routes to a standing rule or a duplicate link never consumes a reproduction step. The class is provisional; new facts re-classify a ship as an explicit re-classification, never a silent switch.
+3. **Classify before verifying**: place each ship in one intake class first — standing-authorization match, duplicate candidate, self-evident trivial fix, factory-runnable, needs-info wait, needs-decision wait, or full survey — and spend evidence only where the class calls for it. Cheap routing precedes expensive verification: a ship that routes to a standing rule or a duplicate link never consumes a reproduction step. The class is provisional; new facts re-classify a ship as an explicit re-classification, never a silent switch. When the repository has a factory configured, `omg factory check <n> --json` is a cheap, read-only fact for any issue: its bucket (`runnable`, `needs-plan`, `blocked`) and reason feed the class and the factory handoff on the desk, and it costs no reproduction. Never pass `--mark` from harbor — marking is the signed handoff's act.
 4. Check existing decisions and scope first; for PRs without declared intent, static survey precedes expensive verification.
 5. Check duplicates and existing implementations, then reproduce claims as needed. **Existing code is not proof a feature is satisfied; a failed reproduction is not proof the report is false.** A valid in-scope prior refusal may skip an expensive reproduction that would not change the decision — marked explicitly as not-run, with the reason. Match rejections by concept, not by title: the same defect under new wording reuses the prior signed rule or prior refusal — wording changes do not create new work.
 6. Each unknown fact gets one informative verification step. Stop retrying when methods stop reducing uncertainty or the environment is missing; record the blocker and the minimal ask. Do not promise exhaustive fact-finding.
@@ -97,6 +97,18 @@ Inspection produces facts; the desk produces decisions. Each pending item carrie
 **"Per recommendation"** is valid only when the conversation clearly points at one proposal or a fixed batch. Batch signing binds to the object list and proposal versions displayed at signing time — it never covers items added later. Partially stale lists: unchanged items proceed under their explicit authorization; changed items are re-verified and re-proposed individually. Clarify only genuinely ambiguous replies — brevity alone does not trigger re-confirmation. A checkbox is a display affordance, not a signature: signer identity and proposal correspondence are verified regardless.
 
 A ruling that answers scope questions returns the ship to the desk for re-disposition; answers land in the sheet. Signed-but-failed executions keep the original decision, record the failure, and either recover within the authorization or surface as `for-maintainer`. **Once a ship is accepted and actually received by `execute`/`launch`, delivery state lives in that pipeline — harbor stops tracking it. An accepted issue nobody has claimed stays visible in the harbor queue.**
+
+**Factory handoff.** When a factory is configured, an accepted issue is handed over by its `omg factory check <n> --json` result. Harbor recommends the next skill to the captain and never invokes it. Harbor never runs `omg factory enqueue`: enqueue writes children and marks them, and that write belongs to launch's C3, where the captain signs the dry run.
+
+| Check result | Route |
+|---|---|
+| `runnable`, or `needs-plan` and the work is one slice an engineer can specify | `/oh-my-copilot:launch` with the issue as its spec: launch's Phase 3 factory handoff enqueues a one-ticket file whose `spec` is the issue, and the captain signs that dry run at C3 |
+| `needs-plan`, several slices, clear | `/oh-my-copilot:launch` with the signed decisions as its mission brief |
+| `needs-plan`, the requirements belong to a non-engineer | `/oh-my-copilot:intent`, linking the issue as the intent's source |
+| `needs-plan`, foggy (fog test Q1 or Q2 fails) | `harbor:needs-exploration` + `/oh-my-copilot:ask-navigator` |
+| `blocked` with `too-big` or `needs-split` | `/oh-my-copilot:launch` |
+
+Once launch has enqueued the work, delivery state lives in the factory: harbor never writes `factory:*` labels and stops tracking the ship. The docket may show one read-only line counting accepted ships by factory bucket.
 
 **Questionnaire exit.** When a decision cannot be ruled from the docket because its answer belongs to humans who are not the maintainer at the desk — a direction question, a policy exception, a choice between owners — harbor does not become a relay: it produces a **decision questionnaire** under the existing Proposal record. One questionnaire carries every open sub-question, each with its options, the consequence of each, and harbor's recommendation; it is posted on the ship for the humans who own the answer, and the ship waits at `need-decision` with the questionnaire linked. Answers fold back in as signed decisions; unanswered sub-questions never gate ships that did not ask them.
 
@@ -165,11 +177,14 @@ Harbor itself runs no daemons and keeps no timers — but the sweep does not nee
 - The deliverables are the refreshed docket and the coverage report (inspected / not-inspected / blocked, each locatable on the tracker). If a notification channel is configured (`configure-notifications`), post the docket link there so the captain learns the desk has pending boxes without opening the session.
 - Partial-completion, retry, and budget rules apply unchanged. A headless sweep that runs out of budget posts what is accurate and leaves a remaining-queue index — never "all complete".
 
+The factory listener (`omg factory listen`) starts the single-ship form: when an issue gets the intake label it spawns a headless `/oh-my-copilot:harbor look at #<n>` session under the same authority contract. The listener writes no labels. When such a session stalls, the factory watchdog adds `harbor:for-maintainer` with a stall comment: the next sweep treats it as a maintainer hand-over, not as a reporter reply.
+
 ## Scope and non-goals
 
 - V1 tracker: remote GitHub only. No daemons, no auto-classification on creation, no label sync, no cross-repo aggregation, no SLA timers, no merger, no state database, no confidence-to-authority algorithm.
 - Not the debugger, not the review surface, not the navigator, not the delivery tracker: each receives signed records and returns links.
-- Self-built cargo rule: launch C3 tickets, navigator map tickets, and loft branches are never re-processed as intake.
+- Self-built cargo rule: launch C3 tickets, navigator map tickets, and loft branches are never re-processed as intake. That includes issues carrying a `shipyard-key:` footer by a trusted author (enqueue's output) and PRs whose head branch is under `factory/` opened by the factory engine — the engine already prints the human merge command for those.
+- GitHub only this cycle, also when launch and the factory run on another forge: on any other tracker, report and stop.
 - Without user-authorized lab access, harbor stays at offline evaluation — live evidence is listed as pending, never faked.
 
 ## Completion definition

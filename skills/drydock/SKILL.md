@@ -87,7 +87,7 @@ Ask the remaining questions only after language is resolved:
 
 - package/tech stack (for standards and design-system seeds)
 - does this repo have a UI? (informational only — `design-system/` follows the same deferred-surface rule as everything else: it is created when the first UI token or component contract is worth reusing, never as a stub)
-- issue tracker location (GitHub — V1 supports GitHub only, no local fallback) — also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
+- issue tracker location (GitHub — V1 supports GitHub only, no local fallback; harbor, the navigator, and launch's factory handoff `omg factory enqueue` all read this record, and none of them supports another tracker yet) — also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
 
 ### 3. Scaffold (seed the two faces — seeds render in the document language)
 
@@ -355,6 +355,7 @@ The rule that keeps 先动手 aligned: **starting needs no permission; landing g
 - seeded (the two faces) / extended / deferred (each with its first-use trigger) / deliberately skipped (each with why)
 - resolved document language as `GLOSSARY.md` frontmatter `documentLanguage: <tag>`, including whether it came from explicit choice, the persisted marker, or unanimous inference
 - the next human content the two seeded faces need (usually CLAUDE.md conventions and GLOSSARY.md first terms)
+- when the repo will use `omg factory`: `omg factory init` refuses until both faces exist, and a legacy `CONTEXT.md` does not satisfy it — complete the legacy glossary migration first
 - reminder: re-run with `--check` any time to see drift between filesystem and harness
 
 ## `--check` mode

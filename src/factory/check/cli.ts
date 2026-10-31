@@ -223,7 +223,7 @@ export function fetchBase(exec: Exec, root: string, base: string, warnings: stri
 }
 
 /** The base branch's committed `.copilot/omg.jsonc`, when the base is in ship.trustedBases (as loadTrustedShipConfig). */
-function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown {
+export function baseLayer(exec: Exec, root: string, base: string, baseSha: string | null, trustedUser: unknown, warnings: string[]): unknown {
   const trustedBases = resolveShipConfig({ trustedBases: (trustedUser as { ship?: { trustedBases?: unknown } } | null | undefined)?.ship?.trustedBases }).trustedBases;
   if (!trustedBases.includes(base)) {
     warnings.push(`omg factory check: base ${base} is not in ship.trustedBases; its committed config is not read`);
