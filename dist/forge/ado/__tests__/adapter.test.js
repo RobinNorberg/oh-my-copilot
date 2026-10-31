@@ -4,6 +4,7 @@ import { isAbsolute, join, relative } from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { FactorySafetyError, factoryGuardExec } from '../../../factory/run/exec.js';
 import { adoMergeBody, writeAdoMergeBody } from '../merge.js';
+import { ADO_FACTORY_COMMENT_MARKER } from '../reviews.js';
 import { adoFixtureExec, loadAdoFixtures } from './fixtures.js';
 import { adoWorld, CHECKOUT, HEAD, REPO, STATE_DIR, variant, WINDOWS_ENTRY } from './world.js';
 const scratch = mkdtempSync(join(tmpdir(), 'omg-ado-adapter-'));
@@ -181,10 +182,11 @@ describe('ADO adapter, design §6 rows', () => {
         forge.reviews.markReady(17);
         expect(calls[0].body).toEqual({ isDraft: false });
     });
-    it('PR comment: a new active thread with one text comment', () => {
+    it('PR comment: a new active thread with one text comment ending in the factory marker line', () => {
         const { forge, calls } = adoWorld();
-        expect(forge.reviews.commentPr(17, bodyFile('t.md', 'factory: review passed'))).toEqual({ ok: true, stderr: '' });
-        expect(calls[0].body).toEqual({ comments: [{ parentCommentId: 0, content: 'factory: review passed', commentType: 1 }], status: 1 });
+        expect(forge.reviews.commentPr(17, bodyFile('t.md', 'factory: review passed\n'))).toEqual({ ok: true, stderr: '' });
+        expect(calls[0].body).toEqual({ comments: [{ parentCommentId: 0, content: `factory: review passed\n\n${ADO_FACTORY_COMMENT_MARKER}\n`, commentType: 1 }], status: 1 });
+        expect(ADO_FACTORY_COMMENT_MARKER).toBe('<!-- omg-factory: comment -->');
     });
     it('builds for exact head: only builds whose PR source sha is the head and that built the current merge commit', () => {
         const { forge } = adoWorld();

@@ -57,6 +57,51 @@ delivers through Team on Azure DevOps.
 
 ### Added
 
+- **`omg factory poll`.** A foreground polling loop for GitHub and Azure
+  DevOps, for where webhooks cannot reach (ADO service hooks need a public
+  endpoint). Each tick runs the heal scan (only with the heal capability;
+  still skipped on Azure DevOps), reports new intake items with their check
+  bucket, prints the resume hint for a PR a human completed or abandoned,
+  counts the active and pending human review threads on Azure DevOps (new
+  `ForgeReviews.listThreads`, route `git.pullRequestThreads.GET`; system
+  threads and the factory's own are left out: every factory PR comment on
+  Azure Repos now ends with the hidden line `<!-- omg-factory: comment -->`;
+  GitHub comments are unchanged), and prints the board rows that changed.
+  `--once --json` prints one tick; its `idle` is advisory and false while a
+  run state is unreadable. A tick never starts a lane and never writes to the
+  tracker or forge (check's read guard). One poller per repository, with a
+  heartbeat each tick (an owner silent for 2 h is taken over); SIGINT ends
+  the loop after the tick. The interval is 5 min
+  by default with a 2 min floor, and doubles up to 60 min after a
+  rate-limited tick (`TF400733`, HTTP 429). `TF400733` is now a transient ADO
+  error, so gate polls retry it. `omg factory listen` on Azure DevOps now
+  points at `omg factory poll`.
+- **Azure Pipelines CI history for heal (groundwork).** The Azure DevOps forge
+  gets a `ForgeCi` over the build definition that `factory.heal.pipeline:
+  { definitionId }` names: CI builds of the base branch (`individualCI` and
+  `batchedCI`), pull request builds with their recorded head (a build without
+  one is dropped, never guessed), the newest attempt of each job with its
+  failed tasks, and the job log (or the failed task logs). The rerun is a
+  human step on the build page and is never issued. `factory.heal.pipeline`
+  is read only from the user config or the base branch; a working-tree value
+  is ignored with a warning; set it on the base branch, since the user config
+  is shared across repositories. Builds of another repository, push builds
+  of another branch or of a tag are dropped, and the failed task logs are
+  read only up to the log cap. `capabilities.heal` is true only with a
+  pipeline. The heal guard sends `az` to the Azure DevOps guard with a new
+  `read` policy that refuses every non-GET route. `heal scan` on Azure
+  DevOps stays refused until the follow-up PR.
+- **`omg factory board`.** A read-only view of intake items, their factory
+  runs and their tracker stages, on GitHub and Azure DevOps. Items without a
+  run are grouped by check bucket; runs sit in the column of their expected
+  stage, with the gate, lane, credits, PR, head and latest verdict. Flags:
+  `drift` (a human moved the card), `unsynced` (a progress write is pending),
+  `seal!` (the run state fails its integrity check) and `stale` (no change
+  for 24 hours). `--parent <spec>` shows a spec's children, runs outside the
+  source get their own section, and `--no-check` reads Azure DevOps items in
+  one batched `wit/workitems?ids=` GET (the new optional
+  `ForgeTracker.peekItems`). It runs on `omg factory check`'s read guard with
+  no marker, so every write is refused. `--json` has schemaVersion 1.
 #### Shipyard and factory
 
 - **`omg factory check --parent <spec>`** checks a spec's children (the
