@@ -87,6 +87,9 @@ function patchItem(ctx, id, build) {
 const failure = (error) => (error instanceof Error ? error.message : String(error));
 /** The link each relation kind writes, as viewItem reads it back (parent, dependsOn). */
 const RELATION_OF = { parent: PARENT, 'depends-on': DEPENDS_ON };
+/** peekItems: the fields one batched work item read returns, and its batch size (the REST cap). */
+const PEEK_FIELDS = 'System.Id,System.Title,System.State,System.BoardColumn,System.Tags';
+const PEEK_BATCH = 200;
 /** findByKey's one WIQL page. */
 const KEY_QUERY_TOP = '1000';
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -150,6 +153,27 @@ export function adoTracker(ctx, intakeSource, bodyDir) {
                 repoUrl: ctx.repo.url,
                 ...(project ? { project } : {}),
             };
+        },
+        peekItems(ids) {
+            const out = new Map();
+            for (let at = 0; at < ids.length; at += PEEK_BATCH) {
+                const batch = ids.slice(at, at + PEEK_BATCH);
+                const json = adoJson(adoCall(ctx, 'wit.workItems.GET', projectParams(ctx), { ids: batch.join(','), fields: PEEK_FIELDS, errorPolicy: 'omit' }), `work items ${batch.join(',')}`);
+                // errorPolicy=omit: an id that does not exist (or is not readable) comes back as null.
+                for (const w of listValue(json)) {
+                    if (!isObject(w) || typeof w.id !== 'number' || !batch.includes(w.id) || !isObject(w.fields))
+                        continue;
+                    const f = w.fields;
+                    out.set(w.id, {
+                        title: str(f['System.Title']) ?? '',
+                        url: `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${w.id}`,
+                        column: str(f['System.BoardColumn']),
+                        state: str(f['System.State']) ?? '',
+                        labels: splitTags(f['System.Tags']),
+                    });
+                }
+            }
+            return out;
         },
         queryItems(source, limit) {
             const top = { $top: String(limit) };

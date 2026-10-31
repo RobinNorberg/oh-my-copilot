@@ -1320,6 +1320,26 @@ gh issue list --repo <host>/<owner>/<name> --search '"shipyard-key: <spec>/" in:
 - The area path (from an `area-tag` intake source) must be the forge project or under it. Priority is 1 to 4.
 - The body file is read like a GitHub one: a regular file with one link, at most 65536 characters. `--in-file` may not contain `:` after the drive letter, because that would name an NTFS alternate data stream. `omg factory run`, `omg factory check` and `omg ship` refuse the create route and every tracker path.
 
+#### `omg factory board` (experimental)
+
+`omg factory board` shows intake items, their factory runs and their tracker stages in one view. It works the same on GitHub and Azure DevOps, and it is strictly read-only: it runs on `omg factory check`'s read guard with no marker, so every tracker or forge write (a gh edit, comment or PR call, an az POST or PATCH other than the WIQL query the `area-tag` and `board-column` sources run) is refused, and it writes no local state.
+
+```bash
+omg factory board [--json]                  # the items of factory.intake.source, plus runs in flight
+omg factory board --parent <spec> [--json]  # the spec's children, as omg factory check --parent
+omg factory board --source <spec> [--limit n]
+omg factory board --no-check                # no check rules: one batched tracker read for the live stages
+```
+
+- **Columns.** `backlog` holds the items without a run, by check bucket (runnable, needs-plan, blocked) with the reason. Every other item sits in the column of its run's expected tracker stage: queued, building, reviewing, verifying, ready-to-merge, done, blocked or cancelled. A run parked at the engine's `blocked-by` gate shows in `blocked` with the gate's reason. With `factory.progress` configured, the column titles are the mapped label (GitHub), or the column or state (Azure DevOps).
+- **Rows.** Phase or `awaiting-human: <gate>`, the running lane, AI credits spent, the PR (`#n` on GitHub, `!n` on Azure DevOps), the head, and the latest `omg ship` verdict for the PR.
+- **Live stage.** The progress label on GitHub; on Azure DevOps the board column, else the state, mapped back through `factory.progress.stages`. When several stages match, the recorded one wins.
+- **Flags.** `drift`: the live stage is not the one the run recorded (a human moved the card). `unsynced`: the recorded stage is not the expected one (a progress write failed or is pending). `seal!`: the run state fails its integrity check, so do not act on it. `stale`: a run that is not finished and not at a gate has not changed for 24 hours.
+- **Runs not in the intake source.** Runs in flight whose key is not in the source (a run started with an explicit id, a ci-heal `heal-<sig8>` run) get their own section. Finished runs outside the source are not shown.
+- **`--no-check`** skips the check rules (no comment, plan or PR reads). On Azure DevOps the items are read with one `GET wit/workitems?ids=…&fields=…&errorPolicy=omit` per 200 ids; on GitHub with one `gh issue view` per item.
+- **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings }`. Each row has `id`, `title`, `url`, optional `error`, `check` (absent with `--no-check`), `run`, `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
+- **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
+
 #### `omg factory enqueue`
 
 ```bash

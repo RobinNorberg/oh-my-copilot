@@ -148,7 +148,7 @@ export const ADO_ROUTES: readonly AdoRoute[] = Object.freeze([
   route({ id: 'git.repositories.GET', area: 'git', resource: 'repositories', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'repositoryId'], queryParams: [] }),
 
   // Work items (intake, check, progress).
-  route({ id: 'wit.workItems.GET', area: 'wit', resource: 'workItems', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'id'], queryParams: ['$expand'] }),
+  route({ id: 'wit.workItems.GET', area: 'wit', resource: 'workItems', method: 'GET', apiVersion: STABLE, routeParams: ['project', 'id'], queryParams: ['$expand', 'ids', 'fields', 'errorPolicy'] }),
   route({
     id: 'wit.workItems.PATCH', area: 'wit', resource: 'workItems', method: 'PATCH', apiVersion: STABLE, routeParams: ['project', 'id'], queryParams: [],
     mediaType: 'application/json-patch+json',

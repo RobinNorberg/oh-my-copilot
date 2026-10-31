@@ -235,7 +235,7 @@ export function baseLayer(exec: Exec, root: string, base: string, baseSha: strin
 }
 
 /** The project layer with `--source` / `--limit` as working-tree intake keys (the resolver validates them). */
-function withFlags(project: unknown, o: FactoryCheckOptions): unknown {
+function withFlags(project: unknown, o: Pick<FactoryCheckOptions, 'source' | 'limit'>): unknown {
   if (o.source === undefined && o.limit === undefined) return project;
   const p = (project && typeof project === 'object' ? project : {}) as Record<string, unknown>;
   const factory = (p.factory && typeof p.factory === 'object' ? p.factory : {}) as Record<string, unknown>;
@@ -281,6 +281,54 @@ export function forgeReadExec(exec: Exec, config: ResolvedForgeConfig, root: str
   return { exec: checkGuardExec(exec, marker, () => guard), options: { ...factoryForgeOptions(root), ...(entry ? { entry } : {}) } };
 }
 
+/** What a read-only factory command (check, board) works on: the checkout, its base, the resolved forge config and the forge on the read guard. */
+export interface ReadForge {
+  root: string;
+  base: string;
+  /** origin/<base>; null when it cannot be read (fetchBase warned). */
+  baseSha: string | null;
+  config: ResolvedForgeConfig;
+  forge: Forge;
+  /** The guarded Exec the forge runs on (forgeReadExec). */
+  exec: Exec;
+}
+
+/**
+ * Resolve the checkout, base and forge config (`--source` / `--limit` as
+ * working-tree intake keys) and build the forge on the read guard. Every
+ * command passes checkGuardExec; `marker` is check's confirmed `--mark`
+ * (the board passes none). Throws CheckUsageError / CheckIncompatibleError.
+ */
+export function openReadForge(o: Pick<FactoryCheckOptions, 'source' | 'limit'>, deps: FactoryCheckDeps, warnings: string[], command: string, marker?: () => string | undefined): ReadForge {
+  // The git reads before the forge config is known; az runs only through forgeReadExec below.
+  const pre = checkGuardExec(deps.exec, marker);
+  const top = git(pre, process.cwd(), ['rev-parse', '--show-toplevel']);
+  if (!top.ok) throw new CheckUsageError(`${command} must run inside a git repository`);
+  const root = top.out;
+  const origin = git(pre, root, ['remote', 'get-url', 'origin']);
+  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
+  const base = deps.base(root);
+  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
+  const baseSha = fetchBase(pre, root, base, warnings);
+  const trustedUser = deps.trustedUser();
+
+  let config: ResolvedForgeConfig;
+  try {
+    const loaded = resolveForgeConfig(trustedUser, baseLayer(pre, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
+    config = loaded.config;
+    warnings.push(...loaded.warnings);
+  } catch (error) {
+    if (!(error instanceof ForgeConfigError)) throw error;
+    throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
+  }
+  try {
+    const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, marker);
+    return { root, base, baseSha, config, forge: deps.createForge(read.exec, root, config, read.options), exec: read.exec };
+  } catch (error) {
+    throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
+  }
+}
+
 /** Run one check; returns the exit code. Errors other than usage / incompatible propagate (exit 1 at the CLI). */
 export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheckDeps): Promise<number> {
   const ids = o.ids.map(parseItemId);
@@ -290,36 +338,7 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
   if (parent !== undefined && o.limit !== undefined) throw new CheckUsageError('--limit applies to an intake source; --parent checks every child of the spec');
   const warnings: string[] = [];
   let marker: string | undefined;
-  // The git reads before the forge config is known; az runs only through forgeReadExec below.
-  let exec = checkGuardExec(deps.exec, () => marker);
-
-  const top = git(exec, process.cwd(), ['rev-parse', '--show-toplevel']);
-  if (!top.ok) throw new CheckUsageError('omg factory check must run inside a git repository');
-  const root = top.out;
-  const origin = git(exec, root, ['remote', 'get-url', 'origin']);
-  if (!origin.ok) throw new CheckIncompatibleError(`git remote get-url origin failed: ${origin.err}`);
-  const base = deps.base(root);
-  if (!isPlainBranchName(base)) throw new CheckUsageError(`base ${JSON.stringify(base)} is not a branch name`);
-  const baseSha = fetchBase(exec, root, base, warnings);
-  const trustedUser = deps.trustedUser();
-
-  let config: ResolvedForgeConfig;
-  try {
-    const loaded = resolveForgeConfig(trustedUser, baseLayer(exec, root, base, baseSha, trustedUser, warnings), withFlags(deps.projectConfig(root), o), origin.out);
-    config = loaded.config;
-    warnings.push(...loaded.warnings);
-  } catch (error) {
-    if (!(error instanceof ForgeConfigError)) throw error;
-    throw error.code === 'invalid' ? new CheckUsageError(error.message) : new CheckIncompatibleError(`${error.code}: ${error.message}`);
-  }
-  let forge: Forge;
-  try {
-    const read = forgeReadExec(deps.exec, config, root, deps.resolveAz, () => marker);
-    exec = read.exec;
-    forge = deps.createForge(exec, root, config, read.options);
-  } catch (error) {
-    throw new CheckIncompatibleError(error instanceof Error ? error.message : String(error));
-  }
+  const { root, base, baseSha, config, forge, exec } = openReadForge(o, deps, warnings, 'omg factory check', () => marker);
 
   const source = config.intake.source;
   if (ids.length === 0 && parent === undefined && !source) throw new CheckUsageError('no item ids and no intake source: pass ids, --parent <spec>, --source <spec>, or set factory.intake.source');

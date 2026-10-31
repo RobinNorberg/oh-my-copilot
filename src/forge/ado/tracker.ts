@@ -14,7 +14,7 @@ import { readFileSync } from 'fs';
 import { isBodyFileIn, readTrackerBody } from '../body-file.js';
 import { isTrustedAdoAuthor } from '../config.js';
 import {
-  shipyardKeys, type ForgeComment, type ForgeItem, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRelationKind, type ForgeTracker, type IntakeSource,
+  shipyardKeys, type ForgeComment, type ForgeItem, type ForgePeek, type ForgeItemDraft, type ForgeItemUpdate, type ForgeRelationKind, type ForgeTracker, type IntakeSource,
   type ProgressMapping, type ProgressStage,
 } from '../types.js';
 import { adoOrgUrl } from './guard.js';
@@ -106,6 +106,10 @@ const failure = (error: unknown): string => (error instanceof Error ? error.mess
 
 /** The link each relation kind writes, as viewItem reads it back (parent, dependsOn). */
 const RELATION_OF: Readonly<Record<ForgeRelationKind, string>> = { parent: PARENT, 'depends-on': DEPENDS_ON };
+/** peekItems: the fields one batched work item read returns, and its batch size (the REST cap). */
+const PEEK_FIELDS = 'System.Id,System.Title,System.State,System.BoardColumn,System.Tags';
+const PEEK_BATCH = 200;
+
 /** findByKey's one WIQL page. */
 const KEY_QUERY_TOP = '1000';
 
@@ -171,6 +175,27 @@ export function adoTracker(ctx: AdoContext, intakeSource?: IntakeSource, bodyDir
         repoUrl: ctx.repo.url,
         ...(project ? { project } : {}),
       };
+    },
+
+    peekItems(ids: readonly number[]): Map<number, ForgePeek> {
+      const out = new Map<number, ForgePeek>();
+      for (let at = 0; at < ids.length; at += PEEK_BATCH) {
+        const batch = ids.slice(at, at + PEEK_BATCH);
+        const json = adoJson(adoCall(ctx, 'wit.workItems.GET', projectParams(ctx), { ids: batch.join(','), fields: PEEK_FIELDS, errorPolicy: 'omit' }), `work items ${batch.join(',')}`);
+        // errorPolicy=omit: an id that does not exist (or is not readable) comes back as null.
+        for (const w of listValue(json)) {
+          if (!isObject(w) || typeof w.id !== 'number' || !batch.includes(w.id) || !isObject(w.fields)) continue;
+          const f = w.fields;
+          out.set(w.id, {
+            title: str(f['System.Title']) ?? '',
+            url: `https://dev.azure.com/${encodeURIComponent(ctx.repo.owner)}/${encodeURIComponent(ctx.repo.project ?? '')}/_workitems/edit/${w.id}`,
+            column: str(f['System.BoardColumn']),
+            state: str(f['System.State']) ?? '',
+            labels: splitTags(f['System.Tags']),
+          });
+        }
+      }
+      return out;
     },
 
     queryItems(source: IntakeSource, limit: number): number[] {
